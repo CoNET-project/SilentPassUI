@@ -1,1982 +1,1069 @@
-import React, { useState, useEffect } from 'react';
-import type { LucideIcon } from 'lucide-react';
-import { 
-  CreditCard, 
-  Settings, 
-  QrCode,
-  ArrowDownToLine,
-  History,
-  ChevronRight,
-  ShieldCheck,
-  Plus,
-  ArrowRightLeft,
-  Fingerprint,
-  Wallet,
-  Smartphone,
-  Radio,
-  Search,
-  UserCircle,
-  Send,
-  Sparkles,
-  Clock,
-  User,
-  MessageCircle,
-  Scan,
-  Snowflake,
-  SlidersHorizontal,
-  Download,
-  Filter,
-  LogOut,
-  LifeBuoy,
-  ArrowUpRight,
-  Landmark,
-  Barcode,
-  Store,
-  Home,
-  Lock,
-  MoreHorizontal,
-  Info,
-  CreditCard as CardIcon,
-  Pencil,
-  Zap,
-  Copy,
-  MapPin,
-  Star,
-  Gift,
-  Layers,
-  ChevronLeft,
-  Receipt,
-  CheckCircle2,
-  AlertCircle,
-  Trash2
+import React, { useState } from 'react';
+import type { ReactNode } from 'react';
+import {
+ Home, Wallet, MessageSquare, Store, ScanLine, Search, Plus,
+ X, Zap, ChevronRight, QrCode, Sparkles, ArrowRight, ShieldCheck,
+ Check, Info, Crown, ChevronLeft, SmartphoneNfc, Utensils,
+ Trophy, ShoppingBag, ArrowRightLeft, Pen, ChevronUp, UserCircle,
+ CheckCircle, Copy, Focus, AlertTriangle, Gift, MoreHorizontal,
+ Wifi, MapPin, Share, Coffee
 } from 'lucide-react';
 
-type StoreCard = {
+
+type PassTheme = 'black' | 'green' | 'starbucks' | 'ccsa';
+
+interface WalletCard {
   id: string;
-  name: string;
-  type: string;
-  color: string;
-  borderColor: string;
-  iconColor: string;
-  bgColor: string;
-  icon: LucideIcon;
-  balanceCad: number;
-};
+  merchant: string;
+  tagline: string;
+  theme: PassTheme;
+  balance: number;
+}
 
-type UsdcGiftVault = {
-  id: 'usdc';
-  name: string;
-  type: string;
-  color: string;
-  text: string;
-  balanceCad: number;
-};
-
-type GiftSource = StoreCard | UsdcGiftVault;
-
-type NfcCard = {
-  id: number;
-  last4: string;
-  isActive: boolean;
-};
-
-type PaymentDetails = {
-  totalCad: number;
-  paidFromCardCad: number;
-  paidFromUsdc: number;
-  usdcValueCad: number;
-  remainingOwedCad: number;
-};
-
-type GiftDetails = {
-  giftAmountCad: number;
-  giftCostUsdc: number;
-  networkFeeUsdc: number;
-  totalCostUsdc: number;
-  isStoreCard: boolean;
-  storeName: string;
-};
-
-type TopupDetails = {
-  addedCad: number;
-  deductedUsdc: number;
-  rate: number;
-};
-
-type BaseTransaction = {
-  id: number;
-  cardId: string;
+interface MarketItem {
+  id: string;
+  tagline: string;
   title: string;
   subtitle: string;
-  amountStr: string;
-  amountColor: string;
-  iconBg: string;
-  iconColor: string;
-  iconType: string;
-  time: string;
-};
-
-type Transaction =
-  | (BaseTransaction & { type: 'payment'; details: PaymentDetails })
-  | (BaseTransaction & { type: 'gift'; details: GiftDetails })
-  | (BaseTransaction & { type: 'topup'; details: TopupDetails });
-
-type SmartRoutingReceipt = {
-  billTotal: number;
-  cardDeductionCad: number;
-  usdcTopUpUsdc: number;
-  usdcTopUpCadEquivalent: number;
-  remainingOwedCad: number;
-  success: boolean;
-};
-
-const initialStoreCards: StoreCard[] = [
-  { id: 'senpho', name: 'Sen Pho + Cafe', type: 'Black Card', color: 'from-gray-800 to-gray-900', borderColor: 'border-gray-700', iconColor: 'text-yellow-500', bgColor: 'bg-yellow-500/20', icon: Star, balanceCad: 50.00 },
-  { id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-emerald-500 to-teal-700', borderColor: 'border-emerald-600', iconColor: 'text-white', bgColor: 'bg-white/20', icon: CreditCard, balanceCad: 10.00 }
-];
-
-const initialTransactions: Transaction[] = [
-  {
-    id: 1, cardId: 'senpho', type: 'payment', title: 'Sen Pho + Cafe', subtitle: 'Smart Routing Checkout',
-    amountStr: '- $15.50 CAD', amountColor: 'text-gray-900', iconBg: 'bg-gray-100', iconColor: 'text-[#65A30D]', iconType: 'radio', time: 'Yesterday, 12:40 PM',
-    details: { totalCad: 15.50, paidFromCardCad: 10.00, paidFromUsdc: 4.40, usdcValueCad: 5.50, remainingOwedCad: 0 }
-  },
-  {
-    id: 2, cardId: 'usdc', type: 'gift', title: 'Gift Sent to Emma', subtitle: 'Coffee on me!',
-    amountStr: '- 4.03 USDC', amountColor: 'text-gray-900', iconBg: 'bg-pink-50', iconColor: 'text-pink-500', iconType: 'gift', time: 'Yesterday, 9:15 AM',
-    details: { giftAmountCad: 5.00, giftCostUsdc: 4.00, networkFeeUsdc: 0.03, totalCostUsdc: 4.03, isStoreCard: false, storeName: 'USDC Vault' }
-  },
-  {
-    id: 3, cardId: 'senpho', type: 'topup', title: 'Store Deposit', subtitle: 'From Vault: -80.00 USDC',
-    amountStr: '+ $100.00 CAD', amountColor: 'text-[#65A30D]', iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', iconType: 'arrow-down', time: 'Mon, 9:00 AM',
-    details: { addedCad: 100.00, deductedUsdc: 80.00, rate: 1.25 }
-  },
-];
-
-export default function CashTreesApp() {
-  const [showQR, setShowQR] = useState(false);
-  const [qrMode, setQrMode] = useState('pay'); 
-  const [showNFCScanner, setShowNFCScanner] = useState(false);
-  
-  // --- 核心资金状态管理引擎 (统一换算为 CAD) ---
-  const EXCHANGE_RATE = 1.25; // 按照设定：100 CAD = 80 USDC
-  
-  const [usdcBalance, setUsdcBalance] = useState(30.00); // 初始测试资金：30 USDC
-  const [storeCards, setStoreCards] = useState<StoreCard[]>(initialStoreCards);
-
-  // --- 全局动态流水账本 (包含明细下钻数据) ---
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-
-  // 动态计算总资产
-  const usdcValuationCad = usdcBalance * EXCHANGE_RATE;
-  const totalCardsCad = storeCards.reduce((acc, card) => acc + card.balanceCad, 0);
-  const totalValuationCad = usdcValuationCad + totalCardsCad;
-
-  const [activeTab, setActiveTab] = useState('home'); 
-  const [hasAAWallet, setHasAAWallet] = useState(false);
-  const [showBalanceDetails, setShowBalanceDetails] = useState(false);
-
-  // 物理 NFC 卡状态管理引擎
-  const [nfcCards, setNfcCards] = useState<NfcCard[]>([]);
-  const [showCardManagementModal, setShowCardManagementModal] = useState(false);
-  const activeCard = nfcCards.find(c => c.isActive);
-  const isPhysicalCardBound = nfcCards.length > 0;
-  
-  // 详情下钻控制
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
-  const [selectedCard, setSelectedCard] = useState<StoreCard | null>(null);
-  const [simulateAmount, setSimulateAmount] = useState('');
-  const [smartRoutingReceipt, setSmartRoutingReceipt] = useState<SmartRoutingReceipt | null>(null);
-
-  // 充值状态控制
-  const [showAddCashModal, setShowAddCashModal] = useState(false);
-  const [addAmountCad, setAddAmountCad] = useState(''); 
-  const [addCashMode, setAddCashMode] = useState('methods'); 
-  const [topUpStore, setTopUpStore] = useState<StoreCard>(initialStoreCards[0]);
-  const [isSelectingTopUpStore, setIsSelectingTopUpStore] = useState(false);
-
-  // 赠礼状态控制
-  const [showGiftModal, setShowGiftModal] = useState(false);
-  const [giftAmount, setGiftAmount] = useState('');
-  const [giftRecipient, setGiftRecipient] = useState('');
-  const [giftMessage, setGiftMessage] = useState('');
-  const [giftStore, setGiftStore] = useState<GiftSource | null>(null);
-  const [isSelectingGiftStore, setIsSelectingGiftStore] = useState(false);
-
-  const [qrReceiveState, setQrReceiveState] = useState('default');
-  const [receiveAmount, setReceiveAmount] = useState('');
-  const [receiveMemo, setReceiveMemo] = useState('');
-
-  const userBeamioTag = "@alex.tag";
-  const eoaAddress = "0x212F...8A9B";
-  const aaAddress = "0x799E...75C8";
-
-  // NFC 扫描绑定模拟
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (showNFCScanner) {
-      timer = setTimeout(() => {
-        setShowNFCScanner(false);
-        if (!hasAAWallet) setHasAAWallet(true);
-        
-        // 自动绑定一张新卡并激活
-        const newCardLast4 = Math.floor(1000 + Math.random() * 9000).toString();
-        setNfcCards(prev => {
-          const updatedCards = prev.map(c => ({ ...c, isActive: false }));
-          return [{ id: Date.now(), last4: newCardLast4, isActive: true }, ...updatedCards];
-        });
-      }, 3000); 
-    }
-    return () => {
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [showNFCScanner, hasAAWallet]);
-
-  const handleActivateAA = () => {
-    setShowAddCashModal(false);
-    setShowQR(false); 
-    setHasAAWallet(true); 
-  };
-
-  // 动态费率计算
-  const giftCadAmount = parseFloat(giftAmount) || 0;
-  const giftUsdcEquivalent = giftCadAmount / EXCHANGE_RATE;
-  let giftFeeUsdc = giftUsdcEquivalent * 0.008; 
-  if (giftCadAmount > 0) {
-    if (giftFeeUsdc < 0.02) giftFeeUsdc = 0.02; 
-    if (giftFeeUsdc > 2) giftFeeUsdc = 2;       
-  } else {
-    giftFeeUsdc = 0;
-  }
-  const totalGiftCostCad = giftCadAmount + (giftFeeUsdc * EXCHANGE_RATE);
-
-  // 真实发送礼物并记账
-  const handleConfirmGift = () => {
-    if (!giftCadAmount || giftCadAmount <= 0) return;
-    const source = giftStore;
-    const isStoreCard = Boolean(source && source.id !== 'usdc');
-    const usdcCost = totalGiftCostCad / EXCHANGE_RATE;
-
-    if (isStoreCard && source && source.id !== 'usdc') {
-      if (source.balanceCad < totalGiftCostCad) return alert("Insufficient store card balance.");
-      setStoreCards(prev => prev.map(c => c.id === source.id ? { ...c, balanceCad: c.balanceCad - totalGiftCostCad } : c));
-    } else {
-      if (usdcBalance < usdcCost) return alert("Insufficient USDC balance.");
-      setUsdcBalance(prev => prev - usdcCost);
-    }
-
-    const newTx: Transaction = {
-      id: Date.now(),
-      cardId: isStoreCard && source && source.id !== 'usdc' ? source.id : 'usdc',
-      type: 'gift',
-      title: `Gift Sent to ${giftRecipient || 'Friend'}`,
-      subtitle: giftMessage || 'Sent via CashTrees',
-      amountStr: isStoreCard ? `- $${totalGiftCostCad.toFixed(2)} CAD` : `- ${usdcCost.toFixed(2)} USDC`,
-      amountColor: 'text-gray-900',
-      iconBg: 'bg-pink-50',
-      iconColor: 'text-pink-500',
-      iconType: 'gift',
-      time: `Today, ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
-      details: {
-        giftAmountCad: giftCadAmount,
-        giftCostUsdc: giftCadAmount / EXCHANGE_RATE,
-        networkFeeUsdc: giftFeeUsdc,
-        totalCostUsdc: usdcCost,
-        isStoreCard,
-        storeName: isStoreCard && source && source.id !== 'usdc' ? source.name : 'USDC Vault'
-      }
-    };
-    setTransactions(prev => [newTx, ...prev]);
-    setShowGiftModal(false);
-    setGiftAmount(''); setGiftRecipient(''); setGiftMessage(''); setGiftStore(null);
-  };
-
-  // 真实充值并记账
-  const handleConfirmTopUp = () => {
-    const cadToAdd = parseFloat(addAmountCad);
-    if (!cadToAdd || cadToAdd <= 0) return;
-    
-    const usdcRequired = cadToAdd / EXCHANGE_RATE;
-    if (usdcRequired > usdcBalance) {
-      alert("Insufficient USDC balance. Please add more USDC first.");
-      return;
-    }
-
-    setUsdcBalance(prev => prev - usdcRequired);
-    setStoreCards(prev => prev.map(c => 
-      c.id === topUpStore.id ? { ...c, balanceCad: c.balanceCad + cadToAdd } : c
-    ));
-    
-    const newTx: Transaction = {
-      id: Date.now(),
-      cardId: topUpStore.id,
-      type: 'topup',
-      title: `${topUpStore.name} Top-up`,
-      subtitle: `From Vault: -${usdcRequired.toFixed(2)} USDC`,
-      amountStr: `+ $${cadToAdd.toFixed(2)} CAD`,
-      amountColor: 'text-[#65A30D]',
-      iconBg: 'bg-blue-50',
-      iconColor: 'text-[#0055FF]',
-      iconType: 'arrow-down',
-      time: `Today, ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
-      details: {
-        addedCad: cadToAdd,
-        deductedUsdc: usdcRequired,
-        rate: EXCHANGE_RATE
-      }
-    };
-    setTransactions(prev => [newTx, ...prev]);
-
-    setShowAddCashModal(false);
-    setAddAmountCad('');
-  };
-
-  // 核心算法：Smart Routing 智能结账逻辑
-  const handleSmartRoutingSimulation = () => {
-    const card = selectedCard;
-    if (!card) return;
-
-    const billAmountCad = parseFloat(simulateAmount);
-    if (!billAmountCad || billAmountCad <= 0) return;
-
-    let remainingBillCad = billAmountCad;
-    let currentCardBalCad = card.balanceCad;
-    let currentUsdcBal = usdcBalance;
-    
-    let receipt = {
-      billTotal: billAmountCad,
-      cardDeductionCad: 0,
-      usdcTopUpUsdc: 0,
-      usdcTopUpCadEquivalent: 0,
-      remainingOwedCad: 0,
-      success: false
-    };
-
-    // 1. 卡内足够则优先扣卡
-    if (currentCardBalCad > 0) {
-      const deductFromCard = Math.min(currentCardBalCad, remainingBillCad);
-      currentCardBalCad -= deductFromCard;
-      remainingBillCad -= deductFromCard;
-      receipt.cardDeductionCad = deductFromCard;
-    }
-
-    // 2. 卡内不足，动用 USDC 自动垫付
-    if (remainingBillCad > 0 && currentUsdcBal > 0) {
-      const requiredUsdc = remainingBillCad / EXCHANGE_RATE;
-      const actualUsdcToUse = Math.min(currentUsdcBal, requiredUsdc);
-      const cadEquivalentConverted = actualUsdcToUse * EXCHANGE_RATE;
-      
-      currentUsdcBal -= actualUsdcToUse;
-      remainingBillCad -= cadEquivalentConverted;
-      
-      receipt.usdcTopUpUsdc = actualUsdcToUse;
-      receipt.usdcTopUpCadEquivalent = cadEquivalentConverted;
-    }
-
-    // 3. 计算剩余欠款
-    receipt.remainingOwedCad = Math.max(0, remainingBillCad);
-    receipt.success = true;
-
-    // 4. 状态更新与账本记录
-    setUsdcBalance(currentUsdcBal);
-    setStoreCards(prev => prev.map(c => 
-      c.id === card.id ? { ...c, balanceCad: currentCardBalCad } : c
-    ));
-    setSelectedCard(prev => (prev ? { ...prev, balanceCad: currentCardBalCad } : prev));
-    setSmartRoutingReceipt(receipt);
-    
-    // 生成动态流水
-    const totalPaidCad = receipt.cardDeductionCad + receipt.usdcTopUpCadEquivalent;
-    const subtitleText = receipt.usdcTopUpUsdc > 0 
-      ? `Card: -$${receipt.cardDeductionCad.toFixed(2)} | Vault: -${receipt.usdcTopUpUsdc.toFixed(2)} USDC`
-      : `Auto-paid from ${card.type}`;
-
-    if (totalPaidCad > 0) {
-      const newTx: Transaction = {
-        id: Date.now(),
-        cardId: card.id,
-        type: 'payment',
-        title: card.name,
-        subtitle: subtitleText,
-        amountStr: `- $${totalPaidCad.toFixed(2)} CAD`,
-        amountColor: 'text-gray-900',
-        iconBg: 'bg-gray-100',
-        iconColor: 'text-[#65A30D]',
-        iconType: 'radio',
-        time: `Today, ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
-        details: {
-          totalCad: totalPaidCad,
-          paidFromCardCad: receipt.cardDeductionCad,
-          paidFromUsdc: receipt.usdcTopUpUsdc,
-          usdcValueCad: receipt.usdcTopUpCadEquivalent,
-          remainingOwedCad: receipt.remainingOwedCad
-        }
-      };
-      setTransactions(prev => [newTx, ...prev]);
-    }
-    setSimulateAmount('');
-  };
-
-  const handleGenerateRequest = () => {
-    if (!receiveAmount || parseFloat(receiveAmount) <= 0) return;
-    setQrReceiveState('loading');
-    setTimeout(() => setQrReceiveState('generated'), 1500);
-  };
-
-  // 通用流水图标渲染
-  const renderTxIcon = (type: string, colorClass: string) => {
-    if (type === 'radio') return <Radio size={18} className={colorClass} />;
-    if (type === 'zap') return <Zap size={18} className={colorClass} />;
-    if (type === 'arrow-down') return <ArrowDownToLine size={18} className={colorClass} />;
-    if (type === 'gift') return <Gift size={18} className={colorClass} />;
-    if (type === 'store') return <Store size={18} className={colorClass} />;
-    return <CreditCard size={18} className={colorClass} />;
-  };
-
-  const renderTransactionList = (txList: Transaction[]) => {
-    if (txList.length === 0) {
-      return <div className="text-center text-gray-400 py-6 text-sm font-medium">No activity yet.</div>;
-    }
-    return (
-      <div className="bg-white rounded-3xl p-2 shadow-sm border border-gray-100">
-        {txList.map((tx: Transaction, idx: number) => (
-          <div 
-            key={tx.id} 
-            onClick={() => setSelectedTransaction(tx)}
-            className={`flex items-center p-3 cursor-pointer hover:bg-gray-50 transition-colors ${idx !== txList.length - 1 ? 'border-b border-gray-50' : ''}`}
-          >
-            <div className={`w-12 h-12 rounded-xl ${tx.iconBg} flex items-center justify-center mr-4 shrink-0`}>
-              {renderTxIcon(tx.iconType, tx.iconColor)}
-            </div>
-            <div className="flex-1 min-w-0 pr-2">
-              <div className="flex justify-between items-start">
-                <div className="truncate">
-                  <h3 className="font-semibold text-gray-900 truncate">{tx.title}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5 font-medium truncate">{tx.subtitle}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className={`font-bold ${tx.amountColor}`}>{tx.amountStr}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{tx.time}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // ==========================================
-  // TAB 1: 首页 (Home)
-  // ==========================================
-  const renderHomeTab = () => (
-    <div className="animate-in fade-in duration-300 pb-32">
-      <div className="px-6 pt-12 pb-2 flex justify-between items-center">
-        <button 
-          onClick={() => setActiveTab('profile')}
-          className="flex items-center gap-2 bg-white shadow-sm border border-gray-200 rounded-full pl-1.5 pr-4 py-1.5 transition-transform active:scale-95 hover:bg-gray-50 group"
-        >
-          <div className="w-8 h-8 bg-gradient-to-tr from-[#96EB3C] to-[#65A30D] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-inner group-hover:scale-105 transition-transform">
-            A
-          </div>
-          <span className="text-base font-bold text-gray-900 tracking-tight">{userBeamioTag}</span>
-        </button>
-
-        {hasAAWallet && (
-          <button 
-            onClick={() => setShowCardManagementModal(true)}
-            className="w-9 h-9 bg-white shadow-sm border border-gray-100 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors relative"
-          >
-            <SlidersHorizontal size={18} strokeWidth={2.5} />
-            {nfcCards.length > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-[#65A30D] border-2 border-white rounded-full"></span>}
-          </button>
-        )}
-      </div>
-
-      {!hasAAWallet ? (
-        <div className="px-6 mt-4">
-          <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-gray-100 flex flex-col items-center relative overflow-hidden">
-            <div className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest">
-              Action Required
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center tracking-tight">Activate Wallet</h2>
-            <p className="text-sm text-gray-500 mb-8 text-center leading-relaxed">
-              Your App is currently in EOA mode. Load cash or sync a card to deploy your Smart Account.
-            </p>
-            <div className="w-full bg-gray-50 rounded-3xl p-5 mb-4 border border-gray-200 flex flex-col items-center">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Store size={14} /> Option 1: Store Deposit
-              </span>
-              <div 
-                onClick={() => { setQrMode('receive'); setShowQR(true); }}
-                className="w-32 h-32 bg-white rounded-2xl p-2 shadow-sm border border-[#96EB3C] border-2 mb-3 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
-              >
-                <QrCode size={100} className="text-gray-900" />
-              </div>
-              <div className="flex items-center gap-1.5 bg-gray-200/50 px-2 py-1 rounded-md mb-2">
-                <span className="text-[10px] text-gray-500 font-mono font-semibold">EOA: {eoaAddress}</span>
-              </div>
-              <p className="text-xs text-gray-500 text-center font-medium">Show QR to cashier to load cash.</p>
-              <button onClick={handleActivateAA} className="mt-4 text-[#65A30D] text-[11px] font-bold bg-[#96EB3C]/20 px-4 py-1.5 rounded-full active:scale-95 transition-transform">
-                (Dev: Simulate Deposit)
-              </button>
-            </div>
-            <div 
-              onClick={() => setShowNFCScanner(true)}
-              className="w-full bg-gray-50 hover:bg-[#96EB3C]/10 transition-colors rounded-3xl p-5 border border-gray-200 flex flex-col items-center cursor-pointer group"
-            >
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <CardIcon size={14} /> Option 2: Got a Card?
-              </span>
-              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-2 shadow-sm border border-gray-100 group-hover:scale-110 transition-transform">
-                <Radio size={20} className="text-[#65A30D]" />
-              </div>
-              <p className="text-sm font-bold text-gray-900">Sync NFC Card</p>
-              <p className="text-xs text-gray-500 mt-1">Tap funded card to phone.</p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="px-6 pt-2 pb-4">
-            <div 
-              onClick={() => setShowBalanceDetails(true)}
-              className="relative bg-gradient-to-br from-[#8AE131] to-[#67AD0F] rounded-[2rem] p-6 text-gray-900 shadow-xl shadow-[#96EB3C]/20 overflow-hidden transform transition-transform hover:-translate-y-1 cursor-pointer border border-[#96EB3C]/40"
-            >
-              <div className="absolute top-0 right-0 w-48 h-48 bg-white/20 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none"></div>
-              
-              <div className="flex justify-between items-start mb-8 relative z-10">
-                <div className="flex items-start">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center mr-3 backdrop-blur-sm border border-white/20 shadow-sm">
-                    <Radio size={22} className="text-gray-900" />
-                  </div>
-                  <div className="flex flex-col items-start mt-0.5">
-                    <span className="font-extrabold text-[22px] tracking-tight text-gray-900 leading-none mb-1.5">CashTrees Pass</span>
-                    <div className="flex items-center gap-1.5 bg-gray-900/10 border border-gray-900/5 px-2 py-0.5 rounded-md shadow-sm">
-                      <span className="text-[10px] text-gray-800 font-mono tracking-widest font-semibold uppercase">{aaAddress}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-gray-900/10 flex items-center justify-center text-gray-900 backdrop-blur-sm border border-gray-900/5 shadow-sm">
-                  <Layers size={16} strokeWidth={2.5} />
-                </div>
-              </div>
-              
-              <div className="relative z-10 flex justify-between items-end">
-                <div>
-                  <p className="text-sm text-gray-800 font-bold mb-0.5 opacity-90 tracking-wide flex items-center gap-1.5">
-                    Total Valuation (CAD)
-                    <Info size={12} className="opacity-70"/>
-                  </p>
-                  <div className="flex items-baseline">
-                    <span className="text-3xl font-bold mr-1 opacity-80">$</span>
-                    <p className="text-[44px] font-extrabold tracking-tighter text-gray-900 leading-none">
-                      {Math.floor(totalValuationCad)}<span className="text-3xl font-bold text-gray-800/80">.{(totalValuationCad % 1).toFixed(2).substring(2)}</span>
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center bg-gray-900/10 backdrop-blur-md border border-gray-900/5 px-3 py-1.5 rounded-full shadow-sm mb-1.5">
-                  <div className="relative flex h-2 w-2 mr-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                  </div>
-                  <span className="text-[10px] font-bold text-gray-900 tracking-wider uppercase">
-                    {activeCard ? `Card ${activeCard.last4} Active` : 'Virtual Active'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            {!isPhysicalCardBound && (
-              <div className="flex justify-center mt-4 animate-in zoom-in-95 duration-300">
-                <button 
-                  onClick={() => setShowNFCScanner(true)}
-                  className="flex items-center gap-1.5 bg-white hover:bg-gray-50 px-4 py-2 rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-[#65A30D] hover:border-[#96EB3C]/50 transition-all active:scale-95"
-                >
-                  <Plus size={14} strokeWidth={2.5} />
-                  <Radio size={14} />
-                  <span className="text-[12px] font-bold uppercase tracking-wider ml-0.5">Bind Physical Card</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="pl-6 mb-8 mt-2">
-            <div className="flex justify-between items-center mb-3 pr-6">
-              <h2 className="text-sm font-bold text-gray-500 uppercase tracking-widest">My Store Cards ({storeCards.length})</h2>
-            </div>
-            <div className="flex overflow-x-auto hide-scrollbar gap-4 pb-4 pr-6 snap-x">
-              
-              {storeCards.map((card) => {
-                const IconComponent = card.icon;
-                return (
-                  <div 
-                    key={card.id}
-                    onClick={() => { setSelectedCard(card); setSmartRoutingReceipt(null); setSimulateAmount(''); }}
-                    className={`snap-start min-w-[240px] bg-gradient-to-br ${card.color} rounded-[1.5rem] p-5 shadow-md border ${card.borderColor} relative overflow-hidden flex-shrink-0 cursor-pointer hover:-translate-y-1 transition-transform`}
-                  >
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-10 -mt-10 blur-xl"></div>
-                    <div className="flex justify-between items-start mb-6 relative z-10">
-                      <div>
-                        <h3 className="text-white font-bold text-lg leading-tight mb-1">{card.name}</h3>
-                        <div className={`flex items-center gap-1 ${card.bgColor} ${card.iconColor} px-2 py-0.5 rounded-md w-max`}>
-                          <IconComponent size={10} />
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-white">{card.type}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="relative z-10">
-                      <p className="text-gray-300 text-xs font-medium mb-0.5">Store Balance (CAD)</p>
-                      <p className="text-2xl font-extrabold text-white tracking-tight">${card.balanceCad.toFixed(2)}</p>
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div 
-                onClick={() => setActiveTab('store')}
-                className="snap-start min-w-[120px] bg-gray-50 border-2 border-dashed border-gray-300 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 hover:bg-white hover:text-[#65A30D] hover:border-[#65A30D] transition-colors cursor-pointer flex-shrink-0"
-              >
-                <Plus size={24} className="mb-2" />
-                <span className="text-xs font-bold uppercase tracking-wider">Discover</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 flex gap-3 mb-10">
-            <button 
-              onClick={() => { setAddAmountCad(''); setAddCashMode('methods'); setShowAddCashModal(true); }}
-              className="flex-1 bg-white hover:bg-gray-50 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 group"
-            >
-              <div className="w-12 h-12 bg-[#96EB3C] rounded-full flex items-center justify-center shadow-[0_4px_14px_rgba(150,235,60,0.4)]">
-                <ArrowDownToLine size={24} className="text-gray-900" />
-              </div>
-              <span className="font-semibold text-[11px] text-gray-700 tracking-wide uppercase">Add Cash</span>
-            </button>
-            
-            <button 
-              onClick={() => setShowGiftModal(true)}
-              className="flex-1 bg-white hover:bg-gray-50 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 group relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 w-12 h-12 bg-pink-100 rounded-full -mr-4 -mt-4 blur-xl opacity-60"></div>
-              <div className="w-12 h-12 bg-pink-50 rounded-full flex items-center justify-center text-pink-500 border border-pink-100 relative z-10">
-                <Gift size={22} className="group-hover:scale-110 transition-transform duration-300" />
-              </div>
-              <span className="font-semibold text-[11px] text-gray-700 tracking-wide uppercase relative z-10">Gift Card</span>
-            </button>
-
-            <button 
-              onClick={() => { setQrMode('pay'); setShowQR(true); }}
-              className="flex-1 bg-gray-900 hover:bg-gray-800 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-xl shadow-gray-900/20"
-            >
-              <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center text-white border border-gray-700">
-                <Scan size={20} />
-              </div>
-              <span className="font-semibold text-[11px] text-white tracking-wide uppercase">Pay / Scan</span>
-            </button>
-          </div>
-
-          <div className="px-6 mb-8 relative z-30">
-            <div className="flex justify-between items-center mb-4 px-1">
-              <h2 className="text-lg font-bold text-gray-900 tracking-tight">Recent Activity</h2>
-              <button 
-                onClick={() => setActiveTab('transactions')}
-                className="text-sm font-semibold text-[#65A30D] hover:text-[#4d7c1e] transition-colors"
-              >
-                View all
-              </button>
-            </div>
-            {renderTransactionList(transactions.slice(0, 3))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-
-  // ==========================================
-  // TAB 1.5: 交易明细列表 (Transactions - View All)
-  // ==========================================
-  const renderTransactionsTab = () => (
-    <div className="animate-in fade-in duration-300 pb-32">
-      <div className="px-6 pt-14 mb-4 flex items-center relative w-full">
-        <button 
-          onClick={() => setActiveTab('home')} 
-          className="absolute left-6 p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors -ml-2"
-        >
-          <ChevronLeft size={24} />
-        </button>
-        <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight mx-auto">Transactions</h1>
-      </div>
-
-      <div className="px-6 flex gap-2 mb-6 overflow-x-auto hide-scrollbar">
-        <button className="bg-gray-900 text-white px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap">All Activity</button>
-        <button className="bg-white border border-gray-200 text-gray-600 px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shadow-sm">Payments</button>
-        <button className="bg-white border border-gray-200 text-gray-600 px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shadow-sm">Top-ups</button>
-      </div>
-
-      <div className="px-6 space-y-6">
-        <div>
-           {renderTransactionList(transactions)}
-        </div>
-        <div className="flex justify-center pt-6 pb-12 opacity-30">
-          <Receipt size={24} className="text-gray-400" />
-        </div>
-      </div>
-    </div>
-  );
-
-  // ==========================================
-  // TAB 2: 商圈发现 (Discover)
-  // ==========================================
-  const renderStoreTab = () => (
-    <div className="animate-in fade-in duration-300 pb-32">
-      <div className="px-6 pt-14 mb-6">
-        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Discover</h1>
-        <div className="flex items-center mt-2 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-md w-max shadow-sm border border-yellow-200/50">
-          <Sparkles size={12} className="mr-1.5" />
-          <span className="text-[11px] font-bold uppercase tracking-wider">Store Memberships & Offers</span>
-        </div>
-      </div>
-
-      <div className="px-6 space-y-6">
-        <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all duration-300 group relative">
-          <div className="h-32 relative overflow-hidden bg-orange-50 rounded-t-[2rem]">
-            <span className="text-7xl absolute opacity-30 flex items-center justify-center w-full h-full">🍜</span>
-            <img 
-              src="https://images.unsplash.com/photo-1585032226651-759b368d7246?auto=format&fit=crop&q=80&w=800" 
-              alt="Sen Pho + Cafe" 
-              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out z-10"
-              onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = 'none'; }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent z-20"></div>
-            <div className="absolute bottom-4 left-5 right-5 z-30 flex justify-between items-end">
-              <h3 className="font-extrabold text-xl text-white tracking-tight drop-shadow-md">Sen Pho + Cafe</h3>
-            </div>
-          </div>
-          
-          <div className="relative h-6 bg-white z-30">
-             <div className="absolute -left-3 top-0 w-6 h-6 bg-[#F1F8ED] rounded-full shadow-inner border-r border-gray-100"></div>
-             <div className="absolute -right-3 top-0 w-6 h-6 bg-[#F1F8ED] rounded-full shadow-inner border-l border-gray-100"></div>
-             <div className="absolute top-3 left-6 right-6 border-t-2 border-dashed border-gray-200"></div>
-          </div>
-          
-          <div className="px-5 pb-5 pt-1 bg-white rounded-b-[2rem] z-30 relative">
-            <div className="mb-4">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Store size={14} className="text-[#65A30D]" />
-                <span className="text-xs font-bold text-[#65A30D] uppercase tracking-wider">Store Membership Cards</span>
-              </div>
-              <p className="text-sm text-gray-500 font-medium">Top up to unlock exclusive discounts.</p>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between items-center bg-emerald-50/50 p-3 rounded-2xl border border-emerald-100">
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-sm font-bold text-gray-900">Green Card</span>
-                    <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">5% OFF</span>
-                  </div>
-                  <span className="text-xs text-gray-500">Min. $50 Top-up</span>
-                </div>
-                <button onClick={() => {setAddAmountCad(''); setTopUpStore(storeCards.find(c=>c.id==='senpho') || storeCards[0]); setAddCashMode('topup_store'); setShowAddCashModal(true);}} className="bg-white border border-gray-200 text-gray-700 hover:text-gray-900 px-4 py-2 rounded-xl font-bold text-xs transition-colors shadow-sm active:scale-95 flex items-center gap-1">
-                  <Plus size={14} /> Get
-                </button>
-              </div>
-
-              <div className="flex justify-between items-center bg-gray-900 p-3 rounded-2xl border border-gray-800">
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-sm font-bold text-white">Black Card</span>
-                    <span className="text-[9px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-bold">10% OFF</span>
-                  </div>
-                  <span className="text-xs text-gray-400">Min. $100 Top-up</span>
-                </div>
-                <button className="bg-white border border-gray-200 text-gray-400 px-4 py-2 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1">
-                  <CheckCircle2 size={14} /> Owned
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all duration-300 group relative">
-          <div className="h-32 relative overflow-hidden bg-amber-50 rounded-t-[2rem]">
-            <span className="text-6xl absolute opacity-30 flex items-center justify-center w-full h-full">☕️</span>
-            <img 
-              src="https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&q=80&w=800" 
-              alt="Lumina Roasters" 
-              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out z-10"
-              onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = 'none'; }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent z-20"></div>
-            <div className="absolute bottom-4 left-5 right-5 z-30">
-              <h3 className="font-extrabold text-xl text-white tracking-tight drop-shadow-md">Lumina Roasters</h3>
-            </div>
-          </div>
-          
-          <div className="relative h-6 bg-white z-30">
-             <div className="absolute -left-3 top-0 w-6 h-6 bg-[#F1F8ED] rounded-full shadow-inner border-r border-gray-100"></div>
-             <div className="absolute -right-3 top-0 w-6 h-6 bg-[#F1F8ED] rounded-full shadow-inner border-l border-gray-100"></div>
-             <div className="absolute top-3 left-6 right-6 border-t-2 border-dashed border-gray-200"></div>
-          </div>
-          
-          <div className="px-5 pb-5 pt-1 bg-white rounded-b-[2rem] z-30 relative">
-             <div className="mb-4">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Store size={14} className="text-gray-400" />
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Store Membership Cards</span>
-              </div>
-            </div>
-            
-            <div className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl border border-gray-100">
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-sm font-bold text-gray-900">Green Card</span>
-                </div>
-                <span className="text-xs text-gray-500">Min. $50 Top-up</span>
-              </div>
-              <button className="bg-white border border-gray-200 text-gray-400 px-4 py-2 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1">
-                <CheckCircle2 size={14} /> Owned
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ==========================================
-  // TAB 3: 聊天/消息 (Chat / Messages)
-  // ==========================================
-  const renderChatTab = () => (
-    <div className="animate-in fade-in duration-300 pb-32">
-      <div className="px-6 pt-14 mb-6 flex justify-between items-start">
-        <div>
-          <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Messages</h1>
-          <div className="flex items-center mt-2 text-gray-500 bg-gray-100 px-2 py-1 rounded-md w-max">
-            <Lock size={12} className="mr-1" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider">End-to-End Encrypted</span>
-          </div>
-        </div>
-        <button className="w-10 h-10 bg-gray-200 text-gray-900 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform mt-1">
-          <Plus size={20} strokeWidth={2.5} />
-        </button>
-      </div>
-
-      <div className="px-6 space-y-3">
-        <div className="bg-white p-4 rounded-3xl flex items-center justify-between shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
-          <div className="flex items-center flex-1">
-            <div className="w-12 h-12 rounded-full bg-[#96EB3C]/20 border border-[#96EB3C]/50 flex items-center justify-center text-xl mr-3">
-              🌳
-            </div>
-            <div className="flex-1 min-w-0 pr-4">
-              <div className="flex justify-between items-baseline mb-0.5">
-                <h3 className="font-bold text-gray-900 truncate">CashTrees Support</h3>
-                <span className="text-[10px] text-gray-400 font-medium">Mon</span>
-              </div>
-              <p className="text-xs text-gray-500 truncate">Welcome to the Alliance Network!</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ==========================================
-  // TAB 4: 我的/设置 (Profile)
-  // ==========================================
-  const renderProfileTab = () => (
-    <div className="animate-in fade-in duration-300 pb-32">
-      <div className="px-6 pt-14 mb-6">
-        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Profile</h1>
-      </div>
-      <div className="px-6 flex flex-col items-center mt-8">
-        <div className="w-24 h-24 bg-gradient-to-tr from-[#96EB3C] to-[#65A30D] rounded-full flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-4">
-          A
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900">{userBeamioTag}</h2>
-        <p className="text-gray-500 mb-8 font-mono">{aaAddress}</p>
-        
-        <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-           <div className="p-4 border-b border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-50">
-             <div className="flex items-center text-gray-700 font-semibold"><ShieldCheck className="mr-3 text-gray-400" size={20}/> Security & Backup</div>
-             <ChevronRight className="text-gray-300" size={18}/>
-           </div>
-           <div className="p-4 border-b border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-50">
-             <div className="flex items-center text-gray-700 font-semibold"><History className="mr-3 text-gray-400" size={20}/> Transaction Limits</div>
-             <ChevronRight className="text-gray-300" size={18}/>
-           </div>
-           <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50">
-             <div className="flex items-center text-red-500 font-semibold"><LogOut className="mr-3 text-red-400" size={20}/> Sign Out</div>
-           </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ==========================================
-  // 商户卡详情与 Smart Routing 模拟弹窗
-  // ==========================================
-  const renderCardDetailModal = () => {
-    if (!selectedCard) return null;
-    const IconCmp = selectedCard.icon;
-    const cardTransactions = transactions.filter(tx => tx.cardId === selectedCard.id);
-
-    return (
-      <div className="absolute inset-0 z-[45] flex flex-col">
-        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setSelectedCard(null)}></div>
-        <div className="mt-auto bg-[#F1F8ED] rounded-t-[2.5rem] p-6 relative z-10 flex flex-col animate-in slide-in-from-bottom-full duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] h-[90%] overflow-y-auto hide-scrollbar">
-          
-          <div className="mx-auto w-12 h-1.5 bg-gray-300 rounded-full mb-6"></div>
-          
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-2xl font-bold text-gray-900 tracking-tight">Card Details</h3>
-            <button onClick={() => setSelectedCard(null)} className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold">✕</button>
-          </div>
-
-          <div className={`w-full bg-gradient-to-br ${selectedCard.color} rounded-[2rem] p-6 shadow-lg border ${selectedCard.borderColor} relative overflow-hidden mb-6`}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-            <div className="flex justify-between items-start mb-10 relative z-10">
-              <div>
-                <h3 className="text-white font-extrabold text-2xl leading-tight mb-1.5">{selectedCard.name}</h3>
-                <div className={`flex items-center gap-1 ${selectedCard.bgColor} px-2.5 py-1 rounded-md w-max border border-white/10`}>
-                  <IconCmp size={12} className={selectedCard.iconColor} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-white">{selectedCard.type}</span>
-                </div>
-              </div>
-              <Radio size={24} className="text-white/50" />
-            </div>
-            <div className="relative z-10">
-              <p className="text-gray-300 text-sm font-medium mb-1">Available Store Balance</p>
-              <div className="flex items-baseline">
-                <span className="text-2xl font-bold text-white mr-1">CA$</span>
-                <p className="text-[40px] font-extrabold text-white tracking-tight leading-none">{selectedCard.balanceCad.toFixed(2)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-gray-100 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Zap size={18} className="text-[#0055FF] fill-[#0055FF]" />
-              <h4 className="font-bold text-gray-900 text-lg">Smart Routing Checkout</h4>
-            </div>
-            <p className="text-xs text-gray-500 mb-5 leading-relaxed">
-              Experience CashTrees intelligent auto-funding. If your card balance is insufficient, it automatically draws from your USDC vault to cover the difference seamlessly.
-            </p>
-
-            <div className="flex gap-3 items-center mb-5">
-              <div className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-center px-4 py-3">
-                <span className="text-gray-400 font-bold mr-2">CA$</span>
-                <input 
-                  type="number" 
-                  value={simulateAmount}
-                  onChange={(e) => setSimulateAmount(e.target.value)}
-                  placeholder="Enter Bill Amount"
-                  className="bg-transparent w-full outline-none font-bold text-gray-900 text-lg"
-                />
-              </div>
-              <button 
-                onClick={handleSmartRoutingSimulation}
-                disabled={!simulateAmount || parseFloat(simulateAmount) <= 0}
-                className="bg-[#0055FF] hover:bg-blue-700 active:scale-95 disabled:bg-blue-300 text-white px-5 py-3.5 rounded-2xl font-bold transition-all shadow-sm flex items-center gap-2"
-              >
-                <Scan size={18} /> Pay
-              </button>
-            </div>
-
-            {smartRoutingReceipt && (
-              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200 animate-in fade-in slide-in-from-top-4 duration-300">
-                <div className="flex justify-center mb-3 text-green-500">
-                  <CheckCircle2 size={24} />
-                </div>
-                <h5 className="text-center font-bold text-gray-900 mb-4">Smart Routing Execution</h5>
-                
-                <div className="space-y-2.5 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Target Bill</span>
-                    <span className="font-bold text-gray-900">CA$ {smartRoutingReceipt.billTotal.toFixed(2)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center text-[#65A30D]">
-                    <span className="flex items-center gap-1.5"><CardIcon size={14}/> Card Deduction</span>
-                    <span className="font-bold">- CA$ {smartRoutingReceipt.cardDeductionCad.toFixed(2)}</span>
-                  </div>
-
-                  {smartRoutingReceipt.usdcTopUpUsdc > 0 && (
-                    <div className="flex justify-between items-start text-[#0055FF] pt-2 border-t border-blue-100">
-                      <div className="flex flex-col">
-                        <span className="flex items-center gap-1.5 font-semibold"><Zap size={14}/> Auto USDC Top-up</span>
-                        <span className="text-[10px] ml-5 mt-0.5 opacity-80">Converted @ {EXCHANGE_RATE} CAD</span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="font-bold">- {smartRoutingReceipt.usdcTopUpUsdc.toFixed(2)} USDC</span>
-                        <span className="text-[10px] opacity-80">(≈ - CA$ {smartRoutingReceipt.usdcTopUpCadEquivalent.toFixed(2)})</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center pt-3 mt-2 border-t border-gray-200">
-                    <span className="font-bold text-gray-900">Remaining Due</span>
-                    <div className="flex flex-col items-end">
-                      <span className={`font-extrabold text-lg ${smartRoutingReceipt.remainingOwedCad > 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                        CA$ {smartRoutingReceipt.remainingOwedCad.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                {smartRoutingReceipt.remainingOwedCad > 0 && (
-                  <div className="mt-4 bg-red-50 text-red-600 px-3 py-2 rounded-xl text-xs font-semibold flex items-start gap-2 border border-red-100">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    <span>Vault depleted. Please pay the remaining CA$ {smartRoutingReceipt.remainingOwedCad.toFixed(2)} using cash or credit card at the counter.</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="mb-4">
-            <h4 className="font-bold text-gray-900 text-lg mb-4">Card Activity</h4>
-            {renderTransactionList(cardTransactions)}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ==========================================
-  // 凭证详情弹窗 (Transaction Receipt Detail)
-  // ==========================================
-  const renderTransactionDetailModal = () => {
-    if (!selectedTransaction) return null;
-    const tx = selectedTransaction;
-
-    return (
-      <div className="absolute inset-0 z-[60] flex flex-col bg-[#F2F2F7] animate-in slide-in-from-right duration-300">
-        <div className="px-6 pt-14 mb-6 flex items-center relative w-full">
-          <button 
-            onClick={() => setSelectedTransaction(null)} 
-            className="absolute left-6 p-2 text-gray-400 hover:bg-gray-200 rounded-full transition-colors -ml-2"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <h1 className="text-xl font-bold text-gray-900 mx-auto">Receipt</h1>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 pb-10 flex flex-col items-center">
-          <div className={`w-20 h-20 rounded-[1.5rem] ${tx.iconBg} flex items-center justify-center mb-4 shadow-sm border border-white/50`}>
-             {renderTxIcon(tx.iconType, `${tx.iconColor} w-10 h-10`)}
-          </div>
-          <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight text-center">{tx.title}</h2>
-          <p className="text-gray-500 font-medium mb-8 text-center">{tx.time}</p>
-
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 w-full mb-6 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-gray-100 to-transparent"></div>
-            
-            <div className="flex justify-between items-end mb-6 pb-6 border-b border-gray-100 border-dashed">
-               <span className="text-gray-500 font-medium">Status</span>
-               <span className="font-bold text-[#65A30D] flex items-center gap-1"><CheckCircle2 size={16}/> Completed</span>
-            </div>
-
-            {/* Smart Routing Payment Receipt Breakdown */}
-            {tx.type === 'payment' && tx.details && (
-              <div>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Transaction Details</h4>
-                <div className="space-y-4 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Total Bill</span>
-                    <span className="font-bold text-gray-900">CA$ {tx.details.totalCad.toFixed(2)}</span>
-                  </div>
-                  
-                  {tx.details.paidFromCardCad > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Paid from Store Card</span>
-                      <span className="font-medium text-gray-900">- CA$ {tx.details.paidFromCardCad.toFixed(2)}</span>
-                    </div>
-                  )}
-                  
-                  {tx.details.paidFromUsdc > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Auto-Topup from Vault</span>
-                      <div className="text-right">
-                        <span className="font-medium text-gray-900">- {tx.details.paidFromUsdc.toFixed(2)} USDC</span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Value: CA$ {tx.details.usdcValueCad.toFixed(2)}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {tx.details.remainingOwedCad > 0 && (
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="text-red-500 font-bold">Unpaid Balance</span>
-                      <span className="font-bold text-red-500">CA$ {tx.details.remainingOwedCad.toFixed(2)}</span>
-                    </div>
-                  )}
-                  
-                  <div className="pt-4 mt-2 border-t border-gray-100 flex justify-between items-center">
-                    <span className="text-gray-500">Network Fee</span>
-                    <span className="font-bold text-[#65A30D]">Free</span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 text-right mt-1">Paid by merchant</p>
-                </div>
-              </div>
-            )}
-
-            {/* Top-up Receipt Breakdown */}
-            {tx.type === 'topup' && tx.details && (
-              <div>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Exchange Details</h4>
-                <div className="space-y-4 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Deducted from Vault</span>
-                    <span className="font-bold text-red-500">- {tx.details.deductedUsdc.toFixed(2)} USDC</span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Added to Store Card</span>
-                    <span className="font-bold text-[#65A30D]">+ CA$ {tx.details.addedCad.toFixed(2)}</span>
-                  </div>
-                  
-                  <div className="pt-4 mt-2 border-t border-gray-100 flex justify-between items-center">
-                    <span className="text-gray-500">Exchange Rate</span>
-                    <span className="font-medium text-gray-900">1 USDC = {tx.details.rate} CAD</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Gift Receipt Breakdown */}
-            {tx.type === 'gift' && tx.details && (
-              <div>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Gift Details</h4>
-                <div className="space-y-4 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Asset Type</span>
-                    <span className="font-medium text-gray-900">{tx.details.storeName}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Gift Amount</span>
-                    <span className="font-medium text-gray-900">CA$ {tx.details.giftAmountCad.toFixed(2)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Network Fee (0.8%)</span>
-                    <span className="font-medium text-gray-900">{tx.details.networkFeeUsdc.toFixed(2)} USDC</span>
-                  </div>
-                  
-                  <div className="pt-4 mt-2 border-t border-gray-100 flex justify-between items-center">
-                    <span className="text-gray-500">Total Charged</span>
-                    <span className="font-bold text-red-500">- {tx.details.totalCostUsdc.toFixed(2)} USDC</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* General Fallback for mock data without detailed breakdown */}
-            {!tx.details && (
-              <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                 <span className="text-gray-500">Amount</span>
-                 <span className={`font-bold ${tx.amountColor}`}>{tx.amountStr}</span>
-              </div>
-            )}
-
-          </div>
-
-          <button className="bg-white border border-gray-200 text-gray-500 px-6 py-2.5 rounded-full font-bold text-sm shadow-sm">
-            Report an Issue
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  // ==========================================
-  // 卡片管理弹窗 (Card Management Modal)
-  // ==========================================
-  const renderCardManagementModal = () => {
-    if (!showCardManagementModal) return null;
-
-    return (
-      <div className="absolute inset-0 z-50 flex flex-col">
-        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowCardManagementModal(false)}></div>
-        <div className="mt-auto bg-[#F1F8ED] rounded-t-[2.5rem] p-6 relative z-10 flex flex-col animate-in slide-in-from-bottom-full duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] h-[85%] overflow-y-auto hide-scrollbar">
-          
-          <div className="mx-auto w-12 h-1.5 bg-gray-300 rounded-full mb-6"></div>
-          
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-2xl font-bold text-gray-900 tracking-tight">NFC Cards</h3>
-            <button onClick={() => setShowCardManagementModal(false)} className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold">✕</button>
-          </div>
-
-          <p className="text-sm text-gray-500 mb-6">Manage your linked physical keys. Only one card can be active at a time to prevent conflicts.</p>
-
-          <div className="space-y-3 mb-auto">
-            {nfcCards.map(card => (
-              <div key={card.id} className={`bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between transition-all ${card.isActive ? 'border-[#96EB3C]' : 'border-gray-100'}`}>
-                <div className="flex items-center">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${card.isActive ? 'bg-[#96EB3C]/20 text-[#65A30D]' : 'bg-gray-100 text-gray-400'}`}>
-                    <Radio size={18} />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-gray-900">CashTrees Card</h4>
-                    <p className="text-xs text-gray-500 font-mono">•••• {card.last4}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  {!card.isActive && (
-                    <button 
-                      onClick={() => setNfcCards(prev => prev.map(c => ({...c, isActive: c.id === card.id})))}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                    >
-                      Activate
-                    </button>
-                  )}
-                  {card.isActive && (
-                    <span className="bg-[#96EB3C]/20 text-[#65A30D] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
-                      <CheckCircle2 size={14} /> Active
-                    </span>
-                  )}
-                  <button 
-                    onClick={() => {
-                      setNfcCards(prev => prev.filter(c => c.id !== card.id));
-                    }}
-                    className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {nfcCards.length === 0 && (
-              <div className="text-center py-10 bg-white rounded-2xl border border-gray-100 border-dashed">
-                <Smartphone size={32} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-400 text-sm font-medium">No physical cards linked.</p>
-              </div>
-            )}
-          </div>
-
-          <button 
-            onClick={() => {
-              setShowCardManagementModal(false);
-              setShowNFCScanner(true);
-            }}
-            className="w-full py-4 mt-6 bg-gray-900 hover:bg-gray-800 active:scale-95 text-white rounded-2xl font-bold transition-all shadow-md flex items-center justify-center gap-2"
-          >
-            <Plus size={20} />
-            Bind Another Card
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex justify-center font-sans text-gray-900 pb-20">
-      <div className="w-full max-w-md bg-[#F1F8ED] overflow-hidden relative shadow-2xl sm:rounded-[3rem] sm:border-[8px] border-white sm:my-8 sm:h-[850px] flex flex-col">
-        
-        {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto hide-scrollbar">
-          {activeTab === 'home' && renderHomeTab()}
-          {activeTab === 'transactions' && renderTransactionsTab()}
-          {activeTab === 'store' && renderStoreTab()}
-          {activeTab === 'chat' && renderChatTab()}
-          {activeTab === 'profile' && renderProfileTab()}
-        </div>
-
-        {/* --- Floating Bottom Navigation Bar --- */}
-        <div className="absolute bottom-6 w-full z-30 px-6 flex justify-center items-center gap-3 pointer-events-none">
-          <div className="flex-1 bg-[#8E8E93] rounded-[2rem] p-1.5 flex justify-between items-center shadow-[0_8px_25px_rgba(0,0,0,0.12)] pointer-events-auto">
-            <button 
-              onClick={() => setActiveTab('home')}
-              className={`relative flex items-center justify-center h-12 transition-all duration-300 ${activeTab === 'home' || activeTab === 'transactions' ? 'w-[76px] bg-white rounded-[1.5rem] shadow-sm' : 'flex-1 hover:opacity-80'}`}
-            >
-              <Wallet size={24} className={activeTab === 'home' || activeTab === 'transactions' ? 'text-[#65A30D]' : 'text-white'} fill={activeTab === 'home' || activeTab === 'transactions' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'home' || activeTab === 'transactions' ? 0 : 2} />
-            </button>
-
-            <button 
-              onClick={() => setActiveTab('store')}
-              className={`relative flex items-center justify-center h-12 transition-all duration-300 ${activeTab === 'store' ? 'w-[76px] bg-white rounded-[1.5rem] shadow-sm' : 'flex-1 hover:opacity-80'}`}
-            >
-              <Store size={24} className={activeTab === 'store' ? 'text-[#65A30D]' : 'text-white'} fill={activeTab === 'store' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'store' ? 0 : 2} />
-            </button>
-
-            <button 
-              onClick={() => { setQrMode('pay'); setShowQR(true); }}
-              className="relative flex items-center justify-center flex-1 h-12 transition-all duration-300 hover:opacity-80"
-            >
-              <Scan size={24} className="text-white" strokeWidth={2.5} />
-            </button>
-
-            <button 
-              onClick={() => setActiveTab('chat')}
-              className={`relative flex items-center justify-center h-12 transition-all duration-300 ${activeTab === 'chat' ? 'w-[76px] bg-white rounded-[1.5rem] shadow-sm' : 'flex-1 hover:opacity-80'}`}
-            >
-              <MessageCircle size={24} className={activeTab === 'chat' ? 'text-[#65A30D]' : 'text-white'} fill={activeTab === 'chat' ? 'currentColor' : 'none'} strokeWidth={activeTab === 'chat' ? 0 : 2} />
-            </button>
-          </div>
-
-          <button className="w-[60px] h-[60px] bg-[#8E8E93] rounded-full shadow-[0_8px_25px_rgba(0,0,0,0.12)] flex items-center justify-center text-white hover:opacity-90 transition-opacity shrink-0 pointer-events-auto">
-            <Search size={24} strokeWidth={2.5} />
-          </button>
-        </div>
-
-        {/* --- All Full-Screen Modals --- */}
-        {renderCardDetailModal()}
-        {renderTransactionDetailModal()}
-        {renderCardManagementModal()}
-
-        {/* QR Code Modal (Pay / Receive) */}
-        {showQR && (
-          <div className="absolute inset-0 z-40 flex flex-col">
-            <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-md" onClick={() => {
-              setShowQR(false);
-              setQrMode('pay');
-            }}></div>
-            <div className="mt-auto bg-white rounded-t-[2.5rem] p-6 relative z-10 flex flex-col items-center animate-in slide-in-from-bottom-full duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
-              <div className="w-12 h-1.5 bg-gray-200 rounded-full mb-6"></div>
-              
-              {!hasAAWallet ? (
-                <div className="flex flex-col items-center w-full min-h-[460px]">
-                  <div className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest">
-                    Activation Required
-                  </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center tracking-tight">Receive to Activate</h3>
-                  <p className="text-sm text-gray-500 mb-8 text-center px-4 leading-relaxed">
-                    Your Smart Account is pending. Show this EOA QR to a cashier to make your first deposit.
-                  </p>
-
-                  <div className="w-64 h-64 bg-white rounded-[2rem] p-4 mb-6 shadow-md border border-[#96EB3C] border-2 flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 bg-[#96EB3C]/10 animate-pulse"></div>
-                    <QrCode size={180} className="text-gray-900 relative z-10" />
-                  </div>
-
-                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3 w-full max-w-[280px] flex items-center justify-between mb-8">
-                    <div className="flex flex-col overflow-hidden mr-3">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">EOA (Passkey) Address</span>
-                      <span className="text-xs font-mono text-gray-700 truncate">{eoaAddress}</span>
-                    </div>
-                    <button className="bg-white border border-gray-200 shadow-sm text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform">
-                      Copy
-                    </button>
-                  </div>
-
-                  <button 
-                    onClick={handleActivateAA} 
-                    className="w-full py-4 bg-[#96EB3C] active:scale-95 hover:bg-[#8ad936] text-gray-900 rounded-2xl font-bold transition-all shadow-md mt-auto"
-                  >
-                    Simulate Cashier Scan
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex bg-gray-100 p-1 rounded-full mb-6 w-full max-w-[240px] shadow-inner relative">
-                    <button 
-                      onClick={() => setQrMode('pay')}
-                      className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 flex items-center justify-center gap-1.5 ${qrMode === 'pay' || qrMode === 'scan' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      Pay
-                    </button>
-                    <button 
-                      onClick={() => { setQrMode('receive'); setQrReceiveState('default'); }}
-                      className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 flex items-center justify-center gap-1.5 ${qrMode === 'receive' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      Receive
-                    </button>
-                  </div>
-
-                  {qrMode === 'pay' || qrMode === 'scan' ? (
-                    <div className="flex flex-col items-center w-full min-h-[460px] animate-in fade-in duration-200">
-                      <div className="flex bg-gray-50 border border-gray-200 p-1 rounded-xl mb-6 w-full max-w-[200px]">
-                        <button onClick={() => setQrMode('pay')} className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-colors ${qrMode === 'pay' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>Show QR</button>
-                        <button onClick={() => setQrMode('scan')} className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-colors ${qrMode === 'scan' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>Scan Camera</button>
-                      </div>
-
-                      {qrMode === 'pay' ? (
-                        <div className="flex flex-col items-center w-full animate-in zoom-in-95 duration-200">
-                          <h3 className="text-2xl font-bold text-gray-900 mb-1 tracking-tight">Pay with CashTrees</h3>
-                          <p className="text-sm text-gray-500 mb-4 text-center">Show this code to cashier to pay.</p>
-                          
-                          <div className="flex items-center gap-1.5 bg-[#96EB3C]/20 text-[#65A30D] px-3 py-1.5 rounded-full mb-4 border border-[#96EB3C]/50 shadow-sm">
-                            <Zap size={14} className="fill-[#65A30D]" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Smart Routing Enabled</span>
-                          </div>
-                          
-                          <div className="w-56 h-56 bg-white rounded-[2rem] p-4 mb-4 shadow-inner border border-gray-100 relative">
-                            <div className="absolute inset-0 border-[6px] border-[#96EB3C] rounded-[2rem] opacity-30 scale-105 animate-pulse"></div>
-                            <div className="w-full h-full border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center bg-gray-50 relative overflow-hidden">
-                              <QrCode size={120} className="text-gray-800" />
-                              <div className="absolute bg-white p-1 rounded-full shadow-sm">
-                                <div className="w-8 h-8 bg-gray-900 rounded-full flex items-center justify-center text-[#96EB3C]"><Layers size={14} /></div>
-                              </div>
-                            </div>
-                          </div>
-                          <p className="text-xs text-gray-400 text-center px-8 mb-6 font-medium">
-                            Automatically deducts from your specific store card balance based on location.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center w-full animate-in zoom-in-95 duration-200">
-                          <h3 className="text-2xl font-bold text-gray-900 mb-1 tracking-tight">Scan Merchant QR</h3>
-                          <p className="text-sm text-gray-500 mb-6 text-center">Align QR code within the frame to pay.</p>
-                          
-                          <div className="w-64 h-64 bg-gray-900 rounded-[2rem] p-4 mb-6 shadow-inner relative overflow-hidden flex items-center justify-center">
-                            <div className="absolute top-6 left-6 w-8 h-8 border-t-4 border-l-4 border-[#96EB3C] rounded-tl-xl"></div>
-                            <div className="absolute top-6 right-6 w-8 h-8 border-t-4 border-r-4 border-[#96EB3C] rounded-tr-xl"></div>
-                            <div className="absolute bottom-6 left-6 w-8 h-8 border-b-4 border-l-4 border-[#96EB3C] rounded-bl-xl"></div>
-                            <div className="absolute bottom-6 right-6 w-8 h-8 border-b-4 border-r-4 border-[#96EB3C] rounded-br-xl"></div>
-                            
-                            <div className="w-full h-[2px] bg-[#96EB3C] absolute top-1/2 left-0 shadow-[0_0_15px_#96EB3C] opacity-80 animate-pulse"></div>
-                            <Scan size={48} className="text-gray-600 opacity-50" />
-                          </div>
-                          <p className="text-xs text-gray-400 text-center px-8 mb-6 font-medium">
-                            CashTrees Smart Routing will automatically apply your available discounts.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="w-full flex flex-col items-center min-h-[460px]">
-                      {qrReceiveState === 'default' && (
-                        <div className="flex flex-col items-center w-full animate-in fade-in zoom-in-95 duration-200">
-                          <div className="flex flex-col items-center mb-4">
-                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 font-bold text-xl mb-2 shadow-sm border border-gray-200">
-                              <ArrowDownToLine size={20} />
-                            </div>
-                            <h3 className="text-lg font-bold text-gray-900 leading-tight">Receive USDC</h3>
-                            <span className="text-xs text-gray-500">{userBeamioTag}</span>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 mb-4 bg-blue-50 text-blue-700 px-3 py-1 rounded-md border border-blue-100">
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Self-Custodial Address</span>
-                            <span className="text-xs font-mono font-semibold">{aaAddress}</span>
-                          </div>
-
-                          <div className="w-56 h-56 bg-white rounded-3xl p-3 mb-6 shadow-md border border-gray-100">
-                            <div className="w-full h-full bg-gray-50 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-gray-200">
-                              <QrCode size={160} className="text-gray-900" />
-                              <div className="absolute bg-white p-1 rounded-full shadow-sm">
-                                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white"><span className="font-bold text-xs">$</span></div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <button 
-                            onClick={() => setQrReceiveState('input')}
-                            className="w-full bg-[#E5F0FF] hover:bg-[#d0e3ff] text-[#0055FF] py-3.5 rounded-2xl font-bold transition-all mb-3 flex items-center justify-center gap-2"
-                          >
-                            <Plus size={18} strokeWidth={3} />
-                            Set Specific Amount
-                          </button>
-                        </div>
-                      )}
-
-                      {qrReceiveState === 'input' && (
-                        <div className="flex flex-col items-center w-full animate-in slide-in-from-right-8 duration-300">
-                          <div className="w-full flex items-center mb-6 relative">
-                            <button 
-                              onClick={() => setQrReceiveState('default')}
-                              className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"
-                            >
-                              <ChevronRight className="rotate-180" size={20} />
-                            </button>
-                            <h3 className="text-lg font-bold text-gray-900 mx-auto">Request Amount</h3>
-                          </div>
-
-                          <div className="flex items-center text-gray-900 font-bold text-6xl tracking-tighter mt-4 mb-2">
-                            <span className="text-2xl mr-2 text-gray-400">USDC</span>
-                            <input 
-                              type="number" 
-                              placeholder="0"
-                              value={receiveAmount}
-                              onChange={(e) => setReceiveAmount(e.target.value)}
-                              className="w-32 bg-transparent outline-none text-center placeholder-gray-200"
-                              autoFocus
-                            />
-                          </div>
-
-                          <button 
-                            onClick={handleGenerateRequest}
-                            disabled={!receiveAmount || parseFloat(receiveAmount) <= 0}
-                            className={`w-full py-4 rounded-2xl font-bold transition-all shadow-md mt-auto ${
-                              (!receiveAmount || parseFloat(receiveAmount) <= 0) 
-                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                                : 'bg-[#0055FF] hover:bg-blue-700 active:scale-95 text-white'
-                            }`}
-                          >
-                            Generate request
-                          </button>
-                        </div>
-                      )}
-
-                      {qrReceiveState === 'loading' && (
-                        <div className="flex flex-col items-center justify-center w-full h-[400px] animate-in fade-in duration-300">
-                          <div className="relative w-16 h-16 flex items-center justify-center mb-6">
-                             <div className="w-16 h-16 border-4 border-gray-100 border-t-[#0055FF] rounded-full animate-spin"></div>
-                             <Zap size={20} className="text-[#0055FF] absolute" />
-                          </div>
-                          <p className="text-gray-500 font-medium">Creating payment request...</p>
-                        </div>
-                      )}
-
-                      {qrReceiveState === 'generated' && (
-                        <div className="flex flex-col items-center w-full animate-in zoom-in-95 duration-300 w-full">
-                          <div className="w-full flex items-center mb-4 relative">
-                            <button 
-                              onClick={() => { setQrReceiveState('input'); setReceiveAmount(''); }}
-                              className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"
-                            >
-                              <ChevronRight className="rotate-180" size={20} />
-                            </button>
-                            <h3 className="text-lg font-bold text-gray-900 mx-auto">Ready to Scan</h3>
-                          </div>
-
-                          <div className="w-48 h-48 bg-white rounded-3xl p-3 mb-6 shadow-md border border-gray-100">
-                            <div className="w-full h-full bg-gray-50 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-gray-200">
-                              <QrCode size={140} className="text-gray-900" />
-                              <div className="absolute bg-white p-1 rounded-full shadow-sm">
-                                <div className="w-8 h-8 bg-[#0055FF] rounded-full flex items-center justify-center text-white"><span className="font-bold text-xs">$</span></div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="w-full bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-6">
-                            <div className="flex justify-between items-center mb-3">
-                              <span className="text-sm text-gray-500">Requesting</span>
-                              <span className="font-bold text-gray-900">{parseFloat(receiveAmount).toFixed(2)} USDC</span>
-                            </div>
-                            <div className="border-t border-gray-200 pt-3 pb-1 flex justify-between items-start">
-                              <span className="font-bold text-[#65A30D]">You Receive</span>
-                              <div className="flex flex-col items-end">
-                                <span className="font-bold text-[#65A30D] text-lg">{parseFloat(receiveAmount).toFixed(2)} USDC</span>
-                                <span className="text-[10px] text-gray-400 mt-0.5">Free incoming transfers</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* --- Gift (赠礼) Modal --- */}
-        {showGiftModal && (
-          <div className="absolute inset-0 z-50 flex flex-col">
-            <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-md" onClick={() => {setShowGiftModal(false); setIsSelectingGiftStore(false);}}></div>
-            <div className="mt-auto bg-white rounded-t-[2.5rem] p-6 relative z-10 flex flex-col animate-in slide-in-from-bottom-full duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] h-[85%]">
-              <div className="mx-auto w-12 h-1.5 bg-gray-200 rounded-full mb-6"></div>
-              
-              {isSelectingGiftStore ? (
-                <div className="flex flex-col h-full animate-in slide-in-from-right-8 duration-300">
-                  <div className="flex items-center mb-6 relative w-full">
-                    <button onClick={() => setIsSelectingGiftStore(false)} className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors">
-                      <ChevronLeft size={20} />
-                    </button>
-                    <h3 className="text-lg font-bold text-gray-900 mx-auto">Select Asset to Gift</h3>
-                  </div>
-                  
-                  <div className="space-y-4 overflow-y-auto pb-6">
-                    {([
-                      {
-                        id: 'usdc',
-                        name: 'USDC Balance',
-                        type: 'Unallocated Funds',
-                        color: 'bg-blue-500',
-                        text: 'text-white',
-                        balanceCad: usdcValuationCad,
-                      } satisfies UsdcGiftVault,
-                      ...storeCards,
-                    ] satisfies GiftSource[]).map((card) => {
-                      const IconCmp: LucideIcon = card.id === 'usdc' ? Layers : (card as StoreCard).icon;
-                      return (
-                      <div 
-                        key={card.id}
-                        onClick={() => { setGiftStore(card); setIsSelectingGiftStore(false); }}
-                        className="flex items-center p-4 bg-gray-50 border border-gray-200 rounded-2xl cursor-pointer hover:border-[#65A30D] hover:bg-[#96EB3C]/5 transition-colors shadow-sm"
-                      >
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shadow-inner ${card.id === 'usdc' ? 'bg-blue-500' : `bg-gradient-to-br ${card.color}`} text-white`}>
-                           {card.id === 'usdc' ? <span className="font-bold">$</span> : <IconCmp size={18} />}
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-bold text-gray-900">{card.name}</h4>
-                          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{card.type}</p>
-                        </div>
-                        <div className="text-right">
-                           <p className="text-sm font-bold text-gray-900">CA$ {card.balanceCad ? card.balanceCad.toFixed(2) : '0.00'}</p>
-                           <p className="text-[10px] text-gray-400">Available</p>
-                        </div>
-                      </div>
-                    )})}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col h-full animate-in fade-in duration-200">
-                  <div className="flex flex-col items-center justify-center mb-6 mt-2">
-                    <div className="w-16 h-16 bg-pink-50 rounded-full flex items-center justify-center text-pink-50 mb-4 shadow-sm border border-pink-100">
-                      <Gift size={32} className="text-pink-500" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight text-center">Send a Store Gift</h3>
-                    <p className="text-sm text-gray-500 mb-6 text-center px-6">Gift specific store cards or unallocated USDC to friends.</p>
-
-                    <div className="flex items-center text-gray-900 font-bold text-6xl tracking-tighter">
-                      <span className="text-3xl mr-1 text-gray-400">$</span>
-                      <input 
-                        type="number" 
-                        placeholder="0.00"
-                        value={giftAmount}
-                        onChange={(e) => setGiftAmount(e.target.value)}
-                        className="w-40 bg-transparent outline-none text-center placeholder-gray-200"
-                      />
-                    </div>
-                    
-                    <div 
-                      onClick={() => setIsSelectingGiftStore(true)}
-                      className="mt-4 bg-gray-100 text-gray-700 px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border border-gray-200 cursor-pointer hover:bg-gray-200 transition-colors shadow-sm"
-                    >
-                      {giftStore ? (
-                        <>
-                          <div className={`w-4 h-4 rounded-full ${giftStore.id === 'usdc' ? 'bg-blue-500' : `bg-gradient-to-br ${giftStore.color}`} border border-white/20 shadow-inner`}></div>
-                          {giftStore.name} <ChevronRight size={14} className="text-gray-400"/>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white text-[8px] font-bold">$</div>
-                          Unallocated USDC <ChevronRight size={14} className="text-gray-400"/>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-2xl p-4 mb-3 border border-gray-200 flex items-center shadow-sm">
-                    <UserCircle className="text-gray-400 mr-3" size={24} />
-                    <div className="flex-1 flex items-center">
-                      <span className="text-gray-900 font-bold mr-2">To:</span>
-                      <input 
-                        type="text" 
-                        placeholder="@beamio.tag or Phone #"
-                        value={giftRecipient}
-                        onChange={(e) => setGiftRecipient(e.target.value)}
-                        className="w-full bg-transparent outline-none text-gray-800 font-semibold placeholder-gray-400"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-2xl p-4 mb-auto border border-gray-200 flex items-center shadow-sm">
-                    <MessageCircle className="text-gray-400 mr-3" size={24} />
-                    <div className="flex-1 flex items-center">
-                      <input 
-                        type="text" 
-                        placeholder="Add a message..."
-                        value={giftMessage}
-                        onChange={(e) => setGiftMessage(e.target.value)}
-                        className="w-full bg-transparent outline-none text-gray-800 font-medium placeholder-gray-400"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-2xl p-5 mt-6 border border-gray-200 shadow-sm">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-sm text-gray-500 font-medium">Gift Amount</span>
-                      <span className="text-sm font-bold text-gray-900">
-                        {giftStore && giftStore.id !== 'usdc' ? 'CA$' : 'USDC'} {giftCadAmount.toFixed(2)}
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between items-center pt-3 border-t border-gray-200 border-dashed">
-                      <span className="text-sm text-gray-500 font-medium flex items-center">
-                        Network Fee (0.8%)
-                        <Info size={12} className="ml-1 text-gray-400" />
-                      </span>
-                      <div className="text-right flex flex-col items-end">
-                        <span className="text-sm font-mono font-bold text-gray-900">+ {giftFeeUsdc.toFixed(2)} USDC</span>
-                        {(giftFeeUsdc === 0.02 || giftFeeUsdc === 2) && (
-                          <span className="text-[9px] text-gray-400 mt-0.5">
-                            {giftFeeUsdc === 0.02 ? 'Minimum fee applied' : 'Maximum fee cap applied'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center pt-3 mt-3 border-t border-gray-200">
-                      <span className="text-sm font-bold text-gray-900">Total Cost</span>
-                      <div className="text-right flex flex-col items-end">
-                        <span className="text-base font-extrabold text-gray-900">
-                           USDC {(giftCadAmount / EXCHANGE_RATE + giftFeeUsdc).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handleConfirmGift} 
-                    disabled={!giftCadAmount || giftCadAmount <= 0}
-                    className={`w-full py-4 rounded-2xl font-bold transition-all shadow-md flex items-center justify-center gap-2 mt-4 ${(!giftCadAmount || giftCadAmount <= 0) ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-gray-900 hover:bg-gray-800 active:scale-95 text-white'}`}
-                  >
-                    <Gift size={20} className={(!giftCadAmount || giftCadAmount <= 0) ? 'text-gray-400' : 'text-white'} />
-                    Confirm & Send Gift
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* --- Add Cash (充值) Modal --- */}
-        {showAddCashModal && (
-          <div className="absolute inset-0 z-50 flex flex-col">
-            <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-md" onClick={() => {setShowAddCashModal(false); setIsSelectingTopUpStore(false);}}></div>
-            <div className="mt-auto bg-white rounded-t-[2.5rem] p-6 relative z-10 flex flex-col animate-in slide-in-from-bottom-full duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] h-[85%]">
-              
-              <div className="mx-auto w-12 h-1.5 bg-gray-200 rounded-full mb-6"></div>
-              
-              {addCashMode === 'methods' ? (
-                <>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight text-center">Add Funds</h3>
-                  <p className="text-sm text-gray-500 mb-8 text-center px-4">Fund your self-custodial wallet or top up merchant cards.</p>
-
-                  <div className="space-y-3 mb-auto">
-                    <h4 className="text-sm font-bold text-gray-900 mb-3 px-1">Funding Source</h4>
-                    
-                    <div 
-                      onClick={() => setAddCashMode('store_qr')}
-                      className="bg-white border border-[#96EB3C]/50 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-[#96EB3C]/10 active:scale-[0.98] transition-all relative overflow-hidden group"
-                    >
-                      <div className="absolute top-0 right-0 w-24 h-24 bg-[#96EB3C]/20 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-[#96EB3C]/30 transition-colors"></div>
-                      <div className="flex items-center relative z-10">
-                        <div className="w-10 h-10 bg-[#96EB3C] rounded-xl flex items-center justify-center mr-3 shadow-sm">
-                           <Store className="text-gray-900" size={20} />
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-900">Load Store Card via Cashier</p>
-                          <p className="text-xs text-gray-600">Give physical cash to the issuing merchant</p>
-                        </div>
-                      </div>
-                      <QrCode className="text-gray-900 relative z-10" size={20} />
-                    </div>
-
-                    <div 
-                      onClick={() => setAddCashMode('coinbase')}
-                      className="bg-white border border-gray-200 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 active:scale-[0.98] transition-all mt-4"
-                    >
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 bg-[#0052FF] rounded-xl flex items-center justify-center mr-3 shadow-sm">
-                           <span className="text-white font-bold text-xl">C</span>
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-900">Buy USDC via Coinbase</p>
-                          <p className="text-xs text-gray-500">3rd-party platform. Auto-deposits to wallet.</p>
-                        </div>
-                      </div>
-                      <ChevronRight className="text-gray-400" size={20} />
-                    </div>
-
-                    <div 
-                      onClick={() => setAddCashMode('topup_store')}
-                      className="bg-white border border-gray-200 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 active:scale-[0.98] transition-all mt-4"
-                    >
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center mr-3">
-                           <ArrowRightLeft className="text-blue-600" size={20} />
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-900">Top Up Store Card</p>
-                          <p className="text-xs text-gray-500">Use your USDC to fund a merchant card</p>
-                        </div>
-                      </div>
-                      <ChevronRight className="text-gray-400" size={20} />
-                    </div>
-                  </div>
-                </>
-              ) : addCashMode === 'store_qr' ? (
-                <>
-                  <div className="flex items-center mb-6 w-full">
-                    <button onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-6">
-                      <ChevronRight className="rotate-180 mr-1" size={16} /> Back
-                    </button>
-                    <h3 className="text-xl font-bold text-gray-900 tracking-tight mx-auto">Store Deposit</h3>
-                  </div>
-                  
-                  <div className="flex flex-col items-center justify-center mb-auto pt-4">
-                    <p className="text-sm text-gray-500 mb-8 text-center max-w-[260px] leading-relaxed">
-                      Show this code to the <span className="font-bold text-gray-900">issuing merchant</span> and hand them your paper cash.
-                    </p>
-                    
-                    <div className="w-64 h-64 bg-white rounded-[2rem] p-4 mb-6 shadow-md border border-gray-100">
-                      <div className="w-full h-full bg-gray-50 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-gray-200">
-                        <QrCode size={140} className="text-gray-900" />
-                        <div className="absolute bg-white p-1 rounded-full shadow-sm border border-gray-100">
-                           <div className="w-8 h-8 bg-[#96EB3C] rounded-full flex items-center justify-center text-gray-900 font-bold text-lg">🌳</div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3 w-full max-w-[280px] flex items-center justify-between mb-8">
-                      <div className="flex flex-col overflow-hidden mr-3">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Wallet Address</span>
-                        <span className="text-xs font-mono text-gray-700 truncate">{!hasAAWallet ? eoaAddress : aaAddress}</span>
-                      </div>
-                      <button className="bg-white border border-gray-200 shadow-sm text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform">
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : addCashMode === 'coinbase' ? (
-                <>
-                  <div className="flex items-center mb-6 w-full">
-                    <button onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-6">
-                      <ChevronRight className="rotate-180 mr-1" size={16} /> Back
-                    </button>
-                    <h3 className="text-xl font-bold text-gray-900 tracking-tight mx-auto">Coinbase</h3>
-                  </div>
-                  
-                  <div className="flex flex-col items-center justify-center mb-auto pt-4 w-full">
-                    <div className="w-16 h-16 bg-[#0052FF] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-6">
-                      C
-                    </div>
-                    <h4 className="text-lg font-bold text-gray-900 mb-2">Buy USDC directly</h4>
-                    <p className="text-sm text-gray-500 mb-8 text-center px-4 leading-relaxed">
-                      CashTrees is a self-custodial wallet and never touches your fiat. You will be securely redirected to Coinbase to complete your purchase. USDC will auto-deposit to your wallet.
-                    </p>
-
-                    <div className="w-full max-w-[280px] bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-8 shadow-sm">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-xs text-gray-500 font-medium">To Wallet</span>
-                        <span className="text-xs font-mono text-gray-900 font-bold bg-white px-2 py-1 rounded shadow-sm border border-gray-100">{!hasAAWallet ? eoaAddress : aaAddress}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-500 font-medium">Network</span>
-                        <div className="flex items-center bg-white px-2 py-1 rounded shadow-sm border border-gray-100">
-                          <div className="w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center mr-1.5"></div>
-                          <span className="text-xs font-bold text-gray-900">Base</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : addCashMode === 'topup_store' ? (
-                isSelectingTopUpStore ? (
-                  <div className="flex flex-col h-full animate-in slide-in-from-right-8 duration-300">
-                    <div className="flex items-center mb-6 relative w-full">
-                      <button onClick={() => setIsSelectingTopUpStore(false)} className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors">
-                        <ChevronLeft size={20} />
-                      </button>
-                      <h3 className="text-lg font-bold text-gray-900 mx-auto">Select Store Card</h3>
-                    </div>
-                    
-                    <div className="space-y-4 overflow-y-auto pb-6">
-                      {storeCards.map(card => {
-                        const IconCmp = card.icon;
-                        return (
-                        <div 
-                          key={card.id}
-                          onClick={() => { setTopUpStore(card); setIsSelectingTopUpStore(false); }}
-                          className="flex items-center p-4 bg-gray-50 border border-gray-200 rounded-2xl cursor-pointer hover:border-[#65A30D] hover:bg-[#96EB3C]/5 transition-colors shadow-sm"
-                        >
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shadow-inner bg-gradient-to-br ${card.color} text-white`}>
-                             <IconCmp size={18} />
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-bold text-gray-900">{card.name}</h4>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{card.type}</p>
-                          </div>
-                          <div className="text-right">
-                             <p className="text-sm font-bold text-gray-900">CA$ {card.balanceCad.toFixed(2)}</p>
-                          </div>
-                        </div>
-                      )})}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center mb-6 w-full">
-                      <button onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-6">
-                        <ChevronRight className="rotate-180 mr-1" size={16} /> Back
-                      </button>
-                      <h3 className="text-xl font-bold text-gray-900 tracking-tight mx-auto">Top Up Store Card</h3>
-                    </div>
-
-                    <div className="flex flex-col mb-auto pt-2 w-full animate-in fade-in duration-200">
-                      <div className="bg-gray-50 border border-gray-200 rounded-3xl p-5 mb-2 relative shadow-inner">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-semibold text-gray-500">From Vault (USDC)</span>
-                          <span className="text-xs font-bold text-gray-400">Bal: {usdcBalance.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-3xl font-bold text-gray-900">
-                            {addAmountCad ? (parseFloat(addAmountCad) / EXCHANGE_RATE).toFixed(2) : '0.00'}
-                          </span>
-                          <div className="flex items-center bg-white px-3 py-1.5 rounded-full shadow-sm border border-gray-100">
-                            <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-[10px] mr-1.5">$</div>
-                            <span className="text-sm font-bold">USDC</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-center -my-4 relative z-10">
-                        <div className="w-10 h-10 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm">
-                          <ArrowDownToLine size={18} className="text-gray-400" />
-                        </div>
-                      </div>
-
-                      <div className="bg-white border border-[#96EB3C]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-semibold text-gray-500">To Store Card (CAD)</span>
-                          <button onClick={() => setIsSelectingTopUpStore(true)} className="text-xs text-[#65A30D] font-bold hover:underline">Change</button>
-                        </div>
-                        
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-6 h-6 rounded-full bg-gradient-to-br ${topUpStore.color} border border-gray-200 shadow-inner`}></div>
-                            <span className="font-bold text-gray-900">{topUpStore.name}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <input 
-                            type="number" 
-                            placeholder="0.00"
-                            value={addAmountCad}
-                            onChange={(e) => setAddAmountCad(e.target.value)}
-                            className="bg-transparent text-3xl font-bold text-[#65A30D] outline-none w-1/2 placeholder-[#65A30D]/30"
-                            autoFocus
-                          />
-                          <div className="flex items-center bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-                            <span className="text-sm font-bold text-gray-700">CAD</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-8 bg-gray-50 rounded-2xl p-4 border border-gray-200">
-                        <div className="flex justify-between text-sm mb-2">
-                          <span className="text-gray-500">Exchange Rate</span>
-                          <span className="font-semibold text-gray-900">1 USDC = {EXCHANGE_RATE} CAD</span>
-                        </div>
-                      </div>
-
-                      <button 
-                        onClick={handleConfirmTopUp}
-                        disabled={!addAmountCad || (parseFloat(addAmountCad) / EXCHANGE_RATE) > usdcBalance}
-                        className={`w-full py-4 mt-6 rounded-2xl font-bold transition-all shadow-[0_4px_14px_rgba(150,235,60,0.4)] flex items-center justify-center gap-2 ${(!addAmountCad || (parseFloat(addAmountCad) / EXCHANGE_RATE) > usdcBalance) ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-[#96EB3C] hover:bg-[#8ad936] active:scale-95 text-gray-900'}`}
-                      >
-                        <ArrowDownToLine size={20} className={(!addAmountCad || (parseFloat(addAmountCad) / EXCHANGE_RATE) > usdcBalance) ? 'text-gray-400' : 'text-gray-900'} />
-                        Confirm Top Up
-                      </button>
-                    </div>
-                  </>
-                )
-              ) : null}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  description: string;
+  features: string[];
+  image: string;
+  merchant: string;
+  price: number;
+  isVariablePrice?: boolean;
+  minPrice: number;
+  maxPrice?: number;
+  quickSelects?: number[];
+  theme: PassTheme;
 }
+
+/** Market listing or wallet card passed into the payment bottom sheet (demo combines both shapes) */
+type PaymentWorkflowItem = Partial<MarketItem> &
+  Partial<WalletCard> & {
+    id: string;
+    merchant: string;
+    theme: PassTheme;
+    isReloadAction?: boolean;
+    isGiftPurchase?: boolean;
+  };
+
+
+// --- CUSTOM SVG LOGO (Tree Logo) ---
+const CashTreesLogo = ({ className }: { className?: string }) => (
+ <div className={`flex items-center justify-center ${className}`}>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-md">
+       <path d="M12 22v-8m0 0l-4-4m4 4l4-4M10 8v-4m4 4v-4M6 12l4-3m4 3l4-3" />
+       <circle cx="10" cy="4" r="1.5" fill="currentColor"/>
+       <circle cx="14" cy="4" r="1.5" fill="currentColor"/>
+       <circle cx="6" cy="12" r="1.5" fill="currentColor"/>
+       <circle cx="18" cy="12" r="1.5" fill="currentColor"/>
+    </svg>
+ </div>
+);
+
+
+const LeafIcon = ({ className }: { className?: string }) => (
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+   <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
+   <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+ </svg>
+);
+
+
+// --- MARKET DATA ---
+const MARKET_ITEMS: MarketItem[] = [
+ {
+   id: "ct-black",
+   tagline: "BLACK VIP",
+   title: "CashTrees Black VIP",
+   subtitle: "Load $100+ to unlock maximum merchant discounts.",
+   description: "Experience premium dining with exclusive rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
+   features: ["Merchant-Defined VIP Discounts", "Sen Pho + Cafe: 10% Off", "Priority Reservations"],
+   image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?auto=format&fit=crop&q=80&w=800",
+   merchant: "CashTrees",
+   price: 100,
+   isVariablePrice: true,
+   minPrice: 100,
+   quickSelects: [100, 200, 500],
+   theme: "black"
+ },
+ {
+   id: "ct-green",
+   tagline: "MEMBER",
+   title: "CashTrees Green",
+   subtitle: "Load $50 - $99 to unlock standard discounts.",
+   description: "Start enjoying authentic dining with CashTrees rewards. Discount rates are set by individual merchants. The entire bill must be paid with this CashTrees card to apply the discount.",
+   features: ["Merchant-Defined Standard Discounts", "Sen Pho + Cafe: 5% Off", "Instant Digital Setup"],
+   image: "https://images.unsplash.com/photo-1563245372068-5b40c6c74796?auto=format&fit=crop&q=80&w=800",
+   merchant: "CashTrees",
+   price: 50,
+   isVariablePrice: true,
+   minPrice: 50,
+   maxPrice: 99.99,
+   quickSelects: [50, 75, 99],
+   theme: "green"
+ }
+];
+
+
+// --- GENERIC VISUAL CARD COMPONENT ---
+const PassCardVisual = ({ theme }: { theme: PassTheme }) => {
+ let bgClass = 'bg-[#96EB3C]';
+ let textClass = 'text-[#0a1f03]';
+ let logoBoxBorder = 'border-black/10';
+  let logoBlock = (
+    <div className={`bg-[#0a0a0a] border ${logoBoxBorder} w-[88px] h-[88px] flex flex-col items-center justify-center shadow-lg p-2 rounded-sm`}>
+       <span className="text-[#96EB3C] text-4xl leading-none italic font-serif tracking-tighter" style={{fontFamily: 'Georgia, serif'}}>Sen</span>
+       <span className="text-[#96EB3C] text-[7px] uppercase tracking-[0.2em] mt-1 font-sans">Pho + Cafe</span>
+    </div>
+ );
+ let bottomLogo = <CashTreesLogo className="text-[#0a1f03]" />;
+
+
+ if (theme === 'black') {
+    bgClass = 'bg-[#151515]';
+    textClass = 'text-white';
+    logoBoxBorder = 'border-white/10';
+    bottomLogo = <CashTreesLogo className="text-[#f8f5d7]" />;
+ } else if (theme === 'starbucks') {
+    bgClass = 'bg-[#00704A]';
+    textClass = 'text-white';
+    logoBoxBorder = 'border-white/20';
+    logoBlock = (
+       <div className={`bg-white border ${logoBoxBorder} w-[88px] h-[88px] flex flex-col items-center justify-center shadow-lg p-2 rounded-full`}>
+          <Coffee size={40} className="text-[#00704A]" fill="currentColor" />
+       </div>
+    );
+    bottomLogo = <span className="text-white font-bold text-xl tracking-tighter">STARBUCKS</span>;
+ } else if (theme === 'ccsa') {
+    bgClass = 'bg-gradient-to-br from-gray-900 to-black border border-yellow-900/30';
+    textClass = 'text-yellow-500';
+    logoBoxBorder = 'border-yellow-600/30';
+    logoBlock = (
+       <div className={`bg-[#111] border ${logoBoxBorder} w-[88px] h-[88px] flex flex-col items-center justify-center shadow-lg p-2 rounded-xl`}>
+          <Crown size={36} className="text-yellow-500 mb-1" fill="currentColor" />
+          <span className="text-yellow-500 text-[9px] uppercase tracking-widest font-bold">Alliance</span>
+       </div>
+    );
+    bottomLogo = <span className="text-yellow-500 font-bold text-lg tracking-widest">CCSA VIP</span>;
+ }
+  return (
+   <div className={`w-full aspect-[1.58] ${bgClass} rounded-2xl p-4 flex flex-col justify-between shadow-[0_10px_30px_rgba(0,0,0,0.15)] relative overflow-hidden transition-transform duration-500`}>
+      <div className="absolute inset-0 opacity-[0.04] mix-blend-overlay" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,1) 1px, transparent 0)', backgroundSize: '12px 12px' }}></div>
+      <div className="flex justify-between items-start relative z-10">
+         {logoBlock}
+         <div className="bg-white border border-gray-200 p-1.5 shadow-sm rounded-md">
+            <QrCode size={36} className="text-gray-900" strokeWidth={1.5} />
+         </div>
+      </div>
+      <div className="flex justify-between items-end relative z-10">
+         <div className={`${textClass} opacity-70 rotate-90 ml-2 mb-1`}>
+            <Wifi size={24} strokeWidth={2.5} />
+         </div>
+         <div className="mr-1">
+            {bottomLogo}
+         </div>
+      </div>
+   </div>
+ );
+};
+
+
+// --- WALLET LIST CARD COMPONENT ---
+const WalletPassCard = ({
+  card,
+  isExpanded,
+  onClick,
+  onReload,
+}: {
+  card: WalletCard;
+  isExpanded: boolean;
+  onClick: () => void;
+  onReload: () => void;
+}) => {
+ let bgClass = 'bg-[#1E3F1A]';
+ let badgeText = card.tagline || 'DEFAULT';
+ let icon = <CashTreesLogo className="text-[#a4f056] scale-[0.65]" />;
+ let iconContainerClass = 'bg-white/5';
+
+
+ if (card.theme === 'black') {
+   bgClass = 'bg-[#080808]';
+   icon = <CashTreesLogo className="text-[#a4f056] scale-[0.65]" />;
+ } else if (card.theme === 'starbucks') {
+   bgClass = 'bg-[#006241]';
+   icon = <Coffee size={24} className="text-[#00704A]" fill="currentColor" />;
+   iconContainerClass = 'bg-white';
+ } else if (card.theme === 'ccsa') {
+   bgClass = 'bg-gradient-to-br from-[#1a1a1a] to-[#2a2a2a]';
+   icon = <Crown size={24} className="text-yellow-500" fill="currentColor" />;
+ }
+
+
+ return (
+   <div
+     onClick={onClick}
+     className={`relative w-full ${bgClass} rounded-[28px] p-6 shadow-[0_-12px_24px_rgba(0,0,0,0.25)] cursor-pointer transition-all duration-300 overflow-hidden flex flex-col justify-between border-t border-white/10`}
+     style={{ height: isExpanded ? '180px' : '150px' }}
+   >
+     <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,1) 1px, transparent 0)', backgroundSize: '12px 12px' }}></div>
+    
+     <div className="flex justify-between items-start relative z-10">
+        <div className="flex items-center gap-3.5">
+           <div className={`w-[44px] h-[44px] ${iconContainerClass} rounded-full flex items-center justify-center p-1 border border-white/10 shadow-inner`}>
+              {icon}
+           </div>
+           <div className="flex flex-col">
+              <span className="text-white font-bold text-[18px] tracking-wide leading-tight font-sans">{card.merchant}</span>
+              <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest mt-0.5">{badgeText}</span>
+           </div>
+        </div>
+        <div className="text-right flex items-baseline gap-1 mt-1">
+           <span className="text-white font-bold text-[26px] tracking-tight leading-none">
+              {card.balance.toFixed(2)}
+           </span>
+           <span className="text-[12px] font-bold text-white/60">CAD</span>
+        </div>
+     </div>
+
+
+     <div className={`transition-all duration-300 relative z-10 flex justify-between items-end ${isExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+        <div className="flex gap-2.5">
+           <button
+              onClick={(e) => { e.stopPropagation(); onReload(); }}
+              className="bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-xl text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-white/20 transition-colors border border-white/10"
+           >
+              <Plus size={16} strokeWidth={2.5}/> Reload
+           </button>
+           <button
+              onClick={(e) => { e.stopPropagation(); }}
+              className="bg-white/5 backdrop-blur-md px-5 py-2.5 rounded-xl text-white/80 text-[13px] font-bold flex items-center gap-1.5 hover:bg-white/10 transition-colors border border-white/5"
+           >
+              <Gift size={16} strokeWidth={2.5}/> Gift
+           </button>
+        </div>
+        <span className="text-white/30 text-[9px] font-mono uppercase tracking-[0.1em] font-medium pb-1">{card.id}</span>
+     </div>
+
+
+     <div className={`absolute bottom-6 right-6 transition-opacity duration-200 ${isExpanded ? 'opacity-0' : 'opacity-100'}`}>
+        <span className="text-white/30 text-[9px] font-mono uppercase tracking-[0.1em] font-medium">{card.id}</span>
+     </div>
+   </div>
+ );
+};
+
+
+// --- MARKET STORY CARD ---
+const MarketStoryCard = ({
+  item,
+  onBuy,
+  ownedCard,
+}: {
+  item: MarketItem;
+  onBuy: (item: MarketItem) => void;
+  ownedCard: WalletCard | undefined;
+}) => {
+ const isBlackCard = item.theme === 'black';
+ const accentColor = isBlackCard ? 'text-amber-400' : 'text-[#96EB3C]';
+ const badgeBg = isBlackCard ? 'bg-amber-400/20' : 'bg-[#96EB3C]/20';
+  let buttonText = "Get Card";
+ let buttonBg = isBlackCard ? 'bg-white text-black' : 'bg-[#96EB3C] text-[#0a1f03]';
+ let isOwnedOrUpgradable = false;
+ let isAlreadyVIP = false;
+
+
+ if (ownedCard) {
+    if (ownedCard.theme === 'black') {
+       isAlreadyVIP = true;
+       buttonText = isBlackCard ? "Reload" : "Gift Card";
+       if (!isBlackCard) {
+          buttonBg = 'bg-pink-100 text-pink-600 border border-pink-200';
+       } else {
+          buttonBg = 'bg-amber-400 text-black';
+       }
+    } else if (ownedCard.theme === 'green') {
+       isOwnedOrUpgradable = true;
+       if (isBlackCard) {
+          buttonText = "Upgrade VIP";
+          buttonBg = 'bg-amber-400 text-black shadow-[0_0_15px_rgba(251,191,36,0.4)]';
+       } else {
+          buttonText = "Reload";
+          buttonBg = 'bg-[#96EB3C] text-[#0a1f03]';
+       }
+    }
+ }
+
+
+ return (
+   <div className="snap-center relative min-w-[320px] h-[420px] rounded-[36px] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.12)] border border-black/5 cursor-pointer active:scale-[0.98] transition-transform" onClick={() => onBuy(item)}>
+     <img src={item.image} className="absolute inset-0 w-full h-full object-cover" alt={item.title} />
+     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/10"></div>
+     <div className="absolute inset-0 flex flex-col justify-between p-6">
+        <div className="flex justify-between items-start">
+           <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md ${badgeBg}`}>
+              {isBlackCard ? <Crown size={12} className={accentColor} /> : <LeafIcon className={`w-3 h-3 ${accentColor}`} />}
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${accentColor}`}>{item.tagline}</span>
+           </div>
+          
+           {ownedCard && ((ownedCard.theme === 'green' && !isBlackCard) || (ownedCard.theme === 'black' && isBlackCard)) && (
+              <div className="bg-green-500/20 border border-green-500/30 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-1">
+                 <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+                 <span className="text-[10px] font-bold uppercase tracking-widest text-green-400">Active</span>
+              </div>
+           )}
+        </div>
+        <div className="space-y-4">
+           <div>
+              <h2 className="text-white text-3xl font-bold leading-tight tracking-tight mb-1">{item.title}</h2>
+              <p className="text-gray-300 text-sm font-medium leading-snug opacity-90">{item.merchant}</p>
+           </div>
+           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[24px] p-4 flex items-center justify-between">
+              <div className="flex flex-col">
+                 {ownedCard && ((ownedCard.theme === 'green' && !isBlackCard) || (ownedCard.theme === 'black' && isBlackCard)) ? (
+                    <>
+                       <span className="text-gray-300 text-[11px] font-medium uppercase tracking-widest mb-0.5">Current Balance</span>
+                       <span className="text-white font-bold text-xl leading-none">${ownedCard.balance.toFixed(2)}</span>
+                    </>
+                 ) : (
+                    <>
+                       <span className="text-gray-300 text-[11px] font-medium uppercase tracking-widest mb-0.5">{isOwnedOrUpgradable && isBlackCard ? 'Upgrade For' : 'Min. Load'}</span>
+                       <span className="text-white font-bold text-xl leading-none">${isOwnedOrUpgradable && isBlackCard ? '100.00' : item.price}</span>
+                    </>
+                 )}
+              </div>
+              <button className={`px-5 py-2.5 rounded-full font-bold text-[14px] shadow-lg flex items-center gap-2 transition-colors ${buttonBg}`}>
+                {buttonText} {(!isAlreadyVIP || isBlackCard) && <ArrowRight size={14} />}
+                {(isAlreadyVIP && !isBlackCard) && <Gift size={14} />}
+              </button>
+           </div>
+        </div>
+     </div>
+   </div>
+ );
+};
+
+
+// --- MARKET DETAIL MODAL ---
+const MarketDetailModal = ({
+  item,
+  ownedCard,
+  onClose,
+  onPurchase,
+}: {
+  item: MarketItem;
+  ownedCard: WalletCard | undefined;
+  onClose: () => void;
+  onPurchase: (isReloadAction: boolean, isGiftPurchase: boolean) => void;
+}) => {
+ const isBlackCard = item.theme === 'black';
+
+
+ let primaryBtnText = "Reload";
+ let primaryBg = "bg-[#1562f0] text-white shadow-blue-500/30";
+
+
+ if (ownedCard) {
+    if (ownedCard.theme === 'green' && isBlackCard) {
+       primaryBtnText = "Upgrade VIP";
+       primaryBg = "bg-amber-400 text-black shadow-amber-400/30";
+    }
+ }
+
+
+ return (
+   <div className="fixed inset-0 z-[110] bg-[#F5F5F7] animate-slide-up flex flex-col">
+     <div className="absolute top-0 w-full p-6 flex justify-between items-center z-50">
+        <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/80 backdrop-blur-md flex items-center justify-center text-gray-900 shadow-sm hover:bg-white transition-colors">
+           <X size={20} />
+        </button>
+        <button className="w-10 h-10 rounded-full bg-white/80 backdrop-blur-md flex items-center justify-center text-gray-900 shadow-sm hover:bg-white transition-colors">
+           <Share size={18} />
+        </button>
+     </div>
+
+
+     <div className="flex-1 overflow-y-auto scrollbar-hide pb-[120px] pt-20">
+        <div className="px-6 mb-8 flex justify-center perspective-1000">
+           <div className="w-full max-w-[320px] transform hover:scale-105 transition-transform duration-500 shadow-2xl rounded-2xl">
+              <PassCardVisual theme={item.theme} />
+           </div>
+        </div>
+
+
+        <div className="px-6 py-8 bg-white relative z-20 rounded-[32px] shadow-sm min-h-full">
+           <div className="mb-6">
+              <span className="bg-[#1562f0] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-sm">
+                 {isBlackCard ? 'CASHTREES VIP' : 'CASHTREES MEMBER'}
+              </span>
+              <h1 className="text-gray-900 text-[32px] font-extrabold mt-4 tracking-tight leading-tight">
+                 {item.title}
+              </h1>
+           </div>
+
+
+           <div className="flex items-center gap-8 border-b border-gray-100 pb-8 mb-8">
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 border border-gray-100">
+                    <MapPin size={18} />
+                 </div>
+                 <div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Location</p>
+                    <p className="text-[13px] font-bold text-gray-900 mt-0.5">Vancouver, BC</p>
+                 </div>
+              </div>
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 border border-gray-100">
+                    <ShieldCheck size={18} />
+                 </div>
+                 <div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Security</p>
+                    <p className="text-[13px] font-bold text-gray-900 mt-0.5">Guaranteed</p>
+                 </div>
+              </div>
+           </div>
+
+
+           <h3 className="text-xl font-extrabold text-gray-900 mb-3">About</h3>
+           <p className="text-gray-600 text-[15px] leading-relaxed mb-10">
+              {item.description}
+           </p>
+
+
+           <div className="bg-[#F5F5F7] rounded-3xl p-6 border border-gray-100">
+              <h4 className="text-[12px] font-bold text-gray-900 uppercase tracking-widest mb-5">What's Included</h4>
+              <ul className="space-y-4">
+                 {item.features?.map((f: string, i: number) => (
+                    <li key={i} className="flex items-start gap-3">
+                       <div className="mt-0.5 bg-[#10b981] rounded-full p-1 text-white shrink-0 shadow-sm">
+                          <Check size={12} strokeWidth={4} />
+                       </div>
+                       <span className="text-[15px] text-gray-700 font-medium leading-snug">{f}</span>
+                    </li>
+                 ))}
+              </ul>
+           </div>
+        </div>
+     </div>
+
+
+     <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-4 pb-8 z-30 flex justify-between items-end shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
+        {ownedCard ? (
+           ownedCard.theme === 'black' && !isBlackCard ? (
+              // 黑卡用户看绿卡 -> 满宽的送礼按钮
+              <div className="w-full">
+                 <button
+                    onClick={() => onPurchase(false, true)}
+                    className="w-full bg-pink-500 text-white py-4 rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-lg shadow-pink-500/30"
+                 >
+                    <Gift size={20} /> Buy as Gift
+                 </button>
+              </div>
+           ) : (
+              // 正常自己的卡 或 绿卡看黑卡 -> 显示余额 + 升级/充值 + 送礼小按钮
+              <>
+                 <div className="flex-1 pr-4 pb-1">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold mb-0.5">Your Balance</p>
+                    <p className="text-3xl font-black text-gray-900 tracking-tight">${ownedCard.balance.toFixed(2)}</p>
+                 </div>
+                 <div className="flex gap-2">
+                    <button
+                       onClick={() => onPurchase(true, false)}
+                       className={`px-6 py-4 rounded-[20px] font-bold text-[15px] shadow-lg active:scale-95 transition-transform flex items-center justify-center ${primaryBg}`}
+                    >
+                       {primaryBtnText}
+                    </button>
+                    <button
+                       onClick={() => onPurchase(false, true)}
+                       className="w-14 bg-pink-50 text-pink-500 rounded-[20px] flex items-center justify-center active:scale-95 transition-transform hover:bg-pink-100 border border-pink-100"
+                    >
+                       <Gift size={20} />
+                    </button>
+                 </div>
+              </>
+           )
+        ) : (
+           // 新用户 -> 获取卡片
+           <div className="w-full flex justify-between items-center">
+              <div>
+                 <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold mb-0.5">Min. Load</p>
+                 <p className="text-3xl font-black text-gray-900 tracking-tight">${item.price}</p>
+              </div>
+              <button
+                 onClick={() => onPurchase(false, false)}
+                 className="bg-[#1562f0] text-white px-8 py-4 rounded-[20px] font-bold text-[17px] flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-blue-500/30"
+              >
+                 Load Card <ArrowRight size={20} />
+              </button>
+           </div>
+        )}
+     </div>
+   </div>
+ );
+};
+
+
+
+
+// --- PAYMENT & RELOAD WORKFLOW (BOTTOM SHEET) ---
+const PaymentWorkflow = ({
+  item,
+  isReload = false,
+  existingCard,
+  onConfirm,
+  onCancel,
+  goToWallet,
+}: {
+  item: PaymentWorkflowItem;
+  isReload?: boolean;
+  existingCard: WalletCard | undefined;
+  onConfirm: (amount: number, triggersUpgrade: boolean, isGift: boolean) => void;
+  onCancel: () => void;
+  goToWallet?: () => void;
+}) => {
+ // 【修复核心】：使用 useState 锁定当前弹窗的初始状态快照，防止父组件 state (如 myCards) 发生变化时，这里重新渲染导致文字错乱！
+ const [_isReload] = useState(Boolean(isReload || item.isReloadAction));
+ const [_isGift] = useState(Boolean(item.isGiftPurchase));
+ const [_existingCard] = useState(existingCard);
+
+
+ const [isUpgradingFlow] = useState(_isReload && _existingCard?.theme === 'green' && item.theme === 'black');
+ const initialAmount = isUpgradingFlow ? '100' : (_isReload ? '' : (item.price ? item.price.toString() : ''));
+
+
+ const [step, setStep] = useState('amount');
+ const [loadAmount, setLoadAmount] = useState(initialAmount);
+  const amtNum = Number(loadAmount);
+ const [currentTheme] = useState((_isReload && _existingCard) ? _existingCard.theme : item.theme);
+ const [isCashTrees] = useState(item.merchant === 'CashTrees' || item.theme === 'green' || item.theme === 'black');
+
+
+ const triggersUpgrade = !_isGift && isCashTrees && currentTheme === 'green' && amtNum >= 100;
+  let errorMsg = null;
+ let isAmountValid = false;
+
+
+ if (loadAmount !== '' && amtNum > 0) {
+    if (_isGift) {
+       const minGift = item.minPrice ?? 0;
+       if (amtNum < minGift) errorMsg = `Minimum gift amount is $${minGift}`;
+       else isAmountValid = true;
+    } else if (_isReload) {
+       if (amtNum < 10) errorMsg = "Minimum top-up is $10";
+       else isAmountValid = true;
+    } else {
+       const minLoad = item.minPrice ?? 0;
+       if (amtNum < minLoad) errorMsg = `Minimum load is $${minLoad}`;
+       else isAmountValid = true;
+    }
+ }
+
+
+ const quickSelectsToUse = (_isReload && !_isGift && !isUpgradingFlow) ? [25, 50, 100] : (item.quickSelects || [10, 25, 50]);
+
+
+ const handlePay = () => {
+   setStep('processing');
+   setTimeout(() => {
+     setStep('success');
+     // 【修复核心】：在付款成功展示的一瞬间，立刻通知父组件加钱/发卡。
+     // 因为 _isReload 已经被 useState 锁死，所以 UI 绝不会变成 "Funds Added!"
+     if (!_isGift) {
+        onConfirm(amtNum, Boolean(triggersUpgrade), false);
+     }
+   }, 1500);
+ };
+
+
+ return (
+   <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+     <div className="absolute inset-0" onClick={(step === 'amount') ? onCancel : undefined} />
+    
+     <div className="relative w-full max-w-md bg-white rounded-t-[36px] shadow-2xl overflow-hidden animate-slide-up h-[85vh] flex flex-col">
+       <div className="shrink-0 bg-white z-20 pb-2">
+           <div className="w-full flex justify-center pt-3 pb-2"><div className="w-12 h-1.5 bg-gray-200 rounded-full" /></div>
+           <div className="flex items-center justify-between px-6 mt-2">
+              <div className="w-10"></div>
+              <h2 className="font-bold text-lg text-gray-900 tracking-tight text-center flex-1">
+                 {step === 'processing' ? 'Processing' : step === 'success' ? (_isGift ? '' : 'Done') : ''}
+              </h2>
+              {step === 'amount' || (step === 'success' && _isGift) ? (
+                <button onClick={onCancel} className="bg-gray-100 rounded-full p-2 text-gray-500 hover:bg-gray-200"><X size={18} /></button>
+              ) : <div className="w-10"></div>}
+           </div>
+       </div>
+
+
+       <div className="flex-1 overflow-y-auto px-6 bg-white scrollbar-hide pb-[130px]">
+          {/* STEP 1: AMOUNT */}
+          {step === 'amount' && (
+             <div className="animate-fade-in pt-4 h-full flex flex-col">
+               
+                <div className="text-center mb-8 mt-2">
+                   <p className="text-lg font-bold text-gray-900 tracking-tight">
+                      {_isGift ? `Gift credits for ${item.title ?? 'this pass'}` : `Add credits to CashTrees Card`}
+                   </p>
+                </div>
+
+
+                <div className="flex-1 flex flex-col justify-center">
+                   <div className="relative mb-8 flex justify-center items-center">
+                      <span className="text-gray-400 font-bold text-5xl mr-1">$</span>
+                      <input
+                        type="number" value={loadAmount} onChange={(e) => setLoadAmount(e.target.value)}
+                        placeholder="0" className="w-[200px] bg-transparent text-[72px] font-black text-gray-900 text-center focus:outline-none p-0 hide-arrows tracking-tighter" autoFocus
+                      />
+                   </div>
+                  
+                   <div className="flex justify-center gap-3 mb-4">
+                      {quickSelectsToUse?.map((amt: number) => (
+                         <button
+                            key={amt} onClick={() => setLoadAmount(amt.toString())}
+                            className={`px-5 py-2.5 rounded-full font-bold text-base transition-all ${loadAmount === amt.toString() ? (_isGift ? 'bg-pink-500 text-white shadow-pink-500/30' : 'bg-gray-900 text-white shadow-md') : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                         >${amt}</button>
+                      ))}
+                   </div>
+
+
+                   <div className="h-12 mt-2 flex justify-center items-center">
+                      {triggersUpgrade && !_isGift ? (
+                         <div className="bg-black text-amber-400 px-4 py-2 rounded-full flex items-center gap-2 animate-scale-in shadow-lg">
+                            <Crown size={16} /> <span className="text-sm font-bold">VIP Upgrade Unlocked!</span>
+                         </div>
+                      ) : currentTheme === 'green' && !_isGift && loadAmount !== '' && amtNum >= 50 && amtNum < 100 ? (
+                         <div className="text-gray-600 text-xs font-medium bg-gray-100 px-4 py-2 rounded-full flex items-center gap-1.5"><Info size={14}/> Load ${(100 - amtNum).toFixed(0)} more for Black VIP</div>
+                      ) : errorMsg ? (
+                         <div className="text-red-500 text-sm font-bold bg-red-50 px-4 py-2 rounded-full flex items-center gap-1.5"><AlertTriangle size={14} /> {errorMsg}</div>
+                      ) : null}
+                   </div>
+                </div>
+             </div>
+          )}
+
+
+          {/* STEP 2: PROCESSING */}
+          {step === 'processing' && (
+             <div className="py-24 flex flex-col items-center justify-center text-center animate-fade-in">
+                <div className="relative w-24 h-24 mb-8">
+                   <div className="absolute inset-0 border-4 border-gray-100 rounded-full"></div>
+                   <div className={`absolute inset-0 border-4 border-t-transparent rounded-full animate-spin ${_isGift ? 'border-pink-500' : 'border-[#1562f0]'}`}></div>
+                   <div className={`absolute inset-0 flex items-center justify-center ${_isGift ? 'text-pink-500' : 'text-[#1562f0]'}`}>
+                      {_isGift ? <Gift size={32} /> : <ShieldCheck size={32} />}
+                   </div>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Processing</h2>
+                <p className="text-gray-500 text-[15px]">{_isGift ? 'Generating magic link...' : 'Securing asset on Base L2...'}</p>
+             </div>
+          )}
+
+
+          {/* STEP 3: SUCCESS */}
+          {step === 'success' && (
+             <>
+                {_isGift ? (
+                   <div className="py-12 flex flex-col items-center justify-center text-center animate-scale-in w-full">
+                      <div className="w-24 h-24 bg-pink-100 rounded-full flex items-center justify-center mb-8 shadow-[0_10px_30px_rgba(236,72,153,0.2)]">
+                         <Gift size={44} className="text-pink-500" strokeWidth={2.5} />
+                      </div>
+                      <h2 className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">Gift Ready!</h2>
+                      <p className="text-gray-500 text-[16px] font-medium mb-8 px-6 leading-relaxed">
+                         A <b className="text-gray-900">${amtNum.toFixed(2)} CAD</b> {item.theme === 'black' ? 'Black VIP' : 'Green'} voucher has been generated. Send the link to your friend.
+                      </p>
+                      <div className="w-full bg-gray-50 border border-gray-200 p-4 rounded-[20px] flex items-center gap-3 mb-6">
+                         <span className="text-sm text-gray-500 font-mono truncate flex-1 text-left select-all">beamio.link/g/8x92a3</span>
+                         <button className="text-[#1562f0] font-bold text-sm uppercase tracking-wide">Copy</button>
+                      </div>
+                   </div>
+                ) : (
+                   <div className="py-12 flex flex-col items-center justify-center text-center animate-scale-in w-full">
+                      {triggersUpgrade ? (
+                         <div className="relative w-full perspective-1000 mb-10 h-[160px] flex justify-center">
+                            <div className="w-[280px] h-full absolute animate-flip-to-black preserve-3d">
+                               <div className="absolute inset-0 backface-hidden"><PassCardVisual theme="green" /></div>
+                               <div className="absolute inset-0 backface-hidden rotate-y-180 shadow-[0_0_50px_rgba(251,191,36,0.3)] rounded-[24px]"><PassCardVisual theme="black" /></div>
+                            </div>
+                         </div>
+                      ) : (
+                         <div className="w-24 h-24 bg-[#1562f0] rounded-full flex items-center justify-center shadow-[0_10px_40px_rgba(21,98,240,0.3)] mb-8">
+                            <Check size={48} className="text-white" strokeWidth={4} />
+                         </div>
+                      )}
+                      <h2 className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">
+                         {triggersUpgrade ? "VIP Unlocked!" : _isReload ? "Credits Added!" : "Success!"}
+                      </h2>
+                      <p className="text-gray-500 text-[16px] font-medium mb-4 px-6 leading-relaxed">
+                         {triggersUpgrade
+                            ? `Your card is now Black VIP. You will enjoy 10% off on all future orders.`
+                            : `$${amtNum.toFixed(2)} CAD has been securely added to your ${_isReload ? 'card' : 'new pass'}.`}
+                      </p>
+                   </div>
+                )}
+             </>
+          )}
+       </div>
+
+
+       {/* STICKY FOOTER WITH WIDE BUTTONS */}
+       {(step === 'amount' || step === 'success') && (
+          <div className="absolute bottom-0 left-0 w-full px-5 pt-4 bg-white border-t border-gray-50 pb-8 z-30">
+             {step === 'amount' && (
+                <button onClick={handlePay} disabled={!isAmountValid} className={`w-full h-14 rounded-[20px] font-bold text-[18px] flex items-center justify-center transition-all ${!isAmountValid ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : (_isGift ? 'bg-pink-500 text-white shadow-pink-500/20' : 'bg-[#1562f0] text-white shadow-blue-500/20')} active:scale-[0.98] shadow-lg`}>
+                  Confirm
+                </button>
+             )}
+             {step === 'success' && (
+                <>
+                   {_isGift ? (
+                      <button onClick={onCancel} className="w-full h-14 rounded-[20px] font-bold text-[18px] flex items-center justify-center gap-2 bg-black text-white hover:bg-gray-800 transition-colors active:scale-95 shadow-xl">
+                         <Share size={18} /> Share Link
+                      </button>
+                   ) : (
+                      <button onClick={_isReload ? onCancel : (goToWallet ?? onCancel)} className="w-full h-14 rounded-[20px] font-bold text-[18px] flex items-center justify-center gap-2 bg-[#F2F2F7] text-[#1562f0] hover:bg-gray-200 transition-colors active:scale-95">
+                         {_isReload ? "Done" : <><SmartphoneNfc size={20} /> Open Wallet</>}
+                      </button>
+                   )}
+                </>
+             )}
+          </div>
+       )}
+     </div>
+   </div>
+ );
+};
+
+
+// --- MAIN APP LAYOUT (Stores & Wallet Unified) ---
+export default function BeamioAppSimulator() {
+ // START WITH NO CASHTREES CARD to demonstrate full zero-to-VIP flow
+ const [myCards, setMyCards] = useState<WalletCard[]>([
+    { id: "NFT M-000105", merchant: "Starbucks", tagline: "GOLD MEMBER", theme: "starbucks", balance: 12.50 },
+    { id: "NFT M-000106", merchant: "CCSA Alliance", tagline: "ALLIANCE PASS", theme: "ccsa", balance: 150.00 }
+ ]);
+  // Defaulting to market tab for acquisition
+ const [activeTab, setActiveTab] = useState<'market' | 'wallet'>('market');
+ const [isExpressPayExpanded, setIsExpressPayExpanded] = useState(false);
+  const [viewingMarketItem, setViewingMarketItem] = useState<MarketItem | null>(null);
+ const [marketBuyingItem, setMarketBuyingItem] = useState<PaymentWorkflowItem | null>(null);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+ const [reloadingCard, setReloadingCard] = useState<WalletCard | null>(null);
+
+
+ const ownsCashTreesCard = myCards.some(c => c.merchant === "CashTrees");
+
+
+ const handleMarketPurchase = (
+   item: PaymentWorkflowItem,
+   amount: number,
+   _triggersUpgrade: boolean,
+   isGiftPurchase: boolean,
+ ) => {
+   // 送礼直接返回，不影响钱包逻辑
+   if (isGiftPurchase || item.isGiftPurchase) return;
+
+
+   const isCashTrees = item.merchant === 'CashTrees' || item.theme === 'green' || item.theme === 'black';
+
+
+   if (ownsCashTreesCard && isCashTrees) {
+      setMyCards(prev => {
+         const newCards = [...prev];
+         const ctIndex = newCards.findIndex(c => c.merchant === "CashTrees");
+         if (ctIndex !== -1) {
+            newCards[ctIndex].balance += amount;
+            if (amount >= 100 || newCards[ctIndex].theme === 'black') {
+                newCards[ctIndex].theme = 'black';
+                newCards[ctIndex].tagline = 'BLACK VIP';
+            }
+         }
+         // Move the updated card to the end of the array to appear on top of stack
+         const updatedCard = newCards.splice(ctIndex, 1)[0]!;
+         return [...newCards, updatedCard];
+      });
+   } else {
+      const finalTheme: PassTheme = (isCashTrees && amount >= 100) ? 'black' : item.theme;
+      const finalTagline = isCashTrees ? (finalTheme === 'black' ? 'BLACK VIP' : 'MEMBER') : (item.tagline || 'NEW PASS');
+
+
+      const newCard = {
+        id: `NFT M-${Math.floor(100000 + Math.random() * 900000)}`,
+        merchant: item.merchant,
+        tagline: finalTagline,
+        theme: finalTheme,
+        balance: amount,
+      };
+      setMyCards(prev => [...prev, newCard]);
+      setExpandedCardId(newCard.id);
+   }
+ };
+
+
+ const handleWalletReload = (amount: number, _triggersUpgrade: boolean, _isGift?: boolean) => {
+    const targetId = reloadingCard?.id;
+    if (!targetId) return;
+    setMyCards(prev => prev.map(card => {
+       if (card.id !== targetId) return card;
+       const upgraded = card.theme === 'black' || amount >= 100;
+       return {
+          ...card,
+          balance: card.balance + amount,
+          theme: upgraded ? 'black' : card.theme,
+          tagline: upgraded ? 'BLACK VIP' : card.tagline
+       };
+    }));
+    setReloadingCard(null);
+ };
+
+
+ const renderContent = () => {
+   if (activeTab === 'market') {
+      const userCashTreesCard = myCards.find(c => c.merchant === "CashTrees");
+
+
+     return (
+       <div className="pb-32 animate-fade-in bg-[#F5F5F7] min-h-full">
+         <div className="px-6 pt-16 pb-4 flex justify-between items-end sticky top-0 z-40 bg-[#F5F5F7]/90 backdrop-blur-xl border-b border-gray-200/60">
+           <h1 className="text-[34px] font-extrabold text-gray-900 tracking-tight leading-none">Store</h1>
+           <div className="w-10 h-10 rounded-full bg-gray-200 border border-gray-300 overflow-hidden shadow-sm"><img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Profile" /></div>
+         </div>
+        
+         <div className="flex gap-5 overflow-x-auto px-6 pb-8 scrollbar-hide snap-x snap-mandatory pt-8">
+           {MARKET_ITEMS.map(item => (
+             <MarketStoryCard
+               key={item.id}
+               item={item}
+               onBuy={setViewingMarketItem}
+               ownedCard={userCashTreesCard}
+             />
+           ))}
+         </div>
+
+
+         <div className="px-8 pb-10 text-center mt-6">
+            <button className="text-gray-500 text-xs font-bold uppercase tracking-widest bg-gray-200/50 px-5 py-2.5 rounded-xl mb-4 hover:bg-gray-200 transition-colors">Redeem Promo Code</button>
+            <p className="text-[11px] text-gray-400 leading-relaxed font-medium">Prices may vary by location.<br/>Secured on Base Mainnet.<br/>Beamio Inc. © 2026</p>
+         </div>
+
+
+         {viewingMarketItem && (
+            <MarketDetailModal
+              item={viewingMarketItem}
+              ownedCard={userCashTreesCard}
+              onClose={() => setViewingMarketItem(null)}
+              onPurchase={(isReloadAction, isGiftPurchase) => {
+                 const base = viewingMarketItem;
+                 setViewingMarketItem(null);
+                 if (!base) return;
+                 setMarketBuyingItem({
+                    ...base,
+                    isReloadAction,
+                    isGiftPurchase,
+                 });
+              }}
+            />
+         )}
+
+
+         {marketBuyingItem && (
+            <PaymentWorkflow
+              item={marketBuyingItem}
+              isReload={ownsCashTreesCard && (marketBuyingItem.theme === 'green' || marketBuyingItem.theme === 'black')}
+              existingCard={userCashTreesCard}
+              onConfirm={(amount, triggersUpgrade, isGift) => handleMarketPurchase(marketBuyingItem, amount, triggersUpgrade, isGift)}
+              onCancel={() => setMarketBuyingItem(null)}
+              goToWallet={() => { setMarketBuyingItem(null); setActiveTab('wallet'); }}
+            />
+         )}
+       </div>
+     );
+   }
+
+
+   if (activeTab === 'wallet') {
+     return (
+       <div className="pb-32 animate-fade-in bg-[#f5f5f7] min-h-full overflow-x-hidden relative">
+          <div className="flex justify-between items-center px-6 pt-16 pb-4">
+             <h1 className="text-[28px] font-bold text-black tracking-tight leading-none">Wallet</h1>
+             <div className="flex items-center gap-3">
+                <button className="text-[#1562f0] font-bold"><ArrowRightLeft size={20} /></button>
+                <button className="text-[#1562f0] font-bold"><Pen size={20} /></button>
+                <button className="text-[#1562f0] font-bold"><Plus size={24} /></button>
+             </div>
+          </div>
+         
+          <div className="px-5 relative mb-6">
+             <div className="bg-gradient-to-br from-[#242b6b] to-[#5b154a] rounded-[28px] p-5 text-white shadow-lg h-[210px] w-full">
+                <div className="flex justify-between items-center mb-4">
+                   <div className="flex items-center gap-2 opacity-80"><UserCircle size={20} /><span className="font-bold text-sm tracking-wide">USDC on Base</span><CheckCircle size={14} className="text-blue-400" /></div>
+                   <div className="font-bold text-[15px] opacity-90">6.36 <span className="text-xs font-medium">USDC</span></div>
+                </div>
+                <div className="text-center mt-2">
+                   <div className="text-[52px] font-bold tracking-tighter leading-none mb-1">6.36 <span className="text-xl font-semibold opacity-80">USDC</span></div>
+                   <div className="text-sm text-white/60 font-medium">≈ CA$ 8.63</div>
+                </div>
+             </div>
+            
+             <div
+               onClick={() => setIsExpressPayExpanded(!isExpressPayExpanded)}
+               className={`bg-gradient-to-br from-[#8846ff] to-[#4568f5] rounded-[28px] p-5 text-white shadow-[0_-10px_30px_rgba(0,0,0,0.2)] h-[210px] w-[92%] absolute left-1/2 -translate-x-1/2 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] cursor-pointer z-20 ${isExpressPayExpanded ? 'top-[230px]' : 'top-[120px]'}`}
+             >
+                <div className="flex justify-between items-center mb-4">
+                   <div className="flex items-center gap-2"><Zap size={20} className="fill-white" /><span className="font-bold text-[15px] tracking-wide">Express Pay</span></div>
+                   <button className="bg-white/20 px-3 py-1.5 rounded-[12px] text-xs font-bold flex items-center gap-1.5"><QrCode size={14}/> Pay with QR</button>
+                </div>
+                <div className="text-center mt-2">
+                   <div className="text-[52px] font-bold tracking-tighter text-[#2af063] leading-none mb-1">0.07 <span className="text-xl font-semibold text-[#2af063]/80">USDC</span></div>
+                   <div className="text-sm text-white/80 font-medium">≈ CA$ 0.10</div>
+                </div>
+                <div className="mt-5 flex justify-between items-center">
+                   <div className="bg-white/10 w-fit px-3 py-1.5 rounded-[12px] text-xs font-mono font-medium flex items-center gap-2 text-white/90">
+                      0x799E...75C8 <Copy size={12} />
+                   </div>
+                   <ChevronUp size={24} className={`text-white/60 transition-transform duration-500 ${isExpressPayExpanded ? 'rotate-180' : ''}`} />
+                </div>
+             </div>
+          </div>
+         
+          <div className={`transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isExpressPayExpanded ? 'h-[250px]' : 'h-[130px]'}`}></div>
+
+
+          <div className={`px-5 mt-4 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] transform ${isExpressPayExpanded ? 'opacity-100 translate-y-0 relative z-10' : 'opacity-0 translate-y-10 absolute pointer-events-none -z-10'}`}>
+            
+             <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3 px-1">{myCards.length} PASSES</div>
+            
+             {myCards.length === 0 ? (
+                <div onClick={() => setActiveTab('market')} className="w-full h-[150px] rounded-[28px] border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 gap-3 hover:bg-gray-200/50 transition-colors cursor-pointer">
+                   <div className="w-12 h-12 rounded-full bg-gray-200/50 flex items-center justify-center text-gray-500"><Plus size={24} /></div>
+                   <span className="font-bold text-sm">Add a new Pass</span>
+                </div>
+             ) : (
+                <div className="relative pt-2 pb-[160px]">
+                   {myCards.map((card, index) => {
+                      const isExpanded = expandedCardId === card.id;
+                      const expandedIndex = myCards.findIndex(c => c.id === expandedCardId);
+                      const isPushedDown = expandedIndex !== -1 && index > expandedIndex;
+                     
+                      const isFirstPushedDown = isPushedDown && index === expandedIndex + 1;
+                      let mt = '0px';
+                      if (index > 0) {
+                          if (isFirstPushedDown) {
+                              mt = '24px';
+                          } else {
+                              mt = '-105px';
+                          }
+                      }
+                     
+                      return (
+                         <div
+                           key={card.id}
+                           className="relative transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] group"
+                           style={{
+                              marginTop: mt,
+                              zIndex: isExpanded ? 50 : index
+                           }}
+                         >
+                            <WalletPassCard
+                               card={card}
+                               isExpanded={isExpanded}
+                               onClick={() => setExpandedCardId(isExpanded ? null : card.id)}
+                               onReload={() => setReloadingCard(card)}
+                            />
+                         </div>
+                      )
+                   })}
+                </div>
+             )}
+          </div>
+
+
+          {reloadingCard && (
+             <PaymentWorkflow
+                item={reloadingCard}
+                isReload={true}
+                existingCard={reloadingCard}
+                onConfirm={handleWalletReload}
+                onCancel={() => setReloadingCard(null)}
+             />
+          )}
+       </div>
+     );
+   }
+ };
+
+
+ return (
+   <div className="flex justify-center items-center min-h-screen bg-gray-300 font-sans selection:bg-blue-100">
+     <div className="relative w-full max-w-md h-[850px] bg-[#F5F5F7] sm:rounded-[50px] shadow-2xl overflow-hidden border-[8px] border-black flex flex-col">
+      
+       <div className="absolute top-0 w-full h-12 z-50 flex justify-between items-end px-7 pb-2 text-black font-semibold text-[15px] mix-blend-overlay pointer-events-none">
+          <span>9:41</span>
+          <div className="flex gap-1.5">
+            <div className="w-5 h-3 bg-black rounded-sm"></div><div className="w-5 h-3 bg-black rounded-sm"></div><div className="w-7 h-3 border-2 border-black rounded-sm relative"><div className="absolute inset-0.5 bg-black rounded-[1px]"></div></div>
+          </div>
+       </div>
+
+
+       <div className="flex-1 overflow-y-auto scrollbar-hide">
+          {renderContent()}
+       </div>
+
+
+       <div className="absolute bottom-0 w-full bg-[#f2f2f7] border-t border-gray-300 pb-6 pt-3 px-4 flex justify-around items-center z-40">
+          <TabButton icon={<Home size={26} strokeWidth={2} />} active={false} onClick={() => {}} />
+          <TabButton icon={<Wallet size={26} strokeWidth={activeTab === 'wallet' ? 2.5 : 2} />} active={activeTab === 'wallet'} onClick={() => setActiveTab('wallet')} />
+          <TabButton icon={<Focus size={26} strokeWidth={2} />} active={false} onClick={() => {}} />
+          <TabButton icon={<MessageSquare size={26} strokeWidth={2} />} active={false} onClick={() => {}} />
+          <TabButton icon={<Store size={26} strokeWidth={activeTab === 'market' ? 2.5 : 2} />} active={activeTab === 'market'} onClick={() => setActiveTab('market')} />
+          <TabButton icon={<Search size={26} strokeWidth={2} />} active={false} onClick={() => {}} />
+       </div>
+
+
+     </div>
+    
+     <style>{`
+       input[type="number"]::-webkit-inner-spin-button,
+       input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+       input[type="number"] { -moz-appearance: textfield; }
+       .hide-arrows { -moz-appearance: textfield; }
+
+
+       .scrollbar-hide::-webkit-scrollbar { display: none; }
+       .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+       @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+       .animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+       @keyframes slide-left { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+       .animate-slide-left { animation: slide-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+       @keyframes scale-in { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+       .animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+       @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+       .animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
+      
+       .perspective-1000 { perspective: 1000px; }
+       .preserve-3d { transform-style: preserve-3d; }
+       .backface-hidden { backface-visibility: hidden; }
+       .rotate-y-180 { transform: rotateY(180deg); }
+      
+       @keyframes flip-to-black {
+          0% { transform: rotateY(0deg) scale(1); }
+          50% { transform: rotateY(90deg) scale(1.1); }
+          100% { transform: rotateY(180deg) scale(1); }
+       }
+       .animate-flip-to-black {
+          animation: flip-to-black 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          animation-delay: 0.3s;
+       }
+     `}</style>
+   </div>
+ );
+}
+
+
+const TabButton = ({ icon, active, onClick }: { icon: ReactNode; active: boolean; onClick: () => void }) => (
+ <button
+   onClick={onClick}
+   className={`w-14 h-12 flex flex-col items-center justify-center rounded-xl transition-all duration-200 relative ${active ? 'text-[#1562f0] bg-[#e3e5eb]' : 'text-gray-400 hover:text-gray-600'}`}
+ >
+    {active && <div className="absolute top-0 w-8 h-1 bg-[#1562f0] rounded-b-full"></div>}
+    <div className={`mt-1`}>{icon}</div>
+ </button>
+);
 

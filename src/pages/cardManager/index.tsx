@@ -400,7 +400,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 					<ArrowLeft size={24} className={embedded ? 'rotate-180' : ''} />
 				</button>
 				<h1 className={`text-lg font-semibold ${embedded ? 'mr-auto' : 'flex-1'}`}>Create BeamioUserCard</h1>
-			</header>
+			</header>·
 
 			<div className="px-4 py-6 max-w-md mx-auto">
 				<form onSubmit={handleSubmit} className="space-y-5">

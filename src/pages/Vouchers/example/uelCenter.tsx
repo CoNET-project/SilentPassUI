@@ -1,386 +1,963 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
- Fuel,
- ArrowUpRight,
- Plus,
- ChevronRight,
- Calculator,
- CheckCircle2,
- RefreshCw,
- Minus,
- Coins,
- User,
- ArrowDownLeft,
- MessageSquare,
- Search,
- Copy,
- QrCode,
- Globe,
- ShieldAlert,
- Home,
+ LayoutDashboard,
+ Receipt,
  Wallet,
- Store,
- ScanLine,
- Filter,
- X,
- ExternalLink,
+ Users,
  Settings,
- Cpu,
- BarChart3,
+ LogOut,
+ TrendingUp,
+ Search,
+ Filter,
+ CheckCircle2,
  ArrowRightLeft,
- Wallet as WalletIcon
+ Ticket,
+ Coins,
+ ShieldCheck,
+ X,
+ ArrowDownToLine,
+ ArrowUpFromLine,
+ Activity,
+ KeyRound,
+ Cpu,
+ Heart,
+ Landmark,
+ ExternalLink,
+ Info,
+ Smartphone,
+ Nfc,
+ MessageSquare,
+ Send,
+ Crown,
+ MonitorSmartphone,
+ Plus,
+ Trash2,
+ Link as LinkIcon,
+ Shield,
+ Zap,
+ Lock,
+ QrCode,
+ Menu, 
+ Fuel, 
+ Store, 
+ Server, 
+ Database, 
+ ChevronRight, 
+ Sparkles, 
+ Box, 
+ Hexagon, 
+ Award,
+ CreditCard,
+ Unlock,
+ Paperclip,
+ MoreVertical,
+ AlertTriangle,
+ Building2,
+ SlidersHorizontal,
+ RefreshCcw,
+ CalendarDays,
+ Camera,
+ Copy,
+ Share2,
+ Check,
+ BadgeInfo,
+ UserPlus,
+ Ban,
+ PauseCircle,
+ PlayCircle,
+ Calculator
 } from 'lucide-react';
 
+type AllianceId = 'BrandContract' | 'CCSA';
 
-// --- Global Configuration (V4.0 Specs) ---
-const BEAMIO_BLUE = "#1562f0";
-const REFUEL_GAS_COST = 2; // Shadow gas for the refuel operation itself
-
-type Contact = { id: string; name: string; tag: string; followers: number; wallet: string; avatarColor: string };
-type LedgerLog = { id: string; title: string; subtitle: string; amount: number; time: string; type: string; status: string; linkedUsdc: string; txHash: string; network: string };
-const MIN_SERVICE_FEE = 2; // Min 2 Units ($0.02)
-const MAX_SERVICE_FEE = 200; // Max 200 Units ($2.00)
-const P2P_GAS_COST = 2; // Flat 2 Units for P2P Send
-
-
-// 🌟 核心更新：将 V2 终极版字典中的 11 个标准事件全量注入账本
-const generateExtendedLogs = () => {
- const baseLogs = [
-   // 1. In-App Refuel (Atomically split)
-   { id: "LOG-YLD-01", title: "Fuel Yield (1:100)", subtitle: "Swap $5.00 USDC", amount: 500, time: "Just now", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
-   { id: "LOG-FEE-01", title: "Refuel Fee (Shadow Gas)", subtitle: "Underlying Tx Cost", amount: -2, time: "Just now", type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
-  
-   // 2. Consumption Tax
-   { id: "LOG-SVC-02", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "2h ago", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
-  
-   // 3. P2P Transfer
-   { id: "LOG-P2P-03", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "5h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
-  
-   // 4. Operator Subsidy
-   { id: "LOG-OP-04", title: "CashTrees Top-up Bonus", subtitle: "Operator Subsidy", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" },
-  
-   // 5. Card Activation
-   { id: "LOG-CARD-05", title: "Hardware Minting Fee", subtitle: "Card Setup", amount: -99, time: "Feb 20", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0x5566...7788", network: "CoNET L1" },
-  
-   // 6. Asset Minting
-   { id: "LOG-DEP-06", title: "Deposit Network Fee", subtitle: "Top-up Card", amount: -2, time: "Feb 19", type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x99aa...bbcc", network: "Base Mainnet" },
-  
-   // 7. Operator Payout
-   { id: "LOG-PAY-07", title: "Settlement Routing Fee", subtitle: "Operator Payout", amount: -2, time: "Feb 18", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0xddee...ff00", network: "Base Mainnet" },
-  
-   // 8. B2B Large Payment
-   { id: "LOG-B2B-08", title: "B2B Transfer Fee", subtitle: "Procurement Gas", amount: -500, time: "Feb 15", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0x1234...5678", network: "Base Mainnet" },
-  
-   // 9. Protocol Subsidy
-   { id: "LOG-PROT-09", title: "Network Welcome Grant", subtitle: "Protocol Subsidy", amount: 20, time: "Feb 14", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x1122...3344", network: "CoNET L1" },
-  
-   // 10. Enterprise Fuel Pack
-   { id: "LOG-ENT-10", title: "Enterprise Fuel Allocation", subtitle: "Fuel Pack Purchase", amount: 100000, time: "Feb 10", type: "refuel", status: "Completed", linkedUsdc: "N/A", txHash: "0x8765...4321", network: "Base Mainnet" }
- ];
-  // Backfill with some generic historic data for pagination demo
- const extraLogs = Array.from({length: 15}).map((_, i) => {
-     const isFee = i % 3 === 0;
-     const isRefuel = i % 7 === 0;
-     return {
-         id: `LOG-EXT-${i}`,
-         title: isRefuel ? "Fuel Yield (1:100)" : isFee ? "Service Fee (0.8%)" : "Network Gas",
-         subtitle: isRefuel ? "System Top-up" : `Historical Txn #${500 - i}`,
-         amount: isRefuel ? 500 : isFee ? -45 : -2,
-         time: `Jan ${28 - Math.floor(i/3)}, 10:00`,
-         type: isRefuel ? "refuel" : isFee ? "fee" : "gas",
-         status: "Completed",
-         linkedUsdc: isFee ? "56.25 USDC" : "N/A",
-         txHash: "0x" + Math.random().toString(16).substr(2, 8) + "..." + Math.random().toString(16).substr(2, 4),
-         network: "Base Mainnet"
-     };
- });
- return [...baseLogs, ...extraLogs];
+type AllianceTier = {
+  id: string | number;
+  name: string;
+  discount: number;
+  iconType: string;
 };
 
+type AllianceAsset = {
+  id: number;
+  name: string;
+  type: string;
+  supply?: string;
+  status: string;
+  defaultExpiry: string;
+  discount?: number;
+  iconType?: string;
+};
 
-const App = () => {
- // --- Global States ---
- const [currentView, setCurrentView] = useState('home');
-  const [bUnits, setBUnits] = useState(852);
- const [usdcBalance, setUsdcBalance] = useState(182.24);
-  const [autoRefuel, setAutoRefuel] = useState(true);
-  // Genesis Node States
- const isGenesisNode = true;
- const [yieldAvailable, setYieldAvailable] = useState(45.28);
- const [isClaiming, setIsClaiming] = useState(false);
- const [showClaimSuccess, setShowClaimSuccess] = useState(false);
+type AllianceContract = {
+  id: AllianceId;
+  name: string;
+  standard: string;
+  nftName: string;
+  baseToken: string;
+  nftBg: string;
+  nftBorder: string;
+  themeLightBg: string;
+  themeText: string;
+  sales: number;
+  discounts: number;
+  tips: number;
+  topUps: number;
+  aaBalance: number;
+  canTopUp: boolean;
+  mintQuota: number;
+  assets: AllianceAsset[];
+  tiers: AllianceTier[];
+  privileges: { title: string; desc: string }[];
+};
 
+type AlliancesDb = Record<AllianceId, AllianceContract>;
 
- // Refuel UI States
- const [refuelAmount, setRefuelAmount] = useState(5);
- const [isRefueling, setIsRefueling] = useState(false);
- const [showRefuelSuccess, setShowRefuelSuccess] = useState(false);
-  // Send Workflow States
- const [sendModalOpen, setSendModalOpen] = useState(false);
- const [sendStep, setSendStep] = useState('input');
- const [sendRecipient, setSendRecipient] = useState<Contact | null>(null);
+type MarketProductId = 'starter' | 'custom_fuel' | 'fuel' | 'node';
+
+type MemberRow = {
+  id: string;
+  tag: string;
+  address: string;
+  tier: string;
+  balance: number;
+  usdcBalance: number;
+  ltv: number;
+  lastActive: string;
+  store: string;
+  status: string;
+};
+
+type TerminalRow = {
+  id: string;
+  tag: string;
+  name: string;
+  eoa: string;
+  status: string;
+  lastActive: string;
+  quota: number;
+  issued: number;
+};
+
+type LedgerTransaction = {
+  id: string;
+  time: string;
+  type: string;
+  subtotal: number;
+  tip: number;
+  total: number;
+  method: string;
+  uteaAmount: number;
+  usdcAmount: number;
+  ccsaAmount?: number;
+  source: string;
+  beamioTag: string | null;
+  status: string;
+  hash: string;
+  terminal: string;
+  bUnits: number;
+  tier: string | null;
+  requiredAlliance: AllianceId | null;
+  wallet: string;
+  discount?: { percent: number; amount: number };
+};
+
+type PosSimResult =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      user: MemberRow;
+      reqCad: number;
+      initialCardBalance: number;
+      initialUsdcBalance: number;
+      usdcUsed: number;
+      topUpCad: number;
+      toChargeCard: number;
+      remainingDue: number;
+    };
+
+// ==========================================
+// ORACLE & EXCHANGE RATE
+// ==========================================
+const ORACLE_CAD_USDC = 0.740;
+
+// ==========================================
+// DYNAMIC CONTRACT DATABASE
+// ==========================================
+const INITIAL_CONTRACTS_DB = {
+  'BrandContract': {
+    id: 'BrandContract',
+    name: 'Urban Tea Loyalty',
+    standard: 'ERC-1155',
+    nftName: 'Urban Tea Smart Contract',
+    baseToken: '$UTEA', 
+    nftBg: 'bg-[#0f1115]',
+    nftBorder: 'border-white/10',
+    themeLightBg: 'bg-emerald-50',
+    themeText: 'text-emerald-600',
+    sales: 5000.00,       
+    discounts: 150.00,
+    tips: 0.00,
+    topUps: 20000.00,     
+    aaBalance: 1400.00, 
+    canTopUp: true,
+    mintQuota: 20000.00,  
+    assets: [
+      { id: 0, name: 'Prepaid Balance ($UTEA)', type: 'Fungible', supply: 'Unlimited', status: 'Active', defaultExpiry: 'Never' },
+      { id: 99, name: 'Green Card', type: 'NFT', discount: 10, iconType: 'emerald', status: 'Active', defaultExpiry: '1 Year' },
+      { id: 100, name: 'Black VIP', type: 'NFT', discount: 20, iconType: 'yellow', status: 'Active', defaultExpiry: 'Never' }
+    ],
+    tiers: [
+      { id: 'ct_green', name: 'Green Card', discount: 10, iconType: 'emerald' },
+      { id: 'ct_black', name: 'Black VIP', discount: 20, iconType: 'yellow' }
+    ],
+    privileges: [
+      { title: 'Full Access: $UTEA (1:1 CAD)', desc: 'Process payments, issue brand cards, handle POS upgrades.' },
+      { title: 'Platform Trust Settlement', desc: 'Settle funds loaded via CashTrees Consumer App.' },
+      { title: 'Membership Routing', desc: 'Auto-apply VIP tier discounts.' }
+    ]
+  },
+  'CCSA': {
+    id: 'CCSA',
+    name: 'CCSA Alliance',
+    standard: 'ERC-1155',
+    nftName: 'CCSA Franchise Node',
+    baseToken: '$CCSA',
+    nftBg: 'bg-[#581c87]',
+    nftBorder: 'border-[#7e22ce]',
+    themeLightBg: 'bg-purple-50',
+    themeText: 'text-purple-600',
+    sales: 20000.00,      
+    discounts: 890.00,
+    tips: 0.00,
+    topUps: 5000.00,      
+    aaBalance: 380.00,
+    canTopUp: true,
+    mintQuota: 20000.00,  
+    assets: [
+      { id: 0, name: 'CCSA Vouchers ($CCSA)', type: 'Fungible', supply: 'Unlimited', status: 'Active', defaultExpiry: 'Never' },
+      { id: 99, name: 'CCSA Member', type: 'NFT', discount: 15, iconType: 'purple', status: 'Active', defaultExpiry: '1 Year' }
+    ],
+    tiers: [
+      { id: 'ccsa_member', name: 'CCSA Member', discount: 15, iconType: 'purple' }
+    ],
+    privileges: [
+      { title: 'Full Access: $CCSA (1:1 CAD)', desc: 'Process payments, issue cards, and handle upgrades at POS.' },
+      { title: 'B2B Supply Chain', desc: 'Pay wholesale suppliers in $CCSA.' },
+      { title: 'Cross-Store Discounts', desc: 'Shared loyalty across 100+ stores.' }
+    ]
+  }
+} as AlliancesDb;
+
+// --- Mock Data ---
+const INITIAL_TRANSACTIONS: LedgerTransaction[] = [
+ { id: 'TX-1049', time: '09:15 AM', type: 'Fiat Withdrawal', subtotal: 2500.00, tip: 0, total: 2500.00, method: 'Wire Transfer', uteaAmount: 0, usdcAmount: 1850.00, source: 'EOA', beamioTag: 'RBC Bank *8821', status: 'Pending', hash: '0x1c...d4', terminal: 'The Vault', bUnits: 0, tier: null, requiredAlliance: null, wallet: 'EOA' },
+ { id: 'TX-1048', time: '11:05 AM', type: 'P2P Send', subtotal: 500.00, tip: 0, total: 500.00, method: 'Direct USDC', uteaAmount: 0, usdcAmount: 370.00, source: 'EOA', beamioTag: '@supplier_bob', status: 'Settled', hash: '0x9a...b2', terminal: 'The Vault', bUnits: 2, tier: null, requiredAlliance: null, wallet: 'EOA' },
+ { id: 'TX-1042', time: '14:22 PM', type: 'Charge', subtotal: 85.00, tip: 15.00, total: 100.00, method: 'Mixed', uteaAmount: 40.00, usdcAmount: 44.40, source: 'APP', beamioTag: '@alice_chen', status: 'Settled', hash: '0x1a...f9', terminal: '@ut_reg1', bUnits: 80, tier: 'Standard', requiredAlliance: 'BrandContract', wallet: 'AA' }, 
+ { id: 'TX-1043', time: '15:05 PM', type: 'In-Store Top-Up', subtotal: 100.00, tip: 0.00, total: 100.00, method: 'Issued $UTEA', uteaAmount: 100.00, usdcAmount: 0, source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x2b...e4', terminal: '@ut_reg1', bUnits: 2, tier: null, requiredAlliance: 'BrandContract', wallet: 'AA' },
+ { id: 'TX-1044', time: '16:10 PM', type: 'Charge', subtotal: 12.50, tip: 2.00, total: 14.50, method: '$UTEA (Green Tier)', uteaAmount: 14.50, usdcAmount: 0, source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x3c...d1', terminal: '@ut_kiosk2', bUnits: 12, tier: 'Green Card', requiredAlliance: 'BrandContract', wallet: 'AA', discount: { percent: 10, amount: 1.39 } }
+];
+
+const INITIAL_TERMINALS: TerminalRow[] = [
+ { id: 'TM-001', tag: '@ut_reg1', name: 'Main Register 1', eoa: '0x1A2B...3C4D', status: 'Active', lastActive: '2 mins ago', quota: 10000, issued: 8500 },
+ { id: 'TM-002', tag: '@ut_kiosk2', name: 'Self-Serve Kiosk', eoa: '0x9F8E...7D6C', status: 'Active', lastActive: '1 hr ago', quota: 5000, issued: 1200 },
+];
+
+const MOCK_CONTACTS = [
+  { id: 'c1', tag: '@cashtrees_support', name: 'CashTrees Network', type: 'Platform', lastMessage: 'Your custom $UTEA contract is deployed.', time: '10:42 AM', unread: 0, avatarBg: 'bg-[#4854e8]', avatarText: 'CT' },
+  { id: 'c2', tag: '@alice_chen', name: 'Alice Chen', type: 'Customer', lastMessage: 'Thanks for the great service today!', time: 'Yesterday', unread: 2, avatarBg: 'bg-emerald-500', avatarText: 'AC' },
+  { id: 'c3', tag: '@bobby_s', name: 'Bobby S.', type: 'Customer', lastMessage: 'Do you take USDC?', time: 'Yesterday', unread: 0, avatarBg: 'bg-amber-500', avatarText: 'BS' },
+];
+
+const MOCK_MESSAGES = [
+  { id: 'm1', sender: 'them', text: 'Hello, we received your brand loyalty contract application.', time: '10:30 AM' },
+  { id: 'm2', sender: 'me', text: 'Great, what else is needed for the KYB process?', time: '10:35 AM' },
+  { id: 'm3', sender: 'them', text: 'Nothing else. Your business details have been verified via CoNET.', time: '10:40 AM' },
+  { id: 'm4', sender: 'them', text: 'Your brand loyalty contract ($UTEA) has been minted directly to your Smart Terminal.', time: '10:42 AM' }
+];
+
+const INITIAL_MEMBERS: MemberRow[] = [
+  { id: 'm001', tag: '@alice_chen', address: '0x1A4...9F21', tier: 'Green Card', balance: 50.00, usdcBalance: 50.00, ltv: 850.00, lastActive: '2 hrs ago', store: 'Main HQ', status: 'Active' },
+  { id: 'm002', tag: '@char_w', address: '0x3C8...E4A1', tier: 'Black VIP', balance: 45.00, usdcBalance: 120.00, ltv: 3200.00, lastActive: 'Yesterday', store: 'Richmond Franchise', status: 'Active' },
+  { id: 'm003', tag: '@bobby_s', address: '0x9E2...1B7C', tier: 'Standard', balance: 12.50, usdcBalance: 30.00, ltv: 45.00, lastActive: '3 days ago', store: 'Main HQ', status: 'Active' }
+];
+
+const FRANCHISE_BRANCHES = [
+  'All Branches (Network View)',
+  'Main HQ (Vancouver)',
+  'Richmond Franchise',
+  'Burnaby Franchise'
+];
+
+export default function MerchantOS() {
+ const [currentView, setCurrentView] = useState('login'); 
+ const [activeTab, setActiveTab] = useState('Overview');
+ const [merchantTag, setMerchantTag] = useState('');
+ const [password, setPassword] = useState('');
+ const [loadingStep, setLoadingStep] = useState(0);
+
+ const [timeFilter, setTimeFilter] = useState('Today');
+ const [activeBranch, setActiveBranch] = useState(FRANCHISE_BRANCHES[0]);
+
+ const [isAaUnlocked, setIsAaUnlocked] = useState(false); 
+ const [joinedAlliances, setJoinedAlliances] = useState<AllianceId[]>([]); 
+ const [alliancesDb, setAlliancesDb] = useState<AlliancesDb>(INITIAL_CONTRACTS_DB); 
+ const [isJoinAllianceModalOpen, setIsJoinAllianceModalOpen] = useState(false);
+ const [applyingAlliance, setApplyingAlliance] = useState<AllianceId | null>(null); 
+
+ const [members, setMembers] = useState<MemberRow[]>(INITIAL_MEMBERS);
+ const [isIssueCardModalOpen, setIsIssueCardModalOpen] = useState(false);
+ const [issueCardStep, setIssueCardStep] = useState(1);
+ const [issueTarget, setIssueTarget] = useState('');
+ const [issueType, setIssueType] = useState('PREPAID'); 
+ const [issueValue, setIssueValue] = useState(''); 
+ const [issueExpiry, setIssueExpiry] = useState('Never');
+ const [issueTokenSymbol, setIssueTokenSymbol] = useState('$UTEA'); // NEW: Custom Token Name
+
+ const [isCreatingTier, setIsCreatingTier] = useState(false);
+ const [newTierName, setNewTierName] = useState('');
+ const [newTierDiscount, setNewTierDiscount] = useState('');
+
+ const [customFuelAmount, setCustomFuelAmount] = useState('');
+ const [purchasedFuel, setPurchasedFuel] = useState(0); 
+ const [bUnitsSpent, setBUnitsSpent] = useState(0); // NEW: Track spent B-Units
+
+ const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+ const [configAllianceId, setConfigAllianceId] = useState<AllianceId | null>(null);
+ const [tempDiscounts, setTempDiscounts] = useState<Record<string, number>>({});
+
+ const [eoaSpent, setEoaSpent] = useState(0); 
+ const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+ const [sendStep, setSendStep] = useState(1);
+ const [sendRecipient, setSendRecipient] = useState('');
  const [sendAmount, setSendAmount] = useState('');
- const [sendSearchQuery, setSendSearchQuery] = useState('');
+ const [sendMemo, setSendMemo] = useState('');
+ const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
 
+ const [isPosOpen, setIsPosOpen] = useState(false);
+ const [posStep, setPosStep] = useState(1);
+ const [posAmount, setPosAmount] = useState('');
+ const [posUser, setPosUser] = useState('');
+ const [posSimResult, setPosSimResult] = useState<PosSimResult | null>(null);
 
- // Fee Calculator States
- const [calcAmount, setCalcAmount] = useState(100);
+ const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+ const [payoutAlliance, setPayoutAlliance] = useState<AllianceId | null>(null); 
+ const [settlementType, setSettlementType] = useState('PAYOUT'); 
+ const [settlementConsumed, setSettlementConsumed] = useState(0); 
+ const [settlementNetBalance, setSettlementNetBalance] = useState(0); 
+ const [payoutMethod, setPayoutMethod] = useState('USDC'); 
+ const [payoutStep, setPayoutStep] = useState(1); 
+ 
+ const [selectedProduct, setSelectedProduct] = useState<MarketProductId | null>(null);
+ const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+ const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
+ const [terminals, setTerminals] = useState<TerminalRow[]>(INITIAL_TERMINALS);
+ const [isAddTerminalOpen, setIsAddTerminalOpen] = useState(false);
+ const [linkTerminalStep, setLinkTerminalStep] = useState(1); 
+ const [isVerifyingTag, setIsVerifyingTag] = useState(false);
+ const [newTerminalTag, setNewTerminalTag] = useState('');
+ const [newTerminalName, setNewTerminalName] = useState('');
+ const [newTerminalQuota, setNewTerminalQuota] = useState('');
+ const [foundTerminalEoa, setFoundTerminalEoa] = useState('');
 
- // Ledger Detail Modal State
- const [selectedLog, setSelectedLog] = useState<LedgerLog | null>(null);
+ const [transactions, setTransactions] = useState<LedgerTransaction[]>(INITIAL_TRANSACTIONS);
+ const [activeLedger, setActiveLedger] = useState('All'); 
+ const [searchTerm, setSearchTerm] = useState('');
+ const [filterType, setFilterType] = useState('All');
+ const [filterTerminal, setFilterTerminal] = useState('All');
 
-
- // Filter & Pagination UI States
- const [showFilters, setShowFilters] = useState(false);
- const [ledgerFilter, setLedgerFilter] = useState('all');
- const [visibleLogs, setVisibleLogs] = useState(11); // Default show 11 to fit all dictionary events
-
+ const [activeContact, setActiveContact] = useState('c1');
+ const [chatInput, setChatInput] = useState('');
 
  useEffect(() => {
-   setVisibleLogs(11);
- }, [ledgerFilter]);
+   const handleResize = () => {
+     if (window.innerWidth >= 1024) {
+       setIsMobileMenuOpen(false); 
+     }
+   };
+   window.addEventListener('resize', handleResize);
+   return () => window.removeEventListener('resize', handleResize);
+ }, []);
 
-
- // --- Dynamic Ledgers ---
- const [usdcLedger, setUsdcLedger] = useState([
-   { id: 'u1', name: "Payment Received", tag: "Paid by @Beamiot...", val: "+ 1.37 CAD", sub: "1.23 USDC", icon: <QrCode size={18} />, color: "text-green-500", type: "receive" },
-   { id: 'u2', name: "Sent to @Simon", tag: "1.00 USD", val: "- 1.0000 USDC", sub: "1.00 USDC", icon: <ArrowUpRight size={18} />, color: "text-slate-900", type: "send" }
- ]);
-
-
- const [bUnitsLedger, setBUnitsLedger] = useState(generateExtendedLogs());
-
-
- // --- Mock Data ---
- const mockContacts = [
-   { id: 'c1', name: 'Jimmy Z', tag: '@Beamiotest_iphone', followers: 2, wallet: '0xd5b0...9ea3', avatarColor: 'bg-teal-100' },
-   { id: 'c2', name: 'Simon', tag: '@Simon', followers: 12, wallet: '0x1a2b...3c4d', avatarColor: 'bg-orange-100' }
- ];
-
-
- const mockYieldLedger = [
-   { title: "Protocol Share (Burn)", subtitle: "From 12,450 Network Txns", amount: "+4.25", asset: "USDC", time: "1h ago", icon: <Fuel size={16} className="text-orange-500" /> },
-   { title: "Protocol Share (Burn)", subtitle: "From 3,820 Network Txns", amount: "+1.12", asset: "USDC", time: "4h ago", icon: <Fuel size={16} className="text-orange-500" /> },
-   // 🌟 核心更新：加入字典定义的 Node_Claim_Fee 扣除明细
-   { title: "Cross-chain Claim Fee (0.05%)", subtitle: "Yield Extraction", amount: "-0.06", asset: "B-Units", time: "Feb 20", icon: <ArrowRightLeft size={16} className="text-slate-400" /> },
-   { title: "Yield Claimed", subtitle: "To Main Wallet", amount: "-120.00", asset: "USDC", time: "Feb 20", icon: <ArrowRightLeft size={16} className="text-slate-400" /> }
- ];
-
-
- // --- Logic Calculations ---
- const fuelStatus = useMemo(() => {
-   if (bUnits > 50) return { label: 'Optimal', color: 'text-orange-500', bar: 'bg-orange-500', width: '85%' };
-   if (bUnits >= 10) return { label: 'Warning', color: 'text-amber-500', bar: 'bg-amber-500', width: '30%' };
-   if (bUnits >= 0) return { label: 'Critical', color: 'text-red-500', bar: 'bg-red-500', width: '5%' };
-   return { label: 'Overdraft', color: 'text-purple-600', bar: 'bg-purple-600', width: '0%' };
- }, [bUnits]);
-
-
- const filteredLedger = useMemo(() => {
-   if (ledgerFilter === 'all') return bUnitsLedger;
-   return bUnitsLedger.filter(log => log.type === ledgerFilter);
- }, [bUnitsLedger, ledgerFilter]);
-
-
- // --- Handlers ---
- const handleRefuel = () => {
-   if (usdcBalance < refuelAmount || bUnits < REFUEL_GAS_COST) return;
-   setIsRefueling(true);
-   setTimeout(() => {
-     setUsdcBalance(prev => prev - refuelAmount);
-     setBUnits(prev => prev + (refuelAmount * 100) - REFUEL_GAS_COST);
-    
-     const commonTxHash = "0x" + Math.random().toString(16).substr(2, 8);
-    
-     setBUnitsLedger([
-       {
-         id: `LOG-FEE-${Math.floor(Math.random()*10000)}`,
-         title: "Refuel Fee (Shadow Gas)", subtitle: `Underlying Tx Cost`,
-         amount: -REFUEL_GAS_COST, time: "Just now", type: "gas", status: "Completed",
-         linkedUsdc: "N/A", txHash: commonTxHash, network: "Base Mainnet"
-       },
-       {
-         id: `LOG-YLD-${Math.floor(Math.random()*10000)}`,
-         title: "Fuel Yield (1:100)", subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
-         amount: (refuelAmount * 100), time: "Just now", type: "refuel", status: "Completed",
-         linkedUsdc: `-${refuelAmount.toFixed(2)} USDC`, txHash: commonTxHash, network: "Base Mainnet"
-       },
-       ...bUnitsLedger
-     ]);
-
-
-     setIsRefueling(false);
-     setShowRefuelSuccess(true);
-     setTimeout(() => setShowRefuelSuccess(false), 3000);
-   }, 1200);
+ const handleTabChange = (tab: string) => {
+   setActiveTab(tab);
+   setIsMobileMenuOpen(false);
  };
 
-
- const handleClaimYield = () => {
-   if (yieldAvailable <= 0) return;
-   setIsClaiming(true);
+ const handleApplyAlliance = (aId: AllianceId) => {
+   setApplyingAlliance(aId);
    setTimeout(() => {
-     setUsdcBalance(prev => prev + yieldAvailable);
-     setYieldAvailable(0);
-     setIsClaiming(false);
-     setShowClaimSuccess(true);
-     setTimeout(() => setShowClaimSuccess(false), 3000);
+     setJoinedAlliances(prev => [...prev, aId]);
+     setIsAaUnlocked(true); 
+     setApplyingAlliance(null);
+     setIsJoinAllianceModalOpen(false);
+     setActiveTab('Alliances');
+   }, 2500); 
+ };
+
+ const handleMarketPurchase = () => {
+   let cost = 0;
+   if (selectedProduct === 'custom_fuel') {
+     cost = Number(customFuelAmount) || 0;
+     setPurchasedFuel(prev => prev + (cost * 100));
+     setCustomFuelAmount('');
+   } else if (selectedProduct === 'starter') {
+     cost = 1;
+     setPurchasedFuel(prev => prev + 100);
+   } else if (selectedProduct === 'fuel') {
+     cost = 499;
+     setPurchasedFuel(prev => prev + 100000);
+   } else if (selectedProduct === 'node') {
+     cost = 999;
+   }
+   
+   setEoaSpent(prev => prev + cost);
+   setIsAaUnlocked(true); 
+   setSelectedProduct(null);
+   if (!joinedAlliances.includes('BrandContract')) {
+       setJoinedAlliances(['BrandContract']);
+   }
+   setActiveTab('Wallets'); 
+ };
+
+ const handleToggleAssetStatus = (contractId: AllianceId, assetId: number) => {
+   setAlliancesDb(prev => {
+     const contract = prev[contractId];
+     const updatedAssets = contract.assets.map(a => 
+       a.id === assetId ? { ...a, status: a.status === 'Active' ? 'Paused' : 'Active' } : a
+     );
+     return { ...prev, [contractId]: { ...contract, assets: updatedAssets } };
+   });
+ };
+
+ const handleRevokeAsset = (contractId: AllianceId, assetId: number) => {
+   setAlliancesDb(prev => {
+     const contract = prev[contractId];
+     const updatedAssets = contract.assets.filter(a => a.id !== assetId);
+     const updatedTiers = contract.tiers ? contract.tiers.filter(t => t.id !== assetId) : contract.tiers;
+     return { ...prev, [contractId]: { ...contract, assets: updatedAssets, tiers: updatedTiers } };
+   });
+ };
+
+ const handleCreateTier = () => {
+   if (!newTierName || !newTierDiscount) return;
+   const colors = ['purple', 'emerald', 'yellow'];
+   const newId = 100 + alliancesDb['BrandContract'].assets.length;
+   
+   const newTierObj = { 
+     id: newId, 
+     name: newTierName, 
+     discount: parseInt(newTierDiscount), 
+     iconType: colors[alliancesDb['BrandContract'].tiers.length % 3] 
+   };
+
+   const newAssetObj = { 
+     id: newId, 
+     name: newTierName, 
+     type: 'NFT', 
+     discount: parseInt(newTierDiscount), 
+     iconType: newTierObj.iconType, 
+     status: 'Active', 
+     defaultExpiry: '1 Year' 
+   };
+   
+   setAlliancesDb(prev => ({
+     ...prev,
+     'BrandContract': {
+       ...prev['BrandContract'],
+       tiers: [...prev['BrandContract'].tiers, newTierObj],
+       assets: [...prev['BrandContract'].assets, newAssetObj]
+     }
+   }));
+   
+   setIsCreatingTier(false);
+   setNewTierName('');
+   setNewTierDiscount('');
+ };
+
+ const handleOpenConfig = (aId: AllianceId) => {
+   setConfigAllianceId(aId);
+   const initial: Record<string, number> = {};
+   if (alliancesDb[aId].tiers) {
+     alliancesDb[aId].tiers.forEach(t => { initial[String(t.id)] = t.discount; });
+   }
+   setTempDiscounts(initial);
+   setIsConfigModalOpen(true);
+ };
+
+ const handleSaveConfig = () => {
+   if (configAllianceId == null) return;
+   const cid = configAllianceId;
+   setAlliancesDb(prev => {
+     const updatedTiers = prev[cid].tiers.map(t => ({
+       ...t,
+       discount: tempDiscounts[String(t.id)] ?? t.discount
+     }));
+     const updatedAssets = prev[cid].assets.map(a => {
+       if (tempDiscounts[String(a.id)] !== undefined) return { ...a, discount: tempDiscounts[String(a.id)] };
+       return a;
+     });
+     
+     return {
+       ...prev,
+       [cid]: { ...prev[cid], tiers: updatedTiers, assets: updatedAssets }
+     };
+   });
+   setIsConfigModalOpen(false);
+ };
+
+ const handleCalculatePos = () => {
+   if (!posAmount || !posUser) return;
+   const reqCad = parseFloat(posAmount);
+   const tagToFind = posUser.startsWith('@') ? posUser : `@${posUser}`;
+   const user = members.find(m => m.tag === tagToFind);
+   
+   if (!user) {
+     setPosSimResult({ ok: false, error: 'User not found. Please try @alice_chen or @bobby_s.' });
+     setPosStep(2);
+     return;
+   }
+
+   const cardCad = user.balance;
+   let toChargeCard = Math.min(reqCad, cardCad);
+   let shortfall = reqCad - toChargeCard;
+
+   let usdcUsed = 0;
+   let topUpCad = 0;
+   let remainingDue = shortfall;
+
+   if (shortfall > 0 && user.usdcBalance > 0) {
+      const usdcNeeded = shortfall * ORACLE_CAD_USDC; 
+      usdcUsed = Math.min(usdcNeeded, user.usdcBalance);
+      topUpCad = usdcUsed / ORACLE_CAD_USDC;
+      toChargeCard += topUpCad; 
+      remainingDue = reqCad - toChargeCard;
+   }
+
+   setPosSimResult({
+     ok: true,
+     user,
+     reqCad,
+     initialCardBalance: cardCad,
+     initialUsdcBalance: user.usdcBalance,
+     usdcUsed,
+     topUpCad,
+     toChargeCard,
+     remainingDue
+   });
+
+   setPosStep(2);
+ };
+
+ const handleExecutePos = () => {
+   if (!posSimResult || !posSimResult.ok) return;
+   const sim = posSimResult;
+   setPosStep(3);
+   setTimeout(() => {
+     setMembers(prev => prev.map(m => {
+       if (m.tag === sim.user.tag) {
+         return {
+           ...m,
+           balance: m.balance + sim.topUpCad - sim.toChargeCard,
+           usdcBalance: m.usdcBalance - sim.usdcUsed,
+           ltv: m.ltv + sim.reqCad - sim.remainingDue
+         };
+       }
+       return m;
+     }));
+
+     const newTx: LedgerTransaction = {
+         id: `TX-${Math.floor(1000 + Math.random() * 9000)}`,
+         time: new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}),
+         type: 'Smart Charge',
+         subtotal: sim.reqCad,
+         tip: 0,
+         total: sim.toChargeCard,
+         method: sim.usdcUsed > 0 ? 'Mixed Routing' : '$UTEA Only',
+         uteaAmount: sim.toChargeCard,
+         usdcAmount: sim.usdcUsed, 
+         source: 'POS',
+         beamioTag: sim.user.tag,
+         status: 'Settled',
+         hash: '0x' + Math.random().toString(16).slice(2, 10),
+         terminal: 'Main Register',
+         bUnits: sim.usdcUsed > 0 ? 80 : 12,
+         tier: sim.user.tier,
+         requiredAlliance: 'BrandContract',
+         wallet: 'AA'
+     };
+     setTransactions(prev => [newTx, ...prev]);
    }, 1500);
  };
 
-
- const estimatedServiceFee = useMemo(() => {
-   const rawFee = Math.ceil(calcAmount * 0.8);
-   return Math.min(Math.max(rawFee, MIN_SERVICE_FEE), MAX_SERVICE_FEE);
- }, [calcAmount]);
-
-
- const executeSend = () => {
-   const recipient = sendRecipient;
-   if (!recipient) return;
-   setSendStep('processing');
+ const closePosModal = () => {
+   setIsPosOpen(false);
    setTimeout(() => {
-     const amountNum = parseFloat(sendAmount);
-     setUsdcBalance(prev => prev - amountNum);
-     setBUnits(prev => prev - P2P_GAS_COST);
-
-
-     setUsdcLedger([{
-       id: `u-${Date.now()}`,
-       name: `Sent to ${recipient.name}`,
-       tag: recipient.tag,
-       val: `- ${amountNum.toFixed(4)} USDC`,
-       sub: `${amountNum.toFixed(2)} USDC`,
-       icon: <ArrowUpRight size={18} />,
-       color: "text-slate-900",
-       type: "send"
-     }, ...usdcLedger]);
-
-
-     setBUnitsLedger([{
-       id: `LOG-S${Math.floor(Math.random()*1000)}`,
-       title: "Network Gas",
-       subtitle: `P2P Send to ${recipient.tag}`,
-       amount: -P2P_GAS_COST,
-       time: "Just now",
-       type: "gas",
-       status: "Completed",
-       linkedUsdc: `${amountNum.toFixed(2)} USDC`,
-       txHash: "0x" + Math.random().toString(16).substr(2, 8) + "..." + Math.random().toString(16).substr(2, 4),
-       network: "Base Mainnet"
-     }, ...bUnitsLedger]);
-
-
-     setSendStep('success');
-   }, 1800);
+     setPosStep(1);
+     setPosAmount('');
+     setPosUser('');
+     setPosSimResult(null);
+   }, 300);
  };
 
-
- const openSendModal = () => {
-   setSendStep('input');
-   setSendAmount('');
-   setSendRecipient(null);
-   setSendSearchQuery('');
-   setSendModalOpen(true);
+ const handleVerifyTerminalTag = () => {
+   if (!newTerminalTag) return;
+   setIsVerifyingTag(true);
+   setTimeout(() => {
+     setIsVerifyingTag(false);
+     setFoundTerminalEoa('0x' + Math.random().toString(16).slice(2, 6).toUpperCase() + '...' + Math.random().toString(16).slice(2, 6).toUpperCase());
+     setLinkTerminalStep(2);
+   }, 1500);
  };
 
+ const handleLinkTerminal = () => {
+   if (newTerminalName && newTerminalQuota) {
+     setTerminals([...terminals, {
+       id: `TM-00${terminals.length + 1}`,
+       tag: newTerminalTag.startsWith('@') ? newTerminalTag : `@${newTerminalTag}`,
+       name: newTerminalName,
+       eoa: foundTerminalEoa,
+       status: 'Active',
+       lastActive: 'Just now',
+       quota: parseFloat(newTerminalQuota) || 0,
+       issued: 0 
+     }]);
+     closeTerminalModal();
+   }
+ };
 
- // --- Views ---
+ const closeTerminalModal = () => {
+   setIsAddTerminalOpen(false);
+   setTimeout(() => {
+     setLinkTerminalStep(1);
+     setNewTerminalTag('');
+     setNewTerminalName('');
+     setNewTerminalQuota('');
+     setFoundTerminalEoa('');
+   }, 300);
+ };
 
+ const handleResetTerminal = (id: string) => {
+   setTerminals(terminals.map(t => 
+     t.id === id ? { ...t, issued: 0, lastActive: 'Just reset' } : t
+   ));
+ };
 
- const HomeView = () => (
-   <div className="animate-in fade-in duration-500 flex flex-col min-h-screen pb-32 bg-[#f4f5f9]">
-     <div className="px-6 pt-10">
-       <div onClick={() => setCurrentView('profile')} className="inline-flex bg-white rounded-full pl-1.5 pr-4 py-1.5 items-center gap-2 shadow-[0_4px_14px_rgba(0,0,0,0.05)] cursor-pointer active:scale-95 transition-all border border-slate-100/50">
-         <div className="w-8 h-8 rounded-full bg-[#1da1f2] flex items-center justify-center text-white overflow-hidden relative">
-           <div className="w-1.5 h-1.5 bg-blue-900 rounded-full absolute top-2.5 left-2"></div>
-           <div className="w-1.5 h-1.5 bg-blue-900 rounded-full absolute top-2.5 right-2"></div>
-           <div className="w-3 h-1.5 border-t-2 border-blue-900 rounded-t-full absolute bottom-2"></div>
+ const handleToggleMemberStatus = (id: string) => {
+   setMembers(members.map(m => 
+     m.id === id ? { ...m, status: m.status === 'Active' ? 'Suspended' : 'Active' } : m
+   ));
+ };
+
+ const handleDeleteMember = (id: string) => {
+   setMembers(members.filter(m => m.id !== id));
+ };
+
+ const handleConfirmIssueCard = () => {
+   setIssueCardStep(3);
+   setBUnitsSpent(prev => prev + 200); // Deduct 200 B-Units for minting an asset
+   
+   setTimeout(() => {
+     const isPrepaid = issueType === 'PREPAID';
+
+     // Dynamically update BrandContract Base Token if changed
+     if (isPrepaid && issueTokenSymbol) {
+       setAlliancesDb(prev => {
+         const contract = prev['BrandContract'];
+         const updatedAssets = contract.assets.map(a => 
+           a.id === 0 ? { ...a, name: `Prepaid Balance (${issueTokenSymbol})` } : a
+         );
+         return {
+           ...prev,
+           'BrandContract': {
+             ...contract,
+             baseToken: issueTokenSymbol,
+             assets: updatedAssets
+           }
+         };
+       });
+     }
+
+     const newMember: MemberRow = {
+       id: `m${Math.floor(1000 + Math.random() * 9000)}`,
+       tag: issueTarget.startsWith('@') ? issueTarget : `@${issueTarget}`,
+       address: '0x' + Math.random().toString(16).slice(2, 6).toUpperCase() + '...' + Math.random().toString(16).slice(2, 6).toUpperCase(),
+       tier: isPrepaid ? 'Standard' : issueValue,
+       balance: isPrepaid ? parseFloat(issueValue) : 0.00,
+       usdcBalance: 0.00,
+       ltv: 0.00,
+       lastActive: 'Just joined',
+       store: activeBranch === 'All Branches (Network View)' ? 'Main HQ' : activeBranch,
+       status: 'Active'
+     };
+     setMembers(prev => [newMember, ...prev]);
+
+     if (isPrepaid) {
+       const newTx: LedgerTransaction = {
+         id: `TX-${Math.floor(1000 + Math.random() * 9000)}`,
+         time: new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}),
+         type: 'In-Store Top-Up',
+         subtotal: parseFloat(issueValue),
+         tip: 0,
+         total: parseFloat(issueValue),
+         method: `Issued ${issueTokenSymbol}`,
+         uteaAmount: parseFloat(issueValue),
+         usdcAmount: 0,
+         source: 'APP',
+         beamioTag: newMember.tag,
+         status: 'Settled',
+         hash: '0x' + Math.random().toString(16).slice(2, 10),
+         terminal: 'HQ Admin',
+         bUnits: 200, // Updated to 200 B-Units
+         tier: 'Standard',
+         requiredAlliance: 'BrandContract',
+         wallet: 'AA'
+       };
+       setTransactions(prev => [newTx, ...prev]);
+     }
+   }, 2000);
+ };
+
+ const handleCloseIssueCardModal = () => {
+   setIsIssueCardModalOpen(false);
+   setTimeout(() => {
+     setIssueCardStep(1);
+     setIssueTarget('');
+     setIssueType('PREPAID');
+     setIssueValue('');
+     setIsCreatingTier(false);
+     setIssueExpiry('Never');
+   }, 300);
+ };
+
+ const handleConfirmSend = () => {
+   setSendStep(3);
+   const sendVal = parseFloat(sendAmount) || 0;
+   setEoaSpent(prev => prev + sendVal);
+
+   const newTx: LedgerTransaction = {
+     id: `TX-${Math.floor(1000 + Math.random() * 9000)}`,
+     time: new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}),
+     type: 'P2P Send',
+     subtotal: sendVal,
+     tip: 0,
+     total: sendVal,
+     method: 'Direct USDC',
+     uteaAmount: 0,
+     usdcAmount: sendVal,
+     source: 'EOA',
+     beamioTag: sendRecipient || '@unknown',
+     status: 'Settled',
+     hash: '0x' + Math.random().toString(16).slice(2, 10),
+     terminal: 'The Vault',
+     bUnits: 2,
+     tier: null,
+     requiredAlliance: null,
+     wallet: 'EOA'
+   };
+   setTransactions(prev => [newTx, ...prev]);
+ };
+
+ const handleCloseSendModal = () => {
+   setIsSendModalOpen(false);
+   setTimeout(() => {
+     setSendStep(1);
+     setSendRecipient('');
+     setSendAmount('');
+     setSendMemo('');
+   }, 300);
+ };
+
+ const executeSettlement = () => {
+   if (payoutAlliance == null) return;
+   const pa = payoutAlliance;
+   setPayoutStep(2); 
+   setTimeout(() => {
+     setPayoutStep(3); 
+     setAlliancesDb(prev => ({
+       ...prev,
+       [pa]: {
+         ...prev[pa],
+         sales: 0,
+         tips: 0,
+         topUps: 0,
+       }
+     }));
+
+     const newTxId = `TX-${Math.floor(1000 + Math.random() * 9000)}`;
+     let txType = '';
+     if (settlementType === 'PAYOUT') {
+        txType = payoutMethod === 'USDC' ? 'L2 Settlement' : 'Fiat Payout';
+     } else {
+        txType = payoutMethod === 'USDC' ? 'L2 Remittance' : 'Fiat Remittance';
+     }
+
+     const usdcPayoutValue = payoutMethod === 'USDC' ? (settlementNetBalance * ORACLE_CAD_USDC) : 0;
+
+     const newTx: LedgerTransaction = {
+       id: newTxId,
+       time: new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}),
+       type: txType,
+       subtotal: settlementNetBalance, 
+       tip: 0, 
+       total: settlementNetBalance,
+       method: payoutMethod === 'USDC' ? 'USDC (T+0)' : 'Wire (T+2)',
+       uteaAmount: 0, 
+       usdcAmount: usdcPayoutValue, 
+       source: 'AA', 
+       beamioTag: payoutMethod === 'USDC' ? 'The Vault (EOA)' : 'Alliance Treasury', 
+       status: payoutMethod === 'USDC' ? 'Settled' : 'Pending', 
+       hash: '0x' + Math.random().toString(16).slice(2, 10), 
+       terminal: 'Smart Contract', 
+       bUnits: 2, 
+       tier: null, 
+       requiredAlliance: pa, 
+       wallet: payoutMethod === 'USDC' ? 'AA' : 'EOA'
+     };
+     setTransactions(prev => [newTx, ...prev]);
+   }, 3000); 
+ };
+
+ const getTimeMultiplier = () => {
+   switch(timeFilter) {
+     case 'This Week': return 7;
+     case 'This Month': return 30;
+     case 'This Quarter': return 90;
+     case 'This Year': return 365;
+     default: return 1; 
+   }
+ };
+ const flowMultiplier = getTimeMultiplier();
+
+ const eoaBalanceUSDC = 5420.00 - eoaSpent; 
+ const aaUsdcBalance = isAaUnlocked ? 125.50 : 0.00;
+ const eoaBalance_CAD = eoaBalanceUSDC / ORACLE_CAD_USDC; 
+ const aaUsdcBalance_CAD = aaUsdcBalance / ORACLE_CAD_USDC; 
+ const aaBUnits = (isAaUnlocked ? 13300 : 0) + purchasedFuel - bUnitsSpent; 
+
+ const baseSalesCAD_viaUSDC = isAaUnlocked ? 872.30 : 0.00; 
+ const baseDiscountsCAD_viaUSDC = isAaUnlocked ? 45.50 : 0.00; 
+ const baseTipsCAD_viaUSDC = isAaUnlocked ? 191.89 : 0.00;
+
+ const salesCAD_viaUSDC = baseSalesCAD_viaUSDC * flowMultiplier; 
+ const discountsCAD_viaUSDC = baseDiscountsCAD_viaUSDC * flowMultiplier; 
+ const tipsCAD_viaUSDC = baseTipsCAD_viaUSDC * flowMultiplier;
+
+ const usdcCollectedFromSales = salesCAD_viaUSDC * ORACLE_CAD_USDC;
+ const usdcCollectedFromTips = tipsCAD_viaUSDC * ORACLE_CAD_USDC;
+
+ let totalSalesCAD = salesCAD_viaUSDC;
+ let totalDiscountsCAD = discountsCAD_viaUSDC; 
+ let totalTipsCAD = tipsCAD_viaUSDC;
+ let totalTopUpsCAD = 0;
+
+ joinedAlliances.forEach(aId => {
+   totalSalesCAD += (alliancesDb[aId].sales * flowMultiplier);
+   totalDiscountsCAD += ((alliancesDb[aId].discounts || 0) * flowMultiplier);
+   totalTipsCAD += (alliancesDb[aId].tips * flowMultiplier);
+   totalTopUpsCAD += (alliancesDb[aId].topUps * flowMultiplier);
+ });
+
+ const calculateTxNetValueCAD = (tx: LedgerTransaction) => {
+   if (tx.type.includes('Top-Up') || tx.type.includes('Settlement') || tx.type.includes('Withdrawal')) {
+      if (tx.method.includes('USDC') || tx.type.includes('P2P Send')) return tx.usdcAmount / ORACLE_CAD_USDC;
+      return tx.total; 
+   }
+   return (tx.usdcAmount / ORACLE_CAD_USDC) + (tx.uteaAmount || 0) + (tx.ccsaAmount ?? 0);
+ }
+
+ const today = new Date();
+ const dateString = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+ const CashTreesLogo = ({ className = '' }: { className?: string }) => (
+   <svg viewBox="0 0 100 100" className={`w-full h-full ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+     <rect width="100" height="100" fill="#000" rx="24" />
+     <path d="M50 20 V80 M25 45 L50 70 L75 45 M35 30 L50 45 L65 30" stroke="#1562f0" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
+     <circle cx="50" cy="20" r="5" fill="#1562f0"/>
+     <circle cx="25" cy="45" r="5" fill="#1562f0"/>
+     <circle cx="75" cy="45" r="5" fill="#1562f0"/>
+     <circle cx="35" cy="30" r="4" fill="#1562f0"/>
+     <circle cx="65" cy="30" r="4" fill="#1562f0"/>
+   </svg>
+ );
+
+ const renderLogin = () => (
+   <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-4 sm:p-6 selection:bg-[#1562f0]/20 font-sans">
+     <div className="w-full max-w-[420px] bg-white/70 backdrop-blur-3xl rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white p-8 sm:p-10 overflow-hidden relative">
+       <div className="absolute top-[-20%] left-[-10%] w-[120%] h-[120%] bg-gradient-to-br from-[#1562f0]/5 via-transparent to-emerald-500/5 -z-10 blur-2xl"></div>
+       <div className="relative z-10 flex flex-col items-center">
+         <div className="w-20 h-20 rounded-3xl overflow-hidden shadow-sm border border-slate-100 mb-6 transform hover:scale-105 transition-transform duration-300">
+           <CashTreesLogo />
          </div>
-         <div className="flex flex-col justify-center">
-           <p className="text-[9px] text-slate-500 font-bold leading-tight uppercase tracking-wider">Voucher</p>
-           <p className="text-[13px] font-black text-slate-900 leading-tight">@Beamiovoucher</p>
+         <h1 className="text-[26px] font-semibold text-slate-900 tracking-tight mb-2">Merchant OS</h1>
+         <p className="text-[14px] font-medium text-slate-500 mb-8 text-center">Create or access your decentralized identity</p>
+
+         <div className="w-full space-y-4">
+           <div className="space-y-2">
+             <label className="text-[12px] font-semibold text-slate-500 ml-1">Set Beamio Tag</label>
+             <div className="relative group">
+               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                 <span className="text-slate-400 font-medium text-[16px]">@</span>
+               </div>
+               <input type="text" value={merchantTag.replace('@', '')} onChange={(e) => setMerchantTag(`@${e.target.value}`)} placeholder="e.g. urbantea_van" className="w-full pl-9 pr-4 py-3.5 bg-white/50 backdrop-blur-sm border border-slate-200/60 rounded-[16px] focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-medium text-[15px] text-slate-900 shadow-sm" />
+             </div>
+           </div>
+           <div className="space-y-2">
+             <label className="text-[12px] font-semibold text-slate-500 ml-1">Local Password</label>
+             <div className="relative group">
+               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                 <KeyRound size={16} className="text-slate-400" />
+               </div>
+               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••••••" className="w-full pl-10 pr-4 py-3.5 bg-white/50 backdrop-blur-sm border border-slate-200/60 rounded-[16px] focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-medium text-[15px] tracking-widest text-slate-900 shadow-sm" />
+             </div>
+           </div>
+           <div className="pt-6 space-y-3">
+             <button 
+                onClick={() => {
+                   if (!merchantTag) return; 
+                   setCurrentView('loading');
+                   setTimeout(() => setLoadingStep(1), 800); 
+                   setTimeout(() => setLoadingStep(2), 1600);
+                   setTimeout(() => setLoadingStep(3), 2400);
+                   setTimeout(() => {
+                     setIsAaUnlocked(false);
+                     setJoinedAlliances([]);
+                     setActiveLedger('EOA'); 
+                     setActiveTab('Overview');
+                     setCurrentView('dashboard');
+                   }, 3200);
+                }} 
+                className="w-full bg-[#1562f0] text-white py-3.5 rounded-[16px] font-semibold text-[15px] shadow-[0_8px_20px_rgba(21,98,240,0.25)] hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2"
+             >
+               <Wallet size={18} /> Initialize Vault & Node
+             </button>
+           </div>
+         </div>
+         <div className="mt-8 flex items-center gap-2 text-[11px] font-medium text-slate-500 bg-slate-50/80 px-3 py-1.5 rounded-full border border-slate-100">
+           <ShieldCheck size={14} className="text-[#1562f0]" />
+           <span>Zero-Knowledge EOA Derivation</span>
          </div>
        </div>
      </div>
+   </div>
+ );
 
-
-     <div className="mt-8 px-6 text-center space-y-4">
-       <div
-         onClick={() => setCurrentView('fuel')}
-         className={`inline-flex items-center gap-1.5 bg-white pl-4 pr-1.5 py-1.5 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.04)] cursor-pointer hover:shadow-md transition-all active:scale-95 border ${bUnits < 10 ? 'border-red-100' : 'border-orange-100/50'}`}
-       >
-         <Fuel size={14} className={bUnits < 10 ? "text-red-500" : "text-orange-500"} fill="currentColor" />
-         <span className={`text-[11px] font-black ${bUnits < 10 ? 'text-red-600' : 'text-slate-600'}`}>Network Fuel</span>
-         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ml-1 ${bUnits < 10 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
-           {bUnits} B-Units
-         </span>
-       </div>
-
-
-       <div className="space-y-1">
-         <p className="text-sm font-bold text-slate-400">Total Valuation (USDC)</p>
-         <div className="flex items-baseline justify-center gap-1">
-           <span className="text-3xl font-black text-slate-800">$</span>
-           <span className="text-[4rem] font-black text-slate-900 tracking-tighter leading-none">{usdcBalance.toFixed(0)}</span>
-           <span className="text-3xl font-black text-slate-400">.{(usdcBalance % 1).toFixed(2).substring(2)}</span>
-         </div>
-       </div>
-       <div className="grid grid-cols-2 gap-4 mt-8 h-40">
-         <div
-           onClick={openSendModal}
-           className="bg-gradient-to-br from-[#3b7ef5] to-[#1562f0] rounded-[2rem] p-5 text-white flex flex-col justify-between shadow-2xl shadow-blue-200/50 active:scale-95 transition-all cursor-pointer group"
-         >
-           <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm group-hover:bg-white/30 transition-colors">
-             <ArrowUpRight size={22} strokeWidth={2.5} />
-           </div>
-           <div className="text-left">
-             <p className="text-[17px] font-black leading-tight">Send</p>
-             <p className="text-[10px] font-medium opacity-80 mt-0.5 tracking-wide">0 Gas USDC</p>
-           </div>
-         </div>
-         <div className="flex flex-col gap-4">
-           <div className="flex-1 bg-white rounded-[1.8rem] px-5 flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer hover:border-blue-100 border border-transparent">
-             <div className="flex items-center gap-3">
-               <ArrowDownLeft size={22} className="text-green-500" strokeWidth={2.5} />
-               <span className="font-black text-[15px] text-slate-800">Receive</span>
+ const renderLoading = () => (
+   <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-4 sm:p-6 font-sans">
+     <div className="w-full max-w-[420px] bg-white/80 backdrop-blur-3xl rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white p-12 flex flex-col items-center justify-center relative overflow-hidden">
+       <div className="w-16 h-16 border-[3px] border-slate-100 border-t-[#1562f0] rounded-full animate-spin mb-10"></div>
+       <div className="space-y-5 w-full">
+         {[
+           { step: 0, text: "Deriving Local EOA via ZK-Proof" },
+           { step: 1, text: isAaUnlocked ? "Connecting Smart Account (AA)" : "Securing Vault Infrastructure" },
+           { step: 2, text: "Syncing Ledger State" }
+         ].map((item) => (
+           <div key={item.step} className={`flex items-center gap-4 transition-all duration-700 ${loadingStep >= item.step ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+             <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors duration-500 ${loadingStep > item.step ? 'bg-[#1562f0] text-white' : 'bg-slate-100 text-slate-300'}`}>
+               <CheckCircle2 size={16} />
              </div>
-           </div>
-           <div className="flex-1 bg-white rounded-[1.8rem] px-5 flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer hover:border-blue-100 border border-transparent">
-             <div className="flex items-center gap-3">
-               <Plus size={22} className="text-slate-400" strokeWidth={2.5} />
-               <span className="font-black text-[15px] text-slate-800">Add Cash</span>
-             </div>
-           </div>
-         </div>
-       </div>
-     </div>
-
-
-     <div className="mt-10 px-6 space-y-4">
-       <div className="flex justify-between items-center">
-         <h3 className="text-[19px] font-black text-slate-900 tracking-tight">Recent Activity</h3>
-         <button className="text-[13px] font-bold text-[#1562f0] flex items-center gap-0.5">
-           View all <ChevronRight size={16} />
-         </button>
-       </div>
-       <div className="space-y-3">
-         {usdcLedger.map((tx) => (
-           <div key={tx.id} className="bg-white p-4 rounded-[1.5rem] flex items-center justify-between shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-50/50">
-             <div className="flex items-center gap-4">
-               <div className={`w-10 h-10 ${tx.type === 'receive' ? 'bg-green-50 text-green-600' : 'bg-[#f4f5f9] text-slate-800'} rounded-xl flex items-center justify-center`}>
-                 {tx.icon}
-               </div>
-               <div>
-                 <p className="text-[14px] font-black text-slate-900">{tx.name}</p>
-                 <p className="text-[11px] font-medium text-slate-400 mt-0.5">{tx.tag}</p>
-               </div>
-             </div>
-             <div className="text-right">
-               <p className={`text-[14px] font-black ${tx.color}`}>{tx.val}</p>
-               <p className="text-[11px] font-medium text-slate-400 mt-0.5">{tx.sub}</p>
-             </div>
+             <span className={`text-[15px] ${loadingStep > item.step ? 'font-semibold text-slate-900' : 'font-medium text-slate-400'}`}>{item.text}</span>
            </div>
          ))}
        </div>
@@ -388,642 +965,2454 @@ const App = () => {
    </div>
  );
 
+ type NavItemProps = {
+   icon: LucideIcon;
+   label: string;
+   isActive: boolean;
+   onClick: () => void;
+   collapsed: boolean;
+ };
 
- const FuelView = () => (
-   <div className="animate-in slide-in-from-right duration-500 flex flex-col min-h-screen pb-32 bg-[#fdfdff] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pb-[calc(8rem+env(safe-area-inset-bottom))]">
-     {/* Beamio protocol: 返回按钮+title 对齐 Home 胶囊 top: max(1rem, env(safe-area-inset-top)) */}
-     <div className="px-6 flex items-center gap-4 shrink-0" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
-       <button onClick={() => setCurrentView('home')} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 text-slate-600 hover:bg-slate-50 transition-colors">
-         <ChevronRight size={22} className="rotate-180" />
+ const NavItem = ({ icon: Icon, label, isActive, onClick, collapsed }: NavItemProps) => (
+   <button
+     onClick={onClick}
+     className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-4'} py-3.5 rounded-[16px] transition-all duration-200 ${
+       isActive
+         ? 'bg-[#1562f0] text-white shadow-[0_4px_12px_rgba(21,98,240,0.2)]'
+         : 'text-slate-500 hover:bg-slate-100/80 hover:text-slate-900 active:bg-slate-200'
+     }`}
+     title={collapsed ? label : undefined}
+   >
+     <Icon size={22} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+     {!collapsed && <span className="font-semibold text-[15px] whitespace-nowrap">{label}</span>}
+   </button>
+ );
+
+ const renderSettlementCard = (aId: AllianceId) => {
+   const alliance = alliancesDb[aId];
+   const totalReceived = (alliance.sales + alliance.tips) * flowMultiplier;
+   const topUps = alliance.topUps * flowMultiplier;
+   const netBalance = totalReceived - topUps;
+   const isQuotaExceeded = alliance.mintQuota && topUps >= alliance.mintQuota;
+
+   return (
+     <div key={`settle-${aId}`} className="bg-[#0B1221] rounded-[32px] p-6 sm:p-8 shadow-[0_16px_40px_rgba(0,0,0,0.15)] flex flex-col justify-between border border-[#1E293B] relative overflow-hidden group">
+       <div className="absolute top-0 right-0 w-64 h-64 bg-[#3B82F6]/10 rounded-full blur-[60px] -mr-20 -mt-20 pointer-events-none"></div>
+       <div className="relative z-10">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-2 text-[#3B82F6]">
+              <Ticket size={18} />
+              <span className="text-[14px] font-bold">{alliance.name} {aId === 'BrandContract' ? 'Sales' : 'Settlement'}</span>
+            </div>
+            <span className="bg-[#1A233A] text-slate-300 border border-white/5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide">Net Balance</span>
+          </div>
+          <div className="flex items-baseline gap-2 mb-6">
+            <p className="text-4xl sm:text-[48px] font-light text-white tracking-tight leading-none">
+              {netBalance < 0 ? `-$${Math.abs(netBalance).toFixed(2)}` : `$${netBalance.toFixed(2)}`}
+            </p>
+            <span className="text-[16px] text-slate-400 font-light">CAD</span>
+          </div>
+          <div className="flex items-center gap-2 bg-[#131B2F] w-max px-4 py-2.5 rounded-[14px] border border-[#1E293B] mb-8">
+            <span className="text-[12px] font-bold text-emerald-400">+${totalReceived.toFixed(2)} Recv</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-[12px] font-bold text-rose-400">-${topUps.toFixed(2)} Issued</span>
+          </div>
+       </div>
+       <button
+          onClick={() => {
+            setPayoutAlliance(aId);
+            setSettlementNetBalance(Math.abs(netBalance));
+            setSettlementType(netBalance >= 0 ? 'PAYOUT' : 'REMIT');
+            setSettlementConsumed(totalReceived);
+            setPayoutStep(1);
+            setIsPayoutModalOpen(true);
+          }}
+          className={`w-full text-white py-4 rounded-[16px] font-bold text-[15px] transition-all flex items-center justify-center gap-2 relative z-10 ${
+            netBalance >= 0 
+              ? 'bg-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.25)] hover:bg-blue-500 hover:shadow-[0_12px_24px_rgba(37,99,235,0.35)]'
+              : isQuotaExceeded
+                ? 'bg-rose-500 shadow-[0_8px_20px_rgba(244,63,94,0.25)] hover:bg-rose-600'
+                : 'bg-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.25)] hover:bg-blue-500'
+          }`}
+        >
+          {netBalance >= 0 ? <Landmark size={18} /> : isQuotaExceeded ? <Lock size={18} /> : <Landmark size={18} />}
+          {aId === 'BrandContract' ? (netBalance >= 0 ? 'Settle to Vault' : 'Reconcile Franchise') : (netBalance >= 0 ? 'Request CAD Settlement' : isQuotaExceeded ? 'Remit to Unlock' : 'Request CAD Settlement')}
        </button>
-       <h2 className="text-2xl font-black text-slate-800 tracking-tight">Fuel Center</h2>
      </div>
+   );
+ };
 
-     {/* Beamio protocol: 首内容 Network Fuel Balance 对齐 Home 首内容；上移 5rem */}
-     <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-       <div className="px-6 pt-6 mt-4 space-y-6">
-       <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-50 relative overflow-hidden group">
-         <div className="flex justify-between items-center mb-1">
-           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Fuel Balance</p>
-           <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase ${fuelStatus.bar} bg-opacity-10 ${fuelStatus.color}`}>
-             {fuelStatus.label}
+ const renderDashboard = () => (
+   <div className="flex h-screen bg-[#f5f5f7] font-sans text-slate-900 overflow-hidden selection:bg-[#1562f0]/20">
+    
+     {isMobileMenuOpen && (
+       <div 
+         className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+         onClick={() => setIsMobileMenuOpen(false)}
+       />
+     )}
+
+     <aside
+       className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white/80 backdrop-blur-3xl border-r border-slate-200/50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 ease-in-out
+         ${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'} 
+         lg:relative lg:translate-x-0 ${isDesktopSidebarCollapsed ? 'lg:w-[90px]' : 'lg:w-[280px]'}`}
+     >
+       <div className={`p-6 pb-6 pt-8 ${isDesktopSidebarCollapsed ? 'lg:flex lg:justify-center' : ''} flex justify-between items-center lg:block`}>
+         <div
+           className="flex items-center gap-4 lg:mb-8 cursor-pointer group"
+           onClick={() => {
+             if(window.innerWidth >= 1024) setIsDesktopSidebarCollapsed(!isDesktopSidebarCollapsed);
+           }}
+         >
+           <div className="w-12 h-12 rounded-[14px] overflow-hidden shadow-sm border border-slate-100 shrink-0 group-hover:shadow-md transition-all">
+              <CashTreesLogo />
            </div>
+           {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && (
+             <div className="whitespace-nowrap overflow-hidden">
+               <div className="flex items-center gap-2">
+                 <h1 className="font-semibold text-[19px] tracking-tight text-slate-900">Your Store</h1>
+                 {joinedAlliances.length > 0 && (
+                   <div className="flex items-center justify-center w-5 h-5 bg-emerald-50 rounded-full border border-emerald-200 shrink-0 shadow-sm" title="Ecosystem NFT Active">
+                     <Award size={12} className="text-emerald-600" />
+                   </div>
+                 )}
+               </div>
+               <p className="text-[13px] font-medium text-slate-500 mt-0.5">@{merchantTag || 'merchant'}</p>
+             </div>
+           )}
          </div>
-         <div className="flex items-baseline justify-between">
-           <div className="flex items-baseline gap-2">
-             <span className={`text-[4.5rem] leading-none font-black tracking-tighter ${bUnits < 10 ? 'text-red-500' : 'text-orange-500'}`}>{bUnits}</span>
-             <span className="text-orange-300 font-bold text-xl italic">B-Units</span>
+         <button className="lg:hidden p-2 text-slate-400 hover:text-slate-800 bg-slate-50 rounded-full" onClick={() => setIsMobileMenuOpen(false)}>
+           <X size={20} />
+         </button>
+        
+         {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && (
+           <div className="hidden lg:flex lg:flex-col bg-slate-50/80 backdrop-blur-sm border border-slate-100/80 rounded-[20px] p-4 gap-3 overflow-hidden whitespace-nowrap">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-semibold text-slate-500 flex items-center gap-1.5"><Cpu size={14} className={isAaUnlocked ? "text-[#1562f0]" : "text-slate-400"}/> Smart AA</span>
+                <span className={`text-[12px] font-mono font-medium px-2 py-1 rounded-[8px] shadow-sm border ${isAaUnlocked ? 'bg-white text-slate-700 border-slate-100' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                  {isAaUnlocked ? '0x4D...11F2' : 'Locked'}
+                </span>
+              </div>
+              <div className="h-[1px] w-full bg-slate-200/50"></div>
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-semibold text-slate-500 flex items-center gap-1.5"><KeyRound size={14}/> Owner EOA</span>
+                <span className="text-[12px] font-mono font-medium text-slate-700">0x8B...A9C</span>
+              </div>
            </div>
-         </div>
-         <div className="mt-8 h-2 bg-slate-100 rounded-full overflow-hidden">
-           <div style={{ width: fuelStatus.width }} className={`${fuelStatus.bar} h-full rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(249,115,22,0.2)]`}></div>
-         </div>
+         )}
        </div>
 
+       <nav className="flex-1 px-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-hide">
+         {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && <p className="px-4 text-[12px] font-semibold text-slate-400 mb-3 mt-4 whitespace-nowrap">Store Management</p>}
+         <NavItem icon={LayoutDashboard} label="Daily Dashboard" isActive={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+         <NavItem icon={Receipt} label="Transactions" isActive={activeTab === 'Transactions'} onClick={() => handleTabChange('Transactions')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+         <NavItem icon={Users} label="Members & Loyalty" isActive={activeTab === 'Members'} onClick={() => handleTabChange('Members')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+         <NavItem icon={Wallet} label="Store Wallets" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+         <NavItem icon={Store} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+        
+         <div className="mt-8"></div>
+         {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && <p className="px-4 text-[12px] font-semibold text-slate-400 mb-3 whitespace-nowrap">Communication</p>}
+         <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
 
-       <div className="bg-white rounded-[2rem] p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-50 space-y-6">
-         <div className="flex justify-between items-center">
-           <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Select Amount</h3>
-           <div className="bg-[#eef6ff] px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-             <Coins size={14} className="text-[#1562f0]" />
-             <span className="text-base font-black text-[#1562f0]">${refuelAmount}</span>
-             <span className="text-[10px] text-blue-400 font-bold uppercase">USDC</span>
-           </div>
-         </div>
+         <div className="mt-8"></div>
+         {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && <p className="px-4 text-[12px] font-semibold text-slate-400 mb-3 whitespace-nowrap">Configuration</p>}
+         <NavItem icon={Hexagon} label="Brand Contracts" isActive={activeTab === 'Alliances'} onClick={() => handleTabChange('Alliances')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+         <NavItem icon={MonitorSmartphone} label="Staff Terminals" isActive={activeTab === 'Staff'} onClick={() => handleTabChange('Staff')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+         <NavItem icon={Settings} label="Store Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isDesktopSidebarCollapsed && window.innerWidth >= 1024} />
+       </nav>
 
-
-         <div className="flex items-center gap-4 px-1">
-           <button onClick={() => setRefuelAmount(Math.max(1, refuelAmount-1))} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all"><Minus size={20}/></button>
-           <input type="range" min="1" max="100" step="1" value={refuelAmount} onChange={e=>setRefuelAmount(Number(e.target.value))} className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" />
-           <button onClick={() => setRefuelAmount(refuelAmount+1)} className="w-12 h-12 rounded-[1rem] border-2 border-slate-100 flex items-center justify-center text-slate-400 hover:bg-slate-50 active:scale-95 transition-all"><Plus size={20}/></button>
-         </div>
-
-
-         <div className="bg-[#f8f9fc] p-5 rounded-[1.5rem] space-y-3">
-           <div className="flex justify-between text-[13px] font-bold">
-             <span className="text-slate-400">Fuel Yield (1:100)</span>
-             <span className="text-slate-800">+{refuelAmount * 100} B-Units</span>
-           </div>
-           <div className="flex justify-between text-[13px] font-bold">
-             <span className="text-slate-400 tracking-tight">Refuel Fee (Shadow Gas)</span>
-             <span className="text-red-400">-{REFUEL_GAS_COST} B-Units</span>
-           </div>
-           <div className="border-t border-slate-200 pt-3 flex justify-between items-center mt-1">
-             <span className="text-[14px] font-black text-slate-800">Net Deposit</span>
-             <span className="text-[22px] font-black text-orange-500 leading-none">+{refuelAmount * 100 - REFUEL_GAS_COST} <span className="text-[10px] font-bold opacity-60">B-Units</span></span>
-           </div>
-         </div>
-
-
+       <div className="p-4 sm:p-6 mb-4 sm:mb-0">
          <button
-           onClick={handleRefuel}
-           disabled={isRefueling}
-           className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+           onClick={() => setCurrentView('login')}
+           className={`w-full flex items-center ${(isDesktopSidebarCollapsed && window.innerWidth >= 1024) ? 'justify-center px-0' : 'justify-center gap-2 px-4'} py-3.5 rounded-[16px] text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors font-semibold text-[15px]`}
          >
-           {isRefueling ? <RefreshCw size={20} className="animate-spin" /> : <><Fuel size={18} fill="currentColor" /> Refuel Now</>}
+           <LogOut size={20} className="shrink-0" />
+           {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && <span className="whitespace-nowrap">Lock Wallet</span>}
          </button>
        </div>
+     </aside>
 
-
-       <div className="space-y-4">
-         <div className="flex justify-between items-center px-2">
-           <h3 className="text-[13px] font-black text-slate-800 tracking-widest uppercase">B-Units LEDGER</h3>
-           <button
-             onClick={() => setShowFilters(!showFilters)}
-             className={`text-[11px] font-bold flex items-center gap-1 px-2.5 py-1 rounded-full transition-colors ${showFilters ? 'bg-orange-500 text-white' : 'text-orange-500 bg-orange-50 hover:bg-orange-100'}`}
+     <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out">
+       <header className="h-16 sm:h-20 bg-white/70 backdrop-blur-2xl border-b border-slate-200/50 flex items-center justify-between px-4 sm:px-8 lg:px-10 sticky top-0 z-10 shrink-0">
+         <div className="flex items-center gap-3 sm:gap-4">
+           <button 
+             className="lg:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+             onClick={() => setIsMobileMenuOpen(true)}
            >
-             <Filter size={12} /> Filter
+             <Menu size={24} />
            </button>
+           <div className="flex items-center gap-2">
+             <div className="hidden sm:flex w-8 h-8 rounded-full bg-[#1562f0]/10 text-[#1562f0] items-center justify-center border border-[#1562f0]/20">
+               <Store size={14} />
+             </div>
+             <select
+               value={activeBranch}
+               onChange={(e) => setActiveBranch(e.target.value)}
+               className="bg-transparent text-xl sm:text-[22px] font-semibold text-slate-900 tracking-tight focus:outline-none cursor-pointer appearance-none pr-6 truncate max-w-[200px] sm:max-w-xs"
+               style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%230f172a'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right center', backgroundRepeat: 'no-repeat', backgroundSize: '1.2em 1.2em' }}
+             >
+               {FRANCHISE_BRANCHES.map(b => (
+                 <option key={b} value={b}>{b}</option>
+               ))}
+             </select>
+           </div>
          </div>
+         <div className="flex items-center gap-4 sm:gap-6">
+           <div className="hidden lg:flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
+             <RefreshCcw size={12} className="text-[#1562f0] animate-[spin_4s_linear_infinite]" />
+             <span className="text-[11px] font-bold text-slate-500 tracking-wider">ORACLE: 1 CAD ≈ {ORACLE_CAD_USDC.toFixed(2)} USDC</span>
+           </div>
+           
+           <div className="hidden sm:flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-slate-200/60 rounded-xl px-2 py-1.5 shadow-sm">
+             <CalendarDays size={14} className="text-slate-400 ml-1" />
+             <select
+               value={timeFilter}
+               onChange={(e) => setTimeFilter(e.target.value)}
+               className="bg-transparent text-[14px] font-medium text-slate-700 focus:outline-none cursor-pointer appearance-none pl-1 pr-6"
+               style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em 1em' }}
+             >
+               <option value="Today">Today, {dateString}</option>
+               <option value="This Week">This Week</option>
+               <option value="This Month">This Month</option>
+               <option value="This Quarter">This Quarter</option>
+               <option value="This Year">This Year</option>
+             </select>
+           </div>
+           
+           <div className="hidden sm:block h-5 w-[1px] bg-slate-200"></div>
+           
+           <button 
+             onClick={() => setIsPosOpen(true)}
+             disabled={!isAaUnlocked}
+             className={`hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-[14px] font-bold shadow-sm transition-all ${isAaUnlocked ? 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_4px_12px_rgba(21,98,240,0.2)]' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+           >
+             <Calculator size={16} /> POS Terminal
+           </button>
 
+           <div className="w-9 h-9 sm:w-10 sm:h-10 bg-[#1562f0]/10 rounded-full flex items-center justify-center border border-[#1562f0]/20 cursor-pointer hover:bg-[#1562f0]/20 transition-colors">
+              <span className="text-[13px] sm:text-[14px] font-semibold text-[#1562f0]">Me</span>
+           </div>
+         </div>
+       </header>
 
-         {showFilters && (
-           <div className="flex gap-2 px-2 overflow-x-auto hide-scrollbar animate-in slide-in-from-top-2 fade-in duration-200 pb-1">
-             {['all', 'fee', 'gas', 'refuel', 'reward'].map(f => (
-               <button
-                 key={f}
-                 onClick={() => setLedgerFilter(f)}
-                 className={`px-3 py-1.5 rounded-full text-[11px] font-bold capitalize whitespace-nowrap transition-colors ${ledgerFilter === f ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-               >
-                 {f === 'all' ? 'All' :
-                  f === 'fee' ? 'Service Fees' :
-                  f === 'gas' ? 'Network Gas' :
-                  f === 'refuel' ? 'Refuels' : 'Rewards'}
-               </button>
-             ))}
+       <div className="flex-1 overflow-y-auto p-4 sm:p-8 lg:p-10 pb-24 sm:pb-10 scrollbar-hide">
+         
+         {/* --- 1. OVERVIEW TAB --- */}
+         {activeTab === 'Overview' && (
+           <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+             
+             {!isAaUnlocked && (
+               <div className="bg-[#1562f0] rounded-[24px] p-6 sm:p-8 text-white shadow-lg shadow-[#1562f0]/20 relative overflow-hidden">
+                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                 <div className="relative z-10 max-w-2xl">
+                   <h3 className="text-[22px] font-bold mb-2">Welcome to Beamio Web3 POS!</h3>
+                   <p className="text-[15px] text-white/80 leading-relaxed mb-6">Your EOA Vault is ready. You can currently send/receive direct USDC payments. <strong>Your Smart Terminal (AA) is locked.</strong> To unlock zero-gas routing, VIP memberships, and voucher economies, you must activate your account with a Fuel Pack.</p>
+                   <div className="flex gap-3">
+                     <button 
+                      onClick={() => { setActiveTab('Market'); setSelectedProduct('starter'); }}
+                      className="bg-white text-[#1562f0] px-6 py-3 rounded-[14px] font-semibold text-[14px] hover:bg-slate-50 transition-colors shadow-sm flex items-center gap-2"
+                     >
+                       <Zap size={16} /> Buy B-Units to Activate
+                     </button>
+                   </div>
+                 </div>
+               </div>
+             )}
+
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+               <div className="bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-shadow xl:col-span-1">
+                 <div>
+                   <div className="flex justify-between items-start mb-4">
+                     <div className="w-12 h-12 bg-slate-50 rounded-[16px] flex items-center justify-center border border-slate-100/50">
+                        <TrendingUp size={24} className="text-slate-700" />
+                     </div>
+                     <span className="bg-[#1562f0]/10 text-[#1562f0] px-3 py-1.5 rounded-full text-[12px] font-semibold">{timeFilter}</span>
+                   </div>
+                   <p className="text-[14px] font-medium text-slate-500 mb-1">Net Sales Revenue (CAD Base)</p>
+                   <p className="text-4xl sm:text-[40px] font-light text-slate-900 tracking-tight leading-none">${totalSalesCAD.toFixed(2)}</p>
+                   
+                   {totalDiscountsCAD > 0 && (
+                     <div className="mt-3 flex items-center gap-1.5">
+                       <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100/50 px-2 py-1 rounded-md shadow-sm">
+                         Auto-Discounts Applied: ${totalDiscountsCAD.toFixed(2)}
+                       </span>
+                     </div>
+                   )}
+                 </div>
+                 
+                 <div className="flex flex-nowrap gap-3 mt-8 pt-6 border-t border-slate-100/80 overflow-x-auto scrollbar-hide pb-1">
+                    <div className="bg-blue-50/50 px-4 py-3 rounded-[16px] shrink-0 w-[140px]">
+                       <span className="text-[11px] text-[#1562f0] font-medium block mb-1 flex items-center gap-1.5"><Coins size={12}/> USDC Payments</span>
+                       <span className="text-[15px] font-semibold text-[#1562f0]">${usdcCollectedFromSales.toFixed(2)}</span>
+                       <span className="text-[10px] text-[#1562f0]/60 font-medium block mt-0.5">≈ ${salesCAD_viaUSDC.toFixed(2)} CAD</span>
+                    </div>
+                    {joinedAlliances.map(aId => {
+                      const alliance = alliancesDb[aId];
+                      const scaledSales = alliance.sales * flowMultiplier;
+                      return (
+                        <div key={aId} className={`${alliance.themeLightBg} px-4 py-3 rounded-[16px] shrink-0 w-[140px]`}>
+                           <span className={`text-[11px] ${alliance.themeText} font-medium block mb-1 flex items-center gap-1.5`}><Ticket size={12}/> {alliance.baseToken}</span>
+                           <span className="text-[15px] font-semibold text-slate-800">${scaledSales.toFixed(2)}</span>
+                           <span className={`text-[10px] ${alliance.themeText} opacity-60 font-medium block mt-0.5`}>≈ ${scaledSales.toFixed(2)} CAD</span>
+                        </div>
+                      )
+                    })}
+                 </div>
+               </div>
+
+               <div className="bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-shadow xl:col-span-1">
+                 <div>
+                   <div className="flex justify-between items-start mb-4">
+                     <div className="w-12 h-12 bg-rose-50 rounded-[16px] flex items-center justify-center border border-rose-100/50">
+                        <Heart size={24} className="text-rose-500 fill-rose-100" />
+                     </div>
+                   </div>
+                   <p className="text-[14px] font-medium text-slate-500 mb-1">Tips Collected (CAD Base)</p>
+                   <p className="text-4xl sm:text-[40px] font-light text-slate-900 tracking-tight leading-none">${totalTipsCAD.toFixed(2)}</p>
+                 </div>
+                 
+                 <div className="flex flex-nowrap gap-3 mt-8 pt-6 border-t border-slate-100/80 overflow-x-auto scrollbar-hide pb-1">
+                    <div className="bg-blue-50/50 px-4 py-3 rounded-[16px] shrink-0 w-[140px]">
+                       <span className="text-[11px] text-[#1562f0] font-medium block mb-1 flex items-center gap-1.5"><Coins size={12}/> USDC Payments</span>
+                       <span className="text-[15px] font-semibold text-[#1562f0]">${usdcCollectedFromTips.toFixed(2)}</span>
+                       <span className="text-[10px] text-[#1562f0]/60 font-medium block mt-0.5">≈ ${tipsCAD_viaUSDC.toFixed(2)} CAD</span>
+                    </div>
+                    {joinedAlliances.map(aId => {
+                      const alliance = alliancesDb[aId];
+                      const scaledTips = alliance.tips * flowMultiplier;
+                      return (
+                        <div key={`tip-${aId}`} className={`${alliance.themeLightBg} px-4 py-3 rounded-[16px] shrink-0 w-[140px]`}>
+                           <span className={`text-[11px] ${alliance.themeText} font-medium block mb-1 flex items-center gap-1.5`}><Ticket size={12}/> {alliance.baseToken}</span>
+                           <span className="text-[15px] font-semibold text-slate-800">${scaledTips.toFixed(2)}</span>
+                           <span className={`text-[10px] ${alliance.themeText} opacity-60 font-medium block mt-0.5`}>≈ ${scaledTips.toFixed(2)} CAD</span>
+                        </div>
+                      )
+                    })}
+                 </div>
+               </div>
+
+               <div className="bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-shadow xl:col-span-1">
+                 <div>
+                   <div className="flex justify-between items-start mb-4">
+                     <div className="w-12 h-12 bg-emerald-50 rounded-[16px] flex items-center justify-center border border-emerald-100/50">
+                        <ArrowUpFromLine size={24} className="text-emerald-500" />
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-2 mb-1">
+                     <p className="text-[14px] font-medium text-slate-500">In-Store Top-Ups</p>
+                   </div>
+                   <p className="text-4xl sm:text-[40px] font-light text-slate-900 tracking-tight leading-none">${totalTopUpsCAD.toFixed(2)}</p>
+                 </div>
+                 
+                 <div className="mt-8 pt-6 border-t border-slate-100/80 flex flex-col gap-2 max-h-[85px] overflow-y-auto scrollbar-hide pr-2">
+                    {joinedAlliances.filter(aId => alliancesDb[aId].canTopUp).length === 0 ? (
+                      <p className="text-[12px] text-slate-400 font-medium">No active issuing networks.</p>
+                    ) : (
+                      joinedAlliances.filter(aId => alliancesDb[aId].canTopUp).map(aId => {
+                        const alliance = alliancesDb[aId];
+                        const scaledTopUps = alliance.topUps * flowMultiplier;
+                        return (
+                          <div key={`topup-${aId}`} className={`px-4 py-2.5 rounded-[12px] border flex justify-between items-center shrink-0 bg-slate-50/80 border-slate-100/50 transition-colors`}>
+                            <div className="flex flex-col">
+                              <span className="text-[12px] text-slate-500 font-medium">Issued {alliance.baseToken}</span>
+                            </div>
+                            <span className={`text-[14px] font-semibold text-slate-800`}>
+                              ${scaledTopUps.toFixed(2)}
+                            </span>
+                          </div>
+                        )
+                      })
+                    )}
+                 </div>
+               </div>
+
+               <div className="bg-[#111113] rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 shadow-[0_16px_40px_rgba(0,0,0,0.15)] border border-orange-500/10 flex flex-col justify-between relative overflow-hidden group xl:col-span-1">
+                 <div className="absolute top-0 right-0 w-48 h-48 bg-orange-500/10 rounded-full blur-[60px] -mr-10 -mt-10 pointer-events-none group-hover:bg-orange-500/20 transition-colors duration-700"></div>
+                 
+                 <div className="relative z-10">
+                   <div className="flex justify-between items-start mb-4">
+                     <div className="w-12 h-12 bg-orange-500/10 rounded-[16px] flex items-center justify-center border border-orange-500/20">
+                        <Fuel size={24} className="text-orange-500" />
+                     </div>
+                     <div className="flex items-center gap-1.5 bg-orange-500/10 px-2.5 py-1 rounded-full border border-orange-500/20">
+                       <div className={`w-1.5 h-1.5 rounded-full ${isAaUnlocked ? 'bg-orange-500 animate-pulse' : 'bg-slate-500'}`}></div>
+                       <span className={`text-[11px] font-bold ${isAaUnlocked ? 'text-orange-500' : 'text-slate-500'} tracking-wider uppercase`}>{isAaUnlocked ? 'Active' : 'Locked'}</span>
+                     </div>
+                   </div>
+                   <p className="text-[14px] font-medium text-slate-400 mb-1">Protocol Fuel Reserve</p>
+                   <div className="flex items-baseline gap-1.5">
+                     <p className="text-4xl sm:text-[40px] font-mono font-semibold text-white tracking-tight leading-none">{aaBUnits.toLocaleString()}</p>
+                   </div>
+                 </div>
+
+                 <div className="relative z-10 mt-8 pt-6 border-t border-white/10">
+                    <div className="flex items-center justify-between mb-3">
+                       <span className="text-[12px] font-medium text-slate-500">Total Consumption</span>
+                       <span className="text-[13px] font-bold text-orange-400">{isAaUnlocked ? `-${(420 * flowMultiplier) + bUnitsSpent} Units` : '0 Units'}</span>
+                    </div>
+                    <button 
+                      onClick={() => { setActiveTab('Market'); setSelectedProduct(isAaUnlocked ? 'custom_fuel' : 'starter'); }}
+                      className="w-full bg-white/5 hover:bg-orange-500 hover:text-white hover:border-orange-500 text-orange-500 border border-orange-500/30 py-2.5 rounded-[12px] text-[13px] font-semibold transition-all flex items-center justify-center gap-2"
+                    >
+                      Top Up Fuel
+                    </button>
+                 </div>
+               </div>
+             </div>
+
+             {/* SETTLEMENT & CUSTODY ROW */}
+             {isAaUnlocked && (
+               <div className="pt-2 border-t border-slate-200/60 mt-8">
+                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
+                   <div className="bg-white rounded-[32px] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between">
+                     <div>
+                       <div className="flex justify-between items-center mb-6">
+                          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center border border-blue-100/50">
+                            <Coins size={24} className="text-[#1562f0]" />
+                          </div>
+                          <span className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide">Self-Custody</span>
+                       </div>
+                       <p className="text-[13px] font-medium text-slate-500 mb-1">Direct Crypto Revenue</p>
+                       <div className="flex items-baseline gap-2 mb-4">
+                         <p className="text-4xl sm:text-[44px] font-semibold text-slate-900 tracking-tight">${aaUsdcBalance.toFixed(2)}</p>
+                         <span className="text-[14px] font-bold text-slate-400">USDC</span>
+                       </div>
+                       <p className="text-[13px] font-medium text-slate-500 leading-relaxed mb-8 max-w-sm">
+                         Direct payments routed to your AA wallet. Ecosystem networks do not settle this balance.
+                       </p>
+                     </div>
+                     <button className="w-full bg-white border-2 border-slate-100 text-slate-700 py-3.5 rounded-[16px] font-bold text-[14px] hover:bg-slate-50 hover:border-slate-200 transition-colors flex items-center justify-center gap-2">
+                       Off-ramp via Coinbase <ExternalLink size={16} />
+                     </button>
+                   </div>
+
+                   {joinedAlliances.map(aId => renderSettlementCard(aId))}
+                 </div>
+               </div>
+             )}
+
            </div>
          )}
 
+         {/* --- 2. TRANSACTIONS TAB --- */}
+         {activeTab === 'Transactions' && (() => {
+            const filteredTransactions = transactions.filter(tx => {
+               if (!isAaUnlocked && tx.wallet === 'AA') return false; 
+               if (tx.requiredAlliance && !joinedAlliances.includes(tx.requiredAlliance)) return false;
+               if (activeLedger !== 'All' && tx.wallet !== activeLedger) return false;
 
-         <div className="bg-white rounded-[2rem] overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-50">
-           {filteredLedger.length === 0 ? (
-               <div className="p-8 text-center flex flex-col items-center justify-center animate-in fade-in duration-300">
-                   <Filter size={24} className="text-slate-200 mb-2" />
-                   <p className="text-slate-400 text-[13px] font-medium">No records found</p>
-               </div>
-           ) : (
-               <div className="divide-y divide-slate-50">
-                 {filteredLedger.slice(0, visibleLogs).map((log) => (
-                   <div
-                     key={log.id}
-                     onClick={() => setSelectedLog(log)}
-                     className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group animate-in fade-in duration-300"
-                   >
-                     <div className="flex items-center gap-4">
-                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${
-                           log.type === 'fee' || log.type === 'gas' ? 'bg-slate-100 text-slate-600' : 'bg-orange-50 text-orange-500'
-                       }`}>
-                         {log.type === 'refuel' || log.type === 'reward' ? <Plus size={18} strokeWidth={3} /> : <Fuel size={16} fill="currentColor" />}
-                       </div>
-                       <div>
-                         <p className="text-[14px] font-black text-slate-800 leading-tight">{log.title}</p>
-                         <p className="text-[11px] font-medium text-slate-400 mt-0.5">{log.subtitle}</p>
-                       </div>
+               const matchSearch = tx.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                   tx.hash.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                   (tx.beamioTag && tx.beamioTag.toLowerCase().includes(searchTerm.toLowerCase()));
+               const matchType = filterType === 'All' || tx.type === filterType;
+               const matchTerminal = filterTerminal === 'All' || tx.terminal === filterTerminal;
+               return matchSearch && matchType && matchTerminal;
+            });
+
+            const summaryTxCount = filteredTransactions.length * flowMultiplier;
+            const summaryTotalCAD = filteredTransactions.reduce((sum, tx) => sum + calculateTxNetValueCAD(tx), 0) * flowMultiplier;
+            const summaryTotalUSDC = filteredTransactions.reduce((sum, tx) => sum + (tx.usdcAmount || 0), 0) * flowMultiplier;
+            const summaryTotalVouchers = filteredTransactions.reduce((sum, tx) => sum + (tx.uteaAmount || 0) + (tx.ccsaAmount ?? 0), 0) * flowMultiplier;
+
+            return (
+           <div className="max-w-[1400px] mx-auto space-y-4 sm:space-y-6 animate-in fade-in duration-300">
+              
+              <div className="flex bg-white/60 backdrop-blur-xl p-1.5 rounded-[20px] w-max mb-2 sm:mb-4 border border-slate-200/50 shadow-sm">
+                <button 
+                  onClick={() => setActiveLedger('All')} 
+                  className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${activeLedger === 'All' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  All Ledgers
+                </button>
+                <button 
+                  onClick={() => setActiveLedger('AA')} 
+                  className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all flex items-center gap-1.5 ${activeLedger === 'AA' ? 'bg-white text-[#1562f0] shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}
+                  disabled={!isAaUnlocked}
+                >
+                  <Zap size={16} className={!isAaUnlocked ? "opacity-50" : ""} /> 
+                  Smart Terminal (AA)
+                  {!isAaUnlocked && <Lock size={12} className="ml-1 opacity-50" />}
+                </button>
+                <button 
+                  onClick={() => setActiveLedger('EOA')} 
+                  className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all flex items-center gap-1.5 ${activeLedger === 'EOA' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <Shield size={16} className={activeLedger === 'EOA' ? "text-emerald-500" : ""} /> The Vault (EOA)
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+                <div className="relative w-full sm:w-auto">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <input 
+                    type="text" 
+                    placeholder="Search receipt, hash..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-12 pr-4 py-3.5 sm:py-3 bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-[20px] sm:rounded-2xl w-full sm:w-80 text-[15px] font-medium focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 focus:border-[#1562f0] transition-all shadow-sm" 
+                  />
+                </div>
+                
+                <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
+                  <select 
+                    value={filterTerminal}
+                    onChange={(e) => setFilterTerminal(e.target.value)}
+                    className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 cursor-pointer appearance-none shrink-0"
+                  >
+                    <option value="All">All Terminals</option>
+                    {terminals.map(t => (
+                      <option key={t.tag} value={t.tag}>{t.name} ({t.tag})</option>
+                    ))}
+                    <option value="The Vault">The Vault (EOA)</option>
+                  </select>
+
+                  <select 
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 cursor-pointer appearance-none shrink-0"
+                  >
+                    <option value="All">All Actions</option>
+                    <option value="Charge">Charge</option>
+                    <option value="In-Store Top-Up">Top-Up</option>
+                    <option value="P2P Send">P2P Send</option>
+                    <option value="Fiat Withdrawal">Settlements</option>
+                    <option value="Smart Charge">Smart Charge</option>
+                  </select>
+
+                  <button className="flex items-center justify-center gap-2 bg-white/80 backdrop-blur-xl border border-slate-200/80 px-5 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm shrink-0">
+                    <Filter size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white/60 backdrop-blur-xl border border-slate-200/50 rounded-[20px] p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                 <div>
+                   <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                      <Activity size={14} className="text-[#1562f0]" />
+                      {filterTerminal === 'All' ? `Network Summary (${timeFilter})` : `${filterTerminal} Summary (${timeFilter})`}
+                   </h3>
+                   <div className="flex items-baseline gap-2">
+                      <span className="text-2xl sm:text-[28px] font-light text-slate-900 tracking-tight">${summaryTotalCAD.toFixed(2)}</span>
+                      <span className="text-[14px] font-medium text-slate-500">CAD Vol.</span>
+                   </div>
+                 </div>
+                 <div className="flex flex-wrap gap-2 sm:gap-4 w-full sm:w-auto">
+                    <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
+                       <span className="text-[11px] text-slate-400 font-semibold mb-0.5">Transactions</span>
+                       <span className="text-[15px] font-bold text-slate-800">{summaryTxCount}</span>
+                    </div>
+                    <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
+                       <span className="text-[11px] text-[#1562f0] font-semibold mb-0.5 flex items-center gap-1"><Coins size={10}/> USDC</span>
+                       <span className="text-[15px] font-bold text-slate-800">{summaryTotalUSDC.toFixed(2)}</span>
+                    </div>
+                    <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
+                       <span className="text-[11px] text-emerald-500 font-semibold mb-0.5 flex items-center gap-1"><Ticket size={10}/> Vouchers</span>
+                       <span className="text-[15px] font-bold text-slate-800">{summaryTotalVouchers.toFixed(2)}</span>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+                <div className="overflow-x-auto scrollbar-hide">
+                  <table className="w-full min-w-[1000px]">
+                     <thead className="bg-slate-50/50 text-left border-b border-slate-100/80">
+                       <tr>
+                         <th className="px-8 py-5 text-[13px] font-medium text-slate-500">Recent Transaction</th>
+                         <th className="px-6 py-5 text-[13px] font-medium text-slate-500">Customer & Source</th>
+                         <th className="px-6 py-5 text-[13px] font-medium text-slate-500">Payment Routing</th>
+                         <th className="px-6 py-5 text-[13px] font-medium text-slate-500">Network & Fuel</th>
+                         <th className="px-8 py-5 text-[13px] font-medium text-slate-500 text-right">Net Value (CAD Base)</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100/80">
+                        {filteredTransactions.length === 0 ? (
+                           <tr>
+                             <td colSpan={5} className="px-8 py-16 text-center text-slate-500">
+                               <Search size={32} className="mx-auto mb-3 text-slate-300" />
+                               <p className="text-[15px] font-medium">No transactions found for the current filters.</p>
+                             </td>
+                           </tr>
+                        ) : (
+                          filteredTransactions.map((tx, idx) => {
+                            const txTotalCAD = calculateTxNetValueCAD(tx); 
+                            return (
+                            <tr key={tx.id || idx} className="hover:bg-slate-50/50 transition-colors group">
+                               <td className="px-8 py-5 align-middle">
+                                 <div className="flex items-center gap-4">
+                                   <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
+                                     tx.type.includes('Top-Up') ? 'bg-emerald-50 border-emerald-100/50 text-emerald-600' : 
+                                     tx.wallet === 'EOA' ? 'bg-blue-50 border-blue-100 text-[#1562f0]' :
+                                     'bg-slate-50 border-slate-200/50 text-slate-600'
+                                   }`}>
+                                     {tx.type === 'P2P Send' ? <Send size={18}/> : 
+                                      tx.type.includes('Withdrawal') || tx.type.includes('Settlement') || tx.type.includes('Remittance') ? <Landmark size={18}/> : 
+                                      tx.type.includes('Top-Up') ? <ArrowUpFromLine size={18}/> : 
+                                      <ArrowDownToLine size={18}/>}
+                                   </div>
+                                   <div>
+                                      <div className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.type}</div>
+                                      <div className="text-[13px] text-slate-500 font-medium mt-0.5 whitespace-nowrap">
+                                        {tx.id} • {tx.time}
+                                      </div>
+                                   </div>
+                                 </div>
+                               </td>
+
+                               <td className="px-6 py-5 align-middle">
+                                 <div className="flex flex-col gap-1.5">
+                                   {tx.wallet === 'EOA' && !tx.type.includes('Settlement') && !tx.type.includes('Remittance') ? (
+                                      <>
+                                        <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.beamioTag}</span>
+                                        <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
+                                          <Shield size={14} className="text-[#1562f0]" />
+                                          <span>The Vault • On-Chain</span>
+                                        </div>
+                                      </>
+                                   ) : tx.type.includes('Settlement') || tx.type.includes('Remittance') ? (
+                                      <>
+                                        <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.beamioTag}</span>
+                                        <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
+                                          <Building2 size={14} className={tx.type.includes('Fiat') ? "text-amber-500" : "text-emerald-500"} />
+                                          <span>{tx.type.includes('Fiat') ? 'Off-Chain Wire' : 'Base L2 Clearing'}</span>
+                                        </div>
+                                      </>
+                                   ) : (
+                                      <>
+                                        <div className="flex items-center gap-2">
+                                          {tx.beamioTag ? (
+                                            <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.beamioTag}</span>
+                                          ) : (
+                                            <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
+                                          )}
+                                          
+                                          {tx.tier && tx.tier !== 'Standard' && (
+                                            <span className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm border ${
+                                              tx.tier === 'Black VIP' ? 'bg-slate-900 text-yellow-400 border-slate-800' :
+                                              tx.tier === 'Green Card' ? 'bg-emerald-50 text-emerald-600 border-emerald-200/50' :
+                                              'bg-purple-50 text-purple-600 border-purple-200/50'
+                                            } whitespace-nowrap`}>
+                                              {tx.tier === 'Black VIP' ? <Crown size={10}/> : tx.tier === 'Green Card' ? <ShieldCheck size={10}/> : <Award size={10}/>}
+                                              {tx.tier}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
+                                          {tx.source === 'APP' ? <Smartphone size={14} className="text-[#1562f0]" /> : 
+                                           tx.source === 'AA' || tx.source === 'POS' ? <Cpu size={14} className="text-emerald-500" /> : <Nfc size={14} className="text-slate-400" />}
+                                          <span>{tx.source === 'APP' ? 'App' : tx.source === 'AA' || tx.source === 'POS' ? 'Smart Contract' : 'NFC'} • {tx.terminal}</span>
+                                        </div>
+                                      </>
+                                   )}
+                                 </div>
+                               </td>
+
+                               <td className="px-6 py-5 align-middle">
+                                 <div className="flex flex-col gap-1.5">
+                                   {tx.usdcAmount > 0 && !tx.type.includes('Settlement') && !tx.type.includes('Remittance') && (
+                                     <div className="flex flex-col">
+                                       <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+                                         <Coins size={15} className="text-[#1562f0]" /> {tx.usdcAmount.toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+                                       </div>
+                                       <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${(tx.usdcAmount / ORACLE_CAD_USDC).toFixed(2)} CAD</span>
+                                     </div>
+                                   )}
+                                   {tx.uteaAmount > 0 && (
+                                     <div className="flex flex-col">
+                                       <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+                                         <Ticket size={15} className="text-emerald-500" /> {tx.uteaAmount.toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">{alliancesDb['BrandContract'].baseToken}</span>
+                                       </div>
+                                       <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.uteaAmount.toFixed(2)} CAD</span>
+                                     </div>
+                                   )}
+                                   {(tx.ccsaAmount ?? 0) > 0 && (
+                                     <div className="flex flex-col">
+                                       <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+                                         <Ticket size={15} className="text-purple-500" /> {(tx.ccsaAmount ?? 0).toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">$CCSA</span>
+                                       </div>
+                                       <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${(tx.ccsaAmount ?? 0).toFixed(2)} CAD</span>
+                                     </div>
+                                   )}
+                                   {tx.discount && (
+                                     <div className="flex items-center gap-1.5 mt-1">
+                                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded shadow-sm">
+                                         Auto-Routing: {tx.discount.percent}% Off
+                                       </span>
+                                     </div>
+                                   )}
+                                   {(tx.type.includes('Settlement') || tx.type.includes('Remittance')) && (
+                                     <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+                                       <Landmark size={15} className={tx.status === 'Pending' ? 'text-amber-500' : 'text-emerald-500'} /> 
+                                       {tx.method}
+                                     </div>
+                                   )}
+                                 </div>
+                               </td>
+
+                               <td className="px-6 py-5 align-middle">
+                                 <div className="flex flex-col items-start gap-2">
+                                   <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                                     {tx.status === 'Pending' ? (
+                                        <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
+                                     ) : (
+                                        <CheckCircle2 size={12} className={tx.wallet === 'EOA' ? "text-blue-500" : "text-emerald-500"} />
+                                     )}
+                                     <span className="text-[12px] font-mono text-slate-500">{tx.hash}</span>
+                                   </div>
+                                   {tx.type.includes('Top-Up') ? (
+                                     <div className="flex items-center gap-1.5 bg-blue-50 px-2 py-1 rounded-md border border-blue-100/50 cursor-help" title="Gas fees sponsored by Alliance">
+                                       <Sparkles size={12} className="text-[#1562f0]" />
+                                       <span className="text-[11px] font-bold text-[#1562f0]">Sponsored</span>
+                                     </div>
+                                   ) : tx.bUnits > 0 ? (
+                                     <div className="flex items-center gap-1.5 bg-orange-50 px-2 py-1 rounded-md border border-orange-500/10 cursor-help" title={`Protocol Fee: ${(tx.bUnits * 0.01).toFixed(2)} USDC`}>
+                                       <Fuel size={12} className="text-orange-500" />
+                                       <span className="text-[11px] font-bold text-orange-500">{tx.bUnits} B-Units</span>
+                                     </div>
+                                   ) : (
+                                     <div className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-md border border-slate-200/50">
+                                       <span className="text-[11px] font-bold text-slate-400">0 B-Units (Base Gas)</span>
+                                     </div>
+                                   )}
+                                 </div>
+                               </td>
+
+                               <td className="px-8 py-5 align-middle text-right">
+                                 <div className={`font-semibold text-[18px] tracking-tight whitespace-nowrap ${
+                                    tx.type.includes('Top-Up') || tx.type === 'Receive' || tx.type === 'Fiat Settlement' || tx.type === 'L2 Settlement'
+                                      ? 'text-emerald-600' 
+                                      : tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
+                                 }`}>
+                                   {tx.discount && (
+                                     <span className="text-[14px] text-slate-400 line-through mr-2 font-medium opacity-60">
+                                       ${(txTotalCAD + tx.discount.amount).toFixed(2)}
+                                     </span>
+                                   )}
+                                   {tx.type.includes('Top-Up') || tx.type.includes('Settlement') || tx.type === 'Receive' ? '+' : ''}${txTotalCAD.toFixed(2)}
+                                 </div>
+                                 <div className={`text-[12px] font-medium mt-1 whitespace-nowrap ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
+                                   {tx.status === 'Pending' ? 'Pending Settlement' : tx.tip > 0 ? `Incl. $${(tx.tip / ORACLE_CAD_USDC).toFixed(2)} Tip` : tx.wallet === 'EOA' ? 'Treasury TX' : 'No Tip'}
+                                 </div>
+                               </td>
+
+                            </tr>
+                          );})
+                        )}
+                     </tbody>
+                  </table>
+                </div>
+              </div>
+           </div>
+            );
+         })()}
+
+         {/* --- 3. STORE WALLETS TAB --- */}
+         {activeTab === 'Wallets' && (
+           <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+             <div className="mb-6">
+               <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Store Wallets</h3>
+               <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your Tethered Hybrid Architecture: The Vault (EOA) & Smart Terminal (AA).</p>
+             </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
+                <div className="bg-slate-900 rounded-[32px] p-6 sm:p-8 shadow-2xl text-white relative overflow-hidden flex flex-col justify-between border border-slate-800/50 xl:col-span-1">
+                   <div className="absolute top-0 right-0 w-80 h-80 bg-[#1562f0]/20 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none"></div>
+                   <div className="relative z-10">
+                     <div className="flex justify-between items-start mb-8">
+                        <div className="flex items-center gap-4">
+                           <div className="w-14 h-14 bg-white/5 backdrop-blur-md rounded-[20px] flex items-center justify-center border border-white/10">
+                              <Shield size={28} className="text-[#1562f0]" />
+                           </div>
+                           <div>
+                              <h4 className="text-[20px] font-semibold text-white tracking-tight flex items-center gap-2">The Vault <span className="text-[11px] bg-[#1562f0]/20 text-[#1562f0] px-2 py-0.5 rounded-md border border-[#1562f0]/30 font-bold">EOA</span></h4>
+                              <p className="text-[13px] text-slate-400 font-mono mt-1">0x8B49...A9C3</p>
+                           </div>
+                        </div>
                      </div>
-                     <div className="text-right flex items-center gap-2">
-                       <div>
-                         <p className={`text-[15px] font-black ${log.amount > 0 ? 'text-orange-500' : 'text-slate-900'}`}>
-                           {log.amount > 0 ? '+' : ''}{log.amount}
-                         </p>
-                         <p className="text-[10px] font-bold text-slate-400 tracking-wide">B-Units</p>
-                       </div>
-                       <ChevronRight size={16} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity -mr-1" />
+                     <div className="mb-4">
+                        <p className="text-[13px] font-medium text-slate-400 mb-1">CAD Value (Base L2)</p>
+                        <div className="flex items-baseline gap-2 mb-1">
+                           <p className="text-[48px] sm:text-[56px] font-light tracking-tight leading-none">${eoaBalance_CAD.toFixed(2)}</p>
+                           <span className="text-xl text-slate-500 font-light">CAD</span>
+                        </div>
+                        <span className="text-[12px] font-mono text-[#1562f0] bg-[#1562f0]/10 px-2 py-0.5 rounded inline-block">{eoaBalanceUSDC.toFixed(2)} USDC</span>
                      </div>
                    </div>
-                 ))}
-                
-                 {visibleLogs < filteredLedger.length && (
-                   <button
-                     onClick={() => setVisibleLogs(prev => prev + 5)}
-                     className="w-full py-4 text-[12px] font-bold text-orange-500 hover:bg-orange-50/50 transition-colors flex items-center justify-center gap-2"
-                   >
-                     Load More Records...
+                   <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4">
+                      <button onClick={() => setIsSendModalOpen(true)} className="bg-[#1562f0] text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] flex flex-col items-center justify-center gap-1">
+                         <div className="flex items-center gap-1.5"><Send size={16} /> P2P Send</div>
+                         <span className="text-[10px] bg-blue-900/30 px-1.5 rounded">2 B-Units</span>
+                      </button>
+                      <button onClick={() => setIsReceiveModalOpen(true)} className="bg-white/10 backdrop-blur-md text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-white/20 border border-white/5 active:scale-[0.98] flex flex-col items-center justify-center gap-1">
+                         <div className="flex items-center gap-1.5"><QrCode size={16} /> Receive</div>
+                         <span className="text-[10px] bg-white/10 px-1.5 rounded">0.8% Fee (Min 2)</span>
+                      </button>
+                      <button className="bg-white/10 backdrop-blur-md text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-white/20 border border-white/5 active:scale-[0.98] flex flex-col items-center justify-center gap-1">
+                         <div className="flex items-center gap-1.5"><Landmark size={16} /> Coinbase</div>
+                         <span className="text-[10px] bg-white/10 px-1.5 rounded">On/Off Ramp</span>
+                      </button>
+                   </div>
+                </div>
+
+                <div className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden xl:col-span-2">
+                   {!isAaUnlocked && (
+                     <div className="absolute inset-0 backdrop-blur-xl bg-[#f5f5f7]/80 z-20 flex flex-col items-center justify-center text-center p-8 rounded-[32px]">
+                       <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                         <Lock size={32} className="text-slate-400" />
+                       </div>
+                       <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
+                       <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
+                         Your AA wallet is currently inactive to prevent attacks. Unlock zero-gas ecosystem routing by purchasing a Fuel Pack to activate.
+                       </p>
+                       <div className="flex gap-4">
+                         <button onClick={() => { setActiveTab('Market'); setSelectedProduct('starter'); }} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-95 flex items-center gap-2">
+                           <Zap size={18} /> Buy B-Units to Activate
+                         </button>
+                       </div>
+                     </div>
+                   )}
+
+                   <div className={`relative z-10 ${!isAaUnlocked ? 'opacity-30 blur-sm pointer-events-none select-none' : ''}`}>
+                     <div className="flex justify-between items-start mb-8">
+                        <div className="flex items-center gap-4">
+                           <div className="w-14 h-14 bg-slate-50 rounded-[20px] flex items-center justify-center border border-slate-100/80">
+                              <Zap size={28} className="text-[#1562f0]" />
+                           </div>
+                           <div>
+                              <h4 className="text-[20px] font-semibold text-slate-900 tracking-tight flex items-center gap-2">Smart Terminal <span className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">ERC-4337</span></h4>
+                              <p className="text-[13px] text-slate-400 font-mono mt-1">0x4D2A...11F2</p>
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="flex flex-nowrap gap-4 sm:gap-5 mb-8 overflow-x-auto scrollbar-hide pb-2">
+                        <div className="bg-slate-50/80 rounded-[24px] p-5 sm:p-6 border border-slate-100/50 shrink-0 min-w-[200px] sm:min-w-[240px] w-max">
+                           <p className="text-[13px] font-medium text-slate-500 mb-1">Liquid Reserve</p>
+                           <div className="flex items-baseline gap-1.5 mb-0.5">
+                              <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">${aaUsdcBalance_CAD.toFixed(2)}</p>
+                              <span className="text-[14px] text-slate-500 font-medium">CAD</span>
+                           </div>
+                           <span className="text-[11px] text-[#1562f0] font-medium">{aaUsdcBalance.toFixed(2)} USDC</span>
+                        </div>
+                        {joinedAlliances.map(aId => {
+                          const alliance = alliancesDb[aId];
+                          return (
+                            <div key={aId} className={`${alliance.themeLightBg} rounded-[24px] p-5 sm:p-6 border border-white/50 shrink-0 min-w-[200px] sm:min-w-[240px] w-max`}>
+                               <p className={`text-[13px] font-medium ${alliance.themeText} mb-1 truncate`}>{alliance.id} Vouchers</p>
+                               <div className="flex items-baseline gap-1.5 mb-0.5">
+                                  <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">{alliance.aaBalance.toFixed(2)}</p>
+                                  <span className={`text-[14px] ${alliance.themeText} font-medium`}>{alliance.baseToken}</span>
+                               </div>
+                               <span className={`text-[11px] ${alliance.themeText} opacity-70 font-medium`}>≈ ${alliance.aaBalance.toFixed(2)} CAD</span>
+                            </div>
+                          )
+                        })}
+                     </div>
+
+                     <div className="bg-slate-900 rounded-[24px] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-800 shadow-inner">
+                        <div className="flex items-center gap-4 text-white">
+                           <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                              <Fuel size={20} className="text-orange-500" />
+                           </div>
+                           <div>
+                              <p className="text-[12px] font-medium text-slate-400 mb-0.5">Protocol Fuel</p>
+                              <p className="text-[18px] font-mono font-semibold text-white tracking-tight">{aaBUnits.toLocaleString()} B-Units</p>
+                           </div>
+                        </div>
+                        <button onClick={() => { setActiveTab('Market'); setSelectedProduct(isAaUnlocked ? 'custom_fuel' : 'starter'); }} className="w-full sm:w-auto text-[14px] font-semibold bg-orange-500 text-white px-5 py-2.5 rounded-[12px] hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 active:scale-[0.98]">
+                           Refill
+                        </button>
+                     </div>
+                   </div>
+
+                   <div className={`relative z-10 mt-8 ${!isAaUnlocked ? 'opacity-30 blur-sm pointer-events-none select-none' : ''}`}>
+                     <div className="relative flex items-center py-4">
+                        <div className="flex-grow border-t border-slate-100"></div>
+                        <span className="flex-shrink-0 mx-4 text-slate-300">
+                           <ArrowRightLeft size={18} className="text-slate-300" />
+                        </span>
+                        <div className="flex-grow border-t border-slate-100"></div>
+                     </div>
+                     <button className="w-full bg-slate-50 text-slate-700 py-4 sm:py-5 rounded-[20px] text-[16px] font-semibold transition-all border border-slate-200 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center gap-2 active:scale-[0.98]">
+                        Transfer Funds 
+                     </button>
+                   </div>
+                </div>
+             </div>
+
+             {/* UPGRADED: HIGH-DENSITY TABLE FOR SETTLEMENT POOLS */}
+             {joinedAlliances.length > 0 && (
+               <div className="pt-8 mt-8 border-t border-slate-200/60">
+                 <h4 className="text-[18px] font-semibold text-slate-900 mb-6">Alliance Fiat Settlements</h4>
+                 <div className="bg-white rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+                   <div className="overflow-x-auto scrollbar-hide">
+                     <table className="w-full min-w-[900px]">
+                       <thead className="bg-slate-50/80 border-b border-slate-100/80">
+                         <tr>
+                           <th className="px-8 py-5 text-[12px] font-semibold text-slate-500 text-left">Alliance Network</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-500 text-right">Gross Received</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-500 text-right">Liability & Quota</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-500 text-right">Net Settleable (CAD)</th>
+                           <th className="px-8 py-5 text-[12px] font-semibold text-slate-500 text-center">Action</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100/80">
+                         {joinedAlliances.map(aId => {
+                           const alliance = alliancesDb[aId];
+                           const totalReceived = (alliance.sales + alliance.tips) * flowMultiplier;
+                           const topUps = alliance.topUps * flowMultiplier;
+                           const netBalance = totalReceived - topUps;
+                           const isQuotaExceeded = alliance.mintQuota && topUps >= alliance.mintQuota;
+                           
+                           return (
+                             <tr key={`settle-${aId}`} className="hover:bg-slate-50/50 transition-colors">
+                               <td className="px-8 py-5">
+                                 <div className="flex items-center gap-4">
+                                   <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center ${alliance.themeLightBg} ${alliance.themeText} border border-white/50 shadow-sm`}>
+                                     <Ticket size={20} />
+                                   </div>
+                                   <div>
+                                     <div className="font-semibold text-slate-900 text-[15px]">{alliance.name}</div>
+                                     <div className="text-[13px] text-slate-500 font-medium mt-0.5">{alliance.baseToken}</div>
+                                   </div>
+                                 </div>
+                               </td>
+                               <td className="px-6 py-5 text-right font-medium text-slate-600 text-[15px]">
+                                 +${totalReceived.toFixed(2)}
+                               </td>
+                               <td className="px-6 py-5 text-right font-medium text-[15px]">
+                                 {alliance.canTopUp ? (
+                                   <div className="flex flex-col items-end gap-1.5">
+                                     <span className={`${isQuotaExceeded ? 'text-rose-600' : 'text-slate-800'} font-bold`}>
+                                       -${topUps.toFixed(2)}
+                                     </span>
+                                     {alliance.mintQuota && (
+                                       <div className="w-28 bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+                                          <div 
+                                            className={`h-full rounded-full transition-all duration-500 ${isQuotaExceeded ? 'bg-rose-500' : topUps >= alliance.mintQuota * 0.8 ? 'bg-amber-400' : 'bg-emerald-500'}`} 
+                                            style={{ width: `${Math.min(100, (topUps / alliance.mintQuota) * 100)}%` }}
+                                          ></div>
+                                       </div>
+                                     )}
+                                     {isQuotaExceeded && (
+                                       <span className="flex items-center gap-1 text-[9px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                         <AlertTriangle size={10} /> Quota Exceeded
+                                       </span>
+                                     )}
+                                   </div>
+                                 ) : (
+                                   <span className="inline-block text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md tracking-wide uppercase">Consumption Only</span>
+                                 )}
+                               </td>
+                               <td className="px-6 py-5 text-right">
+                                 <div className={`font-bold text-[18px] leading-none ${netBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                                   {netBalance >= 0 ? `$${netBalance.toFixed(2)}` : `-$${Math.abs(netBalance).toFixed(2)}`}
+                                 </div>
+                                 <div className="text-[11px] text-slate-400 font-medium mt-1">
+                                   {netBalance >= 0 ? 'Due to You' : 'Due to Alliance'}
+                                 </div>
+                               </td>
+                               <td className="px-8 py-5 text-center">
+                                 <button 
+                                   onClick={() => {
+                                     setPayoutAlliance(aId);
+                                     setSettlementNetBalance(Math.abs(netBalance));
+                                     setSettlementType(netBalance >= 0 ? 'PAYOUT' : 'REMIT');
+                                     setSettlementConsumed(totalReceived);
+                                     setPayoutStep(1);
+                                     setIsPayoutModalOpen(true);
+                                   }}
+                                   className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all w-full flex items-center justify-center gap-2 active:scale-[0.98] ${
+                                     netBalance >= 0 
+                                       ? `${alliance.themeLightBg} ${alliance.themeText} hover:brightness-95` 
+                                       : isQuotaExceeded 
+                                         ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-[0_4px_15px_rgba(244,63,94,0.3)]'
+                                         : 'bg-slate-800 text-white hover:bg-slate-700'
+                                   }`}
+                                 >
+                                   {netBalance >= 0 ? <Landmark size={16} /> : isQuotaExceeded ? <Lock size={16} /> : <ArrowRightLeft size={16} />}
+                                   {netBalance >= 0 ? 'Request Payout' : isQuotaExceeded ? 'Remit to Unlock' : 'Remit Fiat'}
+                                 </button>
+                               </td>
+                             </tr>
+                           )
+                         })}
+                       </tbody>
+                     </table>
+                   </div>
+                 </div>
+               </div>
+             )}
+           </div>
+         )}
+
+         {/* --- 4. MARKET TAB --- */}
+         {activeTab === 'Market' && (
+           <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-300">
+             <div className="mb-6">
+               <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Market</h3>
+               <p className="text-[15px] font-medium text-slate-500 mt-1">Acquire physical infrastructure and protocol fuel for your node.</p>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
+                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-emerald-500/10 via-transparent to-transparent pointer-events-none"></div>
+                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
+                    {!isAaUnlocked ? (
+                      <div>
+                        <div className="flex justify-between items-center mb-10">
+                          <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Starter</span>
+                          <span className="text-[13px] font-mono font-medium text-slate-400">Unlimited</span>
+                        </div>
+                        <div className="flex justify-center mb-10 relative">
+                          <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                          <div className="w-28 h-28 bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
+                            <Zap size={36} className="text-emerald-500" strokeWidth={1.5} />
+                            <div className="text-center">
+                              <div className="text-[18px] font-bold text-emerald-500 leading-none">100</div>
+                              <div className="text-[9px] font-bold text-emerald-500/70 tracking-widest uppercase mt-1">B-Units</div>
+                            </div>
+                          </div>
+                        </div>
+                        <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Starter Fuel Pack</h4>
+                        <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">AA Account Activation</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex justify-between items-center mb-6">
+                          <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Custom Refill</span>
+                          <span className="text-[13px] font-mono font-medium text-slate-400">0.01 USDC / Unit</span>
+                        </div>
+                        <div className="flex justify-center mb-10 relative">
+                          <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                          <div className="w-full bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] p-6 flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
+                            <span className="text-[12px] font-bold text-emerald-500/70 tracking-widest uppercase mb-2 mt-2">Enter Amount</span>
+                            <div className="flex items-center gap-2 border-b border-emerald-500/50 pb-2 mb-2 w-3/4 justify-center">
+                              <span className="text-xl text-white font-medium">$</span>
+                              <input 
+                                type="number" 
+                                min="1" 
+                                value={customFuelAmount} 
+                                onChange={(e)=>setCustomFuelAmount(e.target.value)} 
+                                className="bg-transparent text-4xl font-bold text-white w-full text-center focus:outline-none placeholder-white/20" 
+                                placeholder="0" 
+                              />
+                            </div>
+                            <div className="text-center mt-2 mb-2">
+                              <div className="text-[13px] font-bold text-emerald-500/70 tracking-widest uppercase">Yields {(Number(customFuelAmount) || 0) * 100} B-Units</div>
+                            </div>
+                          </div>
+                        </div>
+                        <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Custom Fuel Top-Up</h4>
+                        <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">Pay as you go routing</p>
+                      </div>
+                    )}
+                    
+                    <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Total</p>
+                        <div className="flex items-baseline gap-1.5">
+                          <p className="text-[24px] font-bold text-white">${!isAaUnlocked ? '1' : (customFuelAmount || '0')}</p>
+                          <span className="text-[13px] font-medium text-slate-500">USDC</span>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setSelectedProduct(!isAaUnlocked ? 'starter' : 'custom_fuel')} 
+                        disabled={isAaUnlocked && (!customFuelAmount || Number(customFuelAmount) <= 0)}
+                        className="bg-emerald-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                        View
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
+                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-orange-500/10 via-transparent to-transparent pointer-events-none"></div>
+                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
+                    <div>
+                      <div className="flex justify-between items-center mb-10">
+                        <span className="bg-orange-500/10 text-orange-500 border border-orange-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package A</span>
+                        <span className="text-[13px] font-mono font-medium text-slate-400">842 / 1000</span>
+                      </div>
+                      <div className="flex justify-center mb-10 relative">
+                        <div className="absolute inset-0 bg-orange-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="w-28 h-28 bg-[#1a1c23] border border-orange-500/30 rounded-[28px] flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(249,115,22,0.15)] relative z-10">
+                          <Database size={36} className="text-orange-500" strokeWidth={1.5} />
+                          <div className="text-center">
+                            <div className="text-[18px] font-bold text-orange-500 leading-none">100k</div>
+                            <div className="text-[9px] font-bold text-orange-500/70 tracking-widest uppercase mt-1">B-Units</div>
+                          </div>
+                        </div>
+                      </div>
+                      <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Limited Fuel Pack</h4>
+                      <p className="text-[14px] font-medium text-orange-500/80 mt-2 uppercase tracking-widest">The Store Clearing Fuel</p>
+                    </div>
+                    <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
+                        <div className="flex items-baseline gap-1.5">
+                          <p className="text-[24px] font-bold text-white">$499</p>
+                          <span className="text-[13px] font-medium text-slate-500">USDC</span>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedProduct('fuel')} className="bg-orange-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95">
+                        View
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
+                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-[#1562f0]/15 via-transparent to-transparent pointer-events-none"></div>
+                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
+                    <div>
+                      <div className="flex justify-between items-center mb-10">
+                        <span className="bg-[#1562f0]/10 text-[#1562f0] border border-[#1562f0]/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package B</span>
+                        <span className="text-[13px] font-mono font-medium text-slate-400">247 / 300</span>
+                      </div>
+                      <div className="flex justify-center mb-10 relative">
+                        <div className="absolute inset-0 bg-[#1562f0]/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div className="w-28 h-28 bg-[#1a1c23] border border-[#1562f0]/30 rounded-[28px] flex items-center justify-center shadow-[0_0_40px_rgba(21,98,240,0.15)] relative z-10">
+                          <Activity size={40} className="text-[#1562f0]" strokeWidth={1.5} />
+                        </div>
+                      </div>
+                      <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Genesis Node Pack</h4>
+                      <p className="text-[14px] font-medium text-[#1562f0]/80 mt-2 uppercase tracking-widest">The Infrastructure Backbone</p>
+                    </div>
+                    <div className="mt-10 flex items-center justify-between bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md">
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
+                        <div className="flex items-baseline gap-1.5">
+                          <p className="text-[24px] font-bold text-white">$999</p>
+                          <span className="text-[13px] font-medium text-slate-500">USDC</span>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedProduct('node')} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-blue-500 transition-colors shadow-lg shadow-[#1562f0]/20 active:scale-95">
+                        View
+                      </button>
+                    </div>
+                  </div>
+                </div>
+             </div>
+           </div>
+         )}
+
+         {/* --- 5. BRAND CONTRACTS TAB --- */}
+         {activeTab === 'Alliances' && (
+           <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+             
+             {!isAaUnlocked && (
+               <div className="absolute inset-0 backdrop-blur-xl bg-[#f5f5f7]/60 z-20 flex flex-col items-center justify-center text-center p-8 rounded-[32px]">
+                 <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                   <Lock size={32} className="text-slate-400" />
+                 </div>
+                 <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
+                 <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
+                   Deploying brand loyalty contracts requires zero-gas AA routing. Activate your Smart Terminal with a Fuel Pack to begin.
+                 </p>
+                 <div className="flex gap-4">
+                   <button onClick={() => { setActiveTab('Market'); setSelectedProduct('starter'); }} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-blue-600 transition-colors shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-95 flex items-center gap-2">
+                     <Zap size={18} /> Buy B-Units to Activate
                    </button>
+                 </div>
+               </div>
+             )}
+
+             <div className={`space-y-6 sm:space-y-8 ${!isAaUnlocked ? 'opacity-40 blur-sm pointer-events-none select-none' : ''}`}>
+               <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                 <div>
+                   <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Brand Contracts (ERC-1155)</h3>
+                   <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your deployed loyalty assets and ecosystem routing rules.</p>
+                 </div>
+                 <button onClick={() => setIsJoinAllianceModalOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-900 text-white px-6 py-3.5 rounded-[16px] text-[14px] font-semibold shadow-lg hover:bg-slate-800 transition-all active:scale-[0.98]">
+                   <Plus size={18} /> Deploy New Contract
+                 </button>
+               </div>
+
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+                  {joinedAlliances.map(aId => {
+                    const contract = alliancesDb[aId];
+                    return (
+                      <div key={aId} className={`${contract.nftBg} rounded-[32px] shadow-[0_16px_40px_rgba(0,0,0,0.25)] relative overflow-hidden group border ${contract.nftBorder} flex flex-col`}>
+                        <div className="p-8 relative z-10 flex flex-col h-full">
+                          <div className="flex justify-between items-start mb-6 relative">
+                            <div className="flex items-center gap-4">
+                              <div className="w-14 h-14 rounded-[20px] border border-white/30 bg-white/10 flex items-center justify-center backdrop-blur-md">
+                                <Box size={24} className="text-white" strokeWidth={1.5} />
+                              </div>
+                              <div>
+                                <span className="bg-[#c8f7d9] text-[#127a3a] px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-wide shadow-sm inline-block mb-1">
+                                  {contract.standard} Deployed
+                                </span>
+                                <h4 className="text-[20px] font-bold text-white tracking-tight leading-tight">{contract.nftName}</h4>
+                              </div>
+                            </div>
+                            <button onClick={() => handleOpenConfig(aId)} className="text-[13px] font-semibold text-slate-900 bg-white hover:bg-slate-100 px-4 py-2.5 rounded-[14px] transition-colors flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0">
+                              <SlidersHorizontal size={14} /> Rules
+                            </button>
+                          </div>
+
+                          <div className="flex-1 bg-black/20 rounded-[24px] p-5 border border-white/10 mb-6">
+                            <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest mb-4">Minted Assets</p>
+                            <div className="space-y-3">
+                              {contract.assets.map(asset => (
+                                <div key={asset.id} className={`flex items-center justify-between p-3 rounded-[16px] border transition-colors ${asset.status === 'Active' ? 'bg-white/5 border-white/10' : 'bg-rose-500/10 border-rose-500/20'}`}>
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${asset.status === 'Active' ? 'bg-white/10 text-white' : 'bg-rose-500/20 text-rose-400'}`}>
+                                      {asset.id === 0 ? <Coins size={14} /> : asset.iconType === 'yellow' ? <Crown size={14}/> : asset.iconType === 'purple' ? <Award size={14}/> : <ShieldCheck size={14}/>}
+                                    </div>
+                                    <div>
+                                      <p className={`text-[14px] font-bold ${asset.status === 'Active' ? 'text-white' : 'text-rose-400 line-through'}`}>{asset.name}</p>
+                                      <p className="text-[11px] font-medium text-white/50">ID: {asset.id} • {asset.type} • Expires: {asset.defaultExpiry}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button 
+                                      onClick={() => handleToggleAssetStatus(aId, asset.id)}
+                                      className={`p-2 rounded-[10px] transition-colors ${asset.status === 'Active' ? 'bg-white/10 text-white hover:bg-amber-500 hover:text-white' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white'}`}
+                                      title={asset.status === 'Active' ? "Pause Issuance" : "Resume Issuance"}
+                                    >
+                                      {asset.status === 'Active' ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
+                                    </button>
+                                    {asset.id !== 0 && (
+                                      <button 
+                                        onClick={() => handleRevokeAsset(aId, asset.id)}
+                                        className="p-2 bg-white/5 text-white/40 hover:bg-rose-500 hover:text-white rounded-[10px] transition-colors"
+                                        title="Revoke & Burn Globally"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="pt-4 border-t border-white/20 flex items-center justify-between">
+                            <span className="text-[12px] font-medium text-white/70 flex items-center gap-1.5"><Database size={14}/> On-Chain Contract: <span className="font-mono text-white tracking-wider ml-1">0x8F2A...3C91</span></span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+               </div>
+             </div>
+           </div>
+         )}
+
+         {/* --- 6. STAFF TERMINALS TAB --- */}
+         {activeTab === 'Staff' && (
+           <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative">
+             
+             {!isAaUnlocked && (
+               <div className="absolute inset-0 backdrop-blur-xl bg-[#f5f5f7]/60 z-20 flex flex-col items-center justify-center text-center p-8 rounded-[32px]">
+                 <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                   <Lock size={32} className="text-slate-400" />
+                 </div>
+                 <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
+                 <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
+                   Staff terminals operate on zero-gas AA routing. Activate your Smart Terminal with a Fuel Pack before linking devices.
+                 </p>
+                 <div className="flex gap-4">
+                   <button onClick={() => { setActiveTab('Market'); setSelectedProduct('starter'); }} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-95 flex items-center gap-2">
+                     <Zap size={18} /> Buy B-Units to Activate
+                   </button>
+                 </div>
+               </div>
+             )}
+
+             <div className={`space-y-6 sm:space-y-8 ${!isAaUnlocked ? 'opacity-40 blur-sm pointer-events-none select-none' : ''}`}>
+               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
+                  <div>
+                    <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Staff Terminals</h3>
+                    <p className="text-[15px] font-medium text-slate-500 mt-1">Manage linked POS devices and their EOA authorizations.</p>
+                  </div>
+                  <button
+                    onClick={() => setIsAddTerminalOpen(true)}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#1562f0] text-white px-6 py-4 sm:py-3.5 rounded-[20px] text-[15px] font-semibold shadow-[0_8px_20px_rgba(21,98,240,0.25)] hover:shadow-[0_12px_24px_rgba(21,98,240,0.35)] transition-all active:scale-[0.98]"
+                  >
+                    <Plus size={20} strokeWidth={2.5} /> Link New Terminal
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[800px]">
+                       <thead className="bg-slate-50/50 text-left border-b border-slate-100/80">
+                         <tr>
+                           <th className="px-6 sm:px-8 py-5 text-[12px] font-semibold text-slate-400">Terminal Identity</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Linked EOA Address</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-center">Status</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-right">Daily Issuance</th>
+                           <th className="px-6 sm:px-8 py-5 text-[12px] font-semibold text-slate-400 text-right">Actions</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100/80">
+                          {terminals.map((term, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                               <td className="px-6 sm:px-8 py-6">
+                                 <div className="flex items-center gap-4">
+                                   <div className="w-12 h-12 rounded-[16px] bg-slate-50 flex items-center justify-center text-[#1562f0] border border-slate-100">
+                                     <MonitorSmartphone size={22} />
+                                   </div>
+                                   <div>
+                                     <div className="font-semibold text-[16px] text-slate-900">{term.tag}</div>
+                                     <div className="text-[13px] font-medium text-slate-500 mt-0.5">{term.name}</div>
+                                   </div>
+                                 </div>
+                               </td>
+                               <td className="px-6 py-6">
+                                 <div className="flex items-center gap-2">
+                                   <span className="font-mono text-[14px] font-medium text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                                     {term.eoa}
+                                   </span>
+                                 </div>
+                               </td>
+                               <td className="px-6 py-6 text-center">
+                                 <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-[12px] font-semibold">
+                                   <CheckCircle2 size={14} /> {term.status}
+                                 </span>
+                                 <div className="text-[12px] font-medium text-slate-400 mt-2">{term.lastActive}</div>
+                               </td>
+                               <td className="px-6 py-6 text-right">
+                                 <div className="flex flex-col items-end gap-1.5">
+                                   <span className="font-semibold text-[15px] text-slate-900">
+                                     ${(term.issued || 0).toLocaleString()} <span className="text-slate-400 text-[13px] font-medium">/ ${term.quota.toLocaleString()} CAD</span>
+                                   </span>
+                                   <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+                                      <div 
+                                        className={`h-full rounded-full transition-all duration-500 ${(term.issued || 0) >= term.quota ? 'bg-rose-500' : (term.issued || 0) >= term.quota * 0.8 ? 'bg-amber-400' : 'bg-emerald-500'}`} 
+                                        style={{ width: `${Math.min(100, term.quota > 0 ? ((term.issued || 0) / term.quota) * 100 : 0)}%` }}
+                                      ></div>
+                                   </div>
+                                 </div>
+                               </td>
+                               <td className="px-6 sm:px-8 py-6 text-right flex items-center justify-end gap-2">
+                                 <button 
+                                   onClick={() => handleResetTerminal(term.id)}
+                                   className="p-3 bg-blue-50 text-[#1562f0] rounded-[14px] hover:bg-[#1562f0] hover:text-white transition-colors" 
+                                   title="Settle & Reset to Zero"
+                                 >
+                                   <RefreshCcw size={18} />
+                                 </button>
+                                 <button className="p-3 bg-rose-50 text-rose-500 rounded-[14px] hover:bg-rose-500 hover:text-white transition-colors" title="Revoke Authorization">
+                                   <Trash2 size={18} />
+                                 </button>
+                               </td>
+                            </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                  </div>
+                </div>
+             </div>
+           </div>
+         )}
+
+         {/* --- 8. MEMBERS TAB --- */}
+         {activeTab === 'Members' && (
+           <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative space-y-6 sm:space-y-8">
+             
+             {!isAaUnlocked && (
+               <div className="absolute inset-0 backdrop-blur-xl bg-[#f5f5f7]/60 z-20 flex flex-col items-center justify-center text-center p-8 rounded-[32px]">
+                 <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                   <Lock size={32} className="text-slate-400" />
+                 </div>
+                 <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Decentralized Loyalty Locked</h3>
+                 <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
+                   Memberships require a Brand Loyalty Contract on Base L2. Activate your Smart Terminal with a Fuel Pack to deploy your contract.
+                 </p>
+                 <div className="flex gap-4">
+                   <button onClick={() => { setActiveTab('Market'); setSelectedProduct('starter'); }} className="bg-[#1562f0] text-white px-8 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-blue-600 transition-colors shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-95 flex items-center gap-2">
+                     <Zap size={18} /> Buy B-Units to Activate
+                   </button>
+                 </div>
+               </div>
+             )}
+
+             <div className={`space-y-6 sm:space-y-8 ${!isAaUnlocked ? 'opacity-40 blur-sm pointer-events-none select-none' : ''}`}>
+               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
+                  <div>
+                    <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Members & Loyalty</h3>
+                    <p className="text-[15px] font-medium text-slate-500 mt-1">Manage global VIP tiers and prepaid balances across your franchise.</p>
+                  </div>
+                  <button
+                    onClick={() => setIsIssueCardModalOpen(true)}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#1562f0] text-white px-6 py-4 sm:py-3.5 rounded-[20px] text-[15px] font-semibold shadow-[0_8px_20px_rgba(21,98,240,0.25)] hover:shadow-[0_12px_24px_rgba(21,98,240,0.35)] transition-all active:scale-[0.98]"
+                  >
+                    <UserPlus size={20} strokeWidth={2.5} /> Issue New Asset
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                   <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+                     <div className="flex items-center gap-3 mb-4">
+                       <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#1562f0] flex items-center justify-center">
+                         <Users size={20} />
+                       </div>
+                       <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest">Total Network Members</p>
+                     </div>
+                     <p className="text-3xl font-light tracking-tight text-slate-900">{members.length.toLocaleString()}</p>
+                   </div>
+                   <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+                     <div className="flex items-center gap-3 mb-4">
+                       <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
+                         <BadgeInfo size={20} />
+                       </div>
+                       <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest">Active Prepaid Balances</p>
+                     </div>
+                     <div className="flex items-baseline gap-1.5">
+                       <p className="text-3xl font-light tracking-tight text-slate-900">${members.reduce((sum, m) => sum + m.balance, 0).toFixed(2)}</p>
+                       <span className="text-[13px] font-medium text-slate-500">CAD</span>
+                     </div>
+                   </div>
+                   <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+                     <div className="flex items-center gap-3 mb-4">
+                       <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
+                         <Crown size={20} />
+                       </div>
+                       <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest">VIP Tiers Issued</p>
+                     </div>
+                     <p className="text-3xl font-light tracking-tight text-slate-900">{members.filter(m => m.tier !== 'Standard').length}</p>
+                   </div>
+                </div>
+
+                <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+                  <div className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="relative w-full sm:max-w-xs">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        type="text" 
+                        placeholder="Search @tag or address..." 
+                        className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200/60 rounded-[14px] focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 font-medium text-[13px] text-slate-900"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
+                      <Filter size={16} /> Filter by Tier
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[950px]">
+                       <thead className="bg-slate-50/50 text-left border-b border-slate-100/80">
+                         <tr>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Customer Identity</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-center">Status</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-center">Active Tier</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-right">Prepaid Balance</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-right">Lifetime Value (LTV)</th>
+                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-right">Issuing Store</th>
+                           <th className="px-6 sm:px-8 py-5 text-[12px] font-semibold text-slate-400 text-right">Actions</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100/80">
+                          {members.filter(m => activeBranch === 'All Branches (Network View)' || m.store === activeBranch).map((member, idx) => (
+                            <tr key={idx} className={`transition-colors ${member.status === 'Suspended' ? 'bg-rose-50/20' : 'hover:bg-slate-50/50'}`}>
+                               <td className="px-6 py-4">
+                                 <div className="flex items-center gap-3">
+                                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${member.status === 'Suspended' ? 'bg-rose-300' : member.balance > 0 ? 'bg-[#1562f0]' : 'bg-slate-300'}`}>
+                                     {member.tag.replace('@', '').substring(0,2).toUpperCase()}
+                                   </div>
+                                   <div>
+                                     <div className={`font-semibold text-[15px] ${member.status === 'Suspended' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{member.tag}</div>
+                                     <div className="text-[12px] font-mono font-medium text-slate-400 mt-0.5">{member.address}</div>
+                                   </div>
+                                 </div>
+                               </td>
+                               <td className="px-6 py-4 text-center">
+                                  {member.status === 'Active' ? (
+                                    <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-md border border-emerald-200/50 text-[11px] font-bold">
+                                      <CheckCircle2 size={12} /> Active
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-600 px-2.5 py-1 rounded-md border border-rose-200/50 text-[11px] font-bold">
+                                      <Ban size={12} /> Suspended
+                                    </span>
+                                  )}
+                               </td>
+                               <td className="px-6 py-4 text-center">
+                                  {member.tier === 'Black VIP' ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-slate-900 text-yellow-400 px-2 py-1 rounded-md shadow-sm border border-slate-800">
+                                      <Crown size={12} className="text-yellow-400" /> VIP
+                                    </span>
+                                  ) : member.tier === 'Green Card' ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md border border-emerald-200/50">
+                                      <ShieldCheck size={12} className="text-emerald-500" /> Green
+                                    </span>
+                                  ) : member.tier === 'CCSA Member' ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-purple-50 text-purple-600 px-2 py-1 rounded-md border border-purple-200/50">
+                                      <Award size={12} className="text-purple-500" /> CCSA
+                                    </span>
+                                  ) : member.tier === 'Standard' ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-md border border-slate-200/50">
+                                      Standard
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#1562f0]/10 text-[#1562f0] px-2 py-1 rounded-md border border-[#1562f0]/20">
+                                      <Crown size={12} /> {member.tier}
+                                    </span>
+                                  )}
+                               </td>
+                               <td className="px-6 py-4 text-right">
+                                 <span className={`font-semibold text-[15px] ${member.status === 'Suspended' ? 'text-slate-400' : member.balance > 0 ? 'text-[#1562f0]' : 'text-slate-400'}`}>
+                                   ${member.balance.toFixed(2)}
+                                 </span>
+                               </td>
+                               <td className="px-6 py-4 text-right">
+                                 <span className={`font-semibold text-[15px] ${member.status === 'Suspended' ? 'text-slate-400' : 'text-slate-900'}`}>
+                                   ${member.ltv.toFixed(2)}
+                                 </span>
+                               </td>
+                               <td className="px-6 py-4 text-right">
+                                 <span className="text-[13px] font-medium text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
+                                   {member.store}
+                                 </span>
+                                 <div className="text-[11px] text-slate-400 mt-1">{member.lastActive}</div>
+                               </td>
+                               <td className="px-6 sm:px-8 py-4 text-right flex items-center justify-end gap-2">
+                                 <button 
+                                   onClick={() => handleToggleMemberStatus(member.id)}
+                                   className={`p-2.5 rounded-[12px] transition-colors shadow-sm ${member.status === 'Active' ? 'bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}
+                                   title={member.status === 'Active' ? "Suspend Card" : "Reactivate Card"}
+                                 >
+                                   {member.status === 'Active' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                                 </button>
+                                 <button 
+                                   onClick={() => handleDeleteMember(member.id)}
+                                   className="p-2.5 bg-slate-50 text-slate-400 rounded-[12px] hover:bg-rose-500 hover:text-white transition-colors shadow-sm" 
+                                   title="Revoke & Delete"
+                                 >
+                                   <Trash2 size={16} />
+                                 </button>
+                               </td>
+                            </tr>
+                          ))}
+                          {members.filter(m => activeBranch === 'All Branches (Network View)' || m.store === activeBranch).length === 0 && (
+                            <tr>
+                              <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                <Search size={24} className="mx-auto mb-2 opacity-50" />
+                                No members found for this branch.
+                              </td>
+                            </tr>
+                          )}
+                       </tbody>
+                    </table>
+                  </div>
+                </div>
+             </div>
+           </div>
+         )}
+
+         {/* --- 7. MESSAGES (CHAT) TAB --- */}
+         {activeTab === 'Messages' && (
+           <div className="max-w-[1400px] mx-auto h-[calc(100vh-160px)] sm:h-[calc(100vh-200px)] flex flex-col sm:flex-row gap-6 animate-in fade-in duration-300">
+             
+             {/* Contacts Sidebar */}
+             <div className="w-full sm:w-[340px] flex flex-col bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] shrink-0 overflow-hidden">
+               <div className="p-6 border-b border-slate-100/80 bg-white/50">
+                 <h3 className="text-[20px] font-bold text-slate-900 tracking-tight mb-4">Messages</h3>
+                 <div className="relative">
+                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                   <input 
+                     type="text" 
+                     placeholder="Search CoNET tags..." 
+                     className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200/60 rounded-[14px] focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-medium text-[13px] text-slate-900"
+                   />
+                 </div>
+               </div>
+               
+               <div className="flex-1 overflow-y-auto scrollbar-hide">
+                 {MOCK_CONTACTS.map(contact => (
+                   <div 
+                     key={contact.id} 
+                     onClick={() => setActiveContact(contact.id)}
+                     className={`p-4 border-b border-slate-50 cursor-pointer transition-colors flex items-center gap-4 ${activeContact === contact.id ? 'bg-[#1562f0]/5 border-l-4 border-l-[#1562f0]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
+                   >
+                     <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center text-white font-bold tracking-wider shrink-0 shadow-sm ${contact.avatarBg}`}>
+                       {contact.avatarText}
+                     </div>
+                     <div className="flex-1 min-w-0">
+                       <div className="flex justify-between items-center mb-1">
+                         <h4 className="text-[15px] font-semibold text-slate-900 truncate">{contact.name}</h4>
+                         <span className="text-[11px] font-medium text-slate-400 shrink-0">{contact.time}</span>
+                       </div>
+                       <p className={`text-[13px] truncate ${contact.unread > 0 ? 'text-slate-900 font-semibold' : 'text-slate-500 font-medium'}`}>
+                         {contact.lastMessage}
+                       </p>
+                     </div>
+                     {contact.unread > 0 && (
+                       <div className="w-5 h-5 rounded-full bg-[#1562f0] flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                         {contact.unread}
+                       </div>
+                     )}
+                   </div>
+                 ))}
+               </div>
+             </div>
+
+             {/* Chat Window */}
+             <div className="flex-1 flex flex-col bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+               {/* Chat Header */}
+               <div className="h-20 px-6 sm:px-8 border-b border-slate-100/80 bg-white/50 flex items-center justify-between shrink-0">
+                 <div className="flex items-center gap-4">
+                   <div className="w-12 h-12 rounded-[16px] bg-[#4854e8] flex items-center justify-center text-white font-bold tracking-wider shadow-sm">
+                     CT
+                   </div>
+                   <div>
+                     <h4 className="text-[16px] font-bold text-slate-900 tracking-tight">CashTrees Network</h4>
+                     <p className="text-[12px] font-medium text-slate-500">@cashtrees_support • Platform Operator</p>
+                   </div>
+                 </div>
+                 <div className="flex items-center gap-4">
+                   <div className="hidden sm:flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100/50">
+                     <Lock size={12} className="text-emerald-600" />
+                     <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-widest">E2E Encrypted</span>
+                   </div>
+                   <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors">
+                     <MoreVertical size={20} />
+                   </button>
+                 </div>
+               </div>
+
+               {/* Chat Messages */}
+               <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-[#f8f9fb] space-y-6">
+                 <div className="flex justify-center mb-8">
+                   <div className="bg-slate-200/50 px-3 py-1 rounded-full text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
+                     CoNET L1 Secure Routing
+                   </div>
+                 </div>
+
+                 {MOCK_MESSAGES.map(msg => (
+                   <div key={msg.id} className={`flex flex-col ${msg.sender === 'me' ? 'items-end' : 'items-start'}`}>
+                     <div className={`max-w-[80%] sm:max-w-[70%] p-4 rounded-[20px] ${
+                       msg.sender === 'me' 
+                         ? 'bg-[#1562f0] text-white rounded-tr-[4px] shadow-[0_4px_15px_rgba(21,98,240,0.2)]' 
+                         : 'bg-white text-slate-800 rounded-tl-[4px] shadow-sm border border-slate-100'
+                     }`}>
+                       <p className="text-[14.5px] font-medium leading-relaxed">{msg.text}</p>
+                     </div>
+                     <span className="text-[11px] font-medium text-slate-400 mt-2 px-1">
+                       {msg.time} {msg.sender === 'me' && '• Read'}
+                     </span>
+                   </div>
+                 ))}
+                 
+                 {/* Typing indicator simulation */}
+                 {applyingAlliance && activeContact === 'c1' && (
+                   <div className="flex flex-col items-start">
+                     <div className="bg-white p-4 rounded-[20px] rounded-tl-[4px] shadow-sm border border-slate-100 flex items-center gap-1.5">
+                       <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce"></div>
+                       <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                       <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                     </div>
+                   </div>
                  )}
                </div>
-           )}
-         </div>
-       </div>
 
-
-       <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-6 shadow-2xl shadow-slate-900/20">
-         <div className="flex items-center gap-2">
-           <Calculator size={18} className="text-orange-400" />
-           <h3 className="font-bold text-[15px]">Fee Estimator</h3>
-         </div>
-         <div>
-           <label className="text-[10px] text-slate-400 uppercase font-bold ml-1 tracking-widest">Receive Amount (USDC)</label>
-           <div className="flex items-center gap-2 bg-white/5 rounded-2xl p-4 mt-2 border border-white/10 focus-within:border-orange-500 transition-colors">
-             <span className="text-2xl font-bold text-orange-400">$</span>
-             <input type="number" value={calcAmount} onChange={e=>setCalcAmount(Number(e.target.value))} className="bg-transparent border-none outline-none text-[28px] font-black w-full text-white leading-none" />
-           </div>
-         </div>
-         <div className="space-y-2.5 px-1">
-           <div className="flex justify-between text-[13px] text-slate-400 font-medium items-center">
-             <span>Service Fee (0.8%)</span>
-             <div className="flex items-center gap-1.5 bg-orange-500/10 px-2 py-0.5 rounded text-orange-400">
-                <Fuel size={12} fill="currentColor"/>
-                <span className="font-bold">{estimatedServiceFee} B-Units</span>
-             </div>
-           </div>
-           <div className="flex justify-between text-[13px] text-slate-400 font-medium">
-             <span>Network Gas</span>
-             <span className="text-green-400 font-bold">Waived</span>
-           </div>
-           <div className="pt-4 border-t border-white/10 flex justify-between items-end mt-2">
-             <span className="text-[14px] font-bold text-white">Total Fuel Cost</span>
-             <span className="text-[24px] font-black text-orange-500 leading-none">{estimatedServiceFee} <span className="text-[11px] text-orange-500/70">B-Units</span></span>
-           </div>
-         </div>
-       </div>
-       </div>
-     </div>
-   </div>
- );
-
-
- const ProfileView = () => (
-   <div className="animate-in slide-in-from-bottom duration-500 flex flex-col min-h-screen bg-[#f4f5f9]">
-     <div className="bg-[#1562f0] pt-14 pb-16 px-6 text-center relative">
-       <button onClick={() => setCurrentView('home')} className="absolute top-14 left-6 w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white backdrop-blur-sm hover:bg-white/20 transition-colors">
-         <ChevronRight size={22} className="rotate-180" />
-       </button>
-      
-       <div className="w-24 h-24 rounded-full bg-[#1da1f2] mx-auto mb-4 flex items-center justify-center relative shadow-lg">
-          <div className="w-2.5 h-2.5 bg-blue-900 rounded-full absolute top-7 left-6"></div>
-          <div className="w-2.5 h-2.5 bg-blue-900 rounded-full absolute top-7 right-6"></div>
-          <div className="w-8 h-2.5 border-t-4 border-blue-900 rounded-t-full absolute bottom-6"></div>
-       </div>
-
-
-       <div className="flex items-center justify-center gap-2">
-         <h2 className="text-[22px] font-black text-white tracking-tight">@Beamiovoucher</h2>
-         <Copy size={16} className="text-white/80 cursor-pointer hover:text-white" />
-       </div>
-     </div>
-
-
-     <div className="px-6 -mt-6 relative z-10 space-y-4 pb-32">
-       {isGenesisNode && (
-         <div onClick={() => setCurrentView('genesis')} className="bg-slate-900 rounded-[1.8rem] p-6 shadow-2xl flex justify-between items-center group cursor-pointer active:scale-[0.98] transition-all border border-slate-700/50 relative overflow-hidden">
-           <div className="absolute -right-10 -top-10 w-32 h-32 bg-amber-500/20 blur-3xl rounded-full pointer-events-none"></div>
-           <div className="relative z-10 flex items-center gap-4">
-             <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center text-slate-900 shadow-lg">
-               <Cpu size={24} strokeWidth={2.5} />
-             </div>
-             <div>
-               <div className="flex items-center gap-2">
-                 <h3 className="text-[17px] font-black text-white tracking-tight">Genesis Portal</h3>
-                 <div className="bg-amber-500/20 text-amber-400 text-[9px] px-1.5 py-0.5 rounded border border-amber-500/30 uppercase font-black tracking-widest">VIP</div>
-               </div>
-               <p className="text-[12px] font-medium text-slate-400 mt-0.5">Node #042 Yield Dashboard</p>
-             </div>
-           </div>
-           <ChevronRight size={20} className="text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all relative z-10" />
-         </div>
-       )}
-
-
-       <div className="pt-2">
-           <div onClick={() => setCurrentView('fuel')} className="bg-white rounded-[1.8rem] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex justify-between items-center group cursor-pointer hover:border-orange-100 border border-transparent transition-all active:scale-95">
-               <div className="flex items-center gap-4">
-               <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white"><Fuel size={20} fill="currentColor"/></div>
-               <div>
-                   <span className="text-[15px] font-black text-slate-900">Network Fuel (B-Units)</span>
-                   <p className="text-[11px] text-orange-500 font-bold mt-0.5 tracking-tight">{bUnits} B-Units Available</p>
-               </div>
-               </div>
-               <ChevronRight size={18} className="text-orange-500 group-hover:translate-x-1 transition-transform" />
-           </div>
-       </div>
-     </div>
-   </div>
- );
-
-
- const GenesisView = () => (
-   <div className="animate-in slide-in-from-bottom duration-500 flex flex-col min-h-screen pb-32 bg-[#0b0f19] text-slate-200">
-     <div className="px-6 pt-10 pb-6 flex items-center justify-between sticky top-0 bg-[#0b0f19]/80 backdrop-blur-xl z-20 border-b border-white/5">
-       <button onClick={() => setCurrentView('profile')} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-colors">
-         <ChevronRight size={22} className="rotate-180" />
-       </button>
-       <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full">
-         <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"></div>
-         <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Node #042 Active</span>
-       </div>
-     </div>
-
-
-     <div className="px-6 pt-4 space-y-6">
-       <div className="bg-gradient-to-b from-slate-800 to-slate-900 rounded-[2.5rem] p-8 border border-slate-700/50 relative overflow-hidden shadow-2xl">
-         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-amber-500/10 blur-[3rem] rounded-full pointer-events-none"></div>
-         <div className="relative z-10">
-           <div className="flex items-center justify-between mb-2">
-             <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Available Protocol Yield</p>
-             <BarChart3 size={16} className="text-slate-500" />
-           </div>
-           <div className="flex items-baseline gap-2 mb-8">
-             <span className="text-3xl font-black text-white">$</span>
-             <span className="text-[4rem] leading-none font-black text-white tracking-tighter">{yieldAvailable.toFixed(2)}</span>
-             <span className="text-xl font-bold text-slate-400 uppercase">USDC</span>
-           </div>
-           <button
-             onClick={handleClaimYield} disabled={isClaiming || yieldAvailable <= 0}
-             className="w-full bg-amber-500 hover:bg-amber-400 py-4 rounded-[1.2rem] text-slate-900 font-black text-[15px] shadow-[0_8px_20px_rgba(245,158,11,0.2)] active:scale-[0.98] disabled:bg-slate-700 disabled:text-slate-500 disabled:shadow-none transition-all flex items-center justify-center gap-2"
-           >
-             {isClaiming ? <RefreshCw size={20} className="animate-spin" /> : <><ArrowDownLeft size={20} strokeWidth={3} /> Claim to Main Wallet</>}
-           </button>
-         </div>
-       </div>
-
-
-       <div className="space-y-4 pt-4">
-         <div className="flex justify-between items-center px-2">
-           <h3 className="text-[13px] font-black text-white uppercase tracking-widest">Yield History</h3>
-         </div>
-         <div className="bg-white/5 rounded-[2rem] overflow-hidden border border-white/5 divide-y divide-white/5">
-           {mockYieldLedger.map((log, idx) => (
-             <div key={idx} className="p-5 flex items-center justify-between hover:bg-white/5 transition-colors">
-               <div className="flex items-center gap-4">
-                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${log.amount.startsWith('-') ? 'bg-slate-800 text-slate-400' : 'bg-orange-500/10 text-orange-500'}`}>
-                   {log.icon}
+               {/* Chat Input */}
+               <div className="p-4 sm:p-6 bg-white border-t border-slate-100/80 shrink-0">
+                 <div className="flex items-center gap-3">
+                   <button className="p-3 text-slate-400 hover:text-[#1562f0] hover:bg-blue-50 rounded-full transition-colors shrink-0">
+                     <Paperclip size={20} />
+                   </button>
+                   <div className="flex-1 relative">
+                     <input 
+                       type="text" 
+                       placeholder="Type an encrypted message..." 
+                       value={chatInput}
+                       onChange={(e) => setChatInput(e.target.value)}
+                       onKeyDown={(e) => {
+                         if (e.key === 'Enter' && chatInput.trim()) {
+                           setChatInput('');
+                         }
+                       }}
+                       className="w-full pl-5 pr-12 py-4 bg-slate-50 border border-slate-200/60 rounded-[20px] focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-medium text-[15px] text-slate-900"
+                     />
+                     <button 
+                       onClick={() => setChatInput('')}
+                       className={`absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-full transition-all ${
+                         chatInput.trim() ? 'bg-[#1562f0] text-white shadow-md' : 'text-slate-400 hover:bg-slate-200'
+                       }`}
+                     >
+                       <Send size={18} className={chatInput.trim() ? "translate-x-0.5" : ""} />
+                     </button>
+                   </div>
                  </div>
-                 <div>
-                   <p className="text-[14px] font-black text-slate-200 leading-tight">{log.title}</p>
-                   <p className="text-[11px] font-medium text-slate-500 mt-0.5">{log.subtitle} • {log.time}</p>
+                 <div className="text-center mt-3">
+                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                     0 Gas Fee • Powered by CoNET L1
+                   </span>
                  </div>
                </div>
-               <div className="text-right">
-                 <p className={`text-[15px] font-black ${log.amount.startsWith('-') ? 'text-slate-300' : 'text-orange-400'}`}>{log.amount}</p>
-                 <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">{log.asset}</p>
-               </div>
              </div>
-           ))}
+
+           </div>
+         )}
+
+       </div>
+     </main>
+
+     {/* ========================================================= */}
+     {/* GLOBAL MODALS (RESTORED PERFECTLY) */}
+     {/* ========================================================= */}
+
+     {/* --- 1. SMART ROUTING POS MODAL --- */}
+     {isPosOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={closePosModal}></div>
+         <div className="relative bg-white w-full max-w-[440px] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
+            <div className="relative p-6 shrink-0 bg-slate-900 border-b border-slate-800 flex flex-col items-center">
+              <button onClick={closePosModal} className="absolute top-6 right-6 p-2.5 bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors z-10"><X size={20} /></button>
+              <div className="w-12 h-12 bg-[#1562f0]/20 rounded-xl border border-[#1562f0]/30 flex items-center justify-center text-[#1562f0] mb-3 shadow-[0_0_20px_rgba(21,98,240,0.2)]">
+                <Calculator size={24} />
+              </div>
+              <h3 className="text-[20px] font-bold text-white tracking-tight leading-tight">Smart Checkout</h3>
+              <p className="text-[13px] font-medium text-slate-400">Mixed Routing Simulation</p>
+            </div>
+
+            {posStep === 1 && (
+              <div className="p-6 sm:p-8 flex flex-col items-center">
+                <div className="w-full relative mb-6">
+                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                   <input type="text" placeholder="Customer Tag (try @alice_chen or @bobby_s)" value={posUser} onChange={(e) => setPosUser(e.target.value)} className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200/60 rounded-[16px] focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 focus:border-[#1562f0] transition-all font-medium text-[14px] text-slate-900 placeholder:text-slate-400" />
+                </div>
+                {posSimResult?.ok === false && <p className="text-rose-500 text-[12px] font-bold mb-4">{posSimResult.error}</p>}
+                <div className="flex flex-col items-center w-full mb-8">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">Charge Amount (CAD)</span>
+                  <div className="flex items-center justify-center gap-2 border-b-2 border-slate-200 pb-2 px-4 focus-within:border-[#1562f0] transition-colors">
+                     <span className="text-[28px] font-semibold text-slate-500 mt-1">$</span>
+                     <input type="number" placeholder="100.00" value={posAmount} onChange={(e) => setPosAmount(e.target.value)} className="bg-transparent text-[48px] font-bold text-slate-900 w-[140px] text-center focus:outline-none placeholder:text-slate-300" />
+                  </div>
+                </div>
+                <button onClick={handleCalculatePos} disabled={!posAmount || !posUser} className={`w-full py-4.5 rounded-[20px] font-bold text-[16px] transition-all ${(!posAmount || !posUser) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]'}`}>Calculate Routing</button>
+              </div>
+            )}
+
+            {posStep === 2 && posSimResult?.ok === true && (
+              <div className="p-6 sm:p-8 flex flex-col animate-in slide-in-from-right-4 duration-300">
+                <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                  <div className="w-12 h-12 rounded-full bg-[#1562f0] text-white flex items-center justify-center font-bold text-[16px] shadow-sm">{posSimResult.user.tag.replace('@', '').substring(0, 2).toUpperCase()}</div>
+                  <div>
+                    <h4 className="text-[16px] font-bold text-slate-900">{posSimResult.user.tag}</h4>
+                    <div className="flex gap-2 mt-1">
+                      <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Card: ${posSimResult.initialCardBalance.toFixed(2)} CAD</span>
+                      <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">Wallet: {posSimResult.initialUsdcBalance.toFixed(2)} USDC</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 mb-8">
+                  <div className="flex justify-between items-center"><span className="text-[14px] font-medium text-slate-500">Total Requested</span><span className="text-[15px] font-bold text-slate-900">${posSimResult.reqCad.toFixed(2)} CAD</span></div>
+                  {posSimResult.initialCardBalance > 0 && (
+                    <div className="flex justify-between items-center text-emerald-600 bg-emerald-50/50 p-2 -mx-2 rounded-lg"><span className="text-[13px] font-semibold flex items-center gap-1.5"><Ticket size={14}/> Applied Prepaid</span><span className="text-[14px] font-bold">-${Math.min(posSimResult.reqCad, posSimResult.initialCardBalance).toFixed(2)} CAD</span></div>
+                  )}
+                  {posSimResult.topUpCad > 0 && (
+                    <div className="flex justify-between items-center text-blue-600 bg-blue-50/50 p-2 -mx-2 rounded-lg"><span className="text-[13px] font-semibold flex items-center gap-1.5"><Activity size={14}/> Auto Top-Up ({posSimResult.usdcUsed.toFixed(2)} USDC)</span><span className="text-[14px] font-bold">-${posSimResult.topUpCad.toFixed(2)} CAD</span></div>
+                  )}
+                  <div className="w-full h-[1px] bg-slate-200"></div>
+                  <div className="flex justify-between items-center pt-2"><span className="text-[15px] font-bold text-slate-900">Remaining Balance Due</span><span className={`text-[24px] font-bold ${posSimResult.remainingDue > 0 ? 'text-rose-500' : 'text-slate-300'}`}>${posSimResult.remainingDue.toFixed(2)}</span></div>
+                  {posSimResult.remainingDue > 0 && <p className="text-[11px] text-right text-rose-500 font-medium -mt-2">Customer must pay this amount via other methods.</p>}
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={() => setPosStep(1)} className="flex-1 py-4 rounded-[20px] font-bold text-[15px] bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
+                  <button onClick={handleExecutePos} className="flex-[2] py-4 rounded-[20px] font-bold text-[15px] bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] transition-all">Execute Routing</button>
+                </div>
+              </div>
+            )}
+
+            {posStep === 3 && (
+               <div className="p-8 flex flex-col items-center animate-in zoom-in-95 duration-400 py-12">
+                 <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-[0_8px_20px_rgba(16,185,129,0.3)]"><Check size={40} className="text-white" strokeWidth={3} /></div>
+                 <h3 className="text-[20px] font-bold text-slate-900 mb-1">Payment Successful</h3>
+                 <p className="text-[14px] font-medium text-slate-500 text-center mb-8">Smart routing executed via Smart Terminal.</p>
+                 <button onClick={closePosModal} className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-slate-900 text-white hover:bg-slate-800 transition-all">Done</button>
+               </div>
+            )}
          </div>
        </div>
-     </div>
-   </div>
- );
+     )}
 
+     {/* --- 2. ISSUE CARD / MEMBERSHIP MODAL --- */}
+     {isIssueCardModalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={handleCloseIssueCardModal}></div>
+         <div className="relative bg-[#0f1115] w-full max-w-[440px] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 border border-white/10">
 
- return (
-   <div className="flex flex-col min-h-screen bg-[#FDFDFF] text-slate-900 max-w-md mx-auto shadow-2xl relative overflow-hidden">
-    
-     <div className="flex-1 overflow-y-auto">
-       {currentView === 'home' && <HomeView />}
-       {currentView === 'fuel' && <FuelView />}
-       {currentView === 'profile' && <ProfileView />}
-       {currentView === 'genesis' && <GenesisView />}
-     </div>
+            {issueCardStep === 1 && (
+               <>
+                 <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5">
+                   <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+                   <button onClick={handleCloseIssueCardModal} className="absolute top-6 right-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={20} /></button>
+                   <div className="text-center mt-2 relative z-10">
+                     <div className="w-12 h-12 bg-[#1562f0]/20 rounded-full flex items-center justify-center text-[#1562f0] mx-auto mb-3 border border-[#1562f0]/30"><UserPlus size={20} /></div>
+                     <h2 className="text-[20px] font-bold tracking-tight text-white mb-1">Issue Brand Asset</h2>
+                     <p className="text-[13px] font-medium text-slate-400">Mint ERC-1155 Prepaid or NFT Tiers to users</p>
+                   </div>
+                 </div>
 
+                 <div className="p-6 sm:p-8 flex flex-col items-center">
+                   <div className="w-full relative mb-6">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input type="text" placeholder="Customer @BeamioTag..." value={issueTarget} onChange={(e) => setIssueTarget(e.target.value)} className="w-full pl-11 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-[16px] focus:outline-none focus:border-[#1562f0] transition-all font-medium text-[14px] text-white placeholder:text-slate-500" />
+                   </div>
 
-     {/* --- MODALS OVERLAYS --- */}
-     {sendModalOpen && (
-       <div className="fixed inset-0 z-[70] flex items-end justify-center pointer-events-auto max-w-md mx-auto">
-         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => {if(sendStep==='input') setSendModalOpen(false)}}></div>
-        
-         <div className={`bg-white w-full rounded-t-[2.5rem] ${sendStep === 'success' ? 'h-auto pb-12' : 'h-[88vh]'} p-6 relative z-10 animate-in slide-in-from-bottom-full duration-300 shadow-2xl flex flex-col`}>
-           {sendStep !== 'success' && <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-slate-200 rounded-full"></div>}
-          
-           {(sendStep === 'input' || sendStep === 'confirm') && (
-             <button onClick={() => {
-               if(sendStep === 'confirm') setSendStep('input');
-               else setSendModalOpen(false);
-             }} className="absolute top-6 right-6 w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-               <X size={18} />
-             </button>
-           )}
+                   <div className="w-full flex bg-white/5 p-1 rounded-[16px] mb-6 border border-white/10">
+                     <button onClick={() => { setIssueType('PREPAID'); setIssueValue(''); }} className={`flex-1 py-2.5 text-[13px] font-bold rounded-[12px] transition-colors ${issueType === 'PREPAID' ? 'bg-[#1562f0] text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>Prepaid (ID: 0)</button>
+                     <button onClick={() => { setIssueType('VIP_TIER'); setIssueValue('Green Card'); }} className={`flex-1 py-2.5 text-[13px] font-bold rounded-[12px] transition-colors ${issueType === 'VIP_TIER' ? 'bg-[#1562f0] text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}>VIP Tiers (ID: 99+)</button>
+                   </div>
 
+                   <div className="w-full flex items-center justify-between bg-black/40 border border-white/10 rounded-[16px] p-3 mb-6">
+                     <span className="text-[13px] font-bold text-slate-400 pl-2">Asset Expiration</span>
+                     <select value={issueExpiry} onChange={e => setIssueExpiry(e.target.value)} className="bg-white/10 border border-white/10 text-white text-[12px] font-bold px-3 py-1.5 rounded-[10px] focus:outline-none">
+                       <option value="Never" className="text-slate-900">Never (Lifetime)</option>
+                       <option value="1 Month" className="text-slate-900">1 Month</option>
+                       <option value="1 Year" className="text-slate-900">1 Year</option>
+                     </select>
+                   </div>
 
-           {sendStep === 'input' && (
-             <div className="flex flex-col h-full pt-8 animate-in fade-in zoom-in-95 duration-300">
-               <div className="relative mb-6">
-                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                 <input
-                   type="text"
-                   placeholder="@BeamioTag, address, or paste link"
-                   value={sendSearchQuery}
-                   onChange={(e) => setSendSearchQuery(e.target.value)}
-                   className="w-full bg-slate-100 rounded-2xl py-4 pl-12 pr-4 outline-none font-medium text-[15px] focus:ring-2 focus:ring-blue-500/20 transition-all"
-                 />
-               </div>
-
-
-               {!sendRecipient ? (
-                 <div className="flex gap-4 mb-8 px-2 overflow-x-auto pb-2 hide-scrollbar">
-                   {mockContacts.map(c => (
-                     <div key={c.id} onClick={() => setSendRecipient(c)} className="flex flex-col items-center gap-2 cursor-pointer group shrink-0">
-                       <div className={`w-14 h-14 ${c.avatarColor} rounded-full flex items-center justify-center text-xl shadow-sm group-active:scale-95 transition-transform border-2 border-transparent group-hover:border-blue-500`}>
-                         😎
+                   {issueType === 'PREPAID' ? (
+                     <div className="flex flex-col items-center w-full mb-4 space-y-4">
+                       <div className="w-full relative">
+                         <input type="text" placeholder="Token Symbol (e.g. $CTree)" value={issueTokenSymbol} onChange={(e) => { let val = e.target.value.toUpperCase(); if(val && !val.startsWith('$')) val = '$' + val; setIssueTokenSymbol(val); }} className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-[16px] focus:outline-none focus:border-emerald-500 transition-all font-bold text-[15px] text-emerald-400 placeholder:text-slate-600 text-center tracking-widest" />
                        </div>
-                       <span className="text-[11px] font-bold text-slate-600">{c.tag}</span>
+                       <span className="text-[11px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded uppercase tracking-widest">Minting {issueTokenSymbol} (Fungible)</span>
+                       <div className="flex items-center justify-center gap-2">
+                          <span className="text-[28px] font-semibold text-slate-500 mt-1">$</span>
+                          <input type="number" placeholder="0.00" value={issueValue} onChange={(e) => setIssueValue(e.target.value)} className="bg-transparent text-[56px] font-semibold text-white w-[180px] text-center focus:outline-none placeholder:text-slate-600" />
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="flex flex-col items-center w-full mb-4 space-y-4 max-h-[220px] overflow-y-auto scrollbar-hide pr-1">
+                       {alliancesDb['BrandContract'].tiers.map(tier => (
+                         <div key={tier.id} onClick={() => setIssueValue(tier.name)} className={`w-full p-4 rounded-[16px] border-2 cursor-pointer transition-all flex justify-between items-center shrink-0 ${issueValue === tier.name ? (tier.iconType === 'yellow' ? 'border-yellow-500 bg-yellow-500/10' : tier.iconType === 'purple' ? 'border-purple-500 bg-purple-500/10' : 'border-emerald-500 bg-emerald-500/10') : 'border-white/10 bg-white/5 hover:border-white/20'}`}>
+                           <div className="flex items-center gap-3">
+                             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tier.iconType === 'yellow' ? 'bg-yellow-500/20 text-yellow-500' : tier.iconType === 'purple' ? 'bg-purple-500/20 text-purple-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
+                                {tier.iconType === 'yellow' ? <Crown size={18}/> : tier.iconType === 'purple' ? <Award size={18}/> : <ShieldCheck size={18}/>}
+                             </div>
+                             <div><h4 className="text-white font-bold text-[15px]">{tier.name}</h4><p className="text-slate-400 text-[12px]">ID: {tier.id} • {tier.discount}% Auto-Discount</p></div>
+                           </div>
+                           {issueValue === tier.name && <CheckCircle2 size={20} className={tier.iconType === 'yellow' ? 'text-yellow-500' : tier.iconType === 'purple' ? 'text-purple-500' : 'text-emerald-500'}/>}
+                         </div>
+                       ))}
+                       {!isCreatingTier ? (
+                         <button onClick={() => setIsCreatingTier(true)} className="w-full py-4 mt-2 rounded-[16px] border border-dashed border-white/20 text-slate-400 hover:text-white hover:border-white/40 transition-colors flex items-center justify-center gap-2 text-[13px] font-bold shrink-0"><Plus size={16} /> Create Custom Tier</button>
+                       ) : (
+                         <div className="w-full p-4 rounded-[16px] border border-[#1562f0]/30 bg-[#1562f0]/5 space-y-3 shrink-0 animate-in fade-in duration-300">
+                            <input type="text" placeholder="Tier Name (e.g. Diamond VIP)" value={newTierName} onChange={e => setNewTierName(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-[14px] text-white focus:outline-none focus:border-[#1562f0]" />
+                            <div className="relative">
+                              <input type="number" placeholder="Discount Percentage" value={newTierDiscount} onChange={e => setNewTierDiscount(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg pl-4 pr-10 py-3 text-[14px] text-white focus:outline-none focus:border-[#1562f0]" />
+                              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                               <button onClick={() => setIsCreatingTier(false)} className="flex-1 py-2.5 rounded-lg text-slate-400 text-[13px] font-bold hover:bg-white/10 transition-colors">Cancel</button>
+                               <button onClick={handleCreateTier} disabled={!newTierName || !newTierDiscount} className="flex-1 py-2.5 rounded-lg bg-[#1562f0] text-white text-[13px] font-bold disabled:opacity-50 transition-colors shadow-[0_4px_12px_rgba(21,98,240,0.2)]">Save New Tier</button>
+                            </div>
+                         </div>
+                       )}
+                     </div>
+                   )}
+                 </div>
+
+                 <div className="p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent border-t border-white/5 shrink-0">
+                   <button
+                      onClick={() => setIssueCardStep(2)}
+                      disabled={!issueTarget || !issueValue || (issueType === 'PREPAID' && parseFloat(issueValue) <= 0) || aaBUnits < 200}
+                      className={`w-full py-4 rounded-[20px] font-bold text-[16px] transition-all ${
+                        (!issueTarget || !issueValue || (issueType === 'PREPAID' && parseFloat(issueValue) <= 0) || aaBUnits < 200)
+                          ? 'bg-white/5 text-slate-500 cursor-not-allowed border border-white/5'
+                          : 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]'
+                      }`}
+                   >
+                      Continue
+                   </button>
+                   {aaBUnits < 200 && <p className="text-rose-500 text-[12px] font-bold mt-3 text-center">Insufficient Protocol Fuel. Requires 200 B-Units.</p>}
+                 </div>
+               </>
+            )}
+
+            {issueCardStep === 2 && (
+               <>
+                 <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5">
+                   <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+                   <button onClick={() => setIssueCardStep(1)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><ArrowRightLeft size={20} /></button>
+                 </div>
+                 
+                 <div className="p-6 sm:p-8 flex flex-col items-center animate-in slide-in-from-right-4 duration-300">
+                   <div className="mb-8 flex flex-col items-center -mt-12 relative z-10">
+                      <div className="flex w-20 h-20 rounded-full bg-slate-900 overflow-hidden mb-4 border-4 border-[#0f1115] shadow-[0_8px_30px_rgba(0,0,0,0.5)] relative">
+                         <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-[20px] drop-shadow-md">{issueTarget.replace('@', '').substring(0, 2).toUpperCase()}</div>
+                      </div>
+                      <h3 className="text-[22px] font-bold text-white mb-0.5">{issueTarget}</h3>
+                      <p className="text-[13px] font-medium text-[#1562f0]">Will receive this asset</p>
+                   </div>
+
+                   <div className="w-full bg-white/5 border border-white/10 rounded-[24px] p-5 shadow-sm mb-4 flex flex-col items-center justify-center gap-2">
+                      <span className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">{issueType === 'PREPAID' ? 'Amount to Issue (ID: 0)' : 'Tier to Mint (ID: 99+)'}</span>
+                      {issueType === 'PREPAID' ? (
+                        <div className="text-[32px] font-bold text-white leading-none">${parseFloat(issueValue).toFixed(2)} <span className="text-[16px] text-slate-400">{issueTokenSymbol.replace('$', '')}</span></div>
+                      ) : (
+                        <div className="text-[24px] font-bold text-white leading-none">{issueValue}</div>
+                      )}
+                      <span className="text-[11px] font-medium text-slate-500 mt-2">Expires: {issueExpiry}</span>
+                   </div>
+
+                   <div className="w-full flex justify-between items-center px-4 py-5 border-b border-white/5 mb-4">
+                      <span className="text-[14px] font-bold text-slate-300">Network fee</span>
+                      <div className="flex flex-col items-end">
+                        <div className="flex items-center gap-1.5 bg-orange-500/10 text-orange-500 px-3 py-1.5 rounded-full border border-orange-500/20">
+                           <Fuel size={14} />
+                           <span className="text-[13px] font-bold">200 B-Units</span>
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-500 mt-1">≈ 2.00 USDC</span>
+                      </div>
+                   </div>
+                 </div>
+
+                 <div className="p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent border-t border-white/5 shrink-0">
+                   <button onClick={handleConfirmIssueCard} className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98] transition-all">Mint to Customer</button>
+                 </div>
+               </>
+            )}
+
+            {issueCardStep === 3 && (
+               <div className="p-8 flex flex-col items-center animate-in zoom-in-95 duration-400 py-16 h-full justify-center">
+                 <div className="w-24 h-24 bg-[#1562f0] rounded-full flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(21,98,240,0.5)]">
+                    <Check size={48} className="text-white" strokeWidth={2.5} />
+                 </div>
+                 <h3 className="text-[20px] font-semibold text-slate-300 mb-3">Successfully Issued</h3>
+                 <div className="text-[32px] font-bold text-white mb-4 leading-none text-center">
+                    {issueType === 'PREPAID' ? `$${parseFloat(issueValue).toFixed(2)} ${issueTokenSymbol.replace('$', '')}` : issueValue}
+                 </div>
+                 <p className="text-[14px] font-medium text-slate-500 mb-12 text-center max-w-xs">
+                    ERC-1155 Asset deployed to {issueTarget} on Base L2. Liability tracking updated.
+                 </p>
+                 <div className="w-full space-y-3 mt-auto">
+                    <button onClick={handleCloseIssueCardModal} className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 active:scale-[0.98] transition-all shadow-[0_8px_20px_rgba(21,98,240,0.25)]">Done</button>
+                 </div>
+               </div>
+            )}
+         </div>
+       </div>
+     )}
+
+     {/* --- 3. SEND EOA FUNDS MODAL --- */}
+     {isSendModalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={handleCloseSendModal}></div>
+         <div className="relative bg-[#0f1115] w-full max-w-[440px] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 border border-white/10">
+
+            {sendStep === 1 && (
+               <>
+                 <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5">
+                   <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+                   <button onClick={handleCloseSendModal} className="absolute top-6 right-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={20} /></button>
+                   <div className="text-center mt-2 relative z-10">
+                     <div className="w-12 h-12 bg-[#1562f0]/20 rounded-full flex items-center justify-center text-[#1562f0] mx-auto mb-3 border border-[#1562f0]/30"><Send size={20} /></div>
+                     <h2 className="text-[20px] font-bold tracking-tight text-white mb-1">Send USDC</h2>
+                     <p className="text-[13px] font-medium text-slate-400">P2P transfer via Base L2</p>
+                   </div>
+                 </div>
+                 <div className="p-6 sm:p-8 flex flex-col items-center">
+                   <div className="w-full relative mb-6">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input type="text" placeholder="@BeamioTag, address, or paste link" value={sendRecipient} onChange={(e) => setSendRecipient(e.target.value)} className="w-full pl-11 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-[16px] focus:outline-none focus:border-[#1562f0] transition-all font-medium text-[14px] text-white placeholder:text-slate-500" />
+                   </div>
+                   <div className="w-full flex gap-4 mb-8 px-2 overflow-x-auto scrollbar-hide">
+                      {MOCK_CONTACTS.map((c, i) => (
+                        <div key={i} className="flex flex-col items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setSendRecipient(c.tag)}>
+                           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-[14px] ${c.avatarBg} shadow-sm border border-white/10`}>{c.avatarText}</div>
+                           <span className="text-[10px] font-semibold text-slate-400 truncate w-14 text-center">{c.tag}</span>
+                        </div>
+                      ))}
+                   </div>
+                   <div className="flex items-center justify-center gap-2 mb-8">
+                      <span className="text-[28px] font-semibold text-slate-500 mt-1">$</span>
+                      <input type="number" placeholder="0.00" value={sendAmount} onChange={(e) => setSendAmount(e.target.value)} className="bg-transparent text-[56px] font-semibold text-white w-[180px] text-center focus:outline-none placeholder:text-slate-600" />
+                   </div>
+                   <div className="w-full bg-white/5 border border-white/10 rounded-[20px] p-4 flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                         <div className="w-10 h-10 bg-black/40 rounded-[12px] flex items-center justify-center text-[#1562f0] border border-white/5"><Wallet size={20} /></div>
+                         <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Paying From</p>
+                            <p className="text-[14px] font-semibold text-white flex items-center gap-1.5">Main Vault <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded font-bold border border-emerald-500/20">Secure • EOA</span></p>
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <p className="text-[14px] font-bold text-white">CA$ {eoaBalance_CAD.toFixed(2)}</p>
+                         <p className="text-[11px] font-medium text-slate-400">≈ {eoaBalanceUSDC.toFixed(2)} USDC</p>
+                      </div>
+                   </div>
+                   <div className="w-full relative mb-2">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 p-1.5 bg-black/40 rounded-md border border-white/5"><Camera size={14} /></div>
+                      <input type="text" placeholder="What's this for?" value={sendMemo} onChange={(e) => setSendMemo(e.target.value)} className="w-full pl-14 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-[16px] focus:outline-none font-medium text-[14px] text-white placeholder:text-slate-500 focus:border-[#1562f0] transition-colors" />
+                   </div>
+                 </div>
+                 <div className="p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent border-t border-white/5 shrink-0">
+                   <button onClick={() => setSendStep(2)} disabled={!sendAmount || parseFloat(sendAmount) <= 0 || !sendRecipient} className={`w-full py-4 rounded-[20px] font-bold text-[16px] transition-all ${(!sendAmount || parseFloat(sendAmount) <= 0 || !sendRecipient) ? 'bg-white/5 text-slate-500 cursor-not-allowed border border-white/5' : 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]'}`}>Continue</button>
+                 </div>
+               </>
+            )}
+
+            {sendStep === 2 && (
+               <>
+                 <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5">
+                   <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+                   <button onClick={() => setSendStep(1)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><ArrowRightLeft size={20} /></button>
+                 </div>
+                 <div className="p-6 sm:p-8 flex flex-col items-center animate-in slide-in-from-right-4 duration-300">
+                   <div className="mb-8 flex flex-col items-center -mt-12 relative z-10">
+                      <div className="flex w-20 h-20 rounded-full bg-slate-900 overflow-hidden mb-4 border-4 border-[#0f1115] shadow-[0_8px_30px_rgba(0,0,0,0.5)] relative">
+                         <div className="w-1/2 h-full bg-[#1562f0]"></div>
+                         <div className="w-1/2 h-full bg-emerald-500"></div>
+                         <div className="absolute inset-0 flex items-center justify-center text-white font-bold text-[20px] drop-shadow-md">{sendRecipient.replace('@', '').substring(0, 2).toUpperCase()}</div>
+                      </div>
+                      <h3 className="text-[22px] font-bold text-white mb-0.5">{sendRecipient}</h3>
+                      <p className="text-[13px] font-mono text-[#1562f0]">0xd5b0...9ea3</p>
+                   </div>
+                   <div className="w-full bg-white/5 border border-white/10 rounded-[24px] p-5 shadow-sm mb-4">
+                      <div className="flex justify-between items-center mb-1"><span className="text-[18px] font-bold text-slate-300">Total</span><div className="text-right"><span className="text-[24px] font-bold text-white leading-none">{parseFloat(sendAmount).toFixed(4)} USDC</span></div></div>
+                      <div className="flex justify-between items-end"><span className="text-[13px] font-medium text-slate-500">Amount</span><span className="text-[13px] font-medium text-slate-400">≈ CAD {(parseFloat(sendAmount) / ORACLE_CAD_USDC).toFixed(2)}</span></div>
+                   </div>
+                   <div className="w-full flex justify-between items-center px-4 py-5 border-b border-white/5 mb-4">
+                      <span className="text-[14px] font-bold text-slate-300">Network fee</span>
+                      <div className="flex items-center gap-1.5 bg-[#1562f0]/10 text-[#1562f0] px-3 py-1.5 rounded-full border border-[#1562f0]/20"><Sparkles size={14} /><span className="text-[13px] font-bold">Sponsored</span></div>
+                   </div>
+                 </div>
+                 <div className="p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent border-t border-white/5 shrink-0">
+                   <button onClick={handleConfirmSend} className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98] transition-all">Confirm & Sign</button>
+                 </div>
+               </>
+            )}
+
+            {sendStep === 3 && (
+               <div className="p-8 flex flex-col items-center animate-in zoom-in-95 duration-400 py-16 h-full justify-center">
+                 <div className="w-24 h-24 bg-[#1562f0] rounded-full flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(21,98,240,0.5)]"><Check size={48} className="text-white" strokeWidth={2.5} /></div>
+                 <h3 className="text-[20px] font-semibold text-slate-300 mb-3">Successfully sent</h3>
+                 <div className="text-[40px] font-bold text-white mb-4 leading-none">{parseFloat(sendAmount).toFixed(4)} USDC</div>
+                 <p className="text-[14px] font-medium text-slate-500 mb-12 text-center max-w-xs">It may take a few seconds to appear on-chain.</p>
+                 <div className="w-full space-y-3 mt-auto">
+                    <button onClick={handleCloseSendModal} className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 active:scale-[0.98] transition-all shadow-[0_8px_20px_rgba(21,98,240,0.25)]">Done</button>
+                    <button className="w-full py-4.5 rounded-[20px] font-bold text-[15px] bg-white/5 text-white hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-white/5"><Activity size={16} /> View transaction</button>
+                 </div>
+               </div>
+            )}
+         </div>
+       </div>
+     )}
+
+     {/* --- 4. RECEIVE MODAL --- */}
+     {isReceiveModalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsReceiveModalOpen(false)}></div>
+         <div className="relative bg-[#0f1115] w-full max-w-[400px] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300 border border-white/10">
+            <div className="relative p-6 shrink-0 bg-gradient-to-b from-[#1562f0]/20 to-[#0f1115] border-b border-white/5 flex flex-col items-center">
+              <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+              <button onClick={() => setIsReceiveModalOpen(false)} className="absolute top-6 right-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={20} /></button>
+              <div className="w-16 h-16 bg-[#1562f0]/20 rounded-full border border-[#1562f0]/30 flex items-center justify-center text-[#1562f0] mb-4 mt-2 shadow-[0_0_20px_rgba(21,98,240,0.2)] relative z-10"><Store size={28} /></div>
+              <h3 className="text-[22px] font-bold text-white tracking-tight leading-tight relative z-10">Urban Tea Van</h3>
+              <p className="text-[14px] font-semibold text-slate-400 mb-5 relative z-10">{merchantTag || '@urbantea_van'}</p>
+              <div className="flex items-center gap-2 relative z-10">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Main Vault (EOA)</span>
+                <div className="flex items-center gap-1.5 bg-[#1562f0]/10 text-[#1562f0] px-2.5 py-1.5 rounded border border-[#1562f0]/20 text-[12px] font-mono font-medium"><Wallet size={12} /> 0x8B49...A9C3</div>
+              </div>
+            </div>
+            <div className="px-8 pb-8 pt-8 flex flex-col items-center relative">
+               <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 bg-[#1562f0]/30 blur-[60px] rounded-full pointer-events-none"></div>
+               <div className="w-64 h-64 bg-white rounded-[24px] shadow-[0_0_40px_rgba(21,98,240,0.15)] border border-white/20 p-4 flex items-center justify-center relative mb-10 z-10">
+                 <div className="w-full h-full grid grid-cols-5 grid-rows-5 gap-1 opacity-80">
+                   {Array.from({length: 25}).map((_, i) => (<div key={i} className={`rounded-sm ${i%2===0 || i%3===0 ? 'bg-black' : 'bg-transparent'} ${i===12 ? 'opacity-0' : ''}`}></div>))}
+                 </div>
+                 <div className="absolute top-6 left-6 w-10 h-10 border-[4px] border-black rounded flex items-center justify-center"><div className="w-4 h-4 bg-black rounded-sm"></div></div>
+                 <div className="absolute top-6 right-6 w-10 h-10 border-[4px] border-black rounded flex items-center justify-center"><div className="w-4 h-4 bg-black rounded-sm"></div></div>
+                 <div className="absolute bottom-6 left-6 w-10 h-10 border-[4px] border-black rounded flex items-center justify-center"><div className="w-4 h-4 bg-black rounded-sm"></div></div>
+                 <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-14 h-14 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center p-1">
+                       <div className="w-full h-full bg-gradient-to-br from-[#1562f0] to-[#0a3d99] rounded-lg flex items-center justify-center text-white font-bold text-xl italic shadow-inner">B</div>
+                    </div>
+                 </div>
+               </div>
+               <div className="w-full flex gap-3 relative z-10">
+                 <button className="flex-1 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-[20px] font-bold text-[15px] transition-colors flex items-center justify-center gap-2 active:scale-95"><Copy size={18} /> Copy</button>
+                 <button className="flex-1 py-4 bg-[#1562f0] hover:bg-blue-600 text-white rounded-[20px] font-bold text-[15px] transition-colors flex items-center justify-center gap-2 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-95"><Share2 size={18} /> Share</button>
+               </div>
+            </div>
+         </div>
+       </div>
+     )}
+
+     {/* --- 5. PRODUCT MARKET DETAIL / BUY B-UNITS MODAL --- */}
+     {selectedProduct && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 sm:py-12 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedProduct(null)}></div>
+         <div className="relative bg-[#0f1115] w-full max-w-[500px] h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 border border-white/10">
+            <div className={`relative h-48 sm:h-56 shrink-0 bg-gradient-to-b ${selectedProduct === 'fuel' ? 'from-orange-900/40' : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'from-emerald-900/40' : 'from-blue-900/40'} to-[#0f1115]`}>
+              <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
+              <button onClick={() => setSelectedProduct(null)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={22} /></button>
+              <div className="absolute bottom-6 left-8 right-8">
+                 <span className={`inline-block px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase mb-3 border ${
+                    selectedProduct === 'fuel' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 
+                    selectedProduct === 'starter' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                    selectedProduct === 'custom_fuel' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                    'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                 }`}>
+                    {selectedProduct === 'fuel' ? 'Merchant Prepaid' : selectedProduct === 'starter' ? 'AA Activation' : selectedProduct === 'custom_fuel' ? 'Custom Top-Up' : 'Hardware + License'}
+                 </span>
+                 <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-1">
+                    {selectedProduct === 'fuel' ? 'Limited Fuel Pack' : selectedProduct === 'starter' ? 'Starter Fuel Pack' : selectedProduct === 'custom_fuel' ? 'Custom Fuel Refill' : 'Genesis Node Pack'}
+                 </h2>
+                 <p className="text-[15px] font-medium text-slate-400">
+                    {selectedProduct === 'fuel' ? 'The Store Clearing Fuel' : selectedProduct === 'starter' ? 'The perfect entry to smart routing' : selectedProduct === 'custom_fuel' ? 'Flexible routing power on demand' : 'The Infrastructure Backbone'}
+                 </p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8 pt-4 pb-32 scrollbar-hide space-y-8">
+              <div className="flex gap-4">
+                <div className="flex-1 bg-white/5 rounded-[24px] p-5 flex items-center gap-4 border border-white/5">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${
+                     selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : 
+                     (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 
+                     'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                  }`}>
+                    {selectedProduct === 'fuel' ? <Database size={20} /> : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? <Zap size={20} /> : <Cpu size={20} />}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' ? 'Volume' : 'Security'}</p>
+                    <p className="text-[16px] font-bold text-white leading-tight">
+                      {selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : selectedProduct === 'custom_fuel' ? `${(Number(customFuelAmount) || 0) * 100} B-Units` : 'ATECC608 Vault'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex-1 bg-white/5 rounded-[24px] p-5 flex items-center gap-4 border border-white/5">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${
+                     selectedProduct === 'fuel' ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : 
+                     (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 
+                     'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+                  }`}>
+                    {selectedProduct === 'fuel' ? <Sparkles size={20} /> : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? <Cpu size={20} /> : <Activity size={20} />}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Discount' : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'AA Account' : 'Yield'}</p>
+                    <p className="text-[16px] font-bold text-white leading-tight">{selectedProduct === 'fuel' ? '50% Tech Off' : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'Unlocked' : '5% Network'}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-[#16181d] rounded-[24px] p-6 border border-white/5">
+                <div className="flex items-center gap-2 mb-6">
+                  <Lock size={16} className="text-slate-500" />
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct === 'fuel' ? 'The Merchant Arsenal' : selectedProduct === 'starter' ? 'Entry Arsenal' : selectedProduct === 'custom_fuel' ? 'Refill Arsenal' : 'The Tangible Edge'}</span>
+                </div>
+                <div className="space-y-6">
+                  {selectedProduct === 'fuel' ? (
+                    <>
+                      <div className="flex gap-4">
+                        <Database size={20} className="text-orange-500 shrink-0 mt-0.5" />
+                        <div><h4 className="text-[15px] font-bold text-white mb-1">100,000 B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System value of $1,000 USDC. Instant clearing fuel to process your daily retail volume.</p></div>
+                      </div>
+                    </>
+                  ) : selectedProduct === 'starter' ? (
+                    <>
+                      <div className="flex gap-4">
+                        <Zap size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <div><h4 className="text-[15px] font-bold text-white mb-1">100 B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System value of $1 USDC. Instant AA contract deployment to unlock smart routing.</p></div>
+                      </div>
+                    </>
+                  ) : selectedProduct === 'custom_fuel' ? (
+                    <>
+                      <div className="flex gap-4">
+                        <Zap size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <div><h4 className="text-[15px] font-bold text-white mb-1">{(Number(customFuelAmount) || 0) * 100} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System value of ${customFuelAmount || 0} USDC. Instant clearing fuel to process your daily retail volume.</p></div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex gap-4">
+                        <Box size={20} className="text-[#1562f0] shrink-0 mt-0.5" />
+                        <div><h4 className="text-[15px] font-bold text-white mb-1">Desktop API Gateway</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">Screenless black-box design with internal 300g weights for physical stability.</p></div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="absolute bottom-0 inset-x-0 p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent pt-12 flex items-center justify-between border-t border-white/5">
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
+                <div className="flex items-baseline gap-1.5">
+                  <p className="text-[32px] font-bold text-white leading-none">
+                    {selectedProduct === 'fuel' ? '499' : selectedProduct === 'starter' ? '1' : selectedProduct === 'custom_fuel' ? (customFuelAmount || '0') : '999'}
+                  </p>
+                  <span className="text-[14px] font-medium text-slate-500">USDC</span>
+                </div>
+              </div>
+              <button 
+                onClick={handleMarketPurchase} 
+                disabled={selectedProduct === 'custom_fuel' && (!customFuelAmount || Number(customFuelAmount) <= 0)}
+                className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                 selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' : 
+                 (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' : 
+                 'bg-[#1562f0] hover:bg-blue-500 shadow-[#1562f0]/20'
+                }`}
+              >
+                {selectedProduct === 'fuel' ? 'Secure Fuel' : selectedProduct === 'starter' ? 'Activate AA' : selectedProduct === 'custom_fuel' ? 'Refill Fuel' : 'Secure Node'} <ChevronRight size={18} />
+              </button>
+            </div>
+         </div>
+       </div>
+     )}
+
+     {/* --- 6. ALLIANCE SETTLEMENT MODAL --- */}
+     {isPayoutModalOpen && payoutAlliance && (() => {
+       const burnAmount = settlementType === 'PAYOUT' ? settlementNetBalance : settlementConsumed;
+       return (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 sm:py-12 font-sans">
+         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => { if(payoutStep === 1) setIsPayoutModalOpen(false); }}></div>
+         <div className="relative bg-[#0f1115] w-full max-w-[500px] h-[90vh] sm:h-auto sm:max-h-[85vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 border border-white/10">
+            {payoutStep === 1 && (
+              <>
+                <div className={`relative p-8 shrink-0 bg-gradient-to-b ${settlementType === 'PAYOUT' ? 'from-emerald-500/20' : 'from-rose-500/20'} to-[#0f1115] border-b border-white/5`}>
+                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+                  <button onClick={() => setIsPayoutModalOpen(false)} className="absolute top-6 left-6 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-colors z-10"><X size={22} /></button>
+                  <div className="text-center mt-8 relative z-10">
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">{settlementType === 'PAYOUT' ? 'Net Payout Due to You' : 'Net Remittance You Owe'}</p>
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                       <h2 className="text-4xl sm:text-[44px] font-light tracking-tight text-white leading-none">${settlementNetBalance.toFixed(2)}</h2>
+                       <span className="text-xl text-white/50 font-light mt-2">CAD</span>
+                    </div>
+                    <p className={`text-[13px] font-medium px-3 py-1 rounded-full inline-block border ${settlementType === 'PAYOUT' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-rose-400 bg-rose-500/10 border-rose-500/20'}`}>
+                       {alliancesDb[payoutAlliance].name}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+                  <div className="flex justify-between items-center bg-white/5 rounded-[16px] p-4 border border-white/10 mb-8">
+                    <div className="text-center">
+                       <p className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">Consumption</p>
+                       <p className="text-[14px] font-semibold text-emerald-400">+${settlementConsumed.toFixed(2)}</p>
+                    </div>
+                    <div className="text-slate-600">-</div>
+                    <div className="text-center">
+                       <p className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">Liabilities</p>
+                       <p className="text-[14px] font-semibold text-rose-400">-${alliancesDb[payoutAlliance].topUps.toFixed(2)}</p>
+                    </div>
+                    <div className="text-slate-600">=</div>
+                    <div className="text-center">
+                       <p className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">{settlementType === 'PAYOUT' ? 'Net Payout' : 'Net Remittance'}</p>
+                       <p className="text-[14px] font-bold text-white">${settlementNetBalance.toFixed(2)}</p>
+                    </div>
+                  </div>
+                  <p className="text-[14px] font-medium text-slate-400 leading-relaxed text-center mb-6">
+                    {settlementType === 'PAYOUT' ? `Select a settlement rail. Your ${burnAmount.toLocaleString()} ${alliancesDb[payoutAlliance].baseToken} will be burned to clear liabilities and process your payout.` : `Select a payment rail to remit the difference. Your ${burnAmount.toLocaleString()} ${alliancesDb[payoutAlliance].baseToken} will be burned to offset liabilities.`}
+                  </p>
+                  <div className="space-y-4">
+                    <div onClick={() => setPayoutMethod('USDC')} className={`cursor-pointer rounded-[24px] p-5 border-2 transition-all flex items-start gap-4 ${payoutMethod === 'USDC' ? 'bg-[#1562f0]/10 border-[#1562f0]' : 'bg-white/5 border-white/10 hover:border-white/20'}`}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${payoutMethod === 'USDC' ? 'bg-[#1562f0] text-white' : 'bg-white/10 text-slate-400'}`}><Coins size={20} /></div>
+                      <div>
+                        <h4 className="text-[16px] font-bold text-white mb-1">USDC (T+0 Settlement)</h4>
+                        <p className="text-[13px] font-medium text-slate-400 leading-snug">{settlementType === 'PAYOUT' ? `Instant cryptographic burn. ${((settlementNetBalance / ORACLE_CAD_USDC)).toFixed(2)} USDC deposited to your Vault.` : `Funds deducted instantly from your Vault and routed to the Alliance.`}</p>
+                        <div className="mt-3 flex items-center gap-2">
+                           <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">0% Fee</span>
+                           <span className="text-[11px] font-bold text-slate-400 bg-white/10 px-2 py-0.5 rounded">Seconds</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div onClick={() => setPayoutMethod('CAD')} className={`cursor-pointer rounded-[24px] p-5 border-2 transition-all flex items-start gap-4 ${payoutMethod === 'CAD' ? 'bg-emerald-500/10 border-emerald-500' : 'bg-white/5 border-white/10 hover:border-white/20'}`}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${payoutMethod === 'CAD' ? 'bg-emerald-500 text-white' : 'bg-white/10 text-slate-400'}`}><Building2 size={20} /></div>
+                      <div>
+                        <h4 className="text-[16px] font-bold text-white mb-1">CAD Fiat (T+2 Settlement)</h4>
+                        <p className="text-[13px] font-medium text-slate-400 leading-snug">{settlementType === 'PAYOUT' ? 'Traditional wire transfer to your linked corporate bank account (RBC Bank *8821).' : 'Send an EFT wire transfer directly to the Alliance treasury account.'}</p>
+                        <div className="mt-3 flex items-center gap-2">
+                           <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">0% Alliance Fee</span>
+                           <span className="text-[11px] font-bold text-slate-400 bg-white/10 px-2 py-0.5 rounded">1-2 Bus. Days</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6 sm:p-8 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent border-t border-white/5 shrink-0">
+                  <button onClick={executeSettlement} className={`w-full text-white py-4.5 rounded-[20px] font-semibold text-[16px] transition-all active:scale-[0.98] shadow-lg flex items-center justify-center gap-2 ${settlementType === 'PAYOUT' ? 'bg-[#1562f0] hover:bg-blue-600 shadow-[#1562f0]/25' : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/25'}`}>
+                    <Activity size={18} /> Burn {burnAmount.toLocaleString()} {alliancesDb[payoutAlliance].baseToken} & Settle
+                  </button>
+                </div>
+              </>
+            )}
+            {payoutStep === 2 && (
+              <div className="h-full flex flex-col items-center justify-center p-10 animate-in fade-in">
+                <div className="relative flex items-center justify-center mb-10">
+                   <div className="absolute w-32 h-32 border-4 border-white/10 border-t-[#1562f0] rounded-full animate-spin"></div>
+                   <div className="w-20 h-20 bg-[#1562f0]/20 rounded-full flex items-center justify-center animate-pulse"><Activity size={32} className="text-[#1562f0]" /></div>
+                </div>
+                <h3 className="text-[22px] font-bold tracking-tight text-white mb-3">Executing Smart Contract...</h3>
+                <p className="text-[14px] font-medium text-slate-400 text-center max-w-xs leading-relaxed">Burning {burnAmount.toLocaleString()} {alliancesDb[payoutAlliance].baseToken} on Base L2 to offset ledger.</p>
+              </div>
+            )}
+            {payoutStep === 3 && (
+              <div className="h-full flex flex-col items-center justify-center p-10 animate-in zoom-in-95 duration-500">
+                <div className="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center mb-8 border border-emerald-500/20"><CheckCircle2 size={48} className="text-emerald-500" strokeWidth={1.5} /></div>
+                <h3 className="text-[24px] font-bold tracking-tight text-white mb-3 text-center">Ledger Cleared<br/>Successfully</h3>
+                <p className="text-[14px] font-medium text-slate-400 text-center mb-10 leading-relaxed">{settlementType === 'PAYOUT' ? (payoutMethod === 'USDC' ? `USDC payout has been deposited to The Vault.` : `Fiat transfer has been initiated by the operator.`) : (payoutMethod === 'USDC' ? `USDC remittance has been deducted from The Vault.` : `Please complete your fiat wire transfer within 24 hours.`)}</p>
+                <button onClick={() => setIsPayoutModalOpen(false)} className="w-full bg-white text-slate-900 py-4.5 rounded-[20px] font-bold text-[16px] hover:bg-slate-100 transition-all active:scale-[0.98]">Done</button>
+              </div>
+            )}
+         </div>
+       </div>
+       );
+     })()}
+
+     {/* --- 7. ROUTING CONFIG MODAL --- */}
+     {isConfigModalOpen && configAllianceId && (() => {
+       const alliance = alliancesDb[configAllianceId];
+       const hasTiers = alliance.tiers && alliance.tiers.length > 0;
+       return (
+         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setIsConfigModalOpen(false)}></div>
+           <div className="relative bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
+             <div className="p-6 sm:p-8 border-b border-slate-100 bg-slate-50/50">
+               <div className="flex justify-between items-start mb-2">
+                 <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center text-white mb-4 shadow-sm ${alliance.nftBg}`}><SlidersHorizontal size={20} /></div>
+                 <button onClick={() => setIsConfigModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
+               </div>
+               <h2 className="text-[22px] font-semibold tracking-tight text-slate-900 mb-1">{alliance.name} Routing</h2>
+               <p className="text-[14px] text-slate-500 font-medium leading-relaxed">Configure automatic point-of-sale discounts for ecosystem VIP tiers. Enforced by your Smart Terminal.</p>
+             </div>
+             <div className="p-6 sm:p-8">
+               {!hasTiers ? (
+                 <div className="bg-slate-50 rounded-[20px] p-6 text-center border border-slate-100">
+                   <Info size={24} className="text-slate-400 mx-auto mb-3" />
+                   <h4 className="text-[15px] font-semibold text-slate-700 mb-1">Standard Routing Only</h4>
+                   <p className="text-[13px] text-slate-500">This alliance does not support custom membership discount tiers.</p>
+                 </div>
+               ) : (
+                 <div className="space-y-6">
+                   {alliance.tiers.map(tier => (
+                     <div key={tier.id} className="bg-white border border-slate-200 rounded-[20px] p-5 shadow-sm">
+                       <div className="flex justify-between items-center mb-5">
+                         <div className="flex items-center gap-3">
+                           <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${tier.iconType === 'emerald' ? 'bg-emerald-50 border-emerald-100 text-emerald-500' : tier.iconType === 'yellow' ? 'bg-yellow-50 border-yellow-100 text-yellow-500' : 'bg-purple-50 border-purple-100 text-purple-500'}`}>
+                             {tier.iconType === 'emerald' ? <ShieldCheck size={18} /> : tier.iconType === 'yellow' ? <Crown size={18} /> : <Award size={18} />}
+                           </div>
+                           <h4 className="text-[16px] font-semibold text-slate-900">{tier.name}</h4>
+                         </div>
+                         <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                           <span className="text-[15px] font-bold text-slate-900">{tempDiscounts[String(tier.id)] ?? 0}</span>
+                           <span className="text-[12px] font-bold text-slate-500">%</span>
+                         </div>
+                       </div>
+                       <input type="range" min="0" max="100" step="1" value={tempDiscounts[String(tier.id)] ?? 0} onChange={(e) => setTempDiscounts(prev => ({...prev, [String(tier.id)]: parseInt(e.target.value, 10)}))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1562f0]" />
+                       <div className="flex justify-between text-[11px] font-medium text-slate-400 mt-2 px-1"><span>0%</span><span>50%</span><span>100% (Free)</span></div>
                      </div>
                    ))}
                  </div>
-               ) : (
-                 <div className="flex flex-col items-center mb-8 animate-in slide-in-from-top-4 duration-300">
-                    <div className={`w-16 h-16 ${sendRecipient.avatarColor} rounded-full flex items-center justify-center text-2xl shadow-md mb-2`}>
-                       😎
-                    </div>
-                    <h3 className="text-lg font-black text-[#1562f0]">{sendRecipient.tag}</h3>
-                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">{sendRecipient.wallet}</p>
-                 </div>
                )}
-
-
-               <div className={`flex flex-col items-center justify-center flex-1 transition-opacity ${sendRecipient ? 'opacity-100' : 'opacity-30'}`}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-black text-slate-800">$</span>
-                    <input
-                      type="number"
-                      value={sendAmount}
-                      onChange={(e) => setSendAmount(e.target.value)}
-                      placeholder="0.00"
-                      disabled={!sendRecipient}
-                      className="text-[4rem] font-black text-slate-900 w-full text-center outline-none bg-transparent placeholder:text-slate-200 leading-none tracking-tighter"
-                    />
-                  </div>
-                  <p className="text-[13px] font-bold text-slate-400 mt-2 tracking-wide uppercase">USDC</p>
-               </div>
-
-
-               <div className="mt-auto mb-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center text-slate-600">
-                       <WalletIcon size={18} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paying From</p>
-                      <p className="text-[14px] font-black text-slate-800">Main Vault</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[14px] font-black text-slate-800">CA$ {(usdcBalance * 1.35).toFixed(2)}</p>
-                    <p className="text-[11px] font-bold text-slate-400 mt-0.5">≈ {usdcBalance.toFixed(4)} USDC</p>
-                  </div>
-               </div>
-
-
-               <button
-                 onClick={() => setSendStep('confirm')}
-                 disabled={!sendRecipient || !sendAmount || parseFloat(sendAmount) <= 0 || parseFloat(sendAmount) > usdcBalance}
-                 className="w-full bg-[#1562f0] py-4 rounded-[1.2rem] text-white font-black text-[17px] shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] disabled:bg-slate-200 disabled:shadow-none transition-all"
-               >
-                 Review
-               </button>
              </div>
-           )}
-
-
-           {sendStep === 'confirm' && sendRecipient && (
-             <div className="flex flex-col h-full pt-10 animate-in slide-in-from-right duration-300">
-               <div className="text-center mb-10">
-                  <div className={`w-20 h-20 mx-auto ${sendRecipient.avatarColor} rounded-full flex items-center justify-center text-3xl shadow-lg mb-4`}>😎</div>
-                  <h3 className="text-xl font-black text-[#1562f0]">{sendRecipient.tag}</h3>
-                  <p className="text-xs text-slate-400 font-medium mt-1">{sendRecipient.wallet}</p>
-               </div>
-
-
-               <div className="bg-[#f8f9fc] rounded-[1.5rem] p-6 space-y-4 border border-slate-100 mb-6">
-                 <div className="flex justify-between items-end pb-5 border-b border-dashed border-slate-200">
-                   <div>
-                     <p className="text-[15px] font-black text-slate-900">Total</p>
-                     <p className="text-[11px] font-medium text-slate-400 mt-0.5">Amount to send</p>
-                   </div>
-                   <div className="text-right">
-                     <p className="text-[22px] font-black text-slate-900 leading-none">{parseFloat(sendAmount).toFixed(4)} <span className="text-[13px] text-slate-400 uppercase">USDC</span></p>
-                     <p className="text-[11px] font-bold text-slate-400 mt-1">≈ CA$ {(parseFloat(sendAmount)*1.35).toFixed(2)}</p>
-                   </div>
-                 </div>
-
-
-                 {/* 🌟 核心更新：完美复刻截图的 Beamio Fee 橙色药丸样式 */}
-                 <div className="flex justify-between items-center pt-1">
-                   <span className="text-[16px] font-bold text-slate-500">Beamio Fee</span>
-                   <div className="flex items-center gap-1.5 bg-[#FFF4E5] px-3 py-1.5 rounded-lg">
-                     <Fuel size={16} className="text-[#F97316]" fill="currentColor" />
-                     <span className="text-[15px] font-black text-[#F97316]">{P2P_GAS_COST} B-Units</span>
-                   </div>
-                 </div>
-               </div>
-
-
-               {bUnits < P2P_GAS_COST && (
-                 <div className="mb-6 bg-red-50 p-4 rounded-xl border border-red-100 animate-in fade-in slide-in-from-bottom-2">
-                   <div className="flex items-center gap-2 text-red-600 mb-1.5">
-                     <ShieldAlert size={16} strokeWidth={2.5} />
-                     <span className="font-black text-[13px]">Insufficient Network Fuel</span>
-                   </div>
-                   <p className="text-[12px] text-red-500 font-medium leading-relaxed">
-                     You need <span className="font-bold">{P2P_GAS_COST} B-Units</span> to process this transaction on-chain. Your current balance is {bUnits}.
-                   </p>
-                 </div>
-               )}
-
-
-               <div className="mt-auto">
-                 {bUnits >= P2P_GAS_COST ? (
-                   <button
-                     onClick={executeSend}
-                     className="w-full bg-[#1562f0] py-4 rounded-[1.2rem] text-white font-black text-[17px] shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] transition-all"
-                   >
-                     Confirm & Send
-                   </button>
-                 ) : (
-                   <button
-                     onClick={() => { setSendModalOpen(false); setCurrentView('fuel'); }}
-                     className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[17px] shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                   >
-                     <Fuel size={18} fill="currentColor" /> Refuel B-Units
-                   </button>
-                 )}
-               </div>
-             </div>
-           )}
-
-
-           {sendStep === 'processing' && (
-             <div className="flex flex-col items-center justify-center h-full animate-in fade-in duration-300">
-               <div className="w-16 h-16 relative">
-                  <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
-                  <div className="absolute inset-0 border-4 border-[#1562f0] rounded-full border-t-transparent animate-spin"></div>
-               </div>
-               <h3 className="text-lg font-black text-slate-900 mt-6">Processing on Base L2...</h3>
-               <p className="text-[12px] text-slate-400 font-medium mt-2">Deducting USDC and B-Units</p>
-             </div>
-           )}
-
-
-           {sendStep === 'success' && (
-             <div className="flex flex-col items-center justify-center pt-10 pb-4 animate-in zoom-in-95 duration-500">
-               <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center text-white shadow-[0_0_30px_rgba(34,197,94,0.4)] mb-6">
-                 <CheckCircle2 size={40} strokeWidth={3} />
-               </div>
-               <h3 className="text-[15px] font-bold text-slate-500">Successfully sent</h3>
-               <p className="text-[32px] font-black text-slate-900 tracking-tighter mt-1">{parseFloat(sendAmount).toFixed(4)} USDC</p>
-               <p className="text-[11px] font-medium text-slate-400 mt-2">Transaction is finalized on-chain.</p>
-              
-               <div className="w-full space-y-3 mt-10">
-                 <button
-                   onClick={() => setSendModalOpen(false)}
-                   className="w-full bg-[#1562f0] py-4 rounded-[1.2rem] text-white font-black text-[15px] active:scale-[0.98] transition-all"
-                 >
-                   Done
-                 </button>
-                 <button className="w-full bg-white border-2 border-slate-100 py-3.5 rounded-[1.2rem] text-slate-600 font-black text-[15px] hover:bg-slate-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
-                   <ExternalLink size={18} /> View transaction
-                 </button>
-               </div>
-             </div>
-           )}
-         </div>
-       </div>
-     )}
-
-
-     {selectedLog && (
-       <div className="fixed inset-0 z-[60] flex items-end justify-center pointer-events-auto max-w-md mx-auto">
-         <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setSelectedLog(null)}></div>
-        
-         <div className="bg-white w-full rounded-t-[2.5rem] p-8 relative z-10 animate-in slide-in-from-bottom-full duration-300 shadow-2xl">
-           <div className="absolute top-4 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-slate-200 rounded-full"></div>
-          
-           <button onClick={() => setSelectedLog(null)} className="absolute top-6 right-6 w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-             <X size={18} />
-           </button>
-
-
-           <div className="text-center mt-4 space-y-2">
-             <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center shadow-md mb-4 bg-orange-50 text-orange-500`}>
-               {selectedLog.type === 'refuel' ? <Plus size={28} strokeWidth={3} /> : <Fuel size={28} fill="currentColor" />}
-             </div>
-             <h3 className="text-[22px] font-black text-slate-900">{selectedLog.title}</h3>
-             <p className="text-[13px] font-bold text-slate-400">{selectedLog.subtitle}</p>
-             <div className="pt-2">
-               <span className={`text-[32px] font-black tracking-tighter ${selectedLog.amount > 0 ? 'text-orange-500' : 'text-slate-900'}`}>
-                 {selectedLog.amount > 0 ? '+' : ''}{selectedLog.amount}
-               </span>
-               <span className="text-[14px] font-bold text-slate-400 ml-1">B-Units</span>
-             </div>
-           </div>
-
-
-           <div className="mt-8 bg-[#f8f9fc] rounded-[1.5rem] p-5 space-y-4 border border-slate-100">
-             <div className="flex justify-between items-center">
-               <span className="text-[13px] font-bold text-slate-500">Status</span>
-               <div className="flex items-center gap-1.5 bg-green-100 px-2 py-1 rounded-md text-green-700">
-                 <CheckCircle2 size={12} strokeWidth={3} />
-                 <span className="text-[11px] font-black uppercase tracking-wider">{selectedLog.status}</span>
-               </div>
-             </div>
-             <div className="h-[1px] w-full border-t border-dashed border-slate-200"></div>
-             <div className="flex justify-between items-center">
-               <span className="text-[13px] font-bold text-slate-500">Time</span>
-               <span className="text-[13px] font-black text-slate-900">{selectedLog.time}</span>
-             </div>
-             <div className="flex justify-between items-center">
-               <span className="text-[13px] font-bold text-slate-500">Linked USDC</span>
-               <span className="text-[13px] font-black text-[#1562f0]">{selectedLog.linkedUsdc}</span>
-             </div>
-             <div className="flex justify-between items-center">
-               <span className="text-[13px] font-bold text-slate-500">Network</span>
-               <span className="text-[13px] font-black text-slate-900">{selectedLog.network}</span>
-             </div>
-             <div className="h-[1px] w-full border-t border-dashed border-slate-200"></div>
-             <div className="flex justify-between items-center">
-               <span className="text-[13px] font-bold text-slate-500">TxHash</span>
-               <div className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
-                 <span className="text-[13px] font-mono font-bold text-slate-900">{selectedLog.txHash}</span>
-                 <Copy size={14} className="text-slate-400" />
-               </div>
+             <div className="p-6 sm:p-8 bg-slate-50/50 border-t border-slate-100 mt-auto">
+               <button onClick={handleSaveConfig} disabled={!hasTiers} className={`w-full py-4.5 rounded-[20px] font-semibold text-[16px] transition-all flex items-center justify-center gap-2 ${hasTiers ? 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}><Cpu size={18} /> Sign & Deploy Rules</button>
              </div>
            </div>
          </div>
-       </div>
-     )}
+       );
+     })()}
 
-
-     {showRefuelSuccess && (
-       <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-[1.5rem] shadow-2xl flex items-center gap-3 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
-         <div className="bg-green-500 rounded-full p-1"><CheckCircle2 size={18} className="text-white" /></div>
-         <div>
-           <p className="text-[13px] font-black">Refuel Successful</p>
-           <p className="text-[10px] text-white/50 font-bold tracking-widest mt-0.5"><span className="uppercase">Synced</span> +{refuelAmount * 100 - REFUEL_GAS_COST} B-Units</p>
+     {/* --- 8. JOIN NEW ALLIANCE MODAL --- */}
+     {isJoinAllianceModalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setIsJoinAllianceModalOpen(false)}></div>
+         <div className="relative bg-white/90 backdrop-blur-3xl rounded-t-[32px] sm:rounded-[40px] shadow-2xl w-full max-w-md p-6 sm:p-10 animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden"></div>
+            <div className="flex justify-between items-center mb-8">
+               <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-[#1562f0]/10 text-[#1562f0] rounded-[20px] flex items-center justify-center"><Hexagon size={24} /></div>
+                  <div><h2 className="text-[22px] font-semibold tracking-tight text-slate-900">Ecosystem Alliances</h2><p className="text-[13px] text-slate-500 font-medium">Apply via chat to unlock routing.</p></div>
+               </div>
+               <button onClick={() => setIsJoinAllianceModalOpen(false)} className="p-2.5 bg-slate-100 rounded-full text-slate-500 hover:text-slate-900 transition-colors hidden sm:block"><X size={20} /></button>
+            </div>
+            <div className="space-y-4 mb-8">
+              {(Object.keys(alliancesDb) as AllianceId[]).filter(id => !joinedAlliances.includes(id)).map(aId => {
+                  const alliance = alliancesDb[aId];
+                  return (
+                    <div key={aId} className="border border-slate-200 rounded-[20px] p-5 hover:border-[#1562f0]/50 hover:bg-[#1562f0]/5 transition-all">
+                      <div className="flex justify-between items-start mb-4">
+                        <div><h4 className="font-bold text-slate-900 text-[16px]">{alliance.name}</h4><p className="text-[12px] font-medium text-slate-500 mt-0.5">Token: {alliance.baseToken}</p></div>
+                        <div className={`w-10 h-10 rounded-[12px] flex items-center justify-center text-white ${alliance.nftBg}`}><Award size={18} /></div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <button onClick={() => handleApplyAlliance(aId)} disabled={applyingAlliance === aId} className={`w-full py-3 rounded-[12px] font-semibold text-[14px] transition-all flex items-center justify-center gap-2 ${applyingAlliance === aId ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-black text-white hover:bg-slate-800 active:scale-[0.98]'}`}>
+                          {applyingAlliance === aId ? (<><div className="w-4 h-4 border-2 border-slate-400/30 border-t-slate-400 rounded-full animate-spin"></div> Awaiting KYB Approval...</>) : (<><MessageSquare size={16} /> Apply via Beamio Chat</>)}
+                        </button>
+                        <p className="text-[11px] text-slate-400 text-center font-medium">Requires business verification (KYB) by the operator.</p>
+                      </div>
+                    </div>
+                  )
+              })}
+            </div>
          </div>
        </div>
      )}
 
-
-     {currentView !== 'genesis' && (
-       <div className="fixed bottom-6 left-0 right-0 px-6 max-w-md mx-auto z-40 flex items-center justify-between pointer-events-none">
-         <div className="bg-slate-800/95 backdrop-blur-xl rounded-[2rem] p-1.5 flex items-center gap-1 shadow-2xl pointer-events-auto">
-           <button onClick={() => setCurrentView('home')} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${currentView === 'home' ? 'bg-white text-[#1562f0] shadow-sm' : 'text-white/80 hover:text-white'}`}>
-             <Home size={22} fill={currentView === 'home' ? "currentColor" : "none"} strokeWidth={currentView === 'home' ? 2 : 2.5} />
-           </button>
-           <button className="w-12 h-12 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all">
-             <Wallet size={22} strokeWidth={2.5} />
-           </button>
-           <button className="w-12 h-12 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all">
-             <ScanLine size={22} strokeWidth={2.5} />
-           </button>
-           <button className="w-12 h-12 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all">
-             <MessageSquare size={22} strokeWidth={2.5} />
-           </button>
-           <button onClick={() => setCurrentView('profile')} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${currentView === 'profile' ? 'bg-white text-[#1562f0] shadow-sm' : 'text-white/80 hover:text-white'}`}>
-             <Store size={22} fill={currentView === 'profile' ? "currentColor" : "none"} strokeWidth={currentView === 'profile' ? 2 : 2.5} />
-           </button>
+     {/* --- 9. ADD TERMINAL MODAL --- */}
+     {isAddTerminalOpen && (
+       <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 font-sans">
+         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={closeTerminalModal}></div>
+         <div className="relative bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
+            <div className="p-6 sm:p-8 border-b border-slate-100 bg-slate-50/50">
+               <div className="flex justify-between items-start mb-2">
+                 <div className="w-12 h-12 rounded-[16px] bg-[#1562f0]/10 text-[#1562f0] flex items-center justify-center mb-4 shadow-sm"><MonitorSmartphone size={24} /></div>
+                 <button onClick={closeTerminalModal} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
+               </div>
+               <h2 className="text-[22px] font-semibold tracking-tight text-slate-900 mb-1">Link Terminal</h2>
+               <p className="text-[14px] text-slate-500 font-medium leading-relaxed">Securely map a mobile POS device to your Smart Account via zero-knowledge proof.</p>
+            </div>
+            <div className="p-6 sm:p-8 space-y-6">
+              {linkTerminalStep === 1 && (
+                <div className="animate-in fade-in zoom-in-95 duration-300">
+                  <div className="space-y-2 mb-6">
+                    <label className="text-[12px] font-semibold text-slate-500 ml-1">Terminal Beamio Tag</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><span className="text-slate-400 font-medium text-[16px]">@</span></div>
+                      <input type="text" value={newTerminalTag} onChange={(e) => setNewTerminalTag(e.target.value)} placeholder="e.g. ut_reg3" disabled={isVerifyingTag} className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200/60 rounded-[20px] focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 focus:border-[#1562f0] transition-all font-medium text-[16px] text-slate-900 disabled:opacity-50" />
+                    </div>
+                  </div>
+                  <button onClick={handleVerifyTerminalTag} disabled={!newTerminalTag || isVerifyingTag} className={`w-full py-4.5 rounded-[20px] font-semibold text-[16px] transition-all flex items-center justify-center gap-2 ${!newTerminalTag ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : isVerifyingTag ? 'bg-slate-100 text-slate-400 cursor-wait' : 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]'}`}>
+                    {isVerifyingTag ? (<><div className="w-5 h-5 border-2 border-slate-400/30 border-t-slate-400 rounded-full animate-spin"></div> Verifying On-Chain...</>) : (<><Search size={18} /> Verify Identity</>)}
+                  </button>
+                </div>
+              )}
+              {linkTerminalStep === 2 && (
+                <div className="animate-in slide-in-from-right-4 duration-300 space-y-6">
+                  <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-[20px] flex items-center justify-between">
+                    <div><p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Identity Verified</p><p className="text-[15px] font-mono font-medium text-slate-700">{foundTerminalEoa}</p></div>
+                    <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-sm"><CheckCircle2 size={16} /></div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-semibold text-slate-500 ml-1">Terminal Alias</label>
+                    <input type="text" value={newTerminalName} onChange={(e) => setNewTerminalName(e.target.value)} placeholder="e.g. Front Desk Tablet" className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200/60 rounded-[16px] focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 focus:border-[#1562f0] transition-all font-medium text-[15px] text-slate-900" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-semibold text-slate-500 ml-1">Issuing Quota (CAD Daily)</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><span className="text-slate-400 font-medium text-[16px]">$</span></div>
+                      <input type="number" value={newTerminalQuota} onChange={(e) => setNewTerminalQuota(e.target.value)} placeholder="e.g. 5000" className="w-full pl-9 pr-4 py-3.5 bg-slate-50 border border-slate-200/60 rounded-[16px] focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 focus:border-[#1562f0] transition-all font-medium text-[15px] text-slate-900" />
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium px-1 mt-1.5 leading-snug">Maximum liability this terminal can mint across all active alliances before requiring a manager reset.</p>
+                  </div>
+                  <button onClick={handleLinkTerminal} disabled={!newTerminalName || !newTerminalQuota} className={`w-full py-4.5 mt-4 rounded-[20px] font-semibold text-[16px] transition-all flex items-center justify-center gap-2 ${(!newTerminalName || !newTerminalQuota) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-[0_8px_20px_rgba(0,0,0,0.15)] active:scale-[0.98]'}`}>
+                    <LinkIcon size={18} /> Authorize & Link Terminal
+                  </button>
+                </div>
+              )}
+            </div>
          </div>
-         <button className="w-14 h-14 bg-slate-800/95 backdrop-blur-xl rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-105 active:scale-95 transition-all pointer-events-auto">
-           <Search size={22} strokeWidth={2.5} />
-         </button>
        </div>
      )}
-
 
    </div>
  );
-};
 
-
-export default App;
+ return (
+   <>
+     {currentView === 'login' && renderLogin()}
+     {currentView === 'loading' && renderLoading()}
+     {currentView === 'dashboard' && renderDashboard()}
+   </>
+ );
+}
 

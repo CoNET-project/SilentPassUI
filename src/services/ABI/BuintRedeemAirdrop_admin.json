@@ -1,0 +1,7 @@
+[
+  "function redeemAdmins(address account) view returns (bool)",
+  "function createRedeem(bytes32 codeHash, uint256 amount, uint64 validAfter, uint64 validBefore) external",
+  "function cancelRedeem(bytes32 codeHash) external",
+  "function redeemWithCodeAsAdmin(address recipient, string code) external",
+  "function getRedeem(bytes32 codeHash) view returns (uint256 amount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)"
+]

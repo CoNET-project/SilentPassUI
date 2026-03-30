@@ -1,0 +1,6 @@
+[
+  "function redeemWithCode(string code) external",
+  "function redeemWithCodeFor(address recipient, string code, uint256 deadline, bytes signature) external",
+  "function getRedeemWithCodeDigest(address recipient, bytes32 codeHash, uint256 deadline) view returns (bytes32)",
+  "function getRedeem(bytes32 codeHash) view returns (uint256 amount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)"
+]

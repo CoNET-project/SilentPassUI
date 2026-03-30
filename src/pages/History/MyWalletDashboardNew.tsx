@@ -89,6 +89,7 @@ import AddAdminBottomSheet from './AddAdminBottomSheet'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import { useNfcRead } from '@/hooks/useNfcRead'
+import BuintRedeemAdminSheet, { checkBuintRedeemAdmin } from '@/pages/History/components/BuintRedeemAdminSheet'
 
 const HISTORY_BALANCE_CACHE_KEY_PREFIX = 'beamio:history:balance:v1:'
 const getHistoryBalanceCacheKey = (keyID: string) => `${HISTORY_BALANCE_CACHE_KEY_PREFIX}${keyID.toLowerCase()}`
@@ -799,6 +800,8 @@ export default function MyWalletDashboardNew() {
 	/** onSuccess 回传的列表优先于 effect 从 CoNET_Data 读取，避免新建 redeem 被旧数据覆盖 */
 	const pendingRedeemsFromSuccessRef = useRef<CardRedeemBatch[] | null>(null)
 	const [nfcCheckBalanceOpen, setNfcCheckBalanceOpen] = useState(false)
+	const [buintRedeemAdminSheetOpen, setBuintRedeemAdminSheetOpen] = useState(false)
+	const [buintRedeemAdminEligible, setBuintRedeemAdminEligible] = useState<boolean | null>(null)
 	const [ccsaRedeemOpen, setCcsaRedeemOpen] = useState(false)
 	const [redeemCodeInput, setRedeemCodeInput] = useState('')
 	const [redeemCardNumberInput, setRedeemCardNumberInput] = useState('')
@@ -880,6 +883,34 @@ export default function MyWalletDashboardNew() {
 			setShowFooter(false)
 		}
 	}, [historyPayData, setHistoryPayData, setShowFooter])
+
+	// CoNET BuintRedeemAirdrop：当前 profile EOA 是否为 redeem admin（仅 true 时显示顶部管理入口）
+	useEffect(() => {
+		const p = profiles?.[0]
+		let cancelled = false
+		const run = async () => {
+			let eoa: string | null = null
+			if (p?.keyID && ethers.isAddress(p.keyID)) {
+				eoa = ethers.getAddress(p.keyID)
+			} else if (p?.privateKeyArmor) {
+				try {
+					eoa = new ethers.Wallet(p.privateKeyArmor).address
+				} catch {
+					eoa = null
+				}
+			}
+			if (!eoa) {
+				if (!cancelled) setBuintRedeemAdminEligible(false)
+				return
+			}
+			const ok = await checkBuintRedeemAdmin(eoa)
+			if (!cancelled) setBuintRedeemAdminEligible(ok)
+		}
+		void run()
+		return () => {
+			cancelled = true
+		}
+	}, [profiles?.[0]?.keyID, profiles?.[0]?.privateKeyArmor])
 
 	// 扫码/链接解析得到的 BeamioUserCard redeem URL → 从下往上打开 redeem 面板并预填
 	useEffect(() => {
@@ -2117,6 +2148,21 @@ export default function MyWalletDashboardNew() {
 
 	const filteredPasses = visiblePasses
 
+	/** CoNET BuintRedeem 管理：必须与链上 redeemAdmins 校验的 EOA 一致 */
+	const conetRedeemAdminEoa = useMemo(() => {
+		const p = profiles?.[0]
+		if (!p) return ''
+		if (p.keyID && ethers.isAddress(p.keyID)) return ethers.getAddress(p.keyID)
+		if (p.privateKeyArmor) {
+			try {
+				return new ethers.Wallet(p.privateKeyArmor).address
+			} catch {
+				return ''
+			}
+		}
+		return ''
+	}, [profiles?.[0]?.keyID, profiles?.[0]?.privateKeyArmor])
+
 	/** 当前选中的卡：优先从 cards（eoa/aa/ccsa）取，否则从 visiblePasses（基础设施卡、user card）合成 */
 	const selectedCard = useMemo((): Card | undefined => {
 		if (!activeView) return undefined
@@ -2186,6 +2232,20 @@ export default function MyWalletDashboardNew() {
 							>
 								<Edit2 className="w-5 h-5" strokeWidth={2.4} />
 							</button>
+							{buintRedeemAdminEligible === true && profiles?.[0]?.privateKeyArmor ? (
+								<button
+									type="button"
+									onClick={() => {
+										setBuintRedeemAdminSheetOpen(true)
+										setShowFooter(false)
+									}}
+									className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+									title="B-Unit redeem admin"
+									aria-label="B-Unit redeem admin"
+								>
+									<Ticket className="w-5 h-5" strokeWidth={2.4} />
+								</button>
+							) : null}
 							<button
 								type="button"
 								onClick={() => {
@@ -3930,6 +3990,18 @@ export default function MyWalletDashboardNew() {
 					onUpdateStatus={updatePassStatus}
 					onRename={renamePass}
 				/>
+
+				{profiles?.[0]?.privateKeyArmor && conetRedeemAdminEoa ? (
+					<BuintRedeemAdminSheet
+						open={buintRedeemAdminSheetOpen}
+						onClose={() => {
+							setBuintRedeemAdminSheetOpen(false)
+							setShowFooter(true)
+						}}
+						eoaAddress={conetRedeemAdminEoa}
+						privateKeyArmor={profiles[0].privateKeyArmor}
+					/>
+				) : null}
 		</div>
 		<style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1); }`}</style>
 		</>

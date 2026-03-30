@@ -1,7 +1,5 @@
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {
-	initMessage, dedupeChatsByAddress
-} from '@/services/chat'
+import { initMessage } from '@/services/chat'
 
 import { useEffect, useRef, useState } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
@@ -75,9 +73,7 @@ const Home = () => {
 					{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
 					<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 					<ChatList
-						// 这里你传你维护的 chat list（通常是 profile.chat）
-						list={profiles?.[0]?.chat || []}
-						title="" // 你如果不要 “Messages” 大标题就留空
+						title=""
 						onOpen={item => {
 							setChatData(item)      // ✅ 打开某个会话
 							setShowFooter(false)

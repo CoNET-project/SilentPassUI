@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, baseRpcProviderDirect, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES, BASE_TREASURY } from "@/config/chainAddresses";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT_REDEEM_AIRDROP } from "@/config/chainAddresses";
 import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
@@ -2104,6 +2104,117 @@ export async function fetchTrustedCanonicalAaFromRpc(
 	} catch {
 		return { trusted: false }
 	}
+}
+
+export type BuintRedeemAirdropPreCheckApiResponse = {
+	valid?: boolean
+	codeHash?: string
+	amount?: string
+	validAfter?: number
+	validBefore?: number
+	active?: boolean
+	consumed?: boolean
+	timeOk?: boolean
+	redeemable?: boolean
+	error?: string
+}
+
+const BUINT_REDEEM_AIRDROP_GET_ABI = [
+	'function getRedeem(bytes32 codeHash) view returns (uint256 amount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
+] as const
+
+const MAX_BUINT_REDEEM_CODE_BYTES = 512
+
+function buintRedeemAirdropTimeOkClient(validAfter: bigint, validBefore: bigint, nowSec: number): boolean {
+	if (validAfter !== 0n && BigInt(nowSec) < validAfter) return false
+	if (validBefore !== 0n && BigInt(nowSec) > validBefore) return false
+	return true
+}
+
+/** 浏览器直连 CoNET RPC：与合约 `keccak256(bytes(code))` + `getRedeem` 一致，不经过 API */
+export async function queryBuintRedeemAirdropOnChain(code: string): Promise<BuintRedeemAirdropPreCheckApiResponse> {
+	const b = ethers.toUtf8Bytes(code)
+	const now = Math.floor(Date.now() / 1000)
+	if (b.length === 0 || b.length > MAX_BUINT_REDEEM_CODE_BYTES) {
+		return {
+			valid: false,
+			codeHash: ethers.keccak256(b),
+			amount: '0',
+			validAfter: 0,
+			validBefore: 0,
+			active: false,
+			consumed: false,
+			timeOk: false,
+			redeemable: false,
+			error: 'Invalid redeem code length',
+		}
+	}
+	const codeHash = ethers.keccak256(b)
+	const c = new ethers.Contract(CONET_BUINT_REDEEM_AIRDROP, BUINT_REDEEM_AIRDROP_GET_ABI, conetDepinProvider)
+	let amount = 0n
+	let validAfter = 0n
+	let validBefore = 0n
+	let active = false
+	let consumed = false
+	try {
+		const r = await c.getRedeem!(codeHash)
+		const tup = r as unknown as [bigint, bigint, bigint, boolean, boolean]
+		amount = tup[0] ?? 0n
+		validAfter = tup[1] ?? 0n
+		validBefore = tup[2] ?? 0n
+		active = Boolean(tup[3])
+		consumed = Boolean(tup[4])
+	} catch (e: unknown) {
+		const err = e as { shortMessage?: string; message?: string }
+		return {
+			valid: false,
+			codeHash,
+			amount: '0',
+			validAfter: 0,
+			validBefore: 0,
+			active: false,
+			consumed: false,
+			timeOk: false,
+			redeemable: false,
+			error: err?.shortMessage ?? err?.message ?? 'getRedeem failed',
+		}
+	}
+	const timeOk = buintRedeemAirdropTimeOkClient(validAfter, validBefore, now)
+	let error: string | undefined
+	if (!active) error = 'Redeem is not active'
+	else if (consumed) error = 'Redeem already consumed'
+	else if (!timeOk) error = 'Outside valid time window'
+	else if (amount <= 0n) error = 'Zero amount'
+	const redeemable = active && !consumed && timeOk && amount > 0n
+	return {
+		valid: true,
+		codeHash,
+		amount: amount.toString(),
+		validAfter: Number(validAfter),
+		validBefore: Number(validBefore),
+		active,
+		consumed,
+		timeOk,
+		redeemable,
+		error,
+	}
+}
+
+/** Cluster → Master：admin 代付 redeem，B-Unit 划入用户 Beamio Account（CoNET 账务地址与 Base AA 同址） */
+export async function postBuintRedeemAirdropRedeem(
+	eoa: string,
+	code: string
+): Promise<{ success: boolean; txHash?: string; aa?: string; error?: string }> {
+	const res = await fetch(`${beamioApi}/api/buintRedeemAirdropRedeem`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ eoa: ethers.getAddress(eoa.trim()), code }),
+	})
+	const data = (await res.json().catch(() => ({}))) as { success?: boolean; txHash?: string; aa?: string; error?: string }
+	if (!res.ok) {
+		return { success: false, error: data?.error ?? res.statusText }
+	}
+	return { success: Boolean(data.success), txHash: data.txHash, aa: data.aa, error: data.error }
 }
 
 export const getAAAccount = async (profile: profile): Promise<string | null> => {

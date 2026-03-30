@@ -3,67 +3,68 @@
 <html class="light" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<title>Messages | Verra Merchant</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
       tailwind.config = {
         darkMode: "class",
         theme: {
           extend: {
             colors: {
-              "inverse-primary": "#5f8bff",
-              "on-secondary-container": "#475266",
-              "surface-container-high": "#dfe3e6",
-              "outline": "#747779",
-              "on-tertiary-fixed-variant": "#6c1a6c",
-              "surface-container-lowest": "#ffffff",
-              "primary": "#0051d1",
-              "primary-dim": "#0047b8",
-              "outline-variant": "#abadaf",
-              "surface-variant": "#d9dde0",
-              "on-surface": "#2c2f31",
-              "on-secondary-fixed": "#354053",
-              "on-tertiary-container": "#610e62",
-              "on-tertiary-fixed": "#400041",
               "error-dim": "#9f0519",
-              "background": "#f5f7f9",
-              "tertiary-fixed-dim": "#e88ae1",
-              "inverse-surface": "#0b0f10",
-              "surface": "#f5f7f9",
-              "on-secondary": "#eff2ff",
-              "on-error": "#ffefee",
-              "on-primary-fixed-variant": "#00276d",
-              "tertiary-fixed": "#f797ef",
-              "error": "#b31b25",
-              "tertiary-dim": "#7f2d7e",
-              "on-background": "#2c2f31",
-              "secondary-dim": "#455064",
-              "tertiary-container": "#f797ef",
-              "secondary-fixed": "#d8e3fb",
-              "on-error-container": "#570008",
-              "primary-fixed": "#7a9dff",
-              "surface-bright": "#f5f7f9",
-              "primary-container": "#7a9dff",
-              "on-surface-variant": "#595c5e",
-              "on-primary-fixed": "#000000",
-              "on-secondary-fixed-variant": "#515c70",
-              "surface-container": "#e5e9eb",
               "surface-tint": "#0051d1",
+              "primary-fixed": "#7a9dff",
+              "surface": "#f5f7f9",
+              "on-error-container": "#570008",
               "on-primary-container": "#001e59",
-              "surface-container-low": "#eef1f3",
-              "surface-dim": "#d0d5d8",
-              "tertiary": "#8d3a8b",
-              "error-container": "#fb5151",
-              "secondary-fixed-dim": "#cad5ed",
-              "inverse-on-surface": "#9a9d9f",
-              "primary-fixed-dim": "#648eff",
-              "secondary-container": "#d8e3fb",
-              "on-tertiary": "#ffeef8",
+              "surface-container-lowest": "#ffffff",
+              "on-primary-fixed": "#000000",
+              "on-tertiary-fixed-variant": "#6c1a6c",
               "secondary": "#515c70",
+              "on-secondary-container": "#475266",
+              "secondary-dim": "#455064",
+              "primary-fixed-dim": "#648eff",
+              "surface-container-high": "#dfe3e6",
+              "on-error": "#ffefee",
+              "surface-container-low": "#eef1f3",
+              "on-secondary-fixed": "#354053",
+              "on-surface": "#2c2f31",
+              "on-primary-fixed-variant": "#00276d",
+              "tertiary-dim": "#7f2d7e",
+              "tertiary-fixed-dim": "#e88ae1",
+              "on-secondary": "#eff2ff",
+              "primary-container": "#7a9dff",
+              "primary": "#0051d1",
+              "on-background": "#2c2f31",
+              "outline-variant": "#abadaf",
+              "tertiary-container": "#f797ef",
+              "on-secondary-fixed-variant": "#515c70",
+              "on-tertiary-container": "#610e62",
+              "tertiary": "#8d3a8b",
+              "surface-bright": "#f5f7f9",
+              "outline": "#747779",
+              "primary-dim": "#0047b8",
+              "surface-variant": "#d9dde0",
+              "on-surface-variant": "#595c5e",
               "on-primary": "#f1f2ff",
-              "surface-container-highest": "#d9dde0"
+              "surface-container-highest": "#d9dde0",
+              "background": "#f5f7f9",
+              "tertiary-fixed": "#f797ef",
+              "secondary-fixed-dim": "#cad5ed",
+              "on-tertiary": "#ffeef8",
+              "inverse-surface": "#0b0f10",
+              "on-tertiary-fixed": "#400041",
+              "secondary-fixed": "#d8e3fb",
+              "secondary-container": "#d8e3fb",
+              "surface-dim": "#d0d5d8",
+              "error-container": "#fb5151",
+              "inverse-primary": "#5f8bff",
+              "surface-container": "#e5e9eb",
+              "inverse-on-surface": "#9a9d9f",
+              "error": "#b31b25"
             },
             fontFamily: {
               "headline": ["Manrope"],
@@ -76,24 +77,20 @@
       }
     </script>
 <style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-        }
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .tonal-transition {
-            background: linear-gradient(180deg, #ffffff 0%, #eef1f3 100%);
-        }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .tonal-transition { transition: all 0.3s ease; }
+      .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+      .mesh-gradient-bg {
+        background: radial-gradient(at 0% 0%, #7a9dff 0%, transparent 50%),
+                    radial-gradient(at 100% 0%, #1562f0 0%, transparent 50%),
+                    radial-gradient(at 100% 100%, #f797ef 0%, transparent 50%);
+      }
     </style>
 <style>
     body {
@@ -101,152 +98,278 @@
     }
   </style>
   </head>
-<body class="bg-surface font-body text-on-surface antialiased">
-<!-- TopAppBar Shared Component -->
-<header class="sticky top-0 w-full z-50 bg-white/70 backdrop-blur-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
-<div class="flex items-center justify-between px-6 py-4 w-full">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border-2 border-primary/20">
-<img alt="User Profile" class="w-full h-full object-cover" data-alt="professional portrait of a confident young entrepreneur with soft cinematic lighting and blurred office background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDkR2sw8_MnMo8nUH_alshOWlpZ_2D7iza8UwdFSH_x47h_cdRCwiZXw70-6P9FD57LSjkqOI1o3HmHBRwo3QFRyiMEuGF4fE7xuNM8eRAEqPMwnnENqRJnnyLfzIyVAEvBh1WU0coH7tO4c5BK7ahLd4RRsiQbrQnWnAFZaz4NGeu-QFEQ43yT84Cag5_u5tBN_PdsVNeTTE3PlhiMmG4oZzegZmymreNvMhmu9ZLERQ6ib9TMjHtGpLrfkC5RarcL7k7OoRFnXYM"/>
-</div>
-<h1 class="font-manrope font-bold text-3xl tracking-tight text-blue-600">Prepaid</h1>
+<body class="bg-surface font-body text-on-surface">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl flex justify-between items-center px-6 h-16 w-full shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-blue-600 dark:text-blue-400 active:scale-95 transition-transform">grid_view</button>
+<h1 class="font-manrope font-bold tracking-tight text-xl font-extrabold text-blue-600 dark:text-blue-400 tracking-tighter">Verra Merchant</h1>
 </div>
 <div class="flex items-center gap-4">
-<button class="hover:opacity-80 transition-opacity active:scale-95 duration-200 text-slate-400">
-<span class="material-symbols-outlined text-2xl">notifications</span>
-</button>
+<div class="w-8 h-8 rounded-full bg-primary-container overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Professional headshot of a merchant account administrator in a modern office setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyGNxMlkMmPUF36rDy1JGOXU14WR0A6bnUVYugHOPf5YumARoTVZcWJoVyJUGYY1AxclGNYShotW8k-cPVygKg0uSeofLH5wxZFcDwROXVLJlOOoGKnDRkZ6Z-Vjitla_p1-RA75pdnmyrJiPoxFCRHr-FUHeQ6YaEYcyAISEu9vi352sSLSLfpueKfB0yr-MURamJJbAIybWwWPzuHlv4t4ZFiUFmwaXOt2Uanoi5rdq0PUWrzQdvt_cJuWNFLy6-gVtkJrKNPs0"/>
 </div>
 </div>
 </header>
-<main class="pb-32">
-<!-- Search & Filter Section -->
-<section class="px-6 pt-6 pb-2">
-<div class="flex gap-3">
-<div class="relative flex-grow">
-<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
-<input class="w-full pl-12 pr-4 py-4 bg-surface-container-low rounded-lg border-none focus:ring-2 focus:ring-primary/20 font-medium" placeholder="Search cards, brands..." type="text"/>
+<div class="flex pt-16 min-h-screen">
+<!-- NavigationDrawer (Sidebar) -->
+<aside class="hidden lg:flex flex-col p-6 gap-2 h-screen w-72 bg-slate-50 dark:bg-slate-950 sticky top-16">
+<div class="flex items-center gap-3 mb-8 px-2">
+<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">loyalty</span>
 </div>
-<button class="w-14 h-14 bg-surface-container-low rounded-lg flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors active:scale-95">
-<span class="material-symbols-outlined">tune</span>
+<div>
+<p class="font-manrope font-bold text-sm text-blue-600">Verra Premium</p>
+<p class="text-xs text-slate-500">Merchant Portal</p>
+</div>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">dashboard</span> Dashboard
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">loyalty</span> Programs
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">group</span> Members
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span> Wallets
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">insights</span> Insights
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 bg-blue-50 text-blue-600 rounded-full font-bold transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">forum</span> Messages
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">storefront</span> Markets
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">screenshot_monitor</span> Terminals
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">settings</span> Settings
+                </a>
+</nav>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 lg:p-10 p-4 pb-24 lg:pb-10 max-w-7xl mx-auto w-full">
+<header class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+<div>
+<span class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">Secure Communication</span>
+<h2 class="text-4xl lg:text-5xl font-manrope font-extrabold tracking-tight text-on-surface">Messages</h2>
+</div>
+<button class="bg-primary text-white px-8 py-4 rounded-full font-manrope font-bold shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-xl">edit_square</span>
+                    New Message
+                </button>
+</header>
+<!-- Messaging Interface: Bento Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Search & Filters (Left Col) -->
+<div class="lg:col-span-4 space-y-6">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-outline-variant group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-lg py-5 pl-14 pr-6 focus:ring-2 focus:ring-primary/20 focus:bg-white font-medium transition-all" placeholder="Search BeamioTags..." type="text"/>
+</div>
+<!-- Category Chips -->
+<div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+<button class="px-5 py-2 rounded-full bg-primary text-white text-xs font-bold whitespace-nowrap">All Chats</button>
+<button class="px-5 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold whitespace-nowrap hover:bg-surface-container-highest">Members</button>
+<button class="px-5 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold whitespace-nowrap hover:bg-surface-container-highest">Partners</button>
+<button class="px-5 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold whitespace-nowrap hover:bg-surface-container-highest">Support</button>
+</div>
+<!-- Threads List -->
+<div class="space-y-4">
+<!-- Thread Item Active -->
+<div class="p-5 rounded-lg bg-surface-container-lowest border border-primary/10 shadow-sm relative overflow-hidden cursor-pointer">
+<div class="absolute left-0 top-0 h-full w-1 bg-primary"></div>
+<div class="flex gap-4">
+<div class="relative">
+<div class="w-14 h-14 rounded-full overflow-hidden border-2 border-primary-container">
+<img class="w-full h-full object-cover" data-alt="Portrait of a friendly customer with a warm smile against a soft teal background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXoyfhM7QypUrcXaH6EI4yoq46xRjd0c8ETnXPw_xeFLf_hawxue8eF-WI1djS0uLKUjQHTDCmucT87LzdTkBKDAXgIJr1x50xYhvrSSd5OznaIvCUzKBOMy7Eg5j-a5PURXMSh8q_XyQmwmoGW31rXVsi8Sqh-tfYoeywQHi-cQW3yrlzHN5bXq0OlGYXJOPCLVrCOFoRfBL2kyWqRT-srUE3vjZi6C2oTufOAsVv23_8ZupYdAjzOC435CibG8ZdpYXcAmjdgic"/>
+</div>
+<div class="absolute bottom-0 right-0 w-4 h-4 bg-primary rounded-full border-2 border-white"></div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start mb-1">
+<h4 class="font-manrope font-bold text-sm truncate">@JulianVibe</h4>
+<span class="text-[10px] font-bold text-primary">JUST NOW</span>
+</div>
+<p class="text-xs text-on-surface font-semibold truncate mb-1">Checking on the loyalty rewards update...</p>
+<div class="flex items-center gap-1 text-[10px] text-outline uppercase tracking-wider font-bold">
+<span class="material-symbols-outlined text-xs">lock</span> Encrypted
+                                    </div>
+</div>
+</div>
+</div>
+<!-- Thread Item -->
+<div class="p-5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer group">
+<div class="flex gap-4">
+<div class="w-14 h-14 rounded-full overflow-hidden bg-surface-container-high">
+<img class="w-full h-full object-cover" data-alt="Confident businesswoman looking directly into camera with blurred city lights in background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1CAL8t1BbKj15Q3zHYhucr8aXdizBxaNq2bcyhzbUUsHXY_mi_sKaIpmwWACEvPGqatvStKa6FgV6Ziuin05yiIz9-ksCHgxWJFPfZe_1HpfwZNyDWAzMGEusWq7GzE8u6GkQ33u0jNzVuXH8EJwo3DW9cTV3o2HnMsZpMQMTG2iwGhFR3ytHsH28QiTNYhl7ExJDiBseVmDfROeA9TDaBOJ295AsSZyYhceY-r1ztuAeDXMy-0hmXyvr37YBIQQtcZ-jollEgb8"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start mb-1">
+<h4 class="font-manrope font-bold text-sm truncate">@SarahLuxe</h4>
+<span class="text-[10px] font-bold text-outline">2H AGO</span>
+</div>
+<p class="text-xs text-on-surface-variant truncate mb-1">The transaction for the summer gala is confirmed.</p>
+<div class="flex items-center gap-1 text-[10px] text-outline uppercase tracking-wider font-bold">
+<span class="material-symbols-outlined text-xs">done_all</span> Delivered
+                                    </div>
+</div>
+</div>
+</div>
+<!-- Thread Item -->
+<div class="p-5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer group">
+<div class="flex gap-4">
+<div class="w-14 h-14 rounded-full overflow-hidden bg-surface-container-high">
+<img class="w-full h-full object-cover" data-alt="Portrait of a man with glasses smiling in a modern creative studio environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDO_nO5L-HPHjXOD_jqMuXTK677uPlxxQ5Yj47pddGxyAAIlj_rwFRh51AwIVm8tKInjq50XTcTXYFo1KOBkNc0uuyHDsZQQtOnadNmTNoZ7Qth6AVhWUoNXkR_Tfgn6CoKwBZzaXrLvHfC_MhaXbZFu_lXtJFxdlSswH5TjYHrLGlFi8AbLiy4NcnjeuYBNfheEpQ_QExhtMIUky3SEdnMMwabfQ73l8ossuNAczLgN5aNLvlmjpWXQAvYhBkfJhyc1n-otW9Re3s"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start mb-1">
+<h4 class="font-manrope font-bold text-sm truncate">@MarkTech</h4>
+<span class="text-[10px] font-bold text-outline">YESTERDAY</span>
+</div>
+<p class="text-xs text-on-surface-variant truncate mb-1">Can we schedule a call regarding the API?</p>
+<div class="flex items-center gap-1 text-[10px] text-outline uppercase tracking-wider font-bold">
+<span class="material-symbols-outlined text-xs">lock</span> Encrypted
+                                    </div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Chat Canvas (Right Col) -->
+<div class="lg:col-span-8 flex flex-col h-[700px] bg-white rounded-lg shadow-xl shadow-blue-900/5 relative overflow-hidden">
+<!-- Chat Header -->
+<div class="p-6 border-b border-surface-container flex items-center justify-between glass-card sticky top-0 z-10">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Detailed portrait of Julian" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAe1m_yOKUQX1aj4apFnN0VwtJdpxO8xQlsCIvog8txnKCHgQE2AefOc4GHwO8QoOhYZD5EWnb78rF0H76UQ-36OH_o2L6y6CDByI4tzGQ5ie4eF3wKNcklKTbesQts5-ZBsYr0hOfPScEtApIm_RgizaWof0jqk7z3r3DNkGZj1My3U0doYHZTBtoTIn2kKypeOIfIyizhdbERQYleiLjJvMAtzJB0UJkT2rrJmnbYg9OrKRen86Cu4wDvPOAEPM77y-WAqAKApsA"/>
+</div>
+<div>
+<h3 class="font-manrope font-extrabold text-lg">@JulianVibe</h3>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-green-500"></span>
+<span class="text-[10px] font-bold text-outline-variant uppercase tracking-widest">Active Now</span>
+</div>
+</div>
+</div>
+<div class="flex gap-2">
+<button class="p-3 rounded-full hover:bg-surface-container-low text-outline transition-colors">
+<span class="material-symbols-outlined">call</span>
+</button>
+<button class="p-3 rounded-full hover:bg-surface-container-low text-outline transition-colors">
+<span class="material-symbols-outlined">info</span>
 </button>
 </div>
-</section>
-<!-- Featured Banner (Editorial Style) -->
-<section class="px-6 py-6">
-<div class="relative h-48 rounded-lg overflow-hidden shadow-xl bg-gradient-to-br from-primary to-primary-container p-8 flex flex-col justify-center">
-<div class="absolute inset-0 opacity-20" data-alt="abstract geometric mesh patterns with soft flowing lines and futuristic digital texture in deep blue tones" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBXW1LA9Wq4Apz6PW7JAC6OVOUUWxV4kTk7Ewv4yFcBbDWruxHg7qDZ1sO6Bxf8aBkcgv59DCJVlejm1I1v3jFcl648HGNgMIcQvcd17WOPVVEyjrfSrC7G036Iu5ZBEYBrTAC8Dqg-DZhBFlFpE57lFb_IdKBYoF9xCL1pWZjlOpZx11URpe59TXX0JwCGI5ZfJWTlGHbF_jHzREVjPv3sB4i7KUtwJICU1IKBEMdVr97YjBd29oJu8IgCVgIL0UP1WXLq-BSEicQ'); background-size: cover;"></div>
-<div class="relative z-10">
-<span class="inline-block px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-white text-[10px] font-bold uppercase tracking-widest mb-3">Limited Offer</span>
-<h2 class="font-headline font-extrabold text-3xl text-white leading-tight max-w-[200px]">Unlock 10% Travel Rewards</h2>
-<p class="text-white/80 text-sm mt-2 font-medium">Global travel cards now available.</p>
 </div>
-<div class="absolute right-[-20px] bottom-[-20px] w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+<!-- Message Feed -->
+<div class="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/50">
+<!-- System Label -->
+<div class="flex justify-center">
+<span class="px-4 py-1.5 rounded-full bg-surface-container-high text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Conversation started Oct 24</span>
 </div>
-</section>
-<!-- Categories Section -->
-<section class="py-4">
-<div class="px-6 mb-4 flex justify-between items-end">
-<h3 class="font-headline font-bold text-xl">Categories</h3>
-<a class="text-primary text-xs font-bold uppercase tracking-wider" href="#">View All</a>
+<!-- Message Received -->
+<div class="flex gap-4 max-w-[80%]">
+<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-1">
+<img class="w-full h-full object-cover" data-alt="Julian's small profile icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDPhBdg4S-GcR5uQOvmZT5SzqaUKAsHAJq5ErhRKSyz3Z42-Xy8vn6XxXp81jypRooeCT9YjIReMSHPa-6ki0-Wp6RhrHkz9chGiwGQ4dcDawSlkRC_08umez8syZSd8F_nHWY1h854kfNqNm3f96dUKUOFW7mfGdz3fImuPMdHJG1ESjUQlEpkC6jw-72akONfmH-9Qbn9lDfDSSxUEQwvRrdSj_EPKmhn3P4-W8AQZriWic1XVmHuK6NyghMhsJ-WZNUybFkytvI"/>
 </div>
-<div class="flex overflow-x-auto px-6 gap-4 no-scrollbar">
-<div class="flex-shrink-0 flex flex-col items-center gap-2">
-<div class="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-primary shadow-sm active:scale-90 transition-transform">
-<span class="material-symbols-outlined text-2xl" data-weight="fill">flight</span>
-</div>
-<span class="text-xs font-bold font-label text-on-surface-variant tracking-tight">Travel</span>
-</div>
-<div class="flex-shrink-0 flex flex-col items-center gap-2">
-<div class="w-16 h-16 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 shadow-sm active:scale-90 transition-transform">
-<span class="material-symbols-outlined text-2xl" data-weight="fill">sports_esports</span>
-</div>
-<span class="text-xs font-bold font-label text-on-surface-variant tracking-tight">Gaming</span>
-</div>
-<div class="flex-shrink-0 flex flex-col items-center gap-2">
-<div class="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 shadow-sm active:scale-90 transition-transform">
-<span class="material-symbols-outlined text-2xl" data-weight="fill">shopping_bag</span>
-</div>
-<span class="text-xs font-bold font-label text-on-surface-variant tracking-tight">Shopping</span>
-</div>
-<div class="flex-shrink-0 flex flex-col items-center gap-2">
-<div class="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-600 shadow-sm active:scale-90 transition-transform">
-<span class="material-symbols-outlined text-2xl" data-weight="fill">restaurant</span>
-</div>
-<span class="text-xs font-bold font-label text-on-surface-variant tracking-tight">Food</span>
-</div>
-<div class="flex-shrink-0 flex flex-col items-center gap-2">
-<div class="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 shadow-sm active:scale-90 transition-transform">
-<span class="material-symbols-outlined text-2xl" data-weight="fill">movie</span>
-</div>
-<span class="text-xs font-bold font-label text-on-surface-variant tracking-tight">Movies</span>
+<div class="space-y-2">
+<div class="p-5 bg-white rounded-r-lg rounded-bl-lg shadow-sm text-sm leading-relaxed text-on-surface">
+                                    Hello! I was checking my Verra wallet and noticed the points from my last visit at the flagship store haven't appeared yet. Is there a delay?
+                                </div>
+<span class="text-[10px] font-bold text-outline-variant">09:41 AM</span>
 </div>
 </div>
-</section>
-<!-- Marketplace Grid -->
-<section class="px-6 py-6">
-<h3 class="font-headline font-bold text-xl mb-6">Trending Now</h3>
-<div class="grid grid-cols-2 gap-4">
-<!-- Card 1 -->
-<div class="bg-surface-container-lowest rounded-lg p-3 shadow-sm flex flex-col">
-<div class="aspect-[4/3] rounded-lg mb-4 overflow-hidden relative">
-<div class="absolute inset-0 bg-gradient-to-tr from-orange-500 to-yellow-300"></div>
-<img alt="Amazon Gift Card" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay" data-alt="vibrant orange and yellow gradient background with subtle amazon logo watermark and glossy finish" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRTqK0iEIxmqBKQaufHbUE1YIKswNoa-ybGNkFfuxBFTA0OQafo0Tb1-bZfGzqcWlyV22DzzURWrQm9gkhey0PWwDBsZnsXdml1Aon4RUGRK3VQ4pgTwnszNkKwCacMzEODf4Lc2kUabEPFrPeiMHNlejxJ_lF4-_GRpFsW9-jwmNEn0wxcapCSEuftAiFeSkot6TRO9GtmpXVGF28P128M5KNYXC-bSI5UWX1zBsUQedoWSWtbPSBy1Ss2jYht4b8YEUSbiZIej4"/>
-<span class="absolute top-2 right-2 px-2 py-0.5 bg-white/20 backdrop-blur-md rounded-full text-[8px] font-bold text-white">HOT</span>
-</div>
-<h4 class="font-headline font-bold text-sm leading-tight text-on-surface">Amazon Gift Card</h4>
-<p class="text-[10px] text-primary font-bold mt-1 uppercase tracking-wide">5% Cashback</p>
-<button class="mt-4 w-full py-2 bg-primary text-white rounded-full text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-transform">Get Card</button>
-</div>
-<!-- Card 2 -->
-<div class="bg-surface-container-lowest rounded-lg p-3 shadow-sm flex flex-col">
-<div class="aspect-[4/3] rounded-lg mb-4 overflow-hidden relative">
-<div class="absolute inset-0 bg-gradient-to-tr from-blue-600 to-emerald-400"></div>
-<img alt="Steam Card" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay" data-alt="modern tech aesthetic with neon blue and emerald green flowing gradients and digital grid texture" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBx6VY7y00d0K6H39MqprA90vq-Hi_MH4a1RY6r45ll3-TsbGp3FqZyJQbHCEsyktxB2mewyof7fwX5Dpdgb_a6v9nzPm9do2_SDK3By2PX6JL4nDN9vSr8omzDTPjMCYN6EPdBpQF-jFSowrhuKv2RuHNqo11J0xPklyjPMPTHoJ4lpxAFQQY4SqHG2OzHmHuD1JHObQbP53rcOo8Fg0SU_NfLInKdaeT0SIPioMwq2wQ59DUYirj8JW5VO6a4bnDO8lB5MMIT6XM"/>
-</div>
-<h4 class="font-headline font-bold text-sm leading-tight text-on-surface">Steam Wallet</h4>
-<p class="text-[10px] text-on-surface-variant font-bold mt-1 uppercase tracking-wide">Instant Delivery</p>
-<button class="mt-4 w-full py-2 bg-primary text-white rounded-full text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-transform">Get Card</button>
-</div>
-<!-- Card 3 -->
-<div class="bg-surface-container-lowest rounded-lg p-3 shadow-sm flex flex-col">
-<div class="aspect-[4/3] rounded-lg mb-4 overflow-hidden relative">
-<div class="absolute inset-0 bg-gradient-to-tr from-pink-500 to-rose-300"></div>
-<img alt="Starbucks Card" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay" data-alt="soft pink and rose gold metallic gradient with elegant bokeh light effects and premium texture" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcNn8gAVjIYWC1cN3Gaj1YnXfCFbBlgiyatQ3LgP54Qu7DLSR0B1KKM0SwSkC4Pt7lp0cjbR1c9zmSwo8JRrE3M5Jyao7BoQ-D-RX-lJbmWqq4WgeeFkp9yj0F7K_Q38bP8ti2xKl76qw1Os1QYcG19goU5xgsJkhb-t7hHdZ5EwOBuCrTTfm5Qa5gwUQuYljexHTgs-cXWzBAl1J5xeuLcG9q9C4x9VLUvC9-5L2hb5sgeJNJERr6BrDeWU37xx6stc6Vnjos2Is"/>
-</div>
-<h4 class="font-headline font-bold text-sm leading-tight text-on-surface">Starbucks Rewards</h4>
-<p class="text-[10px] text-primary font-bold mt-1 uppercase tracking-wide">Buy 1 Get 1</p>
-<button class="mt-4 w-full py-2 bg-primary text-white rounded-full text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-transform">Get Card</button>
-</div>
-<!-- Card 4 -->
-<div class="bg-surface-container-lowest rounded-lg p-3 shadow-sm flex flex-col">
-<div class="aspect-[4/3] rounded-lg mb-4 overflow-hidden relative">
-<div class="absolute inset-0 bg-gradient-to-tr from-indigo-600 to-purple-400"></div>
-<img alt="PSN Card" class="absolute inset-0 w-full h-full object-cover mix-blend-overlay" data-alt="deep indigo and electric purple gradient with sharp light streaks and cyber aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2Dnug7c6LZLaAbhXZ6BeErgkZWVXXU3YvXDUEDY3mF-eI_VsfTIbOzk_fH-ZuVXjegpdfXvnqR8gJjTkkevsBbpJGQelcz9w0tnsGrBTuC68XpTDL3Z2WSCfjZzNjCisIcw6nGMCtEGa_zzbkw63d9PS-scHuT87k_oqHH77EkyZ5uLA11OatkjjT76u7NTRnshCNQ-wM4KodwKBkvQdmTS7bxgU5TQKEuIbpIU6s-1bNlayZa_Kz4A-4-WwA5OqSZswENZzvQ2A"/>
-</div>
-<h4 class="font-headline font-bold text-sm leading-tight text-on-surface">PlayStation Plus</h4>
-<p class="text-[10px] text-on-surface-variant font-bold mt-1 uppercase tracking-wide">Free Trial Incl.</p>
-<button class="mt-4 w-full py-2 bg-primary text-white rounded-full text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-transform">Get Card</button>
+<!-- Message Sent -->
+<div class="flex flex-row-reverse gap-4 max-w-[80%] ml-auto">
+<div class="space-y-2 items-end flex flex-col">
+<div class="p-5 bg-primary text-white rounded-l-lg rounded-br-lg shadow-lg shadow-primary/20 text-sm leading-relaxed">
+                                    Hi Julian! Let me check that for you right away. Sometimes it takes up to 24 hours for the ledger to sync depending on the terminal.
+                                </div>
+<div class="flex items-center gap-2">
+<span class="text-[10px] font-bold text-primary">SENT • 09:45 AM</span>
+<span class="material-symbols-outlined text-primary text-xs" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
 </div>
-</section>
+</div>
+<!-- Message Received -->
+<div class="flex gap-4 max-w-[80%]">
+<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-1">
+<img class="w-full h-full object-cover" data-alt="Julian's small profile icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPItxDngrjwQeUBEY0aZ0-HDDKN5Cvf2dS95jdsd-8TcXTSsnenAlZSxhu0V7HYtcEd9HN1geM__4yzJZUfOrRGjivqMhZ227N9RL3nFdtTUxPqJ9L6hNXo6TR5v809-D2OXZi6Xne5NeYJMntwzF1m2bgEQ4u1_r47tUtZ6V_NN0c1-vCliwRUojBISyfCXXWNdzR2fl9cEGboa-KWd1A8SDYGHF-73QjPd33306wmRK7_eOmfbliZbo2UC6O89eT1bNYzlUrsWU"/>
+</div>
+<div class="space-y-2">
+<div class="p-5 bg-white rounded-r-lg rounded-bl-lg shadow-sm text-sm leading-relaxed text-on-surface">
+                                    Ah, that makes sense. It's only been about 2 hours. I'll check again tomorrow morning! Thanks for the quick response.
+                                </div>
+<span class="text-[10px] font-bold text-outline-variant">09:48 AM</span>
+</div>
+</div>
+<!-- Typing Indicator -->
+<div class="flex gap-4 items-center">
+<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover opacity-50" data-alt="Julian profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAFlrTo5liZz9GZaDC9kpu0kXURa58B64P1d1QX51He9YUg1cRxcVBDXyAFvXpzipI7qLXJMleNirE1n1KQ4nWQZEZkQSKcxfjoevsGJnyujew8hP-Et4jWkQeCb5_BhU4dUnNzYxzaCD30vIkzMjjCua4zKFDJvimbzOwgk-bhA0sKjPiQtlkRkUFmbzAcKs2ijKLawF8GFwGDVrntvQNjsSogSMECi1Rk9qHJbE4s9tMhqgdEP-D8_xTyCU6AJK7JvRyzJclVMUE"/>
+</div>
+<div class="flex gap-1.5 p-3 bg-surface-container rounded-full">
+<span class="w-1.5 h-1.5 bg-outline-variant rounded-full"></span>
+<span class="w-1.5 h-1.5 bg-outline-variant rounded-full"></span>
+<span class="w-1.5 h-1.5 bg-outline-variant rounded-full"></span>
+</div>
+</div>
+</div>
+<!-- Input Area -->
+<div class="p-6 bg-white border-t border-surface-container-low">
+<div class="flex items-end gap-4 bg-surface-container-low rounded-lg p-2 pr-4">
+<button class="p-3 text-outline-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">add_circle</span>
+</button>
+<textarea class="flex-1 bg-transparent border-none focus:ring-0 text-sm py-3 resize-none font-medium" placeholder="Type a secure message..." rows="1"></textarea>
+<div class="flex items-center gap-2">
+<button class="p-3 text-outline-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">mood</span>
+</button>
+<button class="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-primary/30 active:scale-90 transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">send</span>
+</button>
+</div>
+</div>
+<div class="mt-4 flex justify-between items-center px-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-xs text-green-500" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+<span class="text-[10px] font-bold text-outline-variant uppercase tracking-widest">P2P End-to-End Encrypted</span>
+</div>
+<span class="text-[10px] font-bold text-outline-variant uppercase tracking-widest">Press Enter to send</span>
+</div>
+</div>
+</div>
+</div>
 </main>
-<!-- BottomNavBar Shared Component -->
-<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-8 pt-4 bg-white/70 backdrop-blur-2xl shadow-[0_-10px_40px_rgba(21,98,240,0.08)] z-50 rounded-t-lg">
-<a class="flex flex-col items-center justify-center text-slate-400 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined text-2xl">home</span>
-<span class="font-manrope text-[10px] font-semibold uppercase tracking-widest mt-1">Home</span>
+</div>
+<!-- BottomNavBar -->
+<nav class="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl shadow-[0_-10px_40px_rgba(21,98,240,0.08)] rounded-t-[2rem]">
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Dashboard</span>
 </a>
-<a class="flex flex-col items-center justify-center text-blue-600 bg-blue-50/50 rounded-2xl px-4 py-2 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">grid_view</span>
-<span class="font-manrope text-[10px] font-semibold uppercase tracking-widest mt-1">Market</span>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
+<span class="material-symbols-outlined">loyalty</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Programs</span>
 </a>
-<a class="flex flex-col items-center justify-center text-slate-400 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined text-2xl">receipt_long</span>
-<span class="font-manrope text-[10px] font-semibold uppercase tracking-widest mt-1">Activity</span>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Wallets</span>
 </a>
-<a class="flex flex-col items-center justify-center text-slate-400 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined text-2xl">person</span>
-<span class="font-manrope text-[10px] font-semibold uppercase tracking-widest mt-1">Profile</span>
+<a class="flex flex-col items-center justify-center text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/30 rounded-2xl px-4 py-2 active:scale-90" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">forum</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Messages</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Settings</span>
 </a>
 </nav>
 </body></html>

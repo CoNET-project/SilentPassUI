@@ -12,6 +12,8 @@ export const BASE_TREASURY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
 export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xA756F2E27a332d6Be2d399dA543E3Ce4C8455F14'
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 export const BEAMIO_INDEXER_DIAMOND = '0xd990719B2f05ccab4Acdd5D7A3f7aDfd2Fc584Fe'
+/** BuintRedeemAirdrop（CoNET）；与 x402sdk chainAddresses / 部署记录同步 */
+export const CONET_BUINT_REDEEM_AIRDROP = '0x9A02EfE5DFC45E9236552BfE8FAB6643Efefc84A'
 /** BeamioOracle on CoNET mainnet (getRate returns 1 currency = X USD, E18) */
 export const BEAMIO_ORACLE_CONET = '0x373639E4004f43C508b227644139F7b0c29f3cfF'
 
@@ -35,5 +37,6 @@ export const CONTRACT_ADDRESSES = {
   conet: {
     chainId: 224400,
     beamioIndexerDiamond: BEAMIO_INDEXER_DIAMOND,
+    buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
   },
 } as const

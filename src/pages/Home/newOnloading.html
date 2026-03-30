@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Verra Merchant Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-tertiary": "#ffeef8",
+              "surface": "#f5f7f9",
+              "on-secondary-fixed": "#354053",
+              "outline-variant": "#abadaf",
+              "on-tertiary-fixed-variant": "#6c1a6c",
+              "on-secondary-container": "#475266",
+              "primary-fixed-dim": "#648eff",
+              "error-dim": "#9f0519",
+              "inverse-surface": "#0b0f10",
+              "tertiary-container": "#f797ef",
+              "tertiary-fixed": "#f797ef",
+              "on-error": "#ffefee",
+              "primary-dim": "#0047b8",
+              "primary-fixed": "#7a9dff",
+              "tertiary-fixed-dim": "#e88ae1",
+              "surface-container-low": "#eef1f3",
+              "surface-container-highest": "#d9dde0",
+              "secondary-container": "#d8e3fb",
+              "on-primary-fixed-variant": "#00276d",
+              "tertiary": "#8d3a8b",
+              "on-primary": "#f1f2ff",
+              "secondary": "#515c70",
+              "on-primary-fixed": "#000000",
+              "secondary-fixed-dim": "#cad5ed",
+              "tertiary-dim": "#7f2d7e",
+              "surface-container-high": "#dfe3e6",
+              "error-container": "#fb5151",
+              "surface-variant": "#d9dde0",
+              "on-background": "#2c2f31",
+              "on-primary-container": "#001e59",
+              "inverse-on-surface": "#9a9d9f",
+              "on-surface-variant": "#595c5e",
+              "inverse-primary": "#5f8bff",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary-container": "#610e62",
+              "secondary-fixed": "#d8e3fb",
+              "surface-container": "#e5e9eb",
+              "secondary-dim": "#455064",
+              "surface-dim": "#d0d5d8",
+              "primary-container": "#7a9dff",
+              "surface-tint": "#0051d1",
+              "on-secondary-fixed-variant": "#515c70",
+              "on-secondary": "#eff2ff",
+              "on-error-container": "#570008",
+              "primary": "#0051d1",
+              "background": "#f5f7f9",
+              "on-surface": "#2c2f31",
+              "surface-bright": "#f5f7f9",
+              "on-tertiary-fixed": "#400041",
+              "error": "#b31b25",
+              "outline": "#747779"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-transition { transition: background-color 0.3s ease; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl flex justify-between items-center px-6 h-16 w-full shadow-[0_20px_40px_rgba(21,98,240,0.06)] lg:pl-80">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-blue-600 dark:text-blue-400 lg:hidden cursor-pointer" data-icon="grid_view">grid_view</span>
+<h1 class="text-xl font-extrabold text-blue-600 dark:text-blue-400 tracking-tighter font-headline">Verra Merchant</h1>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center overflow-hidden">
+<img alt="Merchant Profile" class="w-full h-full object-cover" data-alt="Stylized minimalist avatar icon of a business professional with a clean modern aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAT6rWQcu0lSWTpy_ZNCQ--FfB1C4DN-oLi54UxyVvo0QpFCVIR9zOhY4cacVWbKLJTuILvDAnI0z_kxVnTvRSpJzv7_SCMvWNzNBTGaP9sqFhgSiAgtAIwxExkHsRo_3yovRpZSAb69SAnnuGiD98a92JEZYwoVHjM00slZpXG-fxk7wxBpKfSEldpP41XR5C-rWb6Urcg8YIP_93rObOM266Jt_yiVDoFYt1f6L_Y432756dZJkDFYXK-BtE0u055PzGNX8blRK0"/>
+</div>
+</div>
+</header>
+<div class="flex pt-16 min-h-screen">
+<!-- NavigationDrawer -->
+<aside class="hidden lg:flex flex-col p-6 gap-2 h-screen w-72 fixed left-0 top-0 pt-20 bg-slate-50 dark:bg-slate-950 tonal-transition z-40 overflow-y-auto">
+<div class="mb-8 px-4">
+<p class="text-2xl font-black text-blue-600 font-headline">Verra</p>
+<div class="mt-6 flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+<span class="material-symbols-outlined text-blue-600" data-icon="storefront">storefront</span>
+</div>
+<div>
+<p class="font-manrope font-bold text-sm text-on-surface">Verra Premium</p>
+<p class="text-xs text-slate-500">Merchant Portal</p>
+</div>
+</div>
+</div>
+<nav class="space-y-1">
+<!-- Dashboard Active -->
+<a class="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full font-bold font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="loyalty">loyalty</span>
+<span>Programs</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span>Members</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span>Wallets</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+<span>Insights</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="forum">forum</span>
+<span>Messages</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="screenshot_monitor">screenshot_monitor</span>
+<span>Terminals</span>
+</a>
+<div class="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+</div>
+</nav>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 lg:ml-72 p-6 md:p-10 mb-20 lg:mb-0">
+<div class="max-w-6xl mx-auto space-y-8">
+<!-- Action Required Hero Section -->
+<section class="relative overflow-hidden bg-primary-dim rounded-lg p-8 md:p-12 text-on-primary shadow-2xl">
+<!-- Background Mesh Gradient Simulation -->
+<div class="absolute inset-0 bg-gradient-to-br from-primary via-primary-dim to-primary-fixed opacity-60"></div>
+<div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+<div class="space-y-4 max-w-xl">
+<span class="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">warning</span>
+                                Action Required
+                            </span>
+<h2 class="text-3xl md:text-4xl font-headline font-extrabold tracking-tight">Activate Your Smart Wallet</h2>
+<p class="text-on-primary/80 text-lg leading-relaxed">Purchase B-Units to unlock card issuance and automated loyalty features. Start rewarding your customers today.</p>
+</div>
+<button class="shrink-0 bg-white text-primary font-bold px-8 py-4 rounded-full shadow-lg hover:scale-105 active:scale-95 transition-all font-manrope">
+                            Go to Market
+                        </button>
+</div>
+</section>
+<!-- Key Metrics Bento Grid -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Metric: Revenue -->
+<div class="bg-surface-container-lowest p-8 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between min-h-[180px]">
+<div>
+<p class="text-slate-500 font-headline font-bold text-xs uppercase tracking-widest">Total Revenue</p>
+<h3 class="text-4xl font-headline font-extrabold mt-4">$0.00 <span class="text-lg font-medium text-slate-400 uppercase">CAD</span></h3>
+</div>
+<div class="flex items-center gap-2 text-slate-400 text-sm mt-4">
+<span class="material-symbols-outlined text-[18px]" data-icon="trending_up">trending_up</span>
+<span>No data yet</span>
+</div>
+</div>
+<!-- Metric: Members -->
+<div class="bg-surface-container-lowest p-8 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between min-h-[180px]">
+<div>
+<p class="text-slate-500 font-headline font-bold text-xs uppercase tracking-widest">Active Members</p>
+<h3 class="text-4xl font-headline font-extrabold mt-4">0</h3>
+</div>
+<div class="flex items-center gap-2 text-slate-400 text-sm mt-4">
+<span class="material-symbols-outlined text-[18px]" data-icon="group">group</span>
+<span>Launch a program to grow</span>
+</div>
+</div>
+<!-- Metric: Wallet Balance (Visualizer) -->
+<div class="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-lg shadow-xl flex flex-col justify-between text-white min-h-[180px]">
+<div class="flex justify-between items-start">
+<div>
+<p class="text-slate-400 font-headline font-bold text-xs uppercase tracking-widest">B-Unit Balance</p>
+<h3 class="text-3xl font-headline font-extrabold mt-2">0.00</h3>
+</div>
+<span class="material-symbols-outlined text-primary-fixed" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<p class="text-[10px] text-slate-500 font-mono tracking-widest uppercase">NOT INITIALIZED</p>
+</div>
+</section>
+<!-- Recent Activity Empty State -->
+<section class="bg-surface-container-lowest rounded-lg p-12 shadow-[0_4px_20px_rgba(0,0,0,0.02)] border-dashed border-2 border-surface-container-high">
+<div class="max-w-md mx-auto text-center space-y-6">
+<div class="relative w-48 h-48 mx-auto">
+<div class="absolute inset-0 bg-blue-50 rounded-full scale-110 opacity-50 blur-xl"></div>
+<div class="relative z-10 w-full h-full flex items-center justify-center">
+<!-- Minimal Illustration Placeholder -->
+<div class="w-32 h-32 bg-surface-container p-6 rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-6xl text-slate-300" data-icon="inbox_customize">inbox_customize</span>
+</div>
+</div>
+</div>
+<div class="space-y-2">
+<h4 class="text-xl font-headline font-bold text-on-surface">No activity yet</h4>
+<p class="text-slate-500 text-sm">Once your merchant account is active and customers start joining your programs, your real-time activity will appear here.</p>
+</div>
+<button class="text-primary font-bold text-sm inline-flex items-center gap-2 hover:underline">
+                            Learn how to start
+                            <span class="material-symbols-outlined text-[16px]" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- BottomNavBar -->
+<nav class="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl shadow-[0_-10px_40px_rgba(21,98,240,0.08)] rounded-t-[2rem]">
+<a class="flex flex-col items-center justify-center text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/30 rounded-2xl px-4 py-2 active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="loyalty">loyalty</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Programs</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Wallets</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Insights</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Settings</span>
+</a>
+</nav>
+</body></html>

@@ -206,7 +206,8 @@ type ChatProps = {
 	allNodes: nodeInfo[]
 	chatData: chatData
 	privateKey: string
-
+	/** Merchant Messages: keep chat inside app shell (no viewport-fixed takeover). */
+	layout?: 'fullscreen' | 'embedded'
 }
 
 function fmtTime(ts: number) {
@@ -292,7 +293,7 @@ type ChatListProps = {
 
 
 
-export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
+export default function Chat({ onBack, chatData, privateKey, layout = 'fullscreen' }: ChatProps) {
 	const [text, setText] = useState("")
 	 
   	const {
@@ -704,9 +705,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}, [messages])
 
 	useLayoutEffect(() => {
+		if (layout === 'embedded') return
 		setShowFooter(false)
 		return () => setShowFooter(true)
-	}, [])
+	}, [layout, setShowFooter])
 
 	const statusRank = (s?: ChatMessage["status"]) => {
 	if (s === "sent") return 3
@@ -1089,24 +1091,79 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		el.scrollTop = el.scrollHeight
 	}, [text])
 
-	
-
+	const isEmbedded = layout === 'embedded'
+	const embeddedHeaderTitle = useMemo(() => {
+		const b = fromBeamio
+		const a = (chatData.address || '').trim()
+		const short = a.length > 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a
+		if (!b) return short || 'Chat'
+		if (b.username && b.username !== 'Unknow') return `@${b.username}`
+		return short || 'Chat'
+	}, [fromBeamio, chatData.address])
 
   return (
-		<div className="fixed inset-0 bg-[#F2F2F7]">
-			<ChatHeaderIOS
-				beamioer={fromBeamio}
-				onBack={onBack}
-				online={chatData.chatData.online}
-				avatarSrc={userImg}
-			/>
+		<div
+			className={
+				isEmbedded
+					? 'relative flex h-full min-h-0 flex-col overflow-hidden bg-slate-50'
+					: 'fixed inset-0 bg-[#F2F2F7]'
+			}
+		>
+			{isEmbedded ? (
+				<div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200/80 bg-white/85 px-4 py-3 backdrop-blur-xl">
+					<div className="flex min-w-0 flex-1 items-center gap-3">
+						<button
+							type="button"
+							onClick={onBack}
+							className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-700 transition hover:bg-slate-100"
+							aria-label="Back"
+						>
+							<ChevronLeft className="h-6 w-6" strokeWidth={2.4} />
+						</button>
+						{userImg ? (
+							<img src={userImg} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover ring-1 ring-black/5" />
+						) : (
+							<div className="h-11 w-11 shrink-0 rounded-full bg-slate-200 ring-1 ring-black/5" />
+						)}
+						<div className="min-w-0">
+							<h3 className="truncate font-extrabold text-slate-900">{embeddedHeaderTitle}</h3>
+							<div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+								{chatData.chatData.online ? (
+									<>
+										<span className="h-2 w-2 rounded-full bg-emerald-500" />
+										<span>Active Now</span>
+									</>
+								) : (
+									<span>Offline</span>
+								)}
+							</div>
+						</div>
+					</div>
+					<div className="flex shrink-0 gap-1">
+						<button type="button" className="rounded-full p-2.5 text-slate-500 transition hover:bg-slate-100" aria-label="Call">
+							<Phone className="h-5 w-5" strokeWidth={2} />
+						</button>
+						<button type="button" className="rounded-full p-2.5 text-slate-500 transition hover:bg-slate-100" aria-label="Info">
+							<Info className="h-5 w-5" strokeWidth={2} />
+						</button>
+					</div>
+				</div>
+			) : (
+				<ChatHeaderIOS
+					beamioer={fromBeamio}
+					onBack={onBack}
+					online={chatData.chatData.online}
+					avatarSrc={userImg}
+				/>
+			)}
 
+			<div className={isEmbedded ? 'relative flex min-h-0 min-w-0 flex-1 flex-col' : 'contents'}>
 			{/* iOS 风格 Message Reaction 菜单：仅对收到的消息显示，在 message 上方，内容可左右滚动；一点展开/收缩动画 */}
 			<AnimatePresence>
 			{reactionUI.open && (
 				<motion.div
 					key="reaction-menu-layer"
-					className="fixed inset-0 z-[200]"
+					className={isEmbedded ? 'absolute inset-0 z-[200]' : 'fixed inset-0 z-[200]'}
 					initial={{ scale: 0, opacity: 0 }}
 					animate={{ scale: 1, opacity: 1 }}
 					exit={{ scale: 0, opacity: 0 }}
@@ -1125,7 +1182,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						onTouchStart={closeReactionBar}
 					/>
 					<div
-						className="fixed z-[201] flex flex-col items-center pointer-events-none ml-4"
+						className={
+							(isEmbedded ? 'absolute' : 'fixed') +
+							' z-[201] flex flex-col items-center pointer-events-none ml-4'
+						}
 						style={{
 							left: reactionUI.x,
 							top: reactionUI.y,
@@ -1161,34 +1221,44 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			{/* 内容区：消息列表 */}
 			<div
-				className={["absolute inset-0", "bg-[#F2F2F7]"].join(" ")}
-				style={{
-					// paddingTop: "calc(env(safe-area-inset-top) + 140px)",
-					// paddingBottom: "calc(env(safe-area-inset-bottom) + 112px)"
-				}}
+				className={
+					isEmbedded
+						? 'relative flex min-h-0 flex-1 flex-col bg-slate-50/80'
+						: ['absolute inset-0', 'bg-[#F2F2F7]'].join(' ')
+				}
 			>
 			{/* 顶部白色渐变蒙版 */}
 			<div
-				className="absolute left-0 right-0 top-0 h-[10rem] pointer-events-none z-10"
+				className={
+					(isEmbedded ? 'h-6' : 'h-[10rem]') +
+					' pointer-events-none absolute left-0 right-0 top-0 z-10'
+				}
 				style={{ background: "linear-gradient(to bottom, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
 				aria-hidden
 			/>
 			{/* 底部白色渐变蒙版 */}
 			<div
-				className="absolute left-0 right-0 bottom-0 h-[10rem] pointer-events-none z-10"
+				className={
+					(isEmbedded ? 'h-8' : 'h-[10rem]') +
+					' pointer-events-none absolute bottom-0 left-0 right-0 z-10'
+				}
 				style={{ background: "linear-gradient(to top, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
 				aria-hidden
 			/>
 			<div
 				ref={scrollRef}
-				className="h-full overflow-y-auto px-4 py-4"
+				className={
+					isEmbedded
+						? 'min-h-0 flex-1 overflow-y-auto px-4 py-4'
+						: 'h-full overflow-y-auto px-4 py-4'
+				}
 				onScroll={() => {
 				clearUnreadIfNeeded()
 				}}
 			>
-				<div className="min-h-full flex flex-col justify-end">
+				<div className="flex min-h-full flex-col justify-end">
 				<div className="mx-auto w-full max-w-[820px]">
-					<div aria-hidden className="h-[96px]" />
+					<div aria-hidden className={isEmbedded ? 'h-3' : 'h-[96px]'} />
 					<AnimatePresence initial={false}>
 							{sections.map(sec => (
 									<div key={sec.key}>
@@ -1556,7 +1626,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 							</AnimatePresence>
 
 					{/* ✅ 关键：底部 spacer */}
-					<div aria-hidden className="h-[96px]" />
+					<div aria-hidden className={isEmbedded ? 'h-4' : 'h-[96px]'} />
 				</div>
 				</div>
 			</div>
@@ -1564,10 +1634,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			{/* 底部：输入栏（iOS 毛玻璃 + pill） */}
 			<div
-				className={[
-					"fixed left-0 right-0 bottom-0 z-50",
-					"pb-[env(safe-area-inset-bottom)]"
-				].join(" ")}
+				className={
+					isEmbedded
+						? 'z-20 shrink-0 border-t border-slate-200/80 bg-white/90 pb-2 pt-2 backdrop-blur-md'
+						: ['fixed left-0 right-0 bottom-0 z-50', 'pb-[env(safe-area-inset-bottom)]'].join(' ')
+				}
 			>
 				<div className={["bg-white/0"].join(" ")}>
 					<div className="relative">
@@ -1611,7 +1682,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									value={text}
 									onChange={e => hasRoute && setText(e.target.value)}
 									onKeyDown={hasRoute ? onKeyDown : undefined}
-									placeholder={hasRoute ? "iMessage…" : "No route – message may not be delivered"}
+									placeholder={
+										hasRoute
+											? isEmbedded
+												? "Type a secure message…"
+												: "iMessage…"
+											: "No route – message may not be delivered"
+									}
 									readOnly={!hasRoute}
 									rows={1}
 									className={[
@@ -1668,6 +1745,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						</div>
 					</div>
 				</div>
+			</div>
 			</div>
 		</div>
 		)

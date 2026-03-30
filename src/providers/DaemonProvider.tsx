@@ -1,7 +1,11 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanButton"
-import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS } from "@/services/beamio"
+import { ethers } from 'ethers'
+import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS, storeSystemData } from "@/services/beamio"
+import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
+import { baseEndpoint } from '@/utils/constants'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
 
 type DaemonContext = {
@@ -548,6 +552,84 @@ export function DaemonProvider({ children }: DaemonProps) {
     const id = setInterval(fetchOracle, ORACLE_REFRESH_MS)
     return () => clearInterval(id)
   }, [fetchOracle])
+
+  /**
+   * Global Beamio AA sync ( Merchant OS `biz.tsx` / `bizHome` ): factory canonical `beamioAccountOf` vs local `profiles[0].aaAccount`.
+   * When chain reports no AA (`aa === null`), clear stale cached `aaAccount` only if that address has no contract bytecode on Base.
+   */
+  useEffect(() => {
+    const eoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim()
+    if (!eoa || !ethers.isAddress(eoa)) return
+    if (!profiles?.length) return
+
+    let cancelled = false
+
+    const persist = async (nextProfiles: profile[]) => {
+      setProfiles(nextProfiles)
+      const temp = CoNET_Data
+      if (temp?.profiles?.length) {
+        temp.profiles = nextProfiles
+        setCoNET_Data(temp)
+        try {
+          await storeSystemData()
+        } catch {
+          /* non-fatal */
+        }
+      }
+    }
+
+    const run = async (retryCount = 0) => {
+      if (cancelled) return
+      try {
+        const r = await fetchTrustedCanonicalAaFromRpc(eoa)
+        if (cancelled) return
+        if (!r.trusted) {
+          if (retryCount === 0) setTimeout(() => run(1), 2500)
+          return
+        }
+
+        const list = profiles
+        const p0 = list?.[0]
+        if (!p0) return
+
+        if (r.aa) {
+          const chainAa = ethers.getAddress(r.aa)
+          const cached = p0.aaAccount?.trim()
+          if (
+            cached &&
+            ethers.isAddress(cached) &&
+            ethers.getAddress(cached).toLowerCase() === chainAa.toLowerCase()
+          ) {
+            return
+          }
+          if (cancelled) return
+          const nextProfiles = list.map((p: profile, i: number) =>
+            i === 0 ? { ...p, aaAccount: chainAa } : p
+          )
+          await persist(nextProfiles)
+          return
+        }
+
+        const cached = p0.aaAccount?.trim()
+        if (!cached || !ethers.isAddress(cached)) return
+        const code = await baseEndpoint.getCode(cached)
+        if (cancelled) return
+        if (code && code !== '0x' && code.length > 2) return
+        if (cancelled) return
+        const nextProfiles = list.map((p: profile, i: number) =>
+          i === 0 ? { ...p, aaAccount: undefined } : p
+        )
+        await persist(nextProfiles)
+      } catch {
+        if (!cancelled && retryCount === 0) setTimeout(() => run(1), 2500)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [profiles, myAddress, setProfiles])
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,

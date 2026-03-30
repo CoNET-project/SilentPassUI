@@ -2,11 +2,12 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { motion, LayoutGroup } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
-import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { storeSystemData, getBalance, formatWithThousands, purchaseBUnitFromBase, postToIPFS } from '@/services/beamio';
 import BeamioMeMainScreen from '@/components/Setting';
+import Chat from '@/pages/chat/chat';
+import ChatList from '@/pages/chat/components/ChatList';
 import { searchUsername, getOracleCadUsdcFromConet } from '@/services/beamio';
 import {
   checkRedeemAdminCodeValid,
@@ -32,11 +33,14 @@ import {
   createBeamioCard,
   fetchCardsByCategory,
   getCardOwner,
+  queryBuintRedeemAirdropOnChain,
+  postBuintRedeemAirdropRedeem,
   type CardMetadataFromUri,
   type CardTierMetadata,
   type TierMetadata,
   type UserCardInfo,
 } from '@/services/BeamioCard';
+import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_WSS } from '@/utils/constants';
 import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
@@ -81,7 +85,6 @@ import {
 } from '@/services/merchantPOS';
 import {
  LayoutDashboard,
- Receipt,
  Wallet,
  Users,
  Settings,
@@ -107,6 +110,7 @@ import {
  Smartphone,
  Nfc,
  MessageSquare,
+ MessageSquarePlus,
  Send,
  Crown,
  MonitorSmartphone, // 新增：用于终端图标
@@ -157,6 +161,14 @@ import {
  ShoppingBag,
  UtensilsCrossed,
  Clapperboard,
+ BarChart3,
+ Download,
+ ShoppingCart,
+ Package,
+ Palette,
+ History,
+ LifeBuoy,
+ Clock,
 } from 'lucide-react';
 
 const getImg = (avatarSeed: string | undefined) =>
@@ -341,19 +353,6 @@ type AllianceId = keyof typeof INITIAL_ALLIANCES_DB;
 
 /** Default alliance row for `BEAMIO_USER_CARD_ASSET_ADDRESS` in this example UI */
 const ALLIANCE_ID_FOR_FIXED_USER_CARD: AllianceId = 'CashTrees';
-
-const MOCK_CONTACTS = [
-  { id: 'c1', tag: '@cashtrees_support', name: 'CashTrees Network', type: 'Alliance', lastMessage: 'Your KYB application is approved.', time: '10:42 AM', unread: 0, avatarBg: 'bg-[#4854e8]', avatarText: 'CT' },
-  { id: 'c2', tag: '@alice_chen', name: 'Alice Chen', type: 'Customer', lastMessage: 'Thanks for the great service today!', time: 'Yesterday', unread: 2, avatarBg: 'bg-emerald-500', avatarText: 'AC' },
-  { id: 'c3', tag: '@senpho_wholesale', name: 'Sen Pho Supply', type: 'Supplier', lastMessage: 'Invoice #882 paid via $PHO.', time: 'Tuesday', unread: 0, avatarBg: 'bg-rose-500', avatarText: 'SP' }
-];
-
-const MOCK_MESSAGES = [
-  { id: 'm1', sender: 'them', text: 'Hello, we received your Partner NFT application.', time: '10:30 AM' },
-  { id: 'm2', sender: 'me', text: 'Great, what else is needed for the KYB process?', time: '10:35 AM' },
-  { id: 'm3', sender: 'them', text: 'Nothing else. Your business details have been verified via CoNET.', time: '10:40 AM' },
-  { id: 'm4', sender: 'them', text: 'Your KYB application is approved. The Alliance NFT has been minted directly to your Smart Terminal.', time: '10:42 AM' }
-];
 
 /** Members & Loyalty (demo rows; not on-chain) */
 type BizLoyaltyMemberRow = {
@@ -2151,7 +2150,7 @@ const AddressCapsule = ({ address, className = '' }: { address: string; classNam
 
 type AaRefreshStatus = 'idle' | 'loading' | 'success' | 'error';
 
-const AddressRow = ({ label, icon: Icon, address, fullAddress, onRefresh, refreshStatus = 'idle' }: { label: string; icon: LucideIcon; address: string; fullAddress: string; onRefresh?: () => void; refreshStatus?: AaRefreshStatus }) => {
+const AddressRow = ({ icon: Icon, address, fullAddress, onRefresh, refreshStatus = 'idle' }: { icon: LucideIcon; address: string; fullAddress: string; onRefresh?: () => void; refreshStatus?: AaRefreshStatus }) => {
   const [copied, setCopied] = useState(false);
   const hasAddress = !!fullAddress && fullAddress.length >= 10;
   const handleCopy = useCallback(async () => {
@@ -2178,31 +2177,31 @@ const AddressRow = ({ label, icon: Icon, address, fullAddress, onRefresh, refres
     return <RefreshCw size={14} className="shrink-0" />;
   };
   return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-tight flex items-center gap-1 shrink-0 leading-none whitespace-nowrap"><Icon size={11} className="shrink-0" /> {label}</span>
-      <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden justify-end">
-        <span className={`text-[11px] font-mono font-bold bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm truncate leading-none inline-flex items-center min-w-0 ${hasAddress ? bizUiPrimaryAccent : 'text-slate-400'}`}>{address}</span>
-        {hasAddress ? (
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="shrink-0 p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors flex items-center justify-center"
-            title="Copy"
-          >
-            {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-          </button>
-        ) : onRefresh && (
+    <div className="flex w-full min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-slate-50/80 py-1.5 pl-3 pr-1.5 dark:border-slate-700 dark:bg-slate-800/50">
+      <Icon size={16} className="shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+      <span className={`min-w-0 flex-1 truncate text-left text-[11px] font-mono font-semibold leading-none ${hasAddress ? bizUiPrimaryAccent : 'text-slate-400'}`}>{address}</span>
+      {hasAddress ? (
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="shrink-0 rounded-full p-2 text-slate-400 transition-colors hover:bg-white/80 hover:text-slate-600 dark:hover:bg-slate-700/80"
+          title="Copy full address"
+        >
+          {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+        </button>
+      ) : (
+        onRefresh && (
           <button
             type="button"
             onClick={isRefreshDisabled ? undefined : onRefresh}
             disabled={isRefreshDisabled}
-            className={`shrink-0 p-1 rounded-md flex items-center justify-center transition-colors ${isRefreshDisabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+            className={`shrink-0 rounded-full p-2 transition-colors ${isRefreshDisabled ? 'cursor-not-allowed text-slate-300' : 'text-slate-400 hover:bg-white/80 hover:text-slate-600 dark:hover:bg-slate-700/80'}`}
             title={refreshStatus === 'loading' ? 'Fetching...' : refreshStatus === 'success' ? 'Success' : refreshStatus === 'error' ? 'Failed' : 'Retry fetch AA'}
           >
             {renderRefreshButton()}
           </button>
-        )}
-      </div>
+        )
+      )}
     </div>
   );
 };
@@ -2290,45 +2289,55 @@ type CardIssuanceTierRow = {
   tierDescription: string;
   /** When true, tier description textarea is shown (opened via +). */
   tierDescriptionOpen: boolean;
+  /** NFT tier metadata `backgroundColor` (CSS hex), same as CardManager `TierFormRow`. */
+  backgroundColor: string;
 };
+
+/** Normalize tier background for `TierMetadata.backgroundColor` (align `cardManager/index.tsx`). */
+function tierBackgroundColorForPayload(raw: string): string | undefined {
+  const s = raw.trim();
+  if (!s) return undefined;
+  const withHash = s.startsWith('#') ? s : `#${s}`;
+  return normalizeNftBackgroundHex(withHash) ?? undefined;
+}
+
 const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
-  { id: 'tier-silver', name: 'Silver', preset: 'silver', threshold: '10', discountPercent: '5', tierDescription: '', tierDescriptionOpen: false },
-  { id: 'tier-gold', name: 'Gold', preset: 'gold', threshold: '50', discountPercent: '7.5', tierDescription: '', tierDescriptionOpen: false },
-  { id: 'tier-platinum', name: 'Platinum', preset: 'platinum', threshold: '100', discountPercent: '10', tierDescription: '', tierDescriptionOpen: false },
+  { id: 'tier-silver', name: 'Silver', preset: 'silver', threshold: '10', discountPercent: '5', tierDescription: '', tierDescriptionOpen: false, backgroundColor: '#94a3b8' },
+  { id: 'tier-gold', name: 'Gold', preset: 'gold', threshold: '50', discountPercent: '7.5', tierDescription: '', tierDescriptionOpen: false, backgroundColor: '#eab308' },
+  { id: 'tier-platinum', name: 'Platinum', preset: 'platinum', threshold: '100', discountPercent: '10', tierDescription: '', tierDescriptionOpen: false, backgroundColor: '#3b82f6' },
 ];
 const CardIssuanceTierIdentityIcon = ({ preset }: { preset: CardIssuanceTierPreset }) => {
-  const box = 'h-10 w-10 rounded-xl flex items-center justify-center shrink-0';
+  const box = 'h-8 w-8 rounded-lg flex items-center justify-center shrink-0';
   if (preset === 'silver') {
     return (
       <div className={`${box} bg-slate-200`}>
-        <Star className="w-5 h-5 text-slate-500" strokeWidth={2} aria-hidden />
+        <Star className="w-4 h-4 text-slate-500" strokeWidth={2} aria-hidden />
       </div>
     );
   }
   if (preset === 'gold') {
     return (
       <div className={`${box} bg-amber-100`}>
-        <Medal className="w-5 h-5 text-amber-500" strokeWidth={2} aria-hidden />
+        <Medal className="w-4 h-4 text-amber-500" strokeWidth={2} aria-hidden />
       </div>
     );
   }
   if (preset === 'platinum') {
     return (
       <div className={`${box} bg-blue-100`}>
-        <Gem className="w-5 h-5 text-blue-600" strokeWidth={2} aria-hidden />
+        <Gem className="w-4 h-4 text-blue-600" strokeWidth={2} aria-hidden />
       </div>
     );
   }
   return (
     <div className={`${box} bg-sky-100`}>
-      <Sparkles className="w-5 h-5 text-sky-600" strokeWidth={2} aria-hidden />
+      <Sparkles className="w-4 h-4 text-sky-600" strokeWidth={2} aria-hidden />
     </div>
   );
 };
 
 export default function MerchantOS() {
- const { beamio, profiles, myAddress, setProfiles } = useDaemonContext();
- const navigate = useNavigate();
+ const { beamio, profiles, myAddress, setProfiles, setMessageCount, allNodes } = useDaemonContext();
  const [activeTab, setActiveTab] = useState('Overview');
  const [cardIssuanceProgramName, setCardIssuanceProgramName] = useState('VERRA');
  const [cardIssuanceCurrencySymbol, setCardIssuanceCurrencySymbol] = useState('$VERRA');
@@ -2394,10 +2403,12 @@ export default function MerchantOS() {
        const customDesc = t.tierDescription.trim();
        const discountLine = discount ? `${discount}% discount` : undefined;
        const description = customDesc || discountLine || undefined;
+       const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
        return {
          minUsdc6: Math.round(minUnits * 1e6),
          name: t.name.trim(),
          ...(description ? { description } : {}),
+         ...(backgroundColor ? { backgroundColor } : {}),
        };
      });
    if (valid.length === 0) return undefined;
@@ -2408,6 +2419,7 @@ export default function MerchantOS() {
      attr: idx,
      name: t.name,
      ...(t.description ? { description: t.description } : {}),
+     ...(t.backgroundColor ? { backgroundColor: t.backgroundColor } : {}),
    }));
  }, [cardIssuanceTiers]);
 
@@ -2497,6 +2509,13 @@ export default function MerchantOS() {
      const tFloat = parseFloat(tr);
      if (!Number.isFinite(tFloat) || !Number.isFinite(tInt) || tFloat !== tInt) {
        setCardIssuanceCreateError(`Tier "${tierName}": threshold must be a whole number (no decimals).`);
+       return;
+     }
+     const bgRaw = row.backgroundColor.trim();
+     if (bgRaw && !tierBackgroundColorForPayload(row.backgroundColor)) {
+       setCardIssuanceCreateError(
+         `Tier "${tierName}": background must be a valid CSS hex color (#RGB or #RRGGBB).`
+       );
        return;
      }
    }
@@ -2770,6 +2789,11 @@ export default function MerchantOS() {
  const [txSearchTerm, setTxSearchTerm] = useState('');
  const [txFilterTerminal, setTxFilterTerminal] = useState('All');
  const [txFilterType, setTxFilterType] = useState('All');
+ const [buintRedeemCodeInput, setBuintRedeemCodeInput] = useState('');
+ const [buintRedeemPrecheck, setBuintRedeemPrecheck] = useState<Awaited<ReturnType<typeof queryBuintRedeemAirdropOnChain>> | null>(null);
+ const [buintRedeemPrecheckLoading, setBuintRedeemPrecheckLoading] = useState(false);
+ const [buintRedeemSubmitLoading, setBuintRedeemSubmitLoading] = useState(false);
+ const [buintRedeemUiError, setBuintRedeemUiError] = useState('');
  const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
  /** Staff / POS / Overview chain reads: merchant-issued BeamioUserCard when present; else infra `BEAMIO_USER_CARD_ASSET_ADDRESS`. */
  const staffProgramBeamioCardAddress = useMemo(
@@ -3027,6 +3051,8 @@ export default function MerchantOS() {
  const [applyingAlliance, setApplyingAlliance] = useState<AllianceId | null>(null);
  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
  const [customFuelAmount, setCustomFuelAmount] = useState('');
+ /** Market listing: B-Units packages vs priority upsell (UI only). */
+ const [marketFuelSegment, setMarketFuelSegment] = useState<'bunits' | 'priority'>('bunits');
  const [marketRefuelProcessing, setMarketRefuelProcessing] = useState(false);
  const [marketRefuelSuccess, setMarketRefuelSuccess] = useState<string | null>(null);
  const [marketRefuelError, setMarketRefuelError] = useState<string | null>(null);
@@ -3034,8 +3060,15 @@ export default function MerchantOS() {
    const v = Number(String(customFuelAmount).replace(/,/g, '.'));
    return Number.isFinite(v) ? v : NaN;
  }, [customFuelAmount]);
- const [activeContact, setActiveContact] = useState('c1');
- const [chatInput, setChatInput] = useState('');
+ /** Messages tab: list in shell + Chat embedded in right column (see `Chat layout="embedded"`). */
+ const [messagesChatData, setMessagesChatData] = useState<chatData | undefined>(undefined);
+ const [messagesInboxSearch, setMessagesInboxSearch] = useState('');
+ const [messagesCategory, setMessagesCategory] = useState<'all' | 'members' | 'partners' | 'support'>('all');
+ const [messagesComposeOpen, setMessagesComposeOpen] = useState(false);
+ const [messagesNewQuery, setMessagesNewQuery] = useState('');
+ const [messagesNewLoading, setMessagesNewLoading] = useState(false);
+ const [messagesNewError, setMessagesNewError] = useState<string | null>(null);
+ const [messagesNewResults, setMessagesNewResults] = useState<searchResult[]>([]);
 
  const [membersLoyaltyBranch, setMembersLoyaltyBranch] = useState<string>(BIZ_LOYALTY_BRANCHES[0]);
  const [membersLoyaltyRows, setMembersLoyaltyRows] = useState<BizLoyaltyMemberRow[]>(INITIAL_BIZ_LOYALTY_MEMBERS);
@@ -3064,7 +3097,6 @@ export default function MerchantOS() {
      setApplyingAlliance(null);
      setIsJoinAllianceModalOpen(false);
      setActiveTab('Messages');
-     setActiveContact('c1');
    }, 2500);
  }, []);
 
@@ -3366,6 +3398,75 @@ export default function MerchantOS() {
    setActiveTab(tab);
    setIsMobileMenuOpen(false);
  }, []);
+
+ useEffect(() => {
+   if (activeTab !== 'Messages') {
+     setMessagesChatData(undefined);
+     setMessagesComposeOpen(false);
+     setMessagesNewQuery('');
+     setMessagesNewResults([]);
+     setMessagesNewError(null);
+     setMessageCount(0);
+   }
+ }, [activeTab, setMessageCount]);
+
+ const runMessagesUserSearch = useCallback(async () => {
+   const raw = messagesNewQuery.trim().replace(/^@/, '');
+   if (!raw) {
+     setMessagesNewResults([]);
+     setMessagesNewError(null);
+     return;
+   }
+   setMessagesNewLoading(true);
+   setMessagesNewError(null);
+   try {
+     const isAddr = ethers.isAddress(raw);
+     const searchKey = isAddr ? ethers.getAddress(raw) : raw;
+     const res = await searchUsername(searchKey);
+     setMessagesNewResults(res?.results ?? []);
+   } catch {
+     setMessagesNewError('Search failed. Try again.');
+     setMessagesNewResults([]);
+   } finally {
+     setMessagesNewLoading(false);
+   }
+ }, [messagesNewQuery]);
+
+ const startChatWithSearchUser = useCallback(
+   async (beamioer: searchResult) => {
+     const ps = profiles;
+     if (!ps?.[0]?.privateKeyArmor) {
+       setMessagesNewError('Wallet not ready.');
+       return;
+     }
+     const p0: profile = { ...ps[0], chats: [...(ps[0].chats || [])] };
+     const cd = await initMessage(p0, beamioer);
+     if (!cd) {
+       setMessagesNewError('Could not start chat.');
+       return;
+     }
+     const nextProfiles = [...ps];
+     nextProfiles[0] = p0;
+     setProfiles(nextProfiles);
+     const temp = CoNET_Data;
+     if (temp) {
+       temp.profiles = nextProfiles;
+       setCoNET_Data(temp);
+     }
+     try {
+       await storeSystemData();
+     } catch {
+       /* non-fatal */
+     }
+     setMessagesChatData(cd);
+     setMessagesComposeOpen(false);
+     setMessagesNewQuery('');
+     setMessagesNewResults([]);
+     setMessagesNewError(null);
+     setMessageCount(0);
+   },
+   [profiles, setProfiles, setMessageCount]
+ );
 
 
  /** 终端记录类型 */
@@ -5318,16 +5419,17 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
   collapsed: boolean;
 }) => (
    <button
+     type="button"
      onClick={onClick}
-     className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-4'} py-3 rounded-2xl transition-all ${
+     className={`flex w-full items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-4'} rounded-full py-3 text-sm transition-all duration-200 hover:translate-x-0.5 ${
        isActive
-         ? 'bg-[#1562f0] text-white shadow-md hover:bg-[#2b74f5] active:bg-[#0d4ec4]'
-         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+         ? 'bg-blue-50 font-bold text-blue-600 shadow-none dark:bg-blue-900/20 dark:text-blue-400'
+         : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900'
      }`}
      title={collapsed ? label : undefined}
    >
      <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-     {!collapsed && <span className="font-semibold text-[15px] whitespace-nowrap">{label}</span>}
+     {!collapsed && <span className="whitespace-nowrap">{label}</span>}
    </button>
  );
 
@@ -5477,7 +5579,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
 
  const renderDashboard = () => (
-   <div data-biz-ui-primary={BIZ_UI_PRIMARY} className="flex h-screen bg-[#f5f5f7] font-sans text-slate-900 overflow-hidden selection:bg-[#1562f0]/25">
+   <div data-biz-ui-primary={BIZ_UI_PRIMARY} className="flex h-screen bg-[#f5f7f9] font-sans text-slate-900 overflow-hidden selection:bg-[#1562f0]/25">
     
      {isMobileMenuOpen && (
        <div
@@ -5489,97 +5591,95 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
      {/* --- Sidebar --- */}
      <aside
-       className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-slate-200 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 ease-in-out
+       className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-50 border-r border-slate-200/80 transition-all duration-300 ease-in-out
          ${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'}
          lg:relative lg:translate-x-0 ${isSidebarCollapsed ? 'lg:w-24' : 'lg:w-72'}`}
      >
-       <div className={`p-6 pb-6 ${isSidebarCollapsed ? 'lg:flex lg:justify-center' : ''}`}>
-         <div className={`flex items-center justify-between mb-6 ${isSidebarCollapsed && !isMobileMenuOpen ? 'lg:justify-center' : ''}`}>
-           <div
-             className="flex items-center gap-4 cursor-pointer group"
-             onClick={() => window.innerWidth >= 1024 && setIsSidebarCollapsed(!isSidebarCollapsed)}
-             title="Toggle Sidebar"
-           >
-           <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md border border-slate-100 shrink-0 group-hover:shadow-lg transition-all bg-white flex items-center justify-center">
-              {beamio ? (
-                <img
-                  src={beamio.image ? beamio.image : getImg(beamio.accountName)}
-                  alt={beamio.accountName || ''}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <img src={BIZ_PUBLIC_LOGO512} alt="Beamio" className="w-full h-full object-cover" />
-              )}
-           </div>
-           {!isSidebarCollapsed && (
-             <div className="whitespace-nowrap overflow-hidden">
-               <h1 className="font-bold text-[18px] tracking-tight leading-tight">
-                 {displayName(beamio) || 'User'}
-               </h1>
-               <p className="text-[12px] font-semibold text-[#86868b] mt-0.5">
-                 @{beamio?.accountName ?? 'Beamio'}
-               </p>
+       <div className={`p-6 pb-4 ${isSidebarCollapsed ? 'lg:flex lg:flex-col lg:items-center' : ''}`}>
+         <div className={`mb-6 flex items-center justify-between ${isSidebarCollapsed && !isMobileMenuOpen ? 'lg:mb-4 lg:justify-center' : ''}`}>
+           {!isSidebarCollapsed || isMobileMenuOpen ? (
+             <div className="min-w-0 flex-1">
+               <p className="text-2xl font-black tracking-tighter text-blue-600">Verra</p>
+               <div
+                 className="mt-6 flex cursor-pointer items-center gap-3 rounded-xl p-1 -m-1 transition-colors hover:bg-slate-100/80 lg:rounded-lg"
+                 onClick={() => window.innerWidth >= 1024 && setIsSidebarCollapsed(!isSidebarCollapsed)}
+                 title="Toggle Sidebar"
+                 role="presentation"
+               >
+                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100">
+                   <Store size={22} className="text-blue-600" strokeWidth={2} aria-hidden />
+                 </div>
+                 <div className="min-w-0">
+                   <p className="truncate text-sm font-bold text-slate-900">{displayName(beamio) || 'Verra Premium'}</p>
+                   <p className="text-xs text-slate-500">Merchant Portal</p>
+                 </div>
+               </div>
              </div>
+           ) : (
+             <button
+               type="button"
+               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 transition-colors hover:bg-blue-200"
+               onClick={() => window.innerWidth >= 1024 && setIsSidebarCollapsed(false)}
+               title="Expand sidebar"
+             >
+               <Store size={22} strokeWidth={2} aria-hidden />
+             </button>
            )}
-           </div>
            <button
              type="button"
              onClick={() => setIsMobileMenuOpen(false)}
-             className="lg:hidden p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
+             className="shrink-0 rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 lg:hidden"
              aria-label="Close menu"
            >
              <X size={20} />
            </button>
          </div>
-         {(!isSidebarCollapsed || isMobileMenuOpen) && (
-           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3 overflow-hidden whitespace-nowrap">
-              <AddressRow
-                label="Smart AA"
-                icon={Cpu}
-                address={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return a && ethers.isAddress(a) ? fmtAddr(ethers.getAddress(a)) : 'Locked'; })()}
-                fullAddress={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return a && ethers.isAddress(a) ? ethers.getAddress(a) : ''; })()}
-                onRefresh={(() => { 
-					const a = profiles?.[0]?.aaAccount?.trim(); 
-					return !(a && ethers.isAddress(a)) ? handleRefreshAA : undefined; 
-				})()}
-                refreshStatus={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return !(a && ethers.isAddress(a)) ? aaRefreshStatus : 'idle'; })()}
-              />
-              <div className="h-[1px] w-full bg-slate-200/50"></div>
-              <AddressRow
-                label="Owner EOA"
-                icon={KeyRound}
-                address={fmtAddr(profiles?.[0]?.keyID ?? myAddress)}
-                fullAddress={profiles?.[0]?.keyID ?? myAddress ?? ''}
-              />
-           </div>
-         )}
        </div>
 
 
-       <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
-         {(!isSidebarCollapsed || isMobileMenuOpen) && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2 whitespace-nowrap">Store Management</p>}
-         <NavItem icon={LayoutDashboard} label="Daily Dashboard" isActive={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={CreditCard} label="Card Issuance Setup" isActive={activeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+       <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-4">
+         <NavItem icon={LayoutDashboard} label="Dashboard" isActive={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Award} label="Programs" isActive={activeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Users} label="Members" isActive={activeTab === 'MembersLoyalty'} onClick={() => handleTabChange('MembersLoyalty')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Wallet} label="Wallets" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={ShoppingBag} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          {!hideTransactionsPanel && (
-           <NavItem icon={Receipt} label="Transactions" isActive={activeTab === 'Transactions'} onClick={() => handleTabChange('Transactions')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+           <NavItem icon={BarChart3} label="Insights" isActive={activeTab === 'Transactions'} onClick={() => handleTabChange('Transactions')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          )}
-         <NavItem icon={Award} label="Members & Loyalty" isActive={activeTab === 'MembersLoyalty'} onClick={() => handleTabChange('MembersLoyalty')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={Wallet} label="Store Wallets" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={Store} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={MonitorSmartphone} label="Terminals" isActive={activeTab === 'Staff'} onClick={() => handleTabChange('Staff')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={Hexagon} label="Partner Alliances" isActive={activeTab === 'Alliances'} onClick={() => handleTabChange('Alliances')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-        
-         <div className={(isSidebarCollapsed && !isMobileMenuOpen) ? 'mt-6' : 'mt-8'}></div>
-         {(!isSidebarCollapsed || isMobileMenuOpen) && <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 whitespace-nowrap">Configuration</p>}
-         <NavItem icon={Users} label="Staff Terminals" isActive={activeTab === 'Staff'} onClick={() => handleTabChange('Staff')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={Settings} label="Store Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+           <NavItem icon={Settings} label="Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         </div>
        </nav>
 
+       {(!isSidebarCollapsed || isMobileMenuOpen) && (
+         <div className="mx-4 mt-4 space-y-3 rounded-2xl border border-slate-200/80 bg-white p-3">
+           <AddressRow
+             icon={Cpu}
+             address={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return a && ethers.isAddress(a) ? fmtAddr(ethers.getAddress(a)) : 'Locked'; })()}
+             fullAddress={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return a && ethers.isAddress(a) ? ethers.getAddress(a) : ''; })()}
+             onRefresh={(() => {
+					const a = profiles?.[0]?.aaAccount?.trim();
+					return !(a && ethers.isAddress(a)) ? handleRefreshAA : undefined;
+				})()}
+             refreshStatus={(() => { const a = profiles?.[0]?.aaAccount?.trim(); return !(a && ethers.isAddress(a)) ? aaRefreshStatus : 'idle'; })()}
+           />
+           <div className="h-px w-full bg-slate-200/60" />
+           <AddressRow
+             icon={KeyRound}
+             address={fmtAddr(profiles?.[0]?.keyID ?? myAddress)}
+             fullAddress={profiles?.[0]?.keyID ?? myAddress ?? ''}
+           />
+         </div>
+       )}
 
-       <div className="p-6">
+       <div className="mt-auto p-6">
          <button
+           type="button"
            onClick={() => { window.location.href = '/' }}
-           className={`w-full flex items-center ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'justify-center gap-2 px-4'} py-3 rounded-2xl text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors font-semibold text-[15px]`}
+           className={`flex w-full items-center rounded-2xl py-3 font-semibold text-[15px] text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'justify-center gap-2 px-4'}`}
            title="Lock Wallet"
          >
            <LogOut size={18} className="shrink-0" />
@@ -5591,19 +5691,34 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
      {/* --- Main Content Area --- */}
      <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out min-w-0">
-       <header className="h-20 bg-white/60 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-4 sm:px-10 sticky top-0 z-10 shrink-0 gap-4">
-         <div className="flex items-center gap-3 min-w-0">
+       <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-slate-200/60 bg-white/70 px-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl sm:px-10">
+         <div className="flex min-w-0 items-center gap-3">
            <button
              type="button"
              onClick={() => setIsMobileMenuOpen(true)}
-             className="lg:hidden p-2.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
+             className="shrink-0 rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 lg:hidden"
              aria-label="Open menu"
            >
              <Menu size={22} />
            </button>
-           <h2 className="text-xl sm:text-2xl font-bold text-black tracking-tight truncate">{activeTab}</h2>
+           <h2
+             className={`truncate text-xl font-black uppercase tracking-tight sm:text-2xl ${
+               activeTab === 'Overview' && !hasAaAccount
+                 ? 'text-slate-900'
+                 : activeTab === 'Overview'
+                   ? 'font-extrabold tracking-tighter text-blue-600 normal-case'
+                   : 'font-extrabold tracking-tighter text-slate-900 normal-case'
+             }`}
+           >
+             {activeTab === 'Overview' && !hasAaAccount
+               ? 'WORKSPACE READY'
+               : activeTab === 'Overview'
+                 ? 'Verra Merchant'
+                 : activeTab}
+           </h2>
          </div>
-         <div className="flex items-center gap-4 sm:gap-6">
+         <div className="flex items-center gap-3 sm:gap-6">
+
            {/* ORACLE LIVE FEED SIMULATOR */}
            <div className="hidden lg:flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
              <RefreshCw size={12} className={`${bizUiPrimaryLoader} animate-[spin_4s_linear_infinite]`} />
@@ -5655,8 +5770,8 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
        <div className="flex-1 min-h-0 relative overflow-y-auto p-4 sm:p-10">
         {activeTab === 'Overview' && (
-          <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
-            {SHOW_LINKED_MERCHANT_CARD_PANEL && showFixedCardMetadata && (
+          <div className={`mx-auto w-full animate-in fade-in duration-500 ${hasAaAccount ? 'max-w-[1400px] space-y-6' : 'max-w-7xl space-y-8'}`}>
+            {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && showFixedCardMetadata && (
               <div className="flex justify-end">
                 <div className="relative h-[280px] w-full max-w-xl overflow-hidden rounded-[32px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_40px_rgba(21,98,240,0.28)]">
                   {fixedCardMetadata?.image ? (
@@ -5713,41 +5828,268 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                 </div>
               </div>
             )}
-          {/* When no AA account: show Welcome panel */}
-          {!profiles?.[0]?.aaAccount?.trim() && (
-            <div>
-              <div className="relative overflow-hidden rounded-[24px] bg-[#1562f0] p-6 text-white shadow-lg shadow-[#1562f0]/20 sm:p-8">
-                <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-white/10 blur-3xl" aria-hidden />
-                {redeemAdminInProgress && (
-                  <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white backdrop-blur-sm">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    Redeeming admin access...
+            {!hasAaAccount ? (
+              <>
+                <section className="relative mb-10 flex flex-col items-center justify-between gap-6 rounded-xl border border-[#0051d1]/10 bg-[#0051d1]/5 p-6 md:flex-row md:p-8">
+                  {redeemAdminInProgress && (
+                    <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-[#0051d1]/20 bg-white/90 px-3 py-1.5 text-[13px] font-medium text-slate-800 shadow-sm backdrop-blur-sm">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#0051d1]/30 border-t-[#0051d1]" />
+                      Redeeming admin access...
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-sm bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                        WORKSPACE READY
+                      </span>
+                      <span className="size-1.5 rounded-full bg-amber-400" aria-hidden />
+                      <span className="text-[11px] font-medium text-slate-500">Program not active yet</span>
+                    </div>
+                    <h2 className="mb-2 text-xl font-black leading-tight tracking-tight text-slate-900 md:text-2xl">
+                      Set up your first membership card program
+                    </h2>
+                    <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
+                      You have{' '}
+                      <span className="font-bold text-[#0051d1]">
+                        {(protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                          ? protocolFuelReserveBalance
+                          : 0
+                        ).toFixed(2)}{' '}
+                        bonus B-Units
+                      </span>{' '}
+                      to get started. Create your first program to begin issuing membership cards and serving customers with stored value in Verra
+                      Business OS.
+                    </p>
                   </div>
-                )}
-                <div className="relative z-10 max-w-2xl">
-                  <h3 className="mb-2 text-[22px] font-bold">Welcome to VERRA Web3 POS!</h3>
-                  <p className="mb-6 text-[15px] leading-relaxed text-white/80">
-                    Your EOA Vault is ready. You can currently send/receive direct USDC payments.{' '}
-                    <strong>Your Smart Terminal (AA) is locked.</strong> To unlock zero-gas routing, VIP
-                    memberships, and voucher economies, you must activate your account with a Fuel Pack.
-                  </p>
-                  <div className="flex gap-3">
+                  <div className="flex shrink-0 flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('Card Issuance Setup')}
+                      className={`rounded-full bg-[#0051d1] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 ${bizFocusRingClass}`}
+                    >
+                      Set Up First Program
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
                         setActiveTab('Market');
-                        setSelectedProduct('starter');
+                        setSelectedProduct('fuel');
                       }}
-                      className="flex items-center gap-2 rounded-[14px] bg-white px-6 py-3 text-[14px] font-semibold text-[#1562f0] shadow-sm transition-colors hover:bg-slate-50"
+                      className={`rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-900 transition-all hover:bg-slate-50 active:scale-95 ${bizFocusRingClass}`}
                     >
-                      <Zap size={16} /> Buy B-Units to Activate
+                      View B-Units
+                    </button>
+                  </div>
+                </section>
+                <div className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+                  <div className="flex flex-col justify-between rounded-lg border border-slate-100 bg-white p-6 transition-colors hover:border-[#0051d1]/20">
+                    <div>
+                      <div className="mb-4 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Program Status</span>
+                        <Award className="size-6 text-slate-300" strokeWidth={1.5} aria-hidden />
+                      </div>
+                      <h3 className="mb-1 text-lg font-bold text-slate-900">Not active yet</h3>
+                      <p className="mb-6 text-xs leading-relaxed text-slate-500">
+                        Set up your first program to start issuing membership cards.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('Card Issuance Setup')}
+                      className="flex items-center gap-2 text-xs font-bold text-[#0051d1] transition-all hover:gap-3"
+                    >
+                      Go to Programs
+                      <ChevronRight className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
+                    </button>
+                  </div>
+                  <div className="flex flex-col justify-between rounded-lg border border-slate-100 bg-white p-6 transition-colors hover:border-[#0051d1]/20">
+                    <div>
+                      <div className="mb-4 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer Balance</span>
+                        <Wallet className="size-6 text-slate-300" strokeWidth={1.5} aria-hidden />
+                      </div>
+                      <h3 className="mb-1 text-lg font-bold text-slate-900">
+                        C$
+                        {(() => {
+                          const o = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
+                          const u = eoaUsdcBalance != null ? parseFloat(eoaUsdcBalance) : 0;
+                          return Number.isFinite(u) ? (u / o).toFixed(2) : '0.00';
+                        })()}
+                      </h3>
+                      <p className="mb-6 text-xs leading-relaxed text-slate-500">No stored-value activity yet.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('Wallets')}
+                      className="flex items-center gap-2 text-xs font-bold text-[#0051d1] transition-all hover:gap-3"
+                    >
+                      View Wallet
+                      <ChevronRight className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
+                    </button>
+                  </div>
+                  <div className="flex flex-col justify-between rounded-lg border border-slate-100 bg-white p-6 transition-colors hover:border-[#0051d1]/20">
+                    <div>
+                      <div className="mb-4 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">B-Units</span>
+                        <Coins className="size-6 text-slate-300" strokeWidth={1.5} aria-hidden />
+                      </div>
+                      <h3 className="mb-1 text-lg font-bold text-slate-900">
+                        {(protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                          ? protocolFuelReserveBalance
+                          : 0
+                        ).toFixed(2)}
+                      </h3>
+                      <p className="mb-6 text-xs leading-relaxed text-slate-500">Bonus B-Units available for setup and live operations.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('Market');
+                        setSelectedProduct('fuel');
+                      }}
+                      className="flex items-center gap-2 text-xs font-bold text-[#0051d1] transition-all hover:gap-3"
+                    >
+                      View B-Units
+                      <ChevronRight className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
                     </button>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
-          {/* Always show metrics panels */}
+                <section className="relative flex flex-col items-center overflow-hidden rounded-xl border border-slate-100 bg-white px-8 py-20 text-center">
+                  <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-[#0051d1]/5 via-[#0051d1] to-[#0051d1]/5 opacity-20" aria-hidden />
+                  <div className="absolute -right-20 top-1/2 h-80 w-40 -translate-y-1/2 rounded-full bg-[#0051d1]/5 blur-[100px]" aria-hidden />
+                  <div className="relative z-10">
+                    <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eef1f3]">
+                      <Package className="size-8 text-slate-400" strokeWidth={1.25} aria-hidden />
+                    </div>
+                    <h2 className="mb-4 text-2xl font-black tracking-tight text-slate-900">No activity yet</h2>
+                    <p className="mx-auto mb-6 max-w-lg leading-relaxed text-slate-500">
+                      Set up your first program to begin issuing membership cards, adding customer balance, and tracking live activity in Verra Business
+                      OS.
+                    </p>
+                    <div className="w-full max-w-md mx-auto mb-10 rounded-2xl border border-slate-200 bg-slate-50/80 p-5 text-left">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Redeem B-Unit code</p>
+                      <label htmlFor="biz-buint-redeem-code" className="sr-only">
+                        B-Unit redeem code
+                      </label>
+                      <input
+                        id="biz-buint-redeem-code"
+                        type="text"
+                        autoComplete="off"
+                        value={buintRedeemCodeInput}
+                        onChange={(ev) => {
+                          setBuintRedeemCodeInput(ev.target.value);
+                          setBuintRedeemPrecheck(null);
+                          setBuintRedeemUiError('');
+                        }}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400"
+                        placeholder="Paste redeem code"
+                      />
+                      {buintRedeemPrecheck ? (
+                        <p
+                          className={`mt-2 text-xs ${buintRedeemPrecheck.redeemable ? 'text-emerald-600 font-medium' : 'text-amber-600'}`}
+                        >
+                          {buintRedeemPrecheck.redeemable
+                            ? `Valid — ${(
+                                Number(buintRedeemPrecheck.amount ?? 0) / 1e6
+                              ).toFixed(2)} B-Units will go to your Beamio Account (same address on CoNET).`
+                            : buintRedeemPrecheck.error?.trim() ||
+                              'This code cannot be redeemed right now.'}
+                        </p>
+                      ) : null}
+                      {buintRedeemUiError ? <p className="mt-2 text-xs text-rose-600">{buintRedeemUiError}</p> : null}
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <button
+                          type="button"
+                          disabled={buintRedeemPrecheckLoading || !buintRedeemCodeInput.trim()}
+                          onClick={async () => {
+                            setBuintRedeemUiError('');
+                            setBuintRedeemPrecheckLoading(true);
+                            try {
+                              const out = await queryBuintRedeemAirdropOnChain(buintRedeemCodeInput.trim());
+                              setBuintRedeemPrecheck(out);
+                              const errMsg =
+                                typeof out.error === 'string' ? out.error.trim() : ''
+                              if (!out.redeemable && !errMsg) {
+                                setBuintRedeemUiError('This code cannot be redeemed right now.');
+                              }
+                            } catch (e: unknown) {
+                              setBuintRedeemUiError(e instanceof Error ? e.message : 'Validation failed');
+                              setBuintRedeemPrecheck(null);
+                            } finally {
+                              setBuintRedeemPrecheckLoading(false);
+                            }
+                          }}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
+                        >
+                          {buintRedeemPrecheckLoading ? (
+                            <Loader2 className="size-4 animate-spin" strokeWidth={2} aria-hidden />
+                          ) : null}
+                          Validate code
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            buintRedeemSubmitLoading ||
+                            !buintRedeemPrecheck?.redeemable ||
+                            !merchantWalletEoa ||
+                            !ethers.isAddress(merchantWalletEoa)
+                          }
+                          onClick={async () => {
+                            const eoa = merchantWalletEoa;
+                            if (!eoa || !ethers.isAddress(eoa)) {
+                              setBuintRedeemUiError('Sign in with a valid wallet first.');
+                              return;
+                            }
+                            setBuintRedeemUiError('');
+                            setBuintRedeemSubmitLoading(true);
+                            try {
+                              const r = await postBuintRedeemAirdropRedeem(eoa, buintRedeemCodeInput.trim());
+                              if (r.success && r.txHash) {
+                                setBuintRedeemPrecheck(null);
+                                setBuintRedeemCodeInput('');
+                                setBuintRedeemUiError('');
+                                alert(`Redeemed. Tx: ${r.txHash}${r.aa ? `\nAA: ${r.aa}` : ''}`);
+                              } else {
+                                setBuintRedeemUiError(r.error ?? 'Redeem failed');
+                              }
+                            } catch (e: unknown) {
+                              setBuintRedeemUiError(e instanceof Error ? e.message : 'Redeem failed');
+                            } finally {
+                              setBuintRedeemSubmitLoading(false);
+                            }
+                          }}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] px-4 py-2.5 text-sm font-bold text-white shadow-md disabled:opacity-50"
+                        >
+                          {buintRedeemSubmitLoading ? (
+                            <Loader2 className="size-4 animate-spin" strokeWidth={2} aria-hidden />
+                          ) : null}
+                          Redeem to my account
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                        Uses your merchant wallet EOA; the server ensures a Beamio Account exists, then credits B-Units on CoNET to that account address.
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange('Card Issuance Setup')}
+                        className={`w-full rounded-full bg-[#0051d1] px-8 py-4 text-sm font-bold text-white shadow-xl shadow-[#0051d1]/20 transition-all hover:shadow-[#0051d1]/30 sm:w-auto ${bizFocusRingClass}`}
+                      >
+                        Set Up First Program
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange('Wallets')}
+                        className={`w-full rounded-full px-8 py-4 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50 sm:w-auto ${bizFocusRingClass}`}
+                      >
+                        Go to Wallet
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              </>
+            ) : (
           <div className="space-y-8">
              {/* Row 1: Panels 1-4, 2 per row */}
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -5950,6 +6292,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
              </div>
              )}
            </div>
+            )}
           </div>
         )}
 
@@ -6572,6 +6915,204 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
          {/* --- STORE WALLETS TAB --- */}
          {activeTab === 'Wallets' && (
+           !hasAaAccount ? (
+             <div className="mx-auto max-w-6xl animate-in fade-in duration-300 pb-16 sm:pb-10">
+               <header className="mb-12">
+                 <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#1562f0]">Financial Hub</p>
+                 <h2 className="mb-2 text-4xl font-extrabold tracking-tight text-slate-900">Balance &amp; B-Units</h2>
+                 <p className="text-lg font-medium text-slate-500">
+                   Manage your available balance, B-Units, and activation status in one place.
+                 </p>
+               </header>
+               <div className="mb-12 grid grid-cols-1 gap-8 md:grid-cols-12">
+                 <div className="rounded-2xl border border-black/[0.05] bg-white p-8 shadow-sm md:col-span-7">
+                   <div className="mb-6 flex items-start justify-between">
+                     <div>
+                       <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-slate-500">Available Balance</p>
+                       <h3 className="font-mono text-5xl font-extrabold tracking-tighter text-slate-900">
+                         C$
+                         {(() => {
+                           const o = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
+                           const u = eoaUsdcBalance != null ? parseFloat(eoaUsdcBalance) : 0;
+                           return Number.isFinite(u) ? (u / o).toFixed(2) : '0.00';
+                         })()}
+                       </h3>
+                       <p className="mt-1 text-xs font-medium text-slate-400">
+                         EOA vault · USDC on Base, shown as CAD equivalent
+                       </p>
+                     </div>
+                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-300">
+                       <Wallet className="size-7" strokeWidth={1.5} aria-hidden />
+                     </div>
+                   </div>
+                   <div className="flex flex-wrap gap-3">
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setActiveTab('Market');
+                         setSelectedProduct('starter');
+                       }}
+                       className={`flex items-center gap-2 rounded-full bg-[#1562f0] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:opacity-90 active:scale-95 ${bizFocusRingClass}`}
+                     >
+                       <Plus className="size-5" strokeWidth={2.5} aria-hidden />
+                       Add Funds
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => !hideTransactionsPanel && handleTabChange('Transactions')}
+                       disabled={hideTransactionsPanel}
+                       className={`rounded-full bg-slate-100 px-6 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                     >
+                       History
+                     </button>
+                   </div>
+                 </div>
+                 <div className="relative flex flex-col justify-between overflow-hidden rounded-2xl bg-[#1562f0] p-8 text-white shadow-lg shadow-[#1562f0]/10 md:col-span-5">
+                   <div className="relative z-10">
+                     <div className="mb-6 flex items-start justify-between">
+                       <div>
+                         <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-white/70">B-Unit Balance</p>
+                         <h3 className="text-6xl font-black tracking-tighter">
+                           {(
+                             protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                               ? protocolFuelReserveBalance
+                               : 0
+                           ).toFixed(2)}
+                         </h3>
+                       </div>
+                       <Coins className="size-10 text-white/30" strokeWidth={1.25} aria-hidden />
+                     </div>
+                     <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-1.5 backdrop-blur-md">
+                       <span className="size-2 animate-pulse rounded-full bg-white/50" />
+                       <span className="text-[11px] font-bold uppercase tracking-widest">Card issuance inactive</span>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+               <div className="relative overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-8 shadow-sm md:p-12">
+                 <div className="grid items-center gap-12 md:grid-cols-12">
+                   <div className="md:col-span-7">
+                     <div className="mb-6 flex items-center gap-4">
+                       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1562f0]/5 text-[#1562f0]">
+                         <CreditCard className="size-8" strokeWidth={1.75} aria-hidden />
+                       </div>
+                       <h4 className="text-2xl font-extrabold text-slate-900">Card issuance is not active yet</h4>
+                     </div>
+                     <p className="mb-10 text-lg leading-relaxed text-slate-600">
+                       Add a card setup to enable membership card issuance and stored-value activity in Verra Business OS.
+                     </p>
+                     <div className="flex flex-col gap-4 sm:flex-row">
+                       <button
+                         type="button"
+                         onClick={() => handleTabChange('Card Issuance Setup')}
+                         className={`flex items-center justify-center gap-2 rounded-full bg-[#1562f0] px-8 py-4 text-base font-bold text-white shadow-xl shadow-[#1562f0]/20 transition-all hover:shadow-[#1562f0]/30 active:scale-95 ${bizFocusRingClass}`}
+                       >
+                         Choose Card Setup
+                         <ArrowRight className="size-5" strokeWidth={2} aria-hidden />
+                       </button>
+                       <button
+                         type="button"
+                         onClick={() => {
+                           setActiveTab('Market');
+                           setSelectedProduct('fuel');
+                         }}
+                         className={`rounded-full bg-slate-50 px-8 py-4 text-base font-bold text-slate-600 transition-colors hover:bg-slate-100 active:scale-95 ${bizFocusRingClass}`}
+                       >
+                         View B-Units Guide
+                       </button>
+                     </div>
+                   </div>
+                   <div className="md:col-span-5">
+                     <div className="rounded-2xl border border-slate-100 bg-slate-50 p-8">
+                       <h5 className="mb-6 flex items-center gap-2 font-bold text-[#1562f0]">
+                         <Info className="size-5 shrink-0" strokeWidth={2} aria-hidden />
+                         What B-Units are used for
+                       </h5>
+                       <ul className="space-y-4">
+                         <li className="flex items-start gap-4">
+                           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                           <p className="text-sm font-semibold leading-tight text-slate-700">Card issuance</p>
+                         </li>
+                         <li className="flex items-start gap-4">
+                           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                           <p className="text-sm font-semibold leading-tight text-slate-700">Stored-value activity</p>
+                         </li>
+                         <li className="flex items-start gap-4">
+                           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                           <p className="text-sm font-semibold leading-tight text-slate-700">Live transaction operations</p>
+                         </li>
+                       </ul>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+               <div className="mt-12">
+                 <div className="mb-6 flex items-center justify-between px-2">
+                   <h4 className="text-xl font-bold text-slate-900">Recent Activity</h4>
+                   {!hideTransactionsPanel ? (
+                     <button
+                       type="button"
+                       onClick={() => handleTabChange('Transactions')}
+                       className="text-sm font-bold text-[#1562f0] hover:underline"
+                     >
+                       View All
+                     </button>
+                   ) : (
+                     <span className="text-sm font-medium text-slate-400">—</span>
+                   )}
+                 </div>
+                 <div className="space-y-3">
+                   {eoaUsdcBalance != null && parseFloat(eoaUsdcBalance) > 0 ? (
+                     <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                       <div className="flex items-center gap-4">
+                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#1562f0]">
+                           <Download className="size-6" strokeWidth={2} aria-hidden />
+                         </div>
+                         <div>
+                           <p className="font-bold text-slate-900">EOA Vault balance</p>
+                           <p className="text-xs font-medium text-slate-400">USDC on Base · live</p>
+                         </div>
+                       </div>
+                       <div className="text-right">
+                         <p className="font-bold text-[#1562f0]">
+                           C$
+                           {(() => {
+                             const o = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
+                             const u = parseFloat(eoaUsdcBalance);
+                             return Number.isFinite(u) ? (u / o).toFixed(2) : '0.00';
+                           })()}
+                         </p>
+                         <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Available</p>
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="flex items-center justify-between rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-5">
+                       <div className="flex items-center gap-4">
+                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                           <Wallet className="size-6" strokeWidth={1.5} aria-hidden />
+                         </div>
+                         <div>
+                           <p className="font-bold italic text-slate-500">No vault balance detected</p>
+                           <p className="text-xs text-slate-400">Add funds or connect activity to see entries here</p>
+                         </div>
+                       </div>
+                     </div>
+                   )}
+                   <div className="flex items-center justify-between rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-5">
+                     <div className="flex items-center gap-4">
+                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                         <ShoppingCart className="size-6" strokeWidth={1.75} aria-hidden />
+                       </div>
+                       <div>
+                         <p className="font-bold italic text-slate-500">No B-Unit purchases yet</p>
+                         <p className="text-xs text-slate-400">Activate your smart wallet to begin activity</p>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             </div>
+           ) : (
            <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-300">
              <div className="mb-6">
                <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Store Wallets</h3>
@@ -6864,161 +7405,309 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
              )}
            </div>
            </div>
+           )
          )}
 
-         {/* --- MARKET TAB --- */}
+         {/* --- MARKET TAB (marketExample.html · light marketplace) --- */}
          {activeTab === 'Market' && (
-           <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-300">
-             <div className="mb-6">
-               <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Market</h3>
-               <p className="text-[15px] font-medium text-slate-500 mt-1">Acquire physical infrastructure and protocol fuel for your node.</p>
-             </div>
+           <div className="mx-auto w-full max-w-7xl animate-in space-y-10 px-4 pb-28 pt-2 fade-in duration-300 sm:px-6 md:space-y-12 lg:pb-12">
+             <section className="mb-2">
+               <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+                 <div
+                   className="relative flex min-h-[240px] flex-col justify-between overflow-hidden rounded-xl p-8 text-white md:col-span-8"
+                   style={{
+                     background:
+                       'radial-gradient(at 0% 0%, #0051d1 0%, transparent 50%), radial-gradient(at 100% 0%, #7a9dff 0%, transparent 50%), radial-gradient(at 100% 100%, #1562f0 0%, transparent 50%)',
+                     backgroundColor: '#0051d1',
+                   }}
+                 >
+                   <div className="relative z-10">
+                     <h1 className="mb-2 text-3xl font-extrabold tracking-tight md:text-4xl">Fuel your operations.</h1>
+                     <p className="max-w-md text-blue-100 opacity-90">
+                       Purchase B-Units to power your customer loyalty rewards and automated transactions.
+                     </p>
+                   </div>
+                   <div className="relative z-10 mt-6 flex flex-wrap gap-4">
+                     <button
+                       type="button"
+                       onClick={() => handleTabChange('Settings')}
+                       className={`rounded-full bg-white px-8 py-3 text-sm font-bold text-blue-600 shadow-xl transition-transform active:scale-95 ${bizFocusRingClass}`}
+                     >
+                       Auto-Refill Settings
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => !hideTransactionsPanel && handleTabChange('Transactions')}
+                       disabled={hideTransactionsPanel}
+                       className={`rounded-full border border-white/20 bg-white/20 px-8 py-3 text-sm font-bold text-white backdrop-blur-md transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                     >
+                       History
+                     </button>
+                   </div>
+                   <div className="pointer-events-none absolute -bottom-12 -right-12 size-64 rounded-full bg-white/10 blur-3xl" aria-hidden />
+                 </div>
+                 <div className="flex flex-col justify-center rounded-xl bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] md:col-span-4">
+                   <div className="mb-4 flex items-center justify-between">
+                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Current Balance</p>
+                     <Wallet className="size-6 text-blue-600" strokeWidth={1.75} aria-hidden />
+                   </div>
+                   <h2 className="mb-2 text-4xl font-extrabold tabular-nums text-slate-900">
+                     {(protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                       ? protocolFuelReserveBalance
+                       : 0
+                     ).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                     <span className="text-lg font-bold text-slate-400">B-U</span>
+                   </h2>
+                   <div className="mt-4 flex items-center gap-2 border-t border-slate-50 pt-4">
+                     <Clock className="size-4 shrink-0 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
+                     <p className="text-sm text-slate-600">
+                       Est. Runway: <span className="font-bold text-slate-900">—</span>
+                     </p>
+                   </div>
+                   <p className="mt-1 text-xs text-slate-400">Forecast uses your live usage pattern once enough history is available.</p>
+                 </div>
+               </div>
+             </section>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-                {/* Product 0: Starter Fuel Pack (1 USDC) OR Custom Refill — aligned with newBiz */}
-                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
-                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-emerald-500/10 via-transparent to-transparent pointer-events-none"></div>
-                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
-                    {!hasAaAccount ? (
-                      <div>
-                        <div className="mb-10 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
-                          <span className="w-fit shrink-0 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Starter</span>
-                          <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words 2xl:text-right">Unlimited</span>
-                        </div>
-                        <div className="flex justify-center mb-10 relative">
-                          <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                          <div className="w-28 h-28 bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
-                            <Zap size={36} className="text-emerald-500" strokeWidth={1.5} />
-                            <div className="text-center">
-                              <div className="text-[18px] font-bold text-emerald-500 leading-none">100</div>
-                              <div className="text-[9px] font-bold text-emerald-500/70 tracking-widest uppercase mt-1">B-Units</div>
-                            </div>
-                          </div>
-                        </div>
-                        <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Starter Fuel Pack</h4>
-                        <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">AA Account Activation</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="mb-6 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
-                          <span className="w-fit shrink-0 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Custom Refill</span>
-                          <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words 2xl:text-right">0.01 USDC / Unit</span>
-                        </div>
-                        <div className="flex justify-center mb-10 relative">
-                          <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                          <div className="w-full bg-[#1a1c23] border border-emerald-500/30 rounded-[28px] p-6 flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(16,185,129,0.15)] relative z-10">
-                            <span className="text-[12px] font-bold text-emerald-500/70 tracking-widest uppercase mb-2 mt-2">Enter Amount</span>
-                            <div className="flex items-center gap-2 border-b border-emerald-500/50 pb-2 mb-2 w-3/4 justify-center">
-                              <span className="text-xl text-white font-medium">$</span>
-                              <input
-                                type="number"
-                                min="1"
-                                value={customFuelAmount}
-                                onChange={(e) => setCustomFuelAmount(e.target.value)}
-                                className="bg-transparent text-4xl font-bold text-white w-full text-center focus:outline-none placeholder-white/20"
-                                placeholder="0"
-                              />
-                            </div>
-                            <div className="text-center mt-2 mb-2">
-                              <div className="text-[13px] font-bold text-emerald-500/70 tracking-widest uppercase">Yields {(Number(customFuelAmount) || 0) * 100} B-Units</div>
-                            </div>
-                          </div>
-                        </div>
-                        <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Custom Fuel Top-Up</h4>
-                        <p className="text-[14px] font-medium text-emerald-500/80 mt-2 uppercase tracking-widest">Pay as you go routing</p>
-                      </div>
-                    )}
+             <section>
+               <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+                 <div>
+                   <h3 className="text-2xl font-extrabold text-slate-900">Marketplace</h3>
+                   <p className="mt-1 text-sm text-slate-500">Select a fuel package to recharge your merchant wallet.</p>
+                 </div>
+                 <div className="flex rounded-full bg-[#eef1f3] p-1">
+                   <button
+                     type="button"
+                     onClick={() => setMarketFuelSegment('bunits')}
+                     className={`rounded-full px-6 py-2 text-xs font-bold shadow-sm transition-colors ${
+                       marketFuelSegment === 'bunits' ? 'bg-white text-blue-600' : 'text-slate-500'
+                     }`}
+                   >
+                     B-Units
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => setMarketFuelSegment('priority')}
+                     className={`rounded-full px-6 py-2 text-xs font-bold transition-colors ${
+                       marketFuelSegment === 'priority' ? 'bg-white text-blue-600' : 'text-slate-500'
+                     }`}
+                   >
+                     Priority Processing
+                   </button>
+                 </div>
+               </div>
 
-                    <div className="mt-10 flex flex-col gap-3 bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-4">
-                      <div className="min-w-0 pr-1">
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Total</p>
-                        <div className="flex flex-wrap items-baseline gap-1.5">
-                          <p className="text-[24px] font-bold text-white break-all tabular-nums">${!hasAaAccount ? '1' : (customFuelAmount || '0')}</p>
-                          <span className="text-[13px] font-medium text-slate-500 shrink-0">USDC</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProduct(!hasAaAccount ? 'starter' : 'custom_fuel')}
-                        disabled={hasAaAccount && (!customFuelAmount || Number(customFuelAmount) <= 0)}
-                        className="w-full shrink-0 bg-emerald-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed 2xl:w-auto"
-                      >
-                        View
-                      </button>
-                    </div>
-                  </div>
-                </div>
+               {marketFuelSegment === 'priority' ? (
+                 <div className="rounded-lg border border-slate-200 bg-white p-10 text-center shadow-sm">
+                   <p className="text-sm font-medium text-slate-600">
+                     Priority lane add-ons are arranged with our team. Open Messages to request expedited processing for high-volume windows.
+                   </p>
+                   <button
+                     type="button"
+                     onClick={() => handleTabChange('Messages')}
+                     className={`mt-6 rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 ${bizFocusRingClass}`}
+                   >
+                     Contact Support
+                   </button>
+                 </div>
+               ) : (
+                 <>
+                   <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+                     <div className="group flex flex-col rounded-lg border border-transparent bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all hover:border-blue-100 hover:shadow-[0_20px_40px_rgba(21,98,240,0.08)]">
+                       <div className="mb-6">
+                         <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-slate-400">The Essentials</span>
+                         <h4 className="text-2xl font-extrabold text-slate-900">Starter</h4>
+                       </div>
+                       <div className="mb-8">
+                         <div className="flex items-baseline gap-1">
+                           <span className="text-4xl font-black text-slate-900">$499</span>
+                           <span className="text-[10px] font-bold uppercase text-slate-400">CAD</span>
+                         </div>
+                         <p className="mt-2 text-sm font-bold text-blue-600">5,000 B-Units Included</p>
+                       </div>
+                       <ul className="mb-10 flex-1 space-y-4">
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
+                           Standard Transaction Speed
+                         </li>
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
+                           Email Support
+                         </li>
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
+                           Basic Analytics
+                         </li>
+                       </ul>
+                       <button
+                         type="button"
+                         onClick={() => setSelectedProduct('fuel')}
+                         className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-bold text-slate-900 transition-colors group-hover:bg-[#0051d1] group-hover:text-white active:scale-95 ${bizFocusRingClass}`}
+                       >
+                         Buy Now
+                       </button>
+                     </div>
 
-                {/* Product 1: Limited Fuel Pack */}
-                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
-                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-orange-500/10 via-transparent to-transparent pointer-events-none"></div>
-                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
-                    <div>
-                      <div className="mb-10 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
-                        <span className="w-fit shrink-0 bg-orange-500/10 text-orange-500 border border-orange-500/20 px-3 py-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase">Package A</span>
-                        <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words tabular-nums 2xl:text-right">842 / 1000</span>
-                      </div>
-                      <div className="flex justify-center mb-10 relative">
-                        <div className="absolute inset-0 bg-orange-500/20 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className="w-28 h-28 bg-[#1a1c23] border border-orange-500/30 rounded-[28px] flex flex-col items-center justify-center gap-2 shadow-[0_0_40px_rgba(249,115,22,0.15)] relative z-10">
-                          <Database size={36} className="text-orange-500" strokeWidth={1.5} />
-                          <div className="text-center">
-                            <div className="text-[18px] font-bold text-orange-500 leading-none">100k</div>
-                            <div className="text-[9px] font-bold text-orange-500/70 tracking-widest uppercase mt-1">B-Units</div>
-                          </div>
-                        </div>
-                      </div>
-                      <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Limited Fuel Pack</h4>
-                      <p className="text-[14px] font-medium text-orange-500/80 mt-2 uppercase tracking-widest">The Store Clearing Fuel</p>
-                    </div>
-                    <div className="mt-10 flex flex-col gap-3 bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-4">
-                      <div className="min-w-0 pr-1">
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
-                        <div className="flex flex-wrap items-baseline gap-1.5">
-                          <p className="text-[24px] font-bold text-white tabular-nums">$499</p>
-                          <span className="text-[13px] font-medium text-slate-500 shrink-0">USDC</span>
-                        </div>
-                      </div>
-                      <button type="button" onClick={() => setSelectedProduct('fuel')} className="w-full shrink-0 bg-orange-500 text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95 2xl:w-auto">
-                        View
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                     <div className="relative flex scale-100 flex-col rounded-lg border-2 border-blue-600/10 bg-white p-8 shadow-[0_30px_60px_rgba(21,98,240,0.12)] md:scale-105">
+                       <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-lg">
+                         Most Popular
+                       </div>
+                       <div className="mb-6 mt-2">
+                         <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-blue-500">Scaling Fast</span>
+                         <h4 className="text-2xl font-extrabold text-slate-900">Growth</h4>
+                       </div>
+                       <div className="mb-8">
+                         <div className="flex items-baseline gap-1">
+                           <span className="text-4xl font-black text-slate-900">$1,250</span>
+                           <span className="text-[10px] font-bold uppercase text-slate-400">CAD</span>
+                         </div>
+                         <p className="mt-2 text-sm font-bold text-blue-600">15,000 B-Units Included</p>
+                       </div>
+                       <ul className="mb-10 flex-1 space-y-4">
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
+                           Priority Transaction Speed
+                         </li>
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
+                           24/7 Priority Support
+                         </li>
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
+                           Advanced Reporting Suite
+                         </li>
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
+                           Automated Loyalty Rules
+                         </li>
+                       </ul>
+                       <button
+                         type="button"
+                         onClick={() => setSelectedProduct('node')}
+                         className={`w-full rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-xl shadow-blue-200 transition-transform active:scale-95 ${bizFocusRingClass}`}
+                       >
+                         Buy Now
+                       </button>
+                     </div>
 
-                {/* Product 2: Genesis Node Pack */}
-                <div className="bg-[#0a0a0a] rounded-[32px] p-2 shadow-[0_16px_40px_rgba(0,0,0,0.2)] relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300 border border-slate-800/80 flex flex-col h-full">
-                  <div className="absolute top-0 inset-x-0 h-full bg-gradient-to-b from-[#1562f0]/20 via-transparent to-transparent pointer-events-none"></div>
-                  <div className="bg-[#111113] rounded-[28px] h-full p-8 relative z-10 flex flex-col justify-between border border-white/5 flex-grow">
-                    <div>
-                      <div className="mb-10 flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3">
-                        <span className="w-fit shrink-0 rounded-[8px] border border-[#1562f0]/45 bg-[#1562f0]/25 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-sky-200">Package B</span>
-                        <span className="min-w-0 text-[13px] font-mono font-medium text-slate-400 break-words tabular-nums 2xl:text-right">247 / 300</span>
-                      </div>
-                      <div className="flex justify-center mb-10 relative">
-                        <div className="absolute inset-0 bg-[#1562f0]/25 blur-3xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className="w-28 h-28 bg-[#1a1c23] border border-[#1562f0]/40 rounded-[28px] flex items-center justify-center shadow-[0_0_40px_rgba(21,98,240,0.15)] relative z-10">
-                          <Activity size={40} className="text-emerald-800" strokeWidth={1.5} />
-                        </div>
-                      </div>
-                      <h4 className="text-[28px] font-semibold text-white tracking-tight leading-tight">Genesis Node Pack</h4>
-                      <p className="text-[14px] font-medium text-[#1562f0]/90 mt-2 uppercase tracking-widest">The Infrastructure Backbone</p>
-                    </div>
-                    <div className="mt-10 flex flex-col gap-3 bg-white/5 p-3 pr-4 pl-6 rounded-[20px] border border-white/5 backdrop-blur-md 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-4">
-                      <div className="min-w-0 pr-1">
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Pricing</p>
-                        <div className="flex flex-wrap items-baseline gap-1.5">
-                          <p className="text-[24px] font-bold text-white tabular-nums">$999</p>
-                          <span className="text-[13px] font-medium text-slate-500 shrink-0">USDC</span>
-                        </div>
-                      </div>
-                      <button type="button" onClick={() => setSelectedProduct('node')} className="w-full shrink-0 bg-[#1562f0] text-white px-8 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-[#2b74f5] transition-colors shadow-lg shadow-[#1562f0]/25 active:scale-95 2xl:w-auto">
-                        View
-                      </button>
-                    </div>
-                  </div>
-                </div>
-             </div>
+                     <div className="group flex flex-col rounded-lg border border-transparent bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all hover:border-blue-100 hover:shadow-[0_20px_40px_rgba(21,98,240,0.08)]">
+                       <div className="mb-6">
+                         <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-slate-400">Unlimited Power</span>
+                         <h4 className="text-2xl font-extrabold text-slate-900">Enterprise</h4>
+                       </div>
+                       <div className="mb-8">
+                         <div className="flex items-baseline gap-1">
+                           <span className="text-4xl font-black text-slate-900">$3,999</span>
+                           <span className="text-[10px] font-bold uppercase text-slate-400">CAD</span>
+                         </div>
+                         <p className="mt-2 text-sm font-bold text-blue-600">50,000 B-Units Included</p>
+                       </div>
+                       <ul className="mb-10 flex-1 space-y-4">
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
+                           Dedicated Processing Node
+                         </li>
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
+                           Personal Account Manager
+                         </li>
+                         <li className="flex items-center gap-3 text-sm text-slate-600">
+                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
+                           Custom Integration API
+                         </li>
+                       </ul>
+                       <button
+                         type="button"
+                         onClick={() => handleTabChange('Messages')}
+                         className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-bold text-slate-900 transition-colors group-hover:bg-[#0051d1] group-hover:text-white active:scale-95 ${bizFocusRingClass}`}
+                       >
+                         Get a Quote
+                       </button>
+                     </div>
+                   </div>
+
+                   {!hasAaAccount ? (
+                     <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                         <div>
+                           <p className="text-sm font-bold text-slate-900">Activate your smart wallet first</p>
+                           <p className="mt-1 text-sm text-slate-500">
+                             AA activation uses the entry pack (1 USDC). Continue here after your Programs setup, or go to the starter flow.
+                           </p>
+                         </div>
+                         <button
+                           type="button"
+                           onClick={() => setSelectedProduct('starter')}
+                           className={`shrink-0 rounded-full bg-emerald-600 px-8 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-emerald-500 ${bizFocusRingClass}`}
+                         >
+                           Starter activation (1 USDC)
+                         </button>
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                       <p className="mb-4 text-sm font-bold text-slate-900">Custom USDC top-up</p>
+                       <p className="mb-4 text-xs font-medium text-slate-500">0.01 USDC per B-Unit · enter amount, then continue to secure checkout.</p>
+                       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                         <div className="flex-1">
+                           <label htmlFor="market-custom-fuel" className="sr-only">
+                             USDC amount
+                           </label>
+                           <div className="relative">
+                             <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-[#0051d1]">$</span>
+                             <input
+                               id="market-custom-fuel"
+                               type="number"
+                               min="1"
+                               inputMode="decimal"
+                               autoComplete="off"
+                               value={customFuelAmount}
+                               onChange={(e) => setCustomFuelAmount(e.target.value)}
+                               placeholder="0"
+                               className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-4 text-lg font-semibold text-slate-900 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                             />
+                           </div>
+                           <p className="mt-2 text-xs font-medium text-slate-500">
+                             Yields {(Number(customFuelAmount) || 0) * 100} B-Units (display estimate)
+                           </p>
+                         </div>
+                         <button
+                           type="button"
+                           onClick={() => setSelectedProduct('custom_fuel')}
+                           disabled={!customFuelAmount || Number(customFuelAmount) <= 0}
+                           className={`rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-md transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                         >
+                           Continue
+                         </button>
+                       </div>
+                     </div>
+                   )}
+                 </>
+               )}
+             </section>
+
+             <section className="mt-12 md:mt-16">
+               <div className="flex flex-col items-center justify-between gap-6 rounded-xl border border-white/40 bg-[#eef1f3] p-8 md:flex-row">
+                 <div className="flex items-center gap-6">
+                   <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white text-blue-600">
+                     <LifeBuoy className="size-8" strokeWidth={1.75} aria-hidden />
+                   </div>
+                   <div>
+                     <h5 className="text-lg font-bold text-slate-900">Need a custom volume?</h5>
+                     <p className="text-sm text-slate-500">
+                       Contact our sales team for bespoke fuel solutions tailored to your unique traffic volume.
+                     </p>
+                   </div>
+                 </div>
+                 <button
+                   type="button"
+                   onClick={() => handleTabChange('Messages')}
+                   className={`whitespace-nowrap rounded-full bg-slate-900 px-8 py-3 text-sm font-bold text-white transition-transform active:scale-95 ${bizFocusRingClass}`}
+                 >
+                   Get a Quote
+                 </button>
+               </div>
+             </section>
            </div>
          )}
 
@@ -7374,111 +8063,190 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            </div>
          )}
 
-         {/* --- MESSAGES TAB --- */}
+         {/* --- MESSAGES TAB: inbox + embedded chat stay inside Merchant shell (sidebar + top bar) --- */}
          {activeTab === 'Messages' && (
-           <div className="max-w-[1400px] mx-auto h-[calc(100vh-160px)] sm:h-[calc(100vh-200px)] flex flex-col sm:flex-row gap-6 animate-in fade-in duration-300">
-             <div className="w-full sm:w-[340px] flex flex-col bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] shrink-0 overflow-hidden">
-               <div className="p-6 border-b border-slate-100/80 bg-white/50">
-                 <h3 className="text-[20px] font-bold text-slate-900 tracking-tight mb-4">Messages</h3>
-                 <div className="relative">
-                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                   <input type="text" placeholder="Search CoNET tags..." className={`w-full rounded-[14px] border border-slate-200/60 bg-slate-50 py-2.5 pl-11 pr-4 text-[13px] font-medium text-slate-900 transition-all ${bizFocusRingClass} focus:border-[#1562f0]`} />
+           <div className="mx-auto w-full max-w-7xl animate-in pb-10 fade-in duration-300 lg:pb-10">
+             <header className="mb-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
+               <div>
+                 <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Secure Communication</span>
+                 <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-5xl">Messages</h2>
+               </div>
+               <button
+                 type="button"
+                 onClick={() => {
+                   setMessagesComposeOpen(true);
+                   setMessagesChatData(undefined);
+                   setMessagesNewError(null);
+                 }}
+                 className="flex items-center gap-2 rounded-full bg-[#1562f0] px-8 py-4 font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:opacity-90 active:scale-95"
+               >
+                 <MessageSquarePlus className="size-5 shrink-0" strokeWidth={2.2} aria-hidden />
+                 New Message
+               </button>
+             </header>
+
+             <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+               <div className="space-y-6 lg:col-span-4">
+                 <div className="relative group">
+                   <Search className="pointer-events-none absolute left-5 top-1/2 size-5 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-[#1562f0]" strokeWidth={2} />
+                   <input
+                     type="search"
+                     value={messagesInboxSearch}
+                     onChange={(e) => setMessagesInboxSearch(e.target.value)}
+                     placeholder="Search BeamioTags..."
+                     autoComplete="off"
+                     className={`w-full rounded-xl border-0 bg-slate-100 py-5 pl-14 pr-6 text-sm font-medium text-slate-900 transition-all placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                   />
+                 </div>
+                 <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                   {(
+                     [
+                       { id: 'all' as const, label: 'All Chats' },
+                       { id: 'members' as const, label: 'Members' },
+                       { id: 'partners' as const, label: 'Partners' },
+                       { id: 'support' as const, label: 'Support' },
+                     ] as const
+                   ).map(({ id, label }) => (
+                     <button
+                       key={id}
+                       type="button"
+                       onClick={() => setMessagesCategory(id)}
+                       className={`shrink-0 rounded-full px-5 py-2 text-xs font-bold whitespace-nowrap transition-colors ${
+                         messagesCategory === id
+                           ? 'bg-[#1562f0] text-white shadow-sm'
+                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                       }`}
+                     >
+                       {label}
+                     </button>
+                   ))}
+                 </div>
+                 <div className="max-h-[min(70vh,700px)] space-y-4 overflow-y-auto pr-1 scrollbar-hide">
+                   <ChatList
+                     variant="merchant"
+                     title=""
+                     searchQuery={messagesInboxSearch}
+                     categoryFilter={messagesCategory}
+                     selectedAddress={messagesComposeOpen ? null : messagesChatData?.address ?? null}
+                     onOpen={(item) => {
+                       setMessagesComposeOpen(false);
+                       setMessagesChatData(item);
+                       setMessageCount(0);
+                     }}
+                   />
                  </div>
                </div>
-               <div className="flex-1 overflow-y-auto scrollbar-hide">
-                 {MOCK_CONTACTS.map((contact) => (
-                   <div
-                     key={contact.id}
-                     onClick={() => setActiveContact(contact.id)}
-                     className={`p-4 border-b border-slate-50 cursor-pointer transition-colors flex items-center gap-4 ${activeContact === contact.id ? 'bg-[#1562f0]/10 border-l-4 border-l-[#1562f0]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}
-                   >
-                     <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center text-white font-bold tracking-wider shrink-0 shadow-sm ${contact.avatarBg}`}>
-                       {contact.avatarText}
+
+               <div className="flex min-h-[min(70vh,700px)] flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-xl shadow-slate-900/5 lg:col-span-8">
+                 {messagesComposeOpen ? (
+                   <div className="flex flex-1 flex-col gap-4 p-6 sm:p-8">
+                     <div>
+                       <h3 className="text-lg font-bold text-slate-900">New message</h3>
+                       <p className="mt-1 text-sm text-slate-500">Search by Beamio tag or wallet address.</p>
                      </div>
-                     <div className="flex-1 min-w-0">
-                       <div className="flex justify-between items-center mb-1">
-                         <h4 className="text-[15px] font-semibold text-slate-900 truncate">{contact.name}</h4>
-                         <span className="text-[11px] font-medium text-slate-400 shrink-0">{contact.time}</span>
+                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                       <input
+                         type="text"
+                         value={messagesNewQuery}
+                         onChange={(e) => setMessagesNewQuery(e.target.value)}
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') void runMessagesUserSearch();
+                         }}
+                         placeholder="@beamioTag or 0x…"
+                         autoComplete="off"
+                         className={`min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass}`}
+                       />
+                       <button
+                         type="button"
+                         disabled={messagesNewLoading}
+                         onClick={() => void runMessagesUserSearch()}
+                         className={`shrink-0 rounded-xl px-6 py-3 text-sm font-bold text-white transition-opacity disabled:opacity-60 ${bizUiPrimarySolid}`}
+                       >
+                         {messagesNewLoading ? 'Searching…' : 'Search'}
+                       </button>
+                     </div>
+                     {messagesNewError ? <p className="text-sm font-medium text-amber-600">{messagesNewError}</p> : null}
+                     {messagesNewLoading ? (
+                       <div className="flex justify-center py-8">
+                         <Loader2 className="size-8 animate-spin text-slate-400" aria-hidden />
                        </div>
-                       <p className={`text-[13px] truncate ${contact.unread > 0 ? 'text-slate-900 font-semibold' : 'text-slate-500 font-medium'}`}>
-                         {contact.lastMessage}
+                     ) : (
+                       <ul className="max-h-[420px] space-y-2 overflow-y-auto pr-1 scrollbar-hide">
+                         {messagesNewResults.map((r) => {
+                           const un = (r.username || '').trim();
+                           const show = un && un !== 'Unknow' ? `@${un}` : r.address ? `${r.address.slice(0, 6)}…${r.address.slice(-4)}` : '—';
+                           return (
+                             <li key={r.address}>
+                               <button
+                                 type="button"
+                                 onClick={() => void startChatWithSearchUser(r)}
+                                 className="flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-left transition hover:border-[#1562f0]/30 hover:bg-white"
+                               >
+                                 {r.image?.trim() ? (
+                                   <img src={r.image.trim()} alt="" className="size-11 shrink-0 rounded-full object-cover ring-1 ring-black/5" />
+                                 ) : (
+                                   <div className="grid size-11 shrink-0 place-items-center rounded-full bg-slate-200 text-sm font-bold text-slate-600 ring-1 ring-black/5">
+                                     {(show.replace('@', '').slice(0, 2) || '?').toUpperCase()}
+                                   </div>
+                                 )}
+                                 <div className="min-w-0 flex-1">
+                                   <div className="truncate font-semibold text-slate-900">{show}</div>
+                                   {r.address ? (
+                                     <div className="truncate font-mono text-xs text-slate-500">{`${r.address.slice(0, 6)}…${r.address.slice(-4)}`}</div>
+                                   ) : null}
+                                 </div>
+                                 <ChevronRight className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
+                               </button>
+                             </li>
+                           );
+                         })}
+                       </ul>
+                     )}
+                     {!messagesNewLoading && messagesNewQuery.trim() && messagesNewResults.length === 0 && !messagesNewError ? (
+                       <p className="text-sm text-slate-500">No accounts found.</p>
+                     ) : null}
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setMessagesComposeOpen(false);
+                         setMessagesNewQuery('');
+                         setMessagesNewResults([]);
+                         setMessagesNewError(null);
+                       }}
+                       className="mt-auto text-sm font-semibold text-slate-500 hover:text-slate-800"
+                     >
+                       Cancel
+                     </button>
+                   </div>
+                 ) : messagesChatData ? (
+                   <Chat
+                     layout="embedded"
+                     chatData={messagesChatData}
+                     allNodes={allNodes}
+                     privateKey={profiles?.[0]?.privateKeyArmor ?? ''}
+                     onBack={() => {
+                       setMessagesChatData(undefined);
+                       setMessagesComposeOpen(false);
+                       setMessageCount(0);
+                     }}
+                   />
+                 ) : (
+                   <div className="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
+                     <div className="flex size-16 items-center justify-center rounded-full bg-slate-50 text-[#1562f0]">
+                       <MessageSquare className="size-8" strokeWidth={2} aria-hidden />
+                     </div>
+                     <div>
+                       <h3 className="text-lg font-bold text-slate-900">Open a conversation</h3>
+                       <p className="mt-2 max-w-sm text-sm text-slate-500">
+                         Select a thread on the left or use New Message to find someone. Everything stays in this workspace.
                        </p>
                      </div>
-                     {contact.unread > 0 && (
-                       <div className="w-5 h-5 rounded-full bg-[#1562f0] flex items-center justify-center text-[10px] font-bold text-white shrink-0">
-                         {contact.unread}
-                       </div>
-                     )}
-                   </div>
-                 ))}
-               </div>
-             </div>
-
-             <div className="flex-1 flex flex-col bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-               <div className="h-20 px-6 sm:px-8 border-b border-slate-100/80 bg-white/50 flex items-center justify-between shrink-0">
-                 <div className="flex items-center gap-4">
-                   <div className="w-12 h-12 rounded-[16px] bg-[#4854e8] flex items-center justify-center text-white font-bold tracking-wider shadow-sm">CT</div>
-                   <div>
-                     <h4 className="text-[16px] font-bold text-slate-900 tracking-tight">CashTrees Network</h4>
-                     <p className="text-[12px] font-medium text-slate-500">@cashtrees_support • Alliance Operator</p>
-                   </div>
-                 </div>
-                 <div className="flex items-center gap-4">
-                   <div className="hidden sm:flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100/50">
-                     <Lock size={12} className="text-emerald-600" />
-                     <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-widest">E2E Encrypted</span>
-                   </div>
-                   <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors">
-                     <MoreVertical size={20} />
-                   </button>
-                 </div>
-               </div>
-
-               <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-[#f8f9fb] space-y-6">
-                 <div className="flex justify-center mb-8">
-                   <div className="bg-slate-200/50 px-3 py-1 rounded-full text-[11px] font-semibold text-slate-500 uppercase tracking-widest">CoNET L1 Secure Routing</div>
-                 </div>
-                 {MOCK_MESSAGES.map((msg) => (
-                   <div key={msg.id} className={`flex flex-col ${msg.sender === 'me' ? 'items-end' : 'items-start'}`}>
-                     <div className={`max-w-[80%] sm:max-w-[70%] p-4 rounded-[20px] ${msg.sender === 'me' ? 'bg-[#1562f0] text-white rounded-tr-[4px] shadow-[0_4px_15px_rgba(21,98,240,0.2)]' : 'bg-white text-slate-800 rounded-tl-[4px] shadow-sm border border-slate-100'}`}>
-                       <p className="text-[14.5px] font-medium leading-relaxed">{msg.text}</p>
-                     </div>
-                     <span className="text-[11px] font-medium text-slate-400 mt-2 px-1">{msg.time} {msg.sender === 'me' && '• Read'}</span>
-                   </div>
-                 ))}
-                 {applyingAlliance && activeContact === 'c1' && (
-                   <div className="flex flex-col items-start">
-                     <div className="bg-white p-4 rounded-[20px] rounded-tl-[4px] shadow-sm border border-slate-100 flex items-center gap-1.5">
-                       <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce"></div>
-                       <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                       <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                     <div className="mt-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                       <ShieldCheck className="size-3.5 text-emerald-500" strokeWidth={2} aria-hidden />
+                       P2P end-to-end encrypted
                      </div>
                    </div>
                  )}
-               </div>
-
-               <div className="p-4 sm:p-6 bg-white border-t border-slate-100/80 shrink-0">
-                 <div className="flex items-center gap-3">
-                   <button className="p-3 text-slate-400 hover:bg-[#1562f0]/15 hover:text-[#1562f0] rounded-full transition-colors shrink-0">
-                     <Paperclip size={20} />
-                   </button>
-                   <div className="flex-1 relative">
-                     <input
-                       type="text"
-                       placeholder="Type an encrypted message..."
-                       value={chatInput}
-                       onChange={(e) => setChatInput(e.target.value)}
-                       onKeyDown={(e) => { if (e.key === 'Enter' && chatInput.trim()) setChatInput(''); }}
-                       className={`w-full rounded-[20px] border border-slate-200/60 bg-slate-50 py-4 pl-5 pr-12 text-[15px] font-medium text-slate-900 transition-all ${bizFocusRingClass} focus:border-[#1562f0]`}
-                     />
-                     <button onClick={() => setChatInput('')} className={`absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-full transition-all ${chatInput.trim() ? 'bg-[#1562f0] text-white shadow-md' : 'text-slate-400 hover:bg-slate-200'}`}>
-                       <Send size={18} className={chatInput.trim() ? 'translate-x-0.5' : ''} />
-                     </button>
-                   </div>
-                 </div>
-                 <div className="text-center mt-3">
-                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">0 Gas Fee • Powered by CoNET L1</span>
-                 </div>
                </div>
              </div>
            </div>
@@ -7654,6 +8422,188 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
          )}
 
          {activeTab === 'Card Issuance Setup' && (
+           !hasAaAccount ? (
+             <>
+               <div className="mx-auto w-full max-w-4xl animate-in space-y-12 px-4 pb-24 pt-4 fade-in duration-300 sm:px-6 md:pt-8">
+                 <header className="space-y-6">
+                   <div className="inline-flex items-center gap-2 rounded-full border border-[#7a9dff]/30 bg-[#7a9dff]/20 px-4 py-2 text-[#001e59]">
+                     <Sparkles className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                     <span className="text-xs font-bold uppercase tracking-wider">Setup Journey</span>
+                   </div>
+                   <div className="space-y-4">
+                     <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-slate-900 md:text-5xl">
+                       Set up your first membership card program
+                     </h1>
+                     <p className="max-w-2xl text-lg leading-relaxed text-slate-600">
+                       Create your first stored-value program for customers and choose how you want to go live in Verra Business OS.
+                     </p>
+                   </div>
+                   <div className="flex flex-col gap-4 rounded-lg bg-[#eef1f3] p-5 md:flex-row md:items-center">
+                     <div
+                       className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-md"
+                       style={{
+                         backgroundColor: '#0051d1',
+                         backgroundImage:
+                           'radial-gradient(at 0% 0%, hsla(220,100%,60%,1) 0, transparent 50%), radial-gradient(at 50% 0%, hsla(220,100%,70%,1) 0, transparent 50%), radial-gradient(at 100% 0%, hsla(220,100%,55%,1) 0, transparent 50%)',
+                       }}
+                     >
+                       <Coins className="size-6" strokeWidth={2} aria-hidden />
+                     </div>
+                     <div>
+                       <p className="font-bold text-slate-900">
+                         {(protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                           ? protocolFuelReserveBalance
+                           : 0
+                         ).toFixed(2)}{' '}
+                         bonus B-Units available.
+                       </p>
+                       <p className="text-sm text-slate-600">
+                         Your workspace includes starter B-Units. If your selected setup requires more, you can add more from Market.
+                       </p>
+                     </div>
+                   </div>
+                 </header>
+                 <section className="grid grid-cols-1 gap-8 md:grid-cols-2">
+                   <div className="group relative flex flex-col rounded-lg border border-slate-200/80 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] transition-all duration-300 hover:border-[#0051d1]/30">
+                     <div className="mb-8">
+                       <h3 className="text-2xl font-bold text-slate-900">Standard Program</h3>
+                       <p className="mt-1 text-sm leading-snug text-slate-600">
+                         Best for getting started with your first live membership card program.
+                       </p>
+                     </div>
+                     <div className="mb-8">
+                       <span className="text-4xl font-extrabold text-slate-900">C$69</span>
+                       <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-slate-600">
+                         Includes activation + 4,900 B-Units
+                       </p>
+                     </div>
+                     <ul className="mb-10 flex-grow space-y-4">
+                       <li className="flex items-start gap-3 text-sm text-slate-900">
+                         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         First program activation
+                       </li>
+                       <li className="flex items-start gap-3 text-sm text-slate-900">
+                         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         Standard membership stored-value card
+                       </li>
+                       <li className="flex items-start gap-3 text-sm text-slate-900">
+                         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         Ready for live customer use
+                       </li>
+                     </ul>
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setActiveTab('Market');
+                         setSelectedProduct('starter');
+                       }}
+                       className={`w-full rounded-full bg-[#dfe3e6] py-4 text-sm font-bold text-slate-900 transition-colors hover:bg-[#d0d5d8] active:scale-95 ${bizFocusRingClass}`}
+                     >
+                       Activate Standard Program
+                     </button>
+                   </div>
+                   <div className="group relative flex flex-col rounded-lg border-2 border-[#0051d1]/40 bg-[#7a9dff]/5 p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] transition-all duration-300">
+                     <div className="absolute -right-4 -top-4 rounded-full bg-[#0051d1] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white shadow-lg">
+                       Recommended
+                     </div>
+                     <div className="mb-8">
+                       <h3 className="text-2xl font-bold text-slate-900">Custom Program</h3>
+                       <p className="mt-1 text-sm leading-snug text-slate-600">
+                         Best for businesses that want a more tailored branded card experience.
+                       </p>
+                     </div>
+                     <div className="mb-8">
+                       <span className="text-4xl font-extrabold text-[#0051d1]">C$139</span>
+                       <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-[#0051d1]/70">
+                         Includes activation + 9,900 B-Units
+                       </p>
+                     </div>
+                     <ul className="mb-10 flex-grow space-y-4">
+                       <li className="flex items-start gap-3 text-sm text-slate-900">
+                         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         First program activation
+                       </li>
+                       <li className="flex items-start gap-3 text-sm text-slate-900">
+                         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         Custom membership stored-value card
+                       </li>
+                       <li className="flex items-start gap-3 text-sm text-slate-900">
+                         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         Better for branded rollout
+                       </li>
+                       <li className="flex items-start gap-3 text-sm font-bold text-[#0051d1]">
+                         <Palette className="mt-0.5 size-5 shrink-0" strokeWidth={2} aria-hidden />
+                         Advanced UI Customization
+                       </li>
+                     </ul>
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setActiveTab('Market');
+                         setSelectedProduct('fuel');
+                       }}
+                       className={`w-full rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:brightness-110 active:scale-95 ${bizFocusRingClass}`}
+                     >
+                       Activate Custom Program
+                     </button>
+                   </div>
+                 </section>
+                 <div className="relative h-64 w-full overflow-hidden rounded-lg shadow-[0_20px_40px_rgba(21,98,240,0.06)] md:h-80">
+                   <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-[#0051d1] to-slate-900" aria-hidden />
+                   <div className="absolute inset-0 z-10 flex items-center bg-gradient-to-r from-[#0051d1]/85 to-transparent px-8 md:px-12">
+                     <div className="max-w-sm text-white">
+                       <p className="mb-2 text-xs font-bold uppercase tracking-widest opacity-80">Platform Power</p>
+                       <h2 className="text-3xl font-extrabold leading-tight">Instant issuance across all terminals.</h2>
+                     </div>
+                   </div>
+                   <div className="absolute inset-0 flex items-center justify-end pr-8 opacity-30 md:pr-16">
+                     <Smartphone className="size-40 text-white/40 md:size-48" strokeWidth={0.75} aria-hidden />
+                   </div>
+                 </div>
+                 <footer className="space-y-8 rounded-lg bg-[#eef1f3]/80 p-10">
+                   <div className="grid grid-cols-1 gap-10 md:grid-cols-3">
+                     <div className="space-y-4 md:col-span-2">
+                       <h4 className="text-xl font-bold text-slate-900">How setup works</h4>
+                       <p className="leading-relaxed text-slate-600">
+                         Programs are where you issue membership cards and launch stored-value activity. B-Units support activation and ongoing live
+                         operations inside Verra Business OS.
+                       </p>
+                     </div>
+                     <div className="flex flex-col justify-end">
+                       <button
+                         type="button"
+                         onClick={() => {
+                           setActiveTab('Market');
+                           setSelectedProduct('fuel');
+                         }}
+                         className="flex items-center gap-2 text-sm font-bold text-[#0051d1] transition-all hover:gap-3"
+                       >
+                         Learn about B-Units
+                         <ArrowRight className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                       </button>
+                     </div>
+                   </div>
+                   <div className="flex flex-wrap gap-8 border-t border-slate-200/80 pt-8 text-[11px] font-semibold uppercase tracking-widest text-slate-600">
+                     <div className="flex items-center gap-2">
+                       <Shield className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+                       Bank-grade encryption
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <Zap className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+                       Instant Activation
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <History className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+                       Cancel Anytime
+                     </div>
+                   </div>
+                 </footer>
+               </div>
+               <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 h-1.5 bg-[#e5e9eb]">
+                 <div className="h-full w-1/4 bg-[#0051d1] transition-all duration-1000" />
+               </div>
+             </>
+           ) : (
            <div className="max-w-[1200px] mx-auto animate-in fade-in duration-300 pb-8">
              <div className="flex flex-col mb-10">
                <span className="text-[#1562f0] font-bold tracking-widest text-[10px] uppercase mb-2">Configuration Studio</span>
@@ -7835,8 +8785,8 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                  </div>
                </section>
              ) : (
-             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
-               <div className="lg:col-span-8 space-y-8">
+             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 min-w-0">
+               <div className="lg:col-span-8 space-y-8 min-w-0">
                  <section className="bg-white rounded-2xl p-8 sm:p-10 shadow-sm border border-slate-100">
                    <div className="flex items-center gap-4 mb-8">
                      <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0">
@@ -7879,7 +8829,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                          aria-label="Program currency"
                        >
                          {CARD_ISSUANCE_BEAMIO_CURRENCY}
-                         <span className="ml-2 text-xs font-medium text-slate-400">(BeamioCurrency only)</span>
+                         
                        </div>
                      </div>
                    </div>
@@ -8172,8 +9122,8 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    </div>
                  </section>
 
-                 <section className="bg-white rounded-2xl p-8 sm:p-10 shadow-sm border border-slate-100 flex flex-col min-h-0">
-                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+                 <section className="bg-white rounded-2xl p-5 sm:p-7 md:p-8 shadow-sm border border-slate-100 flex flex-col min-h-0 min-w-0">
+                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
                      <div className="flex items-start gap-4">
                        <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0 mt-0.5">
                          <Layers className="w-6 h-6 text-[#1562f0]" strokeWidth={2} />
@@ -8181,7 +9131,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                        <div>
                          <h4 className="text-xl font-bold text-slate-900">Tier Configuration</h4>
                          <p className="text-sm text-slate-500 mt-1 font-medium">
-                           Configure thresholds and discount benefits. Threshold amounts must be whole numbers (no decimals).
+                           Configure thresholds and discount benefits. Threshold amounts must be whole numbers (no decimals). Background is stored as tier NFT metadata (CSS hex), same as Card Manager.
                          </p>
                        </div>
                      </div>
@@ -8198,6 +9148,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                              discountPercent: '0',
                              tierDescription: '',
                              tierDescriptionOpen: false,
+                             backgroundColor: '#6366f1',
                            },
                          ])
                        }
@@ -8207,22 +9158,30 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                        Add Tier
                      </button>
                    </div>
-                   <div className="overflow-x-auto pb-2 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300">
-                     <table className="w-full text-left border-separate border-spacing-y-4 min-w-[520px]">
+                   <div className="w-full min-w-0">
+                     <table className="w-full min-w-0 table-fixed text-left border-separate border-spacing-y-3 border-spacing-x-0">
+                       <colgroup>
+                         <col style={{ width: '38%' }} />
+                         <col style={{ width: '12%' }} />
+                         <col style={{ width: '11%' }} />
+                         <col style={{ width: '27%' }} />
+                         <col style={{ width: '9%' }} />
+                       </colgroup>
                        <thead>
-                         <tr className="text-slate-500 uppercase text-[10px] tracking-widest font-bold">
-                           <th className="px-4 pb-2 text-left">Tier Identity</th>
-                           <th className="px-4 pb-2 text-left">Threshold ($)</th>
-                           <th className="px-4 pb-2 text-left">Discount (%)</th>
-                           <th className="px-4 pb-2 text-left">Actions</th>
+                         <tr className="text-slate-500 uppercase text-[9px] sm:text-[10px] tracking-wide sm:tracking-widest font-bold">
+                           <th className="px-2 pb-2 text-left">Tier</th>
+                           <th className="px-1.5 pb-2 text-left">Min $</th>
+                           <th className="px-1.5 pb-2 text-left">Disc.</th>
+                           <th className="px-1.5 pb-2 text-left">Color</th>
+                           <th className="px-1 pb-2 text-left" aria-label="Actions" />
                          </tr>
                        </thead>
                        <tbody className="text-sm">
                          {cardIssuanceTiers.map((row) => (
                            <tr key={row.id} className="bg-slate-50 group hover:bg-slate-100/90 transition-colors">
-                             <td className="px-4 py-5 rounded-l-2xl align-top border-y border-l border-slate-100/80 group-hover:border-slate-200/80">
-                               <div className="flex flex-col gap-3 min-w-0">
-                                 <div className="flex items-center gap-3 min-w-0">
+                             <td className="px-2 py-3 rounded-l-2xl align-top border-y border-l border-slate-100/80 group-hover:border-slate-200/80 min-w-0">
+                               <div className="flex flex-col gap-2 min-w-0">
+                                 <div className="flex items-center gap-2 min-w-0">
                                    <CardIssuanceTierIdentityIcon preset={row.preset} />
                                    <input
                                      type="text"
@@ -8231,12 +9190,12 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                        const v = e.target.value;
                                        setCardIssuanceTiers((tiers) => tiers.map((t) => (t.id === row.id ? { ...t, name: v } : t)));
                                      }}
-                                     className="font-bold text-base text-slate-900 bg-transparent border-none min-w-0 max-w-[120px] sm:max-w-[160px] focus:outline-none focus:ring-0"
+                                     className="font-bold text-sm sm:text-base text-slate-900 bg-transparent border-none min-w-0 w-full max-w-full focus:outline-none focus:ring-0"
                                      aria-label={`Tier name for ${row.id}`}
                                    />
                                  </div>
                                  {row.tierDescriptionOpen ? (
-                                   <div className="min-w-0 max-w-[min(100%,320px)] space-y-2 pl-[3.25rem]">
+                                   <div className="min-w-0 max-w-full space-y-1.5 pl-10">
                                      <textarea
                                        value={row.tierDescription}
                                        onChange={(e) =>
@@ -8255,7 +9214,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                        rows={3}
                                        maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
                                        spellCheck={true}
-                                       className={`w-full resize-y min-h-[72px] text-[13px] bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 placeholder:text-slate-400 ${bizFocusRingClass}`}
+                                       className={`w-full max-w-full resize-y min-h-[64px] text-[12px] sm:text-[13px] bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 placeholder:text-slate-400 ${bizFocusRingClass}`}
                                        aria-label={`Tier description for ${row.name || row.id}`}
                                      />
                                      <div className="flex flex-wrap items-center gap-2">
@@ -8286,7 +9245,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                          tiers.map((t) => (t.id === row.id ? { ...t, tierDescriptionOpen: true } : t))
                                        )
                                      }
-                                     className="inline-flex items-center gap-1.5 self-start rounded-lg border border-dashed border-slate-200 bg-white/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:border-[#1562f0]/40 hover:text-[#1562f0] hover:bg-blue-50/50 transition-colors ml-[3.25rem]"
+                                     className="inline-flex items-center gap-1.5 self-start rounded-lg border border-dashed border-slate-200 bg-white/80 px-2 py-1 text-[10px] sm:text-[11px] font-bold text-slate-600 hover:border-[#1562f0]/40 hover:text-[#1562f0] hover:bg-blue-50/50 transition-colors ml-10"
                                      aria-label={`Add tier description for ${row.name || row.id}`}
                                    >
                                      <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
@@ -8295,7 +9254,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                  )}
                                </div>
                              </td>
-                             <td className="px-4 py-5 align-top border-y border-slate-100/80 group-hover:border-slate-200/80">
+                             <td className="px-1.5 py-3 align-top border-y border-slate-100/80 group-hover:border-slate-200/80 min-w-0">
                                <input
                                  type="text"
                                  inputMode="numeric"
@@ -8315,12 +9274,12 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                      tiers.map((t) => (t.id === row.id ? { ...t, threshold: digitsOnly } : t))
                                    );
                                  }}
-                                 className={`bg-white border border-slate-200 rounded-lg w-24 text-center text-sm font-semibold text-slate-900 py-1.5 shadow-sm ${bizFocusRingClass}`}
+                                 className={`w-full max-w-[4rem] box-border bg-white border border-slate-200 rounded-md text-center text-xs sm:text-sm font-semibold text-slate-900 py-1 shadow-sm ${bizFocusRingClass}`}
                                  aria-label={`Threshold dollars for ${row.name || row.id}`}
                                />
                              </td>
-                             <td className="px-4 py-5 align-top border-y border-slate-100/80 group-hover:border-slate-200/80">
-                               <div className="flex items-center gap-2">
+                             <td className="px-1 py-3 align-top border-y border-slate-100/80 group-hover:border-slate-200/80 min-w-0">
+                               <div className="flex items-center gap-0.5 min-w-0 justify-start">
                                  <input
                                    type="text"
                                    inputMode="decimal"
@@ -8330,12 +9289,44 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                      const v = e.target.value;
                                      setCardIssuanceTiers((tiers) => tiers.map((t) => (t.id === row.id ? { ...t, discountPercent: v } : t)));
                                    }}
-                                   className={`bg-white border border-slate-200 rounded-lg w-12 text-center text-sm font-semibold text-slate-900 py-1.5 shadow-sm ${bizFocusRingClass}`}
+                                   className={`w-full max-w-[2.75rem] box-border bg-white border border-slate-200 rounded-md text-center text-xs sm:text-sm font-semibold text-slate-900 py-1 shadow-sm ${bizFocusRingClass}`}
                                  />
-                                 <span className="text-slate-500 font-medium">%</span>
+                                 <span className="text-slate-500 font-medium text-xs shrink-0">%</span>
                                </div>
                              </td>
-                             <td className="px-4 py-5 rounded-r-2xl align-top border-y border-r border-slate-100/80 group-hover:border-slate-200/80">
+                             <td className="px-1.5 py-3 align-top border-y border-slate-100/80 group-hover:border-slate-200/80 min-w-0">
+                               <div className="flex items-center gap-1 min-w-0">
+                                 <input
+                                   type="color"
+                                   value={
+                                     tierBackgroundColorForPayload(row.backgroundColor) ??
+                                     (row.backgroundColor.trim().startsWith('#') ? row.backgroundColor.trim().slice(0, 7) : '#6366f1')
+                                   }
+                                   onChange={(e) =>
+                                     setCardIssuanceTiers((tiers) =>
+                                       tiers.map((t) => (t.id === row.id ? { ...t, backgroundColor: e.target.value } : t))
+                                     )
+                                   }
+                                   className="h-7 w-8 rounded border border-slate-200 cursor-pointer bg-transparent shrink-0 p-0"
+                                   aria-label={`Background color for ${row.name || row.id}`}
+                                 />
+                                 <input
+                                   type="text"
+                                   inputMode="text"
+                                   autoComplete="off"
+                                   value={row.backgroundColor}
+                                   onChange={(e) =>
+                                     setCardIssuanceTiers((tiers) =>
+                                       tiers.map((t) => (t.id === row.id ? { ...t, backgroundColor: e.target.value } : t))
+                                     )
+                                   }
+                                   placeholder="#hex"
+                                   className={`min-w-0 flex-1 max-w-full bg-white border border-slate-200 rounded-md px-1 py-1 text-[10px] sm:text-xs font-mono text-slate-900 shadow-sm ${bizFocusRingClass}`}
+                                   aria-label={`Background hex for ${row.name || row.id}`}
+                                 />
+                               </div>
+                             </td>
+                             <td className="px-1 py-3 rounded-r-2xl align-top border-y border-r border-slate-100/80 group-hover:border-slate-200/80 text-right">
                                <button
                                  type="button"
                                  disabled={cardIssuanceTiers.length <= 1}
@@ -8344,11 +9335,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                                      tiers.length <= 1 ? tiers : tiers.filter((t) => t.id !== row.id)
                                    )
                                  }
-                                 className="text-slate-400 hover:text-rose-600 transition-colors disabled:opacity-35 disabled:pointer-events-none p-1 rounded-lg"
+                                 className="text-slate-400 hover:text-rose-600 transition-colors disabled:opacity-35 disabled:pointer-events-none p-0.5 rounded-lg inline-flex"
                                  title="Remove tier"
                                  aria-label={`Remove tier ${row.name}`}
                                >
-                                 <Trash2 className="w-[22px] h-[22px]" strokeWidth={2} />
+                                 <Trash2 className="w-[18px] h-[18px] sm:w-5 sm:h-5" strokeWidth={2} />
                                </button>
                              </td>
                            </tr>
@@ -8511,6 +9502,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
              </div>
              )}
            </div>
+           )
          )}
 
          {activeTab === 'Settings' && (

@@ -15,11 +15,15 @@ import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress, re
 import {searchUsername, storeSystemData} from '@/services/beamio'
 
 type ChatListProps = {
-  list: chatData[]
   onOpen?: (item: chatData) => void
   onEdit?: () => void
   onMenu?: () => void
   title?: string
+  /** Merchant Messages inbox: filter threads by display name / @tag / address */
+  searchQuery?: string
+  categoryFilter?: 'all' | 'members' | 'partners' | 'support'
+  selectedAddress?: string | null
+  variant?: 'ios' | 'merchant'
 }
 
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
@@ -166,9 +170,32 @@ function Avatar({
 }
 
 
+function categoryChipMatches(it: chatData, category: ChatListProps['categoryFilter']) {
+	if (!category || category === 'all') return true
+	if (category === 'members') return it.tag === 'green'
+	if (category === 'partners') return it.tag === 'blue'
+	if (category === 'support') return it.tag === 'red'
+	return true
+}
+
+function searchMatchesThread(it: chatData, qRaw: string) {
+	const q = (qRaw || '').trim().toLowerCase()
+	if (!q) return true
+	const addr = (it.address || '').toLowerCase()
+	if (addr.includes(q)) return true
+	const un = (it.beamio?.username || '').toLowerCase()
+	if (un.includes(q)) return true
+	const disp = `${it.beamio?.first_name || ''} ${it.beamio?.last_name || ''}`.toLowerCase()
+	return disp.includes(q)
+}
+
 export default function ChatList({
 	title = "",
-	onOpen
+	onOpen,
+	searchQuery = '',
+	categoryFilter = 'all',
+	selectedAddress = null,
+	variant = 'ios',
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
 
@@ -224,16 +251,18 @@ export default function ChatList({
 			})
 
 		return sorted
-	}, [profiles])
+			.filter((it) => categoryChipMatches(it, categoryFilter))
+			.filter((it) => searchMatchesThread(it, searchQuery))
+	}, [profiles, categoryFilter, searchQuery])
 
 	
 
 
   return (
-    <div className="min-h-full min-w-0 bg-[#F2F2F7]">
+    <div className={variant === 'merchant' ? 'min-h-0 min-w-0 bg-transparent' : 'min-h-full min-w-0 bg-[#F2F2F7]'}>
       {/* 顶部栏（贴近 iOS 列表页风格；父级已提供 刘海+3.5rem 留白，此处不再重复 safe-area） */}
       <div
-        className="sticky top-0 z-20 bg-[#F2F2F7]/90 backdrop-blur-xl"
+        className={variant === 'merchant' ? 'hidden' : 'sticky top-0 z-20 bg-[#F2F2F7]/90 backdrop-blur-xl'}
       >
         {/* <div className="px-4 pt-3 pb-2 flex items-center justify-between">
           <button
@@ -262,8 +291,8 @@ export default function ChatList({
       </div>
 
       {/* 列表 */}
-      <div className="px-4 pt-2 pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto w-full max-w-[820px] min-w-0">
+      <div className={variant === 'merchant' ? 'pb-2' : 'px-4 pt-2 pb-[env(safe-area-inset-bottom)]'}>
+        <div className={variant === 'merchant' ? 'mx-auto w-full min-w-0' : 'mx-auto w-full max-w-[820px] min-w-0'}>
           {items.map((it, idx) => {
             const last = it.messages?.[it.messages.length - 1]
 			const dir = last ? (last.from === "me" ? "out" : "in") : null
@@ -278,6 +307,9 @@ export default function ChatList({
 
             const isFailed = last?.from === "me" && last?.status === "failed"
             const subtitle = isFailed ? "Message Send Failure" : (last?.text?.trim() || "")
+            const isSelected =
+              !!selectedAddress &&
+              String(it.address || '').toLowerCase() === String(selectedAddress).toLowerCase()
 
             return (
               <button
@@ -317,13 +349,26 @@ export default function ChatList({
 				}}
                 className={[
                   "w-full min-w-0 max-w-full text-left transition overflow-hidden",
-                  "mb-3 rounded-2xl bg-white shadow-sm",
-                  "active:scale-[0.98] active:bg-slate-50/80",
-                  noRoute ? "ring-2 ring-amber-400/50" : ""
+                  variant === 'merchant'
+                    ? [
+                        'relative mb-4 rounded-lg border p-5 shadow-sm',
+                        isSelected
+                          ? 'border-[#1562f0]/20 bg-slate-50'
+                          : 'border-transparent bg-white hover:bg-slate-50 dark:bg-slate-900/40 dark:hover:bg-slate-800/60',
+                        noRoute ? 'ring-2 ring-amber-400/50' : '',
+                      ].filter(Boolean).join(' ')
+                    : [
+                        'mb-3 rounded-2xl bg-white shadow-sm',
+                        'active:scale-[0.98] active:bg-slate-50/80',
+                        noRoute ? 'ring-2 ring-amber-400/50' : '',
+                      ].filter(Boolean).join(' '),
                 ].filter(Boolean).join(" ")}
               >
-                <div className="px-4 min-w-0 overflow-hidden">
-                  <div className="flex items-center gap-3 py-3.5">
+                {variant === 'merchant' && isSelected ? (
+                  <div className="absolute left-0 top-0 h-full w-1 bg-[#1562f0]" aria-hidden />
+                ) : null}
+                <div className={variant === 'merchant' ? 'min-w-0 overflow-hidden' : 'px-4 min-w-0 overflow-hidden'}>
+                  <div className={`flex items-center gap-3 ${variant === 'merchant' ? 'py-0' : 'py-3.5'}`}>
                     <Avatar
 						address={it.address}
 						beamio={it.beamio}
@@ -386,8 +431,8 @@ export default function ChatList({
                         </div>
 
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[12px] text-slate-400">{timeText}</span>
-                          <ChevronRight className="h-5 w-5 text-slate-300" strokeWidth={2.6} />
+                          <span className={`${variant === 'merchant' ? 'text-[10px] font-bold uppercase tracking-wide text-[#1562f0]' : 'text-[12px] text-slate-400'}`}>{timeText}</span>
+                          {variant === 'ios' ? <ChevronRight className="h-5 w-5 text-slate-300" strokeWidth={2.6} /> : null}
                         </div>
                       </div>
 

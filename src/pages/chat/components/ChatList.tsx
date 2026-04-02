@@ -24,6 +24,8 @@ type ChatListProps = {
   categoryFilter?: 'all' | 'members' | 'partners' | 'support'
   selectedAddress?: string | null
   variant?: 'ios' | 'merchant'
+  /** All non-hidden chat threads (before category/search) — for empty-inbox / day-zero UI */
+  onInboxTotalThreadCountChange?: (count: number) => void
 }
 
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
@@ -196,8 +198,47 @@ export default function ChatList({
 	categoryFilter = 'all',
 	selectedAddress = null,
 	variant = 'ios',
+	onInboxTotalThreadCountChange,
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
+
+	const allSortedThreads = useMemo(() => {
+		const profile: profile = profiles?.[0]
+		if (!profile) return []
+
+		const list: chatData[] = Array.isArray(profile.chats)
+			? profile.chats
+			: profile.chats
+				? (Object.values(profile.chats as Record<string, unknown>).filter(Boolean) as chatData[])
+				: []
+
+		const filtered = list.filter(
+			x => x && !x.hide && typeof x.address === "string" && x.address.trim().length > 0
+		)
+
+		const deduped = dedupeChatsByAddress(filtered)
+
+		return deduped
+			.slice()
+			.sort((a, b) => {
+				const pa = a.pin ? 1 : 0
+				const pb = b.pin ? 1 : 0
+				if (pa !== pb) return pb - pa
+				const ta = a.messages?.[a.messages.length - 1]?.createdAt ?? a.beamio?.created_at ?? 0
+				const tb = b.messages?.[b.messages.length - 1]?.createdAt ?? b.beamio?.created_at ?? 0
+				return tb - ta
+			})
+	}, [profiles])
+
+	const items = useMemo(() => {
+		return allSortedThreads
+			.filter((it) => categoryChipMatches(it, categoryFilter))
+			.filter((it) => searchMatchesThread(it, searchQuery))
+	}, [allSortedThreads, categoryFilter, searchQuery])
+
+	useEffect(() => {
+		onInboxTotalThreadCountChange?.(allSortedThreads.length)
+	}, [allSortedThreads.length, onInboxTotalThreadCountChange])
 
 	// 每次进入时刷新每个 chat 的链上路由信息
 	useEffect(() => {
@@ -218,42 +259,6 @@ export default function ChatList({
 			}
 		})()
 	}, [profiles, setProfiles])
-
-	const items = useMemo(() => {
-		const profile: profile = profiles?.[0]
-		if (!profile) return []
-
-		// ✅ profile.chats 可能不是数组，先规范化成 chatData[]
-		const list: chatData[] = Array.isArray(profile.chats)
-			? profile.chats
-			: profile.chats
-				? (Object.values(profile.chats as Record<string, unknown>).filter(Boolean) as chatData[])
-				: []
-
-		// 过滤：有效、未隐藏、有 address
-		const filtered = list.filter(
-			x => x && !x.hide && typeof x.address === "string" && x.address.trim().length > 0
-		)
-
-		// 与 chat.ts 一致：按 address 去重（小写、每地址只保留一项）
-		const deduped = dedupeChatsByAddress(filtered)
-
-		// 排序：置顶优先，再按最后一条消息时间倒序
-		const sorted = deduped
-			.slice()
-			.sort((a, b) => {
-				const pa = a.pin ? 1 : 0
-				const pb = b.pin ? 1 : 0
-				if (pa !== pb) return pb - pa
-				const ta = a.messages?.[a.messages.length - 1]?.createdAt ?? a.beamio?.created_at ?? 0
-				const tb = b.messages?.[b.messages.length - 1]?.createdAt ?? b.beamio?.created_at ?? 0
-				return tb - ta
-			})
-
-		return sorted
-			.filter((it) => categoryChipMatches(it, categoryFilter))
-			.filter((it) => searchMatchesThread(it, searchQuery))
-	}, [profiles, categoryFilter, searchQuery])
 
 	
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
-import { Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw, Building2, ShieldCheck, ImageDown, ArrowRight } from 'lucide-react'
+import { Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw, ImageDown, ArrowRight, ArrowLeft } from 'lucide-react'
 import bIcon from '@/components/assets/logo512.png'
 import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
 
@@ -21,6 +21,8 @@ type RecoveryQRScreenProps = {
   isRedeemFlow?: boolean
   redeemActivating?: boolean
   close: () => void | Promise<void>
+  /** When set, shows fixed top bar (Security Setup + back) like `marketExample.html`; omit when embedded in ScreenShell. */
+  onBack?: () => void
 }
 
 /** 将 beamio tag 转为安全文件名（去除 @ 和非法字符） */
@@ -42,6 +44,8 @@ function formatRecoveryKeyForDisplay(code: string): string {
 	return groups.join('-')
 }
 
+const headlineClass = "font-['Manrope',ui-sans-serif,system-ui,sans-serif]"
+
 const RecoveryQRScreen = ({
   qrDataUrl,
   recoveryCode,
@@ -49,7 +53,8 @@ const RecoveryQRScreen = ({
   beamioTag,
   isRedeemFlow = false,
   redeemActivating = false,
-  close
+  close,
+  onBack,
 }: RecoveryQRScreenProps) => {
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -173,199 +178,176 @@ const RecoveryQRScreen = ({
   }
 
   const displayRecoveryKey = formatRecoveryKeyForDisplay(recoveryCode)
+  const showTopNav = typeof onBack === 'function'
 
   return (
     <div
-      className="flex min-h-full w-full flex-col text-[#0f172a]"
+      className="flex min-h-0 w-full flex-1 flex-col bg-[#f8fafc] antialiased text-[#0f172a]"
       style={{
-        backgroundColor: '#ffffff',
         backgroundImage: `radial-gradient(at 50% 0%, rgba(21, 98, 240, 0.05) 0%, transparent 70%)`,
       }}
     >
-      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-10 px-6 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] lg:grid-cols-2 lg:gap-12 lg:py-10">
-        {/* Left: editorial (align with Step 1 onboarding) */}
-        <div className="flex flex-col space-y-8 lg:pr-12">
-          <header className="px-0 pt-2 pb-2 lg:hidden">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1562f0] text-white">
-                <Building2 className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-[#1562f0]">Verra Business</span>
-            </div>
-          </header>
-
-          <div className="space-y-6">
-            <div className="mb-1 hidden items-center gap-2 lg:flex">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#1562f0] text-white">
-                <Building2 className="h-6 w-6" strokeWidth={2.25} aria-hidden />
-              </div>
-              <span className="text-2xl font-extrabold tracking-tight text-[#1562f0]">Verra Business</span>
-            </div>
-            <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-[#0f172a] sm:text-4xl lg:text-5xl">
-              Secure your <span className="text-[#1562f0]">business</span> access.
-            </h1>
-            <p className="max-w-md text-base leading-relaxed text-[#64748b] lg:text-lg">
-              The Recovery Key is the only way to restore access to your business account and assets if you lose access.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
-            <div className="space-y-3 rounded-2xl border border-[#e2e8f0]/80 bg-[#f8fafc]/80 p-6 lg:p-8">
-              <KeyRound className="h-6 w-6 text-[#1562f0]" strokeWidth={1.75} aria-hidden />
-              <h3 className="font-bold text-[#0f172a]">Account Continuity</h3>
-              <p className="text-sm leading-relaxed text-[#64748b]">Keep this key in a safe, physical location.</p>
-            </div>
-            <div className="space-y-3 rounded-2xl border border-[#e2e8f0]/80 bg-[#f8fafc]/80 p-6 lg:p-8">
-              <ShieldCheck className="h-6 w-6 text-[#1562f0]" strokeWidth={1.75} aria-hidden />
-              <h3 className="font-bold text-[#0f172a]">Permanent Access</h3>
-              <p className="text-sm leading-relaxed text-[#64748b]">
-                Verra cannot reset this key for you. Permanent access belongs solely to you.
-              </p>
-            </div>
-          </div>
-
-          <div className="relative hidden aspect-video overflow-hidden rounded-2xl border border-[#e2e8f0]/60 bg-gradient-to-b from-[#f8faff] to-[#eff4ff] lg:block">
-            <div
-              className="absolute h-px w-full bg-gradient-to-r from-transparent via-[#1562f0]/10 to-transparent"
-              style={{ top: '30%' }}
-            />
-            <div
-              className="absolute h-px w-full bg-gradient-to-r from-transparent via-[#1562f0]/10 to-transparent opacity-50"
-              style={{ top: '60%' }}
-            />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex gap-3">
-                <div className="h-1 w-12 rounded-full bg-[#1562f0]/10" />
-                <div className="h-1 w-24 rounded-full bg-[#1562f0]/20" />
-                <div className="h-1 w-16 rounded-full bg-[#1562f0]/10" />
-              </div>
-            </div>
-            <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-white/40 to-transparent p-6">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[#1562f0]/70">Verra Workspace Infrastructure</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: recovery card — newOnloading.html style */}
-        <div className="mx-auto w-full max-w-md lg:mx-0">
-          <div className="rounded-2xl border border-[#e2e8f0]/80 bg-white/95 p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-xl sm:p-8 lg:p-10">
-            <div className="mb-8">
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-                <span className="rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">
-                  Step 2 of 2
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#64748b]">Recovery setup</span>
-              </div>
-              <h2 className="mb-3 text-2xl font-bold tracking-tight text-[#0f172a]">Secure your recovery key</h2>
-              <p className="text-sm leading-relaxed text-[#64748b]">
-                This key helps restore access to your business account if you lose this device or need to recover admin access.
-              </p>
-            </div>
-
-            <div className="flex flex-col items-center rounded-xl border border-[#e2e8f0]/80 bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-              <div className="mb-6 flex h-44 w-44 items-center justify-center rounded-xl border border-[#f1f5f9] bg-[#f8fafc] p-3">
-                {qrDataUrl ? (
-                  <QRCodeCanvas
-                    ref={qrCanvasRef}
-                    value={qrDataUrl}
-                    size={160}
-                    level="H"
-                    includeMargin
-                    bgColor="#ffffff"
-                    fgColor="#000000"
-                    imageSettings={{
-                      src: bIcon,
-                      height: 36,
-                      width: 36,
-                      excavate: true,
-                    }}
-                    className="rounded-lg"
-                  />
-                ) : (
-                  <div className="h-40 w-40 animate-pulse rounded-lg bg-[#e2e8f0]" />
-                )}
-              </div>
-
-              <div className="mb-2 w-full rounded-xl border border-[#f1f5f9] bg-[#f8fafc] py-4">
-                <code className="block select-all break-all px-3 text-center font-mono text-base font-bold tracking-tight text-[#1562f0] md:text-lg">
-                  {displayRecoveryKey || '—'}
-                </code>
-              </div>
-              <p className="mb-6 text-[10px] font-bold uppercase tracking-[0.15em] text-[#1562f0]/80">Business recovery key</p>
-
-              <div className="grid w-full grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={handleSaveImage}
-                  className={`flex items-center justify-center gap-2 rounded-full border border-[#f1f5f9] bg-white py-3.5 text-sm font-semibold text-[#0f172a] transition-colors hover:bg-[#f8fafc] active:scale-[0.98] ${bizBrandFocusRingClass}`}
-                >
-                  <ImageDown className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                  Save key image
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className={`flex items-center justify-center gap-2 rounded-full border border-[#f1f5f9] bg-white py-3.5 text-sm font-semibold text-[#0f172a] transition-colors hover:bg-[#f8fafc] active:scale-[0.98] ${bizBrandFocusRingClass}`}
-                >
-                  {copied ? (
-                    <>
-                      <Check className="h-5 w-5 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
-                      <span className="text-emerald-700">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                      Recovery key
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div
-              className={`mt-8 rounded-xl border border-[#e2e8f0]/60 bg-[#f8fafc]/50 p-5 transition-opacity ${hasBackedUp ? 'opacity-100' : 'opacity-50'}`}
+      {showTopNav ? (
+        <nav
+          className="fixed left-0 right-0 top-0 z-[60] flex items-center justify-between border-b border-[#e2e8f0]/30 bg-white/80 px-6 backdrop-blur-md"
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        >
+          <div className="flex h-16 items-center gap-4">
+            <button
+              type="button"
+              onClick={onBack}
+              className={`text-[#1562F0] transition-opacity hover:opacity-70 active:scale-95 ${bizBrandFocusRingClass} rounded-lg`}
+              aria-label="Back"
             >
-              <label className={`flex cursor-pointer items-start gap-4 ${!hasBackedUp ? 'cursor-not-allowed' : ''}`}>
-                <input
-                  type="checkbox"
-                  className="mt-1 h-5 w-5 shrink-0 rounded border-[#cbd5e1] text-[#1562f0] focus:ring-[#1562f0]/20"
-                  checked={isConfirmed}
-                  disabled={!hasBackedUp}
-                  onChange={(e) => hasBackedUp && setIsConfirmed(e.target.checked)}
+              <ArrowLeft className="h-6 w-6" strokeWidth={2} aria-hidden />
+            </button>
+            <span className={`${headlineClass} text-lg font-bold tracking-tight text-[#0f172a]`}>Security Setup</span>
+          </div>
+          <div className="flex items-center">
+            <span className="rounded-full bg-[#1562F0]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1562F0]">
+              Step 2 of 2
+            </span>
+          </div>
+        </nav>
+      ) : null}
+
+      <main
+        className={`mx-auto flex w-full max-w-lg flex-grow flex-col px-6 pb-[calc(3rem+env(safe-area-inset-bottom))] ${
+          showTopNav ? 'pt-[calc(6rem+env(safe-area-inset-top))]' : 'pt-6'
+        }`}
+      >
+        {showTopNav ? null : (
+          <div className="mb-6 flex justify-end">
+            <span className="rounded-full bg-[#1562F0]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1562F0]">
+              Step 2 of 2
+            </span>
+          </div>
+        )}
+
+        <header className="mb-10">
+          <h1
+            className={`${headlineClass} mb-3 text-[2rem] font-extrabold leading-tight tracking-tight text-[#0f172a]`}
+          >
+            Protect your business access.
+          </h1>
+          <p className="text-base leading-relaxed text-[#64748b]">
+            Save your recovery key so you can restore access to your Verra Business workspace if this device is lost or replaced.
+          </p>
+        </header>
+
+        <section className="mb-8">
+          <div className="flex flex-col items-center rounded-xl border border-[#e2e8f0]/50 bg-white p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+            <span className="mb-8 text-[10px] font-bold uppercase tracking-[0.15em] text-[#1562F0]/80">
+              Business recovery key
+            </span>
+
+            <div className="mb-8 flex h-44 w-44 items-center justify-center rounded-xl border border-[#f1f5f9] bg-[#f8fafc] p-4">
+              {qrDataUrl ? (
+                <QRCodeCanvas
+                  ref={qrCanvasRef}
+                  value={qrDataUrl}
+                  size={160}
+                  level="H"
+                  includeMargin
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                  imageSettings={{
+                    src: bIcon,
+                    height: 36,
+                    width: 36,
+                    excavate: true,
+                  }}
+                  className="h-full w-full rounded-lg object-contain"
                 />
-                <span className="min-w-0">
-                  <span className="block font-semibold leading-tight text-[#0f172a]">I have safely stored my recovery key</span>
-                  <span className="mt-2 block text-sm leading-relaxed text-[#64748b]">
-                    Keep this key in a secure place. You&apos;ll need it to restore business access if this device is lost, replaced, or reset.
-                  </span>
-                </span>
-              </label>
+              ) : (
+                <div className="h-full w-full animate-pulse rounded-lg bg-[#e2e8f0]" />
+              )}
             </div>
 
-            {showButton ? (
-              <div className="mt-8 pt-2">
-                <AppButton
-                  fullWidth
-                  onClick={async () => {
-                    setLoading(true)
-                    await Promise.resolve(close?.())
-                  }}
-                  loading={loading && !isRedeemFlow}
-                  disabled={!isConfirmed}
-                  className={`flex h-14 items-center justify-center gap-2 rounded-full text-base font-bold transition-all duration-200 sm:h-16 sm:text-lg ${
-                    isConfirmed
-                      ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass} shadow-[0_8px_20px_rgba(21,98,240,0.2)]`
-                      : 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
-                  }`}
-                >
-                  {isRedeemFlow ? 'Continue' : 'Continue to Business Setup'}
-                  <ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
-                </AppButton>
-              </div>
-            ) : null}
+            <div className="mb-8 w-full rounded-xl border border-[#f1f5f9] bg-[#f8fafc] px-4 py-4">
+              <code
+                className={`${headlineClass} block select-all text-center text-base font-bold tracking-normal text-[#0f172a] md:text-lg`}
+              >
+                {displayRecoveryKey || '—'}
+              </code>
+            </div>
+
+            <div className="grid w-full grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleSaveImage}
+                className={`flex items-center justify-center gap-2 rounded-full border border-[#f1f5f9] bg-white py-3.5 text-sm font-semibold text-[#0f172a] transition-all hover:bg-[#f1f5f9]/30 active:scale-95 ${bizBrandFocusRingClass}`}
+              >
+                <ImageDown className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+                Save key image
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                className={`flex items-center justify-center gap-2 rounded-full border border-[#f1f5f9] bg-white py-3.5 text-sm font-semibold text-[#0f172a] transition-all hover:bg-[#f1f5f9]/30 active:scale-95 ${bizBrandFocusRingClass}`}
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-5 w-5 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
+                    <span className="text-emerald-700">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+                    Copy recovery key
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
+
+        <section
+          className={`mb-10 rounded-xl border border-[#e2e8f0]/40 bg-white/50 p-5 transition-opacity ${hasBackedUp ? 'opacity-100' : 'opacity-50'}`}
+        >
+          <label className={`group flex cursor-pointer items-start gap-4 ${!hasBackedUp ? 'cursor-not-allowed' : ''}`}>
+            <div className="pt-0.5">
+              <input
+                type="checkbox"
+                className="h-6 w-6 cursor-pointer rounded-md border-[#e2e8f0] text-[#1562F0] transition-all focus:ring-[#1562F0]/20"
+                checked={isConfirmed}
+                disabled={!hasBackedUp}
+                onChange={(e) => hasBackedUp && setIsConfirmed(e.target.checked)}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col">
+              <span className="text-base font-semibold leading-tight text-[#0f172a]">
+                I have safely stored my recovery key
+              </span>
+              <p className="mt-2 text-sm leading-relaxed text-[#64748b]">
+                Keep this key in a secure place. You&apos;ll need it to restore business access on a new or reset device.
+              </p>
+            </div>
+          </label>
+        </section>
+
+        {showButton ? (
+          <div className="mt-auto pt-4">
+            <AppButton
+              fullWidth
+              onClick={async () => {
+                setLoading(true)
+                await Promise.resolve(close?.())
+              }}
+              loading={loading && !isRedeemFlow}
+              disabled={!isConfirmed}
+              className={`${headlineClass} flex min-h-[3.5rem] items-center justify-center gap-2 rounded-full py-5 text-lg font-bold transition-all active:scale-[0.98] ${
+                isConfirmed
+                  ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass} shadow-[0_8px_20px_rgba(21,98,240,0.2)] hover:opacity-90`
+                  : 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
+              }`}
+            >
+              Continue
+              <ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
+            </AppButton>
+          </div>
+        ) : null}
+      </main>
     </div>
   )
 }

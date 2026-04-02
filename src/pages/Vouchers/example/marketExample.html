@@ -3,373 +3,419 @@
 <html class="light" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Messages | Verra Merchant</title>
+<title>Verra Studio | Card Configurator</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;400;500;600;700;800;900&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              "error-dim": "#9f0519",
-              "surface-tint": "#0051d1",
-              "primary-fixed": "#7a9dff",
-              "surface": "#f5f7f9",
-              "on-error-container": "#570008",
-              "on-primary-container": "#001e59",
-              "surface-container-lowest": "#ffffff",
-              "on-primary-fixed": "#000000",
-              "on-tertiary-fixed-variant": "#6c1a6c",
-              "secondary": "#515c70",
-              "on-secondary-container": "#475266",
-              "secondary-dim": "#455064",
-              "primary-fixed-dim": "#648eff",
-              "surface-container-high": "#dfe3e6",
-              "on-error": "#ffefee",
-              "surface-container-low": "#eef1f3",
-              "on-secondary-fixed": "#354053",
-              "on-surface": "#2c2f31",
-              "on-primary-fixed-variant": "#00276d",
-              "tertiary-dim": "#7f2d7e",
-              "tertiary-fixed-dim": "#e88ae1",
-              "on-secondary": "#eff2ff",
-              "primary-container": "#7a9dff",
-              "primary": "#0051d1",
-              "on-background": "#2c2f31",
-              "outline-variant": "#abadaf",
-              "tertiary-container": "#f797ef",
-              "on-secondary-fixed-variant": "#515c70",
-              "on-tertiary-container": "#610e62",
-              "tertiary": "#8d3a8b",
-              "surface-bright": "#f5f7f9",
-              "outline": "#747779",
-              "primary-dim": "#0047b8",
-              "surface-variant": "#d9dde0",
-              "on-surface-variant": "#595c5e",
-              "on-primary": "#f1f2ff",
-              "surface-container-highest": "#d9dde0",
-              "background": "#f5f7f9",
-              "tertiary-fixed": "#f797ef",
-              "secondary-fixed-dim": "#cad5ed",
-              "on-tertiary": "#ffeef8",
-              "inverse-surface": "#0b0f10",
-              "on-tertiary-fixed": "#400041",
-              "secondary-fixed": "#d8e3fb",
-              "secondary-container": "#d8e3fb",
-              "surface-dim": "#d0d5d8",
-              "error-container": "#fb5151",
-              "inverse-primary": "#5f8bff",
-              "surface-container": "#e5e9eb",
-              "inverse-on-surface": "#9a9d9f",
-              "error": "#b31b25"
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-error": "#ffefee",
+                        "tertiary-fixed-dim": "#e88ae1",
+                        "surface-bright": "#f5f7f9",
+                        "surface-variant": "#d9dde0",
+                        "surface-container-low": "#eef1f3",
+                        "on-primary-fixed": "#000000",
+                        "inverse-on-surface": "#9a9d9f",
+                        "background": "#f5f7f9",
+                        "secondary": "#515c70",
+                        "primary-dim": "#0047b8",
+                        "outline": "#747779",
+                        "on-secondary-container": "#475266",
+                        "inverse-primary": "#5f8bff",
+                        "surface-container-high": "#dfe3e6",
+                        "surface-container": "#e5e9eb",
+                        "tertiary-container": "#f797ef",
+                        "on-secondary-fixed-variant": "#515c70",
+                        "secondary-fixed-dim": "#cad5ed",
+                        "primary-container": "#7a9dff",
+                        "primary-fixed": "#7a9dff",
+                        "on-tertiary-fixed": "#400041",
+                        "tertiary-dim": "#7f2d7e",
+                        "surface-tint": "#0051d1",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f5f7f9",
+                        "inverse-surface": "#0b0f10",
+                        "on-tertiary": "#ffeef8",
+                        "on-surface-variant": "#595c5e",
+                        "on-error-container": "#570008",
+                        "primary": "#0051d1",
+                        "outline-variant": "#abadaf",
+                        "on-secondary": "#eff2ff",
+                        "error-dim": "#9f0519",
+                        "on-secondary-fixed": "#354053",
+                        "secondary-container": "#d8e3fb",
+                        "on-primary": "#f1f2ff",
+                        "error-container": "#fb5151",
+                        "on-primary-container": "#001e59",
+                        "tertiary-fixed": "#f797ef",
+                        "secondary-dim": "#455064",
+                        "tertiary": "#8d3a8b",
+                        "secondary-fixed": "#d8e3fb",
+                        "primary-fixed-dim": "#648eff",
+                        "on-primary-fixed-variant": "#00276d",
+                        "error": "#b31b25",
+                        "on-tertiary-fixed-variant": "#6c1a6c",
+                        "surface-dim": "#d0d5d8",
+                        "on-tertiary-container": "#610e62",
+                        "on-background": "#2c2f31",
+                        "surface-container-highest": "#d9dde0",
+                        "on-surface": "#2c2f31"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
             },
-            fontFamily: {
-              "headline": ["Manrope"],
-              "body": ["Inter"],
-              "label": ["Inter"]
-            },
-            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
-          },
-        },
-      }
+        }
     </script>
 <style>
-      .material-symbols-outlined {
-        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-      }
-      .tonal-transition { transition: all 0.3s ease; }
-      .glass-card {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-      }
-      .mesh-gradient-bg {
-        background: radial-gradient(at 0% 0%, #7a9dff 0%, transparent 50%),
-                    radial-gradient(at 100% 0%, #1562f0 0%, transparent 50%),
-                    radial-gradient(at 100% 100%, #f797ef 0%, transparent 50%);
-      }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+        }
+        .mesh-gradient {
+            background: linear-gradient(135deg, #0051d1 0%, #7a9dff 100%);
+        }
+        .sidebar-active {
+            box-shadow: 0 4px 12px rgba(21, 98, 240, 0.08);
+        }
     </style>
-<style>
-    body {
-      min-height: max(884px, 100dvh);
-    }
-  </style>
-  </head>
-<body class="bg-surface font-body text-on-surface">
-<!-- TopAppBar -->
-<header class="fixed top-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl flex justify-between items-center px-6 h-16 w-full shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
-<div class="flex items-center gap-4">
-<button class="material-symbols-outlined text-blue-600 dark:text-blue-400 active:scale-95 transition-transform">grid_view</button>
-<h1 class="font-manrope font-bold tracking-tight text-xl font-extrabold text-blue-600 dark:text-blue-400 tracking-tighter">Verra Merchant</h1>
+</head>
+<body class="bg-surface font-body text-on-surface antialiased">
+<!-- SideNavBar Anchor -->
+<aside class="fixed left-0 top-0 h-full w-72 z-50 bg-[#f5f7f9] dark:bg-[#0f172a] shadow-[20px_0_40px_rgba(21,98,240,0.06)] flex flex-col h-full p-6 border-r border-transparent">
+<div class="mb-10 px-4">
+<h1 class="text-2xl font-black text-[#1562f0] dark:text-[#3b82f6] font-headline tracking-tight">Verra Studio</h1>
+<p class="text-[10px] uppercase tracking-[0.2em] text-outline opacity-70 font-bold mt-1">Loyalty Engine</p>
 </div>
-<div class="flex items-center gap-4">
-<div class="w-8 h-8 rounded-full bg-primary-container overflow-hidden">
-<img class="w-full h-full object-cover" data-alt="Professional headshot of a merchant account administrator in a modern office setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyGNxMlkMmPUF36rDy1JGOXU14WR0A6bnUVYugHOPf5YumARoTVZcWJoVyJUGYY1AxclGNYShotW8k-cPVygKg0uSeofLH5wxZFcDwROXVLJlOOoGKnDRkZ6Z-Vjitla_p1-RA75pdnmyrJiPoxFCRHr-FUHeQ6YaEYcyAISEu9vi352sSLSLfpueKfB0yr-MURamJJbAIybWwWPzuHlv4t4ZFiUFmwaXOt2Uanoi5rdq0PUWrzQdvt_cJuWNFLy6-gVtkJrKNPs0"/>
+<nav class="flex-1 space-y-2">
+<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">dashboard</span>
+<span class="font-['Manrope'] font-semibold tracking-tight">Dashboard</span>
 </div>
+<div class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 text-[#1562f0] dark:text-blue-400 rounded-full shadow-sm">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">palette</span>
+<span class="font-['Manrope'] font-semibold tracking-tight">Card Editor</span>
 </div>
-</header>
-<div class="flex pt-16 min-h-screen">
-<!-- NavigationDrawer (Sidebar) -->
-<aside class="hidden lg:flex flex-col p-6 gap-2 h-screen w-72 bg-slate-50 dark:bg-slate-950 sticky top-16">
-<div class="flex items-center gap-3 mb-8 px-2">
-<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">loyalty</span>
+<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">rule</span>
+<span class="font-['Manrope'] font-semibold tracking-tight">Reward Logic</span>
 </div>
-<div>
-<p class="font-manrope font-bold text-sm text-blue-600">Verra Premium</p>
-<p class="text-xs text-slate-500">Merchant Portal</p>
+<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">campaign</span>
+<span class="font-['Manrope'] font-semibold tracking-tight">Campaigns</span>
 </div>
+<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">hub</span>
+<span class="font-['Manrope'] font-semibold tracking-tight">Integration</span>
 </div>
-<nav class="flex flex-col gap-1">
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">dashboard</span> Dashboard
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">loyalty</span> Programs
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">group</span> Members
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">account_balance_wallet</span> Wallets
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">insights</span> Insights
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 bg-blue-50 text-blue-600 rounded-full font-bold transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">forum</span> Messages
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">storefront</span> Markets
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">screenshot_monitor</span> Terminals
-                </a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-full font-medium transition-all hover:translate-x-1" href="#">
-<span class="material-symbols-outlined">settings</span> Settings
-                </a>
 </nav>
+<div class="mt-auto pt-6 border-t border-outline-variant/10">
+<button class="w-full py-4 px-6 bg-primary text-on-primary rounded-full font-headline font-bold text-sm tracking-wide shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
+                Go Live
+            </button>
+<div class="mt-6 flex items-center gap-3 px-4">
+<img alt="Admin Workspace" class="w-10 h-10 rounded-full bg-surface-container-high border-2 border-white shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOT7mMikX5zpr5O_NYq7zv-Y71hURWAYIu2Ff8v3PJTrOVLy0bElZjQfy5_ERPD6wji1VtFcw4cqf1wl77fEJCxbhNmYhNmsMiR4oOQcJpfZCVcQqSzVaCfeg7BWuJAEnSGqjsz3UHOzsrdMTXuVbM2iVohtkmoBvedIIAy769ptDYiFgm3Z4Tlqxj3uUmsWpl0GVlIiEYjk800-66bC-Z5eeBJyTKm0AGyRNYXqXsOFSlwa6Xn1nlkjOTpaXHY5ZsrdSB_gMtjek"/>
+<div>
+<p class="text-xs font-bold text-on-surface">Admin Workspace</p>
+<p class="text-[10px] text-outline">Pro Plan</p>
+</div>
+</div>
+</div>
 </aside>
-<!-- Main Canvas -->
-<main class="flex-1 lg:p-10 p-4 pb-24 lg:pb-10 max-w-7xl mx-auto w-full">
-<header class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
-<div>
-<span class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">Secure Communication</span>
-<h2 class="text-4xl lg:text-5xl font-manrope font-extrabold tracking-tight text-on-surface">Messages</h2>
+<!-- TopAppBar Anchor -->
+<header class="fixed top-0 right-0 left-72 h-20 z-40 bg-[#f5f7f9]/70 dark:bg-slate-900/70 backdrop-blur-xl flex justify-between items-center px-10 w-full">
+<div class="flex items-center gap-8">
+<h2 class="font-['Manrope'] font-black text-2xl text-[#1562f0] dark:text-blue-400 tracking-tight">Card Configurator</h2>
+<nav class="hidden lg:flex items-center gap-6">
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#1562f0] transition-colors font-semibold text-sm" href="#">Drafts</a>
+<a class="text-[#1562f0] dark:text-blue-400 border-b-2 border-[#1562f0] pb-1 font-semibold text-sm" href="#">Templates</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#1562f0] transition-colors font-semibold text-sm" href="#">History</a>
+</nav>
 </div>
-<button class="bg-primary text-white px-8 py-4 rounded-full font-manrope font-bold shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all flex items-center gap-2">
-<span class="material-symbols-outlined text-xl">edit_square</span>
-                    New Message
-                </button>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-4 border-r border-outline-variant/20 pr-6">
+<span class="material-symbols-outlined text-outline cursor-pointer hover:text-primary transition-colors">notifications</span>
+<span class="material-symbols-outlined text-outline cursor-pointer hover:text-primary transition-colors">help</span>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-5 py-2 text-primary font-bold text-sm hover:bg-primary/5 rounded-full transition-colors">Preview</button>
+<button class="px-6 py-2 bg-primary text-on-primary font-bold text-sm rounded-full shadow-md shadow-primary/10 hover:opacity-90 active:scale-95 transition-all">Publish Changes</button>
+</div>
+</div>
 </header>
-<!-- Messaging Interface: Bento Layout -->
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-<!-- Search & Filters (Left Col) -->
-<div class="lg:col-span-4 space-y-6">
-<div class="relative group">
-<span class="material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-outline-variant group-focus-within:text-primary transition-colors">search</span>
-<input class="w-full bg-surface-container-low border-none rounded-lg py-5 pl-14 pr-6 focus:ring-2 focus:ring-primary/20 focus:bg-white font-medium transition-all" placeholder="Search BeamioTags..." type="text"/>
+<!-- Main Content Grid -->
+<main class="ml-72 pt-28 px-10 pb-16 min-h-screen">
+<div class="grid grid-cols-12 gap-10">
+<!-- Left Panel: Form Configuration (60%) -->
+<div class="col-span-12 lg:col-span-7 space-y-10">
+<!-- Module 1: Brand & Content -->
+<section class="bg-surface-container-lowest rounded-lg p-10 shadow-sm">
+<div class="flex items-center gap-3 mb-8">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">branding_watermark</span>
 </div>
-<!-- Category Chips -->
-<div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-<button class="px-5 py-2 rounded-full bg-primary text-white text-xs font-bold whitespace-nowrap">All Chats</button>
-<button class="px-5 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold whitespace-nowrap hover:bg-surface-container-highest">Members</button>
-<button class="px-5 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold whitespace-nowrap hover:bg-surface-container-highest">Partners</button>
-<button class="px-5 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold whitespace-nowrap hover:bg-surface-container-highest">Support</button>
+<h3 class="font-headline text-xl font-bold tracking-tight text-on-surface">Brand &amp; Content</h3>
 </div>
-<!-- Threads List -->
-<div class="space-y-4">
-<!-- Thread Item Active -->
-<div class="p-5 rounded-lg bg-surface-container-lowest border border-primary/10 shadow-sm relative overflow-hidden cursor-pointer">
-<div class="absolute left-0 top-0 h-full w-1 bg-primary"></div>
-<div class="flex gap-4">
-<div class="relative">
-<div class="w-14 h-14 rounded-full overflow-hidden border-2 border-primary-container">
-<img class="w-full h-full object-cover" data-alt="Portrait of a friendly customer with a warm smile against a soft teal background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXoyfhM7QypUrcXaH6EI4yoq46xRjd0c8ETnXPw_xeFLf_hawxue8eF-WI1djS0uLKUjQHTDCmucT87LzdTkBKDAXgIJr1x50xYhvrSSd5OznaIvCUzKBOMy7Eg5j-a5PURXMSh8q_XyQmwmoGW31rXVsi8Sqh-tfYoeywQHi-cQW3yrlzHN5bXq0OlGYXJOPCLVrCOFoRfBL2kyWqRT-srUE3vjZi6C2oTufOAsVv23_8ZupYdAjzOC435CibG8ZdpYXcAmjdgic"/>
+<div class="grid grid-cols-2 gap-8">
+<div class="col-span-2 md:col-span-1 space-y-2">
+<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Card Unit Name</label>
+<input class="w-full bg-surface-container-low border-none rounded-md px-5 py-4 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all outline-none font-medium" placeholder="e.g. Verra Platinum" type="text"/>
 </div>
-<div class="absolute bottom-0 right-0 w-4 h-4 bg-primary rounded-full border-2 border-white"></div>
+<div class="col-span-2 md:col-span-1 space-y-2">
+<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Currency Symbol</label>
+<input class="w-full bg-surface-container-low border-none rounded-md px-5 py-4 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all outline-none font-medium" type="text" value="C$"/>
 </div>
-<div class="flex-1 min-w-0">
-<div class="flex justify-between items-start mb-1">
-<h4 class="font-manrope font-bold text-sm truncate">@JulianVibe</h4>
-<span class="text-[10px] font-bold text-primary">JUST NOW</span>
+<div class="col-span-2 space-y-2">
+<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Program Description (Max 150 chars)</label>
+<textarea class="w-full bg-surface-container-low border-none rounded-md px-5 py-4 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all outline-none font-medium resize-none" placeholder="Join our exclusive coffee club and earn points on every purchase..." rows="3"></textarea>
 </div>
-<p class="text-xs text-on-surface font-semibold truncate mb-1">Checking on the loyalty rewards update...</p>
-<div class="flex items-center gap-1 text-[10px] text-outline uppercase tracking-wider font-bold">
-<span class="material-symbols-outlined text-xs">lock</span> Encrypted
-                                    </div>
+<div class="col-span-2 md:col-span-1 space-y-2">
+<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Merchant Logo</label>
+<div class="w-full aspect-video bg-surface-container-low rounded-md border-2 border-dashed border-outline-variant/30 flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container-high transition-colors group">
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">cloud_upload</span>
+<span class="text-[11px] font-bold text-outline mt-2">Upload SVG or PNG</span>
 </div>
 </div>
+<div class="col-span-2 md:col-span-1 space-y-2">
+<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Card Background</label>
+<div class="grid grid-cols-4 gap-3">
+<button class="aspect-square rounded-full bg-[#1562f0] border-4 border-white shadow-md ring-2 ring-[#1562f0]"></button>
+<button class="aspect-square rounded-full bg-[#0b0f10] border-4 border-white shadow-sm"></button>
+<button class="aspect-square rounded-full bg-tertiary border-4 border-white shadow-sm"></button>
+<button class="aspect-square rounded-full bg-gradient-to-br from-[#1562f0] to-[#7a9dff] border-4 border-white shadow-sm"></button>
 </div>
-<!-- Thread Item -->
-<div class="p-5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer group">
-<div class="flex gap-4">
-<div class="w-14 h-14 rounded-full overflow-hidden bg-surface-container-high">
-<img class="w-full h-full object-cover" data-alt="Confident businesswoman looking directly into camera with blurred city lights in background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1CAL8t1BbKj15Q3zHYhucr8aXdizBxaNq2bcyhzbUUsHXY_mi_sKaIpmwWACEvPGqatvStKa6FgV6Ziuin05yiIz9-ksCHgxWJFPfZe_1HpfwZNyDWAzMGEusWq7GzE8u6GkQ33u0jNzVuXH8EJwo3DW9cTV3o2HnMsZpMQMTG2iwGhFR3ytHsH28QiTNYhl7ExJDiBseVmDfROeA9TDaBOJ295AsSZyYhceY-r1ztuAeDXMy-0hmXyvr37YBIQQtcZ-jollEgb8"/>
-</div>
-<div class="flex-1 min-w-0">
-<div class="flex justify-between items-start mb-1">
-<h4 class="font-manrope font-bold text-sm truncate">@SarahLuxe</h4>
-<span class="text-[10px] font-bold text-outline">2H AGO</span>
-</div>
-<p class="text-xs text-on-surface-variant truncate mb-1">The transaction for the summer gala is confirmed.</p>
-<div class="flex items-center gap-1 text-[10px] text-outline uppercase tracking-wider font-bold">
-<span class="material-symbols-outlined text-xs">done_all</span> Delivered
-                                    </div>
+<div class="mt-4 flex items-center gap-2">
+<div class="w-8 h-8 rounded-sm bg-surface-container-high border border-outline-variant/20"></div>
+<span class="text-xs font-mono text-outline">#1562F0</span>
 </div>
 </div>
 </div>
-<!-- Thread Item -->
-<div class="p-5 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer group">
-<div class="flex gap-4">
-<div class="w-14 h-14 rounded-full overflow-hidden bg-surface-container-high">
-<img class="w-full h-full object-cover" data-alt="Portrait of a man with glasses smiling in a modern creative studio environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDO_nO5L-HPHjXOD_jqMuXTK677uPlxxQ5Yj47pddGxyAAIlj_rwFRh51AwIVm8tKInjq50XTcTXYFo1KOBkNc0uuyHDsZQQtOnadNmTNoZ7Qth6AVhWUoNXkR_Tfgn6CoKwBZzaXrLvHfC_MhaXbZFu_lXtJFxdlSswH5TjYHrLGlFi8AbLiy4NcnjeuYBNfheEpQ_QExhtMIUky3SEdnMMwabfQ73l8ossuNAczLgN5aNLvlmjpWXQAvYhBkfJhyc1n-otW9Re3s"/>
+</section>
+<!-- Module 2: Smart Tier Logic -->
+<section class="bg-surface-container-lowest rounded-lg p-10 shadow-sm">
+<div class="flex items-center gap-3 mb-8">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">insights</span>
 </div>
-<div class="flex-1 min-w-0">
-<div class="flex justify-between items-start mb-1">
-<h4 class="font-manrope font-bold text-sm truncate">@MarkTech</h4>
-<span class="text-[10px] font-bold text-outline">YESTERDAY</span>
+<h3 class="font-headline text-xl font-bold tracking-tight text-on-surface">Smart Tier Logic</h3>
 </div>
-<p class="text-xs text-on-surface-variant truncate mb-1">Can we schedule a call regarding the API?</p>
-<div class="flex items-center gap-1 text-[10px] text-outline uppercase tracking-wider font-bold">
-<span class="material-symbols-outlined text-xs">lock</span> Encrypted
-                                    </div>
-</div>
-</div>
-</div>
+<div class="grid grid-cols-3 gap-4">
+<label class="cursor-pointer group">
+<input checked="" class="hidden peer" name="logic" type="radio"/>
+<div class="h-full p-5 rounded-md bg-surface-container-low border-2 border-transparent peer-checked:border-primary peer-checked:bg-white transition-all flex flex-col items-start gap-4">
+<span class="material-symbols-outlined text-primary opacity-40 peer-checked:opacity-100">keyboard_double_arrow_up</span>
+<div class="space-y-1">
+<p class="text-xs font-black uppercase tracking-wider text-on-surface">Single Top-up</p>
+<p class="text-[10px] text-outline leading-relaxed">Permanent upgrades on one-time high value reloads.</p>
 </div>
 </div>
-<!-- Chat Canvas (Right Col) -->
-<div class="lg:col-span-8 flex flex-col h-[700px] bg-white rounded-lg shadow-xl shadow-blue-900/5 relative overflow-hidden">
-<!-- Chat Header -->
-<div class="p-6 border-b border-surface-container flex items-center justify-between glass-card sticky top-0 z-10">
-<div class="flex items-center gap-4">
-<div class="w-12 h-12 rounded-full overflow-hidden">
-<img class="w-full h-full object-cover" data-alt="Detailed portrait of Julian" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAe1m_yOKUQX1aj4apFnN0VwtJdpxO8xQlsCIvog8txnKCHgQE2AefOc4GHwO8QoOhYZD5EWnb78rF0H76UQ-36OH_o2L6y6CDByI4tzGQ5ie4eF3wKNcklKTbesQts5-ZBsYr0hOfPScEtApIm_RgizaWof0jqk7z3r3DNkGZj1My3U0doYHZTBtoTIn2kKypeOIfIyizhdbERQYleiLjJvMAtzJB0UJkT2rrJmnbYg9OrKRen86Cu4wDvPOAEPM77y-WAqAKApsA"/>
+</label>
+<label class="cursor-pointer group">
+<input class="hidden peer" name="logic" type="radio"/>
+<div class="h-full p-5 rounded-md bg-surface-container-low border-2 border-transparent peer-checked:border-primary peer-checked:bg-white transition-all flex flex-col items-start gap-4">
+<span class="material-symbols-outlined text-primary opacity-40 peer-checked:opacity-100">payments</span>
+<div class="space-y-1">
+<p class="text-xs font-black uppercase tracking-wider text-on-surface">Cumulative Spend</p>
+<p class="text-[10px] text-outline leading-relaxed">Upgrade based on total history. Lifetime loyalty rewards.</p>
 </div>
-<div>
-<h3 class="font-manrope font-extrabold text-lg">@JulianVibe</h3>
+</div>
+</label>
+<label class="cursor-pointer group">
+<input class="hidden peer" name="logic" type="radio"/>
+<div class="h-full p-5 rounded-md bg-surface-container-low border-2 border-transparent peer-checked:border-primary peer-checked:bg-white transition-all flex flex-col items-start gap-4">
+<span class="material-symbols-outlined text-primary opacity-40 peer-checked:opacity-100">swap_vert</span>
+<div class="space-y-1">
+<p class="text-xs font-black uppercase tracking-wider text-on-surface">Current Balance</p>
+<p class="text-[10px] text-outline leading-relaxed">Auto-adjust tiers as users spend and reload funds.</p>
+</div>
+</div>
+</label>
+</div>
+</section>
+<!-- Module 3: Tier Configuration Table -->
+<section class="bg-surface-container-lowest rounded-lg p-10 shadow-sm">
+<div class="flex justify-between items-center mb-8">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">layers</span>
+</div>
+<h3 class="font-headline text-xl font-bold tracking-tight text-on-surface">Tier Configuration</h3>
+</div>
+<button class="flex items-center gap-2 text-primary font-bold text-xs hover:bg-primary/5 px-4 py-2 rounded-full transition-all">
+<span class="material-symbols-outlined text-sm">add_circle</span>
+                            Add New Tier
+                        </button>
+</div>
+<div class="overflow-hidden">
+<table class="w-full text-left border-separate border-spacing-y-3">
+<thead>
+<tr>
+<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline">Tier Name</th>
+<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline">Threshold (C$)</th>
+<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline">Discount (% OFF)</th>
+<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline text-right">Actions</th>
+</tr>
+</thead>
+<tbody>
+<tr class="bg-surface-container-low rounded-md">
+<td class="px-6 py-4 rounded-l-md font-bold text-sm">Standard</td>
+<td class="px-6 py-4 text-sm font-mono">0.00</td>
+<td class="px-6 py-4 text-sm font-mono">0%</td>
+<td class="px-6 py-4 rounded-r-md text-right">
+<span class="material-symbols-outlined text-outline/50 cursor-not-allowed">lock</span>
+</td>
+</tr>
+<tr class="bg-surface-container-low rounded-md">
+<td class="px-6 py-4 rounded-l-md font-bold text-sm text-primary">Gold Elite</td>
+<td class="px-6 py-4">
+<input class="w-20 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="500"/>
+</td>
+<td class="px-6 py-4">
+<input class="w-16 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="10"/>
+</td>
+<td class="px-6 py-4 rounded-r-md text-right">
+<button class="text-error hover:opacity-70 transition-opacity">
+<span class="material-symbols-outlined text-lg">delete</span>
+</button>
+</td>
+</tr>
+<tr class="bg-surface-container-low rounded-md">
+<td class="px-6 py-4 rounded-l-md font-bold text-sm text-tertiary">Diamond</td>
+<td class="px-6 py-4">
+<input class="w-20 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="1500"/>
+</td>
+<td class="px-6 py-4">
+<input class="w-16 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="25"/>
+</td>
+<td class="px-6 py-4 rounded-r-md text-right">
+<button class="text-error hover:opacity-70 transition-opacity">
+<span class="material-symbols-outlined text-lg">delete</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+<!-- Right Panel: Live Preview (40%) -->
+<div class="col-span-12 lg:col-span-5 relative">
+<div class="sticky top-28 space-y-8">
+<div class="flex justify-between items-center mb-6 px-4">
+<h4 class="font-headline font-black text-xs uppercase tracking-[0.2em] text-outline">Realtime Preview</h4>
+<div class="flex bg-surface-container-high p-1 rounded-full">
+<button class="px-4 py-1.5 rounded-full text-[11px] font-bold bg-white shadow-sm text-primary">App View</button>
+<button class="px-4 py-1.5 rounded-full text-[11px] font-bold text-outline hover:text-on-surface transition-colors">Physical Card</button>
+</div>
+</div>
+<!-- App View Mockup Container -->
+<div class="w-full max-w-[360px] mx-auto aspect-[9/19] bg-white rounded-[3rem] border-[8px] border-on-surface shadow-[0_40px_100px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative group">
+<!-- Status Bar -->
+<div class="h-10 w-full flex justify-between items-center px-8 pt-4">
+<span class="text-[11px] font-bold">9:41</span>
 <div class="flex items-center gap-1.5">
-<span class="w-2 h-2 rounded-full bg-green-500"></span>
-<span class="text-[10px] font-bold text-outline-variant uppercase tracking-widest">Active Now</span>
+<span class="material-symbols-outlined text-sm">signal_cellular_4_bar</span>
+<span class="material-symbols-outlined text-sm">wifi</span>
+<span class="material-symbols-outlined text-sm">battery_full</span>
+</div>
+</div>
+<!-- App Content Scroll Area -->
+<div class="flex-1 overflow-y-auto px-6 py-6 space-y-8">
+<!-- Header Info -->
+<div class="flex justify-between items-start">
+<div>
+<p class="text-[10px] font-black uppercase tracking-widest text-outline">Hello, Alex</p>
+<h5 class="text-xl font-black font-headline">Your Rewards</h5>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container overflow-hidden">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" data-alt="clean minimal portrait of a young professional with soft studio lighting and neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCN5NwC1leChEwHS25BxfvZpNj1NxiZ6b4QVqeqPsu0-I6VCDa9C6arA-3qJ3KSOIwgMJNrGUOjZ1Xc3MvE4XQE_4eby33xjJwkndF7Yw9rkOxrxIvsTn-AYF5QFNDjUSot2xFmDkbaujOT-A_3JJQPttjmd9ryWeBFrXoXDQKhNdjYttR-HR_5BAnmtHlxdFJy1hJ9alGq4WUBSRB9CoLRz_t-07MT0ZRYA9XJwCZbmWbr9ZzFjb41dF1kaNwWUT-yKH5eAY4E6Sc"/>
+</div>
+</div>
+<!-- Branded Loyalty Card -->
+<div class="w-full aspect-[1.58/1] mesh-gradient rounded-lg p-6 flex flex-col justify-between text-on-primary shadow-xl shadow-primary/30 relative overflow-hidden">
+<!-- Abstract Background Accents -->
+<div class="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+<div class="absolute -left-10 -bottom-10 w-40 h-40 bg-on-primary-container/20 rounded-full blur-2xl"></div>
+<div class="flex justify-between items-start z-10">
+<div class="w-10 h-10 bg-white rounded-md flex items-center justify-center p-2 shadow-sm">
+<img alt="Card Unit Logo" class="w-full h-full object-contain" data-alt="minimal geometric logo design with bold typography and abstract brand mark" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEfhBZmQTkjLLE3cZkgq7MOaeKIAOchtXj6FIvwS6z0DiwGugDbegBvvg6vxnz7KcJ9CxYBF6QOd5JZ1WJpOdGcjSVssXkaLiC-0rU24CEAAJfjOXRbGYcvNMprYp_nIw5fm7A5qTfiS8eSgUm0eYNMkXPXmkCrmlF6EsJGlkdY6YBKCi9AVh-Ty5CT0U6LqcOJkk-2bSriPEC-2E0UArFxe2llOfYnsy7m9r_6PT12qvoHlc9Wch_a3Wc33GdfkA6EbLM31iK4GU"/>
+</div>
+<div class="text-right">
+<p class="text-[8px] uppercase font-black tracking-widest opacity-60">Balance</p>
+<p class="text-xl font-black font-headline tracking-tight">C$ 1,248.50</p>
+</div>
+</div>
+<div class="z-10">
+<p class="text-[8px] uppercase font-black tracking-[0.3em] opacity-80 mb-1">Verra Platinum</p>
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 bg-white/20 backdrop-blur-md rounded-full text-[9px] font-bold">GOLD ELITE</span>
+<p class="text-[10px] font-mono tracking-widest opacity-80">**** 8821</p>
 </div>
 </div>
 </div>
-<div class="flex gap-2">
-<button class="p-3 rounded-full hover:bg-surface-container-low text-outline transition-colors">
-<span class="material-symbols-outlined">call</span>
-</button>
-<button class="p-3 rounded-full hover:bg-surface-container-low text-outline transition-colors">
-<span class="material-symbols-outlined">info</span>
-</button>
-</div>
-</div>
-<!-- Message Feed -->
-<div class="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/50">
-<!-- System Label -->
-<div class="flex justify-center">
-<span class="px-4 py-1.5 rounded-full bg-surface-container-high text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Conversation started Oct 24</span>
-</div>
-<!-- Message Received -->
-<div class="flex gap-4 max-w-[80%]">
-<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-1">
-<img class="w-full h-full object-cover" data-alt="Julian's small profile icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDPhBdg4S-GcR5uQOvmZT5SzqaUKAsHAJq5ErhRKSyz3Z42-Xy8vn6XxXp81jypRooeCT9YjIReMSHPa-6ki0-Wp6RhrHkz9chGiwGQ4dcDawSlkRC_08umez8syZSd8F_nHWY1h854kfNqNm3f96dUKUOFW7mfGdz3fImuPMdHJG1ESjUQlEpkC6jw-72akONfmH-9Qbn9lDfDSSxUEQwvRrdSj_EPKmhn3P4-W8AQZriWic1XVmHuK6NyghMhsJ-WZNUybFkytvI"/>
-</div>
+<!-- Description Text -->
 <div class="space-y-2">
-<div class="p-5 bg-white rounded-r-lg rounded-bl-lg shadow-sm text-sm leading-relaxed text-on-surface">
-                                    Hello! I was checking my Verra wallet and noticed the points from my last visit at the flagship store haven't appeared yet. Is there a delay?
-                                </div>
-<span class="text-[10px] font-bold text-outline-variant">09:41 AM</span>
+<h6 class="text-[10px] font-black uppercase tracking-widest text-outline">Program Detail</h6>
+<p class="text-sm font-medium leading-relaxed text-on-surface">Join our exclusive coffee club and earn points on every purchase. Unlock premium tiers for higher discounts and special event access.</p>
 </div>
-</div>
-<!-- Message Sent -->
-<div class="flex flex-row-reverse gap-4 max-w-[80%] ml-auto">
-<div class="space-y-2 items-end flex flex-col">
-<div class="p-5 bg-primary text-white rounded-l-lg rounded-br-lg shadow-lg shadow-primary/20 text-sm leading-relaxed">
-                                    Hi Julian! Let me check that for you right away. Sometimes it takes up to 24 hours for the ledger to sync depending on the terminal.
-                                </div>
-<div class="flex items-center gap-2">
-<span class="text-[10px] font-bold text-primary">SENT • 09:45 AM</span>
-<span class="material-symbols-outlined text-primary text-xs" style="font-variation-settings: 'FILL' 1;">check_circle</span>
-</div>
-</div>
-</div>
-<!-- Message Received -->
-<div class="flex gap-4 max-w-[80%]">
-<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mt-1">
-<img class="w-full h-full object-cover" data-alt="Julian's small profile icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPItxDngrjwQeUBEY0aZ0-HDDKN5Cvf2dS95jdsd-8TcXTSsnenAlZSxhu0V7HYtcEd9HN1geM__4yzJZUfOrRGjivqMhZ227N9RL3nFdtTUxPqJ9L6hNXo6TR5v809-D2OXZi6Xne5NeYJMntwzF1m2bgEQ4u1_r47tUtZ6V_NN0c1-vCliwRUojBISyfCXXWNdzR2fl9cEGboa-KWd1A8SDYGHF-73QjPd33306wmRK7_eOmfbliZbo2UC6O89eT1bNYzlUrsWU"/>
-</div>
+<!-- Benefit Table Mock -->
+<div class="space-y-4">
+<h6 class="text-[10px] font-black uppercase tracking-widest text-outline">Your Tier Benefits</h6>
 <div class="space-y-2">
-<div class="p-5 bg-white rounded-r-lg rounded-bl-lg shadow-sm text-sm leading-relaxed text-on-surface">
-                                    Ah, that makes sense. It's only been about 2 hours. I'll check again tomorrow morning! Thanks for the quick response.
-                                </div>
-<span class="text-[10px] font-bold text-outline-variant">09:48 AM</span>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-md">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-lg">percent</span>
+<p class="text-xs font-bold">Standard Discount</p>
+</div>
+<p class="text-xs font-black text-primary">10% OFF</p>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-md">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-lg">local_shipping</span>
+<p class="text-xs font-bold">Free Local Delivery</p>
+</div>
+<span class="material-symbols-outlined text-sm text-primary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-md opacity-50 grayscale">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-lg">workspace_premium</span>
+<p class="text-xs font-bold">Diamond Concierge</p>
+</div>
+<span class="material-symbols-outlined text-sm">lock</span>
 </div>
 </div>
-<!-- Typing Indicator -->
-<div class="flex gap-4 items-center">
-<div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-<img class="w-full h-full object-cover opacity-50" data-alt="Julian profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAFlrTo5liZz9GZaDC9kpu0kXURa58B64P1d1QX51He9YUg1cRxcVBDXyAFvXpzipI7qLXJMleNirE1n1KQ4nWQZEZkQSKcxfjoevsGJnyujew8hP-Et4jWkQeCb5_BhU4dUnNzYxzaCD30vIkzMjjCua4zKFDJvimbzOwgk-bhA0sKjPiQtlkRkUFmbzAcKs2ijKLawF8GFwGDVrntvQNjsSogSMECi1Rk9qHJbE4s9tMhqgdEP-D8_xTyCU6AJK7JvRyzJclVMUE"/>
 </div>
-<div class="flex gap-1.5 p-3 bg-surface-container rounded-full">
-<span class="w-1.5 h-1.5 bg-outline-variant rounded-full"></span>
-<span class="w-1.5 h-1.5 bg-outline-variant rounded-full"></span>
-<span class="w-1.5 h-1.5 bg-outline-variant rounded-full"></span>
+<!-- Bottom Action -->
+<div class="pt-4 pb-10">
+<button class="w-full py-4 bg-on-surface text-white rounded-full font-bold text-xs shadow-lg">Manage Membership</button>
 </div>
 </div>
+<!-- Home Indicator -->
+<div class="h-1.5 w-32 bg-outline-variant/30 rounded-full absolute bottom-2 left-1/2 -translate-x-1/2"></div>
 </div>
-<!-- Input Area -->
-<div class="p-6 bg-white border-t border-surface-container-low">
-<div class="flex items-end gap-4 bg-surface-container-low rounded-lg p-2 pr-4">
-<button class="p-3 text-outline-variant hover:text-primary transition-colors">
-<span class="material-symbols-outlined">add_circle</span>
-</button>
-<textarea class="flex-1 bg-transparent border-none focus:ring-0 text-sm py-3 resize-none font-medium" placeholder="Type a secure message..." rows="1"></textarea>
-<div class="flex items-center gap-2">
-<button class="p-3 text-outline-variant hover:text-primary transition-colors">
-<span class="material-symbols-outlined">mood</span>
-</button>
-<button class="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-primary/30 active:scale-90 transition-all">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">send</span>
-</button>
+<!-- Guidance Tip -->
+<div class="bg-primary/5 rounded-md p-6 border border-primary/10 flex items-start gap-4">
+<span class="material-symbols-outlined text-primary">lightbulb</span>
+<div class="space-y-1">
+<p class="text-xs font-bold text-on-surface">Pro Designer Tip</p>
+<p class="text-[11px] text-outline leading-relaxed">Changes to tier thresholds are automatically synced with the mobile application's progress trackers and reward visualizers.</p>
 </div>
-</div>
-<div class="mt-4 flex justify-between items-center px-2">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-xs text-green-500" style="font-variation-settings: 'FILL' 1;">verified_user</span>
-<span class="text-[10px] font-bold text-outline-variant uppercase tracking-widest">P2P End-to-End Encrypted</span>
-</div>
-<span class="text-[10px] font-bold text-outline-variant uppercase tracking-widest">Press Enter to send</span>
 </div>
 </div>
 </div>
 </div>
 </main>
-</div>
-<!-- BottomNavBar -->
-<nav class="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl shadow-[0_-10px_40px_rgba(21,98,240,0.08)] rounded-t-[2rem]">
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
-<span class="material-symbols-outlined">dashboard</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Dashboard</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
-<span class="material-symbols-outlined">loyalty</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Programs</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
-<span class="material-symbols-outlined">account_balance_wallet</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Wallets</span>
-</a>
-<a class="flex flex-col items-center justify-center text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/30 rounded-2xl px-4 py-2 active:scale-90" href="#">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">forum</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Messages</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 transition-colors active:scale-90" href="#">
-<span class="material-symbols-outlined">settings</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Settings</span>
-</a>
-</nav>
+<!-- FAB Suppression Rule: Not rendered as this is a configuration/task-focused detail screen -->
 </body></html>

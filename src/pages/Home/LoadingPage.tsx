@@ -3,7 +3,7 @@ import beamio_icon from '@/components/assets/32x32.svg'
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
-import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowLeft, ShieldCheck, AlertTriangle, X, Building2, Server, Settings, BadgeCheck } from "lucide-react"
+import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowLeft, ShieldCheck, AlertTriangle, X, Building2, Cloud } from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, postCardRedeemAdmin, getMyAssets, checkRedeemAdminCodeValid, isCardAdmin } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
 
@@ -158,22 +158,17 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
   	}
 
 
+	const headlineFont = { fontFamily: "Manrope, ui-sans-serif, system-ui, sans-serif" } as const
+
 	const InitialEntryScreen = () => (
 		<div
 			className="
-				min-h-[100dvh] w-full flex flex-col relative text-[#2c2f31]
+				min-h-[100dvh] w-full flex flex-col relative bg-white text-[#121212]
 				pt-[env(safe-area-inset-top)]
 				pb-[env(safe-area-inset-bottom)]
 				pl-[env(safe-area-inset-left)]
 				pr-[env(safe-area-inset-right)]
 			"
-			style={{
-				backgroundColor: '#ffffff',
-				backgroundImage: `
-					radial-gradient(at 100% 0%, rgba(0, 81, 209, 0.05) 0px, transparent 50%),
-					radial-gradient(at 0% 100%, rgba(122, 157, 255, 0.05) 0px, transparent 50%)
-				`,
-			}}
 		>
 			{APP_VERSION && (
 				<div className="absolute top-[calc(env(safe-area-inset-top)+0.5rem)] right-6 z-10 text-[11px] text-[#abadaf] font-medium">
@@ -182,96 +177,77 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			)}
 
 			{/* Mobile header — matches newOnloading.html */}
-			<header className="px-6 pt-8 pb-2 lg:hidden shrink-0">
+			<header className="shrink-0 px-8 pt-8 pb-2 lg:px-12 lg:hidden">
 				<div className="flex items-center gap-2">
-					<div className="w-8 h-8 bg-[#0051d1] rounded-lg flex items-center justify-center text-[#f1f2ff] shrink-0">
-						<Building2 className="w-[18px] h-[18px]" strokeWidth={2.25} aria-hidden />
+					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#1562F0] text-white">
+						<Building2 className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
 					</div>
-					<span className="text-[#0051d1] font-bold tracking-tight text-xl" style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
+					<span className="text-xl font-extrabold tracking-tighter text-[#1562F0]" style={headlineFont}>
 						Verra Business
 					</span>
 				</div>
 			</header>
 
-			<main className="flex-1 flex items-center justify-center px-6 py-6 lg:py-12 min-h-0 w-full">
-				<div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
-					{/* Left: editorial */}
-					<div className="flex flex-col space-y-8 lg:pr-12">
-						<div className="space-y-6">
-							<div className="hidden lg:flex items-center gap-2 mb-1">
-								<div className="w-10 h-10 bg-[#0051d1] rounded-lg flex items-center justify-center text-[#f1f2ff] shrink-0">
-									<Building2 className="w-6 h-6" strokeWidth={2.25} aria-hidden />
-								</div>
-								<span className="text-[#0051d1] font-extrabold tracking-tight text-2xl" style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
-									Verra Business
-								</span>
-							</div>
-							<h1
-								className="font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight leading-tight text-[#2c2f31]"
-								style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
-							>
-								Set up your business for <span className="text-[#0051d1]">live commerce</span>.
-							</h1>
-							<p className="text-[#595c5e] text-base lg:text-lg leading-relaxed max-w-md">
-								Create your Verra Business workspace to issue membership cards, manage customer balance, and run branded payments in one place.
-							</p>
-						</div>
-
-						<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
-							<div className="p-6 lg:p-8 rounded-2xl bg-[#eef1f3]/40 border border-[#d9dde0]/40 space-y-3">
-								<Settings className="w-6 h-6 text-[#0051d1]" strokeWidth={1.75} aria-hidden />
-								<h3 className="font-bold text-[#2c2f31]">Business Control</h3>
-								<p className="text-sm text-[#595c5e] leading-relaxed">Manage cards, balance, and approvals in one place.</p>
-							</div>
-							<div className="p-6 lg:p-8 rounded-2xl bg-[#eef1f3]/40 border border-[#d9dde0]/40 space-y-3">
-								<BadgeCheck className="w-6 h-6 text-[#0051d1]" strokeWidth={1.75} aria-hidden />
-								<h3 className="font-bold text-[#2c2f31]">Brand Identity</h3>
-								<p className="text-sm text-[#595c5e] leading-relaxed">Use a trusted business handle across Verra.</p>
-							</div>
-						</div>
-
-						<div className="hidden lg:block relative rounded-2xl overflow-hidden aspect-video border border-[#d9dde0]/25 bg-gradient-to-b from-[#f8faff] to-[#eff4ff]">
-							<div
-								className="absolute h-px w-full bg-gradient-to-r from-transparent via-[#0051d1]/10 to-transparent"
-								style={{ top: '30%' }}
-							/>
-							<div
-								className="absolute h-px w-full bg-gradient-to-r from-transparent via-[#0051d1]/10 to-transparent opacity-50"
-								style={{ top: '60%' }}
-							/>
-							<div className="absolute inset-0 flex items-center justify-center">
-								<div className="flex gap-3">
-									<div className="w-12 h-1 bg-[#0051d1]/10 rounded-full" />
-									<div className="w-24 h-1 bg-[#0051d1]/20 rounded-full" />
-									<div className="w-16 h-1 bg-[#0051d1]/10 rounded-full" />
-								</div>
-							</div>
-							<div className="absolute bottom-0 left-0 w-full p-6 bg-gradient-to-t from-white/40 to-transparent">
-								<span className="text-[#0051d1]/60 font-bold tracking-wide uppercase text-[10px]">Verra Workspace Infrastructure</span>
-							</div>
-						</div>
-					</div>
-
-					{/* Right: glass card + actions */}
-					<div className="w-full max-w-md mx-auto lg:mx-0">
+			<main className="min-h-0 w-full flex-1">
+				<div className="mx-auto grid min-h-[80vh] w-full max-w-[1440px] grid-cols-1 items-stretch lg:grid-cols-[40%_60%]">
+					{/* Left: brand + editorial (screenshot sidebar) */}
+					<section className="relative flex flex-col justify-center overflow-hidden border-[#E5E7EB] px-8 py-12 lg:border-r lg:bg-[#F9FAFB]/90 lg:px-12 lg:py-20 xl:px-20">
 						<div
-							className="
-								p-6 sm:p-8 lg:p-10 rounded-2xl shadow-[0_12px_40px_rgba(0,81,209,0.04)]
-								border border-[#d9dde0]/25
-								bg-white/95 backdrop-blur-xl
-							"
-						>
-							<div className="mb-8">
-								<div className="flex justify-between items-center mb-6 gap-2 flex-wrap">
-									<span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#0051d1] bg-[#0051d1]/5 px-3 py-1 rounded-full">
-										Step 1 of 2
+							className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(21,98,240,0.03)_0%,transparent_70%)] lg:block"
+							aria-hidden
+						/>
+						<div className="relative z-10 flex max-w-xl flex-col space-y-10">
+							<div className="space-y-6">
+								<div className="mb-1 hidden items-center gap-2 lg:flex">
+									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#1562F0] text-white">
+										<Building2 className="h-6 w-6" strokeWidth={2.25} aria-hidden />
+									</div>
+									<span className="text-2xl font-extrabold tracking-tighter text-[#1562F0]" style={headlineFont}>
+										Verra Business
 									</span>
-									<span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#abadaf]">Business Identity</span>
 								</div>
-								<h2 className="font-bold text-2xl text-[#2c2f31] mb-3" style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
+								<h1
+									className="text-4xl font-extrabold leading-[1.15] tracking-tight text-[#121212] lg:text-5xl"
+									style={headlineFont}
+								>
+									Set up your business for <span className="text-[#1562F0]">live commerce</span>.
+								</h1>
+								<p className="max-w-md text-base leading-relaxed text-[#666666] lg:text-lg">
+									Create your Verra Business workspace to issue membership cards, manage customer balance, and run branded payments in
+									one place.
+								</p>
+							</div>
+
+							<div className="flex flex-col gap-4">
+								<div className="space-y-1 rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
+									<h3 className="font-bold text-[#121212]">Business Control</h3>
+									<p className="text-sm leading-relaxed text-[#666666]">Manage cards, balance, and approvals in one place.</p>
+								</div>
+								<div className="space-y-1 rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
+									<h3 className="font-bold text-[#121212]">Brand Identity</h3>
+									<p className="text-sm leading-relaxed text-[#666666]">Use a trusted business handle across Verra.</p>
+								</div>
+							</div>
+
+							<div className="hidden pt-2 lg:block" aria-hidden>
+								<div
+									className="h-0.5 w-[120px] rounded-full opacity-15"
+									style={{
+										background: "linear-gradient(90deg, #1562F0 0%, transparent 100%)",
+									}}
+								/>
+							</div>
+						</div>
+					</section>
+
+					{/* Right: form column — flush white, no glass card */}
+					<section className="flex flex-col justify-center px-8 py-12 lg:px-16 lg:py-20 xl:px-24">
+						<div className="mx-auto w-full max-w-lg lg:mx-0">
+							<div className="mb-10">
+								<h2 className="mb-4 text-3xl font-extrabold tracking-tight text-[#121212]" style={headlineFont}>
 									Create your business identity
 								</h2>
-								<p className="text-[#595c5e] text-sm leading-relaxed">
+								<p className="leading-relaxed text-[#666666]">
 									Choose your Verra handle and set the password that protects your business workspace.
 								</p>
 							</div>
@@ -304,9 +280,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											fullWidth
 											variant="secondary"
 											className={`
-												rounded-full py-4 text-base font-semibold
-												bg-white border border-[#d9dde0]/80 text-[#2c2f31]
-												shadow-sm hover:bg-[#f5f7f9]
+												rounded-xl border border-[#E5E7EB] bg-white py-4 text-base font-semibold text-[#121212]
+												shadow-sm hover:bg-[#F9FAFB]
 												${bizBrandFocusRingClass}
 											`}
 											onClick={() => setSettingsOpen('RestoreEntryScreen')}
@@ -318,23 +293,23 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								}
 							/>
 						</div>
-					</div>
+					</section>
 				</div>
 			</main>
 
-			<footer className="w-full max-w-screen-xl mx-auto px-6 py-8 lg:py-10 mt-auto flex flex-col md:flex-row justify-between items-center gap-6 text-[#747779] text-[10px] font-bold uppercase tracking-widest border-t border-transparent">
+			<footer className="mx-auto mt-auto flex w-full max-w-screen-xl flex-col items-center justify-between gap-6 border-t border-transparent px-8 py-10 text-[10px] font-bold uppercase tracking-[0.2em] text-[#666666]/50 md:flex-row lg:px-12">
 				<div className="flex items-center gap-2 text-center md:text-left">
-					<Server className="w-4 h-4 shrink-0 opacity-80" aria-hidden />
+					<Cloud className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
 					<span>Securely hosted by Beamio Infrastructure © 2026</span>
 				</div>
-				<div className="flex flex-wrap justify-center gap-6 md:gap-8">
-					<a className="hover:text-[#0051d1] transition-colors" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
+				<div className="flex flex-wrap justify-center gap-8 md:gap-8">
+					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
 						Privacy Policy
 					</a>
-					<a className="hover:text-[#0051d1] transition-colors" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
 						Terms of Service
 					</a>
-					<a className="hover:text-[#0051d1] transition-colors" href="https://beamio.app" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app" target="_blank" rel="noopener noreferrer">
 						Help Center
 					</a>
 				</div>
@@ -378,19 +353,21 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						exit={{ x: "100%" }}
 						transition={{ duration: 0.3, ease: "easeOut" }}
 					>
-						{/* 顶部 Header：占据空间，确保不被内容遮挡，返回按钮可点击 */}
-						<div className="relative shrink-0 z-[100]" style={{ minHeight: TOP_OFFSET }}>
-							<BeamioNavBack
-								title=''
-								onClose={() => {
-									if (settingsOpen === 'RecoveryQRScreen') setSettingsOpen('')
-									else if (settingsOpen === 'RestoreWithQRScreen' || settingsOpen === 'RestoreWithUsernamePinScreen') setSettingsOpen('RestoreEntryScreen')
-									else setSettingsOpen('')
-								}}
-								showMore={false}
-								onMore={() => {}}
-							/>
-						</div>
+						{/* RecoveryQRScreen 自带顶栏；其余子屏仍用 BeamioNavBack */}
+						{settingsOpen !== 'RecoveryQRScreen' && (
+							<div className="relative z-[100] shrink-0" style={{ minHeight: TOP_OFFSET }}>
+								<BeamioNavBack
+									title=""
+									onClose={() => {
+										if (settingsOpen === 'RestoreWithQRScreen' || settingsOpen === 'RestoreWithUsernamePinScreen')
+											setSettingsOpen('RestoreEntryScreen')
+										else setSettingsOpen('')
+									}}
+									showMore={false}
+									onMore={() => {}}
+								/>
+							</div>
+						)}
 
 					{/* 内容区域 */}
 						<div 
@@ -405,6 +382,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									beamioTag={beamioTag || undefined}
 									isRedeemFlow={!!redeemFromUrl}
 									redeemActivating={redeemActivating}
+									onBack={() => setSettingsOpen('')}
 									close={redeemFromUrl ? () => {
 										// redeem 流程下 init+redeem 已在进入时完成，此处仅关闭
 										setSettingsOpen('')

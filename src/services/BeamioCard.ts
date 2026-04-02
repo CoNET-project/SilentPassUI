@@ -765,6 +765,8 @@ export type ShareTokenMetadata = {
 	categories?: string[]
 	/** Points / fungible display symbol (e.g. "$VERRA"); persisted for merchant Daily Dashboard */
 	Symbol?: string
+	/** Card-level accent / share artwork background (CSS hex); optional */
+	backgroundColor?: string
 }
 
 /** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。升级模式由卡级 upgradeType（链上）决定。 */
@@ -2200,21 +2202,28 @@ export async function queryBuintRedeemAirdropOnChain(code: string): Promise<Buin
 	}
 }
 
-/** Cluster → Master：admin 代付 redeem，B-Unit 划入用户 Beamio Account（CoNET 账务地址与 Base AA 同址） */
+/** Cluster → Master：admin 代付 redeem；Master 先确保 Base AA 存在，再划入 CoNET 上该 AA 地址的 B-Unit 余额 */
 export async function postBuintRedeemAirdropRedeem(
 	eoa: string,
 	code: string
-): Promise<{ success: boolean; txHash?: string; aa?: string; error?: string }> {
+): Promise<{ success: boolean; txHash?: string; recipient?: string; error?: string }> {
 	const res = await fetch(`${beamioApi}/api/buintRedeemAirdropRedeem`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ eoa: ethers.getAddress(eoa.trim()), code }),
 	})
-	const data = (await res.json().catch(() => ({}))) as { success?: boolean; txHash?: string; aa?: string; error?: string }
+	const data = (await res.json().catch(() => ({}))) as {
+		success?: boolean
+		txHash?: string
+		recipient?: string
+		aa?: string
+		error?: string
+	}
 	if (!res.ok) {
 		return { success: false, error: data?.error ?? res.statusText }
 	}
-	return { success: Boolean(data.success), txHash: data.txHash, aa: data.aa, error: data.error }
+	const recipient = data.recipient ?? data.aa
+	return { success: Boolean(data.success), txHash: data.txHash, recipient, error: data.error }
 }
 
 export const getAAAccount = async (profile: profile): Promise<string | null> => {

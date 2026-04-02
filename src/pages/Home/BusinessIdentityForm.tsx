@@ -2,29 +2,43 @@ import React, { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
-import { Eye, EyeOff, AlertTriangle, Check, Circle, ArrowRight, Lock, BadgeHelp, Building2, Briefcase } from "lucide-react"
+import {
+	Eye,
+	EyeOff,
+	AlertTriangle,
+	Check,
+	ArrowRight,
+	ShieldCheck,
+	Building2,
+	Briefcase,
+} from "lucide-react"
 import {
 	bizBrandFocusRingClass,
 	bizBrandInvalidFieldRingClass,
 	bizBrandOnboardingPrimaryBtnClass,
 } from "@/pages/Home/brandUi"
 
+/** Loading overlay — aligned with `marketExample.html` (fluid-bg, ring loader, top bar). */
 const WORKSPACE_LOADING_STYLE = `
-@keyframes biz-identity-soft-pulse {
+@keyframes biz-workspace-soft-pulse {
 	0%, 100% { opacity: 0.1; transform: scale(0.95); }
 	50% { opacity: 0.2; transform: scale(1.05); }
 }
-@keyframes biz-identity-draw-ring {
+@keyframes biz-workspace-draw-ring {
 	0% { stroke-dashoffset: 283; transform: rotate(0deg); }
 	50% { stroke-dashoffset: 70; transform: rotate(180deg); }
 	100% { stroke-dashoffset: 283; transform: rotate(360deg); }
 }
-.biz-identity-soft-pulse { animation: biz-identity-soft-pulse 4s ease-in-out infinite; }
-.biz-identity-ring-loader {
-	stroke-dasharray: 283;
-	animation: biz-identity-draw-ring 3s ease-in-out infinite;
-	transform-origin: 50% 50%;
+.biz-workspace-fluid-bg {
+	background: radial-gradient(circle at 50% 50%, #f1f4f9 0%, #ffffff 100%);
 }
+.biz-workspace-soft-pulse { animation: biz-workspace-soft-pulse 4s ease-in-out infinite; }
+.biz-workspace-ring-loader {
+	stroke-dasharray: 283;
+	animation: biz-workspace-draw-ring 3s ease-in-out infinite;
+	transform-origin: center;
+}
+.biz-identity-headline { font-family: Manrope, ui-sans-serif, system-ui, sans-serif; }
 `
 
 export type BusinessIdentitySuccess = {
@@ -40,20 +54,6 @@ function passwordRuleChecks(password: string) {
 	const mixed = /[a-z]/.test(password) && /[A-Z]/.test(password)
 	const numbers = /[0-9]/.test(password)
 	return { len8, mixed, numbers }
-}
-
-type RulePillProps = { ok: boolean; label: string }
-function RulePill({ ok, label }: RulePillProps) {
-	return (
-		<div className={`flex items-center gap-1.5 text-[10px] font-medium ${ok ? "text-[#0051d1]" : "text-[#abadaf]"}`}>
-			{ok ? (
-				<Check className="w-[14px] h-[14px] shrink-0" strokeWidth={2.5} aria-hidden />
-			) : (
-				<Circle className="w-[14px] h-[14px] shrink-0" strokeWidth={2} aria-hidden />
-			)}
-			{label}
-		</div>
-	)
 }
 
 export type BusinessIdentityFormProps = {
@@ -78,6 +78,9 @@ export default function BusinessIdentityForm({
 	const [loading, setLoading] = useState(false)
 
 	const lastCheckedRef = useRef("")
+	const handleInputRef = useRef<HTMLInputElement>(null)
+	const passwordInputRef = useRef<HTMLInputElement>(null)
+	const confirmInputRef = useRef<HTMLInputElement>(null)
 	const [tagStatus, setTagStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
 	const [tagError, setTagError] = useState("")
 
@@ -173,100 +176,144 @@ export default function BusinessIdentityForm({
 
 	const trimmedDisplay = beamioName.trim().replace(/^@+/, "")
 
+	const onHandleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key !== "Enter") return
+		e.preventDefault()
+		if (loading || isCheckingTag) return
+		const ok = await validateAndCheckTag()
+		if (ok) passwordInputRef.current?.focus()
+	}
+
+	const onPasswordKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key !== "Enter") return
+		e.preventDefault()
+		if (loading) return
+		confirmInputRef.current?.focus()
+	}
+
+	const onConfirmKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key !== "Enter") return
+		e.preventDefault()
+		if (loading) return
+		if (canSubmit) void handleContinue()
+	}
+
 	if (loading) {
 		const overlay = (
 			<>
 				<style>{WORKSPACE_LOADING_STYLE}</style>
 				<div
-					className="fixed inset-0 z-[10050] flex h-[100dvh] min-h-[100dvh] w-full max-w-none flex-col bg-white text-[#1a1c1e]"
+					className="fixed inset-0 z-[10050] flex min-h-[100dvh] w-full flex-col overflow-hidden bg-white text-[#1a1c1e]"
 					style={{
-						top: 0,
-						left: 0,
-						right: 0,
-						bottom: 0,
-						paddingTop: "env(safe-area-inset-top)",
-						paddingBottom: "env(safe-area-inset-bottom)",
 						paddingLeft: "env(safe-area-inset-left)",
 						paddingRight: "env(safe-area-inset-right)",
 						boxSizing: "border-box",
 					}}
 				>
-					<header className="relative z-10 flex shrink-0 items-center justify-between border-b border-transparent bg-white/80 px-6 py-5 backdrop-blur-xl">
+					{/* TopAppBar — marketExample.html */}
+					<header
+						className="fixed left-0 right-0 top-0 z-[10052] flex items-center justify-between bg-white/80 px-6 py-5 backdrop-blur-xl"
+						style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}
+					>
 						<div className="flex items-center gap-2">
-							<Building2 className="h-6 w-6 shrink-0 scale-110 text-[#0051d1]" strokeWidth={2} aria-hidden />
-							<h1 className="text-lg font-bold tracking-tight text-[#0051d1]">Verra Identity</h1>
+							<Building2
+								className="h-7 w-7 shrink-0 scale-110 text-[#0051d1]"
+								strokeWidth={2}
+								aria-hidden
+							/>
+							<h1 className="biz-identity-headline text-lg font-bold tracking-tight text-[#0051d1]">Verra Identity</h1>
 						</div>
 						<div className="flex items-center gap-4">
-							<span className="hidden text-[10px] font-bold uppercase tracking-widest text-[#44474e]/60 sm:inline">
+							<span className="biz-identity-headline text-[10px] font-bold uppercase tracking-widest text-[#44474e]/60">
 								Step 1 of 2
 							</span>
 							<div
-								className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-white bg-[#dfe3e6] shadow-sm"
+								className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-white bg-[#d9dde0] shadow-sm"
 								aria-hidden
 							/>
 						</div>
 					</header>
 
+					{/* Main canvas — fluid-bg, centered loader + copy */}
 					<main
-						className="relative z-0 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-8"
+						className="biz-workspace-fluid-bg relative z-[10051] flex min-h-[100dvh] w-full flex-grow flex-col items-center justify-center px-8"
 						style={{
-							background: "radial-gradient(circle at 50% 50%, #f1f4f9 0%, #ffffff 100%)",
+							paddingTop: "calc(5.5rem + env(safe-area-inset-top))",
+							paddingBottom: "calc(8rem + env(safe-area-inset-bottom))",
 						}}
 					>
-						<div className="relative mb-12 flex h-48 w-48 shrink-0 items-center justify-center sm:mb-16">
-							<div className="biz-identity-soft-pulse absolute inset-0 rounded-full bg-[#0051d1]/5" aria-hidden />
-							<svg className="relative h-full w-full" viewBox="0 0 100 100" aria-hidden>
-								<circle
-									className="text-[#d9dde0]/55"
-									cx="50"
-									cy="50"
-									r="45"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="1.5"
+						<div className="mx-auto flex w-full max-w-lg flex-col items-center">
+							<div className="relative mb-16 flex h-48 w-48 shrink-0 items-center justify-center">
+								<div
+									className="biz-workspace-soft-pulse absolute inset-0 rounded-full bg-[#0051d1]/5"
+									aria-hidden
 								/>
-								<circle
-									className="biz-identity-ring-loader text-[#0051d1]"
-									cx="50"
-									cy="50"
-									r="45"
-									fill="none"
-									stroke="currentColor"
-									strokeLinecap="round"
-									strokeWidth="2"
-								/>
-							</svg>
-							<div className="absolute inset-0 flex items-center justify-center">
-								<Briefcase className="h-10 w-10 text-[#0051d1]/40" strokeWidth={1.5} aria-hidden />
+								<svg className="relative h-full w-full" viewBox="0 0 100 100" aria-hidden>
+									<circle
+										className="text-[#d9dde0]/30"
+										cx="50"
+										cy="50"
+										r="45"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="1.5"
+									/>
+									<circle
+										className="biz-workspace-ring-loader text-[#0051d1]"
+										cx="50"
+										cy="50"
+										r="45"
+										fill="none"
+										stroke="currentColor"
+										strokeLinecap="round"
+										strokeWidth="2"
+									/>
+								</svg>
+								<div className="absolute inset-0 flex items-center justify-center">
+									<Briefcase
+										className="h-9 w-9 text-[#0051d1]/40"
+										strokeWidth={1.5}
+										aria-hidden
+									/>
+								</div>
 							</div>
-						</div>
 
-						<div className="max-w-sm shrink-0 space-y-4 px-1 text-center">
-							<h2 className="text-2xl font-extrabold tracking-tight text-[#1a1c1e] md:text-3xl">
-								Creating your business workspace…
-							</h2>
-							<p className="text-base leading-relaxed text-[#44474e]">
-								We&apos;re preparing your business identity and getting your Verra workspace ready.
-							</p>
-							<div className="pt-2">
-								<p className="text-sm font-medium text-[#44474e]/40">This usually takes a few seconds.</p>
+							<div className="max-w-sm space-y-4 text-center">
+								<h2 className="biz-identity-headline text-2xl font-extrabold tracking-tight text-[#1a1c1e] md:text-3xl">
+									Creating your business workspace…
+								</h2>
+								<p className="text-base leading-relaxed text-[#44474e]">
+									We&apos;re preparing your business identity and getting your Verra workspace ready.
+								</p>
+								<div className="pt-2">
+									<p className="text-sm font-medium text-[#44474e]/50">This usually takes a few seconds.</p>
+								</div>
 							</div>
 						</div>
 					</main>
 
-					<footer className="relative z-10 flex shrink-0 justify-center pb-10 pt-4">
-						<div className="mx-auto inline-flex items-center gap-2.5 rounded-full border border-[#dfe2eb]/60 bg-white px-6 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
-							<div className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#0051d1]/30" aria-hidden />
-							<span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#44474e]/70">Business setup in progress</span>
+					{/* Footer status — fixed bottom-12 */}
+					<footer
+						className="fixed left-0 right-0 z-[10052] flex justify-center px-4"
+						style={{ bottom: "calc(3rem + env(safe-area-inset-bottom, 0px))" }}
+					>
+						<div className="inline-flex items-center gap-2.5 rounded-full border border-[#dfe2eb]/40 bg-white px-6 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
+							<div
+								className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#0051d1]/30"
+								aria-hidden
+							/>
+							<span className="biz-identity-headline text-[10px] font-bold uppercase tracking-[0.15em] text-[#44474e]/70">
+								Business setup in progress
+							</span>
 						</div>
 					</footer>
 
 					<div
-						className="pointer-events-none fixed top-1/4 -left-32 z-0 h-96 w-96 rounded-full bg-[#0051d1]/[0.03] blur-[120px]"
+						className="pointer-events-none fixed left-0 top-1/4 -left-32 z-[10048] h-96 w-96 rounded-full bg-[#0051d1]/[0.03] blur-[120px]"
 						aria-hidden
 					/>
 					<div
-						className="pointer-events-none fixed bottom-1/4 -right-32 z-0 h-80 w-80 rounded-full bg-[#0051d1]/[0.03] blur-[100px]"
+						className="pointer-events-none fixed -right-32 bottom-1/4 z-[10048] h-80 w-80 rounded-full bg-[#0051d1]/[0.03] blur-[100px]"
 						aria-hidden
 					/>
 				</div>
@@ -285,56 +332,54 @@ export default function BusinessIdentityForm({
 	return (
 		<>
 			{showIntroHeader && (
-				<div className="mb-8">
-					<div className="flex justify-between items-center mb-6 gap-2 flex-wrap">
-						<span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#0051d1] bg-[#0051d1]/5 px-3 py-1 rounded-full">Step 1 of 2</span>
-						<span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#abadaf]">Business Identity</span>
+				<div className="mb-10">
+					<div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+						<span className="rounded-full bg-[#1562F0]/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562F0]">
+							Step 1 of 2
+						</span>
+						<span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#666666]/70">Business Identity</span>
 					</div>
-					<h2 className="font-bold text-2xl text-[#2c2f31] mb-3 tracking-tight">Create your business identity</h2>
-					<p className="text-[#595c5e] text-sm leading-relaxed">
+					<h2 className="biz-identity-headline mb-4 text-3xl font-extrabold tracking-tight text-[#121212]">
+						Create your business identity
+					</h2>
+					<p className="leading-relaxed text-[#666666]">
 						Choose your Verra handle and set the password that protects your business workspace.
 					</p>
 				</div>
 			)}
 
 			<form
-				className="space-y-6"
+				className="space-y-8"
 				onSubmit={(e) => {
 					e.preventDefault()
 					if (canSubmit) void handleContinue()
 				}}
 			>
-				<div className="space-y-2">
-					<div className="flex justify-between items-center gap-2">
-						<label className="text-[10px] font-bold uppercase tracking-widest text-[#2c2f31]">Business Handle</label>
-						<button
-							type="button"
-							className={`text-[#abadaf] hover:text-[#2c2f31] transition-colors ${bizBrandFocusRingClass} rounded-md p-0.5`}
-							title="3–20 characters: letters, numbers, dots, underscores"
-							aria-label="Handle format help"
-						>
-							<BadgeHelp className="w-4 h-4" aria-hidden />
-						</button>
-					</div>
+				<div className="space-y-3">
+					<label className="text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70" htmlFor="biz-identity-handle">
+						Business Handle
+					</label>
 					<div className="relative">
-						<span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0051d1] font-bold pointer-events-none select-none">@</span>
 						<input
+							ref={handleInputRef}
+							id="biz-identity-handle"
 							readOnly={loading || isCheckingTag}
 							autoCapitalize="none"
 							autoCorrect="off"
 							autoComplete="username"
 							enterKeyHint="next"
 							inputMode="text"
+							onKeyDown={onHandleKeyDown}
 							className={`
-								w-full pl-9 pr-4 py-3.5 rounded-xl border-none transition-all font-medium
-								text-[#2c2f31] placeholder:text-[#abadaf]
-								bg-[#eef1f3]/50 focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20
+								w-full rounded-xl border border-[#E5E7EB] bg-white px-5 py-4 text-lg font-medium transition-all
+								text-[#121212] placeholder:text-[#666666]/40
+								focus:border-[#1562F0] focus:outline-none focus:ring-2 focus:ring-[#1562F0]/10
 								${tagStatus === "invalid" ? bizBrandInvalidFieldRingClass : ""}
 								${tagStatus !== "invalid" ? bizBrandFocusRingClass : ""}
 								disabled:opacity-70
 							`}
 							value={beamioName}
-							placeholder="yourbusiness"
+							placeholder="@yourbusiness"
 							onChange={(e) => {
 								if (isCheckingTag) return
 								const next = e.currentTarget.value.replace(/@/g, "")
@@ -354,26 +399,34 @@ export default function BusinessIdentityForm({
 							{tagError}
 						</div>
 					) : tagStatus === "valid" && trimmedDisplay ? (
-						<div className="flex items-center gap-1.5 text-[11px] text-[#0051d1] font-medium pl-1">
+						<div className="flex items-center gap-1.5 pl-1 text-[11px] font-medium text-[#1562F0]">
 							<Check className="w-[14px] h-[14px] shrink-0" strokeWidth={2.5} aria-hidden />
 							@{trimmedDisplay} is available
 						</div>
 					) : null}
 				</div>
 
-				<div className="space-y-4">
-					<div className="space-y-2">
-						<label className="text-[10px] font-bold uppercase tracking-widest text-[#2c2f31]">Account Password</label>
+				<div className="grid grid-cols-1 gap-6">
+					<div className="space-y-3">
+						<label
+							className="text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70"
+							htmlFor="biz-identity-password"
+						>
+							Account Password
+						</label>
 						<div className="relative">
 							<input
+								ref={passwordInputRef}
+								id="biz-identity-password"
 								readOnly={loading}
 								type={showPassword ? "text" : "password"}
 								autoComplete="new-password"
 								enterKeyHint="next"
+								onKeyDown={onPasswordKeyDown}
 								className={`
-									w-full px-4 py-3.5 rounded-xl border-none transition-all
-									text-[#2c2f31] placeholder:text-[#abadaf]
-									bg-[#eef1f3]/50 focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20
+									w-full rounded-xl border border-[#E5E7EB] bg-white px-5 py-4 pr-12 text-lg transition-all
+									text-[#121212] placeholder:text-[#666666]/40
+									focus:border-[#1562F0] focus:outline-none focus:ring-2 focus:ring-[#1562F0]/10
 									${bizBrandFocusRingClass}
 								`}
 								value={password}
@@ -383,7 +436,7 @@ export default function BusinessIdentityForm({
 							<button
 								type="button"
 								tabIndex={-1}
-								className="absolute right-4 top-1/2 -translate-y-1/2 text-[#abadaf] hover:text-[#2c2f31] transition-colors p-1 rounded-md"
+								className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#666666]/70 transition-colors hover:text-[#121212]"
 								onClick={() => setShowPassword((s) => !s)}
 								aria-label={showPassword ? "Hide password" : "Show password"}
 							>
@@ -391,17 +444,25 @@ export default function BusinessIdentityForm({
 							</button>
 						</div>
 					</div>
-					<div className="space-y-2">
-						<label className="text-[10px] font-bold uppercase tracking-widest text-[#2c2f31]">Confirm Password</label>
+					<div className="space-y-3">
+						<label
+							className="text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70"
+							htmlFor="biz-identity-confirm-password"
+						>
+							Confirm Password
+						</label>
 						<input
+							ref={confirmInputRef}
+							id="biz-identity-confirm-password"
 							readOnly={loading}
 							type={showPassword ? "text" : "password"}
 							autoComplete="new-password"
 							enterKeyHint="done"
+							onKeyDown={onConfirmKeyDown}
 							className={`
-								w-full px-4 py-3.5 rounded-xl border-none transition-all
-								text-[#2c2f31] placeholder:text-[#abadaf]
-								bg-[#eef1f3]/50 focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20
+								w-full rounded-xl border border-[#E5E7EB] bg-white px-5 py-4 text-lg transition-all
+								text-[#121212] placeholder:text-[#666666]/40
+								focus:border-[#1562F0] focus:outline-none focus:ring-2 focus:ring-[#1562F0]/10
 								${confirmMismatch ? bizBrandInvalidFieldRingClass : bizBrandFocusRingClass}
 							`}
 							value={confirmPassword}
@@ -411,35 +472,35 @@ export default function BusinessIdentityForm({
 					</div>
 				</div>
 
-				<div className="flex flex-wrap gap-x-4 gap-y-2 px-1">
-					<RulePill ok={len8} label="8+ characters" />
-					<RulePill ok={mixed} label="Mixed case" />
-					<RulePill ok={numbers} label="Numbers" />
-				</div>
-
-				<div className="p-4 rounded-xl bg-[#0051d1]/5 flex gap-4 border border-[#0051d1]/10">
-					<Lock className="w-5 h-5 text-[#0051d1]/80 shrink-0 mt-0.5" strokeWidth={2} aria-hidden />
-					<div className="space-y-1 min-w-0">
-						<p className="text-[10px] font-bold text-[#2c2f31] uppercase tracking-wider">Protected by local encryption</p>
-						<p className="text-[11px] leading-relaxed text-[#595c5e]">
+				<div className="flex items-start gap-4 pt-2">
+					<ShieldCheck
+						className="mt-0.5 h-6 w-6 shrink-0 text-[#666666]/40"
+						strokeWidth={1.75}
+						aria-hidden
+					/>
+					<div className="min-w-0 space-y-1">
+						<p className="text-[11px] font-bold uppercase tracking-wider text-[#121212]">
+							Protected by local encryption
+						</p>
+						<p className="text-[13px] leading-relaxed text-[#666666]">
 							Your business credentials stay encrypted on this device and under your control.
 						</p>
 					</div>
 				</div>
 
-				<div className="space-y-4 pt-2">
+				<div className="space-y-4 pt-4">
 					<AppButton
 						type="submit"
 						fullWidth
 						disabled={!canSubmit}
 						className={`
-							rounded-full py-4 text-base font-bold flex items-center justify-center gap-2
-							shadow-lg shadow-[#0051d1]/10
-							${canSubmit ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"}
+							flex items-center justify-center gap-2 rounded-xl py-5 text-lg font-extrabold
+							shadow-lg shadow-[#1562F0]/10
+							${canSubmit ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` : "cursor-not-allowed bg-slate-200 text-slate-400 shadow-none"}
 						`}
 					>
 						Continue
-						<ArrowRight className="w-5 h-5 shrink-0" aria-hidden />
+						<ArrowRight className="h-6 w-6 shrink-0" aria-hidden />
 					</AppButton>
 					{trailingAfterSubmit}
 				</div>

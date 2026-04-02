@@ -4,9 +4,14 @@ import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanBut
 import { ethers } from 'ethers'
 import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS, storeSystemData } from "@/services/beamio"
 import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
-import { baseEndpoint } from '@/utils/constants'
+import { baseEndpoint, conetDepinProvider } from '@/utils/constants'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
+/**
+ * AA “steady poll” path arms **after the next CoNET L1 block** (same metronome as `biz.tsx` overview feeder), not `setTimeout(6000)`.
+ * Shorter backoffs (`2_500` / `5_000`) still use `setTimeout` (not block-aligned).
+ */
+const AA_SYNC_RESCHEDULE_AFTER_CONET_BLOCK = 6_000
 
 type DaemonContext = {
 	historyPayData: searchResult|null
@@ -424,6 +429,8 @@ export function DaemonProvider({ children }: DaemonProps) {
     })
   }, [])
   const profiles = profilesState
+  const profilesRef = useRef<profile[] | null>(null)
+  profilesRef.current = (profilesState as profile[] | null) ?? null
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [getAllNodes, setaAllNodes] = useState<nodes_info[]>([]);
   const [serverIpAddress, setServerIpAddress] = useState<string>(defaultContextValue.serverIpAddress);
@@ -554,20 +561,23 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [fetchOracle])
 
   /**
-   * Global Beamio AA sync ( Merchant OS `biz.tsx` / `bizHome` ): factory canonical `beamioAccountOf` vs local `profiles[0].aaAccount`.
-   * When chain reports no AA (`aa === null`), clear stale cached `aaAccount` only if that address has no contract bytecode on Base.
+   * Global Beamio AA sync (Merchant OS `biz.tsx` / `bizHome`): factory `beamioAccountOf` vs `profiles[0].aaAccount`.
+   * Scheduling follows `beamio-interval-daemon-no-overlap`: no overlapping ticks (`inFlight`); next step is armed in `finally`
+   * after the async tick completes. Steady poll uses `conetDepinProvider.on('block')` (~CoNET block time); backoffs use `setTimeout`.
    */
   useEffect(() => {
     const eoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim()
     if (!eoa || !ethers.isAddress(eoa)) return
-    if (!profiles?.length) return
 
     let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let pendingConetBlockListener: ((blockNumber: number) => void) | undefined
+    let tickInFlight = false
 
     const persist = async (nextProfiles: profile[]) => {
       setProfiles(nextProfiles)
       const temp = CoNET_Data
-      if (temp?.profiles?.length) {
+      if (temp) {
         temp.profiles = nextProfiles
         setCoNET_Data(temp)
         try {
@@ -578,22 +588,28 @@ export function DaemonProvider({ children }: DaemonProps) {
       }
     }
 
-    const run = async (retryCount = 0) => {
+    const runTickChain = async () => {
       if (cancelled) return
+      if (tickInFlight) return
+      tickInFlight = true
+      let nextDelayMs: number | null = null
       try {
         const r = await fetchTrustedCanonicalAaFromRpc(eoa)
         if (cancelled) return
         if (!r.trusted) {
-          if (retryCount === 0) setTimeout(() => run(1), 2500)
+          nextDelayMs = 2500
           return
         }
 
-        const list = profiles
+        const list = profilesRef.current
         const p0 = list?.[0]
-        if (!p0) return
 
         if (r.aa) {
           const chainAa = ethers.getAddress(r.aa)
+          if (!p0) {
+            if (!cancelled) await persist([{ keyID: ethers.getAddress(eoa), aaAccount: chainAa } as profile])
+            return
+          }
           const cached = p0.aaAccount?.trim()
           if (
             cached &&
@@ -603,33 +619,68 @@ export function DaemonProvider({ children }: DaemonProps) {
             return
           }
           if (cancelled) return
-          const nextProfiles = list.map((p: profile, i: number) =>
+          const baseList = list ?? []
+          const nextProfiles = baseList.map((p: profile, i: number) =>
             i === 0 ? { ...p, aaAccount: chainAa } : p
           )
           await persist(nextProfiles)
           return
         }
 
+        if (!p0) {
+          nextDelayMs = AA_SYNC_RESCHEDULE_AFTER_CONET_BLOCK
+          return
+        }
+
         const cached = p0.aaAccount?.trim()
-        if (!cached || !ethers.isAddress(cached)) return
+        if (!cached || !ethers.isAddress(cached)) {
+          nextDelayMs = AA_SYNC_RESCHEDULE_AFTER_CONET_BLOCK
+          return
+        }
         const code = await baseEndpoint.getCode(cached)
         if (cancelled) return
         if (code && code !== '0x' && code.length > 2) return
         if (cancelled) return
-        const nextProfiles = list.map((p: profile, i: number) =>
+        const baseList = list ?? []
+        const nextProfiles = baseList.map((p: profile, i: number) =>
           i === 0 ? { ...p, aaAccount: undefined } : p
         )
         await persist(nextProfiles)
       } catch {
-        if (!cancelled && retryCount === 0) setTimeout(() => run(1), 2500)
+        if (!cancelled) nextDelayMs = 5000
+      } finally {
+        tickInFlight = false
+        if (pendingConetBlockListener) {
+          conetDepinProvider.off('block', pendingConetBlockListener)
+          pendingConetBlockListener = undefined
+        }
+        if (!cancelled && nextDelayMs !== null) {
+          if (nextDelayMs === AA_SYNC_RESCHEDULE_AFTER_CONET_BLOCK) {
+            const onBlock = (_blockNumber: number) => {
+              conetDepinProvider.off('block', onBlock)
+              if (pendingConetBlockListener === onBlock) pendingConetBlockListener = undefined
+              if (!cancelled) void runTickChain()
+            }
+            pendingConetBlockListener = onBlock
+            conetDepinProvider.on('block', onBlock)
+          } else {
+            timeoutId = setTimeout(() => {
+              void runTickChain()
+            }, nextDelayMs)
+          }
+        }
       }
     }
 
-    void run()
+    void runTickChain()
     return () => {
       cancelled = true
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+      if (pendingConetBlockListener) {
+        conetDepinProvider.off('block', pendingConetBlockListener)
+      }
     }
-  }, [profiles, myAddress, setProfiles])
+  }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress, setProfiles])
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,

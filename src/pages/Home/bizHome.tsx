@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ShieldCheck, Shield, CheckCircle, ArrowRight, Eye, EyeOff, Lock, AtSign, Fingerprint, ScanFace, Network, Database, Share2 } from 'lucide-react'
+import { Shield, ArrowRight, Eye, EyeOff, Fingerprint, Network, Briefcase, Info, HelpCircle, ShieldCheck } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
 import { restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
@@ -11,10 +11,13 @@ import { baseEndpoint } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
-import { BIZ_BRAND_HEX, bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
+import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
+
+/** Login / gateway — aligned with `marketExample.html` (Verra Gateway) */
+const headlineFont = "font-['Manrope',ui-sans-serif,system-ui,sans-serif]"
 
 /** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
 const assembleEncryptKeysObject = async (
@@ -103,13 +106,23 @@ const assembleEncryptKeysObject = async (
 	}
 }
 
-/** Progress bar width % by login pipeline step (newOnloading.html). */
-const LOGIN_PROGRESS_PCT: Record<number, number> = {
-	0: 18,
-	1: 42,
-	2: 72,
-	3: 94,
+/** Post-login signing-in screen — `marketExample.html` (Verra Business OS - Signing In) */
+const SIGNING_IN_STYLE = `
+@keyframes biz-signing-spin {
+	to { transform: rotate(360deg); }
 }
+.biz-signing-loader-ring {
+	animation: biz-signing-spin 1.5s linear infinite;
+	border-top-color: #0051d1;
+}
+@keyframes biz-signing-pulse-soft {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.6; }
+}
+.biz-signing-pulse-soft {
+	animation: biz-signing-pulse-soft 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+`
 
 const BizHome = () => {
 	const navigate = useNavigate()
@@ -117,7 +130,6 @@ const BizHome = () => {
 	const [password, setPassword] = useState('')
 	const [showPassword, setShowPassword] = useState(false)
 	const [isLoading, setIsLoading] = useState(false)
-	const [loadingStep, setLoadingStep] = useState(0)
 	const [loginError, setLoginError] = useState('')
 	const [isLoggedIn, setIsLoggedIn] = useState(false)
 	const [showNewBiz, setShowNewBiz] = useState(false)
@@ -136,18 +148,15 @@ const BizHome = () => {
 		e.preventDefault()
 		setLoginError('')
 		setIsLoading(true)
-		setLoadingStep(0)
 		let willTransitionToHome = false
 		try {
-			const username = merchantTag.startsWith('@') ? merchantTag.slice(1) : merchantTag
+			const username = merchantTag.trim().replace(/^@+/, '')
 			const result = await restoreWithUserPin(username, password, false)
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
 				setLoginError('Invalid Beamio Tag or Recovery Password, please try again')
-				setLoadingStep(0)
 				return
 			}
-			setLoadingStep(1)
 			await assembleEncryptKeysObject(
 				temp,
 				setProfiles,
@@ -157,9 +166,8 @@ const BizHome = () => {
 				setBeamio,
 				setCharts,
 				setMyAddress,
-				setLoadingStep
+				undefined
 			)
-			setLoadingStep(3)
 			willTransitionToHome = true
 			setTimeout(() => {
 				setIsLoggedIn(true)
@@ -167,7 +175,6 @@ const BizHome = () => {
 			}, 400)
 		} catch {
 			setLoginError('Login failed, please try again later')
-			setLoadingStep(0)
 		} finally {
 			if (!willTransitionToHome) {
 				setIsLoading(false)
@@ -183,303 +190,241 @@ const BizHome = () => {
 	}
 
 	if (isLoading) {
-		const progressPct = LOGIN_PROGRESS_PCT[loadingStep] ?? LOGIN_PROGRESS_PCT[0]
 		return (
-			<div
-				data-biz-ui-primary={BIZ_UI_PRIMARY}
-				className="relative flex min-h-[max(100dvh,884px)] flex-col overflow-hidden bg-[#f5f7f9] text-[#2c2f31] selection:bg-[#7a9dff]/30"
-			>
+			<>
+				<style>{SIGNING_IN_STYLE}</style>
 				<div
-					className="pointer-events-none absolute inset-0 opacity-20"
-					style={{
-						background: `
-              radial-gradient(at 0% 0%, #7a9dff 0%, transparent 50%),
-              radial-gradient(at 100% 0%, #0051d1 0%, transparent 50%),
-              radial-gradient(at 100% 100%, #f797ef 0%, transparent 50%),
-              radial-gradient(at 0% 100%, #0047b8 0%, transparent 50%)`,
-						backgroundColor: '#f5f7f9',
-					}}
-				/>
-				<header className="relative z-10 flex items-center justify-center px-6 py-8">
-					<div className="flex items-center gap-2">
-						<Shield className="h-8 w-8 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-						<span className="text-2xl font-black uppercase tracking-tighter text-[#0051d1]">Verra</span>
+					data-biz-ui-primary={BIZ_UI_PRIMARY}
+					className={`relative flex min-h-[max(100dvh,884px)] flex-col items-center justify-center overflow-hidden bg-[#f5f7f9] p-8 pb-32 text-[#2c2f31] selection:bg-[#7a9dff]/30 ${headlineFont}`}
+				>
+					<div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+						<div className="absolute -left-[10%] -top-[10%] h-[50%] w-[50%] rounded-full bg-[#7a9dff]/5 blur-[120px]" />
+						<div className="absolute -bottom-[10%] -right-[10%] h-[50%] w-[50%] rounded-full bg-[#d8e3fb]/10 blur-[120px]" />
 					</div>
-				</header>
-				<main className="relative z-10 flex flex-1 flex-col items-center justify-center px-6">
-					<div className="flex w-full max-w-2xl flex-col items-center">
-						<div
-							className="relative mb-12 flex h-64 w-64 items-center justify-center"
-							style={{ perspective: '1000px' }}
-						>
-							<div className="pointer-events-none absolute inset-0 scale-110 rounded-full border border-[#0051d1]/10" />
-							<div className="pointer-events-none absolute inset-4 rounded-full border border-[#0051d1]/20" />
-							<div className="relative z-20 flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-white shadow-[0_20px_40px_rgba(21,98,240,0.15)]">
-								<div className="absolute inset-0 bg-gradient-to-br from-[#0051d1]/5 to-[#0051d1]/20" />
-								<Share2 className="relative h-12 w-12 text-[#0051d1]" strokeWidth={1.5} aria-hidden />
-							</div>
-							<div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-4">
-								<div className="rounded-full border border-[#0051d1]/10 bg-white p-2 shadow-lg">
-									<Network className="h-4 w-4 text-[#0051d1]" strokeWidth={2} aria-hidden />
-								</div>
-							</div>
-							<div className="absolute bottom-1/4 right-0 translate-x-4">
-								<div className="rounded-full border border-[#0051d1]/10 bg-white p-2 shadow-lg">
-									<Lock className="h-4 w-4 text-[#0051d1]" strokeWidth={2} aria-hidden />
-								</div>
-							</div>
-							<div className="absolute bottom-1/4 left-0 -translate-x-4">
-								<div className="rounded-full border border-[#0051d1]/10 bg-white p-2 shadow-lg">
-									<Database className="h-4 w-4 text-[#0051d1]" strokeWidth={2} aria-hidden />
-								</div>
-							</div>
-							<div
-								className="pointer-events-none absolute inset-0 rounded-full border-t-4 border-[#0051d1] shadow-[0_-10px_20px_rgba(21,98,240,0.2)]"
-								style={{ transform: 'rotateX(60deg)' }}
-							/>
-							<div
-								className="pointer-events-none absolute left-[10%] top-[10%] h-[80%] w-[80%] rounded-full border-t-2 border-[#7a9dff] opacity-60"
-								style={{ transform: 'rotate(45deg) rotateX(60deg)' }}
-							/>
-						</div>
-						<div className="max-w-lg space-y-6 text-center">
-							<h1 className="text-4xl font-extrabold tracking-tight text-[#2c2f31] md:text-5xl">
-								Finalizing your terminal...
-							</h1>
-							<p className="text-lg leading-relaxed text-[#595c5e]">
-								Synchronizing with the clearing layer and preparing your Merchant OS surface. Your secure business environment
-								will be ready in a moment.
-							</p>
-						</div>
-						<div className="mt-12 w-full max-w-xs">
-							<div className="h-1.5 overflow-hidden rounded-full bg-[#e5e9eb]">
+
+					<main className="flex w-full max-w-md flex-col items-center text-center">
+						<div className="relative mb-16">
+							<div className="absolute inset-0 scale-150 rounded-full bg-[#0051d1]/10 blur-3xl" aria-hidden />
+							<div className="relative flex h-24 w-24 items-center justify-center">
+								<div className="absolute inset-0 rounded-full border-4 border-[#d9dde0]" aria-hidden />
 								<div
-									className="h-full rounded-full bg-[#0051d1] shadow-[0_0_15px_rgba(0,81,209,0.4)] transition-[width] duration-700 ease-out"
-									style={{ width: `${progressPct}%` }}
+									className="biz-signing-loader-ring absolute inset-0 rounded-full border-4 border-transparent"
+									aria-hidden
 								/>
+								<Shield className="relative z-10 h-9 w-9 text-[#0051d1]" strokeWidth={1.75} aria-hidden />
 							</div>
 						</div>
-					</div>
-				</main>
-				<footer className="relative z-10 flex flex-col items-center pb-12 pt-6">
-					<div className="flex items-center gap-3 rounded-full bg-[#eef1f3] px-4 py-2">
-						<span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#0051d1]" />
-						<span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#595c5e]">
-							ESTABLISHING DETERMINISTIC SOLVENCY SYNC...
-						</span>
-					</div>
-				</footer>
-			</div>
+
+						<div className="space-y-6">
+							<h1 className="px-4 text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">
+								Preparing your business workspace…
+							</h1>
+							<p className="px-6 text-lg font-medium leading-relaxed text-[#595c5e]">
+								We&apos;re verifying your business access and getting Verra Business OS ready.
+							</p>
+							<div className="pt-8">
+								<span className="biz-signing-pulse-soft inline-block rounded-full bg-[#eef1f3] px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#515c70]">
+									This usually takes a few seconds.
+								</span>
+							</div>
+						</div>
+					</main>
+
+					<footer
+						className="fixed left-0 right-0 z-10 flex justify-center px-4 text-center"
+						style={{ bottom: 'calc(3rem + env(safe-area-inset-bottom, 0px))' }}
+					>
+						<div className="flex max-w-lg flex-col items-center gap-4">
+							<div className="flex items-center gap-2">
+								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>Verra Identity</span>
+							</div>
+							<div className="flex items-start gap-3 sm:items-center">
+								<div className="relative mt-1 flex h-2 w-2 shrink-0 sm:mt-0">
+									<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0051d1] opacity-60" />
+									<span className="relative inline-flex h-2 w-2 rounded-full bg-[#0051d1]" />
+								</div>
+								<p className="text-left text-xs font-semibold uppercase leading-snug tracking-wide text-[#595c5e] sm:text-center sm:text-sm">
+									We&apos;re verifying your business access and getting Verra Business OS ready.
+								</p>
+							</div>
+						</div>
+					</footer>
+				</div>
+			</>
 		)
 	}
 
 	return (
 		<div
 			data-biz-ui-primary={BIZ_UI_PRIMARY}
-			className="flex min-h-[max(100dvh,884px)] flex-col overflow-hidden bg-[#f5f7f9] text-[#2c2f31] selection:bg-[#7a9dff]/30"
+			className={`flex min-h-[max(100dvh,884px)] flex-col overflow-x-hidden bg-[#f5f7f9] text-[#2c2f31] selection:bg-[#7a9dff]/30 ${headlineFont}`}
+			style={{
+				backgroundImage: `
+					radial-gradient(at 0% 0%, rgba(21, 98, 240, 0.03) 0px, transparent 50%),
+					radial-gradient(at 100% 100%, rgba(122, 157, 255, 0.05) 0px, transparent 50%)`,
+			}}
 		>
-			<main className="flex min-h-0 flex-1 flex-col md:h-[100dvh] md:flex-row">
-				{/* Left: editorial (tablet+) — mesh gradient per newOnloading.html */}
-				<div
-					className="relative hidden w-1/2 flex-col justify-between p-12 text-white md:flex"
-					style={{
-						background: `
-							radial-gradient(at 0% 0%, #0051d1 0%, transparent 50%),
-							radial-gradient(at 100% 100%, #7a9dff 0%, transparent 50%),
-							radial-gradient(at 100% 0%, #f797ef 0%, transparent 50%)
-						`,
-					}}
-				>
-					<div className="relative z-10">
-						<div className="flex items-center gap-3">
-							<Shield className="h-8 w-8 shrink-0 text-white" strokeWidth={1.75} aria-hidden />
-							<span className="text-2xl font-extrabold tracking-tighter text-white">Verra Business</span>
-						</div>
+			<header
+				className="sticky top-0 z-50 border-b border-[#747779]/20 shadow-[0_20px_40px_rgba(21,98,240,0.06)]"
+				style={{
+					background: 'rgba(255, 255, 255, 0.7)',
+					backdropFilter: 'blur(20px)',
+					WebkitBackdropFilter: 'blur(20px)',
+					paddingTop: 'env(safe-area-inset-top)',
+				}}
+			>
+				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-6 py-4">
+					<div className="flex items-center gap-2">
+						<Fingerprint className="h-7 w-7 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>VERRA GATEWAY</span>
 					</div>
-					<div className="relative z-10 space-y-6">
-						<h1 className="text-5xl font-extrabold leading-tight tracking-tight lg:text-6xl">
-							Identity <br />
-							<span className="text-white/80">Verified.</span>
-						</h1>
-						<p className="max-w-md text-lg font-medium leading-relaxed text-white/80">
-							Your business identity is now secured. Re-enter your credentials to unlock your business operating surface and start
-							managing connected commerce.
-						</p>
-					</div>
-					<div className="relative z-10 flex flex-col gap-4">
-						<div className="flex max-w-xs items-center gap-4 rounded-lg border border-white/25 bg-slate-950/15 px-6 py-4 shadow-xl backdrop-blur-xl">
-							<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/25 ring-1 ring-emerald-400/30">
-								<CheckCircle className="h-6 w-6 text-emerald-200" strokeWidth={2} aria-hidden />
-							</div>
-							<div>
-								<p className="font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.35)]">Account Ready</p>
-								<p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/90">Verification success</p>
-							</div>
-						</div>
-						<div className="flex max-w-xs items-center gap-4 rounded-lg border border-white/25 bg-slate-950/15 px-6 py-4 shadow-xl backdrop-blur-xl">
-							<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/25 ring-1 ring-emerald-400/30">
-								<CheckCircle className="h-6 w-6 text-emerald-200" strokeWidth={2} aria-hidden />
-							</div>
-							<div>
-								<p className="font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.35)]">Recovery Saved</p>
-								<p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100/90">Backups enabled</p>
-							</div>
-						</div>
-					</div>
-					<div className="pointer-events-none absolute inset-0 overflow-hidden opacity-20">
-						<div className="absolute -right-20 top-1/4 h-96 w-96 rounded-full bg-white blur-[120px]" />
-						<div className="absolute -bottom-20 -left-20 h-[600px] w-[600px] rounded-full bg-[#7a9dff] blur-[150px]" />
+					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#dfe3e6]">
+						<Briefcase className="h-4 w-4 text-[#595c5e]" strokeWidth={2} aria-hidden />
 					</div>
 				</div>
+			</header>
 
-				{/* Right: unlock form */}
-				<div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-[#f5f7f9] px-6 py-12 md:px-16 lg:px-24">
-					<div className="mb-12 flex w-full max-w-sm flex-col items-center text-center md:hidden">
-						<div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-[#0051d1] shadow-lg shadow-[#0051d1]/20">
-							<Shield className="h-9 w-9 text-white" strokeWidth={1.75} aria-hidden />
-						</div>
-						<h2 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">Verra Business</h2>
+			<main className="mx-auto flex w-full max-w-md flex-grow flex-col px-6 pb-24 pt-12">
+				<section className="mb-12">
+					<h1 className={`${headlineFont} mb-4 text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]`}>
+						Access your business workspace
+					</h1>
+					<p className="text-base leading-relaxed text-[#595c5e]">
+						Use your BeamioTag and password to continue to Verra Business OS.
+					</p>
+				</section>
+
+				<div className="mb-12 h-1 w-24 shrink-0 rounded-full bg-[#0051d1] opacity-20" aria-hidden />
+
+				<section className="rounded-xl bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+					<div className="mb-8">
+						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>Continue with your business identity</h2>
+						<p className="text-sm leading-snug text-[#595c5e]">
+							Enter the business identity you just created to access your Verra workspace.
+						</p>
 					</div>
 
-					<div className="flex w-full max-w-sm flex-1 flex-col justify-center space-y-10 md:flex-none">
+					<form onSubmit={handleLogin} className="space-y-6">
 						<div className="space-y-2">
-							<span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">Security layer</span>
-							<h3 className="text-3xl font-extrabold tracking-tighter text-[#2c2f31] md:text-4xl">Unlock Business OS</h3>
-							<p className="text-sm font-medium text-[#595c5e]">Enter your @BeamioTag and Password to continue.</p>
+							<label
+								htmlFor="biz-gateway-beamiotag"
+								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]`}
+							>
+								@BEAMIOTAG
+							</label>
+							<input
+								id="biz-gateway-beamiotag"
+								type="text"
+								autoCapitalize="none"
+								autoCorrect="off"
+								autoComplete="username"
+								inputMode="text"
+								placeholder="e.g. global_ventures"
+								value={merchantTag.replace(/^@+/, '')}
+								onChange={(e) => setMerchantTag(e.target.value.replace(/^@+/, ''))}
+								className={`w-full rounded-lg border-none bg-[#eef1f3] px-5 py-4 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
+								required
+								disabled={isLoading}
+							/>
+							<div className="mt-2 flex items-start gap-2 px-1">
+								<Info className="mt-0.5 h-4 w-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+								<p className="text-[11px] leading-normal text-[#595c5e]">
+									Your BeamioTag is your business identity on Verra.
+								</p>
+							</div>
 						</div>
 
-						<form onSubmit={handleLogin} className="space-y-6">
-							<div className="space-y-4">
-								<div>
-									<label className="mb-2 ml-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-										Business handle
-									</label>
-									<div className="relative">
-										<AtSign className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
-										<input
-											type="text"
-											autoCapitalize="none"
-											autoCorrect="off"
-											autoComplete="username"
-											inputMode="text"
-											placeholder="@yourbusiness"
-											value={merchantTag.startsWith('@') ? `@${merchantTag.replace(/^@+/, '')}` : merchantTag ? `@${merchantTag}` : ''}
-											onChange={(e) => {
-												const v = e.target.value.replace(/^@+/, '')
-												setMerchantTag(v ? `@${v}` : '')
-											}}
-											className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 font-medium text-[#2c2f31] placeholder:text-[#abadaf]/50 transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
-											required
-											disabled={isLoading}
-										/>
-									</div>
-								</div>
-								<div>
-									<label className="mb-2 ml-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-										Account password
-									</label>
-									<div className="relative">
-										<Lock className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
-										<input
-											type={showPassword ? 'text' : 'password'}
-											autoComplete="current-password"
-											placeholder="••••••••••••"
-											value={password}
-											onChange={(e) => setPassword(e.target.value)}
-											className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-14 font-medium text-[#2c2f31] placeholder:text-[#abadaf]/50 transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
-											required
-											disabled={isLoading}
-										/>
-										<button
-											type="button"
-											tabIndex={-1}
-											className="absolute right-5 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#747779] transition-colors hover:text-[#0051d1]"
-											onClick={() => setShowPassword((s) => !s)}
-											aria-label={showPassword ? 'Hide password' : 'Show password'}
-										>
-											{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-										</button>
-									</div>
-								</div>
-							</div>
-
-							<div className="flex justify-center px-2">
+						<div className="space-y-2">
+							<label
+								htmlFor="biz-gateway-password"
+								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]`}
+							>
+								ACCESS PASSWORD
+							</label>
+							<div className="relative">
+								<input
+									id="biz-gateway-password"
+									type={showPassword ? 'text' : 'password'}
+									autoComplete="current-password"
+									enterKeyHint="done"
+									placeholder="••••••••"
+									value={password}
+									onChange={(e) => setPassword(e.target.value)}
+									className={`w-full rounded-lg border-none bg-[#eef1f3] px-5 py-4 pr-12 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
+									required
+									disabled={isLoading}
+								/>
 								<button
 									type="button"
-									onClick={() => navigate('/Onboarding')}
-									className="text-xs font-bold text-[#0051d1] transition-colors hover:text-[#0047b8]"
+									tabIndex={-1}
+									className="absolute right-4 top-1/2 -translate-y-1/2 text-[#595c5e] transition-colors hover:text-[#0051d1]"
+									onClick={() => setShowPassword((s) => !s)}
+									aria-label={showPassword ? 'Hide password' : 'Show password'}
 								>
-									Forgot your password? Use recovery key
+									{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
 								</button>
 							</div>
+						</div>
 
-							{loginError ? (
-								<div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-600">{loginError}</div>
-							) : null}
+						<div className="flex justify-center px-1">
+							<button
+								type="button"
+								onClick={() => navigate('/Onboarding')}
+								className="text-xs font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]"
+							>
+								Forgot your password? Use recovery key
+							</button>
+						</div>
 
+						{loginError ? (
+							<div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-600">
+								{loginError}
+							</div>
+						) : null}
+
+						<div className="pt-4">
 							<button
 								type="submit"
 								disabled={isLoading}
-								className={`group flex w-full items-center justify-center gap-3 rounded-full py-5 text-lg font-bold text-white shadow-xl shadow-[#0051d1]/20 transition-all active:scale-[0.98] disabled:opacity-60 ${
-									isLoading
-										? 'bg-[#1562f0]'
-										: `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}`
-								}`}
+								className={`${headlineFont} flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 text-lg font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.15)] transition-all duration-200 hover:scale-[1.02] hover:opacity-95 active:scale-95 disabled:opacity-60 ${bizBrandFocusRingClass}`}
 							>
 								{isLoading ? (
 									<>
 										<span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-										Unlocking…
+										Signing in…
 									</>
 								) : (
 									<>
-										Unlock &amp; Enter Merchant Portal
-										<ArrowRight className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-1" aria-hidden />
+										Continue to Verra Business OS
+										<ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
 									</>
 								)}
 							</button>
-						</form>
-
-						<div className="border-t border-[#abadaf]/20 pt-6">
-							<div className="flex items-center justify-center gap-6">
-								<button
-									type="button"
-									tabIndex={-1}
-									title="Coming soon"
-									className="flex h-12 w-12 cursor-not-allowed items-center justify-center rounded-full bg-[#eef1f3] text-[#2c2f31] opacity-50"
-									onClick={(e) => e.preventDefault()}
-								>
-									<Fingerprint className="h-6 w-6" strokeWidth={1.75} aria-hidden />
-								</button>
-								<button
-									type="button"
-									tabIndex={-1}
-									title="Coming soon"
-									className="flex h-12 w-12 cursor-not-allowed items-center justify-center rounded-full bg-[#eef1f3] text-[#2c2f31] opacity-50"
-									onClick={(e) => e.preventDefault()}
-								>
-									<ScanFace className="h-6 w-6" strokeWidth={1.75} aria-hidden />
-								</button>
-							</div>
 						</div>
+					</form>
+				</section>
+
+				<footer className="mt-12 text-center">
+					<button
+						type="button"
+						onClick={() => navigate('/Onboarding')}
+						className={`${headlineFont} mx-auto flex items-center justify-center gap-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]`}
+					>
+						<HelpCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+						Need help accessing your workspace?
+					</button>
+					<div className="mt-6 flex flex-col items-center gap-2 border-t border-[#abadaf]/20 pt-6">
+						<p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#747779]">
+							Securely hosted by Beamio Infrastructure © 2026
+						</p>
+						<span className="text-[10px] font-medium text-[#abadaf]">v{APP_VERSION}</span>
 					</div>
-
-					<footer className="mt-auto w-full max-w-sm pt-12 text-center">
-						<p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#747779]">Securely hosted by Verra Infrastructure © 2026</p>
-						<div className="mt-4 flex flex-col items-center gap-2">
-							<button
-								type="button"
-								onClick={() => setShowNewBiz(true)}
-								className="flex items-center gap-2 text-[11px] font-bold text-[#595c5e] transition-colors hover:text-[#0051d1]"
-							>
-								<ShieldCheck size={14} className="text-[#0051d1]" aria-hidden />
-								<span>Preview new Merchant OS</span>
-							</button>
-							<span className="text-[10px] font-medium text-[#abadaf]">v{APP_VERSION}</span>
-						</div>
-					</footer>
-				</div>
+				</footer>
 			</main>
+
+			<div className="pointer-events-none fixed bottom-0 right-0 -z-10 p-12 opacity-10" aria-hidden>
+				<Network className="rotate-12 text-[#0051d1]" strokeWidth={1} size={240} />
+			</div>
 		</div>
 	)
 }

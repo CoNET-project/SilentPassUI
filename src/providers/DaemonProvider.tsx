@@ -2,6 +2,31 @@ import React, { createContext, useContext, ReactNode, useState, useEffect, useRe
 import packageData from '../../package.json'
 import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanButton"
 import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS } from "@/services/beamio"
+import { ethers } from 'ethers'
+import {
+	getCardsOfOwnerWithDetailsForProfile,
+	getMyAssets,
+	getCardMetadataFromApi,
+	getCardMetadataFromUri,
+	getAAAccount,
+	type UserCardInfo,
+	type CardMetadataFromUri,
+} from '@/services/BeamioCard'
+import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import { storeSystemData } from '@/services/beamio'
+import { baseEndpoint } from '@/utils/constants'
+import { fetchMergedRecentActivityFromIndexer, type TxView } from '@/pages/History/recentActivityIndexerMerge'
+
+/** CoNET mainnet RPC（与 App CoreContract 一致） */
+const CONET_MAINNET_RPC_HTTP = 'https://mainnet-rpc.conet.network'
+
+/** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
+const MY_BRANDS_FEED_INTERVAL_MS = 6_000
+
+export type MyBrandCardFeedDetailsMap = Record<
+	string,
+	{ meta: CardMetadataFromUri | null; assets: Awaited<ReturnType<typeof getMyAssets>> | null }
+>
 
 
 type DaemonContext = {
@@ -44,6 +69,16 @@ type DaemonContext = {
 	setCurrencyData: (val: currencyData) => void
 	/** 手动触发 oracle 刷新（全局 feeder 每 5 分钟自动刷新，页面一般无需调用） */
 	refreshOracle: () => void
+	/** 全局 My Brands 喂料：CoNET `block` 更新 currentBlock；每 6s setTimeout 链串行拉取用户 BeamioUserCard */
+	myBrandCards: UserCardInfo[]
+	myBrandCardDetails: MyBrandCardFeedDetailsMap
+	myBrandsFeedLoading: boolean
+	myBrandsFeedLastConetBlock: number
+	/** 全局喂料写入：EOA + 独立 AA（若存在）合并拉取、按时间倒序；overrideAddress 调试场景外均由面板读此数据 */
+	recentActivityNoAaItems: TxView[]
+	recentActivityNoAaLoading: boolean
+	recentActivityNoAaError: string | null
+	refreshRecentActivityNoAa: () => Promise<void>
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -232,6 +267,14 @@ const defaultContextValue: DaemonContext = {
 		SGD: 0
 	},
 	refreshOracle: () => {},
+	myBrandCards: [],
+	myBrandCardDetails: {},
+	myBrandsFeedLoading: false,
+	myBrandsFeedLastConetBlock: 0,
+	recentActivityNoAaItems: [],
+	recentActivityNoAaLoading: false,
+	recentActivityNoAaError: null,
+	refreshRecentActivityNoAa: async () => {},
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -420,6 +463,83 @@ export function DaemonProvider({ children }: DaemonProps) {
     })
   }, [])
   const profiles = profilesState
+  const profilesRef = useRef(profiles)
+  useEffect(() => {
+    profilesRef.current = profiles
+  }, [profiles])
+  const myAddressRef = useRef('')
+
+  const [currentBlock, setCurrentBlock] = useState(0)
+
+  const conetProviderRef = useRef<ethers.JsonRpcProvider | null>(null)
+  if (!conetProviderRef.current) {
+    conetProviderRef.current = new ethers.JsonRpcProvider(CONET_MAINNET_RPC_HTTP)
+  }
+  const conetBlockRef = useRef(0)
+
+  const [myBrandCards, setMyBrandCards] = useState<UserCardInfo[]>([])
+  const [myBrandCardDetails, setMyBrandCardDetails] = useState<MyBrandCardFeedDetailsMap>({})
+  const [myBrandsFeedLoading, setMyBrandsFeedLoading] = useState(false)
+  const [myBrandsFeedLastConetBlock, setMyBrandsFeedLastConetBlock] = useState(0)
+  const myBrandsFeedInFlight = useRef(false)
+
+  const runMyBrandsFeedTick = useCallback(async () => {
+    if (myBrandsFeedInFlight.current) return
+    const profile = profilesRef.current?.[0]
+    if (!profile || (!profile.keyID && !profile.privateKeyArmor && !profile.aaAccount)) {
+      setMyBrandCards([])
+      setMyBrandCardDetails({})
+      setMyBrandsFeedLoading(false)
+      return
+    }
+    myBrandsFeedInFlight.current = true
+    setMyBrandsFeedLoading(true)
+    try {
+      const { cards } = await getCardsOfOwnerWithDetailsForProfile(profile)
+      setMyBrandCards(cards)
+      setMyBrandsFeedLastConetBlock(conetBlockRef.current)
+      if (cards.length === 0) {
+        setMyBrandCardDetails({})
+        return
+      }
+      const next: MyBrandCardFeedDetailsMap = {}
+      await Promise.all(
+        cards.map(async (uc) => {
+          const key = uc.cardAddress.toLowerCase()
+          try {
+            const [assets, meta] = await Promise.all([
+              getMyAssets(profile, uc.cardAddress),
+              getCardMetadataFromApi(uc.cardAddress).then((m) => m ?? getCardMetadataFromUri(uc.cardAddress)),
+            ])
+            next[key] = { meta: meta ?? null, assets: assets ?? null }
+          } catch {
+            next[key] = { meta: null, assets: null }
+          }
+        })
+      )
+      setMyBrandCardDetails(next)
+    } catch {
+      setMyBrandCards(profile.issuedCards ?? [])
+      setMyBrandCardDetails({})
+    } finally {
+      setMyBrandsFeedLoading(false)
+      myBrandsFeedInFlight.current = false
+    }
+  }, [])
+
+  /** CoNET mainnet 新块：`currentBlock` + 喂料机块高元数据（时间机） */
+  useEffect(() => {
+    const p = conetProviderRef.current!
+    const onBlock = (n: number) => {
+      conetBlockRef.current = n
+      setCurrentBlock(n)
+    }
+    p.on('block', onBlock)
+    return () => {
+      p.off('block', onBlock)
+    }
+  }, [])
+
   const [isMiningUp, setIsMiningUp] = useState<boolean>(false);
   const [getAllNodes, setaAllNodes] = useState<nodes_info[]>([]);
   const [serverIpAddress, setServerIpAddress] = useState<string>(defaultContextValue.serverIpAddress);
@@ -436,6 +556,9 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [paymentKind, setPaymentKind] = useState(0)
   const [successNFTID, setSuccessNFTID] = useState('0')
   const [myAddress, setMyAddress] = useState('')
+  useEffect(() => {
+    myAddressRef.current = myAddress
+  }, [myAddress])
   const [selectedPlan, setSelectedPlan] = useState< '12' | '1' | string >('12');
   const [airdropProcess, setAirdropProcess] = useState(false)
   const [airdropSuccess, setAirdropSuccess] = useState(false)
@@ -462,7 +585,6 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [ruleVisible, setRuleVisible] = useState<boolean>(false);
   const [hasNewVersion, setHasNewVersion] = useState<boolean|string>(false);
   const [privacyMode, setPrivacyMode] = useState<boolean>(false);
-  const [currentBlock,setCurrentBlock] = useState(0)
   const [beamio, setBeamio] = useState<beamio|null>(null)
   const [usdcbalance, setUsdcbalance] = useState(0)
 	const [showFooter, setShowFooter] = useState(true)
@@ -487,11 +609,141 @@ export function DaemonProvider({ children }: DaemonProps) {
 		TWD: 0
 	})
 
-  useEffect(() => {
-    {
-      const pac = `http://${serverIpAddress}:${serverPort}/pac`
-      setServerPac(pac)
+  const noAaRecentActivityInFlight = useRef(false)
+  const [recentActivityNoAaItems, setRecentActivityNoAaItems] = useState<TxView[]>([])
+  const [recentActivityNoAaLoading, setRecentActivityNoAaLoading] = useState(false)
+  const [recentActivityNoAaError, setRecentActivityNoAaError] = useState<string | null>(null)
+
+  /** AA 检测 + indexer Recent Activity：同时拉取 EOA 与独立 AA（若有），合并后按时间倒序；与 My Brands 同轨 6s setTimeout 链 */
+  const runNoAaWalletFeedTick = useCallback(async () => {
+    if (noAaRecentActivityInFlight.current) return
+    const profile = profilesRef.current?.[0]
+    if (!profile?.keyID?.trim()) {
+      setRecentActivityNoAaItems([])
+      setRecentActivityNoAaLoading(false)
+      setRecentActivityNoAaError(null)
+      return
     }
+    const eoa = profile.keyID.trim()
+    if (!ethers.isAddress(eoa)) {
+      setRecentActivityNoAaItems([])
+      setRecentActivityNoAaLoading(false)
+      setRecentActivityNoAaError(null)
+      return
+    }
+
+    noAaRecentActivityInFlight.current = true
+    setRecentActivityNoAaLoading(true)
+    try {
+      let effectiveAa: string | undefined =
+        profile.aaAccount?.trim() && ethers.isAddress(profile.aaAccount.trim())
+          ? ethers.getAddress(profile.aaAccount.trim())
+          : undefined
+
+      try {
+        const chainAa = await getAAAccount(profile)
+        const nextAa = chainAa ?? undefined
+        const currentAaNorm = profile.aaAccount?.toLowerCase() ?? ''
+        const nextAaNorm = nextAa?.toLowerCase() ?? ''
+        if (currentAaNorm !== nextAaNorm) {
+          const cur = profilesRef.current
+          const temp = CoNET_Data
+          if (cur && temp) {
+            const nextProfiles = cur.map((p: profile, i: number) =>
+              i === 0 ? { ...p, aaAccount: nextAa } : p
+            )
+            setProfiles(nextProfiles)
+            if (temp.profiles) temp.profiles = nextProfiles
+            setCoNET_Data(temp)
+            await storeSystemData()
+          }
+        }
+        effectiveAa =
+          chainAa && ethers.isAddress(chainAa) ? ethers.getAddress(chainAa) : undefined
+      } catch {
+        if (effectiveAa) {
+          try {
+            const code = await baseEndpoint.getCode(effectiveAa)
+            const isEOA =
+              profile.keyID && effectiveAa.toLowerCase() === profile.keyID.toLowerCase()
+            if (!code || code === '0x' || code.length <= 2 || isEOA) {
+              const cur = profilesRef.current
+              const temp = CoNET_Data
+              if (cur && temp) {
+                const nextProfiles = cur.map((p: profile, i: number) =>
+                  i === 0 ? { ...p, aaAccount: undefined } : p
+                )
+                setProfiles(nextProfiles)
+                if (temp.profiles) temp.profiles = nextProfiles
+                setCoNET_Data(temp)
+                await storeSystemData()
+              }
+              effectiveAa = undefined
+            }
+          } catch {
+            /* 保持 effectiveAa */
+          }
+        }
+      }
+
+      const eoaAddr = ethers.getAddress(eoa)
+      const accounts: string[] = [eoaAddr]
+      if (effectiveAa && effectiveAa.toLowerCase() !== eoaAddr.toLowerCase()) {
+        accounts.push(effectiveAa)
+      }
+      const ma = myAddressRef.current?.trim()
+      if (ma && ethers.isAddress(ma)) {
+        const maAddr = ethers.getAddress(ma)
+        if (!accounts.some((a) => a.toLowerCase() === maAddr.toLowerCase())) {
+          accounts.push(maAddr)
+        }
+      }
+      const { items, error } = await fetchMergedRecentActivityFromIndexer(accounts)
+      setRecentActivityNoAaItems(items)
+      setRecentActivityNoAaError(error)
+    } finally {
+      setRecentActivityNoAaLoading(false)
+      noAaRecentActivityInFlight.current = false
+    }
+  }, [setProfiles])
+
+  const runGlobalWalletFeedTick = useCallback(async () => {
+    await runMyBrandsFeedTick()
+    await runNoAaWalletFeedTick()
+  }, [runMyBrandsFeedTick, runNoAaWalletFeedTick])
+
+  const refreshRecentActivityNoAa = useCallback(() => runNoAaWalletFeedTick(), [runNoAaWalletFeedTick])
+
+  /** My Brands + Recent Activity（EOA+AA 合并）：setTimeout 串行链，每轮 await 结束后再排 6s */
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runChain = () => {
+      if (cancelled) return
+      void (async () => {
+        await runGlobalWalletFeedTick()
+        if (!cancelled) {
+          timer = window.setTimeout(runChain, MY_BRANDS_FEED_INTERVAL_MS) as unknown as number
+        }
+      })()
+    }
+    runChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [runGlobalWalletFeedTick])
+
+  const walletFeedProfileKeyId = profiles?.[0]?.keyID
+  const walletFeedProfileAa = profiles?.[0]?.aaAccount
+  const walletFeedProfilePk = profiles?.[0]?.privateKeyArmor
+  useEffect(() => {
+    void runGlobalWalletFeedTick()
+  }, [walletFeedProfileKeyId, walletFeedProfileAa, walletFeedProfilePk, myAddress, runGlobalWalletFeedTick])
+
+  useEffect(() => {
+    const pac = `http://${serverIpAddress}:${serverPort}/pac`
+    setServerPac(pac)
   }, [serverIpAddress, serverPort])
 
   useEffect(()=>{
@@ -544,9 +796,25 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [fetchOracle])
 
   useEffect(() => {
-    fetchOracle()
-    const id = setInterval(fetchOracle, ORACLE_REFRESH_MS)
-    return () => clearInterval(id)
+    let cancelled = false
+    let timer: number | undefined
+    const runOracleChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          await fetchOracle()
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(runOracleChain, ORACLE_REFRESH_MS) as unknown as number
+          }
+        }
+      })()
+    }
+    runOracleChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
   }, [fetchOracle])
 
   return (
@@ -559,6 +827,8 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance, currencyData, setCurrencyData, refreshOracle,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo, charts, setCharts,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
+				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
+				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

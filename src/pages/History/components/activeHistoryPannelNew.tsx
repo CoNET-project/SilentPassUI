@@ -33,6 +33,13 @@ import {
 	Plus,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import {
+	fetchMergedRecentActivityFromIndexer,
+	type TxView,
+	type RawTxRecord,
+	type RouteItemRecord,
+	type TxDisplayType,
+} from '@/pages/History/recentActivityIndexerMerge'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { searchUsername } from '@/services/beamio'
 import { conetDepinProvider, beamioApi, baseEndpoint } from '@/utils/constants'
@@ -53,92 +60,12 @@ const INDEXER_ABI = [
 	'function getTransactionFullByTxId(bytes32 txId) view returns ((bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta))',
 ] as const
 
-/** txCategory 预设 hash（与 readme 一致） */
-const TX_TRANSFER_OUT = ethers.keccak256(ethers.toUtf8Bytes('transfer_out:confirmed'))
-const TX_TRANSFER_IN = ethers.keccak256(ethers.toUtf8Bytes('transfer_in:confirmed'))
-const TX_MERCHANT_PAY = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:confirmed'))
-const TX_REQUEST_FULFILLED = ethers.keccak256(ethers.toUtf8Bytes('request_fulfilled:confirmed'))
-const TX_REQUEST_CREATE = ethers.keccak256(ethers.toUtf8Bytes('request_create:confirmed'))
-const TX_REQUEST_EXPIRED = ethers.keccak256(ethers.toUtf8Bytes('request_expired:confirmed'))
-const TX_TOPUP = ethers.keccak256(ethers.toUtf8Bytes('topup:confirmed'))
-const TX_INTERNAL = ethers.keccak256(ethers.toUtf8Bytes('internal_transfer:confirmed'))
-const TX_VOUCHER_BURN = ethers.keccak256(ethers.toUtf8Bytes('voucher_burn:confirmed'))
-const TX_REQUEST_CANCEL = ethers.keccak256(ethers.toUtf8Bytes('request_cancel:confirmed'))
-/** 新卡发行与 Top Up 共用 */
-const TX_CARDMINT = ethers.keccak256(ethers.toUtf8Bytes('cardmint:confirmed'))
-/** Top Up 首次发行新卡 */
+/** Top Up / 卡元数据展示用 txCategory（与 indexer 一致） */
 const TX_ISSUE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('iuuseNewCard'))
-/** Top Up 升级新卡 */
 const TX_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('upgradeNewCard'))
-/** 普通 Top Up */
 const TX_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('topupCard'))
 const NFT_START_ID = 100n
 const ISSUED_NFT_START_ID = 100_000_000_000n
-/** B-Unit Claim（Network Welcome Grant）：Recent Activity 中排除 */
-const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
-/** B-Unit USDC 购买（Fuel Yield 1:100）：Recent Activity 中仅显示此类 B-Unit 记账 */
-const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes('buintUSDC'))
-/** requestAccounting B-Unit 收费（Service Fee 0.8%）：Recent Activity 中排除 */
-const TX_REQUEST_ACCOUNTING = ethers.keccak256(ethers.toUtf8Bytes('requestAccounting'))
-/** B-Unit 焚烧默认 kind（未登记 kind 时）：Recent Activity 中排除 */
-const TX_BUINT_BURN = ethers.keccak256(ethers.toUtf8Bytes('buintBurn'))
-/** B-Unit 焚烧 kind 名称：Recent Activity 中排除（只显示 buintUSDC） */
-const TX_BUINT_BURN_KINDS = ['sendUSDC', 'cardTopup', 'issueCard', 'x402Send'].map((n) => ethers.keccak256(ethers.toUtf8Bytes(n)))
-/** B-Unit 相关 txCategory 排除集合（Recent Activity 中只显示 TX_BUINT_USDC） */
-const TX_BUINT_EXCLUDE = new Set([
-	TX_BUINT_CLAIM,
-	TX_REQUEST_ACCOUNTING,
-	TX_BUINT_BURN,
-	...TX_BUINT_BURN_KINDS,
-].map((h) => h.toLowerCase()))
-
-type TxDisplayType =
-	| 'merchant_pay'
-	| 'transfer_in'
-	| 'transfer_out'
-	| 'request_fulfilled'
-	| 'request_create'
-	| 'request_expired'
-	| 'topup'
-	| 'cardmint'
-	| 'internal_transfer'
-	| 'voucher_burn'
-	| 'request_cancel'
-	| 'fuel_yield'
-	| 'unknown'
-
-function txCategoryToType(txCategory: string): TxDisplayType {
-	const cat = txCategory.toLowerCase()
-	if (cat === TX_TRANSFER_OUT.toLowerCase()) return 'transfer_out'
-	if (cat === TX_TRANSFER_IN.toLowerCase()) return 'transfer_in'
-	if (cat === TX_MERCHANT_PAY.toLowerCase()) return 'merchant_pay'
-	if (cat === TX_REQUEST_FULFILLED.toLowerCase()) return 'request_fulfilled'
-	if (cat === TX_REQUEST_CREATE.toLowerCase()) return 'request_create'
-	if (cat === TX_REQUEST_EXPIRED.toLowerCase()) return 'request_expired'
-	if (cat === TX_TOPUP.toLowerCase()) return 'topup'
-	if (cat === TX_CARDMINT.toLowerCase()) return 'cardmint'
-	if (cat === TX_INTERNAL.toLowerCase()) return 'internal_transfer'
-	if (cat === TX_VOUCHER_BURN.toLowerCase()) return 'voucher_burn'
-	if (cat === TX_REQUEST_CANCEL.toLowerCase()) return 'request_cancel'
-	if (cat === TX_BUINT_USDC.toLowerCase()) return 'fuel_yield'
-	return 'unknown'
-}
-
-/** BeamioCurrency.CurrencyType (uint8) -> 币种代码，来自 TransactionMeta.currencyFiat */
-const CURRENCY_FIAT_MAP = ['CAD', 'USD', 'JPY', 'CNY', 'USDC', 'HKD', 'EUR', 'SGD', 'TWD'] as const
-const currencyFiatToCode = (n: number | undefined): string => CURRENCY_FIAT_MAP[n as number] ?? 'USD'
-
-function formatTime(ts: bigint): string {
-	const ms = Number(ts) < 10_000_000_000 ? Number(ts) * 1000 : Number(ts)
-	const d = new Date(ms)
-	if (!isFinite(d.getTime())) return ''
-	return d.toLocaleString(undefined, {
-		month: 'short',
-		day: '2-digit',
-		hour: 'numeric',
-		minute: '2-digit',
-	})
-}
 
 const normalizeHexColor = (raw: unknown): string | null => {
 	if (typeof raw !== 'string') return null
@@ -168,31 +95,6 @@ const UsdcBaseCompositeIcon = ({ className = '' }: { className?: string }) => (
 	</span>
 )
 
-interface TxView {
-	id: string
-	type: TxDisplayType
-	title: string
-	handle: string
-	/** displayJson 中的 forText（付款备注等） */
-	forText?: string
-	timestamp: string
-	timestampMs: number
-	amountUSDC: number
-	/** 法币金额（来自 finalRequestAmountFiat6/1e6），用于按 meta.currencyFiat 展示 */
-	amountFiat: number
-	/** TransactionMeta.currencyFiat 币种代码（CAD/USD/JPY 等） */
-	currencyCode: string
-	isInbound: boolean
-	isAA: boolean
-	txHash: string
-	/** 对方地址：Sent 时为 payee，Received 时为 payer */
-	counterpartyAddress?: string
-	/** 合约原始 Transaction 数据（用于 Smart Receipt 展示） */
-	rawTransaction?: RawTxRecord
-	/** 附加 Gift Card（来自 displayJson.card） */
-	card?: { title?: string; detail?: string; image?: string }
-}
-
 /** 按币种格式化带符号金额，使用 meta.currencyFiat 对应的小数位 */
 function formatCurrencySigned(amount: number, currencyCode: string) {
 	const amt = Math.abs(amount)
@@ -201,69 +103,6 @@ function formatCurrencySigned(amount: number, currencyCode: string) {
 	if (amount > 0) return `+ ${formatted} ${currencyCode}`
 	if (amount < 0) return `- ${formatted} ${currencyCode}`
 	return `0.00 ${currencyCode}`
-}
-
-function parseDisplayJson(displayJson: string): { title: string; handle: string; forText?: string; card?: { title?: string; detail?: string; image?: string } } {
-	try {
-		const j = JSON.parse(displayJson || '{}')
-		const forText = typeof j.forText === 'string' ? j.forText.trim() : undefined
-		return {
-			title: j.title ?? 'Transaction',
-			handle: j.handle ?? j.forText ?? j.note ?? '',
-			forText: forText || undefined,
-			card: j.card,
-		}
-	} catch {
-		return { title: 'Transaction', handle: displayJson?.slice(0, 40) ?? '' }
-	}
-}
-
-/** RouteItem (readme RouteSource: 0=MainUSDC, 1=UserCardPoint, 2=UserCardCoupon, 3=UserCardCashVoucher, 4=TipAppend) */
-type RouteItemRecord = {
-	asset?: string
-	amountE6?: string
-	assetType?: number
-	source?: number
-	tokenId?: string
-	itemCurrencyType?: number
-	offsetInRequestCurrencyE6?: string
-}
-
-/** 合约 Transaction 完整结构（与 readme 一致，含 route） */
-interface RawTxRecord {
-	id: string | ethers.BytesLike
-	originalPaymentHash?: string | ethers.BytesLike
-	chainId?: bigint
-	txCategory?: string
-	displayJson?: string
-	timestamp?: bigint
-	payer?: string
-	payee?: string
-	finalRequestAmountFiat6?: bigint
-	finalRequestAmountUSDC6?: bigint
-	isAAAccount?: boolean
-	route?: RouteItemRecord[]
-	fees?: {
-		gasChainType?: number
-		gasWei?: bigint
-		gasUSDC6?: bigint
-		serviceUSDC6?: bigint
-		bServiceUSDC6?: bigint
-		bServiceUnits6?: bigint
-		feePayer?: string
-	}
-	meta?: {
-		requestAmountFiat6?: bigint
-		requestAmountUSDC6?: bigint
-		currencyFiat?: number
-		discountAmountFiat6?: bigint
-		discountRateBps?: number
-		taxAmountFiat6?: bigint
-		taxRateBps?: number
-		afterNotePayer?: string
-		afterNotePayee?: string
-	}
-	exists?: boolean
 }
 
 const FEE_INFO_KEYS = ['gasChainType', 'gasWei', 'gasUSDC6', 'serviceUSDC6', 'bServiceUSDC6', 'bServiceUnits6', 'feePayer'] as const
@@ -507,7 +346,17 @@ const ActiveHistoryPannelNew = ({
 	sectionTitleClassName,
 	viewAllClassName,
 }: ActiveHistoryPannelNewProps) => {
-	const { profiles, myAddress, setShowFooter, setChatHomeItem, beamioUsers } = useDaemonContext()
+	const {
+		profiles,
+		myAddress,
+		setShowFooter,
+		setChatHomeItem,
+		beamioUsers,
+		recentActivityNoAaItems,
+		recentActivityNoAaLoading,
+		recentActivityNoAaError,
+		refreshRecentActivityNoAa,
+	} = useDaemonContext()
 	const navigate = useNavigate()
 	const [items, setItems] = useState<TxView[]>([])
 	const [loading, setLoading] = useState(true)
@@ -528,6 +377,9 @@ const ActiveHistoryPannelNew = ({
 
 	const eoa = profiles?.[0]?.keyID?.trim()
 	const aa = profiles?.[0]?.aaAccount?.trim()
+
+	/** 仅调试/指定地址时用本地拉取；正常 EOA+AA 由 Daemon 合并喂料并按时间倒序 */
+	const useLocalIndexer = Boolean(overrideAddress && ethers.isAddress(overrideAddress))
 
 	// Detail Sheet 与 list 使用同一套 title 逻辑（Sent to / Received from；内部转账用固定文案）
 	const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
@@ -801,7 +653,6 @@ const ActiveHistoryPannelNew = ({
 			if (eoa && ethers.isAddress(eoa)) accounts.push(ethers.getAddress(eoa))
 			if (aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa?.toLowerCase())
 				accounts.push(ethers.getAddress(aa))
-			// profiles 无有效地址时，回退到 myAddress
 			if (accounts.length === 0 && myAddress && ethers.isAddress(myAddress))
 				accounts.push(ethers.getAddress(myAddress))
 		}
@@ -814,149 +665,42 @@ const ActiveHistoryPannelNew = ({
 
 		setLoading(true)
 		setError(null)
-		try {
-			const indexer = new ethers.Contract(BEAMIO_INDEXER, INDEXER_ABI, conetDepinProvider)
-			const TX_FILTER = ethers.ZeroHash
-
-			const INDEXER_TIMEOUT_MS = 15_000
-			const withTimeout = <T,>(p: Promise<T>): Promise<T> =>
-				Promise.race([
-					p,
-					new Promise<T>((_, reject) =>
-						setTimeout(() => reject(new Error('Indexer RPC timeout')), INDEXER_TIMEOUT_MS)
-					),
-				])
-
-			const results = await withTimeout(
-				Promise.all(
-					accounts.map((account) =>
-						indexer.getAccountTransactionsByMonthOffsetPaged(
-							account,
-							0, // periodOffset: 0 = 本月
-							0, // pageOffset
-							30, // pageLimit：受益人交易多时，20 条可能不足，导致最新收款被截断
-							TX_FILTER
-						)
-					)
-				)
-			)
-
-			const seen = new Set<string>()
-			const merged: TxView[] = []
-
-			for (const res of results) {
-				const [, , , page] = res as [bigint, bigint, bigint, RawTxRecord[]]
-				const list = Array.isArray(page) ? page : []
-				for (const tx of list) {
-					if (!tx?.exists) continue
-					const cat = String(tx.txCategory ?? '').toLowerCase()
-					if (TX_BUINT_EXCLUDE.has(cat)) continue
-					const id = typeof tx.id === 'string' ? tx.id : tx.id != null ? ethers.hexlify(tx.id as ethers.BytesLike) : ethers.ZeroHash
-					if (seen.has(id)) continue
-					seen.add(id)
-
-					const type = txCategoryToType(tx.txCategory ?? '')
-					const amPayee = accounts.some((a) => a.toLowerCase() === (tx.payee ?? '').toLowerCase())
-					let { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
-					if (String(tx.txCategory ?? '') === TX_BUINT_USDC && amPayee) {
-						title = 'Fuel Yield (1:100)'
-						handle = 'USDC Top-up'
-					}
-					const txCategoryLower = String(tx.txCategory ?? '').toLowerCase()
-					const isCardTopupLedgerTx =
-						txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase() ||
-						txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase() ||
-						txCategoryLower === TX_TOPUP_CARD.toLowerCase()
-					if (
-						isCardTopupLedgerTx
-					) {
-						let cardName = ''
-						try {
-							const j = JSON.parse(tx.displayJson ?? '{}')
-							cardName = String(j.cardName ?? '').trim()
-						} catch {}
-						const baseName = (cardName || title || 'Membership').replace(/\s*card\s*$/i, '').trim() || 'Membership'
-						if (txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase()) {
-							title = `Buy ${baseName} Card`
-						} else if (txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase()) {
-							title = `Upgrade to ${baseName} Card`
-						} else {
-							title = `Reload ${baseName} Card`
-						}
-					}
-					const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
-					const metaRaw = (tx as RawTxRecord).meta
-					// 常规交易：finalRequestAmountFiat6 = requestAmountFiat6 - discountAmountFiat6 + taxAmountFiat6（readme 7.2）
-					// TopUp 分类（iuuse/upgrade/topupCard）：meta.requestAmountFiat6 被用于 currentTopupPoint，金额应取 finalRequestAmountFiat6
-					const req = metaRaw && typeof metaRaw === 'object'
-						? (Array.isArray(metaRaw)
-							? { requestAmountFiat6: metaRaw[0] ?? 0n, discountAmountFiat6: metaRaw[3] ?? 0n, taxAmountFiat6: metaRaw[5] ?? 0n }
-							: { requestAmountFiat6: (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n, discountAmountFiat6: (metaRaw as RawTxRecord['meta'])?.discountAmountFiat6 ?? 0n, taxAmountFiat6: (metaRaw as RawTxRecord['meta'])?.taxAmountFiat6 ?? 0n })
-						: null
-					const amountFiat6 = isCardTopupLedgerTx
-						? (tx.finalRequestAmountFiat6 ?? req?.requestAmountFiat6 ?? 0n)
-						: (req
-							? req.requestAmountFiat6 - req.discountAmountFiat6 + req.taxAmountFiat6
-							: (tx.finalRequestAmountFiat6 ?? (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n))
-					const amountFiat = Number(amountFiat6) / 1e6
-					const currencyFiatNum = (metaRaw && typeof metaRaw === 'object' && 'currencyFiat' in metaRaw)
-						? (metaRaw as { currencyFiat?: number }).currencyFiat
-						: (Array.isArray(metaRaw) ? metaRaw[2] : (metaRaw as Record<number, unknown>)?.[2])
-					const currencyCode = currencyFiatToCode(Number(currencyFiatNum ?? 1))
-					const isInbound = amPayee
-					const tsRaw = tx.timestamp ?? 0n
-					const tsMs = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) * 1000 : Number(tsRaw)
-
-					const counterparty = amPayee ? (tx.payer ?? '') : (tx.payee ?? '')
-					const payerAddr = (tx.payer ?? '').toLowerCase()
-					const payeeAddr = (tx.payee ?? '').toLowerCase()
-					const isEoaAaInternal =
-						accounts.length >= 2 &&
-						accounts.some((a) => a.toLowerCase() === payerAddr) &&
-						accounts.some((a) => a.toLowerCase() === payeeAddr) &&
-						payerAddr !== payeeAddr
-					const resolvedType = isEoaAaInternal ? 'internal_transfer' : type
-					merged.push({
-						id,
-						type: resolvedType,
-						title: title ?? 'Transaction',
-						handle: handle ?? '',
-						forText: forText || undefined,
-						timestamp: formatTime(tsRaw),
-						timestampMs: tsMs,
-						amountUSDC,
-						amountFiat,
-						currencyCode,
-						isInbound,
-						isAA: !!tx.isAAAccount,
-						txHash: id.startsWith('0x') && id.length === 66 ? id : '',
-						counterpartyAddress: counterparty || undefined,
-						rawTransaction: tx as RawTxRecord,
-						card: card?.image ? card : undefined,
-					})
-				}
-			}
-
-			merged.sort((a, b) => b.timestampMs - a.timestampMs)
-			setItems(merged.slice(0, 30))
-		} catch (e: unknown) {
-			const msg = e instanceof Error ? e.message : String(e)
-			setError(msg)
-			setItems([])
-		} finally {
-			setLoading(false)
-		}
+		const { items: nextItems, error: nextErr } = await fetchMergedRecentActivityFromIndexer(accounts)
+		setItems(nextItems)
+		setError(nextErr)
+		setLoading(false)
 	}, [eoa, aa, overrideAddress, myAddress])
 
 	const handleRefresh = useCallback(() => {
 		if (refreshLockRef.current) return
 		refreshLockRef.current = true
-		load().finally(() => { refreshLockRef.current = false })
-	}, [load])
+		const done = () => {
+			refreshLockRef.current = false
+		}
+		if (useLocalIndexer) {
+			load().finally(done)
+		} else {
+			void refreshRecentActivityNoAa().finally(done)
+		}
+	}, [useLocalIndexer, load, refreshRecentActivityNoAa])
 
 	useEffect(() => {
-		load()
-	}, [load])
+		if (!useLocalIndexer) {
+			setItems(recentActivityNoAaItems)
+			setLoading(recentActivityNoAaLoading)
+			setError(recentActivityNoAaError)
+		}
+	}, [
+		useLocalIndexer,
+		recentActivityNoAaItems,
+		recentActivityNoAaLoading,
+		recentActivityNoAaError,
+	])
+
+	useEffect(() => {
+		if (!useLocalIndexer) return
+		void load()
+	}, [useLocalIndexer, load])
 
 	// Detail Sheet 打开时隐藏 global footer，关闭时恢复
 	useEffect(() => {

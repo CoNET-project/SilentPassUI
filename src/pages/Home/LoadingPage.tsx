@@ -473,7 +473,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
           />
 
           <div className="mt-2 text-[40px] md:text-[44px] font-extrabold tracking-[-0.02em] text-[#0F172A]">
-            CashTrees
+            CVERRA
           </div>
 
           <p className="mt-1.5 max-w-[280px] text-[15px] md:text-base font-normal leading-snug text-slate-500">

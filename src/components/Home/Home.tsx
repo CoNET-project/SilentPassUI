@@ -17,7 +17,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Nfc, SlidersHorizontal, CheckCircle2, Trash2, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift, Scan, UserCircle, MessageCircle, Layers, Search }
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Nfc, SlidersHorizontal, CheckCircle2, Trash2, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift, UserCircle, MessageCircle, Layers, Search }
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -39,7 +39,6 @@ import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {
-	getAAAccount,
 	getMyAssets,
 	getMyAssetsAggregated,
 	getBUnitBalanceOnConet,
@@ -50,12 +49,12 @@ import {
 } from '@/services/BeamioCard'
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
+import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import FuelView from './FuelView'
-import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 
 /** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
@@ -65,6 +64,13 @@ const CASH_TREES_HERO_BG_FADE_MS = 480
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
+
+function resolveCardImageUrl(url: string | undefined): string | undefined {
+	if (!url?.trim()) return undefined
+	const u = url.trim()
+	if (/^ipfs:\/\//i.test(u)) return `https://ipfs.io/ipfs/${u.replace(/^ipfs:\/\//i, '')}`
+	return u
+}
 
 /** beamio 表示 name 的 protocol，与 ChatList displayName 一致。兼容 beamio 与 searchResult 两种类型 */
 const displayName = (item: beamio | searchResult | null | undefined) => {
@@ -78,6 +84,16 @@ const displayName = (item: beamio | searchResult | null | undefined) => {
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+
+/** Open Relay QR：与 signAAtoEOA `deadlineSeconds` 一致，用于进度条比例 */
+const PAY_RELAY_QR_TTL_SECONDS = 300
+
+function formatPayRelayCountdown(secondsLeft: number): string {
+	if (secondsLeft <= 0) return '0:00'
+	const m = Math.floor(secondsLeft / 60)
+	const s = secondsLeft % 60
+	return `${m}:${s.toString().padStart(2, '0')}`
+}
 
 /** Gift To: 下拉与 SearchBarWithResults 一致 */
 function giftSearchFormatUserDate(timestamp?: string | number): string {
@@ -321,7 +337,8 @@ const Home = ({}) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
-		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData
+		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
+		myBrandCards, myBrandCardDetails, myBrandsFeedLoading,
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
@@ -357,6 +374,9 @@ const Home = ({}) => {
 	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
 	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
+	const [payRelaySecondsLeft, setPayRelaySecondsLeft] = useState(0)
+	/** Scan to Pay：按可视高度收缩 QR，面板高度随内容收紧，避免内部滚动条 / 整块上下拖动感 */
+	const [paySheetQrSize, setPaySheetQrSize] = useState(256)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
 	const [showFuelView, setShowFuelView] = useState(false)
 	/** Coinbase：methods 内进入后展示 BeamioAddUSDCFlow */
@@ -479,6 +499,11 @@ const Home = ({}) => {
 		}
 	}, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
 
+	const myBrandCardsSorted = useMemo(
+		() => [...myBrandCards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en')),
+		[myBrandCards]
+	)
+
 	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
 	/** 已登录 EOA、尚未部署 AA 时在首页展示激活引导（与 renderAction Activate Wallet 对齐） */
 	const showActivateWalletPanel = Boolean(profiles?.[0]?.keyID) && !hasAAWallet
@@ -581,36 +606,7 @@ const Home = ({}) => {
 		}
 		const profile: profile = profiles[0]
 		if (!profile) return
-		// 以当前 AA Factory（config 中 0xFD48...）的链上结果为唯一依据，覆盖本地 aaAccount，避免显示旧 Factory 的地址
-		try {
-			const chainAa = await getAAAccount(profile)
-			const nextAa = chainAa ?? undefined
-			const currentAa = profile.aaAccount?.toLowerCase()
-			if (currentAa !== (nextAa?.toLowerCase() ?? '')) {
-				const nextProfiles = profiles.map((p: profile, i: number) => i === 0 ? { ...p, aaAccount: nextAa } : p)
-				setProfiles(nextProfiles)
-				if (temp.profiles) temp.profiles = nextProfiles
-				setCoNET_Data(temp)
-				await storeSystemData()
-			}
-		} catch {
-			// 网络失败时再校验：若本地是 EOA 或无 code 则清除
-			if (profile.aaAccount) {
-				try {
-					const code = await baseEndpoint.getCode(profile.aaAccount)
-					const isEOA = profile.keyID && profile.aaAccount.toLowerCase() === profile.keyID.toLowerCase()
-					if (!code || code === '0x' || code.length <= 2 || isEOA) {
-						const nextProfiles = profiles.map((p: profile, i: number) => i === 0 ? { ...p, aaAccount: undefined } : p)
-						setProfiles(nextProfiles)
-						if (temp.profiles) temp.profiles = nextProfiles
-						setCoNET_Data(temp)
-						await storeSystemData()
-					}
-				} catch {
-					// 忽略
-				}
-			}
-		}
+		// AA 地址检测与落盘由 DaemonProvider 全局喂料 runNoAaWalletFeedTick 负责（与 EOA-only Recent Activity 同轨）
 		reflashProcess()
 		// 拉取 CCSA + beamioUserCard 聚合资产（延迟执行，避免首屏阻塞）
 		setTimeout(() => {
@@ -814,6 +810,13 @@ const Home = ({}) => {
 		return ''
 	}, [hasAAWallet, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
 
+	/** Top Up → Receive：优先 Beamio 深链，否则 EOA/AA 地址（与 Add Cash Store QR 一致） */
+	const topUpReceiveQrValue = useMemo(() => {
+		const v = activateWalletEoaQrValue?.trim()
+		if (v) return v
+		return addCashDepositAddress
+	}, [activateWalletEoaQrValue, addCashDepositAddress])
+
 	const addCashVaultUsdc = useMemo(() => {
 		const a = Number(cashTreesWalletSnapshot?.eoaUsdc ?? '0')
 		const b = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
@@ -920,6 +923,15 @@ const Home = ({}) => {
 	}, [addCashAmountCad, addCashTopUpCadPerUsdc, addCashVaultUsdc, closeAddCashSheet, topUpStore.id])
 
 	const handleAddFunds = () => {
+		setPayReceiveQrMode('receive')
+		setShowPayReceiveSheet(true)
+		setShowFooter(false)
+	}
+
+	const openWalletFundingFromReceive = useCallback(() => {
+		setShowPayReceiveSheet(false)
+		setPayRelayQRPayload(null)
+		setPayRelayQRLoading(false)
 		setAddCashMode('methods')
 		setShowAddUsdcInSheet(false)
 		setIsSelectingTopUpStore(false)
@@ -928,7 +940,13 @@ const Home = ({}) => {
 		setTopUpStore(first)
 		setShowAddCashSheet(true)
 		setShowFooter(false)
-	}
+	}, [homeStoreCards])
+
+	const topUpReceiveDisplayTag = useMemo(() => {
+		const tag = (beamio?.accountName ?? '').trim()
+		if (tag) return `@${tag}`
+		return eoaAddressShort !== '—' ? eoaAddressShort : '—'
+	}, [beamio?.accountName, eoaAddressShort])
 
 	const closeGiftSheet = useCallback(() => {
 		giftRecipientSearchSeq.current++
@@ -1416,11 +1434,6 @@ const Home = ({}) => {
 	/** Home 主视觉：浅灰底 + 青柠强调（与产品 mock 对齐） */
 	const homeAccent = '#1562f0'
 
-	const userBeamioTagDisplay = useMemo(
-		() => `@${(beamio?.accountName || '').replace(/^@/, '') || 'beamio'}`,
-		[beamio?.accountName]
-	)
-
 	/** CashTrees 卡片区：AA 短地址；Total CAD = (EOA+AA) USDC × BeamioOracle(USDC→CAD) + 基础设施卡 points 按卡币种折 CAD */
 	const cashTreesCardDisplay = useMemo(() => {
 		const aaFull = (profiles?.[0]?.aaAccount ?? '').trim()
@@ -1757,17 +1770,72 @@ const Home = ({}) => {
 		setShowFooter(true)
 	}
 
-	/** Pay tab：生成 / 每分钟刷新 Open Relay QR（与 MyWalletDashboardNew handleAaRelayQR 一致） */
+	const payRelayDeadlineUnix = useMemo(() => {
+		if (!payRelayQRPayload?.deadline) return NaN
+		const n = parseInt(String(payRelayQRPayload.deadline), 10)
+		return Number.isFinite(n) ? n : NaN
+	}, [payRelayQRPayload])
+
+	const payQrDisplayValue = useMemo(
+		() =>
+			payRelayQRPayload
+				? JSON.stringify({ ...payRelayQRPayload, validBefore: payRelayQRPayload.deadline })
+				: '',
+		[payRelayQRPayload]
+	)
+
+	/** Pay tab：Open Relay QR 剩余有效期（与 payTemp1 顶部倒计时一致） */
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay' || !Number.isFinite(payRelayDeadlineUnix)) {
+			return
+		}
+		let cancelled = false
+		let timer: number | undefined
+		const tick = () => {
+			if (cancelled) return
+			setPayRelaySecondsLeft(Math.max(0, payRelayDeadlineUnix - Math.floor(Date.now() / 1000)))
+			timer = window.setTimeout(tick, 1000) as unknown as number
+		}
+		tick()
+		return () => {
+			cancelled = true
+			if (timer !== undefined) window.clearTimeout(timer)
+		}
+	}, [showPayReceiveSheet, payReceiveQrMode, payRelayDeadlineUnix])
+
 	useEffect(() => {
 		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay') return
+		const compute = () => {
+			const vh = window.innerHeight
+			const vw = window.innerWidth
+			const reserved = 52 + 156 + 100 + 20 + 40
+			const maxByH = Math.floor(vh - reserved)
+			const maxByW = vw - 64
+			let s = Math.min(256, maxByH, maxByW - 48)
+			s = Math.max(152, Math.round(s / 8) * 8)
+			setPaySheetQrSize((prev) => (Math.abs(prev - s) < 4 ? prev : s))
+		}
+		const onResize = () => requestAnimationFrame(compute)
+		onResize()
+		window.addEventListener('resize', onResize)
+		return () => window.removeEventListener('resize', onResize)
+	}, [showPayReceiveSheet, payReceiveQrMode])
+
+	/** Pay tab：生成 / 每分钟刷新 Open Relay QR（setTimeout 链，与 MyWalletDashboardNew handleAaRelayQR 一致） */
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay') {
+			setPayRelaySecondsLeft(0)
+			return
+		}
 		const profile = profiles?.[0]
 		if (!profile?.privateKeyArmor || !profile?.aaAccount) {
 			setPayRelayQRPayload(null)
 			setPayRelayQRLoading(false)
+			setPayRelaySecondsLeft(0)
 			return
 		}
 		let cancelled = false
-		let intervalId: number | undefined
+		let refreshTimer: number | undefined
 
 		const signOnce = async (isInitial: boolean) => {
 			if (isInitial) {
@@ -1778,7 +1846,7 @@ const Home = ({}) => {
 				const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 					{ privateKeyArmor: profile.privateKeyArmor, aaAccount: profile.aaAccount },
 					'0',
-					{ deadlineSeconds: 300 }
+					{ deadlineSeconds: PAY_RELAY_QR_TTL_SECONDS }
 				)
 				if (!cancelled) setPayRelayQRPayload(payload)
 			} catch (e) {
@@ -1789,12 +1857,22 @@ const Home = ({}) => {
 			}
 		}
 
-		void signOnce(true)
-		intervalId = window.setInterval(() => void signOnce(false), 60_000)
+		const scheduleNextRefresh = () => {
+			if (cancelled) return
+			refreshTimer = window.setTimeout(async () => {
+				await signOnce(false)
+				scheduleNextRefresh()
+			}, 60_000) as unknown as number
+		}
+
+		void (async () => {
+			await signOnce(true)
+			if (!cancelled) scheduleNextRefresh()
+		})()
 
 		return () => {
 			cancelled = true
-			if (intervalId) clearInterval(intervalId)
+			if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
 			setPayRelayQRPayload(null)
 			setPayRelayQRLoading(false)
 		}
@@ -2015,303 +2093,277 @@ const Home = ({}) => {
 								</div>
 							) : (
 								<>
-							{/* CashTrees 卡（对齐 renderAction index 199–266） */}
-							<div className="w-full max-w-full pt-2 pb-2 min-w-0">
-								<div
-									role="button"
-									tabIndex={0}
-									onClick={openCashTreesBalanceSheet}
-									onKeyDown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault()
-											openCashTreesBalanceSheet()
-										}
-									}}
-									className="relative w-full max-w-full max-md:aspect-[7/4] md:aspect-auto flex min-h-0 flex-col rounded-[2rem] p-4 text-gray-900 shadow-xl shadow-black/15 dark:shadow-black/30 md:p-6 overflow-hidden transform transition-transform hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer border border-white/35 dark:border-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F8FF] dark:focus-visible:ring-offset-slate-900"
-								>
-									<div
-										className="absolute inset-0 w-full min-w-full pointer-events-none overflow-hidden rounded-[inherit]"
-										aria-hidden
-									>
-										{CASH_TREES_HERO_BACKGROUNDS.map((src, i) => (
-											<img
-												key={i}
-												src={src}
-												alt=""
-												className="absolute inset-0 block h-full w-full min-h-full min-w-full max-w-none object-cover object-center select-none"
-												style={{
-													opacity: i === cashTreesHeroBgIndex ? 1 : 0,
-													transition: `opacity ${CASH_TREES_HERO_BG_FADE_MS}ms ease-in-out`,
-												}}
-												draggable={false}
-												aria-hidden
-											/>
-										))}
-									</div>
-									<div
-										className="absolute inset-0 bg-gradient-to-b from-white/82 from-0% via-white/28 via-42% to-black/58 to-100% pointer-events-none"
-										aria-hidden
-									/>
+							
 
-									<div className="relative z-10 flex min-h-0 flex-1 flex-col justify-between gap-3 md:gap-6">
-										<div className="flex justify-between items-center shrink-0">
-											<div className="flex items-center min-w-0">
-												<img
-													src={`${process.env.PUBLIC_URL ?? ''}/logo512.png`}
-													alt="CashTrees"
-													className="mr-2 h-12 w-12 shrink-0 object-contain md:mr-3 md:h-[4.5rem] md:w-[4.5rem]"
-													draggable={false}
-												/>
-												<div className="flex min-w-0 flex-col items-start justify-center">
-													<span className="mb-1 text-lg font-extrabold leading-none tracking-tight text-[#1562f0] dark:text-[#6ba3ff] drop-shadow-sm md:mb-1.5 md:text-[22px]">
-														VERRA
-													</span>
-													<button
-														type="button"
-														onClick={(e) => {
-															e.stopPropagation()
-															void copyCashTreesAaAddress()
-														}}
-														disabled={!cashTreesCardDisplay.aaFull}
-														className="flex max-w-full items-center gap-1.5 rounded-md border border-gray-900/5 bg-gray-900/10 px-2 py-0.5 shadow-sm transition-colors hover:bg-gray-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 disabled:opacity-50"
-														aria-label="Copy Smart Account address"
+
+
+							{/* Universal Pay Hub + Quick Actions：与首屏剩余高度对齐，短屏压缩留白/NFC，保证白卡片与下方双键同屏可见 */}
+							<div
+								className="mb-10 flex min-h-[calc(100svh-5rem-env(safe-area-inset-top,0px)-11rem-env(safe-area-inset-bottom,0px))] flex-col gap-3 min-[480px]:gap-5 [@media(max-height:740px)]:min-h-[calc(100svh-5rem-env(safe-area-inset-top,0px)-9.5rem-env(safe-area-inset-bottom,0px))]"
+							>
+								{/* 顶对齐：与「刘海+5rem + pt-4」后首控件一致；勿 justify-center 避免 NFC 条被压在视窗中部 */}
+								<section className="shrink-0">
+									<div className="flex flex-col items-center gap-4 rounded-[24px] bg-white p-4 text-center shadow-[0_10px_40px_rgba(0,0,0,0.05)] min-[480px]:gap-6 min-[480px]:p-6 sm:gap-8 sm:p-8 dark:border dark:border-slate-700 dark:bg-slate-900 dark:shadow-none [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:p-4">
+										{(() => {
+											const host = getCashTreesNativeNfcHost()
+											let label = 'NFC not available on this device'
+											let tone: 'emerald' | 'amber' | 'slate' = 'slate'
+											if (host) {
+												if (cashTreesNativeNfcStatus === 'ready') {
+													label = 'NFC Active & Ready'
+													tone = 'emerald'
+												} else if (cashTreesNativeNfcStatus === 'unknown') {
+													label = 'Checking NFC…'
+													tone = 'slate'
+												} else if (cashTreesNativeNfcStatus === 'permission_denied') {
+													label = 'NFC permission required'
+													tone = 'amber'
+												} else if (cashTreesNativeNfcStatus === 'disabled' || cashTreesNativeNfcStatus === 'no_hardware') {
+													label = 'NFC off or unavailable'
+													tone = 'amber'
+												} else {
+													label = 'NFC not available'
+													tone = 'slate'
+												}
+											}
+											const circle =
+												tone === 'emerald'
+													? 'bg-emerald-50 dark:bg-emerald-950/40'
+													: tone === 'amber'
+														? 'bg-amber-50 dark:bg-amber-950/40'
+														: 'bg-slate-100 dark:bg-slate-800'
+											const iconC =
+												tone === 'emerald'
+													? 'text-emerald-500 dark:text-emerald-400'
+													: tone === 'amber'
+														? 'text-amber-600 dark:text-amber-400'
+														: 'text-slate-500 dark:text-slate-400'
+											const textC =
+												tone === 'emerald'
+													? 'text-emerald-600 dark:text-emerald-400'
+													: tone === 'amber'
+														? 'text-amber-700 dark:text-amber-300'
+														: 'text-slate-600 dark:text-slate-400'
+											return (
+												<div className="flex flex-col items-center gap-1.5 [@media(max-height:700px)]:gap-1">
+													<div
+														className={`flex h-12 w-12 items-center justify-center rounded-full min-[480px]:h-14 min-[480px]:w-14 ${circle} [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11`}
 													>
-														<span className="truncate font-mono text-[9px] font-semibold uppercase tracking-widest text-gray-800 md:text-[10px]">
-															{cashTreesCardDisplay.aaShort}
-														</span>
-														{aaAddrCopied ? (
-															<Check size={10} className="shrink-0 text-gray-800" strokeWidth={3} aria-hidden />
-														) : (
-															<Copy size={10} className="shrink-0 text-gray-700" aria-hidden />
-														)}
-													</button>
-												</div>
-											</div>
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation()
-													openCashTreesBalanceSheet()
-												}}
-												className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-900/5 bg-gray-900/10 text-gray-900 shadow-sm backdrop-blur-sm transition-colors hover:bg-gray-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 md:h-8 md:w-8"
-												aria-label="Balance details"
-											>
-												<Info size={16} strokeWidth={2.5} aria-hidden />
-											</button>
-										</div>
-
-										<div className="flex shrink-0 items-end justify-between gap-2 md:gap-3">
-											<div className="min-w-0">
-												<p className="mb-0.5 font-bold tracking-wide text-white/90 drop-shadow-sm max-[349px]:text-[10px] min-[350px]:text-sm">
-													Total Balance
-												</p>
-												<div className="flex flex-wrap items-baseline drop-shadow-md">
-													<span className="mr-1 font-bold text-white/90 max-[349px]:text-base min-[350px]:text-3xl">CA$</span>
-													<p className="font-extrabold leading-none tracking-tighter text-white max-[349px]:text-2xl min-[350px]:text-[44px]">
-														{cashTreesCardDisplay.whole}
-														<span className="font-bold text-white/85 max-[349px]:text-lg min-[350px]:text-3xl">
-															.{cashTreesCardDisplay.frac}
-														</span>
+														<Sparkles
+															className={`h-6 w-6 min-[480px]:h-7 min-[480px]:w-7 ${iconC} [@media(max-height:700px)]:h-5 [@media(max-height:700px)]:w-5`}
+															strokeWidth={2}
+															aria-hidden
+														/>
+													</div>
+													<p
+														className={`text-[10px] font-bold uppercase tracking-wide min-[480px]:text-xs ${textC} [@media(max-height:700px)]:text-[9px]`}
+													>
+														{label}
 													</p>
 												</div>
-											</div>
-
-											<div className="mb-0 flex shrink-0 items-center rounded-full border border-white/25 bg-white/20 px-2 py-1 shadow-sm backdrop-blur-md md:mb-1.5 md:px-3 md:py-1.5">
-												<div className="relative mr-0 flex h-2 w-2 shrink-0 min-[350px]:mr-2">
-													<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#1562f0]/35 opacity-75" />
-													<span className="relative inline-flex h-2 w-2 rounded-full bg-[#6ba3ff]" />
+											)
+										})()}
+										<div className="min-w-0 space-y-2 min-[480px]:space-y-4 [@media(max-height:700px)]:space-y-1.5">
+											<h2 className="text-lg font-bold leading-snug text-[#1C1C1E] min-[400px]:text-xl min-[480px]:text-2xl dark:text-slate-100 [@media(max-height:700px)]:text-base [@media(max-height:700px)]:leading-tight">
+												Tap at any Verra SoftPOS to pay seamlessly.
+											</h2>
+											<div className="relative mx-auto flex aspect-square w-full max-h-[min(12rem,30svh)] max-w-[min(12rem,30svh)] min-[480px]:max-h-[12rem] min-[480px]:max-w-[12rem] items-center justify-center [@media(max-height:700px)]:max-h-[min(7.5rem,26svh)] [@media(max-height:700px)]:max-w-[min(7.5rem,26svh)]">
+												<div
+													aria-hidden
+													className="absolute inset-0 animate-ping rounded-full border-2 border-[#1562f0]/10 opacity-20"
+												/>
+												<div
+													aria-hidden
+													className="absolute inset-[12.5%] rounded-full border-2 border-[#1562f0]/20"
+												/>
+												<div className="flex h-[50%] w-[50%] items-center justify-center rounded-full bg-[#1562f0]/15 dark:bg-[#1562f0]/25">
+													<Nfc
+														className="h-[58%] w-[58%] text-[#1562f0]"
+														strokeWidth={1.75}
+														aria-hidden
+													/>
 												</div>
-												<span className="max-[349px]:sr-only text-[9px] font-bold uppercase tracking-wider text-white drop-shadow-sm md:text-[10px]">
-													{cashTreesPhysicalCardBoundEffective ? 'Card Linked' : 'Virtual Active'}
-												</span>
+											</div>
+										</div>
+										<div className="w-full space-y-3 min-[480px]:space-y-6 [@media(max-height:700px)]:space-y-2">
+											<button
+												type="button"
+												onClick={() => {
+													setPayReceiveQrMode('pay')
+													setShowPayReceiveSheet(true)
+													setShowFooter(false)
+												}}
+												className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#0e4cbb] to-[#1562f0] px-5 py-3.5 text-base font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all duration-300 hover:opacity-90 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:px-8 min-[480px]:py-5 min-[480px]:text-lg dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:py-3 [@media(max-height:700px)]:text-sm"
+											>
+												<QrCode
+													className="h-5 w-5 shrink-0 min-[480px]:h-7 min-[480px]:w-7 [@media(max-height:700px)]:h-[1.125rem] [@media(max-height:700px)]:w-[1.125rem]"
+													strokeWidth={2.2}
+													aria-hidden
+												/>
+												Show Pay Code
+											</button>
+											<div className="text-center">
+												<p className="mb-0.5 text-[10px] font-medium tracking-wide text-slate-400 min-[480px]:mb-1 min-[480px]:text-xs dark:text-slate-500">
+													Total Power
+												</p>
+												<h3 className="text-xl font-extrabold tracking-tight text-slate-900 tabular-nums min-[480px]:text-3xl dark:text-slate-100 [@media(max-height:700px)]:text-lg">
+													{(() => {
+														const p = getValuationParts()
+														if (currency === 'USDC') return `${p.whole}.${p.decimal} USDC`
+														if (currency === 'JPY') return `${p.symbol} ${p.whole}`
+														return `${p.symbol} ${p.whole}.${p.decimal}`
+													})()}
+												</h3>
 											</div>
 										</div>
 									</div>
-								</div>
+								</section>
+								<div className="min-h-0 min-w-0 flex-1 basis-0" aria-hidden />
 
-								{!cashTreesPhysicalCardBoundEffective && cashTreesNativeNfcStatus === 'permission_denied' && (
-									<p className="text-center text-[11px] text-amber-700 dark:text-amber-400 mt-3 px-4 font-medium">
-										{getCashTreesNativeNfcHost() === 'ios'
-											? 'NFC could not be enabled for this build. Install the latest CashTrees app from the App Store.'
-											: 'NFC requires an app update. Please install the latest CashTrees build from the store.'}
-									</p>
-								)}
-								{!cashTreesPhysicalCardBoundEffective && cashTreesNativeNfcStatus === 'ready' && (
-									<div className="flex justify-center mt-4 animate-in zoom-in-95 duration-300">
+								{/* Quick Actions — 与 temp1.html (154–174) 同结构 */}
+								<section className="shrink-0 flex gap-2 min-[480px]:gap-3 [@media(max-height:700px)]:gap-2">
+									<button
+										type="button"
+										onClick={handleAddFunds}
+										className="flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-all hover:bg-[#e7e8e9] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5"
+									>
+									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
+										<Wallet size={22} strokeWidth={2} aria-hidden />
+									</div>
+									<div>
+										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Top Up</p>
+										<p className="mt-1 text-[10px] leading-tight text-[#424655] dark:text-slate-400">
+											Let the cashier scan this to add funds.
+										</p>
+									</div>
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											setShowGiftSheet(true)
+											setShowFooter(false)
+										}}
+										className="flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-all hover:bg-[#e7e8e9] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5"
+									>
+									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
+										<Gift size={22} strokeWidth={2} aria-hidden />
+									</div>
+									<div>
+										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Transfer</p>
+										<p className="mt-1 text-[10px] leading-tight text-[#424655] dark:text-slate-400">
+											Send Money or Gift Pack.
+										</p>
+									</div>
+									</button>
+								</section>
+							</div>
+
+							{(myBrandsFeedLoading || myBrandCards.length > 0) && (
+								<section className="mb-10">
+									<div className="mb-4 flex items-end justify-between px-1">
+										<h2 className="text-xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
+											My Brands
+										</h2>
 										<button
 											type="button"
-											onClick={() => startCashTreesPhysicalCardBind()}
-											className="flex items-center gap-1.5 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:text-[#1562f0] dark:hover:text-[#6ba3ff] hover:border-[#1562f0]/50 transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/60 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800"
+											onClick={() => navigate('/myWallet')}
+											className="text-xs font-semibold text-[#004bc3] dark:text-[#6ba3ff]"
 										>
-											<Plus size={14} strokeWidth={2.5} aria-hidden />
-											<Radio size={14} aria-hidden />
-											<span className="text-[12px] font-bold uppercase tracking-wider ml-0.5">Bind Physical Card</span>
+											See all
 										</button>
 									</div>
-								)}
-							</div>
-
-							{/* My Store Cards — 与 beamio.app renderAction 同结构：不外扩 -mx，左右与外层 px-5 对齐；末卡右侧留 pr */}
-							<div className="mt-2 mb-1 overflow-visible">
-								<div className="flex justify-between items-center mb-3">
-									<h2 className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
-										My Store Cards ({homeStoreCards.length})
-									</h2>
-								</div>
-								{/* pt/pb: room for hover:-translate-y-1 + shadow so overflow-x scrollport does not clip card tops */}
-								<div className="flex overflow-x-auto hide-scrollbar gap-4 snap-x pr-5 items-stretch pt-5 pb-5">
-									{homeStoreCards.map((card) => {
-										const IconComponent = card.icon
-										const storeCardPhotoUrl =
-											card.backgroundImage ||
-											(card.id === 'senpho'
-												? SEN_PHO_STORE_CARD_ART_URL
-												: card.id === 'lumina'
-													? LUMINA_STORE_CARD_ART_URL
-													: '')
-										const photoBg = Boolean(storeCardPhotoUrl)
-										return (
-											<div
-												key={card.id}
-												role="button"
-												tabIndex={0}
-												aria-label={`${card.name}. Store balance ${card.balanceCad.toFixed(2)} CAD.`}
-												onClick={() => setSelectedHomeStoreCard(card)}
-												onKeyDown={(e) => {
-													if (e.key === 'Enter' || e.key === ' ') {
-														e.preventDefault()
-														setSelectedHomeStoreCard(card)
-													}
-												}}
-												className={`snap-start w-[min(280px,calc(100vw-5rem))] aspect-[7/4] shrink-0 rounded-[1.5rem] p-5 shadow-md border border-white/50 relative overflow-hidden cursor-pointer hover:-translate-y-1 transition-transform flex flex-col ${
-													photoBg
-														? card.id === 'senpho'
-															? 'bg-[#1562f0]/35'
-															: 'bg-[#3d2b1f]'
-														: `bg-gradient-to-br ${card.color}`
-												}`}
-											>
-												{photoBg ? (
-													<>
-														<div
-															className={`absolute inset-0 z-0 pointer-events-none bg-center bg-cover bg-no-repeat ${
-																card.id === 'lumina' ? 'scale-[1.18]' : ''
-															}`}
-															style={{ backgroundImage: `url(${storeCardPhotoUrl})` }}
-															aria-hidden
-														/>
-														<div
-															className="absolute inset-0 z-[1] bg-gradient-to-t from-black/35 via-transparent to-white/20 pointer-events-none"
-															aria-hidden
-														/>
-													</>
-												) : (
-													<div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-10 -mt-10 blur-xl" />
-												)}
-												<div
-													className={`relative z-10 flex min-h-0 flex-1 flex-col ${photoBg ? 'justify-end' : 'justify-between'}`}
-												>
-													{photoBg ? (
-														<p
-															className={`text-2xl font-extrabold tracking-tight leading-none tabular-nums self-start ${
-																card.id === 'senpho'
-																	? 'text-gray-900 drop-shadow-[0_1px_2px_rgba(255,255,255,0.95)]'
-																	: 'text-amber-100 drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)]'
-															}`}
-														>
-															${card.balanceCad.toFixed(2)}
-														</p>
-													) : (
-														<>
-															<div className="flex justify-between items-start">
-																<div>
-																	<h3 className="text-white font-bold text-lg leading-tight mb-1">
-																		{card.name}
-																	</h3>
-																	<div
-																		className={`flex items-center gap-1 ${card.bgColor} ${card.iconColor} px-2 py-0.5 rounded-md w-max`}
-																	>
-																		<IconComponent size={10} aria-hidden />
-																		<span className="text-[10px] font-bold uppercase tracking-wider text-white">
-																			{card.type}
-																		</span>
-																	</div>
-																</div>
-															</div>
-															<div>
-																<p className="text-gray-300 text-xs font-medium mb-0.5">
-																	Store Balance (CAD)
-																</p>
-																<p className="text-2xl font-extrabold text-white tracking-tight">
-																	${card.balanceCad.toFixed(2)}
-																</p>
-															</div>
-														</>
-													)}
+									<div className="flex flex-col rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
+										{myBrandsFeedLoading && myBrandCards.length === 0 ? (
+											<>
+												<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
+													<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
+													<div className="flex-1 space-y-2">
+														<div className="h-3.5 w-24 rounded bg-white/80 dark:bg-slate-700" />
+														<div className="h-3 w-36 rounded bg-white/60 dark:bg-slate-600" />
+													</div>
+													<div className="h-10 w-16 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
 												</div>
-											</div>
-										)
-									})}
-									<div
-										role="button"
-										tabIndex={0}
-										onClick={() => navigate('/Browser')}
-										onKeyDown={(e) => {
-											if (e.key === 'Enter' || e.key === ' ') {
-												e.preventDefault()
-												navigate('/Browser')
-											}
-										}}
-										className="snap-start self-stretch min-w-[120px] max-w-[132px] shrink-0 bg-gray-50 dark:bg-slate-800/80 border-2 border-dashed border-white/50 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-[#1562f0] dark:hover:text-[#6ba3ff] hover:border-white/70 transition-colors cursor-pointer"
-									>
-										<Plus size={24} className="mb-2" aria-hidden />
-										<span className="text-xs font-bold uppercase tracking-wider">Discover</span>
+												<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
+													<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
+													<div className="flex-1 space-y-2">
+														<div className="h-3.5 w-28 rounded bg-white/80 dark:bg-slate-700" />
+														<div className="h-3 w-32 rounded bg-white/60 dark:bg-slate-600" />
+													</div>
+													<div className="h-10 w-16 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
+												</div>
+											</>
+										) : (
+											myBrandCardsSorted.map((uc) => {
+												const addrKey = uc.cardAddress.toLowerCase()
+												const detail = myBrandCardDetails[addrKey]
+												const title =
+													(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
+												const tierLbl =
+													detail?.meta?.tiers?.find((t) => t.name)?.name ??
+													detail?.meta?.tiers?.[0]?.name
+												const subtitle = tierLbl || `${uc.currency} merchant card`
+												const imgUrl = resolveCardImageUrl(detail?.meta?.image)
+												const ptsRaw = detail?.assets?.points
+												const ptsNum = Number(ptsRaw ?? '')
+												const pointsLine =
+													detail === undefined
+														? '…'
+														: Number.isFinite(ptsNum)
+															? `${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} pts`
+															: '—'
+												const activePasses =
+													detail?.assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired)
+														.length ?? 0
+												const passLine =
+													detail === undefined
+														? '…'
+														: activePasses > 0
+															? `${activePasses} active Pass${activePasses !== 1 ? 'es' : ''}`
+															: 'No active Passes'
+												return (
+													<button
+														key={uc.cardAddress}
+														type="button"
+														onClick={() => navigate('/myWallet')}
+														className="group flex w-full cursor-pointer items-center gap-4 rounded-lg p-3 text-left transition-colors hover:bg-[#edeeef] dark:hover:bg-slate-700/80"
+													>
+														<div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[#c3c6d8]/25 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900">
+															{imgUrl ? (
+																<img
+																	src={imgUrl}
+																	alt={title}
+																	className="h-full w-full object-cover"
+																	draggable={false}
+																/>
+															) : (
+																<Store size={22} className="text-[#1562f0] dark:text-[#6ba3ff]" aria-hidden />
+															)}
+														</div>
+														<div className="min-w-0 flex-1">
+															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{title}</p>
+															<p className="text-[11px] leading-tight text-[#424655] dark:text-slate-400">
+																{subtitle}
+															</p>
+														</div>
+														<div className="shrink-0 text-right">
+															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{pointsLine}</p>
+															<p
+																className={
+																	activePasses > 0
+																		? 'text-[10px] font-medium text-emerald-600 dark:text-emerald-400'
+																		: 'text-[10px] font-medium text-[#424655] dark:text-slate-500'
+																}
+															>
+																{passLine}
+															</p>
+														</div>
+													</button>
+												)
+											})
+										)}
 									</div>
-								</div>
-							</div>
-
-							{/* Add Cash | Gift Card | Pay / Scan — 对齐 beamio.app renderAction */}
-							<div className="flex gap-3">
-								<button
-									type="button"
-									onClick={handleAddFunds}
-									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/65 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
-								>
-									<div className="w-12 h-12 bg-[#1562f0] rounded-full flex items-center justify-center shadow-[0_4px_14px_rgba(21,98,240,0.45)]">
-										<ArrowDownToLine size={24} className="text-white" />
-									</div>
-									<span className="font-semibold text-[11px] text-gray-700 dark:text-slate-300 tracking-wide uppercase">Add Cash</span>
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setShowGiftSheet(true)
-										setShowFooter(false)
-									}}
-									className="flex-1 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/80 active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-sm border border-gray-100 dark:border-slate-600 group relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/65 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
-								>
-									<div className="absolute top-0 right-0 w-12 h-12 bg-[#1562f0]/15 dark:bg-[#1562f0]/20 rounded-full -mr-4 -mt-4 blur-xl opacity-70" />
-									<div className="w-12 h-12 bg-[#1562f0]/10 dark:bg-[#1562f0]/15 rounded-full flex items-center justify-center text-[#1562f0] border border-[#1562f0]/25 dark:border-[#1562f0]/35 relative z-10">
-										<Gift size={22} className="group-hover:scale-110 transition-transform duration-300" />
-									</div>
-									<span className="font-semibold text-[11px] text-gray-700 dark:text-slate-300 tracking-wide uppercase relative z-10">Gift Card</span>
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setPayReceiveQrMode('pay')
-										setShowPayReceiveSheet(true)
-										setShowFooter(false)
-									}}
-									className="flex-1 bg-gray-900 dark:bg-gray-950 hover:bg-gray-800 dark:hover:bg-black active:scale-95 transition-all py-4 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 shadow-xl shadow-gray-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F8FF] dark:focus-visible:ring-offset-slate-900"
-								>
-									<div className="w-12 h-12 bg-gray-800 dark:bg-gray-800 rounded-full flex items-center justify-center text-white border border-gray-700 dark:border-gray-600">
-										<Scan size={20} />
-									</div>
-									<span className="font-semibold text-[11px] text-white tracking-wide uppercase">Pay / Scan</span>
-								</button>
-							</div>
-
+								</section>
+							)}
 
 							{show200OK && (
 								<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
@@ -2328,7 +2380,7 @@ const Home = ({}) => {
 							<ActiveHistoryPannelNew
 								title="Recent Activity"
 								compact
-								compactLimit={5}
+								compactLimit={RECENT_ACTIVITY_PREVIEW_COUNT}
 								bare
 								sectionTitleClassName="text-base font-bold text-[#0F172A] dark:text-slate-100 tracking-tight"
 								viewAllClassName="text-[#1562f0] hover:text-[#0e4cbb]"
@@ -2855,7 +2907,11 @@ const Home = ({}) => {
 					{showPayReceiveSheet && (
 						<>
 							<motion.div
-								className="fixed inset-0 z-[10020] bg-gray-900/40 dark:bg-black/50 backdrop-blur-sm"
+								className={
+									payReceiveQrMode === 'pay'
+										? 'fixed inset-0 z-[10020] bg-[#191c1d]/10 backdrop-blur-md'
+										: 'fixed inset-0 z-[10020] bg-black/40 backdrop-blur-md dark:bg-black/50'
+								}
 								initial={{ opacity: 0 }}
 								animate={{ opacity: 1 }}
 								exit={{ opacity: 0 }}
@@ -2863,114 +2919,246 @@ const Home = ({}) => {
 								onClick={closePayReceiveSheet}
 							/>
 							<motion.div
-								className="fixed left-0 right-0 bottom-0 z-[10021] bg-white dark:bg-slate-900 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex flex-col max-h-[90dvh] pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+								className={
+									payReceiveQrMode === 'pay'
+										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col overflow-hidden overscroll-contain rounded-t-xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-20px_60px_rgba(0,0,0,0.1)] dark:bg-slate-900'
+										: 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[min(92dvh,900px)] flex-col items-center rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+3rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
+								}
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
 								exit={{ y: '100%' }}
 								transition={{ type: 'spring', damping: 32, stiffness: 320 }}
 								onClick={(e) => e.stopPropagation()}
 							>
-								<div className="w-12 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full mx-auto mt-4 mb-2 shrink-0" />
-								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4">
-									<div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-full mb-6 w-full max-w-[240px] mx-auto shadow-inner">
-										<button
-											type="button"
-											onClick={() => setPayReceiveQrMode('pay')}
-											className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 ${
-												payReceiveQrMode === 'pay'
-													? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-slate-100'
-													: 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
-											}`}
-										>
-											Pay
-										</button>
-										<button
-											type="button"
-											onClick={() => setPayReceiveQrMode('receive')}
-											className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 ${
-												payReceiveQrMode === 'receive'
-													? 'bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-slate-100'
-													: 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
-											}`}
-										>
-											Receive
-										</button>
-									</div>
-
+								<div
+									className={
+										payReceiveQrMode === 'pay'
+											? 'flex w-full shrink-0 items-center justify-between px-4 pb-2 pt-3'
+											: 'mx-auto mb-3 mt-3 shrink-0'
+									}
+								>
 									{payReceiveQrMode === 'pay' ? (
-										<div className="flex flex-col items-center w-full min-h-[min(460px,55dvh)]">
-											<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-1 tracking-tight text-center">
-												Pay with {userBeamioTagDisplay}
-											</h3>
-											<p className="text-sm text-gray-500 dark:text-slate-400 mb-4 text-center">
-												Show this code to cashier to pay.
-											</p>
-											<div className="w-full flex flex-col items-center mb-4">
+										<>
+											<span className="w-10 shrink-0" aria-hidden />
+											<div className="h-1.5 w-12 shrink-0 rounded-full bg-[#e1e3e4] dark:bg-slate-600" />
+											<button
+												type="button"
+												onClick={closePayReceiveSheet}
+												className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#424655] transition-colors hover:bg-[#e7e8e9] dark:text-slate-400 dark:hover:bg-slate-800"
+												aria-label="Close"
+											>
+												<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
+											</button>
+										</>
+									) : (
+										<div className="mx-auto h-1.5 w-12 rounded-full bg-gray-300 dark:bg-slate-600" />
+									)}
+								</div>
+								<div
+									className={
+										payReceiveQrMode === 'pay'
+											? 'w-full max-w-lg shrink-0 overflow-hidden px-6 pb-4'
+											: 'min-h-0 w-full max-w-lg flex-1 overflow-y-auto overscroll-contain px-6 pb-4'
+									}
+								>
+									{payReceiveQrMode === 'pay' ? (
+										<div className="mx-auto flex w-full max-w-md flex-col gap-4 px-0 pb-2 pt-0 sm:px-2">
+											<div className="shrink-0 space-y-2 text-center">
+												<h2 className="text-2xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
+													Scan to Pay
+												</h2>
+												<p className="mx-auto max-w-[280px] text-sm leading-snug text-[#424655] dark:text-slate-400">
+													Position the QR code within the frame to authorize the transaction.
+												</p>
+											</div>
+
+											<div className="relative flex shrink-0 flex-col items-center py-2">
 												{payRelayQRLoading && !payRelayQRPayload && (
-													<div className="flex flex-col items-center justify-center py-10 gap-3">
-														<Loader2 className="w-10 h-10 text-[#1562f0] animate-spin" aria-hidden />
-														<span className="text-sm text-gray-500 dark:text-slate-400">Generating pay code...</span>
+													<div className="flex flex-col items-center gap-3 py-8">
+														<Loader2 className="h-12 w-12 animate-spin text-[#1562f0]" aria-hidden />
+														<span className="text-sm text-[#424655] dark:text-slate-400">Generating pay code…</span>
 													</div>
 												)}
-												{payRelayQRPayload && (
-													<ShowPayQR
-														successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
-														beamio={beamio ?? null}
-														qrValue={JSON.stringify({
-															...payRelayQRPayload,
-															validBefore: payRelayQRPayload.deadline,
-														})}
-														hideActions
-														hideUrl
-														hideName
-													/>
-												)}
 												{!payRelayQRLoading && !payRelayQRPayload && (
-													<p className="text-sm text-center text-amber-600 dark:text-amber-400 px-4 max-w-sm">
+													<p className="max-w-sm px-4 text-center text-sm text-amber-600 dark:text-amber-400">
 														{!profiles?.[0]?.aaAccount
 															? 'Smart Account required to show pay QR.'
 															: 'Could not generate pay code. Close and try again.'}
 													</p>
 												)}
+												{payRelayQRPayload && payQrDisplayValue && (
+													<div className="relative shrink-0">
+														<div
+															aria-hidden
+															className="absolute -left-4 -top-4 h-12 w-12 rounded-tl-xl border-l-4 border-t-4 border-[#1562f0] opacity-20"
+														/>
+														<div
+															aria-hidden
+															className="absolute -right-4 -top-4 h-12 w-12 rounded-tr-xl border-r-4 border-t-4 border-[#1562f0] opacity-20"
+														/>
+														<div
+															aria-hidden
+															className="absolute -bottom-4 -left-4 h-12 w-12 rounded-bl-xl border-b-4 border-l-4 border-[#1562f0] opacity-20"
+														/>
+														<div
+															aria-hidden
+															className="absolute -bottom-4 -right-4 h-12 w-12 rounded-br-xl border-b-4 border-r-4 border-[#1562f0] opacity-20"
+														/>
+														<div className="rounded-xl bg-gradient-to-br from-[#1562f0] to-[#004bc3] p-2 shadow-xl min-[400px]:p-3">
+															<div className="rounded-lg border border-[#e1e3e4] bg-white p-2 shadow-xl dark:border-slate-200 min-[400px]:p-4">
+																<div
+																	className="relative flex items-center justify-center"
+																	style={{ width: paySheetQrSize, height: paySheetQrSize }}
+																>
+																	<QRCodeCanvas
+																		value={payQrDisplayValue}
+																		size={paySheetQrSize}
+																		level="H"
+																		includeMargin={false}
+																		bgColor="#ffffff"
+																		fgColor="#000000"
+																		imageSettings={{
+																			src: bIcon,
+																			height: Math.min(
+																				56,
+																				Math.max(36, Math.round((56 * paySheetQrSize) / 256))
+																			),
+																			width: Math.min(
+																				56,
+																				Math.max(36, Math.round((56 * paySheetQrSize) / 256))
+																			),
+																			excavate: true,
+																		}}
+																		className="block rounded-sm"
+																	/>
+																	{payRelaySecondsLeft <= 0 && (
+																		<div
+																			className="absolute inset-0 flex items-center justify-center rounded-sm bg-white/90 backdrop-blur-sm dark:bg-slate-900/85"
+																			aria-label="Pay code expired"
+																		>
+																			<span className="text-lg font-bold text-slate-800 dark:text-slate-100">
+																				Expired
+																			</span>
+																		</div>
+																	)}
+																</div>
+															</div>
+														</div>
+													</div>
+												)}
 											</div>
-											<div className="flex items-center gap-2 mb-6">
-												<div className="w-2 h-2 bg-[#1562f0] rounded-full animate-pulse" />
-												<span className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
-													Auto-refreshes every minute
-												</span>
+
+											<div className="mx-auto w-full max-w-xs shrink-0 space-y-4 pb-1 min-[400px]:space-y-6 min-[400px]:pb-2">
+												{payRelayQRPayload && (
+													<div className="space-y-3">
+														<div className="flex items-end justify-between">
+															<div className="flex min-w-0 items-center gap-2">
+																<ShieldCheck
+																	className="h-4 w-4 shrink-0 text-[#1562f0] dark:text-[#6ba3ff]"
+																	strokeWidth={2.5}
+																	aria-hidden
+																/>
+																<span className="text-[10px] font-bold uppercase tracking-widest text-[#1562f0] dark:text-[#6ba3ff]">
+																	Secure Dynamic Key
+																</span>
+															</div>
+															<span className="shrink-0 font-mono text-[10px] text-[#424655] dark:text-slate-400">
+																{formatPayRelayCountdown(payRelaySecondsLeft)}
+															</span>
+														</div>
+														<div className="h-1.5 w-full overflow-hidden rounded-full bg-[#edeeef] dark:bg-slate-700">
+															<div
+																className="h-full rounded-full bg-[#004bc3] shadow-[0_0_8px_rgba(0,75,195,0.4)] transition-[width] duration-300 ease-out dark:bg-[#1562f0]"
+																style={{
+																	width: `${Math.min(100, Math.max(0, (payRelaySecondsLeft / PAY_RELAY_QR_TTL_SECONDS) * 100))}%`,
+																}}
+															/>
+														</div>
+													</div>
+												)}
+												<button
+													type="button"
+													onClick={closePayReceiveSheet}
+													className="w-full py-2 text-sm font-bold text-[#424655] transition-colors hover:text-[#191c1d] dark:text-slate-400 dark:hover:text-slate-100"
+												>
+													Cancel Transaction
+												</button>
 											</div>
-											<button
-												type="button"
-												onClick={closePayReceiveSheet}
-												className="mt-auto w-full rounded-full border border-[#1562f0]/50 bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] py-4 font-bold text-white shadow-md shadow-[#1562f0]/35 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#1562f0]/50 dark:from-[#3d8ef5] dark:to-[#1562f0] dark:shadow-[#1562f0]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
-											>
-												Done
-											</button>
 										</div>
 									) : (
-										<div className="w-full flex flex-col min-h-[min(460px,55dvh)]">
-											{/* Receive：与 BeamioPayMe / Alliance PayMe 一致（AmountCurrency、备注、Valid for days、requestAccounting、B-Unit 摘要） */}
-											<div className="w-full max-w-[540px] mx-auto px-0">
-												<BeamioPayMe
-													showActiveTab={false}
-													hideOuterFrame
-													hideEoaReceivingToggle
-													hideReceivingWalletHeading
-													receivePanelLimeButtons
-													onClose={closePayReceiveSheet}
-													onShowFuelCenter={() => {
-														closePayReceiveSheet()
-														setShowFuelView(true)
+										<div className="flex w-full flex-col items-center pt-2">
+											{/* Receive：topupExample1.html — Add Funds at Store（可扫描 QR，不在码心叠加遮挡） */}
+											<div className="mb-8 w-full space-y-2 text-center">
+												<h3 className="text-[22px] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+													Add Funds at Store
+												</h3>
+												<p className="mx-auto max-w-md px-4 text-[15px] leading-relaxed text-[#424655] dark:text-slate-400">
+													Show this code to the cashier to top up your balance.
+												</p>
+											</div>
+											<div className="relative flex w-full justify-center px-2">
+												<div
+													aria-hidden
+													className="pointer-events-none absolute -inset-8 rounded-xl opacity-90"
+													style={{
+														background:
+															'radial-gradient(circle, rgba(21, 98, 240, 0.1) 0%, rgba(21, 98, 240, 0) 70%)',
 													}}
 												/>
+												<div className="relative flex w-72 max-w-full flex-col items-center rounded-xl border-2 border-dashed border-[#c3c6d8] bg-[#f3f4f5] p-6 dark:border-slate-600 dark:bg-slate-800/90">
+													<div className="relative rounded-md bg-white p-3 shadow-sm dark:bg-slate-900">
+														{topUpReceiveQrValue ? (
+															<QRCodeCanvas
+																value={topUpReceiveQrValue}
+																size={192}
+																level="H"
+																includeMargin={false}
+																bgColor="#ffffff"
+																fgColor="#000000"
+																imageSettings={{
+																	src: bIcon,
+																	height: 52,
+																	width: 52,
+																	excavate: true,
+																}}
+																className="block rounded-sm"
+															/>
+														) : (
+															<div className="flex h-48 w-48 items-center justify-center text-center text-sm text-[#424655] dark:text-slate-400">
+																Loading code…
+															</div>
+														)}
+													</div>
+													<div className="mt-6 flex items-center gap-2 rounded-full border border-[#c3c6d8]/40 bg-white px-4 py-1.5 shadow-sm dark:border-slate-600 dark:bg-slate-900">
+														<span className="text-sm font-semibold tracking-wide text-[#004bc3] dark:text-[#6ba3ff]">
+															{topUpReceiveDisplayTag}
+														</span>
+													</div>
+													<div className="mt-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#004bc3]/70 dark:text-[#6ba3ff]/80 motion-safe:animate-pulse">
+														<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#004bc3] dark:bg-[#6ba3ff]" />
+														Waiting for scan
+													</div>
+												</div>
 											</div>
-											<button
-												type="button"
-												onClick={closePayReceiveSheet}
-												className="mt-4 w-full shrink-0 rounded-full border border-[#1562f0]/50 bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] py-4 font-bold text-white shadow-md shadow-[#1562f0]/35 transition-all hover:opacity-95 active:scale-[0.98] dark:border-[#1562f0]/50 dark:from-[#3d8ef5] dark:to-[#1562f0] dark:shadow-[#1562f0]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
-											>
-												Done
-											</button>
+											<div className="mt-10 w-full max-w-md space-y-6 text-center">
+												<p className="text-sm text-[#424655] dark:text-slate-400">
+													Want to deposit USDC?{' '}
+													<button
+														type="button"
+														onClick={openWalletFundingFromReceive}
+														className="ml-1 font-bold text-[#004bc3] underline-offset-4 hover:underline dark:text-[#6ba3ff]"
+													>
+														Go to Wallet
+													</button>
+												</p>
+												<button
+													type="button"
+													onClick={closePayReceiveSheet}
+													className="w-full rounded-full bg-[#e7e8e9] py-4 font-bold text-[#191c1d] transition-colors hover:bg-[#e1e3e4] active:scale-[0.99] dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+												>
+													Done
+												</button>
+											</div>
 										</div>
 									)}
 								</div>

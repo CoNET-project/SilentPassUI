@@ -6,7 +6,7 @@ import AmountCurrency from '@/components/input/AmountCurrency'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import {AuthorizationSign, getBalanceProcess, generateCODE, generateRequestHash} from '@/services/beamio'
 import { postToEndpoint } from '@/utils/utils'
-import bIcon from '@/components/assets/logo512.png'
+import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
 import { QRCodeCanvas } from 'qrcode.react'
 import PaymentLink from './PaymentLink'
 import {ShowPrint} from './ShowPrint'
@@ -336,7 +336,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 											bgColor="white"
 											fgColor="#000000"
 											imageSettings={{
-												src: bIcon,
+												src: BIZ_PUBLIC_LOGO512,
 												height: 56,
 												width: 56,
 												excavate: true,

@@ -3,6 +3,11 @@ import { AppButton } from '@/components/button/AppButton'
 import { restoreWithUserPin } from '@/services/beamio'
 import { Eye, EyeOff, AlertCircle } from "lucide-react"
 import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
+import {
+	BEAMIO_TAG_ALLOWED_RE,
+	BEAMIO_TAG_RULE_HINT,
+	normalizeBeamioTagInput,
+} from '@/utils/beamioTagRules'
 
 type RestoreWithUsernamePinScreenProps = {
   onRestore: (temp: encrypt_keys_object) => Promise<void> | void
@@ -23,16 +28,15 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
 
   const formatBeamioName = () => {
     setError('')
-    let trimmed = username.trim()
-    trimmed = trimmed.replace(/^@+/, '')
+    const trimmed = normalizeBeamioTagInput(username)
 
     if (!trimmed) {
       setError('Please enter a username')
       return ''
     }
 
-    if (!/^[a-zA-Z0-9_.-]{3,20}$/.test(trimmed)) {
-      setError('Use 3–20 letters, numbers, dots, _ or -')
+    if (!BEAMIO_TAG_ALLOWED_RE.test(trimmed)) {
+      setError(BEAMIO_TAG_RULE_HINT)
       return ''
     }
 
@@ -105,8 +109,7 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
               placeholder="beamio" // 对应截图中的 placeholder
               value={username}
               onChange={e => {
-                // 自动移除用户输入的 @
-                setUsername(e.target.value.replace(/@/g, ''))
+                setUsername(normalizeBeamioTagInput(e.target.value))
                 setError('')
               }}
             />

@@ -40,7 +40,7 @@ import { formatAmount, formatAmountWithCurrencyProtocol, getDecimals } from '@/s
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
 import { QRCodeCanvas } from 'qrcode.react'
-import bIcon from '@/components/assets/logo512.png'
+import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
 
@@ -1813,7 +1813,7 @@ const ActiveHistoryPannelNew = ({
 										bgColor="white"
 										fgColor="#000000"
 										imageSettings={{
-											src: bIcon,
+											src: BIZ_PUBLIC_LOGO512,
 											height: 70,
 											width: 70,
 											excavate: true,

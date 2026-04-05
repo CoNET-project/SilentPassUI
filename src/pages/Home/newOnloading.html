@@ -3,265 +3,384 @@
 <html lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Verra Merchant Dashboard</title>
+<title>Membership Card Setup | Verra Business</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              "on-tertiary": "#ffeef8",
-              "surface": "#f5f7f9",
-              "on-secondary-fixed": "#354053",
-              "outline-variant": "#abadaf",
-              "on-tertiary-fixed-variant": "#6c1a6c",
-              "on-secondary-container": "#475266",
-              "primary-fixed-dim": "#648eff",
-              "error-dim": "#9f0519",
-              "inverse-surface": "#0b0f10",
-              "tertiary-container": "#f797ef",
-              "tertiary-fixed": "#f797ef",
-              "on-error": "#ffefee",
-              "primary-dim": "#0047b8",
-              "primary-fixed": "#7a9dff",
-              "tertiary-fixed-dim": "#e88ae1",
-              "surface-container-low": "#eef1f3",
-              "surface-container-highest": "#d9dde0",
-              "secondary-container": "#d8e3fb",
-              "on-primary-fixed-variant": "#00276d",
-              "tertiary": "#8d3a8b",
-              "on-primary": "#f1f2ff",
-              "secondary": "#515c70",
-              "on-primary-fixed": "#000000",
-              "secondary-fixed-dim": "#cad5ed",
-              "tertiary-dim": "#7f2d7e",
-              "surface-container-high": "#dfe3e6",
-              "error-container": "#fb5151",
-              "surface-variant": "#d9dde0",
-              "on-background": "#2c2f31",
-              "on-primary-container": "#001e59",
-              "inverse-on-surface": "#9a9d9f",
-              "on-surface-variant": "#595c5e",
-              "inverse-primary": "#5f8bff",
-              "surface-container-lowest": "#ffffff",
-              "on-tertiary-container": "#610e62",
-              "secondary-fixed": "#d8e3fb",
-              "surface-container": "#e5e9eb",
-              "secondary-dim": "#455064",
-              "surface-dim": "#d0d5d8",
-              "primary-container": "#7a9dff",
-              "surface-tint": "#0051d1",
-              "on-secondary-fixed-variant": "#515c70",
-              "on-secondary": "#eff2ff",
-              "on-error-container": "#570008",
-              "primary": "#0051d1",
-              "background": "#f5f7f9",
-              "on-surface": "#2c2f31",
-              "surface-bright": "#f5f7f9",
-              "on-tertiary-fixed": "#400041",
-              "error": "#b31b25",
-              "outline": "#747779"
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "outline-variant": "#abadaf",
+                "on-primary-container": "#001e59",
+                "on-secondary": "#eff2ff",
+                "surface-container-highest": "#d9dde0",
+                "secondary-fixed-dim": "#cad5ed",
+                "surface-container": "#e5e9eb",
+                "primary-container": "#7a9dff",
+                "primary-fixed": "#7a9dff",
+                "surface-container-lowest": "#ffffff",
+                "outline": "#747779",
+                "secondary-fixed": "#d8e3fb",
+                "on-primary-fixed-variant": "#00276d",
+                "inverse-primary": "#5f8bff",
+                "tertiary-fixed": "#f797ef",
+                "background": "#f5f7f9",
+                "on-error": "#ffefee",
+                "on-error-container": "#570008",
+                "tertiary-fixed-dim": "#e88ae1",
+                "primary-dim": "#0047b8",
+                "on-tertiary-fixed": "#400041",
+                "error": "#b31b25",
+                "tertiary-dim": "#7f2d7e",
+                "on-primary-fixed": "#000000",
+                "surface": "#f5f7f9",
+                "on-surface": "#2c2f31",
+                "on-background": "#2c2f31",
+                "error-dim": "#9f0519",
+                "on-tertiary": "#ffeef8",
+                "on-surface-variant": "#595c5e",
+                "on-secondary-fixed-variant": "#515c70",
+                "surface-variant": "#d9dde0",
+                "secondary": "#515c70",
+                "on-secondary-fixed": "#354053",
+                "surface-dim": "#d0d5d8",
+                "surface-container-high": "#dfe3e6",
+                "on-tertiary-container": "#610e62",
+                "secondary-dim": "#455064",
+                "tertiary": "#8d3a8b",
+                "tertiary-container": "#f797ef",
+                "primary-fixed-dim": "#648eff",
+                "surface-tint": "#0051d1",
+                "secondary-container": "#d8e3fb",
+                "surface-container-low": "#eef1f3",
+                "on-secondary-container": "#475266",
+                "on-primary": "#f1f2ff",
+                "inverse-on-surface": "#9a9d9f",
+                "surface-bright": "#f5f7f9",
+                "primary": "#0051d1",
+                "error-container": "#fb5151",
+                "on-tertiary-fixed-variant": "#6c1a6c",
+                "inverse-surface": "#0b0f10"
+              },
+              fontFamily: {
+                "headline": ["Manrope"],
+                "body": ["Inter"],
+                "label": ["Inter"]
+              },
+              borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
             },
-            fontFamily: {
-              "headline": ["Manrope"],
-              "body": ["Inter"],
-              "label": ["Inter"]
-            },
-            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
           },
-        },
-      }
+        }
     </script>
 <style>
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
         }
-        .tonal-transition { transition: background-color 0.3s ease; }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.7);
+        .glass-nav {
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
         }
+        .editorial-shadow {
+            box-shadow: 0 20px 40px rgba(21, 98, 240, 0.06);
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, #0051d1 0%, #7a9dff 100%);
+        }
     </style>
 <style>
-    body {
-      min-height: max(884px, 100dvh);
-    }
-  </style>
-  </head>
-<body class="bg-surface font-body text-on-surface">
-<!-- TopAppBar -->
-<header class="fixed top-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl flex justify-between items-center px-6 h-16 w-full shadow-[0_20px_40px_rgba(21,98,240,0.06)] lg:pl-80">
-<div class="flex items-center gap-4">
-<span class="material-symbols-outlined text-blue-600 dark:text-blue-400 lg:hidden cursor-pointer" data-icon="grid_view">grid_view</span>
-<h1 class="text-xl font-extrabold text-blue-600 dark:text-blue-400 tracking-tighter font-headline">Verra Merchant</h1>
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface antialiased">
+<!-- Sidebar Navigation -->
+<aside class="h-screen w-72 fixed left-0 top-0 border-r-0 bg-slate-50 dark:bg-slate-950 flex flex-col py-8 gap-2 z-50 hidden lg:flex">
+<div class="px-8 mb-8 flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined" data-icon="storefront">storefront</span>
 </div>
+<div>
+<h2 class="font-manrope text-sm font-black text-blue-600 tracking-tight">Verra Business</h2>
+<p class="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Merchant OS</p>
+</div>
+</div>
+<nav class="flex-1">
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Dashboard</span>
+</a>
+<a class="bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm rounded-full mx-4 my-1 flex items-center gap-3 px-4 py-3" href="#">
+<span class="material-symbols-outlined" data-icon="loyalty" style="font-variation-settings: 'FILL' 1;">loyalty</span>
+<span class="font-manrope text-sm font-bold tracking-wide uppercase">Programs</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Transactions</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Members</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Wallet</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="storefront">storefront</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Market</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Settings</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="point_of_sale">point_of_sale</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Terminals</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Insights</span>
+</a>
+</nav>
+<div class="px-8 mt-auto pt-8 border-t border-slate-200/50">
 <div class="flex items-center gap-3">
-<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center overflow-hidden">
-<img alt="Merchant Profile" class="w-full h-full object-cover" data-alt="Stylized minimalist avatar icon of a business professional with a clean modern aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAT6rWQcu0lSWTpy_ZNCQ--FfB1C4DN-oLi54UxyVvo0QpFCVIR9zOhY4cacVWbKLJTuILvDAnI0z_kxVnTvRSpJzv7_SCMvWNzNBTGaP9sqFhgSiAgtAIwxExkHsRo_3yovRpZSAb69SAnnuGiD98a92JEZYwoVHjM00slZpXG-fxk7wxBpKfSEldpP41XR5C-rWb6Urcg8YIP_93rObOM266Jt_yiVDoFYt1f6L_Y432756dZJkDFYXK-BtE0u055PzGNX8blRK0"/>
+<div class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden">
+<img alt="Merchant Logo" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlpvx-se5ANQOo19JTitVMGtS4a4L8EGQKuxOqOgR4jQJxDv3Yrk5odKsE8r7FuR_GiKJLE_-YBW0sBAIZLPGJoj8YC6Q_eRJHMVyPEOflEAR-jp14Sjz0o5roJ6d6jIJcC8f-5vrQLhKKjcQamHJ_iy5h5jI6OrTLseY8oJxa2p6bkj7FrjyJPaBQGwgD58MSzDDwjwGnmdj2qR1SRQivexYf8lfaawxcl34DfqFPR7-JE4GTZ2w4uB5PNrTyrVd6P85fR8Qp3rs"/>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-bold text-on-surface">Verra Business</span>
+<span class="text-[10px] text-primary font-bold">Premium Tier</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="lg:ml-72 min-h-screen relative pb-24">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-40 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)] flex items-center justify-between px-6 h-16 lg:px-12 lg:h-20">
+<div class="flex items-center gap-4">
+<button class="lg:hidden p-2 hover:bg-blue-50/50 transition-colors rounded-full">
+<span class="material-symbols-outlined text-blue-600" data-icon="menu">menu</span>
+</button>
+<h1 class="font-manrope text-xl font-bold tracking-tight text-on-surface">Membership Card Setup</h1>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:flex gap-6 mr-6">
+<span class="text-slate-500 font-semibold text-sm">Dashboard</span>
+<span class="text-blue-600 font-bold text-sm">Programs</span>
+<span class="text-slate-500 font-semibold text-sm">Members</span>
+</div>
+<div class="w-10 h-10 rounded-full border-2 border-primary/20 p-0.5">
+<img alt="Profile" class="w-full h-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGauwjYx-8B_s5rarEHdBn5v3TJ3THkYjK0wXyRIXyfiSSTLWyam10DBkaIt29hLwIalBuebc1KXsOvMT0_YvDPz4H3D3EebVJGkwrDlrFJj7DWEen0HGmhWjKt7BoIIWz-XySI-gwKJYTtwXg9KH_AkAJHX1fRyzwvKCXLdvwZJ5AFwG_d2p7OfsanjXu_y8u45x82JxosKyLuYsORqRa77nYHmzEYnRuegWow4aGXJKwFRgdsAQJz3wHCIakcrBwSE_0j-gh1dM"/>
 </div>
 </div>
 </header>
-<div class="flex pt-16 min-h-screen">
-<!-- NavigationDrawer -->
-<aside class="hidden lg:flex flex-col p-6 gap-2 h-screen w-72 fixed left-0 top-0 pt-20 bg-slate-50 dark:bg-slate-950 tonal-transition z-40 overflow-y-auto">
-<div class="mb-8 px-4">
-<p class="text-2xl font-black text-blue-600 font-headline">Verra</p>
-<div class="mt-6 flex items-center gap-3">
-<div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-<span class="material-symbols-outlined text-blue-600" data-icon="storefront">storefront</span>
+<!-- Content Canvas -->
+<div class="pt-24 px-6 lg:px-16 max-w-5xl mx-auto">
+<!-- Hero Header Section -->
+<section class="mb-12 mt-8">
+<div class="inline-flex items-center gap-2 px-4 py-1.5 bg-tertiary-container rounded-full mb-6">
+<span class="material-symbols-outlined text-on-tertiary-container text-sm" data-icon="redeem" style="font-variation-settings: 'FILL' 1;">redeem</span>
+<span class="text-[11px] font-bold text-on-tertiary-container uppercase tracking-wider">20 bonus B-Units available</span>
 </div>
+<h2 class="font-headline text-4xl lg:text-5xl font-extrabold text-on-surface tracking-tight leading-tight mb-4">
+                    Set up your first <br class="hidden md:block"/> membership card program
+                </h2>
+<p class="font-body text-on-surface-variant text-lg lg:max-w-3xl leading-relaxed">
+                    Choose your merchant starter kit. It includes everything you need to launch your digital network and physical tap-to-pay experience.
+                </p>
+</section>
+<!-- Pricing Options Bento Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
+<!-- Option 1: Standard -->
+<div class="bg-surface-container-lowest p-8 rounded-lg editorial-shadow border border-transparent hover:border-primary/10 transition-all group flex flex-col justify-between">
 <div>
-<p class="font-manrope font-bold text-sm text-on-surface">Verra Premium</p>
-<p class="text-xs text-slate-500">Merchant Portal</p>
+<div class="flex justify-between items-start mb-6">
+<div>
+<h3 class="font-headline text-2xl font-bold mb-1">Standard Program</h3>
+<p class="text-on-surface-variant text-sm font-medium">Best for quick launch with standard generic NFC cards.</p>
+</div>
+<div class="text-right">
+<span class="font-headline text-2xl font-extrabold text-on-surface">C$69</span>
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider">ONE-TIME</p>
 </div>
 </div>
+<div class="mb-8 p-4 bg-surface-container-low rounded-xl">
+<div class="flex items-center gap-3 mb-2">
+<span class="material-symbols-outlined text-primary" data-icon="toll">toll</span>
+<span class="text-on-surface font-bold text-sm">2,000 B-Units Included</span>
 </div>
-<nav class="space-y-1">
-<!-- Dashboard Active -->
-<a class="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full font-bold font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-<span>Dashboard</span>
-</a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="loyalty">loyalty</span>
-<span>Programs</span>
-</a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="group">group</span>
-<span>Members</span>
-</a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
-<span>Wallets</span>
-</a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="insights">insights</span>
-<span>Insights</span>
-</a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="forum">forum</span>
-<span>Messages</span>
-</a>
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="screenshot_monitor">screenshot_monitor</span>
-<span>Terminals</span>
-</a>
-<div class="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
-<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full font-manrope text-sm hover:translate-x-1 transition-transform duration-200" href="#">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-<span>Settings</span>
-</a>
+<p class="text-[11px] text-on-surface-variant ml-9">Covers ~1,000 customer payments</p>
 </div>
-</nav>
-</aside>
-<!-- Main Content -->
-<main class="flex-1 lg:ml-72 p-6 md:p-10 mb-20 lg:mb-0">
-<div class="max-w-6xl mx-auto space-y-8">
-<!-- Action Required Hero Section -->
-<section class="relative overflow-hidden bg-primary-dim rounded-lg p-8 md:p-12 text-on-primary shadow-2xl">
-<!-- Background Mesh Gradient Simulation -->
-<div class="absolute inset-0 bg-gradient-to-br from-primary via-primary-dim to-primary-fixed opacity-60"></div>
-<div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-<div class="space-y-4 max-w-xl">
-<span class="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider">
-<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">warning</span>
-                                Action Required
-                            </span>
-<h2 class="text-3xl md:text-4xl font-headline font-extrabold tracking-tight">Activate Your Smart Wallet</h2>
-<p class="text-on-primary/80 text-lg leading-relaxed">Purchase B-Units to unlock card issuance and automated loyalty features. Start rewarding your customers today.</p>
+<ul class="space-y-4 mb-10">
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="check_circle">check_circle</span>
+<span class="text-sm font-medium text-on-surface-variant">System Activation</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="check_circle">check_circle</span>
+<span class="text-sm font-medium text-on-surface-variant">10x VERRA Generic NFC Cards</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="check_circle">check_circle</span>
+<span class="text-sm font-medium text-on-surface-variant">Order more generic cards anytime (C$1.50/ea)</span>
+</li>
+</ul>
 </div>
-<button class="shrink-0 bg-white text-primary font-bold px-8 py-4 rounded-full shadow-lg hover:scale-105 active:scale-95 transition-all font-manrope">
-                            Go to Market
+<button class="w-full py-4 bg-surface-container-highest text-on-surface font-bold rounded-full hover:bg-surface-variant transition-colors">
+                        Activate Standard Kit
+                    </button>
+</div>
+<!-- Option 2: Custom (Recommended) -->
+<div class="relative kinetic-gradient p-1 rounded-lg editorial-shadow overflow-hidden">
+<div class="bg-surface-container-lowest p-8 rounded-[1.85rem] h-full flex flex-col justify-between relative overflow-hidden">
+<div class="absolute -top-10 -right-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-6">
+<div>
+<div class="inline-block px-3 py-1 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-full mb-2">RECOMMENDED</div>
+<h3 class="font-headline text-2xl font-bold mb-1">Custom Program</h3>
+<p class="text-on-surface-variant text-sm font-medium">Best for growing brands needing a fully custom physical and digital presence.</p>
+</div>
+<div class="text-right">
+<span class="font-headline text-2xl font-extrabold text-primary">C$139</span>
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider">ONE-TIME</p>
+</div>
+</div>
+<div class="mb-8 p-4 bg-primary/5 rounded-xl border border-primary/10">
+<div class="flex items-center gap-3 mb-2">
+<span class="material-symbols-outlined text-primary" data-icon="toll" style="font-variation-settings: 'FILL' 1;">toll</span>
+<span class="text-on-surface font-bold text-sm">5,000 B-Units Included</span>
+</div>
+<p class="text-[11px] text-on-surface-variant ml-9">Covers ~2,500 customer payments</p>
+</div>
+<ul class="space-y-4 mb-10">
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
+<span class="text-sm font-medium text-on-surface-variant">System Activation</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
+<span class="text-sm font-medium text-on-surface-variant">20x VERRA Generic NFC Cards</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
+<span class="text-sm font-medium text-on-surface-variant">Custom Design Service Unlocked</span>
+</li>
+<li class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
+<span class="text-sm font-medium text-on-surface-variant">Order custom cards from factory (from C$2.50/ea)</span>
+</li>
+</ul>
+</div>
+<button class="relative z-10 w-full py-4 kinetic-gradient text-white font-bold rounded-full shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform">
+                            Activate Custom Kit
                         </button>
 </div>
-</section>
-<!-- Key Metrics Bento Grid -->
-<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-<!-- Metric: Revenue -->
-<div class="bg-surface-container-lowest p-8 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between min-h-[180px]">
-<div>
-<p class="text-slate-500 font-headline font-bold text-xs uppercase tracking-widest">Total Revenue</p>
-<h3 class="text-4xl font-headline font-extrabold mt-4">$0.00 <span class="text-lg font-medium text-slate-400 uppercase">CAD</span></h3>
-</div>
-<div class="flex items-center gap-2 text-slate-400 text-sm mt-4">
-<span class="material-symbols-outlined text-[18px]" data-icon="trending_up">trending_up</span>
-<span>No data yet</span>
 </div>
 </div>
-<!-- Metric: Members -->
-<div class="bg-surface-container-lowest p-8 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col justify-between min-h-[180px]">
-<div>
-<p class="text-slate-500 font-headline font-bold text-xs uppercase tracking-widest">Active Members</p>
-<h3 class="text-4xl font-headline font-extrabold mt-4">0</h3>
-</div>
-<div class="flex items-center gap-2 text-slate-400 text-sm mt-4">
-<span class="material-symbols-outlined text-[18px]" data-icon="group">group</span>
-<span>Launch a program to grow</span>
-</div>
-</div>
-<!-- Metric: Wallet Balance (Visualizer) -->
-<div class="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-lg shadow-xl flex flex-col justify-between text-white min-h-[180px]">
+<!-- Card Visualization Section -->
+<section class="mb-20 grid grid-cols-1 md:grid-cols-12 gap-12 items-center bg-surface-container-low p-8 lg:p-12 rounded-xl">
+<div class="md:col-span-5 relative h-64">
+<div class="absolute inset-0 kinetic-gradient rounded-lg transform rotate-[-6deg] translate-x-2 shadow-xl opacity-20"></div>
+<div class="absolute inset-0 bg-white/80 backdrop-blur-md rounded-lg p-8 border border-white/50 shadow-2xl flex flex-col justify-between overflow-hidden">
 <div class="flex justify-between items-start">
-<div>
-<p class="text-slate-400 font-headline font-bold text-xs uppercase tracking-widest">B-Unit Balance</p>
-<h3 class="text-3xl font-headline font-extrabold mt-2">0.00</h3>
+<span class="material-symbols-outlined text-4xl text-primary" data-icon="contactless">contactless</span>
+<div class="text-right">
+<p class="text-[10px] font-black uppercase tracking-widest text-primary/60">Verra Business</p>
+<p class="text-sm font-bold text-on-surface">Member Platinum</p>
 </div>
-<span class="material-symbols-outlined text-primary-fixed" data-icon="account_balance_wallet">account_balance_wallet</span>
 </div>
-<p class="text-[10px] text-slate-500 font-mono tracking-widest uppercase">NOT INITIALIZED</p>
+<div class="mt-4 flex flex-col items-center justify-center flex-1">
+<span class="material-symbols-outlined text-6xl text-primary/30 mb-2" data-icon="contactless">contactless</span>
+<p class="font-manrope text-lg font-extrabold tracking-tight text-primary/40 uppercase">@YOURBRAND</p>
+</div>
+<div class="flex justify-between items-end">
+<span class="text-xs font-bold text-on-surface uppercase tracking-wider">YOUR LOGO HERE</span>
+<div class="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="all_inclusive">all_inclusive</span>
+</div>
+</div>
+</div>
+</div>
+<div class="md:col-span-7">
+<h4 class="font-headline text-2xl font-bold mb-2">The Premium Card Experience</h4>
+<p class="text-primary font-bold text-sm mb-4">Your digital cards go live instantly. Your physical NFC cards ship within 24 hours.</p>
+<p class="text-on-surface-variant leading-relaxed mb-6">
+                        Your customers receive a digital-first membership card that integrates seamlessly with their mobile wallet. With the Custom Program, every pixel reflects your brand's unique identity.
+                    </p>
+<div class="flex gap-4">
+<div class="flex flex-col">
+<span class="text-2xl font-black text-primary">1.2s</span>
+<span class="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Tap-to-Pay</span>
+</div>
+<div class="w-px h-10 bg-outline-variant/20 mx-2"></div>
+<div class="flex flex-col">
+<span class="text-2xl font-black text-primary">100%</span>
+<span class="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Cloud Sync</span>
+</div>
+</div>
 </div>
 </section>
-<!-- Recent Activity Empty State -->
-<section class="bg-surface-container-lowest rounded-lg p-12 shadow-[0_4px_20px_rgba(0,0,0,0.02)] border-dashed border-2 border-surface-container-high">
-<div class="max-w-md mx-auto text-center space-y-6">
-<div class="relative w-48 h-48 mx-auto">
-<div class="absolute inset-0 bg-blue-50 rounded-full scale-110 opacity-50 blur-xl"></div>
-<div class="relative z-10 w-full h-full flex items-center justify-center">
-<!-- Minimal Illustration Placeholder -->
-<div class="w-32 h-32 bg-surface-container p-6 rounded-xl flex items-center justify-center">
-<span class="material-symbols-outlined text-6xl text-slate-300" data-icon="inbox_customize">inbox_customize</span>
+<!-- Footer Explanation -->
+<footer class="border-t border-outline-variant/10 pt-12 pb-12">
+<div class="max-w-3xl">
+<h5 class="font-headline text-xl font-bold mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="help_outline">help_outline</span>
+                        How setup works
+                    </h5>
+<div class="space-y-8">
+<div>
+<h6 class="font-bold text-on-surface mb-2">Transaction Consumption &amp; Economics</h6>
+<p class="text-sm text-on-surface-variant leading-relaxed mb-4">
+                                B-Units power your direct digital infrastructure. Instead of paying percentage cuts on every sale to traditional POS gateways, your system simply consumes a microscopic amount of fuel for interactions.
+                            </p>
+<a class="inline-flex items-center gap-2 text-primary text-sm font-bold hover:underline" href="#">
+                                Learn how 5,000 B-Units saves you money ↗
+                                <span class="material-symbols-outlined text-sm" data-icon="open_in_new">open_in_new</span>
+</a>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
+<div class="p-6 bg-surface-container rounded-lg">
+<p class="text-xs font-black text-primary uppercase tracking-widest mb-2">Refills</p>
+<p class="text-sm text-on-surface leading-tight">B-Units can be set to auto-refill so your program never goes offline. A standard 2% fee applies to all top-ups.</p>
+</div>
+<div class="p-6 bg-surface-container rounded-lg">
+<p class="text-xs font-black text-primary uppercase tracking-widest mb-2">Consumption</p>
+<p class="text-sm text-on-surface leading-tight">Your starter package units are permanent and only consumed as your customers interact with your network.</p>
 </div>
 </div>
 </div>
-<div class="space-y-2">
-<h4 class="text-xl font-headline font-bold text-on-surface">No activity yet</h4>
-<p class="text-slate-500 text-sm">Once your merchant account is active and customers start joining your programs, your real-time activity will appear here.</p>
 </div>
-<button class="text-primary font-bold text-sm inline-flex items-center gap-2 hover:underline">
-                            Learn how to start
-                            <span class="material-symbols-outlined text-[16px]" data-icon="arrow_forward">arrow_forward</span>
+</footer>
+</div>
+<!-- Mobile FAB -->
+<button class="fixed bottom-24 right-6 lg:hidden w-14 h-14 kinetic-gradient text-white rounded-full shadow-2xl flex items-center justify-center z-50">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</main>
+<!-- Mobile Bottom Navigation -->
+<div class="lg:hidden fixed bottom-0 w-full h-16 bg-white/80 backdrop-blur-xl border-t border-slate-200 flex items-center justify-around px-4 z-40">
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-[9px] font-bold uppercase">Home</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-blue-600">
+<span class="material-symbols-outlined" data-icon="loyalty" style="font-variation-settings: 'FILL' 1;">loyalty</span>
+<span class="text-[9px] font-bold uppercase">Programs</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="text-[9px] font-bold uppercase">Wallet</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-[9px] font-bold uppercase">Set</span>
 </button>
 </div>
-</section>
-</div>
-</main>
-</div>
-<!-- BottomNavBar -->
-<nav class="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl shadow-[0_-10px_40px_rgba(21,98,240,0.08)] rounded-t-[2rem]">
-<a class="flex flex-col items-center justify-center text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/30 rounded-2xl px-4 py-2 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Dashboard</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined" data-icon="loyalty">loyalty</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Programs</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Wallets</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined" data-icon="insights">insights</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Insights</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 hover:text-blue-500 active:scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-<span class="font-manrope text-[10px] font-bold uppercase tracking-widest mt-1">Settings</span>
-</a>
-</nav>
 </body></html>

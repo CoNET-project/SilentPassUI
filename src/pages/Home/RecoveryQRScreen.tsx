@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
-import { Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw, ImageDown, ArrowRight, ArrowLeft } from 'lucide-react'
-import bIcon from '@/components/assets/logo512.png'
-import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
+import { Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw, ImageDown, ArrowRight } from 'lucide-react'
+import { BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
 
 export const ACTIVATING_STEPS = [
   { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
@@ -21,7 +20,7 @@ type RecoveryQRScreenProps = {
   isRedeemFlow?: boolean
   redeemActivating?: boolean
   close: () => void | Promise<void>
-  /** When set, shows fixed top bar (Security Setup + back) like `marketExample.html`; omit when embedded in ScreenShell. */
+  /** Optional; when set, fixed top bar shows step chip only (back / title removed per product). */
   onBack?: () => void
 }
 
@@ -189,31 +188,18 @@ const RecoveryQRScreen = ({
     >
       {showTopNav ? (
         <nav
-          className="fixed left-0 right-0 top-0 z-[60] flex items-center justify-between border-b border-[#e2e8f0]/30 bg-white/80 px-6 backdrop-blur-md"
+          className="fixed left-0 right-0 top-0 z-[60] flex h-14 min-h-[3.5rem] items-center justify-end border-b border-[#e2e8f0]/30 bg-white/80 px-6 backdrop-blur-md"
           style={{ paddingTop: 'env(safe-area-inset-top)' }}
         >
-          <div className="flex h-16 items-center gap-4">
-            <button
-              type="button"
-              onClick={onBack}
-              className={`text-[#1562F0] transition-opacity hover:opacity-70 active:scale-95 ${bizBrandFocusRingClass} rounded-lg`}
-              aria-label="Back"
-            >
-              <ArrowLeft className="h-6 w-6" strokeWidth={2} aria-hidden />
-            </button>
-            <span className={`${headlineClass} text-lg font-bold tracking-tight text-[#0f172a]`}>Security Setup</span>
-          </div>
-          <div className="flex items-center">
-            <span className="rounded-full bg-[#1562F0]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1562F0]">
-              Step 2 of 2
-            </span>
-          </div>
+          <span className="rounded-full bg-[#1562F0]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1562F0]">
+            Step 2 of 2
+          </span>
         </nav>
       ) : null}
 
       <main
         className={`mx-auto flex w-full max-w-lg flex-grow flex-col px-6 pb-[calc(3rem+env(safe-area-inset-bottom))] ${
-          showTopNav ? 'pt-[calc(6rem+env(safe-area-inset-top))]' : 'pt-6'
+          showTopNav ? 'pt-[calc(4.5rem+env(safe-area-inset-top))]' : 'pt-6'
         }`}
       >
         {showTopNav ? null : (
@@ -252,7 +238,7 @@ const RecoveryQRScreen = ({
                   bgColor="#ffffff"
                   fgColor="#000000"
                   imageSettings={{
-                    src: bIcon,
+                    src: BIZ_PUBLIC_LOGO512,
                     height: 36,
                     width: 36,
                     excavate: true,

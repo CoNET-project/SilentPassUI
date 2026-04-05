@@ -95,10 +95,10 @@ export function AppButton({
             <span className={`w-2 h-2 rounded-full ${loadingDotColor} animate-pulse [animation-delay:180ms]`} />
           </span>
         ) : (
-          <span className="flex items-center justify-center gap-2">
-            {leftIcon ? <span className="inline-flex items-center">{leftIcon}</span> : null}
-            <span>{errorText || children}</span>
-            {rightIcon ? <span className="inline-flex items-center">{rightIcon}</span> : null}
+          <span className="inline-flex w-full items-center justify-center gap-2">
+            {leftIcon ? <span className="inline-flex shrink-0 items-center justify-center">{leftIcon}</span> : null}
+            <span className="inline-flex items-center leading-none">{errorText || children}</span>
+            {rightIcon ? <span className="inline-flex shrink-0 items-center justify-center">{rightIcon}</span> : null}
           </span>
         )}
       </button>

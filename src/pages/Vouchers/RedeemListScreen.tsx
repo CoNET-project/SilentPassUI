@@ -6,7 +6,7 @@ import { ethers } from 'ethers'
 import { Check, X, AlertCircle, Loader, Copy } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { QRCodeCanvas } from 'qrcode.react'
-import bIcon from '@/components/assets/logo512.png'
+import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatAmount, fiatPrefix } from '@/services/currency'
 import {
@@ -296,7 +296,7 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound, refreshVer
                                         bgColor="white"
                                         fgColor="#000000"
                                         imageSettings={{
-                                            src: bIcon,
+                                            src: BIZ_PUBLIC_LOGO512,
                                             height: 95,
                                             width: 95,
                                             excavate: true,

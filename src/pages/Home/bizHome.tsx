@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield, ArrowRight, Eye, EyeOff, Fingerprint, Network, Briefcase, Info, HelpCircle, ShieldCheck } from 'lucide-react'
+import { Shield, ArrowRight, Eye, EyeOff, Network, Briefcase, Info, HelpCircle, ShieldCheck } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
 import { restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
@@ -11,12 +11,13 @@ import { baseEndpoint } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
-import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
+import { BIZ_BRAND_HEX, BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
+import { BEAMIO_TAG_ALLOWED_RE, BEAMIO_TAG_RULE_HINT, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
 
-/** Login / gateway — aligned with `marketExample.html` (Verra Gateway) */
+/** Login shell (Access your business workspace) */
 const headlineFont = "font-['Manrope',ui-sans-serif,system-ui,sans-serif]"
 
 /** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
@@ -147,10 +148,14 @@ const BizHome = () => {
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault()
 		setLoginError('')
+		const username = normalizeBeamioTagInput(merchantTag)
+		if (!username || !BEAMIO_TAG_ALLOWED_RE.test(username)) {
+			setLoginError(BEAMIO_TAG_RULE_HINT)
+			return
+		}
 		setIsLoading(true)
 		let willTransitionToHome = false
 		try {
-			const username = merchantTag.trim().replace(/^@+/, '')
 			const result = await restoreWithUserPin(username, password, false)
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
@@ -257,7 +262,7 @@ const BizHome = () => {
 	return (
 		<div
 			data-biz-ui-primary={BIZ_UI_PRIMARY}
-			className={`flex min-h-[max(100dvh,884px)] flex-col overflow-x-hidden bg-[#f5f7f9] text-[#2c2f31] selection:bg-[#7a9dff]/30 ${headlineFont}`}
+			className={`flex min-h-[max(100dvh,720px)] flex-col overflow-x-hidden bg-[#f5f7f9] text-[#2c2f31] selection:bg-[#7a9dff]/30 ${headlineFont}`}
 			style={{
 				backgroundImage: `
 					radial-gradient(at 0% 0%, rgba(21, 98, 240, 0.03) 0px, transparent 50%),
@@ -273,10 +278,14 @@ const BizHome = () => {
 					paddingTop: 'env(safe-area-inset-top)',
 				}}
 			>
-				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-6 py-4">
-					<div className="flex items-center gap-2">
-						<Fingerprint className="h-7 w-7 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>VERRA GATEWAY</span>
+				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-4 py-3">
+					<div className="flex items-center gap-0">
+						<img
+							src={BIZ_PUBLIC_LOGO512}
+							alt=""
+							className="h-7 w-7 shrink-0 rounded-md object-contain"
+						/>
+						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>Verra Business</span>
 					</div>
 					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#dfe3e6]">
 						<Briefcase className="h-4 w-4 text-[#595c5e]" strokeWidth={2} aria-hidden />
@@ -284,9 +293,9 @@ const BizHome = () => {
 				</div>
 			</header>
 
-			<main className="mx-auto flex w-full max-w-md flex-grow flex-col px-6 pb-24 pt-12">
-				<section className="mb-12">
-					<h1 className={`${headlineFont} mb-4 text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]`}>
+			<main className="mx-auto flex w-full max-w-md flex-grow flex-col px-4 pb-20 pt-8">
+				<section className="mb-8">
+					<h1 className={`${headlineFont} mb-3 text-2xl font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-3xl`}>
 						Access your business workspace
 					</h1>
 					<p className="text-base leading-relaxed text-[#595c5e]">
@@ -294,17 +303,17 @@ const BizHome = () => {
 					</p>
 				</section>
 
-				<div className="mb-12 h-1 w-24 shrink-0 rounded-full bg-[#0051d1] opacity-20" aria-hidden />
+				<div className="mb-8 h-1 w-24 shrink-0 rounded-full bg-[#0051d1] opacity-20" aria-hidden />
 
-				<section className="rounded-xl bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
-					<div className="mb-8">
+				<section className="rounded-xl bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+					<div className="mb-6">
 						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>Continue with your business identity</h2>
 						<p className="text-sm leading-snug text-[#595c5e]">
 							Enter the business identity you just created to access your Verra workspace.
 						</p>
 					</div>
 
-					<form onSubmit={handleLogin} className="space-y-6">
+					<form onSubmit={handleLogin} className="space-y-5">
 						<div className="space-y-2">
 							<label
 								htmlFor="biz-gateway-beamiotag"
@@ -320,9 +329,9 @@ const BizHome = () => {
 								autoComplete="username"
 								inputMode="text"
 								placeholder="e.g. global_ventures"
-								value={merchantTag.replace(/^@+/, '')}
-								onChange={(e) => setMerchantTag(e.target.value.replace(/^@+/, ''))}
-								className={`w-full rounded-lg border-none bg-[#eef1f3] px-5 py-4 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
+								value={merchantTag}
+								onChange={(e) => setMerchantTag(normalizeBeamioTagInput(e.target.value))}
+								className={`w-full rounded-lg border-none bg-[#eef1f3] px-4 py-3 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
 								required
 								disabled={isLoading}
 							/>
@@ -350,7 +359,7 @@ const BizHome = () => {
 									placeholder="••••••••"
 									value={password}
 									onChange={(e) => setPassword(e.target.value)}
-									className={`w-full rounded-lg border-none bg-[#eef1f3] px-5 py-4 pr-12 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
+									className={`w-full rounded-lg border-none bg-[#eef1f3] px-4 py-3 pr-12 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
 									required
 									disabled={isLoading}
 								/>
@@ -382,11 +391,11 @@ const BizHome = () => {
 							</div>
 						) : null}
 
-						<div className="pt-4">
+						<div className="pt-3">
 							<button
 								type="submit"
 								disabled={isLoading}
-								className={`${headlineFont} flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 text-lg font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.15)] transition-all duration-200 hover:scale-[1.02] hover:opacity-95 active:scale-95 disabled:opacity-60 ${bizBrandFocusRingClass}`}
+								className={`${headlineFont} flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-3.5 text-base font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.15)] transition-all duration-200 hover:scale-[1.02] hover:opacity-95 active:scale-95 disabled:opacity-60 sm:text-lg ${bizBrandFocusRingClass}`}
 							>
 								{isLoading ? (
 									<>
@@ -404,16 +413,17 @@ const BizHome = () => {
 					</form>
 				</section>
 
-				<footer className="mt-12 text-center">
-					<button
-						type="button"
-						onClick={() => navigate('/Onboarding')}
-						className={`${headlineFont} mx-auto flex items-center justify-center gap-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]`}
+				<footer className="mt-8 text-center">
+					<a
+						href="https://verra.network/contact"
+						target="_blank"
+						rel="noopener noreferrer"
+						className={`${headlineFont} mx-auto inline-flex items-center justify-center gap-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]`}
 					>
 						<HelpCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
 						Need help accessing your workspace?
-					</button>
-					<div className="mt-6 flex flex-col items-center gap-2 border-t border-[#abadaf]/20 pt-6">
+					</a>
+					<div className="mt-4 flex flex-col items-center gap-2 border-t border-[#abadaf]/20 pt-4">
 						<p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#747779]">
 							Securely hosted by Beamio Infrastructure © 2026
 						</p>

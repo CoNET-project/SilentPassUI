@@ -1,4 +1,5 @@
 import React from "react"
+import { BIZ_PUBLIC_LOGO512 } from "@/pages/Home/brandUi"
 
 /** init 期间全屏居中显示 logo，等 init 完成后再显示具体页面 */
 const SplashScreen: React.FC = () => (
@@ -11,7 +12,7 @@ const SplashScreen: React.FC = () => (
 			paddingRight: 'env(safe-area-inset-right)',
 		}}
 	>
-		<img src={`${process.env.PUBLIC_URL || ''}/logo512.png`} alt="Beamio" className="w-32 h-32 object-contain" />
+		<img src={BIZ_PUBLIC_LOGO512} alt="" className="h-32 w-32 object-contain" />
 	</div>
 )
 

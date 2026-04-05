@@ -45,6 +45,7 @@ import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_
 import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
+import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi';
 import {
   IPFS_GET_FRAGMENT,
   IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES,
@@ -116,6 +117,7 @@ import {
  Crown,
  MonitorSmartphone, // 新增：用于终端图标
  Plus,              // 新增：用于添加按钮
+ Minus,
  Pencil,            // Tier description edit
  Trash2,            // 新增：用于删除按钮
  RefreshCcw,
@@ -146,6 +148,9 @@ import {
  Loader2,
  ArrowLeft,
  ArrowRight,
+ ArrowDown,
+ ArrowUp,
+ Bell,
  Menu,
  CalendarDays,
  Code,
@@ -165,15 +170,13 @@ import {
  Clapperboard,
  BarChart3,
  Megaphone,
- Download,
- ListTodo,
+  Download,
+  ListTodo,
  ShoppingCart,
  Package,
  Palette,
- History,
- LifeBuoy,
- Clock,
- Gift,
+  History,
+  Gift,
  Bot,
  BadgeCheck,
  FileText,
@@ -186,14 +189,16 @@ import {
  Hand,
  PlusCircle,
  UserRoundPlus,
+ UserX,
  ChevronsUp,
  Banknote,
  ArrowDownUp,
  Lightbulb,
- Percent,
- Signal,
- Wifi,
- BatteryFull,
+  Percent,
+  Signal,
+  Wifi,
+  BatteryFull,
+  Timer,
 } from 'lucide-react';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
 
@@ -203,8 +208,6 @@ const getImg = (avatarSeed: string | undefined) =>
 const USDC_ICON_URL = 'https://assets.coingecko.com/coins/images/6319/small/usdc.png';
 const BASE_ICON_URL = 'https://beamio.app/app/static/media/base-logo.275b67e94556e30ce59b.png';
 
-/** PWA / public brand mark (`public/logo512.png`; respects `homepage` e.g. `/biz`) */
-const BIZ_PUBLIC_LOGO512 = `${process.env.PUBLIC_URL ?? ''}/logo512.png`;
 /** Self-custody / security hero illustration (`public/assets/mbiz-self-custody-hero.png`) */
 const BIZ_SELF_CUSTODY_HERO_IMG = `${process.env.PUBLIC_URL ?? ''}/assets/mbiz-self-custody-hero.png`;
 
@@ -484,9 +487,9 @@ const MERCHANT_KIT_CHECKOUT_SUMMARY: Record<
     orderTitle: 'Custom Brand Starter Kit',
     totalDisplay: 'C$ 139.00',
     lines: [
-      { label: 'Custom asset issuance', value: 'Included' },
+      { label: 'Custom Asset Issuance', value: 'Included' },
       { label: 'Bonus: 5,000 B-Units', strike: 'C$ 71.40', value: 'Free', highlight: true },
-      { label: 'Bonus: 20× Generic Cards', strike: 'C$ 30.00', value: 'Free', highlight: true },
+      { label: 'Bonus: 20x Generic Cards', strike: 'C$ 30.00', value: 'Free', highlight: true },
     ],
   },
 }
@@ -697,112 +700,352 @@ function MerchantKitStripeThankYouPanel(props: {
   )
 }
 
-/** Members tab empty state when Smart Account is not deployed — layout from `marketExample.html` (editorial / community onboarding). */
-const MEMBERS_NO_AA_HERO_IMG = `${process.env.PUBLIC_URL ?? ''}/assets/mbiz-members-no-aa-hero.png`;
+/** Directory helpers — `newOnloading.html` Member Directory card row */
+function formatDirectoryMemberDisplayName(beamioTag: string): string {
+  const t = beamioTag.replace(/^@/, '').trim();
+  if (!t) return 'Member';
+  return t
+    .split(/[_\s.]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
 
-function MembersLoyaltyNoAaEditorial(props: {
-  onPreviewDigitalCard: () => void
-  onShareInvite: () => void
-}) {
-  const { onPreviewDigitalCard, onShareInvite } = props;
+function directoryMemberPointsHuman(row: BizTopupMemberTableRow): number {
+  try {
+    return Number(BigInt(row.totalTopupFiat6 || '0')) / 1_000_000;
+  } catch {
+    return 0;
+  }
+}
+
+function directoryMemberTierFromPoints(points: number): { label: 'Gold' | 'Silver'; gold: boolean } {
+  if (points >= 200) return { label: 'Gold', gold: true };
+  return { label: 'Silver', gold: false };
+}
+
+type MembersDirectorySegment = 'app' | 'anon_nfc';
+
+function MembersLoyaltyNoAaEditorial(props: { onSetUpFirstProgram: () => void }) {
+  const { onSetUpFirstProgram } = props;
+  const [segment, setSegment] = useState<MembersDirectorySegment>('app');
   return (
-    <div className="flex w-full flex-col items-center px-4 pb-16 pt-2 sm:px-6 lg:px-10">
-      <div className="relative w-full max-w-4xl text-center">
-        <div className="relative group">
-          <div
-            className="pointer-events-none absolute -inset-4 rounded-full bg-[#0051d1]/5 opacity-50 blur-3xl"
-            aria-hidden
+    <div className="w-full space-y-8 px-1 pb-28 pt-2 sm:px-2 lg:pb-12">
+      <section className="space-y-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">Member Management</span>
+        <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">Directory</h2>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-[0_4px_20px_rgba(21,98,240,0.04)] sm:col-span-2 lg:col-span-1">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Total Members</p>
+          <div className="flex items-end justify-between gap-2">
+            <span className="text-3xl font-extrabold text-[#0051d1]">0</span>
+            <Users className="size-8 shrink-0 text-[#7a9dff]" strokeWidth={2} aria-hidden />
+          </div>
+        </div>
+        <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">Active NFCs</p>
+          <span className="text-xl font-bold text-[#2c2f31]">0</span>
+        </div>
+        <div className="rounded-lg border border-[#abadaf]/10 border-l-4 border-l-[#b31b25] bg-white p-5">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">At-Risk High-Value</p>
+          <span className="text-xl font-bold text-[#b31b25]">0</span>
+        </div>
+      </section>
+
+      <div className="flex max-w-md gap-1 rounded-full bg-[#eef1f3] p-1">
+        <button
+          type="button"
+          onClick={() => setSegment('app')}
+          className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
+            segment === 'app' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
+          } ${bizFocusRingClass}`}
+        >
+          App Users
+        </button>
+        <button
+          type="button"
+          onClick={() => setSegment('anon_nfc')}
+          className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
+            segment === 'anon_nfc' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
+          } ${bizFocusRingClass}`}
+        >
+          Anonymous NFC
+        </button>
+      </div>
+
+      <div className="relative max-w-2xl">
+        <Search className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
+        <input
+          id="members-directory-search"
+          readOnly
+          className="w-full cursor-not-allowed rounded-lg border-none bg-[#eef1f3] py-4 pl-12 pr-4 text-sm text-[#2c2f31] opacity-80"
+          placeholder="Search BeamioTags or Names…"
+          type="search"
+          aria-disabled
+        />
+      </div>
+
+      <section className="space-y-6">
+        <div className="flex items-center justify-between px-2">
+          <h3 className="text-lg font-bold text-[#2c2f31]">{segment === 'app' ? 'App Users' : 'Anonymous NFC'}</h3>
+          <span className="text-xs font-bold uppercase tracking-tighter text-[#0051d1]">Sort by: Recent</span>
+        </div>
+        <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white/60 p-10 text-center">
+          <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
+          <p className="text-sm font-semibold text-[#2c2f31]">No members yet</p>
+          <p className="mt-2 text-sm text-[#595c5e]">
+            {segment === 'app'
+              ? 'Activate your Smart Terminal and first program to see App Users here.'
+              : 'Anonymous NFC tags will appear after you issue hardware or digital NFC flows.'}
+          </p>
+          <button
+            type="button"
+            onClick={onSetUpFirstProgram}
+            className={`mt-6 rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
+          >
+            Set up your first program
+          </button>
+        </div>
+      </section>
+
+      <div className="fixed bottom-28 right-6 z-40 lg:bottom-12">
+        <button
+          type="button"
+          onClick={onSetUpFirstProgram}
+          className={`flex size-14 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-xl transition-transform active:scale-90 ${bizFocusRingClass}`}
+          title="Add member program"
+        >
+          <UserPlus className="size-6" strokeWidth={2.25} aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Staff / Terminals — SoftPOS hero + feature grid, aligned with `newOnloading.html` */
+const STAFF_SOFTPOS_UI_PRIMARY = '#1562f0';
+
+function StaffSoftPosHero(props: { onLinkNew: () => void }) {
+  const { onLinkNew } = props;
+  return (
+    <div className="mb-10 grid grid-cols-1 gap-6 md:mb-12">
+      <div className="relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-lg bg-white p-6 shadow-sm sm:min-h-[400px] sm:p-8">
+        <div className="pointer-events-none absolute top-0 right-0 h-full w-1/2 select-none opacity-10" aria-hidden>
+          <Nfc
+            className="absolute right-0 top-0 size-[240px] translate-x-1/4 text-[#1562f0] sm:size-[280px] sm:translate-x-1/4 sm:-translate-y-1/4"
+            strokeWidth={1}
           />
-          <div className="relative space-y-8">
-            <div className="relative mx-auto aspect-[16/9] w-full max-w-2xl overflow-hidden rounded-xl shadow-2xl">
-              <img
-                src={MEMBERS_NO_AA_HERO_IMG}
-                alt="Customers using NFC at checkout"
-                className="h-full w-full object-cover"
-              />
-              <div className="absolute bottom-4 right-4 flex items-center gap-3 rounded-lg border border-white/20 bg-white/70 p-3 shadow-xl backdrop-blur-md sm:bottom-6 sm:right-6 sm:p-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0051d1] text-white sm:h-9 sm:w-9">
-                  <Nfc className="size-4 sm:size-[18px]" strokeWidth={2} aria-hidden />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Live status</p>
-                  <p className="text-xs font-bold text-[#0051d1]">Ready to sync</p>
-                </div>
+        </div>
+        <div className="relative z-10">
+          <span className="mb-4 inline-block rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#1562f0]">
+            SoftPOS Technology
+          </span>
+          <h1 className="mb-4 max-w-xl font-sans text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:mb-6 md:text-4xl lg:text-5xl">
+            Transform your phone into a secure <span style={{ color: STAFF_SOFTPOS_UI_PRIMARY }}>Payment Terminal</span>.
+          </h1>
+          <p className="mb-6 max-w-md text-base font-medium leading-relaxed text-[#515c70] md:mb-8 md:text-lg">
+            Verra SoftPOS allows you to accept contactless payments directly on your NFC-enabled device. No extra hardware required—just tap and go.
+          </p>
+        </div>
+        <div className="relative z-10">
+          <button
+            type="button"
+            onClick={onLinkNew}
+            className={`group flex items-center gap-3 rounded-full bg-[#1562f0] px-6 py-3.5 text-base font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:shadow-xl active:scale-[0.98] md:px-8 md:py-4 md:text-lg ${bizFocusRingClass}`}
+          >
+            <span>Link New SoftPOS Terminal</span>
+            <PlusCircle className="size-5 shrink-0 transition-transform group-hover:translate-x-0.5 md:size-6" strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Wallets tab — Treasury hero, primary actions, history preview (`newOnloading.html` Wallet). */
+function WalletsTreasuryShell(props: {
+  cadPrimary: string;
+  usdcSecondary: string;
+  settlementActive: boolean;
+  onReceive: () => void;
+  onSend: () => void;
+  onCashOut: () => void;
+  onViewAllHistory: () => void;
+  onOpenMarketRefuel: () => void;
+}) {
+  const {
+    cadPrimary,
+    usdcSecondary,
+    settlementActive,
+    onReceive,
+    onSend,
+    onCashOut,
+    onViewAllHistory,
+    onOpenMarketRefuel,
+  } = props;
+  return (
+    <div className="w-full">
+      <section className="relative overflow-hidden rounded-xl border border-slate-100/80 bg-white p-10 text-center shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-[#0051d1]/5 blur-3xl" />
+        <div className="relative flex flex-col items-center gap-1">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#0051d1]/10 bg-[#7a9dff]/10 px-4 py-1.5">
+            <span
+              className={`h-2 w-2 rounded-full ${settlementActive ? 'animate-pulse bg-[#0051d1]' : 'bg-slate-300'}`}
+              aria-hidden
+            />
+            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#0051d1]">
+              {settlementActive ? 'Settlement account active' : 'Settlement pending activation'}
+            </span>
+          </div>
+          <h1 className="mb-2 font-sans text-5xl font-extrabold tracking-tight text-[#2c2f31] md:text-6xl">{cadPrimary}</h1>
+          <p className="text-sm font-medium tracking-wide text-[#595c5e]/80">{usdcSecondary}</p>
+        </div>
+      </section>
+
+      <section className="mt-8 flex gap-4">
+        <button
+          type="button"
+          onClick={onReceive}
+          className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
+            <ArrowDown className="size-5 text-[#0051d1] transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
+          </div>
+          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Receive</span>
+        </button>
+        <button
+          type="button"
+          onClick={onSend}
+          className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
+            <ArrowUp className="size-5 text-[#0051d1] transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
+          </div>
+          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Send</span>
+        </button>
+        <button
+          type="button"
+          onClick={onCashOut}
+          className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
+            <Landmark className="size-5 text-[#0051d1] transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
+          </div>
+          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Cash Out</span>
+        </button>
+      </section>
+
+      <section className="mb-8 mt-12">
+        <div className="mb-6 flex items-center justify-between px-2">
+          <h2 className="text-xl font-bold tracking-tight text-[#2c2f31]">Financial History</h2>
+          <button
+            type="button"
+            onClick={onViewAllHistory}
+            className={`text-xs font-bold uppercase tracking-widest text-[#0051d1] transition-opacity hover:opacity-70 ${bizFocusRingClass}`}
+          >
+            View All
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg bg-white p-5 shadow-[0_2px_8px_rgba(21,98,240,0.02)] transition-shadow hover:shadow-lg">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7a9dff]/10">
+                <Plus className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#2c2f31]">Deposit</h3>
+                <p className="text-xs font-medium text-[#595c5e]">External Transfer · Today</p>
               </div>
             </div>
-            <div className="space-y-4 px-1 sm:px-4">
-              <h1 className="font-sans text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:text-4xl lg:text-5xl">
-                Your community starts here.
-              </h1>
-              <p className="mx-auto max-w-2xl text-base font-medium leading-relaxed text-[#595c5e] md:text-lg md:text-xl">
-                When customers tap your physical NFC cards or buy your digital cards in the Verra App, their profiles and
-                balances will securely appear here. Deploy your smart account from Market to unlock member management.
-              </p>
+            <div className="text-right">
+              <p className="font-bold text-[#0051d1]">+5,000.00 USDC</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#747779]">Completed</p>
             </div>
-            <div className="flex flex-col items-center justify-center gap-4 pt-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={onPreviewDigitalCard}
-                className="group flex items-center gap-2 rounded-full bg-gradient-to-br from-[#0051d1] to-[#7a9dff] px-8 py-4 text-base font-bold text-white shadow-lg transition-all hover:scale-[1.02] hover:shadow-[0_12px_28px_rgba(0,81,209,0.2)] active:scale-95"
-              >
-                Preview my digital card
-                <ArrowRight className="size-5 transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={onShareInvite}
-                className="flex items-center gap-2 rounded-full bg-[#eef1f3] px-8 py-4 text-base font-bold text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]"
-              >
-                <Share2 className="size-5" strokeWidth={2} aria-hidden />
-                Share invite link
-              </button>
+          </div>
+          <div className="flex items-center justify-between rounded-lg bg-white p-5 shadow-[0_2px_8px_rgba(21,98,240,0.02)] transition-shadow hover:shadow-lg">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e]">
+                <Minus className="size-5" strokeWidth={2} aria-hidden />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#2c2f31]">Withdrawal</h3>
+                <p className="text-xs font-medium text-[#595c5e]">Sent to Vault · Yesterday</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="font-bold text-[#2c2f31]">-2,000.00 USDC</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#747779]">Completed</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between rounded-lg bg-white p-5 shadow-[0_2px_8px_rgba(21,98,240,0.02)] transition-shadow hover:shadow-lg">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7a9dff]/10">
+                <RefreshCw className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#2c2f31]">Settlement</h3>
+                <p className="text-xs font-medium text-[#595c5e]">Daily Revenue · Yesterday</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="font-bold text-[#0051d1]">+850.00 USDC</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#747779]">Completed</p>
             </div>
           </div>
         </div>
+        <p className="mt-4 px-2 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
+          Illustrative preview — open Transactions for your live ledger
+        </p>
+      </section>
 
-        <div className="grid grid-cols-1 gap-6 pt-12 md:grid-cols-3 md:gap-6">
-          <div className="space-y-4 rounded-lg border border-[#abadaf]/10 bg-white p-8 text-left shadow-sm">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#7a9dff]/20 text-[#0051d1]">
-              <Nfc className="size-7" strokeWidth={2} aria-hidden />
-            </div>
-            <h3 className="text-xl font-bold text-[#2c2f31]">Physical tap</h3>
-            <p className="text-sm leading-relaxed text-[#595c5e]">
-              Instantly link customer accounts with a single NFC tap at your checkout station.
-            </p>
-          </div>
-          <div className="space-y-4 rounded-lg border border-[#abadaf]/10 bg-white p-8 text-left shadow-sm">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f797ef]/20 text-[#8d3a8b]">
-              <QrCode className="size-7" strokeWidth={2} aria-hidden />
-            </div>
-            <h3 className="text-xl font-bold text-[#2c2f31]">Digital first</h3>
-            <p className="text-sm leading-relaxed text-[#595c5e]">
-              Customers can join your community by purchasing branded digital cards in-app.
-            </p>
-          </div>
-          <div className="space-y-4 rounded-lg border border-[#abadaf]/10 bg-white p-8 text-left shadow-sm">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d8e3fb] text-[#515c70]">
-              <Shield className="size-7" strokeWidth={2} aria-hidden />
-            </div>
-            <h3 className="text-xl font-bold text-[#2c2f31]">Privacy first</h3>
-            <p className="text-sm leading-relaxed text-[#595c5e]">
-              Advanced encryption helps keep member data private between you and your customers.
-            </p>
-          </div>
+      <p className="text-center text-[11px] font-medium text-[#595c5e]">
+        Protocol fuel (B-Units): refill in{' '}
+        <button
+          type="button"
+          onClick={onOpenMarketRefuel}
+          className={`font-bold text-[#0051d1] underline-offset-2 hover:underline ${bizFocusRingClass}`}
+        >
+          Market
+        </button>
+        .
+      </p>
+    </div>
+  );
+}
+
+function StaffTerminalsInfoGrid() {
+  return (
+    <div className="grid grid-cols-1 gap-6 pb-10 md:grid-cols-3 md:gap-6">
+      <div className="rounded-lg border border-white/20 bg-white/40 p-6 backdrop-blur-md">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3]">
+          <Shield className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
         </div>
-
-        <footer className="mt-12 border-t border-[#abadaf]/15 pt-8">
-          <div className="flex flex-col items-center gap-4 text-[#595c5e] opacity-80">
-            <div className="flex items-center gap-2 text-center text-sm font-medium">
-              <Lock className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-              <span>Customer data is protected; unlock the full loyalty ledger after smart account activation.</span>
-            </div>
-            <div className="flex flex-wrap justify-center gap-4 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-              <span className="cursor-pointer transition-colors hover:text-[#0051d1]">Privacy protocol</span>
-              <span className="cursor-pointer transition-colors hover:text-[#0051d1]">Data security</span>
-              <span className="cursor-pointer transition-colors hover:text-[#0051d1]">Legal terms</span>
-            </div>
-          </div>
-        </footer>
+        <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Pure Software Solution</h4>
+        <p className="text-sm leading-relaxed text-[#515c70]">
+          No clunky card machines or expensive hardware. Just install the Verra SoftPOS app on any NFC-enabled smartphone or tablet to start accepting
+          secure payments instantly.
+        </p>
+      </div>
+      <div className="rounded-lg border border-white/20 bg-white/40 p-6 backdrop-blur-md">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3]">
+          <Zap className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+        </div>
+        <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Instant Deployment</h4>
+        <p className="text-sm leading-relaxed text-[#515c70]">
+          No waiting for shipping or complex hardware setup. Activate SoftPOS on any supported NFC device and start accepting payments in under 60
+          seconds.
+        </p>
+      </div>
+      <div className="rounded-lg border border-white/20 bg-white/40 p-6 backdrop-blur-md">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3]">
+          <BarChart3 className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+        </div>
+        <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Smart Network Reporting</h4>
+        <p className="text-sm leading-relaxed text-[#515c70]">
+          Track live sales from all mobile terminals and digital cards in one consolidated Verra Business dashboard.
+        </p>
       </div>
     </div>
   );
@@ -940,7 +1183,7 @@ function MessagesDayZeroShell(props: {
               </div>
             </div>
 
-            <div className="relative flex flex-1 flex-col items-center justify-center overflow-y-auto p-6 sm:p-10">
+            <div className="relative flex flex-1 flex-col items-center justify-center overflow-y-auto p-4 sm:p-6">
               <div
                 className="pointer-events-none absolute inset-0 opacity-20"
                 style={{
@@ -4039,8 +4282,8 @@ export default function MerchantOS() {
  const [applyingAlliance, setApplyingAlliance] = useState<AllianceId | null>(null);
  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
  const [customFuelAmount, setCustomFuelAmount] = useState('');
- /** Market listing: B-Units packages vs priority upsell (UI only). */
- const [marketFuelSegment, setMarketFuelSegment] = useState<'bunits' | 'priority'>('bunits');
+ /** Market UI: Auto-Refill card only (not wired to payments). */
+ const [marketAutoRefillOn, setMarketAutoRefillOn] = useState(true);
  const [marketRefuelProcessing, setMarketRefuelProcessing] = useState(false);
  const [marketRefuelSuccess, setMarketRefuelSuccess] = useState<string | null>(null);
  const [marketRefuelError, setMarketRefuelError] = useState<string | null>(null);
@@ -4058,7 +4301,7 @@ export default function MerchantOS() {
  const merchantKitStripePopupWatcherRef = useRef<ReturnType<typeof setInterval> | null>(null);
  /** Full-screen checkout (marketExample.html) after Programs kit CTA */
  const [merchantKitCheckoutPlan, setMerchantKitCheckoutPlan] = useState<MerchantKitCheckoutPlanId | null>(null);
- const [merchantKitCheckoutPayTab, setMerchantKitCheckoutPayTab] = useState<'usdc' | 'card'>('card');
+ const [merchantKitCheckoutPayTab, setMerchantKitCheckoutPayTab] = useState<'usdc' | 'card'>('usdc');
  const [merchantKitRedeemInput, setMerchantKitRedeemInput] = useState('');
  const [merchantKitRedeemFeedback, setMerchantKitRedeemFeedback] = useState<{
    type: 'success' | 'error';
@@ -4096,6 +4339,8 @@ export default function MerchantOS() {
  /** Sum of `getGlobalStatsFull(..., 0, 0).cumulativeMint` across owned programs (token #0, 6 decimals) — BeamioUserCard readme GlobalStatsFullView; not from HTTP API */
  const [membersLoyaltyChainCumulativeMintDisplay, setMembersLoyaltyChainCumulativeMintDisplay] = useState<number | null>(null);
  const [membersLoyaltyProgramKey, setMembersLoyaltyProgramKey] = useState<string>('all');
+ /** Member Directory UI — `newOnloading.html` App Users vs Anonymous NFC */
+ const [membersDirectorySegment, setMembersDirectorySegment] = useState<MembersDirectorySegment>('app');
  const [isIssueCardModalOpen, setIsIssueCardModalOpen] = useState(false);
  const [issueCardStep, setIssueCardStep] = useState(1);
  const [issueTarget, setIssueTarget] = useState('');
@@ -4144,7 +4389,7 @@ export default function MerchantOS() {
    setMerchantKitStripeSessionId(null);
    setMerchantKitStripeMessage(null);
    setMerchantKitCheckoutPlan(null);
-   setMerchantKitCheckoutPayTab('card');
+   setMerchantKitCheckoutPayTab('usdc');
    setMerchantKitRedeemInput('');
    setMerchantKitRedeemFeedback(null);
    setMerchantKitBuintRedeemBusy(false);
@@ -4156,7 +4401,7 @@ export default function MerchantOS() {
      setMerchantKitStripeUi('idle');
      setMerchantKitStripeSessionId(null);
      setMerchantKitStripeMessage(null);
-     setMerchantKitCheckoutPayTab('card');
+     setMerchantKitCheckoutPayTab('usdc');
      setMerchantKitRedeemInput('');
      setMerchantKitRedeemFeedback(null);
      setMerchantKitBuintRedeemBusy(false);
@@ -4175,6 +4420,64 @@ export default function MerchantOS() {
    setMarketRefuelSuccess(null);
    setMarketRefuelError(null);
  }, [stopMerchantKitStripePoll]);
+
+ const submitMerchantKitBuintRedeem = useCallback(async () => {
+   const code = merchantKitRedeemInput.trim();
+   if (!code) return;
+   const eoaRedeem = (profiles?.[0]?.keyID ?? myAddress)?.trim() ?? '';
+   if (!eoaRedeem || !ethers.isAddress(eoaRedeem)) {
+     setMerchantKitRedeemFeedback({
+       type: 'error',
+       message: 'Connect your wallet to redeem B-Units.',
+     });
+     return;
+   }
+   setMerchantKitBuintRedeemBusy(true);
+   setMerchantKitRedeemFeedback(null);
+   try {
+     const pre = await queryBuintRedeemAirdropOnChain(code);
+     if (!pre.redeemable) {
+       setMerchantKitRedeemFeedback({
+         type: 'error',
+         message: pre.error ?? 'This code cannot be redeemed.',
+       });
+       return;
+     }
+     const amountRaw = pre.amount ?? '0';
+     let buDisplay = '—';
+     try {
+       const buHuman = Number(ethers.formatUnits(amountRaw, 6));
+       buDisplay = Number.isFinite(buHuman) ? buHuman.toFixed(2) : amountRaw;
+     } catch {
+       buDisplay = amountRaw;
+     }
+     const res = await postBuintRedeemAirdropRedeem(eoaRedeem, code);
+     if (!res.success) {
+       setMerchantKitRedeemFeedback({
+         type: 'error',
+         message: res.error ?? 'Redeem failed. Try again.',
+       });
+       return;
+     }
+     const txShort =
+       res.txHash && res.txHash.length > 20
+         ? `${res.txHash.slice(0, 10)}…${res.txHash.slice(-8)}`
+         : '';
+     setMerchantKitRedeemFeedback({
+       type: 'success',
+       message: `Redeemed ${buDisplay} B-Units to your Beamio smart wallet (AA).${txShort ? ` Tx: ${txShort}` : ''}`,
+     });
+     setMerchantKitRedeemInput('');
+     setOverviewRefreshTrigger((t) => t + 1);
+   } catch {
+     setMerchantKitRedeemFeedback({
+       type: 'error',
+       message: 'Network error. Try again.',
+     });
+   } finally {
+     setMerchantKitBuintRedeemBusy(false);
+   }
+ }, [merchantKitRedeemInput, profiles, myAddress]);
 
  useEffect(() => {
    if (activeTab !== 'Messages') {
@@ -6823,6 +7126,22 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  }, [joinedAlliances, eoaOnFixedCardAdminList]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
+ /** Wallet tab: Vault EOA USDC → CAD headline (oracle). */
+ const walletTreasuryCadPrimary = useMemo(() => {
+   if (eoaUsdcBalance == null || eoaUsdcBalance === '') return '—';
+   const usdc = Number(eoaUsdcBalance);
+   if (!Number.isFinite(usdc)) return '—';
+   const rate = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
+   if (!Number.isFinite(rate) || rate <= 0) return '—';
+   const cad = usdc / rate;
+   return `C$${cad.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+ }, [eoaUsdcBalance, oracleCadUsdc]);
+ const walletTreasuryUsdcSecondary = useMemo(() => {
+   if (eoaUsdcBalance == null || eoaUsdcBalance === '') return '≈ — USDC';
+   const usdc = Number(eoaUsdcBalance);
+   if (!Number.isFinite(usdc)) return '≈ — USDC';
+   return `≈ ${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
+ }, [eoaUsdcBalance]);
  /** Settings editorial hero: progress bar 20–100% from onboarding signals */
  const settingsEditorialSetupPercent = useMemo(() => {
    const steps = [
@@ -6855,6 +7174,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    });
  }, [topupMemberTableRowsAll, membersLoyaltySearch, membersLoyaltyProgramKey]);
 
+ const membersTopupDirectorySorted = useMemo(() => {
+   return [...membersTopupDirectoryFiltered].sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
+ }, [membersTopupDirectoryFiltered]);
+
  const membersTopupKpisAll = useMemo(() => {
    return {
      count: topupMemberTableRowsAll.length,
@@ -6866,6 +7189,27 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      totalTopupEvents: membersLoyaltyServerRollup.totalTopupEvents,
    };
  }, [topupMemberTableRowsAll, membersLoyaltyServerRollup, membersLoyaltyChainCumulativeMintDisplay]);
+
+ /** Linked SoftPOS terminals ≈ Active NFC touchpoints for Directory bento */
+ const membersDirectoryActiveNfcCount = useMemo(() => terminals.length, [terminals]);
+
+ /** High points (≥200) but no activity in 30d — editorial “at-risk” signal, not chain truth */
+ const membersDirectoryAtRiskCount = useMemo(() => {
+   const nowSec = Date.now() / 1000;
+   const staleSec = 30 * 24 * 3600;
+   return topupMemberTableRowsAll.filter((row) => {
+     if (directoryMemberPointsHuman(row) < 200) return false;
+     if (!row.lastSeenTs || row.lastSeenTs <= 0) return false;
+     return nowSec - row.lastSeenTs > staleSec;
+   }).length;
+ }, [topupMemberTableRowsAll]);
+
+ const membersDirectorySegmentRows = useMemo(() => {
+   if (membersDirectorySegment === 'app') {
+     return membersTopupDirectorySorted.filter((r) => r.beamioTag && r.beamioTag.replace(/^@/, '').trim().length > 0);
+   }
+   return membersTopupDirectorySorted.filter((r) => !r.beamioTag || !r.beamioTag.replace(/^@/, '').trim());
+ }, [membersTopupDirectorySorted, membersDirectorySegment]);
 
  useEffect(() => {
    if (activeTab !== 'MembersLoyalty' || !currentEoa) return;
@@ -7106,6 +7450,35 @@ const topUpsUsedFromClear = adminMintCounterFromClear ?? 0; // numerator: mintCo
 const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // B-Units: CoNET BUint.balanceOf(EOA)+balanceOf(AA) from 6s Overview feeder
 /** Charge-only sum of `fees.bServiceUnits6` from `transactionsFilteredForTable`, windowed by header `timeFilter`. */
 const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
+/** Today's Charge B-Unit burn (local calendar day); used for Market runway estimate only. */
+const marketBUnitRunwayDays = useMemo(() => {
+  const bal = protocolFuelReserveBalance;
+  if (bal == null || !Number.isFinite(bal) || bal <= 0) return null;
+  const ctx: ChargeLedgerFilterCtx = {
+    activeLedger,
+    txSearchTerm,
+    txFilterType,
+    txFilterTerminal,
+    hasAaAccount: Boolean(profiles?.[0]?.aaAccount?.trim()),
+  };
+  const todayBurn = sumChargeLedgerBUnitsForLocalCalendarDay(
+    chargeBUnitLedgerRef.current,
+    ctx,
+    overviewLocalCalendarDayKey,
+  );
+  if (!todayBurn || !Number.isFinite(todayBurn) || todayBurn <= 0) return null;
+  return Math.max(0, Math.floor(bal / todayBurn));
+}, [
+  protocolFuelReserveBalance,
+  chargeBUnitLedgerEpoch,
+  overviewLocalCalendarDayKey,
+  activeLedger,
+  txSearchTerm,
+  txFilterType,
+  txFilterTerminal,
+  profiles,
+  overviewRefreshTrigger,
+]);
 
  // Chain gives totals; points row uses `dashboardPointsCurrencySymbol` from card metadata. When not admin / no data, show 0.
  const salesCTree = totalSales;
@@ -7126,43 +7499,57 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
  const netSettlementBalanceLifetime = totalCTreeReceivedLifetime - topUpsIssuedLifetime;
  const totalUSDCBalance = salesUSDC + tipsUSDC;
 
+ const overviewNoAaNfcActivationCount = useMemo(() => {
+   if (hasAaAccount) return 0;
+   return indexerTransactions.reduce((n, t) => n + (t.source === 'NFC' ? 1 : 0), 0);
+ }, [hasAaAccount, indexerTransactions]);
 
  const today = new Date();
  const dateString = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 
- const NavItem = ({ icon: Icon, label, isActive, onClick, collapsed }: {
-  icon: LucideIcon;
-  label: string;
-  isActive: boolean;
-  onClick: () => void;
-  collapsed: boolean;
-}) => (
+ const NavItem = ({
+   icon: Icon,
+   label,
+   activeLabel,
+   isActive,
+   onClick,
+   collapsed,
+ }: {
+   icon: LucideIcon;
+   label: string;
+   activeLabel?: string;
+   isActive: boolean;
+   onClick: () => void;
+   collapsed: boolean;
+ }) => (
    <button
      type="button"
      onClick={onClick}
-     className={`mx-2 flex min-w-0 items-center rounded-full py-3 text-sm transition-all duration-300 ${
-       collapsed ? 'w-[calc(100%-1rem)] justify-center px-0' : 'w-[calc(100%-1rem)] gap-3 px-6'
+     className={`mx-2 flex min-w-0 items-center rounded-full py-2.5 text-sm transition-all duration-300 ${
+       collapsed ? 'w-[calc(100%-1rem)] justify-center px-0' : 'w-[calc(100%-1rem)] gap-2.5 px-4'
      } ${
        isActive
          ? 'bg-white font-bold text-[#0051d1] shadow-sm'
          : 'font-medium text-slate-600 hover:translate-x-1 hover:bg-slate-200/50'
      }`}
-     title={collapsed ? label : undefined}
+     title={collapsed ? (isActive && activeLabel ? activeLabel : label) : undefined}
    >
      <Icon
        size={20}
        strokeWidth={isActive ? 2.25 : 2}
        className={`shrink-0 ${isActive ? 'text-[#0051d1]' : 'text-slate-600'}`}
      />
-     {!collapsed && <span className="min-w-0 truncate text-left">{label}</span>}
+     {!collapsed && (
+       <span className="min-w-0 truncate text-left">{isActive && activeLabel ? activeLabel : label}</span>
+     )}
    </button>
  );
 
  const NavSectionLabel = ({ children, first, collapsed }: { children: React.ReactNode; first?: boolean; collapsed: boolean }) => {
    if (collapsed) return null;
    return (
-     <div className={`px-6 mb-2 ${first ? 'mt-2' : 'mt-6'}`} role="presentation">
+     <div className={`px-4 mb-1.5 ${first ? 'mt-1.5' : 'mt-4'}`} role="presentation">
        <span className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">{children}</span>
      </div>
    );
@@ -7328,11 +7715,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
      <aside
        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-50 transition-all duration-300 ease-in-out
          ${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'}
-         lg:relative lg:translate-x-0 lg:rounded-r-[2rem] lg:border-r-0 lg:shadow-[20px_0_40px_rgba(21,98,240,0.06)]
+         lg:relative lg:translate-x-0 lg:border-r-0 lg:shadow-[20px_0_40px_rgba(21,98,240,0.06)]
          ${isSidebarCollapsed ? 'lg:w-24' : 'lg:w-72'}`}
      >
-       <div className={`px-6 pb-4 pt-6 lg:px-8 lg:pt-8 ${isSidebarCollapsed ? 'lg:flex lg:flex-col lg:items-center lg:px-4' : ''}`}>
-         <div className={`mb-6 flex items-center justify-between ${isSidebarCollapsed && !isMobileMenuOpen ? 'lg:mb-4 lg:justify-center' : ''}`}>
+       <div className={`px-4 pb-3 pt-4 lg:px-6 lg:pt-6 ${isSidebarCollapsed ? 'lg:flex lg:flex-col lg:items-center lg:px-3' : ''}`}>
+         <div className={`mb-4 flex items-center justify-between ${isSidebarCollapsed && !isMobileMenuOpen ? 'lg:mb-3 lg:justify-center' : ''}`}>
            {!isSidebarCollapsed || isMobileMenuOpen ? (
              <div className="min-w-0 flex-1">
                <div
@@ -7341,18 +7728,24 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                  title="Toggle Sidebar"
                  role="presentation"
                >
-                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#7a9dff]">
+                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0051d1]/10 ring-4 ring-[#0051d1]/5">
                    {beamio?.image ? (
                      <img src={beamio.image} alt="Merchant profile" className="h-full w-full object-cover" />
                    ) : (
-                     <Store size={22} className="text-white" strokeWidth={2} aria-hidden />
+                     <Store size={22} className="text-[#0051d1]" strokeWidth={2} aria-hidden />
                    )}
                  </div>
                  <div className="min-w-0">
-                   <h2 className="truncate text-sm font-black tracking-tight text-slate-900">
-                     {displayName(beamio) || 'Verra Business'}
+                   <h2 className="truncate text-lg font-extrabold leading-tight tracking-tight text-[#0051d1]">
+                     Business OS
                    </h2>
-                   <p className="text-xs font-medium text-slate-500">Merchant OS</p>
+                   <div className="mt-0.5 flex items-center gap-1">
+                     <ShieldCheck className="size-3 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
+                     <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-500">Merchant OS</span>
+                   </div>
+                   {displayName(beamio) ? (
+                     <p className="mt-1 truncate text-xs font-medium text-slate-600">{displayName(beamio)}</p>
+                   ) : null}
                  </div>
                </div>
              </div>
@@ -7383,15 +7776,6 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            Overview
          </NavSectionLabel>
          <NavItem icon={LayoutDashboard} label="Dashboard" isActive={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         {!hideTransactionsPanel && (
-           <NavItem
-             icon={BarChart3}
-             label="Insights"
-             isActive={activeTab === 'Transactions' && transactionsSidebarAccent === 'insights'}
-             onClick={() => handleTabChange('Transactions', { transactionsSidebar: 'insights' })}
-             collapsed={isSidebarCollapsed && !isMobileMenuOpen}
-           />
-         )}
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            Assets
          </NavSectionLabel>
@@ -7409,12 +7793,26 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
              collapsed={isSidebarCollapsed && !isMobileMenuOpen}
            />
          )}
-         <NavItem icon={Users} label="Members" isActive={activeTab === 'MembersLoyalty'} onClick={() => handleTabChange('MembersLoyalty')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem
+           icon={Users}
+           label="Members"
+           activeLabel="Members (Active)"
+           isActive={activeTab === 'MembersLoyalty'}
+           onClick={() => handleTabChange('MembersLoyalty')}
+           collapsed={isSidebarCollapsed && !isMobileMenuOpen}
+         />
          <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            Financials
          </NavSectionLabel>
-         <NavItem icon={Wallet} label="Wallet" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem
+           icon={Wallet}
+           label="Wallets"
+           activeLabel="Wallet (Active)"
+           isActive={activeTab === 'Wallets'}
+           onClick={() => handleTabChange('Wallets')}
+           collapsed={isSidebarCollapsed && !isMobileMenuOpen}
+         />
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            System
          </NavSectionLabel>
@@ -7422,11 +7820,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
          <NavItem icon={Settings} label="Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
        </nav>
 
-       <div className="mt-auto px-4 pb-6 pt-2">
+       <div className="mt-auto px-3 pb-4 pt-2">
          <button
            type="button"
            onClick={() => { window.location.href = '/' }}
-           className={`mx-2 flex w-[calc(100%-1rem)] items-center rounded-full py-3 text-sm font-bold text-red-600 transition-all bg-red-50 hover:bg-red-100 ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'gap-3 px-6'}`}
+           className={`mx-2 flex w-[calc(100%-1rem)] items-center rounded-full py-2.5 text-sm font-bold text-red-600 transition-all bg-red-50 hover:bg-red-100 ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'gap-2.5 px-4'}`}
            title="Lock Wallet"
          >
            <LogOut size={18} className="shrink-0" aria-hidden />
@@ -7438,7 +7836,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
      {/* --- Main Content Area --- */}
      <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out min-w-0">
-       <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-slate-200/60 bg-white/70 px-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl sm:px-10">
+       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200/60 bg-white/70 px-3 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl sm:px-6">
          <div className="flex min-w-0 items-center gap-3">
            <button
              type="button"
@@ -7451,19 +7849,25 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            <h2
              className={`truncate text-xl font-black uppercase tracking-tight sm:text-2xl ${
                activeTab === 'Overview' && !hasAaAccount
-                 ? 'text-slate-900'
+                 ? 'font-extrabold tracking-tight text-[#1562f0] normal-case'
                  : activeTab === 'Overview'
                    ? 'font-extrabold tracking-tighter text-blue-600 normal-case'
-                   : 'font-extrabold tracking-tighter text-slate-900 normal-case'
+                   : activeTab === 'Wallets' || activeTab === 'MembersLoyalty' || activeTab === 'Market'
+                     ? 'font-extrabold tracking-tight text-[#0051d1] normal-case'
+                     : 'font-extrabold tracking-tighter text-slate-900 normal-case'
              }`}
            >
              {activeTab === 'Overview' && !hasAaAccount
-               ? 'WORKSPACE READY'
+               ? 'Business OS'
                : activeTab === 'Overview'
                  ? 'Verra Merchant'
-                 : activeTab === 'Settings' || (activeTab === 'Transactions' && transactionsSidebarAccent === 'transactions')
-                   ? 'Editorial Overview'
-                   : activeTab}
+                 : activeTab === 'Wallets'
+                   ? 'Wallet'
+                   : activeTab === 'MembersLoyalty'
+                     ? 'Members'
+                     : activeTab === 'Settings' || (activeTab === 'Transactions' && transactionsSidebarAccent === 'transactions')
+                       ? 'Editorial Overview'
+                       : activeTab}
            </h2>
          </div>
          <div className="flex items-center gap-3 sm:gap-6">
@@ -7492,6 +7896,81 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                <option value="This Year">This Year</option>
              </select>
            </div>
+           {activeTab === 'Market' && (
+             <div className="hidden items-center gap-2 rounded-full bg-[#eef1f3] px-3 py-1.5 md:flex">
+               <span className="size-2 animate-pulse rounded-full bg-[#0051d1]" aria-hidden />
+               <span className="text-[10px] font-bold uppercase tracking-tighter text-[#595c5e]">Network Live</span>
+             </div>
+           )}
+           {activeTab === 'Wallets' && (
+             <>
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Transactions', { transactionsSidebar: 'transactions' })}
+                 className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Transactions"
+               >
+                 <Search size={20} strokeWidth={2} aria-hidden />
+               </button>
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Messages')}
+                 className="relative rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Messages"
+               >
+                 <Bell size={20} strokeWidth={2} aria-hidden />
+                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-white bg-red-500" aria-hidden />
+               </button>
+             </>
+           )}
+           {activeTab === 'Market' && (
+             <>
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Transactions', { transactionsSidebar: 'transactions' })}
+                 className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Search transactions"
+               >
+                 <Search size={20} strokeWidth={2} aria-hidden />
+               </button>
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Messages')}
+                 className="relative rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Messages"
+               >
+                 <Bell size={20} strokeWidth={2} aria-hidden />
+                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-white bg-red-500" aria-hidden />
+               </button>
+             </>
+           )}
+           {activeTab === 'MembersLoyalty' && (
+             <>
+               <button
+                 type="button"
+                 onClick={() => {
+                   const el = document.getElementById('members-directory-search');
+                   el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                   window.setTimeout(() => {
+                     if (el instanceof HTMLInputElement) el.focus();
+                   }, 280);
+                 }}
+                 className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Search members"
+               >
+                 <Search size={20} strokeWidth={2} aria-hidden />
+               </button>
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Messages')}
+                 className="relative rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Messages"
+               >
+                 <Bell size={20} strokeWidth={2} aria-hidden />
+                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-white bg-red-500" aria-hidden />
+               </button>
+             </>
+           )}
            {activeTab === 'Overview' && isAdminForUI && (
              <button
                type="button"
@@ -7517,9 +7996,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
        </header>
 
 
-       <div className="flex-1 min-h-0 relative overflow-y-auto p-4 sm:p-10">
+       <div className="flex-1 min-h-0 relative overflow-y-auto p-3 sm:p-6">
         {activeTab === 'Overview' && (
-          <div className={`mx-auto w-full animate-in fade-in duration-500 ${hasAaAccount ? 'max-w-[1400px] space-y-6' : 'max-w-7xl space-y-8'}`}>
+          <div
+            className={`mx-auto w-full animate-in fade-in duration-500 ${hasAaAccount ? 'max-w-[1400px] space-y-5' : 'max-w-[1400px] space-y-6'}`}
+          >
             {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && showFixedCardMetadata && (
               <div className="flex justify-end">
                 <div className="relative h-[280px] w-full max-w-xl overflow-hidden rounded-[32px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_40px_rgba(21,98,240,0.28)]">
@@ -7579,168 +8060,268 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
             )}
             {!hasAaAccount ? (
               <>
-                <section className="relative mb-10 flex flex-col items-center justify-between gap-6 rounded-xl border border-[#0051d1]/10 bg-[#0051d1]/5 p-6 md:flex-row md:p-8">
+                {/* No AA — `newOnloading.html` Business OS onboarding dashboard */}
+                <div className="relative px-1 pb-8 sm:px-2">
                   {redeemAdminInProgress && (
-                    <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-[#0051d1]/20 bg-white/90 px-3 py-1.5 text-[13px] font-medium text-slate-800 shadow-sm backdrop-blur-sm">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#0051d1]/30 border-t-[#0051d1]" />
+                    <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-white/90 px-3 py-1.5 text-[13px] font-medium text-slate-800 shadow-sm backdrop-blur-sm">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#1562f0]/30 border-t-[#1562f0]" />
                       Redeeming admin access...
                     </div>
                   )}
-                  <div className="flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="rounded-sm bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                        WORKSPACE READY
-                      </span>
-                      <span className="size-1.5 rounded-full bg-amber-400" aria-hidden />
-                      <span className="text-[11px] font-medium text-slate-500">Program not active yet</span>
-                    </div>
-                    <h2 className="mb-2 text-xl font-black leading-tight tracking-tight text-slate-900 md:text-2xl">
-                      Set up your first membership card program
-                    </h2>
-                    <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
-                      You have{' '}
-                      <span className="font-bold text-[#0051d1]">
-                        {(protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
-                          ? protocolFuelReserveBalance
-                          : 0
-                        ).toFixed(2)}{' '}
-                        bonus B-Units
-                      </span>{' '}
-                      to get started. Create your first program to begin issuing membership cards and serving customers with stored value in Verra
-                      Business OS.
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleTabChange('Card Issuance Setup')}
-                      className={`rounded-full bg-[#0051d1] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 ${bizFocusRingClass}`}
-                    >
-                      Set Up First Program
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('Market');
-                        setSelectedProduct('fuel');
-                      }}
-                      className={`rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-900 transition-all hover:bg-slate-50 active:scale-95 ${bizFocusRingClass}`}
-                    >
-                      View B-Units
-                    </button>
-                  </div>
-                </section>
-                <div className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-3">
-                  <div className="flex flex-col justify-between rounded-lg border border-slate-100 bg-white p-6 transition-colors hover:border-[#0051d1]/20">
-                    <div>
-                      <div className="mb-4 flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Program Status</span>
-                        <Award className="size-6 text-slate-300" strokeWidth={1.5} aria-hidden />
+
+                  <div className="pointer-events-none fixed top-1/2 -right-40 -z-10 h-[600px] w-[600px] rounded-full bg-[#1562f0]/5 blur-[120px]" aria-hidden />
+
+                  {/* Onboarding banner */}
+                  <section className="mb-12 flex flex-col items-center justify-between gap-8 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 shadow-sm md:flex-row md:p-10">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <span className="rounded bg-[#1562f0]/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
+                          WORKSPACE READY
+                        </span>
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+                        <span className="text-[11px] font-bold uppercase tracking-tight text-slate-500">Program not active yet</span>
                       </div>
-                      <h3 className="mb-1 text-lg font-bold text-slate-900">Not active yet</h3>
-                      <p className="mb-6 text-xs leading-relaxed text-slate-500">
-                        Set up your first program to start issuing membership cards.
+                      <h2 className="mb-3 text-2xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:text-3xl">
+                        Set up your first membership card program
+                      </h2>
+                      <p className="max-w-3xl text-sm leading-relaxed text-[#595c5e]/80 md:text-base">
+                        You have{' '}
+                        <span className="font-bold text-[#1562f0]">
+                          {protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                            ? Number(protocolFuelReserveBalance).toFixed(2)
+                            : '0.00'}
+                        </span>{' '}
+                        bonus B-Units to get started. Create your first program to begin issuing membership cards and serving customers with stored
+                        value in Verra Business OS.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleTabChange('Card Issuance Setup')}
-                      className="flex items-center gap-2 text-xs font-bold text-[#0051d1] transition-all hover:gap-3"
-                    >
-                      Go to Programs
-                      <ChevronRight className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
-                    </button>
-                  </div>
-                  <div className="flex flex-col justify-between rounded-lg border border-slate-100 bg-white p-6 transition-colors hover:border-[#0051d1]/20">
-                    <div>
-                      <div className="mb-4 flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer Balance</span>
-                        <Wallet className="size-6 text-slate-300" strokeWidth={1.5} aria-hidden />
-                      </div>
-                      <h3 className="mb-1 text-lg font-bold text-slate-900">
-                        C$
-                        {(() => {
-                          const o = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
-                          const u = eoaUsdcBalance != null ? parseFloat(eoaUsdcBalance) : 0;
-                          return Number.isFinite(u) ? (u / o).toFixed(2) : '0.00';
-                        })()}
-                      </h3>
-                      <p className="mb-6 text-xs leading-relaxed text-slate-500">No stored-value activity yet.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleTabChange('Wallets')}
-                      className="flex items-center gap-2 text-xs font-bold text-[#0051d1] transition-all hover:gap-3"
-                    >
-                      View Wallet
-                      <ChevronRight className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
-                    </button>
-                  </div>
-                  <div className="flex flex-col justify-between rounded-lg border border-slate-100 bg-white p-6 transition-colors hover:border-[#0051d1]/20">
-                    <div>
-                      <div className="mb-4 flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">B-Units</span>
-                        <Coins className="size-6 text-slate-300" strokeWidth={1.5} aria-hidden />
-                      </div>
-                      <h3 className="mb-1 text-lg font-bold text-slate-900">
-                        {(protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
-                          ? protocolFuelReserveBalance
-                          : 0
-                        ).toFixed(2)}
-                      </h3>
-                      <p className="mb-6 text-xs leading-relaxed text-slate-500">Bonus B-Units available for setup and live operations.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('Market');
-                        setSelectedProduct('fuel');
-                      }}
-                      className="flex items-center gap-2 text-xs font-bold text-[#0051d1] transition-all hover:gap-3"
-                    >
-                      View B-Units
-                      <ChevronRight className="size-4 shrink-0" strokeWidth={2.5} aria-hidden />
-                    </button>
-                  </div>
-                </div>
-                <section className="relative flex flex-col items-center overflow-hidden rounded-xl border border-slate-100 bg-white px-8 py-20 text-center">
-                  <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-[#0051d1]/5 via-[#0051d1] to-[#0051d1]/5 opacity-20" aria-hidden />
-                  <div className="absolute -right-20 top-1/2 h-80 w-40 -translate-y-1/2 rounded-full bg-[#0051d1]/5 blur-[100px]" aria-hidden />
-                  <div className="relative z-10">
-                    <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eef1f3]">
-                      <Package className="size-8 text-slate-400" strokeWidth={1.25} aria-hidden />
-                    </div>
-                    <h2 className="mb-4 text-2xl font-black tracking-tight text-slate-900">No activity yet</h2>
-                    <p className="mx-auto mb-6 max-w-lg leading-relaxed text-slate-500">
-                      Set up your first program to begin issuing membership cards, adding customer balance, and tracking live activity in Verra Business
-                      OS.
-                    </p>
-
-                    <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+                    <div className="flex w-full shrink-0 flex-col items-stretch gap-4 sm:flex-row md:w-auto">
                       <button
                         type="button"
                         onClick={() => handleTabChange('Card Issuance Setup')}
-                        className={`w-full rounded-full bg-[#0051d1] px-8 py-4 text-sm font-bold text-white shadow-xl shadow-[#0051d1]/20 transition-all hover:shadow-[#0051d1]/30 sm:w-auto ${bizFocusRingClass}`}
+                        className={`flex-1 rounded-xl bg-[#1562f0] px-8 py-4 text-sm font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 md:flex-none ${bizFocusRingClass}`}
                       >
                         Set Up First Program
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleTabChange('Wallets')}
-                        className={`w-full rounded-full px-8 py-4 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50 sm:w-auto ${bizFocusRingClass}`}
+                        onClick={() => {
+                          handleTabChange('Wallets');
+                        }}
+                        className={`flex-1 rounded-xl border border-[#abadaf]/30 bg-white px-8 py-4 text-sm font-extrabold text-[#2c2f31] transition-all hover:bg-[#eef1f3] active:scale-95 md:flex-none ${bizFocusRingClass}`}
                       >
-                        Go to Wallet
+                        View B-Units
                       </button>
                     </div>
-                  </div>
-                </section>
+                  </section>
+
+                  {/* Tier 1 — KPI strip */}
+                  <section className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0]/20 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-6 flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Capital Retained</span>
+                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
+                      </div>
+                      <div className="space-y-1">
+                        <h3
+                          className={`text-4xl font-extrabold tracking-tight ${
+                            totalCTreeReceived <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
+                          }`}
+                        >
+                          C${totalCTreeReceived.toFixed(2)}
+                        </h3>
+                        <p className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400">
+                          {totalCTreeReceived <= 0 ? 'Awaiting transactions' : 'Live balance'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff]/20 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-6 flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Active Cards</span>
+                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
+                      </div>
+                      <div className="space-y-1">
+                        <h3
+                          className={`text-4xl font-extrabold tracking-tight ${
+                            membersTopupKpisAll.count <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
+                          }`}
+                        >
+                          {membersTopupKpisAll.count}
+                        </h3>
+                        <div className="flex items-center gap-2 pt-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#eef1f3]">
+                            <UserX className="size-3.5 text-slate-300" strokeWidth={2} aria-hidden />
+                          </div>
+                          <span className="text-[10px] font-bold uppercase text-slate-400">
+                            {membersTopupKpisAll.count <= 0 ? 'No active members' : 'Members with activity'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb]/20 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-6 flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Quota</span>
+                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                          {Number(protocolFuelReserve).toFixed(2)}{' '}
+                          <span className="text-lg font-bold text-slate-400">B-Units</span>
+                        </h3>
+                        <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
+                          <div
+                            className="h-full rounded-full bg-[#1562f0]"
+                            style={{
+                              width: `${Math.min(100, Math.max(2, (protocolFuelReserve / 1000) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                        <p className="pt-1 text-[10px] font-bold uppercase text-slate-400">Initial grant available</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Tier 2 — Today&apos;s activity */}
+                  <section className="mb-12 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 md:p-10">
+                    <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-2 rounded-full bg-[#1562f0]/20" aria-hidden />
+                        <h2 className="text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`Today's Activity`}</h2>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-full border border-[#1562f0]/10 bg-white/50 px-3 py-1">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-300" aria-hidden />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Listening for activity</span>
+                      </div>
+                    </div>
+                    {(() => {
+                      const muted =
+                        topUpsIssued <= 0 && totalSales <= 0 && totalTips <= 0 && overviewNoAaNfcActivationCount <= 0;
+                      const rowClass = muted ? 'opacity-50' : '';
+                      return (
+                        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
+                          <div className={`flex items-start gap-4 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
+                              <CreditCard className="size-7" strokeWidth={1.75} aria-hidden />
+                            </div>
+                            <div>
+                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
+                              <h3 className={`text-xl font-extrabold ${topUpsIssued <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                                C${topUpsIssued.toFixed(2)}
+                              </h3>
+                              <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                                {topUpsIssued <= 0 ? 'No activity' : 'Today'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className={`flex items-start gap-4 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
+                              <Landmark className="size-7" strokeWidth={1.75} aria-hidden />
+                            </div>
+                            <div>
+                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
+                              <h3 className={`text-xl font-extrabold ${totalSales <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                                C${totalSales.toFixed(2)}
+                              </h3>
+                              <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                                {totalSales <= 0 ? 'No activity' : 'Today'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className={`flex items-start gap-4 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
+                              <Heart className="size-7" strokeWidth={1.75} aria-hidden />
+                            </div>
+                            <div>
+                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
+                              <h3 className={`text-xl font-extrabold ${totalTips <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                                C${totalTips.toFixed(2)}
+                              </h3>
+                              <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                                {totalTips <= 0 ? 'No activity' : 'Today'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className={`flex items-start gap-4 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
+                              <Nfc className="size-7" strokeWidth={1.75} aria-hidden />
+                            </div>
+                            <div>
+                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">NFC Activations</p>
+                              <h3
+                                className={`text-xl font-extrabold ${
+                                  overviewNoAaNfcActivationCount <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
+                                }`}
+                              >
+                                {overviewNoAaNfcActivationCount} {overviewNoAaNfcActivationCount === 1 ? 'Card' : 'Cards'}
+                              </h3>
+                              <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                                {overviewNoAaNfcActivationCount <= 0 ? 'No activity' : 'Indexed'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </section>
+
+                  {/* Tier 3 — placeholders */}
+                  <section className="grid grid-cols-1 gap-8 md:grid-cols-2">
+                    <div className="flex min-h-[340px] flex-col justify-between rounded-lg border border-[#abadaf]/10 bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div>
+                        <h3 className="mb-2 text-xl font-extrabold tracking-tight text-[#2c2f31]">Reload Velocity</h3>
+                        <p className="mb-8 max-w-xs text-sm text-slate-500">
+                          Tracking the momentum of recurring top-ups over the last 24 hours.
+                        </p>
+                      </div>
+                      <div className="flex flex-1 flex-col items-center justify-center space-y-4 text-center">
+                        <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef1f3]">
+                          <BarChart3 className="size-8 text-slate-300" strokeWidth={1.5} aria-hidden />
+                        </div>
+                        <p className="text-sm font-bold text-[#595c5e]">Data will appear after your first transaction</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Awaiting telemetry</p>
+                      </div>
+                      <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-6 opacity-40">
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold uppercase text-slate-400">Avg. Time</p>
+                          <p className="text-lg font-bold">—</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold uppercase text-slate-400">Peak Hour</p>
+                          <p className="text-lg font-bold">—</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
+                          <p className="text-sm font-bold uppercase tracking-tighter text-slate-400">Inactive</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="min-h-[340px] rounded-lg border border-[#abadaf]/10 bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <h3 className="mb-2 text-xl font-extrabold tracking-tight text-[#2c2f31]">Gift Pack Conversions</h3>
+                      <p className="mb-10 text-sm text-slate-500">Journey from initial discovery to successful redemption.</p>
+                      <div className="flex flex-col items-center justify-center space-y-4 py-8 text-center">
+                        <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef1f3]">
+                          <Filter className="size-8 text-slate-300" strokeWidth={1.5} aria-hidden />
+                        </div>
+                        <p className="text-sm font-bold text-[#595c5e]">Data will appear after your first transaction</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Conversion funnel inactive</p>
+                      </div>
+                      <div className="mt-10 flex items-center gap-4 rounded-xl border border-dashed border-[#abadaf]/50 bg-[#eef1f3]/50 p-4">
+                        <Info className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
+                        <div>
+                          <p className="text-xs font-bold text-slate-400">0% Efficiency Recorded</p>
+                          <p className="text-[10px] font-medium text-slate-400">Activate your first program to begin tracking</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
               </>
             ) : (
-          <div className="space-y-8">
+          <div className="space-y-5">
              {/* Row 1: Panels 1-4, 2 per row */}
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                {/* Panel 1: Total Gross Sales */}
-               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
+               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
                    <div className="flex justify-between items-start mb-4">
                      <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center">
@@ -7776,7 +8357,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </div>
 
                {/* Panel 2: Tips Collected */}
-               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
+               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
                    <div className="flex justify-between items-start mb-4">
                      <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center">
@@ -7812,7 +8393,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </div>
 
                {/* Panel 3: In-Store Top-Ups */}
-               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
+               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
                    <div className="flex justify-between items-start mb-4">
                      <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
@@ -7848,7 +8429,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </div>
 
                {/* Panel 4: Protocol Fuel Reserve */}
-               <div className="bg-gradient-to-br from-zinc-900 to-black rounded-[48px] p-10 shadow-xl border border-white/10 flex flex-col justify-between text-white">
+               <div className="bg-gradient-to-br from-zinc-900 to-black rounded-[36px] p-6 sm:p-8 shadow-xl border border-white/10 flex flex-col justify-between text-white">
                  <div>
                    <div className="flex justify-between items-start mb-4">
                      <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30">
@@ -7882,7 +8463,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
              {profiles?.[0]?.aaAccount && (
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                {/* Panel 5: Direct Crypto Revenue */}
-               <div className="bg-white rounded-[48px] p-10 shadow-sm border border-slate-100 flex flex-col justify-between">
+               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
                  <div>
                    <div className="flex justify-between items-start mb-4">
                      <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
@@ -7908,7 +8489,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </div>
 
                {/* Panel 6: CashTrees Settlement */}
-               <div className="relative flex flex-col justify-between overflow-hidden rounded-[48px] border border-slate-800 bg-gradient-to-br from-slate-900 via-[#0f2748] to-slate-950 p-10 text-white shadow-[0_20px_50px_rgba(21,98,240,0.2)]">
+               <div className="relative flex flex-col justify-between overflow-hidden rounded-[36px] border border-slate-800 bg-gradient-to-br from-slate-900 via-[#0f2748] to-slate-950 p-6 text-white sm:p-8 shadow-[0_20px_50px_rgba(21,98,240,0.2)]">
                  <div className={`pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full ${bizGlowBlurClass} blur-[80px]`} />
                  <div className="relative z-10">
                    <div className="flex justify-between items-start mb-6">
@@ -8688,927 +9269,322 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
          {/* --- STORE WALLETS TAB --- */}
          {activeTab === 'Wallets' && (
-           !hasAaAccount ? (
-             <div className="animate-in fade-in duration-300">
-               <div className="relative mx-auto max-w-7xl space-y-10 pb-28 lg:pb-10">
-                 <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                   <div className="group relative overflow-hidden rounded-lg bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
-                     <div className="relative z-10">
-                       <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Available USDC</p>
-                       <h3 className="mb-4 text-3xl font-extrabold text-[#2c2f31]">
-                         C${' '}
-                         {(() => {
-                           const o = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
-                           const u = eoaUsdcBalance != null ? parseFloat(eoaUsdcBalance) : 0;
-                           return Number.isFinite(u) ? (u / o).toFixed(2) : '0.00';
-                         })()}
-                       </h3>
-                       <div className="mt-6 flex items-center justify-between gap-3">
-                         <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] font-medium text-slate-400">
-                           {fmtAddr(profiles?.[0]?.keyID ?? myAddress)}
-                         </span>
-                         <button
-                           type="button"
-                           onClick={() => {
-                             if (isAdminForUI) setIsPayoutModalOpen(true);
-                             else setActiveTab('Market');
-                           }}
-                           className={`flex shrink-0 items-center gap-1 text-sm font-bold text-[#0051d1] transition-all hover:gap-2 ${bizFocusRingClass} rounded-sm`}
-                         >
-                           Withdraw
-                           <ArrowRight className="size-4" strokeWidth={2} aria-hidden />
-                         </button>
-                       </div>
-                     </div>
-                     <Wallet
-                       className="pointer-events-none absolute -bottom-4 -right-4 size-[7rem] text-slate-300 opacity-[0.05] transition-opacity group-hover:opacity-[0.08]"
-                       strokeWidth={1}
-                       aria-hidden
-                     />
-                   </div>
-                   <div className="group relative overflow-hidden rounded-lg bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
-                     <div className="relative z-10">
-                       <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Outstanding Program Value</p>
-                       <h3 className="mb-4 text-3xl font-extrabold text-[#2c2f31]">C$ {topUpsIssued.toFixed(2)}</h3>
-                       <p className="mt-6 text-xs font-medium leading-relaxed text-slate-400">
-                         Total value currently held by your active customers across all programs.
-                       </p>
-                     </div>
-                     <Landmark
-                       className="pointer-events-none absolute -bottom-4 -right-4 size-[7rem] text-slate-300 opacity-[0.05] transition-opacity group-hover:opacity-[0.08]"
-                       strokeWidth={1}
-                       aria-hidden
-                     />
-                   </div>
-                   <div className="group relative overflow-hidden rounded-lg bg-[#0051d1] p-8 text-[#f1f2ff] shadow-[0_20px_40px_rgba(21,98,240,0.15)]">
-                     <div className="relative z-10">
-                       <p className="mb-2 text-xs font-bold uppercase tracking-widest text-[#f1f2ff]/60">B-Units Remaining</p>
-                       <h3 className="mb-4 text-3xl font-extrabold">
-                         {(protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
-                           ? protocolFuelReserveBalance
-                           : 0
-                         ).toFixed(2)}{' '}
-                         units
-                       </h3>
-                       <div className="mt-6 flex items-center justify-between gap-3">
-                         <span className="rounded bg-[#f1f2ff]/10 px-2 py-1 text-[10px] font-bold">Operating Fuel</span>
-                         <button
-                           type="button"
-                           onClick={() => {
-                             setActiveTab('Market');
-                             setSelectedProduct('fuel');
-                           }}
-                           className={`shrink-0 rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-[#f1f2ff] transition-colors hover:bg-white/20 ${bizFocusRingClass}`}
-                         >
-                           + Buy Fuel
-                         </button>
-                       </div>
-                     </div>
-                     <Zap className="pointer-events-none absolute -bottom-4 -right-4 size-[7rem] text-white opacity-[0.1]" strokeWidth={1.5} fill="currentColor" aria-hidden />
-                   </div>
-                 </section>
-                 <section className="relative overflow-hidden rounded-xl shadow-[0_30px_60px_rgba(21,98,240,0.08)]">
-                   <div className="absolute inset-0 bg-gradient-to-br from-[#0051d1] to-[#7a9dff] opacity-5" aria-hidden />
-                   <div className="relative flex flex-col items-center justify-between gap-8 border border-[#0051d1]/5 bg-white/80 p-10 backdrop-blur-sm md:flex-row md:p-14">
-                     <div className="max-w-xl text-center md:text-left">
-                       <h4 className="mb-3 text-2xl font-extrabold tracking-tight text-[#2c2f31]">Your wallet is ready.</h4>
-                       <p className="text-lg leading-relaxed text-slate-600">
-                         Launch your custom membership program to start receiving funds and issuing cards to your community.
-                       </p>
-                     </div>
+           <div className="animate-in fade-in duration-300">
+             <div className="relative mx-auto max-w-7xl px-6 pb-24 md:px-10 lg:pb-12">
+               <div className="mx-auto w-full max-w-2xl">
+                 <WalletsTreasuryShell
+                   cadPrimary={walletTreasuryCadPrimary}
+                   usdcSecondary={walletTreasuryUsdcSecondary}
+                   settlementActive={hasAaAccount}
+                   onReceive={() => {
+                     handleTabChange('Market');
+                   }}
+                   onSend={() => {
+                     handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
+                   }}
+                   onCashOut={() => {
+                     handleTabChange('Market');
+                     setSelectedProduct('fuel');
+                   }}
+                   onViewAllHistory={() => {
+                     handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
+                   }}
+                   onOpenMarketRefuel={() => {
+                     handleTabChange('Market');
+                     setSelectedProduct('fuel');
+                   }}
+                 />
+               </div>
+
+               {!hasAaAccount ? (
+                 <section className="mx-auto mt-12 max-w-2xl rounded-2xl border border-slate-200/80 bg-white/90 p-8 shadow-sm backdrop-blur-sm">
+                   <h3 className="text-lg font-bold text-slate-900">Unlock settlement accounts</h3>
+                   <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">
+                     Activate your Smart Terminal (AA) to unlock zero-gas routing, liquid reserve, and protocol fuel from Market.
+                   </p>
+                   <div className="mt-6 flex flex-wrap gap-3">
                      <button
                        type="button"
                        onClick={() => handleTabChange('Card Issuance Setup')}
-                       className={`flex shrink-0 items-center gap-3 whitespace-nowrap rounded-full bg-[#0051d1] px-8 py-5 text-base font-bold text-[#f1f2ff] shadow-xl transition-all hover:scale-105 active:scale-95 ${bizFocusRingClass}`}
+                       className={`rounded-full bg-[#0051d1] px-6 py-2.5 text-sm font-bold text-white shadow-md transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
                      >
-                       Choose Card Setup
-                       <ChevronRight className="size-5" strokeWidth={2.5} aria-hidden />
+                       Programs
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => handleTabChange('Market')}
+                       className={`rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-bold text-slate-800 transition-colors hover:bg-slate-50 ${bizFocusRingClass}`}
+                     >
+                       Market
                      </button>
                    </div>
                  </section>
-                 <section className="space-y-6">
-                   <div className="flex flex-col gap-4 px-2 sm:flex-row sm:items-center sm:justify-between">
-                     <h3 className="text-xl font-bold text-[#2c2f31]">Transaction Ledger</h3>
-                     <div className="flex flex-wrap items-center gap-2">
-                       <button
-                         type="button"
-                         className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
-                         title="Coming soon"
-                       >
-                         <Filter className="size-4" strokeWidth={2} aria-hidden />
-                         Filter
-                       </button>
-                       <button
-                         type="button"
-                         className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
-                         title="Coming soon"
-                       >
-                         <Download className="size-4" strokeWidth={2} aria-hidden />
-                         Export
-                       </button>
-                     </div>
-                   </div>
-                   <div className="overflow-hidden rounded-lg bg-white shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
-                     <table className="w-full border-collapse text-left">
-                       <thead>
-                         <tr className="bg-slate-50/50">
-                           <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:px-8">Transaction</th>
-                           <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:px-8">Amount (CAD)</th>
-                           <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:px-8">B-Units Used</th>
-                           <th className="hidden px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:table-cell">Status</th>
-                           <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:px-8">Date</th>
-                         </tr>
-                       </thead>
-                     </table>
-                     <div className="flex flex-col items-center px-6 py-20 text-center">
-                       <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-slate-100">
-                         <Receipt className="size-12 text-slate-300" strokeWidth={1.25} aria-hidden />
-                       </div>
-                       <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">No transactions yet</h4>
-                       <p className="max-w-sm text-sm leading-relaxed text-slate-500">
-                         Your incoming payments, top-ups, and network activity will appear here once your first program is launched.
-                       </p>
-                       <button
-                         type="button"
-                         onClick={() => handleTabChange('Card Issuance Setup')}
-                         className={`mt-8 border-b-2 border-[#0051d1]/20 pb-1 text-sm font-bold text-[#0051d1] transition-colors hover:border-[#0051d1] ${bizFocusRingClass}`}
-                       >
-                         View getting started guide
-                       </button>
-                     </div>
-                   </div>
-                 </section>
-               </div>
-               <div className="relative z-20 mt-8 w-full max-w-sm rounded-lg border border-white/20 bg-white/70 p-6 shadow-2xl backdrop-blur-xl lg:fixed lg:right-8 lg:bottom-8 lg:mt-0 lg:w-80">
-                 <div className="mb-4 flex items-center gap-3">
-                   <BadgeCheck className="size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   <h5 className="text-sm font-bold uppercase tracking-tight text-[#2c2f31]">Onboarding Status</h5>
-                 </div>
-                 <div className="space-y-4">
-                   <div className="flex items-center gap-3">
-                     <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0051d1]">
-                       <Check className="size-3 text-white" strokeWidth={3} aria-hidden />
-                     </div>
-                     <span className="text-xs font-semibold text-slate-800">Identity Verified</span>
-                   </div>
-                   <div className="flex items-center gap-3">
-                     <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0051d1]">
-                       <Check className="size-3 text-white" strokeWidth={3} aria-hidden />
-                     </div>
-                     <span className="text-xs font-semibold text-slate-800">Wallet Synchronized</span>
-                   </div>
-                   <div className="flex items-center gap-3">
-                     <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200">
-                       <span className="text-[10px] font-bold text-slate-500">3</span>
-                     </div>
-                     <span className="text-xs font-semibold text-slate-400">Launch First Program</span>
-                   </div>
-                 </div>
-               </div>
+               ) : null}
              </div>
-           ) : (
-           <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-300">
-             <div className="mb-6">
-               <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Store Wallets</h3>
-               <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your Tethered Hybrid Architecture: The Vault (EOA) & Smart Terminal (AA).</p>
-             </div>
-
-             <div className="flex flex-col gap-6 lg:gap-8">
-                <div className="flex flex-wrap gap-6 lg:gap-8">
-                <div className="bg-slate-900 rounded-[32px] p-6 sm:p-8 shadow-2xl text-white relative overflow-hidden flex flex-col justify-between border border-slate-800/50 min-w-[500px] flex-1">
-                   <div className={`pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full ${bizGlowBlurClass} blur-[80px]`} />
-                   <div className="relative z-10">
-                     <div className="flex justify-between items-start mb-8">
-                        <div className="flex items-center gap-4">
-                           <div className="w-14 h-14 bg-white/5 backdrop-blur-md rounded-[20px] flex items-center justify-center border border-white/10">
-                              <Shield size={28} className="text-emerald-800" />
-                           </div>
-                           <div className="min-w-0">
-                              <h4 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-white">The Vault <span className="rounded-md border border-[#1562f0]/50 bg-[#1562f0]/30 px-2 py-0.5 text-[11px] font-bold text-sky-100">EOA</span></h4>
-                              <div className="mt-2">
-                                <AddressCapsule
-                                  address={(() => {
-                                    const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
-                                    return raw && ethers.isAddress(raw) ? ethers.getAddress(raw) : raw;
-                                  })()}
-                                  className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15 max-w-full dark:border-white/15"
-                                />
-                              </div>
-                           </div>
-                        </div>
-                     </div>
-                     <div className="mb-4">
-                        <p className="text-[13px] font-medium text-slate-400 mb-2">Cold Storage (Base L2)</p>
-                        <div className="flex items-baseline gap-2">
-                           <p className="text-[48px] sm:text-[56px] font-light tracking-tight leading-none">{eoaUsdcBalance != null ? formatWithThousands(eoaUsdcBalance) : '—'}</p>
-                           <span className="text-xl text-slate-500 font-light">USDC</span>
-                        </div>
-                     </div>
-                   </div>
-                   <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4">
-                      <button className="bg-[#1562f0] text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-[#2b74f5] shadow-[0_8px_20px_rgba(21,98,240,0.3)] active:scale-[0.98] flex flex-col items-center justify-center gap-1">
-                         <div className="flex items-center gap-1.5"><Send size={16} /> P2P Send</div>
-                         <span className="text-[10px] bg-blue-900/30 px-1.5 rounded">2 B-Units</span>
-                      </button>
-                      <button className="bg-white/10 backdrop-blur-md text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-white/20 border border-white/5 active:scale-[0.98] flex flex-col items-center justify-center gap-1">
-                         <div className="flex items-center gap-1.5"><QrCode size={16} /> Receive</div>
-                         <span className="text-[10px] bg-white/10 px-1.5 rounded">0.8% Fee (Min 2)</span>
-                      </button>
-                      <button className="bg-white/10 backdrop-blur-md text-white py-3 rounded-[16px] text-[14px] font-semibold transition-all hover:bg-white/20 border border-white/5 active:scale-[0.98] flex flex-col items-center justify-center gap-1">
-                         <div className="flex items-center gap-1.5"><Landmark size={16} /> Coinbase</div>
-                         <span className="text-[10px] bg-white/10 px-1.5 rounded">On/Off Ramp</span>
-                      </button>
-                   </div>
-                </div>
-
-             {/* Smart Terminal Locked — shown when user has no AA account, to the right of The Vault */}
-             {!profiles?.[0]?.aaAccount && (
-               <div className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col items-center justify-center text-center relative overflow-hidden min-w-[500px] flex-1">
-                 <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
-                   <Lock size={32} className="text-slate-400" />
-                 </div>
-                 <h3 className="text-[24px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
-                 <p className="text-[15px] font-medium text-slate-500 max-w-md mb-8 leading-relaxed">
-                   Your AA wallet is currently inactive to prevent attacks. Unlock zero-gas ecosystem routing by purchasing a Fuel Pack or joining an Alliance.
-                 </p>
-                 <div className="flex gap-4">
-                   <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20 active:scale-95 flex items-center gap-2">
-                     <Fuel size={18} /> Buy Fuel
-                   </button>
-                   <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[16px] font-semibold text-[15px] hover:bg-[#2b74f5] transition-colors shadow-lg shadow-[#1562f0]/25 active:scale-95 flex items-center gap-2">
-                     <Hexagon size={18} /> Join Alliance
-                   </button>
-                 </div>
-               </div>
-             )}
-
-             {/* Smart Terminal (AA) — shown when user has AA account, to the right of The Vault */}
-             {profiles?.[0]?.aaAccount && (
-               <div className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden min-w-[500px] flex-1">
-                 <div className="flex justify-between items-start mb-8">
-                   <div className="flex items-center gap-4">
-                     <div className="w-14 h-14 bg-slate-50 rounded-[20px] flex items-center justify-center border border-slate-100/80">
-                       <Zap size={28} className="text-emerald-800" />
-                     </div>
-                     <div>
-                       <h4 className="text-[20px] font-semibold text-slate-900 tracking-tight flex items-center gap-2">Smart Terminal <span className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">ERC-4337</span></h4>
-                       <p className="text-[13px] text-slate-400 font-mono mt-1">{fmtAddr(profiles?.[0]?.aaAccount)}</p>
-                     </div>
-                   </div>
-                 </div>
-                 <div className="flex flex-nowrap gap-4 sm:gap-5 mb-8 overflow-x-auto scrollbar-hide pb-2">
-                   <div className="bg-slate-50/80 rounded-[24px] p-5 sm:p-6 border border-slate-100/50 shrink-0 min-w-[200px] sm:min-w-[240px] w-max">
-                     <p className="text-[13px] font-medium text-slate-500 mb-1">Liquid Reserve</p>
-                     <div className="flex items-baseline gap-1.5 mb-0.5">
-                       <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">${aaUsdcBalance != null ? (parseFloat(aaUsdcBalance) / (oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK)).toFixed(2) : '—'}</p>
-                       <span className="text-[14px] text-slate-500 font-medium">CAD</span>
-                     </div>
-                     <span className="text-[11px] text-emerald-800 font-medium">{aaUsdcBalance != null ? parseFloat(aaUsdcBalance).toFixed(2) : '—'} USDC</span>
-                   </div>
-                   {effectiveJoinedAlliances.map((aId) => {
-                     const alliance = alliancesDb[aId];
-                     const useAaCardPoints0 =
-                       aId === ALLIANCE_ID_FOR_FIXED_USER_CARD && Boolean(profiles?.[0]?.aaAccount?.trim());
-                     const displayVoucherNum: number | null = useAaCardPoints0
-                       ? aaUserCardPointsToken0Balance
-                       : alliance.aaBalance;
-                     const voucherPending = useAaCardPoints0 && displayVoucherNum === null;
-                     return (
-                       <div key={aId} className={`${alliance.themeLightBg} rounded-[24px] p-5 sm:p-6 border border-white/50 shrink-0 min-w-[200px] sm:min-w-[240px] w-max`}>
-                         <p className={`text-[13px] font-medium ${alliance.themeText} mb-1 truncate`}>{alliance.id} Vouchers</p>
-                         <div className="flex items-baseline gap-1.5 mb-0.5">
-                           <p className="text-3xl sm:text-[32px] font-semibold text-slate-900 tracking-tight">
-                             {voucherPending ? '—' : displayVoucherNum!.toFixed(2)}
-                           </p>
-                           <span className={`text-[14px] ${alliance.themeText} font-medium`}>{alliance.token}</span>
-                         </div>
-                         <span className={`text-[11px] ${alliance.themeText} opacity-70 font-medium`}>
-                           ≈ ${voucherPending ? '—' : displayVoucherNum!.toFixed(2)} CAD
-                         </span>
-                       </div>
-                     );
-                   })}
-                 </div>
-                 <div className="bg-slate-900 rounded-[24px] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-800 shadow-inner">
-                   <div className="flex items-center gap-4 text-white">
-                     <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
-                       <Fuel size={20} className="text-orange-500" />
-                     </div>
-                     <div>
-                       <p className="text-[12px] font-medium text-slate-400 mb-0.5">Protocol Fuel (EOA + AA)</p>
-                       <p className="text-[18px] font-mono font-semibold text-white tracking-tight">
-                         {protocolFuelReserveBalance != null ? protocolFuelReserveBalance.toLocaleString() : '—'} B-Units
-                       </p>
-                     </div>
-                   </div>
-                   <button type="button" onClick={() => { setActiveTab('Market'); setSelectedProduct('fuel'); }} className="w-full sm:w-auto text-[14px] font-semibold bg-orange-500 text-white px-5 py-2.5 rounded-[12px] hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20 active:scale-[0.98]">
-                     Refill
-                   </button>
-                 </div>
-                 <div className="relative flex items-center py-4 mt-6">
-                   <div className="flex-grow border-t border-slate-100"></div>
-                   <span className="flex-shrink-0 mx-4 text-slate-300">
-                     <ArrowRightLeft size={18} className="text-slate-300" />
-                   </span>
-                   <div className="flex-grow border-t border-slate-100"></div>
-                 </div>
-                 <button type="button" className="w-full bg-slate-50 text-slate-700 py-4 sm:py-5 rounded-[20px] text-[16px] font-semibold transition-all border border-slate-200 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center gap-2 active:scale-[0.98]">
-                   Transfer Funds
-                 </button>
-               </div>
-             )}
-                </div>
-
-             {/* Subordinate admin Smart Terminal cards: one full card per subordinate */}
-             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
-             {terminals.map((term) => {
-               const addr = term.id?.toLowerCase();
-               const bal = addr ? subordinateBalances[addr] : null;
-               return (
-                 <div key={term.id} className="bg-white rounded-[32px] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-between relative overflow-hidden">
-                   <div className="flex justify-between items-start mb-8">
-                     <div className="flex items-center gap-4">
-                       <div className="w-14 h-14 bg-slate-50 rounded-[20px] flex items-center justify-center border border-slate-100/80">
-                         <Zap size={28} className="text-emerald-800" />
-                       </div>
-                       <div>
-                         <h4 className="text-[20px] font-semibold text-slate-900 tracking-tight flex items-center gap-2">Smart Terminal <span className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">ERC-4337</span></h4>
-                         <p className="text-[13px] text-slate-500 font-medium mt-1">{term.name}</p>
-                         <div className="mt-1"><AddressCapsule address={term.id} className="bg-slate-100/80 border-slate-200/80 text-slate-700" /></div>
-                       </div>
-                     </div>
-                   </div>
-                   <div className="mb-6">
-                     <p className="text-[13px] font-medium text-slate-500 mb-2">Liquid Reserve (Base L2)</p>
-                     <div className="flex items-baseline gap-2">
-                       <p className="text-[40px] sm:text-[48px] font-light tracking-tight leading-none">{bal != null ? formatWithThousands(bal) : '—'}</p>
-                       <span className="text-xl text-slate-500 font-light">USDC</span>
-                     </div>
-                   </div>
-                   <div className="bg-slate-900 rounded-[24px] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-800 shadow-inner">
-                     <div className="flex items-center gap-4 text-white">
-                       <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
-                         <Fuel size={20} className="text-orange-500" />
-                       </div>
-                       <div>
-                         <p className="text-[12px] font-medium text-slate-400 mb-0.5">Protocol Fuel</p>
-                         <p className="text-[18px] font-mono font-semibold text-white tracking-tight">—</p>
-                       </div>
-                     </div>
-                   </div>
-                   <div className="mt-6">
-                     <button className="w-full bg-slate-50 text-slate-700 py-4 sm:py-5 rounded-[20px] text-[16px] font-semibold transition-all border border-slate-200 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center gap-2 active:scale-[0.98]">
-                       Transfer Funds
-                     </button>
-                   </div>
-                 </div>
-               );
-             })}
-             </div>
-
-             {isAdminForUI && effectiveJoinedAlliances.length === 0 && (
-               <div className="pt-8 mt-8 border-t border-slate-200/60">
-                 <div
-                   onClick={() => setActiveTab('Alliances')}
-                   className="bg-white rounded-[32px] border border-slate-200 border-dashed p-8 cursor-pointer hover:bg-slate-50 transition-colors flex items-center gap-4 group"
-                 >
-                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#1562f0]/20 transition-colors group-hover:bg-[#1562f0]/30">
-                     <Hexagon size={24} className="text-blue-900" />
-                   </div>
-                   <div className="flex-1 min-w-0">
-                     <h4 className="text-[18px] font-semibold text-slate-900">Partner Alliances</h4>
-                     <p className="text-[14px] text-slate-500 mt-1">Manage your Merchant License NFTs and join new alliances.</p>
-                   </div>
-                   <ChevronRight size={20} className="text-slate-400 shrink-0" />
-                 </div>
-               </div>
-             )}
-
-             {effectiveJoinedAlliances.length > 0 && (
-               <div className="pt-8 mt-8 border-t border-slate-200/60">
-                 <h4 className="text-[18px] font-semibold text-slate-900 mb-6">Alliance Fiat Settlements</h4>
-                 <div className="bg-white rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-                   <div className="overflow-x-auto scrollbar-hide">
-                     <table className="w-full min-w-[900px]">
-                       <thead className="bg-slate-50/80 border-b border-slate-100/80">
-                         <tr>
-                           <th className="px-8 py-5 text-[12px] font-semibold text-slate-500 text-left">Alliance Network</th>
-                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-500 text-right">Gross Received</th>
-                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-500 text-right">Liability & Quota</th>
-                           <th className="px-6 py-5 text-[12px] font-semibold text-slate-500 text-right">Net Settleable (CAD)</th>
-                           <th className="px-8 py-5 text-[12px] font-semibold text-slate-500 text-center">Action</th>
-                         </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-100/80">
-                         {effectiveJoinedAlliances.map((aId) => {
-                           const alliance = alliancesDb[aId];
-                           const totalReceived = alliance.sales + alliance.tips;
-                           const netBalance = totalReceived - alliance.topUps;
-                           const isQuotaExceeded = alliance.mintQuota != null && alliance.topUps >= alliance.mintQuota;
-                           return (
-                             <tr key={`settle-${aId}`} className="hover:bg-slate-50/50 transition-colors">
-                               <td className="px-8 py-5">
-                                 <div className="flex items-center gap-4">
-                                   <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center ${alliance.themeLightBg} ${alliance.themeText} border border-white/50 shadow-sm`}>
-                                     <Ticket size={20} />
-                                   </div>
-                                   <div>
-                                     <div className="font-semibold text-slate-900 text-[15px]">{alliance.name}</div>
-                                     <div className="text-[13px] text-slate-500 font-medium mt-0.5">{alliance.token}</div>
-                                   </div>
-                                 </div>
-                               </td>
-                               <td className="px-6 py-5 text-right font-medium text-slate-600 text-[15px]">+${totalReceived.toFixed(2)}</td>
-                               <td className="px-6 py-5 text-right font-medium text-[15px]">
-                                 {alliance.canTopUp ? (
-                                   <div className="flex flex-col items-end gap-1.5">
-                                     <span className={`${isQuotaExceeded ? 'text-rose-600' : 'text-slate-800'} font-bold`}>-${alliance.topUps.toFixed(2)}</span>
-                                     {alliance.mintQuota != null && (
-                                       <div className="w-28 bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
-                                          <div className={`h-full rounded-full transition-all duration-500 ${isQuotaExceeded ? 'bg-rose-500' : alliance.topUps >= alliance.mintQuota * 0.8 ? 'bg-amber-400' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, (alliance.topUps / alliance.mintQuota) * 100)}%` }}></div>
-                                       </div>
-                                     )}
-                                     {isQuotaExceeded && (
-                                       <span className="flex items-center gap-1 text-[9px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                                         <AlertTriangle size={10} /> Quota Exceeded
-                                       </span>
-                                     )}
-                                   </div>
-                                 ) : (
-                                   <span className="inline-block text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md tracking-wide uppercase">Consumption Only</span>
-                                 )}
-                               </td>
-                               <td className="px-6 py-5 text-right">
-                                 <div className={`font-bold text-[18px] leading-none ${netBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-                                   {netBalance >= 0 ? `$${netBalance.toFixed(2)}` : `-$${Math.abs(netBalance).toFixed(2)}`}
-                                 </div>
-                                 <div className="text-[11px] text-slate-400 font-medium mt-1">{netBalance >= 0 ? 'Due to You' : 'Due to Alliance'}</div>
-                               </td>
-                               <td className="px-8 py-5 text-center">
-                                 {netBalance >= 0 ? (
-                                   <button className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${alliance.themeLightBg} ${alliance.themeText} hover:brightness-95 active:scale-[0.98] w-full flex items-center justify-center gap-2`}>
-                                     <Landmark size={16} /> Request Payout
-                                   </button>
-                                 ) : (
-                                   <button onClick={() => handleRemitToAlliance(aId)} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${isQuotaExceeded ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-[0_4px_15px_rgba(244,63,94,0.3)]' : 'bg-slate-800 text-white hover:bg-slate-700'} active:scale-[0.98] w-full flex items-center justify-center gap-2`}>
-                                     {isQuotaExceeded ? <Lock size={16} /> : <ArrowRightLeft size={16} />}
-                                     {isQuotaExceeded ? 'Remit to Unlock' : 'Remit Fiat'}
-                                   </button>
-                                 )}
-                               </td>
-                             </tr>
-                           );
-                         })}
-                       </tbody>
-                     </table>
-                   </div>
-                 </div>
-               </div>
-             )}
            </div>
-           </div>
-           )
          )}
 
-         {/* --- MARKET TAB (marketExample.html · extensions + fuel) --- */}
+         {/* --- MARKET TAB (`newOnloading.html`: balance, refill packages, redeem) --- */}
          {activeTab === 'Market' && (
-           <div className="relative mx-auto w-full max-w-7xl animate-in space-y-12 px-4 pb-32 pt-2 fade-in duration-300 sm:px-6 md:space-y-14 lg:pb-14">
-             {/* Hero — Ecosystem Expansion */}
-             <div className="relative flex flex-col items-center gap-12 overflow-hidden rounded-xl bg-[#eef1f3] p-8 md:flex-row md:p-12">
-               <div className="relative z-10 flex-1 space-y-6">
-                 <div className="inline-flex items-center gap-2 rounded-full bg-[#0051d1]/10 px-3 py-1 text-[#0051d1]">
-                   <span className="text-[10px] font-bold uppercase tracking-widest">Ecosystem Expansion</span>
-                 </div>
-                 <h2 className="max-w-lg text-4xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:text-5xl">
-                   Verra Business OS is extensible.
-                 </h2>
-                 <p className="max-w-md text-lg leading-relaxed text-[#595c5e]">
-                   Explore modules that automate your commerce infrastructure. Built for scale, designed for simplicity.
-                 </p>
-                 <div className="flex flex-wrap gap-4 pt-4">
-                   <a
-                     href={BEAMIO_APP_URL}
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     className={`rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform hover:scale-105 ${bizFocusRingClass}`}
-                   >
-                     View Roadmap
-                   </a>
-                   <a
-                     href={BEAMIO_APP_URL}
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     className={`rounded-full border border-[#abadaf]/20 bg-white px-8 py-3 text-sm font-bold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
-                   >
-                     Developer Docs
-                   </a>
-                 </div>
-               </div>
-               <div className="relative h-64 w-full flex-1 overflow-hidden rounded-xl shadow-2xl md:h-80">
-                 <img
-                   alt=""
-                   className="size-full object-cover"
-                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuARz6KG-ih9aNrn7Pog3386Z6nUZkbwKhiRhX5Kd8P2iV0mIR6RtB8ij8umFHyVPG9AGs3qPxAjqy9HZXwF4AkfUXTQs_IJ157cLNQ48PZAurDxRCLFlEIYrHd0ISntZdeksOlO2K-sz9-jsc2cKVNzEvdL3Vq-Q5l_GTIyO2Pjd6LcWBePkkpM6a8_JPCEMSSy8gTArJIvz9GKvLggXSqG9dpnLF-6gwd-rKhpSmC-HoDfxLiWbv8pbpBlIYzHQVIHSW4Gu2enCiA"
-                 />
-                 <div className="absolute inset-0 bg-gradient-to-tr from-[#0051d1]/30 to-transparent" aria-hidden />
-               </div>
-             </div>
-
-             {/* Featured Extensions */}
-             <div className="space-y-8">
-               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-                 <div>
-                   <h3 className="text-2xl font-bold tracking-tight text-[#2c2f31]">Featured Extensions</h3>
-                   <p className="text-[#595c5e]">Selected modules to power your next phase of growth.</p>
-                 </div>
-                 <button
-                   type="button"
-                   onClick={() => document.getElementById('market-fuel-marketplace')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                   className="flex items-center gap-1 font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                 >
-                   See All <ArrowRight className="size-4" strokeWidth={2} aria-hidden />
-                 </button>
-               </div>
-               <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
-                 <div className="group relative overflow-hidden rounded-lg border border-transparent bg-white p-8 shadow-sm transition-all duration-500 hover:border-[#0051d1]/10 hover:shadow-xl md:col-span-7">
-                   <div className="flex h-full flex-col justify-between gap-8">
-                     <div className="flex items-start justify-between">
-                       <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff] text-white shadow-lg">
-                         <Gift className="size-8" strokeWidth={2} aria-hidden />
-                       </div>
-                       <span className="rounded-full bg-[#d8e3fb] px-4 py-1.5 text-xs font-bold text-[#354053]">ACTIVE</span>
-                     </div>
-                     <div className="space-y-4">
-                       <h4 className="text-2xl font-extrabold tracking-tight text-[#2c2f31]">Smart Gift Packs</h4>
-                       <p className="text-sm leading-relaxed text-[#595c5e]">
-                         Automate personalized gift curation for high-value customers using historical purchase data. Increase retention by 24%.
-                       </p>
-                       <div className="flex flex-wrap items-center gap-4 pt-2">
-                         <span className="cursor-not-allowed rounded-full bg-[#e5e9eb] px-6 py-2 text-sm font-bold text-[#595c5e] opacity-50">
-                           Installed
-                         </span>
-                         <button
-                           type="button"
-                           onClick={() => handleTabChange('Card Issuance Setup')}
-                           className="flex items-center gap-1 text-sm font-bold text-[#0051d1] transition-transform group-hover:translate-x-1"
-                         >
-                           Configuration <Settings className="size-4" strokeWidth={2} aria-hidden />
-                         </button>
-                       </div>
-                     </div>
-                   </div>
-                 </div>
-                 <div className="group relative overflow-hidden rounded-lg bg-[#0b0f10] p-8 shadow-lg transition-all duration-500 hover:-translate-y-1 md:col-span-5">
-                   <div className="absolute -right-12 -top-12 size-48 rounded-full bg-[#0051d1]/20 blur-3xl transition-colors group-hover:bg-[#0051d1]/40" aria-hidden />
-                   <div className="relative z-10 flex h-full flex-col justify-between gap-8">
-                     <div className="flex items-start justify-between">
-                       <div className="flex size-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-[#7a9dff] shadow-lg backdrop-blur-md">
-                         <Bot className="size-8" strokeWidth={2} aria-hidden />
-                       </div>
-                       <span className="rounded-full border border-[#7a9dff]/30 bg-[#7a9dff]/20 px-4 py-1.5 text-[10px] font-bold tracking-widest text-[#7a9dff]">
-                         COMING SOON
-                       </span>
-                     </div>
-                     <div className="space-y-4">
-                       <h4 className="text-2xl font-extrabold tracking-tight text-white">AI Customer Agent</h4>
-                       <p className="text-sm leading-relaxed text-[#d9dde0]">
-                         24/7 intelligent commerce support that handles returns, shipping queries, and basic product recommendations.
-                       </p>
-                       <button
-                         type="button"
-                         onClick={() => handleTabChange('Messages')}
-                         className="w-full rounded-full bg-white py-3 text-sm font-bold text-[#2c2f31] transition-all hover:bg-[#0051d1] hover:text-white"
-                       >
-                         Join Waitlist
-                       </button>
-                     </div>
-                   </div>
-                 </div>
-                 <div className="group relative flex flex-col items-center gap-10 overflow-hidden rounded-lg bg-[#eef1f3] p-10 transition-colors duration-300 hover:bg-[#e5e9eb] md:col-span-12 md:flex-row">
-                   <div className="flex justify-center md:w-1/3">
-                     <div className="relative">
-                       <div className="absolute -inset-4 rounded-3xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff] opacity-20 blur-xl transition-opacity group-hover:opacity-40" aria-hidden />
-                       <div className="relative flex size-32 items-center justify-center rounded-3xl bg-white shadow-xl">
-                         <Landmark className="size-14 text-[#2CA01C]" strokeWidth={2} aria-hidden />
-                       </div>
-                     </div>
-                   </div>
-                   <div className="md:w-2/3 md:space-y-6">
-                     <div className="flex flex-wrap items-center gap-3">
-                       <h4 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">QuickBooks Sync</h4>
-                       <span className="rounded-full bg-[#f797ef] px-3 py-1 text-xs font-bold text-[#610e62]">MOST POPULAR</span>
-                     </div>
-                     <p className="max-w-2xl text-lg leading-relaxed text-[#595c5e]">
-                       Real-time financial synchronization. Map your Verra sales, tax, and inventory data directly to your QuickBooks general
-                       ledger automatically.
-                     </p>
-                     <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-                       <button
-                         type="button"
-                         onClick={() => document.getElementById('market-fuel-marketplace')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                         className="flex items-center gap-2 rounded-full bg-[#0051d1] px-10 py-4 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform hover:scale-105"
-                       >
-                         Free Install <Download className="size-4" strokeWidth={2} aria-hidden />
-                       </button>
-                       <div className="flex flex-wrap items-center gap-3">
-                         <div className="flex -space-x-3">
-                           <img
-                             alt=""
-                             className="size-10 rounded-full border-2 border-white object-cover"
-                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuCarM-40zn4y7vGJ2fW2b17Gf5tsHPrTWv1_L1B47Gy_LMG8ahXMwFYWPVMFp7xNifl-Oq2EOT33cvhyI1E_YKxWdNDNdrD2li_qD3eOClQYhEsp87gi7l4wqx571sFeWgoWkaG3ZG6Uwloc6rZetBPpRQJdI8p17MhnVYXe1rP7xYYIBXwPhqmC4taWRMKBKRJYObnnNqPt2YGYTYPGHFOSsA-BNHws8OB5ePo-qbbcsoPx1rbAKx4OXfzB9GuVm-w9Mgpl9dU49g"
-                           />
-                           <img
-                             alt=""
-                             className="size-10 rounded-full border-2 border-white object-cover"
-                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwNl6ojA5yj4CsJ0mPMgcFYrdpH7-Nfla57w_h27Mc6r0_BpILxm531mYNGlFMePUwVOPtoIbk2oV4NYcE6TwTNwKdip2rDJZx8QqPfQo0Ddu7-3rCDCKXc8YsA8ejyf3U2vhBzMLjuxp2phNdPVAhtflVRo46nYyG5s4iT112OgN6gvchje4ViL0-9sYyXXlZB6rQMZETvpig3IlHcFBQCD7r_SVWiQChrUMBsRL3DYsAifcXa-SkKzJCpq5bjE_DZuwA5vZ73-g"
-                           />
-                           <img
-                             alt=""
-                             className="size-10 rounded-full border-2 border-white object-cover"
-                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuD5lsOYTDic36cuJnXe3hmtqFoc23eNiH3_mdJ0gd6LkAE-uTdPn5hJiZ5dg0W7N4HslEIJuKihWPp31PXeviWYLevtSjB9Y5GsUiXEpny2LhELCqZbZfVD7ccoSt4QtiYD0FRwwBB7fXqp_QbLTYW99cHQIHq4aCkFdqIXjK0xs7YxAgo_dJoX4M26jddPdTo1ajDEt0x4nP7Aj0h6z2chKGQxydlUbbXOuR92qORkTnuQXK7osPlk5ew8trdzAgpjkgQs4f9xJNU"
-                           />
-                           <div className="flex size-10 items-center justify-center rounded-full border-2 border-white bg-[#dfe3e6] text-[10px] font-bold text-[#595c5e]">
-                             +800
-                           </div>
-                         </div>
-                         <span className="text-xs font-medium text-[#595c5e]">Businesses synced this week</span>
-                       </div>
-                     </div>
-                   </div>
-                 </div>
-               </div>
-             </div>
-
-             {/* Category shortcuts */}
-             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-               {(
-                 [
-                   { icon: CreditCard, label: 'Payments', onClick: () => handleTabChange('Transactions', { transactionsSidebar: 'transactions' }) },
-                   { icon: Package, label: 'Logistics', onClick: () => document.getElementById('market-fuel-marketplace')?.scrollIntoView({ behavior: 'smooth' }) },
-                   { icon: Megaphone, label: 'Marketing', onClick: () => handleTabChange('MembersLoyalty') },
-                   { icon: BarChart3, label: 'Reporting', onClick: () => handleTabChange('Transactions', { transactionsSidebar: 'insights' }) },
-                 ] as const
-               ).map(({ icon: Icon, label, onClick }) => (
-                 <button
-                   key={label}
-                   type="button"
-                   onClick={onClick}
-                   className="space-y-3 rounded-lg bg-[#eef1f3] p-6 text-center transition-all hover:bg-[#7a9dff]/20"
-                 >
-                   <Icon className="mx-auto size-8 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   <p className="text-sm font-bold text-[#2c2f31]">{label}</p>
-                 </button>
-               ))}
-             </div>
-
-             <section id="market-fuel-marketplace">
-               <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-                 <div>
-                   <h3 className="text-2xl font-extrabold text-slate-900">Marketplace</h3>
-                   <p className="mt-1 text-sm text-slate-500">Select a fuel package to recharge your merchant wallet.</p>
-                 </div>
-                 <div className="flex rounded-full bg-[#eef1f3] p-1">
-                   <button
-                     type="button"
-                     onClick={() => setMarketFuelSegment('bunits')}
-                     className={`rounded-full px-6 py-2 text-xs font-bold shadow-sm transition-colors ${
-                       marketFuelSegment === 'bunits' ? 'bg-white text-blue-600' : 'text-slate-500'
-                     }`}
-                   >
-                     B-Units
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => setMarketFuelSegment('priority')}
-                     className={`rounded-full px-6 py-2 text-xs font-bold transition-colors ${
-                       marketFuelSegment === 'priority' ? 'bg-white text-blue-600' : 'text-slate-500'
-                     }`}
-                   >
-                     Priority Processing
-                   </button>
-                 </div>
-               </div>
-
-               {marketFuelSegment === 'priority' ? (
-                 <div className="rounded-lg border border-slate-200 bg-white p-10 text-center shadow-sm">
-                   <p className="text-sm font-medium text-slate-600">
-                     Priority lane add-ons are arranged with our team. Open Messages to request expedited processing for high-volume windows.
-                   </p>
-                   <button
-                     type="button"
-                     onClick={() => handleTabChange('Messages')}
-                     className={`mt-6 rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 ${bizFocusRingClass}`}
-                   >
-                     Contact Support
-                   </button>
-                 </div>
-               ) : (
-                 <>
-                   <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-                     <div className="group flex flex-col rounded-lg border border-transparent bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all hover:border-blue-100 hover:shadow-[0_20px_40px_rgba(21,98,240,0.08)]">
-                       <div className="mb-6">
-                         <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-slate-400">The Essentials</span>
-                         <h4 className="text-2xl font-extrabold text-slate-900">Starter</h4>
-                       </div>
-                       <div className="mb-8">
-                         <div className="flex items-baseline gap-1">
-                           <span className="text-4xl font-black text-slate-900">$499</span>
-                           <span className="text-[10px] font-bold uppercase text-slate-400">CAD</span>
-                         </div>
-                         <p className="mt-2 text-sm font-bold text-blue-600">5,000 B-Units Included</p>
-                       </div>
-                       <ul className="mb-10 flex-1 space-y-4">
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
-                           Standard Transaction Speed
-                         </li>
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
-                           Email Support
-                         </li>
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
-                           Basic Analytics
-                         </li>
-                       </ul>
-                       <button
-                         type="button"
-                         onClick={() => setSelectedProduct('fuel')}
-                         className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-bold text-slate-900 transition-colors group-hover:bg-[#0051d1] group-hover:text-white active:scale-95 ${bizFocusRingClass}`}
-                       >
-                         Buy Now
-                       </button>
-                     </div>
-
-                     <div className="relative flex scale-100 flex-col rounded-lg border-2 border-blue-600/10 bg-white p-8 shadow-[0_30px_60px_rgba(21,98,240,0.12)] md:scale-105">
-                       <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-lg">
-                         Most Popular
-                       </div>
-                       <div className="mb-6 mt-2">
-                         <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-blue-500">Scaling Fast</span>
-                         <h4 className="text-2xl font-extrabold text-slate-900">Growth</h4>
-                       </div>
-                       <div className="mb-8">
-                         <div className="flex items-baseline gap-1">
-                           <span className="text-4xl font-black text-slate-900">$1,250</span>
-                           <span className="text-[10px] font-bold uppercase text-slate-400">CAD</span>
-                         </div>
-                         <p className="mt-2 text-sm font-bold text-blue-600">15,000 B-Units Included</p>
-                       </div>
-                       <ul className="mb-10 flex-1 space-y-4">
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
-                           Priority Transaction Speed
-                         </li>
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
-                           24/7 Priority Support
-                         </li>
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
-                           Advanced Reporting Suite
-                         </li>
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 fill-blue-600/15 text-blue-600" strokeWidth={2} aria-hidden />
-                           Automated Loyalty Rules
-                         </li>
-                       </ul>
-                       <button
-                         type="button"
-                         onClick={() => setSelectedProduct('node')}
-                         className={`w-full rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-xl shadow-blue-200 transition-transform active:scale-95 ${bizFocusRingClass}`}
-                       >
-                         Buy Now
-                       </button>
-                     </div>
-
-                     <div className="group flex flex-col rounded-lg border border-transparent bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all hover:border-blue-100 hover:shadow-[0_20px_40px_rgba(21,98,240,0.08)]">
-                       <div className="mb-6">
-                         <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-slate-400">Unlimited Power</span>
-                         <h4 className="text-2xl font-extrabold text-slate-900">Enterprise</h4>
-                       </div>
-                       <div className="mb-8">
-                         <div className="flex items-baseline gap-1">
-                           <span className="text-4xl font-black text-slate-900">$3,999</span>
-                           <span className="text-[10px] font-bold uppercase text-slate-400">CAD</span>
-                         </div>
-                         <p className="mt-2 text-sm font-bold text-blue-600">50,000 B-Units Included</p>
-                       </div>
-                       <ul className="mb-10 flex-1 space-y-4">
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
-                           Dedicated Processing Node
-                         </li>
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
-                           Personal Account Manager
-                         </li>
-                         <li className="flex items-center gap-3 text-sm text-slate-600">
-                           <CheckCircle2 className="size-5 shrink-0 text-blue-600" strokeWidth={2} aria-hidden />
-                           Custom Integration API
-                         </li>
-                       </ul>
-                       <button
-                         type="button"
-                         onClick={() => handleTabChange('Messages')}
-                         className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-bold text-slate-900 transition-colors group-hover:bg-[#0051d1] group-hover:text-white active:scale-95 ${bizFocusRingClass}`}
-                       >
-                         Get a Quote
-                       </button>
-                     </div>
-                   </div>
-
-                   {!hasAaAccount ? (
-                     <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                         <div>
-                           <p className="text-sm font-bold text-slate-900">Activate your smart wallet first</p>
-                           <p className="mt-1 text-sm text-slate-500">
-                             AA activation uses the entry pack (1 USDC). Continue here after your Programs setup, or go to the starter flow.
-                           </p>
-                         </div>
-                         <button
-                           type="button"
-                           onClick={() => setSelectedProduct('starter')}
-                           className={`shrink-0 rounded-full bg-emerald-600 px-8 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-emerald-500 ${bizFocusRingClass}`}
-                         >
-                           Starter activation (1 USDC)
-                         </button>
-                       </div>
-                     </div>
-                   ) : (
-                     <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                       <p className="mb-4 text-sm font-bold text-slate-900">Custom USDC top-up</p>
-                       <p className="mb-4 text-xs font-medium text-slate-500">0.01 USDC per B-Unit · enter amount, then continue to secure checkout.</p>
-                       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                         <div className="flex-1">
-                           <label htmlFor="market-custom-fuel" className="sr-only">
-                             USDC amount
-                           </label>
-                           <div className="relative">
-                             <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-[#0051d1]">$</span>
-                             <input
-                               id="market-custom-fuel"
-                               type="number"
-                               min="1"
-                               inputMode="decimal"
-                               autoComplete="off"
-                               value={customFuelAmount}
-                               onChange={(e) => setCustomFuelAmount(e.target.value)}
-                               placeholder="0"
-                               className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-4 text-lg font-semibold text-slate-900 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                             />
-                           </div>
-                           <p className="mt-2 text-xs font-medium text-slate-500">
-                             Yields {(Number(customFuelAmount) || 0) * 100} B-Units (display estimate)
-                           </p>
-                         </div>
-                         <button
-                           type="button"
-                           onClick={() => setSelectedProduct('custom_fuel')}
-                           disabled={!customFuelAmount || Number(customFuelAmount) <= 0}
-                           className={`rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-md transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                         >
-                           Continue
-                         </button>
-                       </div>
-                     </div>
-                   )}
-                 </>
-               )}
-             </section>
-
-             <section className="mt-12 md:mt-16">
-               <div className="flex flex-col items-center justify-between gap-6 rounded-xl border border-white/40 bg-[#eef1f3] p-8 md:flex-row">
-                 <div className="flex items-center gap-6">
-                   <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white text-blue-600">
-                     <LifeBuoy className="size-8" strokeWidth={1.75} aria-hidden />
-                   </div>
+           <div className="relative mx-auto w-full max-w-7xl animate-in fade-in duration-300">
+             <main className="flex-1 w-full px-4 pb-28 pt-2 sm:px-6 md:px-10 md:pb-24 lg:pb-12">
+               <section className="mb-12">
+                 <div className="flex flex-col justify-between gap-8 md:flex-row md:items-center">
                    <div>
-                     <h5 className="text-lg font-bold text-slate-900">Need a custom volume?</h5>
-                     <p className="text-sm text-slate-500">
-                       Contact our sales team for bespoke fuel solutions tailored to your unique traffic volume.
+                     <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">Current Balance</h2>
+                     <div className="flex flex-wrap items-baseline gap-3">
+                       <span className="font-sans text-5xl font-extrabold tracking-tighter text-[#2c2f31]">
+                         {protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                           ? Number(protocolFuelReserveBalance).toLocaleString('en-US', {
+                               minimumFractionDigits: 2,
+                               maximumFractionDigits: 2,
+                             })
+                           : '—'}
+                       </span>
+                       <span className="font-sans text-xl font-bold text-[#0051d1]">B-Units</span>
+                     </div>
+                     {marketBUnitRunwayDays != null ? (
+                       <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#d8e3fb] px-4 py-1.5">
+                         <Timer className="size-4 shrink-0 text-[#475266]" strokeWidth={2} aria-hidden />
+                         <span className="text-[12px] font-bold tracking-tight text-[#475266]">
+                           Est. Runway: ~{marketBUnitRunwayDays} day{marketBUnitRunwayDays === 1 ? '' : 's'} (today&apos;s Charge rate)
+                         </span>
+                       </div>
+                     ) : null}
+                   </div>
+                   <div className="flex w-full max-w-[220px] flex-col items-end rounded-xl border border-slate-100 bg-white p-6 text-right shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
+                     <div className="mb-2 flex w-full items-center justify-end gap-3">
+                       <span className="text-sm font-bold text-[#595c5e]">Auto-Refill</span>
+                       <button
+                         type="button"
+                         role="switch"
+                         aria-checked={marketAutoRefillOn}
+                         onClick={() => setMarketAutoRefillOn((v) => !v)}
+                         className={`relative h-5 w-10 shrink-0 rounded-full transition-colors ${marketAutoRefillOn ? 'bg-[#0051d1]' : 'bg-slate-300'}`}
+                       >
+                         <span
+                           className={`absolute top-0.5 size-3.5 rounded-full bg-white shadow transition-[left] ${marketAutoRefillOn ? 'left-[22px]' : 'left-0.5'}`}
+                           aria-hidden
+                         />
+                       </button>
+                     </div>
+                     <p className="text-[10px] font-medium leading-relaxed text-[#595c5e]/80">
+                       C$50 worth of B-Units will be added when balance drops below 500 (preview — not wired yet).
                      </p>
                    </div>
                  </div>
+               </section>
+
+               <section id="market-fuel-marketplace" className="mb-12">
+                 <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+                   <div>
+                     <h3 className="font-sans text-2xl font-extrabold text-[#2c2f31]">Refill Packages</h3>
+                     <p className="mt-1 text-sm text-slate-500">Select a fuel package to recharge your merchant wallet.</p>
+                     <p className="mt-2 text-[11px] font-medium text-slate-500">
+                       Package labels show CAD for comparison. Checkout charges USDC on Base (100 B-Units per 1 USDC).
+                     </p>
+                   </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 items-stretch gap-8 md:grid-cols-3">
+                   <div className="flex flex-col gap-6 rounded-lg border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
+                     <div className="flex items-start justify-between">
+                       <div>
+                         <h4 className="font-sans text-xl font-extrabold text-[#2c2f31]">Starter Pack</h4>
+                         <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~350 orders</p>
+                       </div>
+                       <div className="text-right">
+                         <div className="font-sans text-2xl font-extrabold text-[#2c2f31]">C$ 10.00</div>
+                         <div className="text-[12px] font-bold text-[#0051d1]">700 B-Units</div>
+                       </div>
+                     </div>
+                     <div className="flex-1" />
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setCustomFuelAmount('7');
+                         setSelectedProduct('custom_fuel');
+                       }}
+                       className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-bold text-[#2c2f31] transition-colors hover:bg-[#e5e9eb] active:scale-[0.98] ${bizFocusRingClass}`}
+                     >
+                       Buy Starter
+                     </button>
+                   </div>
+
+                   <div className="relative z-10 flex scale-100 flex-col gap-6 overflow-hidden rounded-lg border-2 border-[#0051d1]/20 bg-white p-8 shadow-[0_30px_60px_rgba(21,98,240,0.12)] md:scale-[1.05]">
+                     <div className="absolute right-0 top-0 rounded-bl-xl bg-[#0051d1] px-6 py-2">
+                       <span className="text-[11px] font-black uppercase tracking-wider text-white">+10% Bonus</span>
+                     </div>
+                     <div className="flex items-start justify-between pt-4">
+                       <div>
+                         <h4 className="font-sans text-2xl font-extrabold text-[#0051d1]">Standard</h4>
+                         <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~1,925 orders</p>
+                       </div>
+                       <div className="text-right">
+                         <div className="flex flex-col items-end">
+                           <span className="text-xs text-[#747779] line-through opacity-60">C$ 55.00</span>
+                           <span className="font-sans text-3xl font-extrabold tracking-tighter text-[#2c2f31]">C$ 50.00</span>
+                         </div>
+                         <div className="mt-1 text-[14px] font-bold text-[#0051d1]">3,850 B-Units</div>
+                       </div>
+                     </div>
+                     <div className="flex-1" />
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setCustomFuelAmount('38.5');
+                         setSelectedProduct('custom_fuel');
+                       }}
+                       className={`w-full rounded-full bg-[#0051d1] py-4 text-base font-bold text-white shadow-lg shadow-[#0051d1]/30 transition-transform active:scale-95 ${bizFocusRingClass}`}
+                     >
+                       Buy Standard
+                     </button>
+                   </div>
+
+                   <div className="flex flex-col gap-6 rounded-lg border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
+                     <div className="flex items-start justify-between">
+                       <div>
+                         <div className="mb-2 inline-block rounded bg-[#f797ef] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#610e62]">
+                           +20% Bonus
+                         </div>
+                         <h4 className="font-sans text-xl font-extrabold text-[#2c2f31]">Pro Volume</h4>
+                         <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~4,200 orders</p>
+                       </div>
+                       <div className="text-right">
+                         <div className="flex flex-col items-end">
+                           <span className="text-xs text-[#747779] line-through opacity-60">C$ 120.00</span>
+                           <span className="font-sans text-2xl font-extrabold text-[#2c2f31]">C$ 100.00</span>
+                         </div>
+                         <div className="mt-1 text-[12px] font-bold text-[#0051d1]">8,400 B-Units</div>
+                       </div>
+                     </div>
+                     <div className="flex-1" />
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setCustomFuelAmount('84');
+                         setSelectedProduct('custom_fuel');
+                       }}
+                       className={`w-full rounded-full border-2 border-[#abadaf]/30 py-4 text-sm font-bold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] active:scale-[0.98] ${bizFocusRingClass}`}
+                     >
+                       Buy Pro
+                     </button>
+                   </div>
+                 </div>
+
+                 {!hasAaAccount ? (
+                   <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                       <div>
+                         <p className="text-sm font-bold text-slate-900">Activate your smart wallet first</p>
+                         <p className="mt-1 text-sm text-slate-500">
+                           AA activation uses the entry pack (1 USDC). Continue here after your Programs setup, or go to the starter flow.
+                         </p>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => setSelectedProduct('starter')}
+                         className={`shrink-0 rounded-full bg-emerald-600 px-8 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-emerald-500 ${bizFocusRingClass}`}
+                       >
+                         Starter activation (1 USDC)
+                       </button>
+                     </div>
+                   </div>
+                 ) : (
+                   <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                     <p className="mb-4 text-sm font-bold text-slate-900">Custom USDC top-up</p>
+                     <p className="mb-4 text-xs font-medium text-slate-500">0.01 USDC per B-Unit · enter amount, then continue to secure checkout.</p>
+                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                       <div className="flex-1">
+                         <label htmlFor="market-custom-fuel" className="sr-only">
+                           USDC amount
+                         </label>
+                         <div className="relative">
+                           <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-[#0051d1]">$</span>
+                           <input
+                             id="market-custom-fuel"
+                             type="number"
+                             min="1"
+                             inputMode="decimal"
+                             autoComplete="off"
+                             value={customFuelAmount}
+                             onChange={(e) => setCustomFuelAmount(e.target.value)}
+                             placeholder="0"
+                             className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-4 text-lg font-semibold text-slate-900 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                           />
+                         </div>
+                         <p className="mt-2 text-xs font-medium text-slate-500">
+                           Yields {(Number(customFuelAmount) || 0) * 100} B-Units (display estimate)
+                         </p>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => setSelectedProduct('custom_fuel')}
+                         disabled={!customFuelAmount || Number(customFuelAmount) <= 0}
+                         className={`rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-md transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                       >
+                         Continue
+                       </button>
+                     </div>
+                   </div>
+                 )}
+               </section>
+
+               <section className="max-w-2xl">
+                 <div className="rounded-xl border border-white/40 bg-[#eef1f3] p-8">
+                   <h3 className="mb-6 font-sans text-lg font-bold text-[#2c2f31]">Have a Redeem Code?</h3>
+                   <div className="flex flex-col gap-4 sm:flex-row">
+                     <input
+                       className="flex-1 rounded-full border border-slate-200 bg-white px-6 py-4 text-sm text-[#2c2f31] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20"
+                       placeholder="VR-XXXX-XXXX-XXXX"
+                       type="text"
+                       value={merchantKitRedeemInput}
+                       onChange={(e) => {
+                         setMerchantKitRedeemInput(e.target.value);
+                         if (merchantKitRedeemFeedback) setMerchantKitRedeemFeedback(null);
+                       }}
+                       autoComplete="off"
+                     />
+                     <button
+                       type="button"
+                       disabled={merchantKitBuintRedeemBusy || !merchantKitRedeemInput.trim()}
+                       onClick={() => void submitMerchantKitBuintRedeem()}
+                       className="rounded-full bg-[#0051d1] px-10 py-4 text-sm font-bold uppercase tracking-widest text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                     >
+                       {merchantKitBuintRedeemBusy ? '…' : 'Activate'}
+                     </button>
+                   </div>
+                   {merchantKitRedeemFeedback ? (
+                     <p
+                       className={`mt-4 text-xs font-medium ${
+                         merchantKitRedeemFeedback.type === 'success' ? 'text-emerald-700' : 'text-amber-700'
+                       }`}
+                     >
+                       {merchantKitRedeemFeedback.message}
+                     </p>
+                   ) : null}
+                   <div className="mt-8 flex flex-col gap-3 opacity-80">
+                     <div className="flex items-center gap-3">
+                       <Info className="size-[18px] shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                       <p className="text-xs font-medium leading-tight text-[#595c5e]">
+                         Packages compare at ~70 B-Units per C$1. Each Charge uses 2 B-Units. Settlement is USDC on Base at checkout.
+                       </p>
+                     </div>
+                   </div>
+                 </div>
+               </section>
+
+               <p className="mt-8 text-center text-[11px] font-semibold text-slate-500">
+                 Priority processing add-ons?{' '}
                  <button
                    type="button"
                    onClick={() => handleTabChange('Messages')}
-                   className={`whitespace-nowrap rounded-full bg-slate-900 px-8 py-3 text-sm font-bold text-white transition-transform active:scale-95 ${bizFocusRingClass}`}
+                   className={`font-bold text-[#0051d1] underline-offset-2 hover:underline ${bizFocusRingClass}`}
                  >
-                   Get a Quote
+                   Contact support
                  </button>
-               </div>
-             </section>
-
-             <button
-               type="button"
-               onClick={() => document.getElementById('market-fuel-marketplace')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-               className="fixed bottom-8 right-8 z-40 flex size-16 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-2xl transition-all hover:scale-110 active:scale-95"
-               aria-label="Add fuel or extensions"
-             >
-               <Plus className="size-8" strokeWidth={2.5} aria-hidden />
-             </button>
+               </p>
+             </main>
            </div>
          )}
 
@@ -9705,107 +9681,287 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative space-y-6 sm:space-y-8">
              {!hasAaAccount ? (
                <MembersLoyaltyNoAaEditorial
-                 onPreviewDigitalCard={() => {
-                   setActiveTab('Market');
-                   setSelectedProduct('starter');
-                 }}
-                 onShareInvite={() => {
-                   const url = typeof window !== 'undefined' ? window.location.href : '';
-                   void (async () => {
-                     try {
-                       if (typeof navigator !== 'undefined' && navigator.share) {
-                         await navigator.share({
-                           title: 'Verra Business',
-                           text: 'Join our community on Beamio',
-                           url,
-                         });
-                         return;
-                       }
-                       if (navigator.clipboard?.writeText) {
-                         await navigator.clipboard.writeText(url);
-                       }
-                     } catch {
-                       /* user dismissed share or clipboard unavailable */
-                     }
-                   })();
+                 onSetUpFirstProgram={() => {
+                   handleTabChange('Card Issuance Setup');
                  }}
                />
              ) : (
-             <div className="space-y-6 sm:space-y-8">
-               
+             <div className="relative w-full space-y-8 px-1 pb-28 pt-2 sm:px-2 lg:pb-12">
+               <section className="space-y-2">
+                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">Member Management</span>
+                 <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">Directory</h2>
+               </section>
 
-               <section className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] sm:rounded-[32px]">
-                 <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-4 sm:px-6 sm:py-5">
-                   <h4 className="text-lg font-bold tracking-tight text-slate-900">Your membership programs</h4>
-                   
+               <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                 <div className="rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-[0_4px_20px_rgba(21,98,240,0.04)] sm:col-span-2 lg:col-span-1">
+                   <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Total Members</p>
+                   <div className="flex items-end justify-between gap-2">
+                     <span className="text-3xl font-extrabold text-[#0051d1]">{membersTopupKpisAll.count.toLocaleString()}</span>
+                     <Users className="size-8 shrink-0 text-[#7a9dff]" strokeWidth={2} aria-hidden />
+                   </div>
+                   <p className="mt-2 text-[10px] font-medium text-[#595c5e]/80">
+                     Volume (points):{' '}
+                     {membersTopupKpisAll.volumePointsChain != null && Number.isFinite(membersTopupKpisAll.volumePointsChain)
+                       ? membersTopupKpisAll.volumePointsChain.toFixed(2)
+                       : '—'}{' '}
+                     · Repeat top-ups: {membersTopupKpisAll.repeatMembers.toLocaleString()}
+                   </p>
                  </div>
-                 <div className="overflow-x-auto">
+                 <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5">
+                   <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">Active NFCs</p>
+                   <span className="text-xl font-bold text-[#2c2f31]">{membersDirectoryActiveNfcCount.toLocaleString()}</span>
+                   <p className="mt-2 text-[10px] font-medium text-[#595c5e]/80">Linked SoftPOS terminals on your merchant card.</p>
+                 </div>
+                 <div className="rounded-lg border border-[#abadaf]/10 border-l-4 border-l-[#b31b25] bg-white p-5">
+                   <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">At-Risk High-Value</p>
+                   <span className="text-xl font-bold text-[#b31b25]">{membersDirectoryAtRiskCount.toLocaleString()}</span>
+                   <p className="mt-2 text-[10px] font-medium text-[#595c5e]/80">≥200 points, no activity in 30 days (heuristic).</p>
+                 </div>
+               </section>
+
+               <div className="flex max-w-md gap-1 rounded-full bg-[#eef1f3] p-1">
+                 <button
+                   type="button"
+                   onClick={() => setMembersDirectorySegment('app')}
+                   className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
+                     membersDirectorySegment === 'app' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
+                   } ${bizFocusRingClass}`}
+                 >
+                   App Users
+                 </button>
+                 <button
+                   type="button"
+                   onClick={() => setMembersDirectorySegment('anon_nfc')}
+                   className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
+                     membersDirectorySegment === 'anon_nfc' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
+                   } ${bizFocusRingClass}`}
+                 >
+                   Anonymous NFC
+                 </button>
+               </div>
+
+               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
+                 <div className="relative max-w-2xl flex-1">
+                   <Search className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
+                   <input
+                     id="members-directory-search"
+                     type="search"
+                     autoComplete="off"
+                     placeholder="Search BeamioTags or Names…"
+                     value={membersLoyaltySearch}
+                     onChange={(e) => setMembersLoyaltySearch(e.target.value)}
+                     className={`w-full rounded-lg border-none bg-[#eef1f3] py-4 pl-12 pr-4 text-sm text-[#2c2f31] outline-none transition-all focus:ring-2 focus:ring-[#0051d1]/20 ${bizFocusRingClass}`}
+                   />
+                 </div>
+                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                   <select
+                     value={membersLoyaltyProgramKey}
+                     onChange={(e) => setMembersLoyaltyProgramKey(e.target.value)}
+                     className={`w-full cursor-pointer rounded-lg border border-[#abadaf]/25 bg-white px-4 py-3 text-[13px] font-semibold text-[#2c2f31] sm:w-auto ${bizFocusRingClass}`}
+                   >
+                     <option value="all">All programs</option>
+                     {(membersOwnedPrograms ?? []).map((p) => (
+                       <option key={p.cardAddress} value={p.cardAddress.toLowerCase()}>
+                         {p.programName}
+                       </option>
+                     ))}
+                   </select>
+                   <div className="flex items-center gap-2 text-[12px] font-medium text-[#595c5e]">
+                     <Filter size={16} aria-hidden /> Program
+                   </div>
+                 </div>
+               </div>
+
+               <section className="space-y-6">
+                 <div className="flex items-center justify-between px-2">
+                   <h3 className="text-lg font-bold text-[#2c2f31]">
+                     {membersDirectorySegment === 'app' ? 'App Users' : 'Anonymous NFC'}
+                   </h3>
+                   <span className="text-xs font-bold uppercase tracking-tighter text-[#0051d1]">Sort by: Recent</span>
+                 </div>
+
+                 {membersDirectorySegment === 'app' ? (
+                   membersDirectorySegmentRows.length > 0 ? (
+                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                       {membersDirectorySegmentRows.map((row) => {
+                         const pts = directoryMemberPointsHuman(row);
+                         const tier = directoryMemberTierFromPoints(pts);
+                         const tagRaw = row.beamioTag.replace(/^@/, '').trim();
+                         const displayName = formatDirectoryMemberDisplayName(row.beamioTag);
+                         return (
+                           <div
+                             key={`${row.cardLower}-${row.memberAddress.toLowerCase()}`}
+                             className="group flex items-center gap-4 rounded-lg border border-transparent bg-white p-4 shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10"
+                           >
+                             <div className="relative shrink-0">
+                               <img
+                                 src={getImg(tagRaw || row.memberAddress)}
+                                 alt=""
+                                 className="size-14 rounded-full object-cover"
+                               />
+                               <div
+                                 className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
+                                   tier.gold ? 'bg-yellow-400' : 'bg-slate-300'
+                                 }`}
+                               >
+                                 <Star className="size-2.5 fill-white text-white" strokeWidth={0} aria-hidden />
+                               </div>
+                             </div>
+                             <div className="min-w-0 flex-1">
+                               <p className="truncate font-bold text-[#2c2f31]">{displayName}</p>
+                               <p className="text-xs font-medium text-[#0051d1]">@{tagRaw}</p>
+                               <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
+                             </div>
+                             <div className="shrink-0 text-right">
+                               <p className="font-extrabold tabular-nums text-[#2c2f31]">${pts.toFixed(2)}</p>
+                               <span
+                                 className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                                   tier.gold ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
+                                 }`}
+                               >
+                                 {tier.label}
+                               </span>
+                             </div>
+                           </div>
+                         );
+                       })}
+                     </div>
+                   ) : (
+                     <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white/60 p-10 text-center">
+                       <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
+                       <p className="text-sm font-semibold text-[#2c2f31]">No app users in this view</p>
+                       <p className="mt-2 text-sm text-[#595c5e]">
+                         {topupMemberTableRowsAll.length === 0
+                           ? 'No members returned from the API yet for your programs. After successful top-ups are recorded on the server, they appear here.'
+                           : 'No tagged members match this search or program filter.'}
+                       </p>
+                     </div>
+                   )
+                 ) : membersDirectorySegmentRows.length > 0 ? (
+                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                     {membersDirectorySegmentRows.map((row) => {
+                       const pts = directoryMemberPointsHuman(row);
+                       const tier = directoryMemberTierFromPoints(pts);
+                       const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
+                       return (
+                         <div
+                           key={`${row.cardLower}-${row.memberAddress.toLowerCase()}`}
+                           className="group flex items-center gap-4 rounded-lg border border-transparent bg-white p-4 shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10"
+                         >
+                           <div className="relative shrink-0">
+                             <img src={getImg(row.memberAddress)} alt="" className="size-14 rounded-full object-cover" />
+                             <div
+                               className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
+                                 tier.gold ? 'bg-yellow-400' : 'bg-slate-300'
+                               }`}
+                             >
+                               <Star className="size-2.5 fill-white text-white" strokeWidth={0} aria-hidden />
+                             </div>
+                           </div>
+                           <div className="min-w-0 flex-1">
+                             <p className="truncate font-bold text-[#2c2f31]">Anonymous member</p>
+                             <p className="truncate font-mono text-xs font-medium text-[#595c5e]">{shortAddr}</p>
+                             <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
+                           </div>
+                           <div className="shrink-0 text-right">
+                             <p className="font-extrabold tabular-nums text-[#2c2f31]">${pts.toFixed(2)}</p>
+                             <span
+                               className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                                 tier.gold ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
+                               }`}
+                             >
+                               {tier.label}
+                             </span>
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 ) : (
+                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white/60 p-10 text-center">
+                     <Nfc className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
+                     <p className="text-sm font-semibold text-[#2c2f31]">No anonymous NFC-only members</p>
+                     <p className="mt-2 text-sm text-[#595c5e]">
+                       Rows without a BeamioTag show here when the API returns payer-only records.
+                     </p>
+                   </div>
+                 )}
+               </section>
+
+               <details className="group/details overflow-hidden rounded-lg border border-[#abadaf]/20 bg-white shadow-sm open:shadow-md">
+                 <summary
+                   className={`flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 text-base font-bold text-[#2c2f31] sm:px-6 sm:text-lg [&::-webkit-details-marker]:hidden ${bizFocusRingClass}`}
+                 >
+                   Your membership programs
+                   <ChevronRight className="size-5 shrink-0 text-[#595c5e] transition-transform group-open/details:rotate-90" aria-hidden />
+                 </summary>
+                 <div className="overflow-x-auto border-t border-[#abadaf]/15">
                    <table className="w-full min-w-[800px]">
-                     <thead className="border-b border-slate-100 bg-slate-50/50 text-left">
+                     <thead className="border-b border-[#eef1f3] bg-[#f5f7f9]/80 text-left">
                        <tr>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Program</th>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Contract</th>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Currency</th>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Program owner</th>
-                         <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Lifetime issued</th>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Program</th>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Contract</th>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Currency</th>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Program owner</th>
+                         <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Lifetime issued</th>
                        </tr>
                      </thead>
-                     <tbody className="divide-y divide-slate-100">
+                     <tbody className="divide-y divide-[#eef1f3]">
                        {membersOwnedPrograms === null ? (
                          <tr>
-                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-slate-500">
+                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-[#595c5e]">
                              Loading programs…
                            </td>
                          </tr>
                        ) : membersOwnedPrograms.length === 0 ? (
                          <tr>
-                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-slate-500">
+                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-[#595c5e]">
                              No BeamioUserCard programs found for this wallet. Create one in Programs or Market.
                            </td>
                          </tr>
                        ) : (
                          membersOwnedPrograms.map((row) => (
-                           <tr key={row.cardAddress.toLowerCase()} className="hover:bg-slate-50/50">
+                           <tr key={row.cardAddress.toLowerCase()} className="hover:bg-[#f5f7f9]/80">
                              <td className="px-6 py-4">
                                <div className="flex items-center gap-3">
                                  {row.image ? (
                                    <img
                                      src={row.image}
                                      alt={row.programName}
-                                     className="h-10 w-10 rounded-lg border border-slate-200 object-cover"
+                                     className="h-10 w-10 rounded-lg border border-[#abadaf]/20 object-cover"
                                    />
                                  ) : (
-                                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1562f0]/10 text-xs font-bold text-[#1562f0]">
+                                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0051d1]/10 text-xs font-bold text-[#0051d1]">
                                      {row.programName.slice(0, 2).toUpperCase()}
                                    </div>
                                  )}
-                                 <span className="text-[14px] font-semibold text-slate-900">{row.programName}</span>
+                                 <span className="text-[14px] font-semibold text-[#2c2f31]">{row.programName}</span>
                                </div>
                              </td>
                              <td className="px-6 py-4">
-                               <AddressCapsule address={row.cardAddress} className="border-slate-200 bg-slate-50 text-slate-700" />
+                               <AddressCapsule address={row.cardAddress} className="border-[#abadaf]/25 bg-[#f5f7f9] text-[#595c5e]" />
                              </td>
-                             <td className="px-6 py-4 text-[13px] font-medium text-slate-700">{row.currency}</td>
+                             <td className="px-6 py-4 text-[13px] font-medium text-[#2c2f31]">{row.currency}</td>
                              <td className="px-6 py-4">
                                {row.ownerDisplayName || row.ownerAccountName ? (
                                  <div className="flex min-w-0 items-center gap-2">
                                    <img
                                      src={row.ownerImage || getImg(row.ownerAccountName || undefined)}
                                      alt=""
-                                     className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
+                                     className="h-9 w-9 shrink-0 rounded-full border border-[#abadaf]/20 object-cover"
                                    />
                                    <div className="min-w-0">
-                                     <div className="truncate text-[13px] font-semibold text-slate-900">{row.ownerDisplayName || '—'}</div>
+                                     <div className="truncate text-[13px] font-semibold text-[#2c2f31]">{row.ownerDisplayName || '—'}</div>
                                      {row.ownerAccountName ? (
-                                       <div className="truncate text-[11px] font-medium text-slate-500">@{row.ownerAccountName}</div>
+                                       <div className="truncate text-[11px] font-medium text-[#595c5e]">@{row.ownerAccountName}</div>
                                      ) : null}
                                    </div>
                                  </div>
                                ) : (
-                                 <AddressCapsule address={row.ownerAddress} className="border-slate-200 bg-slate-50 text-slate-700" />
+                                 <AddressCapsule address={row.ownerAddress} className="border-[#abadaf]/25 bg-[#f5f7f9] text-[#595c5e]" />
                                )}
                              </td>
-                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-slate-900">
+                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-[#2c2f31]">
                                {row.issuedLifetime != null ? row.issuedLifetime.toFixed(2) : '—'}
                              </td>
                            </tr>
@@ -9814,168 +9970,22 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      </tbody>
                    </table>
                  </div>
-               </section>
+               </details>
 
-               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
-                 <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
-                   <div className="mb-4 flex items-center gap-3">
-                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0]">
-                       <Users size={20} />
-                     </div>
-                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Top-up members</p>
-                   </div>
-                   <p className="text-3xl font-light tracking-tight text-slate-900">
-                     {membersTopupKpisAll.count.toLocaleString()}
-                   </p>
-                   
-                 </div>
-                 <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
-                   <div className="mb-4 flex items-center gap-3">
-                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500">
-                       <BadgeInfo size={20} />
-                     </div>
-                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Top-up volume (points)</p>
-                   </div>
-                   <div className="flex items-baseline gap-1.5">
-                     <p className="text-3xl font-light tracking-tight text-slate-900">
-                       {membersTopupKpisAll.volumePointsChain != null && Number.isFinite(membersTopupKpisAll.volumePointsChain)
-                         ? membersTopupKpisAll.volumePointsChain.toFixed(2)
-                         : '—'}
-                     </p>
-                   </div>
-                 </div>
-                 <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
-                   <div className="mb-4 flex items-center gap-3">
-                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-500">
-                       <Crown size={20} />
-                     </div>
-                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Repeat top-ups</p>
-                   </div>
-                   <p className="text-3xl font-light tracking-tight text-slate-900">
-                     {membersTopupKpisAll.repeatMembers.toLocaleString()}
-                   </p>
-                   
-                 </div>
-               </div>
+               <p className="px-1 text-[11px] font-medium leading-relaxed text-[#595c5e]">
+                 Member rows from <span className="font-mono">beamio.app/api/cardMemberTopups</span> (mode=members). Refreshes with the Overview feeder
+                 (~30s HTTP cache per card).
+               </p>
 
-               <div className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] sm:rounded-[32px]">
-                 <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3 sm:px-6 sm:py-4">
-                   <h4 className="text-base font-bold tracking-tight text-slate-900">Members (from Beamio API)</h4>
-                   <p className="mt-1 text-[12px] font-medium text-slate-500">
-                     One row per member per program from <span className="font-mono text-[11px]">beamio.app/api/cardMemberTopups</span>{' '}
-                     (mode=members). Refreshes with the Overview feeder (~30s HTTP cache per card).
-                   </p>
-                 </div>
-                 <div className="flex flex-col items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/50 p-4 sm:flex-row sm:p-6">
-                   <div className="relative w-full sm:max-w-xs">
-                     <Search className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-400" />
-                     <input
-                       type="text"
-                       placeholder="Search @tag or address..."
-                       value={membersLoyaltySearch}
-                       onChange={(e) => setMembersLoyaltySearch(e.target.value)}
-                       className={`w-full rounded-[14px] border border-slate-200/60 bg-white py-2.5 pl-11 pr-4 text-[13px] font-medium text-slate-900 ${bizFocusRingClass} focus:border-[#1562f0]`}
-                     />
-                   </div>
-                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                     <select
-                       value={membersLoyaltyProgramKey}
-                       onChange={(e) => setMembersLoyaltyProgramKey(e.target.value)}
-                       className={`w-full cursor-pointer rounded-[14px] border border-slate-200/60 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 sm:w-auto ${bizFocusRingClass}`}
-                     >
-                       <option value="all">All programs</option>
-                       {(membersOwnedPrograms ?? []).map((p) => (
-                         <option key={p.cardAddress} value={p.cardAddress.toLowerCase()}>
-                           {p.programName}
-                         </option>
-                       ))}
-                     </select>
-                     <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
-                       <Filter size={16} /> Program
-                     </div>
-                   </div>
-                 </div>
-                 <div className="overflow-x-auto">
-                   <table className="w-full min-w-[920px]">
-                     <thead className="border-b border-slate-100/80 bg-slate-50/50 text-left">
-                       <tr>
-                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Program</th>
-                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Member</th>
-                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Payer address</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Top-ups</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Total (points)</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">First seen</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400 sm:pr-8">Last seen</th>
-                       </tr>
-                     </thead>
-                     <tbody className="divide-y divide-slate-100/80">
-                       {membersTopupDirectoryFiltered.map((row) => (
-                           <tr key={`${row.cardLower}-${row.memberAddress.toLowerCase()}`} className="transition-colors hover:bg-slate-50/50">
-                             <td className="px-6 py-4">
-                               <span className="text-[14px] font-semibold text-slate-900">{row.programName}</span>
-                             </td>
-                             <td className="px-6 py-4">
-                               {row.beamioTag ? (
-                                 <div className="flex min-w-0 items-center gap-2">
-                                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-xs font-bold text-white">
-                                     {row.beamioTag.replace('@', '').slice(0, 2).toUpperCase()}
-                                   </div>
-                                   <span className="truncate text-[14px] font-semibold text-slate-900">
-                                     @{row.beamioTag.replace(/^@/, '')}
-                                   </span>
-                                 </div>
-                               ) : (
-                                 <span className="text-[13px] font-medium text-slate-500">—</span>
-                               )}
-                             </td>
-                             <td className="px-6 py-4">
-                               <AddressCapsule address={row.memberAddress} className="border-slate-200 bg-slate-50 text-slate-700" />
-                             </td>
-                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-slate-900">
-                               {row.topupCount}
-                             </td>
-                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-slate-900">
-                               {(() => {
-                                 try {
-                                   return (Number(BigInt(row.totalTopupFiat6 || '0')) / 1_000_000).toFixed(2);
-                                 } catch {
-                                   return '—';
-                                 }
-                               })()}
-                             </td>
-                             <td className="px-6 py-4 text-right text-[13px] font-medium text-slate-600">
-                               {row.firstSeenTs > 0
-                                 ? new Date(row.firstSeenTs * 1000).toLocaleDateString('en-US', {
-                                     month: 'short',
-                                     day: 'numeric',
-                                     year: 'numeric',
-                                   })
-                                 : '—'}
-                             </td>
-                             <td className="px-6 py-4 pr-6 text-right text-[13px] font-medium text-slate-600 sm:pr-8">
-                               {row.lastSeenTs > 0
-                                 ? new Date(row.lastSeenTs * 1000).toLocaleDateString('en-US', {
-                                     month: 'short',
-                                     day: 'numeric',
-                                     year: 'numeric',
-                                   })
-                                 : '—'}
-                             </td>
-                           </tr>
-                         ))}
-                       {membersTopupDirectoryFiltered.length === 0 && (
-                         <tr>
-                           <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                             <Search size={24} className="mx-auto mb-2 opacity-50" />
-                             {topupMemberTableRowsAll.length === 0
-                               ? 'No members returned from the API yet for your programs. After successful top-ups are recorded on the server, they appear here.'
-                               : 'No members match this filter.'}
-                           </td>
-                         </tr>
-                       )}
-                     </tbody>
-                   </table>
-                 </div>
+               <div className="fixed bottom-28 right-6 z-40 lg:bottom-12">
+                 <button
+                   type="button"
+                   onClick={() => setIsIssueCardModalOpen(true)}
+                   className={`flex size-14 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-xl transition-transform active:scale-90 ${bizFocusRingClass}`}
+                   title="Issue card"
+                 >
+                   <UserPlus className="size-6" strokeWidth={2.25} aria-hidden />
+                 </button>
                </div>
              </div>
              )}
@@ -10191,232 +10201,47 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            </div>
          ) : null}
 
-         {/* --- STAFF TERMINALS TAB --- */}
+         {/* --- STAFF TERMINALS TAB (SoftPOS — newOnloading.html) --- */}
          {activeTab === 'Staff' && (
-           <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative">
+           <div className="relative mx-auto w-full max-w-5xl animate-in px-3 py-6 fade-in duration-300 sm:px-6 md:py-8">
+             <StaffSoftPosHero
+               onLinkNew={() => {
+                 if (!hasAaAccount) {
+                   setActiveTab('Market');
+                   setSelectedProduct('starter');
+                   return;
+                 }
+                 if (showStaffTerminalsManagement) {
+                   setIsAddTerminalOpen(true);
+                   return;
+                 }
+                 setActiveTab('Market');
+               }}
+             />
              {!hasAaAccount ? (
-               <div className="space-y-12 pb-16 font-sans antialiased text-[#2c2f31]">
-                 {/* Align with marketExample.html Terminals: shipping hero, help, empty state, inventory, strategy */}
-                 <section className="grid grid-cols-1 items-stretch gap-8 lg:grid-cols-3">
-                   <div className="relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff] p-8 text-white shadow-[0_20px_40px_rgba(21,98,240,0.06)] lg:col-span-2">
-                     <div className="relative z-10">
-                       <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/20 px-3 py-1 backdrop-blur-md">
-                         <Truck className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-                         <span className="text-xs font-bold uppercase tracking-wider">Status: Shipping</span>
-                       </div>
-                       <h2 className="mb-4 max-w-xl font-bold tracking-tight text-3xl leading-tight sm:text-4xl">
-                         Your 20 physical NFC cards are on the way.
-                       </h2>
-                       <p className="max-w-md text-lg font-medium text-white/90">
-                         Expected delivery in 1-2 days. Keep your NFC-enabled phone ready for activation.
-                       </p>
-                     </div>
-                     <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-                       <div className="flex -space-x-3">
-                         {(
-                           [
-                             [Radio, 'bg-white/10'],
-                             [CreditCard, 'bg-white/20'],
-                             [Nfc, 'bg-white/30'],
-                           ] as const
-                         ).map(([Icon, bg], i) => (
-                           <div
-                             key={i}
-                             className={`flex size-12 items-center justify-center rounded-lg border border-white/20 backdrop-blur-sm ${bg}`}
-                           >
-                             <Icon className="size-6 text-white" strokeWidth={2} aria-hidden />
-                           </div>
-                         ))}
-                       </div>
-                       <div className="flex flex-wrap items-center gap-3">
-                         <button
-                           type="button"
-                           onClick={() => setActiveTab('Market')}
-                           className="rounded-full bg-white px-8 py-3 font-bold text-[#0051d1] shadow-xl transition-transform hover:scale-105 active:scale-[0.98] [box-shadow:inset_0_1px_1px_rgba(255,255,255,0.2)]"
-                         >
-                           Track Shipment
-                         </button>
-                         <button
-                           type="button"
-                           onClick={() => setActiveTab('Market')}
-                           className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur-sm hover:bg-white/20"
-                         >
-                           <Fuel className="size-4" strokeWidth={2} aria-hidden /> Buy Fuel
-                         </button>
-                         <button
-                           type="button"
-                           onClick={() => setActiveTab('Alliances')}
-                           className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur-sm hover:bg-white/20"
-                         >
-                           <Hexagon className="size-4" strokeWidth={2} aria-hidden /> Join Alliance
-                         </button>
-                       </div>
-                     </div>
-                     <div className="absolute -right-20 -top-20 size-80 rounded-full bg-white/10 blur-3xl" aria-hidden />
-                     <Package
-                       className="pointer-events-none absolute bottom-10 right-10 size-[180px] rotate-12 text-white/20"
-                       strokeWidth={1}
-                       aria-hidden
-                     />
+               <>
+                 <section className="mb-10 md:mb-12">
+                   <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                     <h2 className="font-sans text-2xl font-extrabold tracking-tight text-[#2c2f31]">Active Terminals</h2>
+                     <span className="w-fit rounded-full bg-[#eef1f3] px-4 py-2 text-sm font-bold text-[#1562f0]">0 Connected</span>
                    </div>
-                   <div className="flex flex-col justify-center rounded-xl border border-slate-100/80 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
-                     <div className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-[#d8e3fb]">
-                       <HelpCircle className="size-8 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                     </div>
-                     <h3 className="mb-4 text-2xl font-bold text-[#2c2f31]">Need help?</h3>
-                     <p className="mb-8 leading-relaxed text-[#595c5e]">
-                       Watch our quick 60-second guide on how to link your new NFC terminals to your digital dashboard.
+                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-14 text-center">
+                     <p className="text-sm font-medium text-[#595c5e]">
+                       Create your Smart Account from Market to link SoftPOS terminals and manage devices here.
                      </p>
-                     <a
-                       href="https://beamio.app"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       className="inline-flex items-center gap-2 font-bold text-[#0051d1] group"
-                     >
-                       Watch Setup Video
-                       <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" strokeWidth={2} aria-hidden />
-                     </a>
                    </div>
                  </section>
-
-                 <section className="space-y-8">
-                   <div className="flex flex-col gap-4 px-2 sm:flex-row sm:items-end sm:justify-between">
-                     <div>
-                       <span className="text-xs font-bold uppercase tracking-widest text-[#0051d1]">Terminal Ecosystem</span>
-                       <h2 className="mt-1 text-3xl font-extrabold tracking-tight">Wait for the Tap</h2>
-                     </div>
-                     <div className="flex gap-4">
-                       <button
-                         type="button"
-                         className="rounded-full bg-[#eef1f3] p-3 text-[#747779] transition-colors hover:bg-[#dfe3e6]"
-                         aria-label="Filter"
-                       >
-                         <Filter className="size-5" strokeWidth={2} aria-hidden />
-                       </button>
-                       <button
-                         type="button"
-                         className="rounded-full bg-[#eef1f3] p-3 text-[#747779] transition-colors hover:bg-[#dfe3e6]"
-                         aria-label="Search"
-                       >
-                         <Search className="size-5" strokeWidth={2} aria-hidden />
-                       </button>
-                     </div>
-                   </div>
-
-                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                     <div className="group relative flex min-h-[440px] flex-col items-center rounded-xl border-2 border-dashed border-[#abadaf]/30 bg-[#eef1f3] p-12 text-center transition-all hover:border-[#0051d1]/30 hover:bg-white lg:col-span-2">
-                       <div className="mb-8 flex size-24 items-center justify-center rounded-full bg-white shadow-inner transition-transform group-hover:scale-110">
-                         <Radio className="size-10 text-[#abadaf] transition-colors group-hover:text-[#0051d1]" strokeWidth={2} aria-hidden />
-                       </div>
-                       <h3 className="mb-4 max-w-md text-2xl font-bold">Terminals in Verra aren&apos;t clunky machines.</h3>
-                       <p className="max-w-xl text-lg leading-relaxed text-[#595c5e]">
-                         They are your NFC cards and stickers. Once they arrive, tap them to your phone to link them to specific{' '}
-                         <span className="font-semibold text-[#0051d1]">tables</span>, <span className="font-semibold text-[#0051d1]">cashiers</span>, or{' '}
-                         <span className="font-semibold text-[#0051d1]">staff members</span>.
-                       </p>
-                       <div className="mt-12 flex flex-wrap justify-center gap-4 opacity-50 grayscale transition-all group-hover:opacity-100 group-hover:grayscale-0">
-                         <div className="flex items-center gap-2 rounded-full bg-[#d9dde0] px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-                           <UtensilsCrossed className="size-4" strokeWidth={2} aria-hidden /> Tables
-                         </div>
-                         <div className="flex items-center gap-2 rounded-full bg-[#d9dde0] px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-                           <Store className="size-4" strokeWidth={2} aria-hidden /> Registers
-                         </div>
-                         <div className="flex items-center gap-2 rounded-full bg-[#d9dde0] px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-                           <Medal className="size-4" strokeWidth={2} aria-hidden /> Staff
-                         </div>
-                       </div>
-                       <div className="absolute bottom-8 right-8">
-                         <button
-                           type="button"
-                           onClick={() => setActiveTab('Market')}
-                           className="flex size-14 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-2xl transition-transform hover:scale-110"
-                           aria-label="Open Market"
-                         >
-                           <Plus className="size-7" strokeWidth={2.5} aria-hidden />
-                         </button>
-                       </div>
-                     </div>
-
-                     <div className="space-y-8">
-                       <div className="rounded-xl border border-slate-100/80 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
-                         <div className="mb-6 flex items-center justify-between">
-                           <h4 className="text-lg font-bold text-[#2c2f31]">Inventory Summary</h4>
-                           <span className="text-xs font-medium text-[#abadaf]">Auto-updated</span>
-                         </div>
-                         <div className="space-y-4">
-                           <div className="flex items-center justify-between rounded-xl bg-[#f5f7f9] p-4">
-                             <span className="text-sm font-medium text-[#2c2f31]">Pending NFC Cards</span>
-                             <span className="text-xl font-extrabold text-[#0051d1]">20</span>
-                           </div>
-                           <div className="flex items-center justify-between rounded-xl bg-[#f5f7f9] p-4">
-                             <span className="text-sm font-medium text-[#2c2f31]">Stickers Ordered</span>
-                             <span className="text-xl font-extrabold text-[#0051d1]">50</span>
-                           </div>
-                           <div className="flex items-center justify-between rounded-xl bg-[#f5f7f9] p-4">
-                             <span className="text-sm font-medium text-[#2c2f31]">Active Terminals</span>
-                             <span className="text-xl font-extrabold text-[#abadaf]">0</span>
-                           </div>
-                         </div>
-                         <button
-                           type="button"
-                           onClick={() => setActiveTab('Market')}
-                           className="mt-6 w-full rounded-xl bg-[#eef1f3] py-4 font-bold text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]"
-                         >
-                           View Order History
-                         </button>
-                       </div>
-
-                       <div className="group relative overflow-hidden rounded-xl border border-[#0051d1]/10 bg-[#0051d1]/5 p-8">
-                         <div className="relative z-10">
-                           <h4 className="mb-2 font-bold text-[#0051d1]">Tap to Pay?</h4>
-                           <p className="text-sm leading-relaxed text-[#595c5e]">
-                             Did you know you can also use your personal phone as a terminal? Enable &quot;Tap to Pay&quot; in settings.
-                           </p>
-                         </div>
-                         <Smartphone
-                           className="pointer-events-none absolute -bottom-4 -right-4 size-28 text-[#0051d1]/5 transition-colors group-hover:text-[#0051d1]/10 sm:size-32"
-                           strokeWidth={1}
-                           aria-hidden
-                         />
-                       </div>
-                     </div>
-                   </div>
-                 </section>
-
-                 <section className="rounded-xl bg-[#eef1f3] p-px">
-                   <div className="grid grid-cols-1 gap-px md:grid-cols-4">
-                     <div className="rounded-t-xl bg-white p-8 md:rounded-l-xl md:rounded-tr-none">
-                       <h5 className="mb-6 text-xs font-bold uppercase tracking-[0.2em] text-[#0051d1]">Strategy</h5>
-                       <p className="text-xl font-bold leading-snug">Decentralized Hardware</p>
-                     </div>
-                     <div className="bg-white p-8">
-                       <p className="text-sm leading-relaxed text-[#595c5e] md:flex md:min-h-[5rem] md:items-end">
-                         Minimize upfront costs with high-durability passive NFC chips.
-                       </p>
-                     </div>
-                     <div className="bg-white p-8">
-                       <p className="text-sm leading-relaxed text-[#595c5e] md:flex md:min-h-[5rem] md:items-end">
-                         Scale your business without wiring or dedicated electricity for terminals.
-                       </p>
-                     </div>
-                     <div className="rounded-b-xl bg-white p-8 md:rounded-r-xl md:rounded-bl-none">
-                       <p className="text-sm leading-relaxed text-[#595c5e] md:flex md:min-h-[5rem] md:items-end">
-                         Update terminal logic instantly via the Merchant OS cloud dashboard.
-                       </p>
-                     </div>
-                   </div>
-                 </section>
-
-                 <p className="px-2 text-center text-xs text-[#595c5e]">
-                   Create a Smart Account (AA) from Market or Alliances to link terminals and enable zero-gas routing.
+                 <StaffTerminalsInfoGrid />
+                 <p className="mt-6 text-center text-xs text-[#595c5e]">
+                   Smart Terminal routing uses zero-gas AA. Complete setup in Market or Programs first.
                  </p>
-               </div>
+               </>
              ) : (
                <>
              {showStaffSmartTerminalLockedPanel && (
-               <div className="flex flex-col items-start justify-center min-h-[400px] py-12">
-                 <div className="w-full max-w-[400px] bg-white rounded-[32px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-slate-100 flex flex-col items-center text-center p-10">
-                   <div className="w-16 h-16 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+               <div className="flex min-h-[320px] flex-col items-center justify-center py-10 md:py-12">
+                 <div className="w-full max-w-md rounded-3xl border border-white/20 bg-white/70 p-10 text-center shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md backdrop-saturate-150">
+                   <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 shadow-sm">
                      <Lock size={28} className="text-slate-400" />
                    </div>
                    <h3 className="text-[22px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
@@ -10435,167 +10260,178 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </div>
              )}
 
+             {showStaffSmartTerminalLockedPanel && <StaffTerminalsInfoGrid />}
+
              {showStaffTerminalsManagement && (
-           <div className="space-y-6">
-              <div className="flex justify-between items-end mb-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-black tracking-tight">Staff Terminals</h3>
-                  <p className="text-[13px] font-medium text-slate-500 mt-1">Manage linked POS devices and their EOA authorizations.</p>
-                </div>
-                <button
-                  onClick={() => setIsAddTerminalOpen(true)}
-                  className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl text-[14px] font-bold shadow-lg shadow-[#1562f0]/30 transition-all active:scale-95 ${bizUiPrimarySolid}`}
-                >
-                  <Plus size={18} strokeWidth={2.5} /> Link New Terminal
-                </button>
-              </div>
-
-
-              <div className="bg-white rounded-[24px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1000px]">
-                    <thead className="bg-slate-50/50 text-left border-b border-slate-100/80">
-                      <tr className="bg-slate-50/50 text-left border-b border-slate-100/80">
-                        <th className="px-6 sm:px-8 py-5 text-[12px] font-semibold text-slate-400">Terminal Identity</th>
-                        <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Linked EOA Address</th>
-                        <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Parent admin</th>
-                        <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-center">Status</th>
-                        <th className="px-6 py-5 text-[12px] font-semibold text-slate-400 text-right">Daily Issuance</th>
-                        <th className="px-6 sm:px-8 py-5 text-[12px] font-semibold text-slate-400 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100/80">
-                      {terminalsLoading ? (
-                        <tr>
-                          <td colSpan={6} className="px-6 sm:px-8 py-16 text-center text-slate-500">
-                            <span className="inline-flex items-center gap-2">
-                              <span className="w-4 h-4 border-2 border-slate-300 border-t-[#1562f0] rounded-full animate-spin" />
-                              Loading terminals...
-                            </span>
-                          </td>
-                        </tr>
-                      ) : terminals.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="px-6 sm:px-8 py-16 text-center text-slate-500">
-                            No terminals linked yet. Click &quot;Link New Terminal&quot; to add one.
-                          </td>
-                        </tr>
-                      ) : (
-                        terminals.map((term) => {
-                          const viewerEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
-                          const viewerNorm =
-                            viewerEoa && ethers.isAddress(viewerEoa) ? ethers.getAddress(viewerEoa).toLowerCase() : '';
-                          return (
-                          <tr key={term.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 sm:px-8 py-6">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-[16px] bg-slate-50 flex items-center justify-center text-emerald-800 border border-slate-100">
-                                  <MonitorSmartphone size={22} />
-                                </div>
-                                <div>
-                                  <div className="font-semibold text-[16px] text-slate-900">{term.tag}</div>
-                                  <div className="text-[13px] font-medium text-slate-500 mt-0.5">{term.name}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-6">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <AddressCapsule address={term.id} className="bg-slate-50 border-slate-100 text-slate-600 max-w-full" />
-                              </div>
-                            </td>
-                            <td className="px-6 py-6 min-w-[11rem] max-w-[220px]">
-                              {term.parentAdminAddress === undefined ? (
-                                <span className="text-[13px] font-medium text-slate-400">—</span>
-                              ) : term.parentAdminAddress === null ? (
-                                <span className="text-[13px] font-medium text-slate-600">Card owner</span>
-                              ) : viewerNorm &&
-                                ethers.getAddress(term.parentAdminAddress).toLowerCase() === viewerNorm ? (
-                                <span className="text-[13px] font-semibold text-[#1562f0]">You</span>
-                              ) : (
-                                <AddressCapsule
-                                  address={term.parentAdminAddress}
-                                  className="bg-slate-50 border-slate-100 text-slate-600 max-w-full"
-                                />
-                              )}
-                            </td>
-                            <td className="px-6 py-6 text-center">
-                              <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-[12px] font-semibold">
-                                <CheckCircle2 size={14} /> {term.status}
-                              </span>
-                              <div className="text-[12px] font-medium text-slate-400 mt-2">{term.lastActive}</div>
-                            </td>
-                            <td className="px-6 py-6 text-right">
-                              {(() => {
-                                const s = terminalStats[term.id.toLowerCase()];
-                                if (s == null) {
-                                  return <span className="text-[14px] font-medium text-slate-400">—</span>;
-                                }
-                                const issued = s.mintCounterFromClear;
-                                const unlimited = s.remainingAvailable >= Number.MAX_SAFE_INTEGER;
-                                const quota = unlimited ? null : issued + s.remainingAvailable;
-                                const pct =
-                                  quota != null && quota > 0 ? Math.min(100, (issued / quota) * 100) : 0;
-                                return (
-                                  <div className="flex flex-col items-end gap-1.5">
-                                    <span className="font-semibold text-[15px] text-slate-900 tabular-nums">
-                                      ${issued.toLocaleString(undefined, { maximumFractionDigits: 2 })}{' '}
-                                      <span className="text-slate-400 text-[13px] font-medium">
-                                        /{' '}
-                                        {quota != null
-                                          ? `$${quota.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-                                          : '∞'}
-                                      </span>
-                                    </span>
-                                    {quota != null && quota > 0 ? (
-                                      <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
-                                        <div
-                                          className={`h-full rounded-full transition-all duration-500 ${
-                                            issued >= quota
-                                              ? 'bg-rose-500'
-                                              : issued >= quota * 0.8
-                                                ? 'bg-amber-400'
-                                                : 'bg-emerald-500'
-                                          }`}
-                                          style={{ width: `${pct}%` }}
-                                        />
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })()}
-                            </td>
-                            <td className="px-6 sm:px-8 py-6 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setResetTerminalLimitError(null);
-                                    setResetTerminalLimitModal(term);
-                                  }}
-                                  className="rounded-[14px] bg-blue-50 p-3 text-blue-900 transition-colors hover:bg-[#1562f0] hover:text-white"
-                                  title="Reset terminal issuance limit (parent admin)"
-                                >
-                                  <RefreshCcw size={18} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteTerminalToRemove(term)}
-                                  className="p-3 bg-rose-50 text-rose-500 rounded-[14px] hover:bg-rose-500 hover:text-white transition-colors"
-                                  title="Revoke Authorization"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-           </div>
+               <section className="mb-10 md:mb-12">
+                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                   <h2 className="font-sans text-2xl font-extrabold tracking-tight text-[#2c2f31]">Active Terminals</h2>
+                   <span className="w-fit rounded-full bg-[#eef1f3] px-4 py-2 text-sm font-bold text-[#1562f0]">
+                     {terminalsLoading ? '…' : `${terminals.length} Connected`}
+                   </span>
+                 </div>
+                 <p className="mb-6 text-sm font-medium text-[#515c70]">
+                   Manage linked POS devices, EOA addresses, and issuance limits. Use the hero button to link a new SoftPOS terminal.
+                 </p>
+                 {terminalsLoading ? (
+                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-16 text-[#595c5e]">
+                     <span className="inline-flex items-center gap-2 text-sm font-medium">
+                       <span className="size-4 animate-spin rounded-full border-2 border-[#abadaf] border-t-[#1562f0]" />
+                       Loading terminals...
+                     </span>
+                   </div>
+                 ) : terminals.length === 0 ? (
+                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-14 text-center">
+                     <p className="text-sm font-medium text-[#595c5e]">
+                       No terminals linked yet. Use &quot;Link New SoftPOS Terminal&quot; above to add one.
+                     </p>
+                   </div>
+                 ) : (
+                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                     {terminals.map((term, termIdx) => {
+                       const viewerEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+                       const viewerNorm =
+                         viewerEoa && ethers.isAddress(viewerEoa) ? ethers.getAddress(viewerEoa).toLowerCase() : '';
+                       const s = terminalStats[term.id.toLowerCase()];
+                       const issued = s != null ? s.mintCounterFromClear : null;
+                       const unlimited = s != null && s.remainingAvailable >= Number.MAX_SAFE_INTEGER;
+                       const quota =
+                         s != null && !unlimited ? s.mintCounterFromClear + s.remainingAvailable : null;
+                       const pct =
+                         quota != null && quota > 0 && issued != null ? Math.min(100, (issued / quota) * 100) : 0;
+                       const isPrimary = termIdx === 0;
+                       return (
+                         <div
+                           key={term.id}
+                           className="group rounded-lg bg-[#ffffff] p-1 shadow-sm transition-all hover:bg-[#eef1f3]"
+                         >
+                           <div className="flex items-center gap-4 rounded-[1.9rem] border border-transparent p-5 transition-colors group-hover:border-[#1562f0]/10 sm:gap-6 sm:p-6">
+                             <div className="relative flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[#eef1f3]">
+                               <Smartphone className="size-9 text-[#515c70]/40" strokeWidth={1.5} aria-hidden />
+                               <div className="absolute bottom-2 right-2 size-4 rounded-full border-2 border-white bg-emerald-500" />
+                             </div>
+                             <div className="min-w-0 flex-1">
+                               <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
+                                 <h3 className="font-sans text-lg font-bold text-[#2c2f31]">{term.tag}</h3>
+                                 <span
+                                   className={
+                                     isPrimary
+                                       ? 'rounded bg-[#1562f0]/10 px-2 py-0.5 text-[10px] font-bold uppercase text-[#1562f0]'
+                                       : 'rounded bg-[#dfe3e6] px-2 py-0.5 text-[10px] font-bold uppercase text-[#515c70]'
+                                   }
+                                 >
+                                   {isPrimary ? 'Primary' : 'Secondary'}
+                                 </span>
+                               </div>
+                               <p className="mb-3 text-sm text-[#515c70]">
+                                 {term.name?.trim() ? `${term.name} • SoftPOS` : 'SoftPOS'}
+                               </p>
+                               <div className="mb-3 min-w-0">
+                                 <span className="mb-1 block text-[10px] font-bold uppercase text-[#515c70]/60">Linked EOA</span>
+                                 <AddressCapsule
+                                   address={term.id}
+                                   className="max-w-full border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
+                                 />
+                               </div>
+                               <div className="mb-2 flex flex-wrap gap-4">
+                                 <div className="flex min-w-[7rem] flex-col">
+                                   <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Parent admin</span>
+                                   <div className="text-xs font-medium text-[#2c2f31]">
+                                     {term.parentAdminAddress === undefined ? (
+                                       '—'
+                                     ) : term.parentAdminAddress === null ? (
+                                       'Card owner'
+                                     ) : viewerNorm &&
+                                       ethers.getAddress(term.parentAdminAddress).toLowerCase() === viewerNorm ? (
+                                       <span className="font-semibold text-[#1562f0]">You</span>
+                                     ) : (
+                                       <AddressCapsule
+                                         address={term.parentAdminAddress}
+                                         className="mt-0.5 max-w-[200px] border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
+                                       />
+                                     )}
+                                   </div>
+                                 </div>
+                                 <div className="flex flex-col">
+                                   <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Last activity</span>
+                                   <span className="text-xs font-medium text-[#2c2f31]">{term.lastActive}</span>
+                                 </div>
+                                 <div className="flex min-w-0 flex-1 flex-col">
+                                   <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Issuance</span>
+                                   {s == null || issued == null ? (
+                                     <span className="text-xs font-medium text-[#abadaf]">—</span>
+                                   ) : (
+                                     <div className="flex flex-col gap-1.5">
+                                       <span className="text-xs font-semibold tabular-nums text-[#2c2f31]">
+                                         ${issued.toLocaleString(undefined, { maximumFractionDigits: 2 })}{' '}
+                                         <span className="text-[11px] font-medium text-[#abadaf]">
+                                           /{' '}
+                                           {quota != null
+                                             ? `$${quota.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                                             : '∞'}
+                                         </span>
+                                       </span>
+                                       {quota != null && quota > 0 ? (
+                                         <div className="h-1.5 w-full max-w-[7rem] overflow-hidden rounded-full bg-[#dfe3e6]">
+                                           <div
+                                             className={`h-full rounded-full transition-all duration-500 ${
+                                               issued >= quota
+                                                 ? 'bg-rose-500'
+                                                 : issued >= quota * 0.8
+                                                   ? 'bg-amber-400'
+                                                   : 'bg-emerald-500'
+                                             }`}
+                                             style={{ width: `${pct}%` }}
+                                           />
+                                         </div>
+                                       ) : null}
+                                     </div>
+                                   )}
+                                 </div>
+                               </div>
+                               <div className="flex flex-wrap items-center gap-2">
+                                 <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                   <CheckCircle2 className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                                   {term.status}
+                                 </span>
+                               </div>
+                             </div>
+                             <div className="flex shrink-0 flex-col items-end gap-2 self-start">
+                               <button
+                                 type="button"
+                                 className="rounded-full p-2 text-[#515c70] transition-colors hover:bg-[#eef1f3]"
+                                 aria-label="Terminal actions"
+                               >
+                                 <MoreVertical className="size-5" strokeWidth={2} aria-hidden />
+                               </button>
+                               <button
+                                 type="button"
+                                 onClick={() => {
+                                   setResetTerminalLimitError(null);
+                                   setResetTerminalLimitModal(term);
+                                 }}
+                                 className="rounded-[14px] bg-blue-50 p-2.5 text-blue-900 transition-colors hover:bg-[#1562f0] hover:text-white"
+                                 title="Reset terminal issuance limit (parent admin)"
+                               >
+                                 <RefreshCcw size={18} />
+                               </button>
+                               <button
+                                 type="button"
+                                 onClick={() => setDeleteTerminalToRemove(term)}
+                                 className="rounded-[14px] bg-rose-50 p-2.5 text-rose-500 transition-colors hover:bg-rose-500 hover:text-white"
+                                 title="Revoke Authorization"
+                               >
+                                 <Trash2 size={18} />
+                               </button>
+                             </div>
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 )}
+                 <StaffTerminalsInfoGrid />
+               </section>
              )}
              </>
              )}
@@ -10720,26 +10556,26 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    </div>
                  </div>
                </section>
-               <section className="mb-20 grid grid-cols-1 items-center gap-12 rounded-2xl bg-[#eef1f3] p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)] md:grid-cols-12 lg:p-12">
+               <section className="mb-20 grid grid-cols-1 items-center gap-12 rounded-xl bg-[#eef1f3] p-8 md:grid-cols-12 lg:p-12">
                  <div className="relative h-64 md:col-span-5">
                    <div
-                     className="absolute inset-0 rounded-lg bg-gradient-to-br from-[#0051d1] to-[#7a9dff] opacity-20 shadow-xl [-webkit-transform:rotate(-6deg)] [transform:rotate(-6deg)]"
+                     className="absolute inset-0 translate-x-2 rounded-lg bg-gradient-to-br from-[#0051d1] to-[#7a9dff] opacity-20 shadow-xl [-webkit-transform:rotate(-6deg)] [transform:rotate(-6deg)]"
                      aria-hidden
                    />
-                   <div className="absolute inset-0 flex flex-col justify-between overflow-hidden rounded-lg border border-white/50 bg-white/80 p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-md">
+                   <div className="absolute inset-0 flex flex-col justify-between overflow-hidden rounded-lg border border-white/50 bg-white/80 p-8 shadow-2xl backdrop-blur-md">
                      <div className="flex items-start justify-between">
                        <Nfc className="size-10 shrink-0 text-[#0051d1]" strokeWidth={1.5} aria-hidden />
                        <div className="text-right">
-                         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#0051d1]/70">Verra Business</p>
-                         <p className="text-sm font-bold text-slate-800">Member Platinum</p>
+                         <p className="text-[10px] font-black uppercase tracking-widest text-[#0051d1]/60">Verra Business</p>
+                         <p className="text-sm font-bold text-slate-900">Member Platinum</p>
                        </div>
                      </div>
-                     <div className="mt-8">
-                       <div className="mb-4 h-8 w-12 rounded-md bg-slate-200/60" aria-hidden />
-                       <p className="font-mono text-base font-normal tracking-[0.2em] text-slate-700/90 md:text-lg">•••• •••• •••• 8829</p>
+                     <div className="mt-4 flex flex-1 flex-col items-center justify-center">
+                       <Nfc className="mb-2 size-16 shrink-0 text-[#0051d1]/30" strokeWidth={1.25} aria-hidden />
+                       <p className="text-lg font-extrabold uppercase tracking-tight text-[#0051d1]/40">@YOURBRAND</p>
                      </div>
                      <div className="flex items-end justify-between">
-                       <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">YOUR BRAND NAME</span>
+                       <span className="text-xs font-bold uppercase tracking-wider text-slate-900">YOUR LOGO HERE</span>
                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/10">
                          <Infinity className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
                        </div>
@@ -10747,25 +10583,23 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    </div>
                  </div>
                  <div className="md:col-span-7">
-                   <h3 className="text-2xl font-bold tracking-tight text-slate-800 md:text-[1.65rem] lg:text-[1.75rem]">
-                     The Premium Card Experience
-                   </h3>
-                   <p className="mb-3 mt-2 text-base font-bold leading-snug text-[#0051d1]">
+                   <h3 className="mb-2 text-2xl font-bold text-slate-900">The Premium Card Experience</h3>
+                   <p className="mb-4 text-sm font-bold text-[#0051d1]">
                      Your digital cards go live instantly. Your physical NFC cards ship within 24 hours.
                    </p>
-                   <p className="mb-8 text-sm font-normal leading-relaxed text-slate-600 md:text-base">
+                   <p className="mb-6 text-sm font-normal leading-relaxed text-slate-600 md:text-base">
                      Your customers receive a digital-first membership card that integrates seamlessly with their mobile wallet. With the Custom
                      Program, every pixel reflects your brand&apos;s unique identity.
                    </p>
-                   <div className="flex flex-wrap items-start gap-8 sm:gap-10">
-                     <div className="flex min-w-[5.5rem] flex-col gap-1">
-                       <span className="font-sans text-[1.75rem] font-bold leading-none tabular-nums text-[#0051d1] md:text-[2rem]">1.2s</span>
-                       <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tap-to-pay</span>
+                   <div className="flex flex-wrap items-start gap-4">
+                     <div className="flex flex-col">
+                       <span className="text-2xl font-black tabular-nums text-[#0051d1]">1.2s</span>
+                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Tap-to-Pay</span>
                      </div>
-                     <div className="hidden h-11 w-px shrink-0 self-center bg-slate-300/70 sm:block" aria-hidden />
-                     <div className="flex min-w-[5.5rem] flex-col gap-1">
-                       <span className="font-sans text-[1.75rem] font-bold leading-none tabular-nums text-[#0051d1] md:text-[2rem]">100%</span>
-                       <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Cloud sync</span>
+                     <div className="mx-2 hidden h-10 w-px shrink-0 self-center bg-slate-300/40 sm:block" aria-hidden />
+                     <div className="flex flex-col">
+                       <span className="text-2xl font-black tabular-nums text-[#0051d1]">100%</span>
+                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Cloud Sync</span>
                      </div>
                    </div>
                  </div>
@@ -10811,7 +10645,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                </footer>
              </div>
            ) : (
-           <div className="mx-auto w-full max-w-[1280px] animate-in fade-in duration-300 bg-[#f5f7f9] px-4 pb-16 pt-2 font-sans antialiased text-[#2c2f31] sm:px-6 lg:px-10">
+           <div className="mx-auto w-full max-w-[1280px] animate-in fade-in duration-300 bg-[#f5f7f9] px-3 pb-12 pt-2 font-sans antialiased text-[#2c2f31] sm:px-5 lg:px-8">
              <header className="mb-8 flex flex-col gap-4 border-b border-[#abadaf]/25 pb-6 sm:flex-row sm:items-center sm:justify-between">
                <div className="min-w-0">
                  <h2 className="text-2xl font-extrabold tracking-tight text-[#1562f0] sm:text-[1.65rem]">Card Configurator</h2>
@@ -13163,7 +12997,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    <span className="text-2xl font-extrabold tabular-nums text-[#2c2f31]">2 B-Units</span>
                    <span className="text-xs font-medium text-[#595c5e]">/trans</span>
                  </div>
-                 <div className="mt-2 text-xs font-bold text-[#0051d1]">≈ C$0.02</div>
+                 <div className="mt-2 text-xs font-bold text-[#0051d1]">≈ C$0.03</div>
                </div>
                <div className="rounded-lg bg-[#eef1f3] p-6 transition-transform duration-300 hover:-translate-y-1">
                  <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/10 text-[#0051d1]">
@@ -13257,23 +13091,25 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 
      {/* --- PROGRAM KIT CHECKOUT (marketExample.html + /api/merchantKitStripe) --- */}
      {merchantKitCheckoutPlan && (
-       <div className="fixed inset-0 z-[70] flex flex-col bg-[#f5f7f9] font-sans antialiased text-slate-800">
-         <header className="sticky top-0 z-10 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200/90 bg-white/75 px-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl sm:px-6">
-           <button
-             type="button"
-             onClick={closeMerchantKitCheckout}
-             disabled={merchantKitStripeUi === 'creating' || merchantKitStripeUi === 'polling'}
-             className="flex h-10 w-10 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-slate-100 active:scale-95 disabled:opacity-40"
-             aria-label="Back"
-           >
-             <ArrowLeft size={22} strokeWidth={2} aria-hidden />
-           </button>
-           <h1 className="text-base font-bold tracking-tight text-slate-900">
-             {merchantKitStripeUi === 'succeeded' ? 'Thank you' : 'Checkout'}
-           </h1>
-           <div className="w-10 shrink-0" aria-hidden />
+       <div className="fixed inset-0 z-[70] flex flex-col bg-[#f5f7f9] font-sans antialiased text-[#2c2f31]">
+         <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full shrink-0 bg-white/70 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
+           <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between px-6">
+             <button
+               type="button"
+               onClick={closeMerchantKitCheckout}
+               disabled={merchantKitStripeUi === 'creating' || merchantKitStripeUi === 'polling'}
+               className="flex h-10 w-10 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-slate-100 active:scale-95 disabled:opacity-40"
+               aria-label="Back"
+             >
+               <ArrowLeft size={22} strokeWidth={2} aria-hidden />
+             </button>
+             <h1 className="text-center font-sans text-lg font-bold tracking-tight text-[#2c2f31]">
+               {merchantKitStripeUi === 'succeeded' ? 'Thank you' : 'Checkout'}
+             </h1>
+             <div className="w-10 shrink-0" aria-hidden />
+           </div>
          </header>
-         <main className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden">
+         <main className="relative mx-auto flex w-full flex-1 flex-col overflow-hidden pt-24">
            {merchantKitStripeUi === 'succeeded' ? (
              <MerchantKitStripeThankYouPanel
                plan={merchantKitCheckoutPlan}
@@ -13295,40 +13131,45 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                variant="fullscreen"
              />
            ) : (
-           <div className="mx-auto w-full max-w-md flex-1 space-y-6 overflow-y-auto px-6 pb-10 pt-8">
+           <div className="mx-auto w-full max-w-md flex-1 space-y-8 overflow-y-auto px-6 pb-16">
            {(() => {
              const summary = MERCHANT_KIT_CHECKOUT_SUMMARY[merchantKitCheckoutPlan];
              return (
                <>
                  <section className="relative">
-                   <div className="rounded-2xl bg-[#eef1f3] p-8 shadow-sm">
+                   <div className="rounded-lg bg-[#eef1f3] p-8 shadow-sm">
                      <div className="mb-6 flex items-start justify-between">
                        <div>
-                         <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-                           Transaction receipt
+                         <span className="mb-1 block font-sans text-[10px] font-bold uppercase tracking-widest text-[#515c70]">
+                           Transaction Receipt
                          </span>
-                         <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Order summary</h2>
+                         <h2 className="font-sans text-2xl font-extrabold tracking-tight text-[#2c2f31]">Order Summary</h2>
                        </div>
                        <Receipt className="size-10 shrink-0 text-[#1562f0]/30" strokeWidth={1.25} aria-hidden />
                      </div>
                      <div className="space-y-4">
                        <div className="flex items-center justify-between gap-3">
-                         <span className="font-bold text-slate-900">{summary.orderTitle}</span>
-                         <span className="shrink-0 font-bold tabular-nums text-slate-900">{summary.totalDisplay}</span>
+                         <span className="font-sans font-bold text-[#2c2f31]">{summary.orderTitle}</span>
+                         <span className="shrink-0 font-sans font-bold tabular-nums text-[#2c2f31]">{summary.totalDisplay}</span>
                        </div>
                        <div className="space-y-2 border-l-2 border-[#7a9dff] pl-4">
                          {summary.lines.map((line) => (
-                           <div key={line.label} className="flex items-center justify-between gap-2 text-sm">
-                             <span className="text-slate-600">{line.label}</span>
+                           <div
+                             key={line.label}
+                             className={`flex items-center justify-between gap-2 text-sm ${line.highlight ? 'items-center' : ''}`}
+                           >
+                             <span className={`text-[#595c5e] ${line.highlight ? 'flex items-center gap-1.5' : ''}`}>
+                               {line.highlight ? <>🎁 {line.label}</> : line.label}
+                             </span>
                              <div className="text-right">
                                {line.strike ? (
-                                 <span className="mr-1 text-[10px] text-slate-400 line-through">{line.strike}</span>
+                                 <span className="mr-1 text-[10px] text-[#747779] line-through">{line.strike}</span>
                                ) : null}
                                <span
                                  className={
                                    line.highlight
-                                     ? 'text-xs font-bold uppercase text-emerald-600'
-                                     : 'text-[#1562f0] font-medium italic'
+                                     ? 'text-xs font-bold uppercase text-[#10b981]'
+                                     : 'font-medium italic text-[#1562f0]'
                                  }
                                >
                                  {line.value ?? '—'}
@@ -13337,31 +13178,39 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                            </div>
                          ))}
                        </div>
-                       <div className="mt-6 flex items-center justify-between border-t border-slate-300/40 pt-6">
-                         <span className="text-lg font-extrabold text-slate-900">Total amount</span>
-                         <span className="text-2xl font-extrabold tracking-tight text-[#1562f0]">{summary.totalDisplay}</span>
+                       <div className="mt-6 flex items-center justify-between border-t border-[#abadaf]/20 pt-6">
+                         <span className="font-sans text-lg font-extrabold text-[#2c2f31]">Total Amount</span>
+                         <span className="font-sans text-2xl font-extrabold tracking-tight text-[#1562f0]">{summary.totalDisplay}</span>
                        </div>
                      </div>
                    </div>
+                   <div
+                     className="absolute -bottom-2 left-0 right-0 flex h-4 items-end justify-around overflow-hidden px-2"
+                     aria-hidden
+                   >
+                     {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                       <div key={i} className="-mb-2 size-4 rounded-full bg-[#f5f7f9]" />
+                     ))}
+                   </div>
                  </section>
-                 <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                   <h3 className="mb-4 text-sm font-bold text-slate-900">B-Unit redeem code</h3>
-                   <p className="mb-3 text-xs leading-relaxed text-slate-600">
-                     Redeem credits B-Units to your Beamio account (CoNET). Kit payment below is separate (Stripe in CAD).
-                   </p>
-                   <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                     <input
-                       value={merchantKitRedeemInput}
-                       onChange={(e) => {
-                         setMerchantKitRedeemInput(e.target.value);
-                         setMerchantKitRedeemFeedback(null);
-                       }}
-                       className={`min-w-0 flex-1 rounded-xl border-0 bg-[#eef1f3] px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass}`}
-                       placeholder="B-Unit airdrop code"
-                       type="text"
-                       autoComplete="off"
-                       disabled={merchantKitBuintRedeemBusy}
-                     />
+                 <section className="rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-sm">
+                   <h3 className="mb-4 font-sans text-sm font-bold text-[#2c2f31]">Redeem Code or Partner Voucher</h3>
+                   
+                   <div className="flex gap-3">
+                     <div className="relative min-w-0 flex-1">
+                       <input
+                         value={merchantKitRedeemInput}
+                         onChange={(e) => {
+                           setMerchantKitRedeemInput(e.target.value);
+                           setMerchantKitRedeemFeedback(null);
+                         }}
+                         className={`w-full rounded-md border-none bg-[#eef1f3] px-4 py-3 text-sm font-medium text-[#2c2f31] placeholder:text-[#747779]/60 transition-all focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                         placeholder="Enter code (e.g., VERRA2026)"
+                         type="text"
+                         autoComplete="off"
+                         disabled={merchantKitBuintRedeemBusy}
+                       />
+                     </div>
                      <button
                        type="button"
                        disabled={
@@ -13370,67 +13219,11 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                          merchantKitStripeUi === 'polling'
                        }
                        onClick={() => {
-                         void (async () => {
-                           const code = merchantKitRedeemInput.trim();
-                           if (!code) return;
-                           const eoaRedeem = (profiles?.[0]?.keyID ?? myAddress)?.trim() ?? '';
-                           if (!eoaRedeem || !ethers.isAddress(eoaRedeem)) {
-                             setMerchantKitRedeemFeedback({
-                               type: 'error',
-                               message: 'Connect your wallet to redeem B-Units.',
-                             });
-                             return;
-                           }
-                           setMerchantKitBuintRedeemBusy(true);
-                           setMerchantKitRedeemFeedback(null);
-                           try {
-                             const pre = await queryBuintRedeemAirdropOnChain(code);
-                             if (!pre.redeemable) {
-                               setMerchantKitRedeemFeedback({
-                                 type: 'error',
-                                 message: pre.error ?? 'This code cannot be redeemed.',
-                               });
-                               return;
-                             }
-                             const amountRaw = pre.amount ?? '0';
-                             let buDisplay = '—';
-                             try {
-                               const buHuman = Number(ethers.formatUnits(amountRaw, 6));
-                               buDisplay = Number.isFinite(buHuman) ? buHuman.toFixed(2) : amountRaw;
-                             } catch {
-                               buDisplay = amountRaw;
-                             }
-                             const res = await postBuintRedeemAirdropRedeem(eoaRedeem, code);
-                             if (!res.success) {
-                               setMerchantKitRedeemFeedback({
-                                 type: 'error',
-                                 message: res.error ?? 'Redeem failed. Try again.',
-                               });
-                               return;
-                             }
-                             const txShort =
-                               res.txHash && res.txHash.length > 20
-                                 ? `${res.txHash.slice(0, 10)}…${res.txHash.slice(-8)}`
-                                 : '';
-                             setMerchantKitRedeemFeedback({
-                               type: 'success',
-                               message: `Redeemed ${buDisplay} B-Units to your Beamio smart wallet (AA).${txShort ? ` Tx: ${txShort}` : ''}`,
-                             });
-                             setMerchantKitRedeemInput('');
-                             setOverviewRefreshTrigger((t) => t + 1);
-                           } catch {
-                             setMerchantKitRedeemFeedback({
-                               type: 'error',
-                               message: 'Network error. Try again.',
-                             });
-                           } finally {
-                             setMerchantKitBuintRedeemBusy(false);
-                           }
-                         })();
+                         void submitMerchantKitBuintRedeem();
                        }}
-                       className="shrink-0 rounded-xl bg-[#d8e3fb] px-6 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 transition-colors hover:bg-[#cad5ed] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                       className="shrink-0 rounded-md bg-[#d8e3fb] px-6 py-3 font-sans text-xs font-bold uppercase tracking-widest text-[#475266] transition-colors hover:bg-[#cad5ed] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                      >
-                       {merchantKitBuintRedeemBusy ? 'Redeeming…' : 'Redeem'}
+                       {merchantKitBuintRedeemBusy ? 'Applying…' : 'Apply'}
                      </button>
                    </div>
                    {merchantKitRedeemFeedback ? (
@@ -13448,10 +13241,10 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      <button
                        type="button"
                        onClick={() => setMerchantKitCheckoutPayTab('usdc')}
-                       className={`flex-1 rounded-full py-2.5 text-sm font-bold transition-all ${
+                       className={`flex-1 rounded-full py-2.5 font-sans text-sm font-bold transition-all ${
                          merchantKitCheckoutPayTab === 'usdc'
                            ? 'bg-white text-[#1562f0] shadow-sm'
-                           : 'text-slate-500 hover:text-slate-700'
+                           : 'text-[#515c70]/60 hover:text-[#515c70]'
                        }`}
                      >
                        Pay with USDC
@@ -13459,37 +13252,36 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      <button
                        type="button"
                        onClick={() => setMerchantKitCheckoutPayTab('card')}
-                       className={`flex-1 rounded-full py-2.5 text-sm font-bold transition-all ${
+                       className={`flex-1 rounded-full py-2.5 font-sans text-sm font-bold transition-all ${
                          merchantKitCheckoutPayTab === 'card'
                            ? 'bg-white text-[#1562f0] shadow-sm'
-                           : 'text-slate-500 hover:text-slate-700'
+                           : 'text-[#515c70]/60 hover:text-[#515c70]'
                        }`}
                      >
                        Card / Apple Pay
                      </button>
                    </div>
                    {merchantKitCheckoutPayTab === 'usdc' ? (
-                     <div className="space-y-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                       <div className="flex items-center gap-4 rounded-xl bg-[#1562f0]/5 p-4">
+                     <div className="space-y-6 rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-sm">
+                       <div className="flex items-center gap-4 rounded-lg bg-[#1562f0]/5 p-4">
                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white">
                            <Wallet size={22} strokeWidth={2} aria-hidden />
                          </div>
                          <div className="min-w-0">
-                           <p className="text-[10px] font-semibold uppercase tracking-tight text-slate-500">Current balance</p>
+                           <p className="text-xs font-medium uppercase tracking-tighter text-[#455064]">Current Balance</p>
                            <div className="mt-0.5 flex items-center gap-2">
                              <UsdcBaseCompositeIcon size={18} badgeSize={11} />
-                             <p className="truncate text-lg font-extrabold tabular-nums text-slate-900">
+                             <p className="truncate font-sans text-lg font-extrabold tabular-nums text-[#2c2f31]">
                                {eoaUsdcBalance != null && eoaUsdcBalance !== '' ? eoaUsdcBalance : '—'} USDC
                              </p>
                            </div>
                          </div>
                        </div>
-                       <div className="flex gap-3">
+                       <div className="flex items-start gap-3">
                          <BadgeInfo className="mt-0.5 size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                         <p className="text-sm leading-relaxed text-slate-600">
-                           Program kits on this page are billed in <span className="font-semibold">CAD</span> through Stripe (
-                           <span className="font-mono text-xs">{BEAMIO_APP_URL}</span>). To top up your merchant wallet with{' '}
-                           <span className="font-semibold">USDC on Base</span>, use Market → custom refuel after you close this checkout.
+                         <p className="text-sm leading-relaxed text-[#595c5e]">
+                           Funds will be deducted directly from your non-custodial wallet. Please ensure you have sufficient gas for the
+                           transaction.
                          </p>
                        </div>
                        <button
@@ -13499,26 +13291,38 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                            setActiveTab('Market');
                            setSelectedProduct('custom_fuel');
                          }}
-                         className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(21,98,240,0.2)] transition-all hover:opacity-95 active:scale-[0.98]"
+                         className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-4 font-sans text-sm font-bold text-white shadow-[0_10px_20px_rgba(21,98,240,0.2)] transition-all hover:opacity-90 active:scale-95"
                        >
-                         Open Market refuel (USDC)
-                         <Lock size={16} strokeWidth={2} aria-hidden />
+                         Confirm &amp; Pay USDC
+                         <Lock size={18} strokeWidth={2} aria-hidden />
                        </button>
                      </div>
                    ) : (
-                     <div className="space-y-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                       <div className="flex flex-wrap items-center justify-center gap-3 py-1">
-                         <span className="text-[10px] font-black uppercase tracking-tighter text-slate-500">Visa</span>
-                         <span className="text-[10px] font-black uppercase tracking-tighter text-slate-500">Mastercard</span>
-                         <span className="text-[10px] font-black uppercase tracking-tighter text-slate-500">Amex</span>
-                         <span className="text-[10px] font-black uppercase tracking-tighter text-slate-500">Apple Pay</span>
+                     <div className="space-y-6 rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-sm">
+                       <div className="flex flex-col items-center justify-center gap-4 py-2">
+                         <div className="flex flex-wrap items-center justify-center gap-4">
+                           <img
+                             alt="Visa"
+                             className="h-4 object-contain opacity-70"
+                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuDC7Nz3rHVMLvgVPd_BXycLtsXKm4So3FFLsTKJfekdn2u1Y1cF8hx15EMDc-P3n5sE39GDzdb3ZpXkf4HETDaVGTIPDbA5-Kw8B0NgB24LXvZFeQDsxdAddMZmVRR882e9Msno7jD6deID-fPaQKNB7XKK_8QYllDRqFLAmNjweUZayN0wIkC0kzMltM6UYkBXiJpgxIr1D1EvdrKfh4PMN2EdqcyzmDQ8ZcGZBXlhbsZ0oz3jmXpZpdzvO70hyZam_OxPgV4UBJA"
+                           />
+                           <img
+                             alt="Mastercard"
+                             className="h-4 object-contain opacity-70"
+                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuCD_kMQio7gKxAW4Lt_1lWqsX_QDQwobCNTZ9x3GjWFhyr96m0ISVnPDckIjhlZvDc9F4AYdk9qqP5cAitIEWAi1zxgnPL0sENXBtg8PDU5_F5j7o7UJFhcSCLVqMiALAAxjMsbBaLHu_H1I03PREwldB9aX9Cuv4GPSIaj16wsIZulpmwAjDkW0TaVvnltL4k4Rc8AcCk0lX3k5dr3c7ChonGGV6upyx34hNT-DfpnjG4DQ7lULl8SQg_Llv2q8KAHaGUHzMfwWNc"
+                           />
+                           <span className="font-sans text-[10px] font-black uppercase tracking-tighter text-[#595c5e]/70">AMEX</span>
+                           <img
+                             alt="Apple Pay"
+                             className="h-6 object-contain opacity-70"
+                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiYFWAXcdfRlxJZySJzgKdz0767XwG9_rOMdX_RS_aSnMOYrQyQP9ysvM0toFkZWvyeECX9aRYQfqcTh0C31xhKIouR5SK4mSI9SNuCUnxBQfgaoIU0pxnkjTqHNQlTzn1Nvr1V7CWnw2IurIWYJOWSbOJ9r27zY_kwEWXhGU0Y85LMJ0PqDScNzwgYwsKXnn-9w9gwL57lHtvbenlarivwho2H3alkM_LNJvWNymuc-GERBcZoTDUvR0F5hW_Jthtj2DfSz0m4ak"
+                           />
+                         </div>
                        </div>
-                       <div className="flex gap-3">
+                       <div className="flex items-start gap-3">
                          <Shield className="mt-0.5 size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                         <p className="text-sm leading-relaxed text-slate-600">
-                           You will be redirected to a secure Stripe Checkout page. We do not store card numbers on Verra servers. Session is
-                           created at{' '}
-                           <span className="break-all font-mono text-xs text-slate-700">{BEAMIO_APP_URL}/api/merchantKitStripe/createSession</span>.
+                         <p className="text-sm leading-relaxed text-[#595c5e]">
+						 You will be securely redirected to a Stripe checkout page in a new tab. Verra does not store any credit card information.
                          </p>
                        </div>
                        {merchantKitStripeMessage ? (
@@ -13529,7 +13333,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                        {merchantKitStripeUi === 'polling' || merchantKitStripeUi === 'creating' ? (
                          <div className="flex flex-col items-center gap-3 py-4">
                            <Loader2 className="size-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
-                           <p className="text-center text-sm font-semibold text-slate-700">
+                           <p className="text-center text-sm font-semibold text-[#595c5e]">
                              {merchantKitStripeUi === 'creating'
                                ? 'Creating checkout…'
                                : 'Complete payment in the Stripe window. Waiting for confirmation…'}
@@ -13539,10 +13343,10 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                          <button
                            type="button"
                            onClick={() => void runMerchantKitStripeCheckout(merchantKitCheckoutPlan)}
-                           className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(21,98,240,0.2)] transition-all hover:opacity-95 active:scale-[0.98]"
+                           className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-4 font-sans text-sm font-bold text-white shadow-[0_10px_20px_rgba(21,98,240,0.2)] transition-all hover:opacity-90 active:scale-95"
                          >
-                           Open secure checkout
-                           <ExternalLink size={16} strokeWidth={2} aria-hidden />
+                           Open Secure Checkout
+                           <Lock size={18} strokeWidth={2} aria-hidden />
                          </button>
                        )}
                        {merchantKitStripeUi === 'failed' ? (
@@ -13552,7 +13356,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                              setMerchantKitStripeUi('idle');
                              setMerchantKitStripeMessage(null);
                            }}
-                           className="w-full text-center text-sm font-semibold text-slate-500 hover:text-slate-800"
+                           className="w-full text-center text-sm font-semibold text-[#595c5e] hover:text-[#2c2f31]"
                          >
                            Try again
                          </button>
@@ -13567,13 +13371,14 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            )}
          </main>
          {merchantKitStripeUi !== 'succeeded' ? (
-         <footer className="shrink-0 border-t border-slate-200/60 bg-[#f5f7f9] px-6 pb-10 pt-4 text-center">
-           <div className="flex items-center justify-center gap-2 text-xs font-medium text-slate-500">
-             <ShieldCheck size={14} className="text-slate-500" strokeWidth={2} aria-hidden />
-             Bank-grade TLS encryption
+         <footer className="mt-4 shrink-0 px-6 pb-16 pt-2 text-center">
+           <div className="flex items-center justify-center gap-2 text-xs font-medium text-[#747779]">
+             <ShieldCheck size={16} className="text-[#747779]" strokeWidth={2} aria-hidden />
+             Bank-grade 256-bit SSL Encryption
            </div>
-           <p className="mx-auto mt-3 max-w-xs text-[10px] leading-snug text-slate-400">
-             By continuing you agree to applicable terms. Kit purchase is processed in Canadian dollars through Stripe.
+           <p className="mx-auto mt-4 max-w-xs text-[10px] leading-tight text-[#abadaf]">
+             Verra Protocol ensures your transaction is handled with industry-leading security standards. By proceeding, you agree to the Terms
+             of Service.
            </p>
          </footer>
          ) : null}

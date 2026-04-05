@@ -1,6 +1,6 @@
 import { ArrowLeft } from "lucide-react"
 import { QRCodeCanvas } from "qrcode.react"
-import bIcon from "@/components/assets/logo512.png"
+import { BIZ_PUBLIC_LOGO512 } from "@/pages/Home/brandUi"
 
 type ShowPrintProps = {
 	title?: string
@@ -125,7 +125,7 @@ export function ShowPrint(props: ShowPrintProps) {
                       bgColor="white"
                       fgColor="#000000"
                       imageSettings={{
-                        src: bIcon,
+                        src: BIZ_PUBLIC_LOGO512,
                         height: 92,
                         width: 92,
                         excavate: true,

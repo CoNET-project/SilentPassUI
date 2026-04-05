@@ -13,5 +13,5 @@
 	min-height: 0;
 	overflow-y: auto;
 	-webkit-overflow-scrolling: touch;
-	padding-bottom: 96px; /* 先别 + env(safe-area-inset-bottom) */
+	padding-bottom: 72px; /* footer 安全区留白略收紧 */
 }

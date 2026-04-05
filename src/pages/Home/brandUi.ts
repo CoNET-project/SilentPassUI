@@ -3,6 +3,9 @@
  */
 export const BIZ_BRAND_HEX = '#1562f0'
 
+/** `public/logo512.png` — use for headers / QR center; honors CRA `homepage` (`PUBLIC_URL`, e.g. `/biz`). */
+export const BIZ_PUBLIC_LOGO512 = `${process.env.PUBLIC_URL ?? ''}/logo512.png`
+
 /** Keyboard-visible focus ring on light backgrounds */
 export const bizBrandFocusRingClass =
 	'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white'

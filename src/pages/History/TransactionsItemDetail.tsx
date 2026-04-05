@@ -24,7 +24,7 @@ import baseIcon from '@/components/assets/base-logo.png'
 import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-blue.svg'
 import FeeInline from './payLinkFeeInline'
 import { QRCodeCanvas } from 'qrcode.react'
-import bIcon from '@/components/assets/logo512.png'
+import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
 import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
 import PaymentReceipt from '@/pages/Pay/components/paymentReceipt'
 import BeamioFee from './BeamioFee'
@@ -900,7 +900,7 @@ export function TransactionsItemDetail({
 												bgColor="transparent"
 												fgColor="#000000"
 												imageSettings={{
-													src: bIcon,
+													src: BIZ_PUBLIC_LOGO512,
 													height: 80,
 													width: 80,
 													excavate: true,

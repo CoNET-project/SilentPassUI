@@ -23,6 +23,11 @@
   box-sizing: border-box;
 }
 
+/* Slightly smaller root rem → tighter Tailwind spacing sitewide without editing every class */
+html {
+  font-size: 93.75%;
+}
+
 html,
 body,
 #root {

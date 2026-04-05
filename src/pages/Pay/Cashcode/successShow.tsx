@@ -1,7 +1,7 @@
 import { QRCodeCanvas } from 'qrcode.react'
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import { Copy, ExternalLink, Check, Lock, Unlock } from 'lucide-react'
-import bIcon from '@/components/assets/logo512.png'
+import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
 import { X } from 'lucide-react'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import base_ex from '@/components/assets/base-ex.svg'
@@ -186,7 +186,7 @@ const SuccessShow = ({
 							bgColor="transparent"
 							fgColor="#000000"
 							imageSettings={{
-								src: bIcon,
+								src: BIZ_PUBLIC_LOGO512,
 								height: 80,
 								width: 80,
 								excavate: true,

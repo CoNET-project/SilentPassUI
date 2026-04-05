@@ -5,7 +5,7 @@ import { QRCodeCanvas } from "qrcode.react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from "@/services/AAaccount"
 import type { OpenContainerRelayPayload } from "@/services/AAaccount"
-import bIcon from "@/components/assets/logo512.png"
+import { BIZ_PUBLIC_LOGO512 } from "@/pages/Home/brandUi"
 
 const QR_SIZE = 320
 const QR_LOGO_SIZE = 64
@@ -237,7 +237,7 @@ export default function QrOperationPage() {
                       bgColor="#ffffff"
                       fgColor="#000000"
                       imageSettings={{
-                        src: bIcon,
+                        src: BIZ_PUBLIC_LOGO512,
                         height: QR_LOGO_SIZE,
                         width: QR_LOGO_SIZE,
                         excavate: true,

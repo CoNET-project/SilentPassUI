@@ -1,5 +1,5 @@
 import { QRCodeCanvas } from "qrcode.react"
-import bIcon from "@/components/assets/logo512.png"
+import { BIZ_PUBLIC_LOGO512 } from "@/pages/Home/brandUi"
 import { Copy, Check, Printer, Share2, Clock } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { ethers } from "ethers"
@@ -213,7 +213,7 @@ export default function ShowPayQR({
 											bgColor="white"
 											fgColor="#000000"
 											imageSettings={{
-												src: bIcon,
+												src: BIZ_PUBLIC_LOGO512,
 												height: 95,
 												width: 95,
 												excavate: true,

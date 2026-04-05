@@ -772,10 +772,10 @@ const Home = ({}) => {
 				{!openSearch && (
 					<>
 						{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
-						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
+						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 4rem)' }} />
 
 						{/* Content - exampleExpress style */}
-						<div className="px-5 pt-6 space-y-6">
+						<div className="px-4 pt-4 space-y-5">
 							{/* Total Valuation - exampleExpress style */}
 							<div className="text-center py-4">
 								<button

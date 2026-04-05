@@ -76,6 +76,7 @@ import {
   sumTipsCollectedLedgerValuesForLocalCalendarDay,
   type TipsCollectedLedgerEntry,
 } from './bizTipsCollectedLedger';
+import { resolveTopupVolumePointsDisplay } from './topupVolume';
 import {
   generateRegisterPOSNonce,
   registerPOSApi,
@@ -395,6 +396,51 @@ type BizLoyaltyMemberRow = {
 }
 
 const BIZ_LOYALTY_BRANCHES = ['All Stores (Network View)', 'Main Store', 'Franchise North'] as const
+
+/** Members & Loyalty — feeder: each BeamioUserCard the merchant owns (factory index) + on-chain owner + profile + issuance */
+type MembersOwnedProgramOverviewRow = {
+  cardAddress: string
+  programName: string
+  image?: string
+  ownerAddress: string
+  currency: string
+  ownerDisplayName: string
+  ownerAccountName: string
+  ownerImage?: string
+  /** `getGlobalStatsFull` cumulative issued (display units, E6-scaled) */
+  issuedLifetime: number | null
+}
+
+/** When factory/API returns untrusted empty `cards`, feeder still shows `membersOwnedPrograms` from trusted cache — use those addresses for 2d chain + HTTP merge (price fields unused there). */
+function membersOwnedProgramsToUserCardInfoForTopup(rows: MembersOwnedProgramOverviewRow[]): UserCardInfo[] {
+  const out: UserCardInfo[] = []
+  for (const r of rows) {
+    if (!r.cardAddress || !ethers.isAddress(r.cardAddress)) continue
+    out.push({
+      cardAddress: ethers.getAddress(r.cardAddress),
+      name: r.programName,
+      currency: r.currency,
+      priceE6: '0',
+      ptsPer1Currency: '0',
+    })
+  }
+  return out
+}
+
+/** Flattened row for Members & Loyalty table (beamio.app `/api/cardMemberTopups` mode=members + program name) */
+type BizTopupMemberTableRow = {
+  cardLower: string
+  programName: string
+  memberAddress: string
+  /** Member AA (Beamio account), when known */
+  aaAddress?: string
+  topupCount: number
+  /** Cumulative top-up points (6-decimal fixed, string integer) — same scale as server `topupPointsTotalE6` */
+  totalTopupFiat6: string
+  firstSeenTs: number
+  lastSeenTs: number
+  beamioTag: string
+}
 
 const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
   { id: 'blm001', tag: '@alice_chen', address: '0x1A4…9F21', tier: 'Green Card', balance: 50.0, ltv: 850.0, lastActive: '2 hrs ago', store: 'Main Store', status: 'Active' },
@@ -2832,7 +2878,7 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
  * Base reads still use `baseRpcProviderDirect`; CoNET chain only provides the metronome (see `beamio-no-setinterval.mdc`).
  */
 /** Tabs where the feeder runs; other tabs do not subscribe (avoids duplicate RPC with per-control effects). */
-const BIZ_OVERVIEW_FEEDER_TABS = new Set(['Overview', 'Staff']);
+const BIZ_OVERVIEW_FEEDER_TABS = new Set(['Overview', 'Staff', 'MembersLoyalty']);
 
 /** In-memory fetch cache: 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
 const FETCH_TTL_MS = 30_000;
@@ -2909,6 +2955,108 @@ function saveTrustedCache<T>(key: string, value: T) {
 }
 
 const fmtAddr = (a: string | undefined) => (a && a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : (a || '—'));
+
+/** beamio.app cardMemberTopups — mode=card */
+type BeamioCardMemberTopupsCardResponse = {
+  mode: 'card'
+  cardAddress: string
+  totalTopupCount: number
+  totalRepeatTopupCount: number
+}
+
+/** beamio.app cardMemberTopups — mode=members (one page) */
+type BeamioCardMemberTopupsMembersResponse = {
+  mode: 'members'
+  cardAddress: string
+  total: number
+  limit: number
+  offset: number
+  page: number
+  members: Array<{
+    memberEoa: string
+    memberAa: string
+    tierTokenId: string
+    topupCount: number
+    topupPointsTotalE6: string
+    topupUsdcTotalE6: string
+    lastTopupAt: string
+    lastBaseTxHash: string | null
+  }>
+}
+
+async function fetchBeamioCardMemberTopupRollupHttp(cardAddress: string): Promise<BeamioCardMemberTopupsCardResponse> {
+  const url = `${BEAMIO_APP_URL}/api/cardMemberTopups?${new URLSearchParams({
+    cardAddress: ethers.getAddress(cardAddress),
+    mode: 'card',
+  })}`;
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[members-loyalty][cardMemberTopups][rollup] request', { cardAddress: ethers.getAddress(cardAddress), url });
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`cardMemberTopups card: HTTP ${res.status}`);
+  const json = await res.json() as BeamioCardMemberTopupsCardResponse;
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[members-loyalty][cardMemberTopups][rollup] response', {
+      cardAddress: ethers.getAddress(cardAddress),
+      status: res.status,
+      totalTopupCount: json.totalTopupCount,
+      totalRepeatTopupCount: json.totalRepeatTopupCount,
+    });
+  }
+  return json;
+}
+
+async function fetchBeamioCardMemberTopupsMembersPageHttp(
+  cardAddress: string,
+  limit: number,
+  offset: number
+): Promise<BeamioCardMemberTopupsMembersResponse> {
+  const url = `${BEAMIO_APP_URL}/api/cardMemberTopups?${new URLSearchParams({
+    cardAddress: ethers.getAddress(cardAddress),
+    mode: 'members',
+    limit: String(limit),
+    offset: String(offset),
+  })}`;
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[members-loyalty][cardMemberTopups][members] request', {
+      cardAddress: ethers.getAddress(cardAddress),
+      limit,
+      offset,
+      url,
+    });
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`cardMemberTopups members: HTTP ${res.status}`);
+  const json = await res.json() as BeamioCardMemberTopupsMembersResponse;
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[members-loyalty][cardMemberTopups][members] response', {
+      cardAddress: ethers.getAddress(cardAddress),
+      status: res.status,
+      total: json.total,
+      page: json.page,
+      membersCount: Array.isArray(json.members) ? json.members.length : 0,
+    });
+  }
+  return json;
+}
+
+/** Paginate until all members for a card are loaded (server max limit 2000 per page). */
+async function fetchAllBeamioCardMemberTopupMembersHttp(
+  cardAddress: string
+): Promise<{ members: BeamioCardMemberTopupsMembersResponse['members']; total: number }> {
+  const pageLimit = 2000;
+  let offset = 0;
+  const acc: BeamioCardMemberTopupsMembersResponse['members'] = [];
+  let total = 0;
+  while (true) {
+    const page = await fetchBeamioCardMemberTopupsMembersPageHttp(cardAddress, pageLimit, offset);
+    total = Number(page.total) || 0;
+    acc.push(...(page.members ?? []));
+    if (acc.length >= total || (page.members?.length ?? 0) < pageLimit) break;
+    offset += pageLimit;
+  }
+  return { members: acc, total };
+}
 
 /** 地址胶囊：短缩地址 + 右侧 copy 图标，点击复制到剪贴板，成功后显示绿色 check */
 const AddressCapsule = ({ address, className = '' }: { address: string; className?: string }) => {
@@ -3932,6 +4080,22 @@ export default function MerchantOS() {
  const [membersLoyaltyBranch, setMembersLoyaltyBranch] = useState<string>(BIZ_LOYALTY_BRANCHES[0]);
  const [membersLoyaltyRows, setMembersLoyaltyRows] = useState<BizLoyaltyMemberRow[]>(INITIAL_BIZ_LOYALTY_MEMBERS);
  const [membersLoyaltySearch, setMembersLoyaltySearch] = useState('');
+ /** `null` = not loaded yet on this tab session; refreshed by unified feeder on Members & Loyalty */
+ const [membersOwnedPrograms, setMembersOwnedPrograms] = useState<MembersOwnedProgramOverviewRow[] | null>(null);
+ const membersOwnedProgramsRef = useRef<MembersOwnedProgramOverviewRow[] | null>(null);
+ useEffect(() => {
+   membersOwnedProgramsRef.current = membersOwnedPrograms;
+ }, [membersOwnedPrograms]);
+ /** Members & Loyalty: rows from `beamio.app/api/cardMemberTopups` (mode=members), refreshed by feeder; cache keys include EOA */
+ const [membersLoyaltyTopupRows, setMembersLoyaltyTopupRows] = useState<BizTopupMemberTableRow[]>([]);
+ /** Per-card rollup sums from `mode=card` (total / repeat top-up event counts on server) */
+ const [membersLoyaltyServerRollup, setMembersLoyaltyServerRollup] = useState<{
+   totalTopupEvents: number
+   totalRepeatTopupEvents: number
+ }>({ totalTopupEvents: 0, totalRepeatTopupEvents: 0 });
+ /** Sum of `getGlobalStatsFull(..., 0, 0).cumulativeMint` across owned programs (token #0, 6 decimals) — BeamioUserCard readme GlobalStatsFullView; not from HTTP API */
+ const [membersLoyaltyChainCumulativeMintDisplay, setMembersLoyaltyChainCumulativeMintDisplay] = useState<number | null>(null);
+ const [membersLoyaltyProgramKey, setMembersLoyaltyProgramKey] = useState<string>('all');
  const [isIssueCardModalOpen, setIsIssueCardModalOpen] = useState(false);
  const [issueCardStep, setIssueCardStep] = useState(1);
  const [issueTarget, setIssueTarget] = useState('');
@@ -5605,6 +5769,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
      const feederWork = async () => {
        await globalFetchQueue;
+       let ownedCardsForTopupMerge: UserCardInfo[] = [];
 
        // 0. Card metadata (HTTP, merged into CoNET block-tick refresh)
        if (!feederCancelledRef.current) {
@@ -5835,6 +6000,224 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          }
        }
 
+       // 2c. Members & Loyalty: all BeamioUserCard programs owned by the merchant (factory) + on-chain owner + Beamio profile + lifetime issued
+       const membersOwnedProgramsCacheKey =
+         currentEoa && account && ethers.isAddress(account)
+           ? `eoa:${currentEoa}:biz:members-owned-programs:v1:${ethers.getAddress(account).toLowerCase()}`
+           : '';
+       const cachedMembersOwnedPrograms = membersOwnedProgramsCacheKey
+         ? loadTrustedCache<MembersOwnedProgramOverviewRow[]>(membersOwnedProgramsCacheKey)
+         : null;
+       if (activeTab === 'MembersLoyalty' && profiles?.[0] && account && ethers.isAddress(account) && !feederCancelledRef.current) {
+         try {
+           const p0 = profiles[0];
+           const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
+           ownedCardsForTopupMerge = cards ?? [];
+           if (feederCancelledRef.current) return;
+           if (!trusted && (!cards || cards.length === 0)) {
+             if (!feederCancelledRef.current && cachedMembersOwnedPrograms != null) {
+               setMembersOwnedPrograms(cachedMembersOwnedPrograms);
+               ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
+             }
+           } else if (!cards || cards.length === 0) {
+             if (!feederCancelledRef.current) {
+               setMembersOwnedPrograms([]);
+               setMembersLoyaltyChainCumulativeMintDisplay(0);
+               if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, []);
+             }
+           } else {
+             const rows: MembersOwnedProgramOverviewRow[] = [];
+             for (const uc of cards) {
+               if (feederCancelledRef.current) break;
+               const addr = ethers.getAddress(uc.cardAddress);
+               const cRead = new ethers.Contract(addr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+               let ownerAddr = ethers.getAddress(account);
+               try {
+                 const o = (await cRead.owner()) as string;
+                 if (o && ethers.isAddress(o)) ownerAddr = ethers.getAddress(o);
+               } catch {
+                 /* keep fallback */
+               }
+               let meta: CardMetadataFromUri | null = null;
+               try {
+                 meta =
+                   (await getCardMetadataFromApi(addr)) ??
+                   (await getCardMetadataFrom1155Json(addr)) ??
+                   (await getCardMetadataFromUri(addr));
+               } catch {
+                 meta = null;
+               }
+               const programName =
+                 (typeof meta?.name === 'string' && meta.name.trim()) ||
+                 (typeof uc.name === 'string' && uc.name.trim()) ||
+                 `Program ${fmtAddr(addr)}`;
+               const image = typeof meta?.image === 'string' ? meta.image : undefined;
+               let ownerDisplayName = '';
+               let ownerAccountName = '';
+               let ownerImage: string | undefined;
+               try {
+                 const res = await searchUsername(ownerAddr);
+                 const peer = res?.results?.[0] as Parameters<typeof displayName>[0] | undefined;
+                 if (peer) {
+                   ownerDisplayName = displayName(peer);
+                   ownerAccountName = String(
+                     (peer as { accountName?: string; username?: string }).accountName ??
+                       (peer as { username?: string }).username ??
+                       ''
+                   ).replace(/^@/, '');
+                   ownerImage = typeof (peer as { image?: string }).image === 'string' ? (peer as { image: string }).image : undefined;
+                 }
+               } catch {
+                 /* ignore */
+               }
+               let issuedLifetime: number | null = null;
+               try {
+                 const gs = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+                 if (gs) issuedLifetime = amountE6ToDisplayNumber(gs.cumulativeIssued);
+               } catch {
+                 /* ignore */
+               }
+               rows.push({
+                 cardAddress: addr,
+                 programName,
+                 image,
+                 ownerAddress: ownerAddr,
+                 currency: uc.currency,
+                 ownerDisplayName,
+                 ownerAccountName,
+                 ownerImage,
+                 issuedLifetime,
+               });
+             }
+             if (!feederCancelledRef.current) {
+               setMembersOwnedPrograms(rows);
+               if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, rows);
+             }
+           }
+         } catch {
+           if (!feederCancelledRef.current && cachedMembersOwnedPrograms != null) {
+             setMembersOwnedPrograms(cachedMembersOwnedPrograms);
+             ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
+           }
+         }
+       }
+
+       // 2c/2d gap: table can show programs from React state or disk while this tick's `cards` was [] (untrusted) and cache key miss — still merge card addresses for chain KPI + members API.
+       if (
+         activeTab === 'MembersLoyalty' &&
+         ownedCardsForTopupMerge.length === 0 &&
+         membersOwnedProgramsRef.current != null &&
+         membersOwnedProgramsRef.current.length > 0 &&
+         !feederCancelledRef.current
+       ) {
+         ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(membersOwnedProgramsRef.current);
+       }
+
+       // 2d. Members & Loyalty: beamio.app `cardMemberTopups` (rollup + all member rows per owned program). EOA-scoped `fetchWithCache` keys.
+       // Use feeder `account` (same as 2c), not `currentEoa`: when menu EOA is empty, `feederEoa` may fall back to `fixedCardMetadata.cardOwner` — then `currentEoa` is falsy and this block would never run, leaving Top-up volume (points) as "—" despite valid chain data.
+       if (
+         activeTab === 'MembersLoyalty' &&
+         account &&
+         ethers.isAddress(account) &&
+         ownedCardsForTopupMerge.length > 0 &&
+         !feederCancelledRef.current
+       ) {
+         try {
+           const eoaKey = ethers.getAddress(account).toLowerCase();
+           const nameByCardLower = new Map<string, string>();
+           for (const p of membersOwnedPrograms ?? []) {
+             nameByCardLower.set(p.cardAddress.toLowerCase(), p.programName);
+           }
+           let sumChainCumulativeMint = 0n;
+           let chainMintOkCount = 0;
+           for (const uc of ownedCardsForTopupMerge) {
+             if (feederCancelledRef.current) break;
+             const addrG = ethers.getAddress(uc.cardAddress);
+             const cardLowerG = addrG.toLowerCase();
+             const cacheKeyChainMint = `eoa:${eoaKey}:card:${cardLowerG}:global-stats-cumulative-mint`;
+             const mintStr = await fetchWithCache(cacheKeyChainMint, async () => {
+               const g = await callGetGlobalStatsFullParsed(addrG, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+               if (!g) throw new Error('getGlobalStatsFull parse');
+               return g.cumulativeMint.toString();
+             }).catch(() => null as string | null);
+             if (feederCancelledRef.current) break;
+             if (mintStr == null) continue;
+             sumChainCumulativeMint += BigInt(mintStr);
+             chainMintOkCount += 1;
+           }
+           const merged: BizTopupMemberTableRow[] = [];
+           let sumTopupEvents = 0;
+           let sumRepeatTopupEvents = 0;
+           for (const uc of ownedCardsForTopupMerge) {
+             if (feederCancelledRef.current) break;
+             const addr = ethers.getAddress(uc.cardAddress);
+             const cardLower = addr.toLowerCase();
+             const programName =
+               nameByCardLower.get(cardLower) ||
+               (typeof uc.name === 'string' && uc.name.trim()) ||
+               `Program ${fmtAddr(addr)}`;
+             const cacheKeyRollup = `eoa:${eoaKey}:beamio:cardMemberTopups:rollup:${cardLower}`;
+             const rollup = await fetchWithCache(cacheKeyRollup, () => fetchBeamioCardMemberTopupRollupHttp(addr));
+             if (feederCancelledRef.current) break;
+             sumTopupEvents += Number(rollup.totalTopupCount) || 0;
+             sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
+             const cacheKeyMembers = `eoa:${eoaKey}:beamio:cardMemberTopups:membersAll:${cardLower}`;
+             const { members, total } = await fetchWithCache(cacheKeyMembers, () => fetchAllBeamioCardMemberTopupMembersHttp(addr));
+             if (feederCancelledRef.current) break;
+             if (total > 0 && members.length < total && process.env.NODE_ENV !== 'production') {
+               console.warn('[feeder] Members loyalty: member page count < total', { card: cardLower, got: members.length, total });
+             }
+             for (const m of members) {
+               const eoaM = m.memberEoa && ethers.isAddress(m.memberEoa) ? ethers.getAddress(m.memberEoa) : '';
+               if (!eoaM) continue;
+               const aaRaw = m.memberAa?.trim();
+               const aa =
+                 aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+                   ? ethers.getAddress(aaRaw)
+                   : undefined;
+               let lastTs = 0;
+               try {
+                 const t = Date.parse(m.lastTopupAt);
+                 if (Number.isFinite(t)) lastTs = Math.floor(t / 1000);
+               } catch {
+                 /* ignore */
+               }
+               merged.push({
+                 cardLower,
+                 programName,
+                 memberAddress: eoaM,
+                 aaAddress: aa,
+                 topupCount: Number(m.topupCount) || 0,
+                 totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
+                 firstSeenTs: 0,
+                 lastSeenTs: lastTs,
+                 beamioTag: '',
+               });
+             }
+           }
+          merged.sort((a, b) => b.lastSeenTs - a.lastSeenTs);
+          if (!feederCancelledRef.current && ownedCardsForTopupMerge.length > 0) {
+            const chainVolumeDisplay =
+              chainMintOkCount > 0 ? amountE6ToDisplayNumber(sumChainCumulativeMint) : null;
+            setMembersLoyaltyChainCumulativeMintDisplay((prev) =>
+              resolveTopupVolumePointsDisplay(chainVolumeDisplay, prev)
+            );
+          }
+           if (!feederCancelledRef.current) {
+             setMembersLoyaltyTopupRows(merged);
+             setMembersLoyaltyServerRollup({
+               totalTopupEvents: sumTopupEvents,
+               totalRepeatTopupEvents: sumRepeatTopupEvents,
+             });
+           }
+         } catch (e) {
+           if (process.env.NODE_ENV !== 'production') {
+             console.warn('[feeder] Members loyalty API (cardMemberTopups) failed:', e);
+           }
+           /* keep previous membersLoyaltyTopupRows — trusted-cache style */
+         }
+       }
+
        // 3. Protocol Fuel Reserve: CoNET BUint.balanceOf sum for user EOA + AA (same CoNET block tick as indexer reads below).
        // Trusted-cache protocol: only overwrite on full successful read; partial RPC failure → keep last trusted (persisted + in-memory).
        if (accountResolved && buintReserveTargets.length > 0 && !feederCancelledRef.current) {
@@ -5959,6 +6342,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    fixedCardMetadata?.cardOwner,
    profiles?.[0]?.keyID,
    profiles?.[0]?.aaAccount,
+   profiles?.[0]?.privateKeyArmor,
    myAddress,
    timeFilter,
    staffProgramBeamioCardAddress,
@@ -6455,20 +6839,165 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    profileOwnsIssuedBeamioCardFetched,
    profileOwnsIssuedBeamioCard,
  ]);
- const membersLoyaltyFiltered = useMemo(() => {
+ const topupMemberTableRowsAll = useMemo((): BizTopupMemberTableRow[] => membersLoyaltyTopupRows, [membersLoyaltyTopupRows]);
+
+ const membersTopupDirectoryFiltered = useMemo(() => {
    const q = membersLoyaltySearch.trim().toLowerCase();
-   return membersLoyaltyRows.filter((m) => {
-     const branchOk =
-       membersLoyaltyBranch === BIZ_LOYALTY_BRANCHES[0] || m.store === membersLoyaltyBranch;
-     if (!branchOk) return false;
+   return topupMemberTableRowsAll.filter((row) => {
+     if (membersLoyaltyProgramKey !== 'all' && row.cardLower !== membersLoyaltyProgramKey.toLowerCase()) return false;
      if (!q) return true;
      return (
-       m.tag.toLowerCase().includes(q) ||
-       m.address.toLowerCase().includes(q) ||
-       m.tier.toLowerCase().includes(q)
+       row.memberAddress.toLowerCase().includes(q) ||
+       (row.aaAddress && row.aaAddress.toLowerCase().includes(q)) ||
+       row.programName.toLowerCase().includes(q) ||
+       row.beamioTag.toLowerCase().includes(q)
      );
    });
- }, [membersLoyaltyRows, membersLoyaltySearch, membersLoyaltyBranch]);
+ }, [topupMemberTableRowsAll, membersLoyaltySearch, membersLoyaltyProgramKey]);
+
+ const membersTopupKpisAll = useMemo(() => {
+   return {
+     count: topupMemberTableRowsAll.length,
+     /** `getGlobalStatsFull.cumulativeMint` summed across owned programs (÷1e6); see BeamioUserCard readme */
+     volumePointsChain: membersLoyaltyChainCumulativeMintDisplay,
+     /** Server `beamio_card_topup_rollups.total_repeat_topup_count` summed across owned programs */
+     repeatMembers: membersLoyaltyServerRollup.totalRepeatTopupEvents,
+     /** Server total successful top-up events (all categories), summed across programs */
+     totalTopupEvents: membersLoyaltyServerRollup.totalTopupEvents,
+   };
+ }, [topupMemberTableRowsAll, membersLoyaltyServerRollup, membersLoyaltyChainCumulativeMintDisplay]);
+
+ useEffect(() => {
+   if (activeTab !== 'MembersLoyalty' || !currentEoa) return;
+   const menuEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   const resolved = menuEoa && ethers.isAddress(menuEoa) ? ethers.getAddress(menuEoa) : null;
+   if (!resolved) return;
+   const k = `eoa:${currentEoa}:biz:members-owned-programs:v1:${resolved.toLowerCase()}`;
+   const c = loadTrustedCache<MembersOwnedProgramOverviewRow[]>(k);
+  if (c != null) {
+    membersOwnedProgramsRef.current = c;
+    setMembersOwnedPrograms(c);
+  }
+ }, [activeTab, currentEoa, profiles?.[0]?.keyID, myAddress]);
+
+/** Members & Loyalty KPI fallback: compute Top-up volume (points) directly from visible program cards.
+ * This runs once per relevant state change (no polling) and reuses `fetchWithCache` (30s TTL + dedup + global queue). */
+useEffect(() => {
+  if (activeTab !== 'MembersLoyalty') return;
+  const rows = membersOwnedPrograms ?? membersOwnedProgramsRef.current ?? [];
+  if (!rows.length) {
+    setMembersLoyaltyChainCumulativeMintDisplay(0);
+    return;
+  }
+  let cancelled = false;
+  void (async () => {
+    let sum = 0n;
+    let okCount = 0;
+    for (const row of rows) {
+      if (cancelled) return;
+      if (!row.cardAddress || !ethers.isAddress(row.cardAddress)) continue;
+      const addr = ethers.getAddress(row.cardAddress);
+      const key = `card:${addr.toLowerCase()}:global-stats-cumulative-mint`;
+      const mintStr = await fetchWithCache(key, async () => {
+        const g = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+        if (!g) throw new Error('getGlobalStatsFull parse');
+        return g.cumulativeMint.toString();
+      }).catch(() => null as string | null);
+      if (mintStr == null) continue;
+      sum += BigInt(mintStr);
+      okCount += 1;
+    }
+    if (!cancelled && okCount > 0) {
+      setMembersLoyaltyChainCumulativeMintDisplay(amountE6ToDisplayNumber(sum));
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
+}, [activeTab, membersOwnedPrograms]);
+
+/** Members & Loyalty API fallback: keep "Top-up members / Repeat top-ups" fresh even if feeder 2d path is skipped in a tick.
+ * Triggered by visible program rows (no interval), and reuses fetch cache (30s TTL). */
+useEffect(() => {
+  if (activeTab !== 'MembersLoyalty') return;
+  const rows = membersOwnedPrograms ?? membersOwnedProgramsRef.current ?? [];
+  const cards = [...new Set(
+    rows
+      .map((r) => (r.cardAddress && ethers.isAddress(r.cardAddress) ? ethers.getAddress(r.cardAddress) : ''))
+      .filter(Boolean)
+  )];
+  if (cards.length === 0) {
+    setMembersLoyaltyTopupRows([]);
+    setMembersLoyaltyServerRollup({ totalTopupEvents: 0, totalRepeatTopupEvents: 0 });
+    return;
+  }
+  let cancelled = false;
+  void (async () => {
+    const nameByCardLower = new Map<string, string>();
+    for (const r of rows) {
+      if (r.cardAddress && ethers.isAddress(r.cardAddress)) {
+        nameByCardLower.set(ethers.getAddress(r.cardAddress).toLowerCase(), r.programName);
+      }
+    }
+    const merged: BizTopupMemberTableRow[] = [];
+    let sumTopupEvents = 0;
+    let sumRepeatTopupEvents = 0;
+    for (const addr of cards) {
+      if (cancelled) return;
+      const lower = addr.toLowerCase();
+      const rollup = await fetchWithCache(
+        `card:${lower}:beamio:cardMemberTopups:rollup`,
+        () => fetchBeamioCardMemberTopupRollupHttp(addr)
+      ).catch(() => null as BeamioCardMemberTopupsCardResponse | null);
+      if (rollup) {
+        sumTopupEvents += Number(rollup.totalTopupCount) || 0;
+        sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
+      }
+      const payload = await fetchWithCache(
+        `card:${lower}:beamio:cardMemberTopups:membersAll`,
+        () => fetchAllBeamioCardMemberTopupMembersHttp(addr)
+      ).catch(() => null as { members: BeamioCardMemberTopupsMembersResponse['members']; total: number } | null);
+      const members = payload?.members ?? [];
+      for (const m of members) {
+        const eoaM = m.memberEoa && ethers.isAddress(m.memberEoa) ? ethers.getAddress(m.memberEoa) : '';
+        if (!eoaM) continue;
+        const aaRaw = m.memberAa?.trim();
+        const aa =
+          aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+            ? ethers.getAddress(aaRaw)
+            : undefined;
+        let lastTs = 0;
+        try {
+          const t = Date.parse(m.lastTopupAt);
+          if (Number.isFinite(t)) lastTs = Math.floor(t / 1000);
+        } catch {
+          /* ignore */
+        }
+        merged.push({
+          cardLower: lower,
+          programName: nameByCardLower.get(lower) || `Program ${fmtAddr(addr)}`,
+          memberAddress: eoaM,
+          aaAddress: aa,
+          topupCount: Number(m.topupCount) || 0,
+          totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
+          firstSeenTs: 0,
+          lastSeenTs: lastTs,
+          beamioTag: '',
+        });
+      }
+    }
+    if (cancelled) return;
+    merged.sort((a, b) => b.lastSeenTs - a.lastSeenTs);
+    setMembersLoyaltyTopupRows(merged);
+    setMembersLoyaltyServerRollup({
+      totalTopupEvents: sumTopupEvents,
+      totalRepeatTopupEvents: sumRepeatTopupEvents,
+    });
+  })();
+  return () => {
+    cancelled = true;
+  };
+}, [activeTab, membersOwnedPrograms]);
 
  const closeIssueCardModal = useCallback(() => {
    setIsIssueCardModalOpen(false);
@@ -6483,18 +7012,6 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      setNewTierName('');
      setNewTierDiscount('');
    }, 300);
- }, []);
-
- const handleToggleLoyaltyMemberStatus = useCallback((id: string) => {
-   setMembersLoyaltyRows((rows) =>
-     rows.map((m) =>
-       m.id === id ? { ...m, status: m.status === 'Active' ? 'Suspended' : 'Active' } : m
-     )
-   );
- }, []);
-
- const handleDeleteLoyaltyMember = useCallback((id: string) => {
-   setMembersLoyaltyRows((rows) => rows.filter((m) => m.id !== id));
  }, []);
 
  const handleCreateLoyaltyTier = useCallback(() => {
@@ -6624,21 +7141,32 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
    <button
      type="button"
      onClick={onClick}
-     className={`flex w-full min-w-0 items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-6'} rounded-full py-3 text-sm font-medium transition-all duration-300 ${
+     className={`mx-2 flex min-w-0 items-center rounded-full py-3 text-sm transition-all duration-300 ${
+       collapsed ? 'w-[calc(100%-1rem)] justify-center px-0' : 'w-[calc(100%-1rem)] gap-3 px-6'
+     } ${
        isActive
-         ? 'bg-[#0051d1] font-medium text-white shadow-sm'
-         : 'text-slate-600 hover:translate-x-1 hover:bg-slate-200/50 hover:text-slate-900'
+         ? 'bg-white font-bold text-[#0051d1] shadow-sm'
+         : 'font-medium text-slate-600 hover:translate-x-1 hover:bg-slate-200/50'
      }`}
      title={collapsed ? label : undefined}
    >
      <Icon
        size={20}
        strokeWidth={isActive ? 2.25 : 2}
-       className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-600'}`}
+       className={`shrink-0 ${isActive ? 'text-[#0051d1]' : 'text-slate-600'}`}
      />
-     {!collapsed && <span className="min-w-0 truncate text-left font-medium">{label}</span>}
+     {!collapsed && <span className="min-w-0 truncate text-left">{label}</span>}
    </button>
  );
+
+ const NavSectionLabel = ({ children, first, collapsed }: { children: React.ReactNode; first?: boolean; collapsed: boolean }) => {
+   if (collapsed) return null;
+   return (
+     <div className={`px-6 mb-2 ${first ? 'mt-2' : 'mt-6'}`} role="presentation">
+       <span className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">{children}</span>
+     </div>
+   );
+ };
 
 
  const renderPayoutDrawer = () => {
@@ -6800,7 +7328,7 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
      <aside
        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-50 transition-all duration-300 ease-in-out
          ${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'}
-         lg:relative lg:translate-x-0 lg:rounded-r-[2rem] lg:border-r-0 lg:shadow-none
+         lg:relative lg:translate-x-0 lg:rounded-r-[2rem] lg:border-r-0 lg:shadow-[20px_0_40px_rgba(21,98,240,0.06)]
          ${isSidebarCollapsed ? 'lg:w-24' : 'lg:w-72'}`}
      >
        <div className={`px-6 pb-4 pt-6 lg:px-8 lg:pt-8 ${isSidebarCollapsed ? 'lg:flex lg:flex-col lg:items-center lg:px-4' : ''}`}>
@@ -6850,9 +7378,28 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
        </div>
 
 
-       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-visible px-3 pb-2 lg:px-4">
+       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-visible pb-2">
+         <NavSectionLabel first collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
+           Overview
+         </NavSectionLabel>
          <NavItem icon={LayoutDashboard} label="Dashboard" isActive={activeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         {!hideTransactionsPanel && (
+           <NavItem
+             icon={BarChart3}
+             label="Insights"
+             isActive={activeTab === 'Transactions' && transactionsSidebarAccent === 'insights'}
+             onClick={() => handleTabChange('Transactions', { transactionsSidebar: 'insights' })}
+             collapsed={isSidebarCollapsed && !isMobileMenuOpen}
+           />
+         )}
+         <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
+           Assets
+         </NavSectionLabel>
          <NavItem icon={Award} label="Programs" isActive={activeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={ShoppingBag} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
+           Operations
+         </NavSectionLabel>
          {!hideTransactionsPanel && (
            <NavItem
              icon={Receipt}
@@ -6863,31 +7410,27 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
            />
          )}
          <NavItem icon={Users} label="Members" isActive={activeTab === 'MembersLoyalty'} onClick={() => handleTabChange('MembersLoyalty')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={Wallet} label="Wallet" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={ShoppingBag} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={Settings} label="Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
+           Financials
+         </NavSectionLabel>
+         <NavItem icon={Wallet} label="Wallet" isActive={activeTab === 'Wallets'} onClick={() => handleTabChange('Wallets')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
+           System
+         </NavSectionLabel>
          <NavItem icon={MonitorSmartphone} label="Terminals" isActive={activeTab === 'Staff'} onClick={() => handleTabChange('Staff')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         {!hideTransactionsPanel && (
-           <NavItem
-             icon={BarChart3}
-             label="Insights"
-             isActive={activeTab === 'Transactions' && transactionsSidebarAccent === 'insights'}
-             onClick={() => handleTabChange('Transactions', { transactionsSidebar: 'insights' })}
-             collapsed={isSidebarCollapsed && !isMobileMenuOpen}
-           />
-         )}
+         <NavItem icon={Settings} label="Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
        </nav>
 
-       <div className="mt-auto p-6">
+       <div className="mt-auto px-4 pb-6 pt-2">
          <button
            type="button"
            onClick={() => { window.location.href = '/' }}
-           className={`flex w-full items-center rounded-2xl py-3 font-semibold text-[15px] text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'justify-center gap-2 px-4'}`}
+           className={`mx-2 flex w-[calc(100%-1rem)] items-center rounded-full py-3 text-sm font-bold text-red-600 transition-all bg-red-50 hover:bg-red-100 ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'gap-3 px-6'}`}
            title="Lock Wallet"
          >
-           <LogOut size={18} className="shrink-0" />
-           {!isSidebarCollapsed && <span className="whitespace-nowrap">Lock Wallet</span>}
+           <LogOut size={18} className="shrink-0" aria-hidden />
+           {!(isSidebarCollapsed && !isMobileMenuOpen) && <span className="whitespace-nowrap">Lock Wallet</span>}
          </button>
        </div>
      </aside>
@@ -9189,21 +9732,89 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                />
              ) : (
              <div className="space-y-6 sm:space-y-8">
-               <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
-                 <div>
-                   <h3 className="text-[26px] font-semibold tracking-tight text-slate-900">Members & Loyalty</h3>
-                   <p className="mt-1 text-[15px] font-medium text-slate-500">
-                     Manage global VIP tiers and prepaid balances across your franchise.
-                   </p>
+               
+
+               <section className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] sm:rounded-[32px]">
+                 <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-4 sm:px-6 sm:py-5">
+                   <h4 className="text-lg font-bold tracking-tight text-slate-900">Your membership programs</h4>
+                   
                  </div>
-                 <button
-                   type="button"
-                   onClick={() => setIsIssueCardModalOpen(true)}
-                   className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-[#1562f0] px-6 py-4 text-[15px] font-semibold text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] transition-all hover:shadow-[0_12px_24px_rgba(21,98,240,0.35)] active:scale-[0.98] sm:w-auto sm:py-3.5"
-                 >
-                   <UserPlus size={20} strokeWidth={2.5} /> Issue New Asset
-                 </button>
-               </div>
+                 <div className="overflow-x-auto">
+                   <table className="w-full min-w-[800px]">
+                     <thead className="border-b border-slate-100 bg-slate-50/50 text-left">
+                       <tr>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Program</th>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Contract</th>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Currency</th>
+                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Program owner</th>
+                         <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Lifetime issued</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100">
+                       {membersOwnedPrograms === null ? (
+                         <tr>
+                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-slate-500">
+                             Loading programs…
+                           </td>
+                         </tr>
+                       ) : membersOwnedPrograms.length === 0 ? (
+                         <tr>
+                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-slate-500">
+                             No BeamioUserCard programs found for this wallet. Create one in Programs or Market.
+                           </td>
+                         </tr>
+                       ) : (
+                         membersOwnedPrograms.map((row) => (
+                           <tr key={row.cardAddress.toLowerCase()} className="hover:bg-slate-50/50">
+                             <td className="px-6 py-4">
+                               <div className="flex items-center gap-3">
+                                 {row.image ? (
+                                   <img
+                                     src={row.image}
+                                     alt={row.programName}
+                                     className="h-10 w-10 rounded-lg border border-slate-200 object-cover"
+                                   />
+                                 ) : (
+                                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1562f0]/10 text-xs font-bold text-[#1562f0]">
+                                     {row.programName.slice(0, 2).toUpperCase()}
+                                   </div>
+                                 )}
+                                 <span className="text-[14px] font-semibold text-slate-900">{row.programName}</span>
+                               </div>
+                             </td>
+                             <td className="px-6 py-4">
+                               <AddressCapsule address={row.cardAddress} className="border-slate-200 bg-slate-50 text-slate-700" />
+                             </td>
+                             <td className="px-6 py-4 text-[13px] font-medium text-slate-700">{row.currency}</td>
+                             <td className="px-6 py-4">
+                               {row.ownerDisplayName || row.ownerAccountName ? (
+                                 <div className="flex min-w-0 items-center gap-2">
+                                   <img
+                                     src={row.ownerImage || getImg(row.ownerAccountName || undefined)}
+                                     alt=""
+                                     className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
+                                   />
+                                   <div className="min-w-0">
+                                     <div className="truncate text-[13px] font-semibold text-slate-900">{row.ownerDisplayName || '—'}</div>
+                                     {row.ownerAccountName ? (
+                                       <div className="truncate text-[11px] font-medium text-slate-500">@{row.ownerAccountName}</div>
+                                     ) : null}
+                                   </div>
+                                 </div>
+                               ) : (
+                                 <AddressCapsule address={row.ownerAddress} className="border-slate-200 bg-slate-50 text-slate-700" />
+                               )}
+                             </td>
+                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-slate-900">
+                               {row.issuedLifetime != null ? row.issuedLifetime.toFixed(2) : '—'}
+                             </td>
+                           </tr>
+                         ))
+                       )}
+                     </tbody>
+                   </table>
+                 </div>
+               </section>
 
                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
                  <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
@@ -9211,24 +9822,26 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0]">
                        <Users size={20} />
                      </div>
-                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Total Network Members</p>
+                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Top-up members</p>
                    </div>
                    <p className="text-3xl font-light tracking-tight text-slate-900">
-                     {membersLoyaltyRows.length.toLocaleString()}
+                     {membersTopupKpisAll.count.toLocaleString()}
                    </p>
+                   
                  </div>
                  <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
                    <div className="mb-4 flex items-center gap-3">
                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500">
                        <BadgeInfo size={20} />
                      </div>
-                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Active Prepaid Balances</p>
+                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Top-up volume (points)</p>
                    </div>
                    <div className="flex items-baseline gap-1.5">
                      <p className="text-3xl font-light tracking-tight text-slate-900">
-                       ${membersLoyaltyRows.reduce((sum, m) => sum + m.balance, 0).toFixed(2)}
+                       {membersTopupKpisAll.volumePointsChain != null && Number.isFinite(membersTopupKpisAll.volumePointsChain)
+                         ? membersTopupKpisAll.volumePointsChain.toFixed(2)
+                         : '—'}
                      </p>
-                     <span className="text-[13px] font-medium text-slate-500">CAD</span>
                    </div>
                  </div>
                  <div className="flex flex-col justify-between rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
@@ -9236,15 +9849,23 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-500">
                        <Crown size={20} />
                      </div>
-                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">VIP Tiers Issued</p>
+                     <p className="text-[13px] font-bold uppercase tracking-widest text-slate-400">Repeat top-ups</p>
                    </div>
                    <p className="text-3xl font-light tracking-tight text-slate-900">
-                     {membersLoyaltyRows.filter((m) => m.tier !== 'Standard').length}
+                     {membersTopupKpisAll.repeatMembers.toLocaleString()}
                    </p>
+                   
                  </div>
                </div>
 
                <div className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] sm:rounded-[32px]">
+                 <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3 sm:px-6 sm:py-4">
+                   <h4 className="text-base font-bold tracking-tight text-slate-900">Members (from Beamio API)</h4>
+                   <p className="mt-1 text-[12px] font-medium text-slate-500">
+                     One row per member per program from <span className="font-mono text-[11px]">beamio.app/api/cardMemberTopups</span>{' '}
+                     (mode=members). Refreshes with the Overview feeder (~30s HTTP cache per card).
+                   </p>
+                 </div>
                  <div className="flex flex-col items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/50 p-4 sm:flex-row sm:p-6">
                    <div className="relative w-full sm:max-w-xs">
                      <Search className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-400" />
@@ -9258,160 +9879,97 @@ const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
                    </div>
                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                      <select
-                       value={membersLoyaltyBranch}
-                       onChange={(e) => setMembersLoyaltyBranch(e.target.value)}
+                       value={membersLoyaltyProgramKey}
+                       onChange={(e) => setMembersLoyaltyProgramKey(e.target.value)}
                        className={`w-full cursor-pointer rounded-[14px] border border-slate-200/60 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 sm:w-auto ${bizFocusRingClass}`}
                      >
-                       {BIZ_LOYALTY_BRANCHES.map((b) => (
-                         <option key={b} value={b}>
-                           {b}
+                       <option value="all">All programs</option>
+                       {(membersOwnedPrograms ?? []).map((p) => (
+                         <option key={p.cardAddress} value={p.cardAddress.toLowerCase()}>
+                           {p.programName}
                          </option>
                        ))}
                      </select>
                      <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
-                       <Filter size={16} /> Filter by store
+                       <Filter size={16} /> Program
                      </div>
                    </div>
                  </div>
                  <div className="overflow-x-auto">
-                   <table className="w-full min-w-[950px]">
+                   <table className="w-full min-w-[920px]">
                      <thead className="border-b border-slate-100/80 bg-slate-50/50 text-left">
                        <tr>
-                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Customer Identity</th>
-                         <th className="px-6 py-5 text-center text-[12px] font-semibold text-slate-400">Status</th>
-                         <th className="px-6 py-5 text-center text-[12px] font-semibold text-slate-400">Active Tier</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Prepaid Balance</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Lifetime Value (LTV)</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Issuing Store</th>
-                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400 sm:px-8">Actions</th>
+                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Program</th>
+                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Member</th>
+                         <th className="px-6 py-5 text-[12px] font-semibold text-slate-400">Payer address</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Top-ups</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">Total (points)</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400">First seen</th>
+                         <th className="px-6 py-5 text-right text-[12px] font-semibold text-slate-400 sm:pr-8">Last seen</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100/80">
-                       {membersLoyaltyFiltered.map((member) => (
-                         <tr
-                           key={member.id}
-                           className={`transition-colors ${
-                             member.status === 'Suspended'
-                               ? 'bg-rose-50/20'
-                               : 'hover:bg-slate-50/50'
-                           }`}
-                         >
-                           <td className="px-6 py-4">
-                             <div className="flex items-center gap-3">
-                               <div
-                                 className={`flex h-10 w-10 items-center justify-center rounded-full font-bold text-white shadow-sm ${
-                                   member.status === 'Suspended'
-                                     ? 'bg-rose-300'
-                                     : member.balance > 0
-                                       ? 'bg-[#1562f0]'
-                                       : 'bg-slate-300'
-                                 }`}
-                               >
-                                 {member.tag.replace('@', '').substring(0, 2).toUpperCase()}
-                               </div>
-                               <div>
-                                 <div
-                                   className={`text-[15px] font-semibold ${
-                                     member.status === 'Suspended'
-                                       ? 'text-slate-400 line-through'
-                                       : 'text-slate-900'
-                                   }`}
-                                 >
-                                   {member.tag}
+                       {membersTopupDirectoryFiltered.map((row) => (
+                           <tr key={`${row.cardLower}-${row.memberAddress.toLowerCase()}`} className="transition-colors hover:bg-slate-50/50">
+                             <td className="px-6 py-4">
+                               <span className="text-[14px] font-semibold text-slate-900">{row.programName}</span>
+                             </td>
+                             <td className="px-6 py-4">
+                               {row.beamioTag ? (
+                                 <div className="flex min-w-0 items-center gap-2">
+                                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-xs font-bold text-white">
+                                     {row.beamioTag.replace('@', '').slice(0, 2).toUpperCase()}
+                                   </div>
+                                   <span className="truncate text-[14px] font-semibold text-slate-900">
+                                     @{row.beamioTag.replace(/^@/, '')}
+                                   </span>
                                  </div>
-                                 <div className="mt-0.5 font-mono text-[12px] font-medium text-slate-400">
-                                   {member.address}
-                                 </div>
-                               </div>
-                             </div>
-                           </td>
-                           <td className="px-6 py-4 text-center">
-                             {member.status === 'Active' ? (
-                               <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200/50 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-600">
-                                 <CheckCircle2 size={12} /> Active
-                               </span>
-                             ) : (
-                               <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-200/50 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-600">
-                                 <Ban size={12} /> Suspended
-                               </span>
-                             )}
-                           </td>
-                           <td className="px-6 py-4 text-center">
-                             {member.tier === 'Black VIP' ? (
-                               <span className="inline-flex items-center gap-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-[11px] font-bold text-yellow-400 shadow-sm">
-                                 <Crown size={12} className="text-yellow-400" /> VIP
-                               </span>
-                             ) : member.tier === 'Green Card' ? (
-                               <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200/50 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-600">
-                                 <ShieldCheck size={12} className="text-emerald-500" /> Green
-                               </span>
-                             ) : member.tier === 'Standard' ? (
-                               <span className="inline-flex items-center gap-1 rounded-md border border-slate-200/50 bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500">
-                                 Standard
-                               </span>
-                             ) : (
-                               <span className="inline-flex items-center gap-1 rounded-md border border-[#1562f0]/20 bg-[#1562f0]/10 px-2 py-1 text-[11px] font-bold text-[#1562f0]">
-                                 <Crown size={12} /> {member.tier}
-                               </span>
-                             )}
-                           </td>
-                           <td className="px-6 py-4 text-right">
-                             <span
-                               className={`text-[15px] font-semibold ${
-                                 member.status === 'Suspended'
-                                   ? 'text-slate-400'
-                                   : member.balance > 0
-                                     ? 'text-[#1562f0]'
-                                     : 'text-slate-400'
-                               }`}
-                             >
-                               ${member.balance.toFixed(2)}
-                             </span>
-                           </td>
-                           <td className="px-6 py-4 text-right">
-                             <span
-                               className={`text-[15px] font-semibold ${
-                                 member.status === 'Suspended' ? 'text-slate-400' : 'text-slate-900'
-                               }`}
-                             >
-                               ${member.ltv.toFixed(2)}
-                             </span>
-                           </td>
-                           <td className="px-6 py-4 text-right">
-                             <span className="rounded-md border border-slate-100 bg-slate-50 px-2.5 py-1 text-[13px] font-medium text-slate-500">
-                               {member.store}
-                             </span>
-                             <div className="mt-1 text-[11px] text-slate-400">{member.lastActive}</div>
-                           </td>
-                           <td className="flex items-center justify-end gap-2 px-6 py-4 text-right sm:px-8">
-                             <button
-                               type="button"
-                               onClick={() => handleToggleLoyaltyMemberStatus(member.id)}
-                               className={`rounded-[12px] p-2.5 shadow-sm transition-colors ${
-                                 member.status === 'Active'
-                                   ? 'bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white'
-                                   : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'
-                               }`}
-                               title={member.status === 'Active' ? 'Suspend' : 'Reactivate'}
-                             >
-                               {member.status === 'Active' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-                             </button>
-                             <button
-                               type="button"
-                               onClick={() => handleDeleteLoyaltyMember(member.id)}
-                               className="rounded-[12px] bg-slate-50 p-2.5 text-slate-400 shadow-sm transition-colors hover:bg-rose-500 hover:text-white"
-                               title="Remove from list"
-                             >
-                               <Trash2 size={16} />
-                             </button>
-                           </td>
-                         </tr>
-                       ))}
-                       {membersLoyaltyFiltered.length === 0 && (
+                               ) : (
+                                 <span className="text-[13px] font-medium text-slate-500">—</span>
+                               )}
+                             </td>
+                             <td className="px-6 py-4">
+                               <AddressCapsule address={row.memberAddress} className="border-slate-200 bg-slate-50 text-slate-700" />
+                             </td>
+                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-slate-900">
+                               {row.topupCount}
+                             </td>
+                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-slate-900">
+                               {(() => {
+                                 try {
+                                   return (Number(BigInt(row.totalTopupFiat6 || '0')) / 1_000_000).toFixed(2);
+                                 } catch {
+                                   return '—';
+                                 }
+                               })()}
+                             </td>
+                             <td className="px-6 py-4 text-right text-[13px] font-medium text-slate-600">
+                               {row.firstSeenTs > 0
+                                 ? new Date(row.firstSeenTs * 1000).toLocaleDateString('en-US', {
+                                     month: 'short',
+                                     day: 'numeric',
+                                     year: 'numeric',
+                                   })
+                                 : '—'}
+                             </td>
+                             <td className="px-6 py-4 pr-6 text-right text-[13px] font-medium text-slate-600 sm:pr-8">
+                               {row.lastSeenTs > 0
+                                 ? new Date(row.lastSeenTs * 1000).toLocaleDateString('en-US', {
+                                     month: 'short',
+                                     day: 'numeric',
+                                     year: 'numeric',
+                                   })
+                                 : '—'}
+                             </td>
+                           </tr>
+                         ))}
+                       {membersTopupDirectoryFiltered.length === 0 && (
                          <tr>
                            <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                              <Search size={24} className="mx-auto mb-2 opacity-50" />
-                             No members match this filter.
+                             {topupMemberTableRowsAll.length === 0
+                               ? 'No members returned from the API yet for your programs. After successful top-ups are recorded on the server, they appear here.'
+                               : 'No members match this filter.'}
                            </td>
                          </tr>
                        )}

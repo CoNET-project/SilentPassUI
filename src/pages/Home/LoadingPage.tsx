@@ -191,14 +191,14 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			<main className="min-h-0 w-full flex-1">
 				<div className="mx-auto grid min-h-[80vh] w-full max-w-[1440px] grid-cols-1 items-stretch lg:grid-cols-[40%_60%]">
 					{/* Left: brand + editorial (screenshot sidebar) */}
-					<section className="relative flex flex-col justify-center overflow-hidden border-[#E5E7EB] px-8 py-12 lg:border-r lg:bg-[#F9FAFB]/90 lg:px-12 lg:py-20 xl:px-20">
+					<section className="relative flex flex-col items-center justify-center overflow-hidden border-[#E5E7EB] px-8 py-12 lg:border-r lg:bg-[#F9FAFB]/90 lg:px-12 lg:py-20 xl:px-20">
 						<div
 							className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(21,98,240,0.03)_0%,transparent_70%)] lg:block"
 							aria-hidden
 						/>
-						<div className="relative z-10 flex max-w-xl flex-col space-y-10">
-							<div className="space-y-6">
-								<div className="mb-1 hidden items-center gap-2 lg:flex">
+						<div className="relative z-10 flex w-full max-w-xl flex-col items-center space-y-10 text-center">
+							<div className="w-full space-y-6">
+								<div className="mb-1 hidden items-center justify-center gap-2 lg:flex">
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#1562F0] text-white">
 										<Building2 className="h-6 w-6" strokeWidth={2.25} aria-hidden />
 									</div>
@@ -212,13 +212,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								>
 									Set up your business for <span className="text-[#1562F0]">live commerce</span>.
 								</h1>
-								<p className="max-w-md text-base leading-relaxed text-[#666666] lg:text-lg">
+								<p className="mx-auto max-w-md text-base leading-relaxed text-[#666666] lg:text-lg">
 									Create your Verra Business workspace to issue membership cards, manage customer balance, and run branded payments in
 									one place.
 								</p>
 							</div>
 
-							<div className="flex flex-col gap-4">
+							<div className="flex w-full flex-col gap-4">
 								<div className="space-y-1 rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
 									<h3 className="font-bold text-[#121212]">Business Control</h3>
 									<p className="text-sm leading-relaxed text-[#666666]">Manage cards, balance, and approvals in one place.</p>
@@ -229,7 +229,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								</div>
 							</div>
 
-							<div className="hidden pt-2 lg:block" aria-hidden>
+							<div className="hidden w-full justify-center pt-2 lg:flex" aria-hidden>
 								<div
 									className="h-0.5 w-[120px] rounded-full opacity-15"
 									style={{

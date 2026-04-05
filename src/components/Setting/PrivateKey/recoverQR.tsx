@@ -89,6 +89,8 @@ export default function RecoverQRReveal({ close }: Props) {
         recoveryCode={recoveryCode}
         beamioTag={beamio?.accountName}
         showButton={true}
+        showTopAppBar
+        onBack={() => setStep('locked')}
 		close={() => {
 			const next = [...navigateLeftButtonArray]
 			const obj = next.pop()

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Verra - Secure Login</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface": "#f9f9fe",
+              "surface-tint": "#0054d8",
+              "surface-container": "#ededf2",
+              "on-tertiary-fixed": "#370d00",
+              "tertiary": "#973300",
+              "on-secondary-container": "#344a86",
+              "inverse-surface": "#2e3034",
+              "surface-container-lowest": "#ffffff",
+              "surface-container-high": "#e8e8ed",
+              "surface-bright": "#f9f9fe",
+              "primary-container": "#1562f0",
+              "inverse-on-surface": "#f0f0f5",
+              "primary": "#004bc3",
+              "on-tertiary": "#ffffff",
+              "on-primary-container": "#edefff",
+              "surface-variant": "#e2e2e7",
+              "on-secondary-fixed": "#00184a",
+              "on-secondary": "#ffffff",
+              "tertiary-fixed-dim": "#ffb59a",
+              "on-primary": "#ffffff",
+              "on-surface-variant": "#424655",
+              "background": "#f9f9fe",
+              "on-secondary-fixed-variant": "#2e447f",
+              "tertiary-container": "#c04300",
+              "secondary-fixed": "#dbe1ff",
+              "secondary": "#465c99",
+              "primary-fixed": "#dbe1ff",
+              "inverse-primary": "#b3c5ff",
+              "outline-variant": "#c3c6d8",
+              "surface-dim": "#d9dade",
+              "tertiary-fixed": "#ffdbce",
+              "surface-container-highest": "#e2e2e7",
+              "primary-fixed-dim": "#b3c5ff",
+              "on-error-container": "#93000a",
+              "outline": "#737687",
+              "on-primary-fixed-variant": "#003fa5",
+              "on-error": "#ffffff",
+              "on-primary-fixed": "#00184a",
+              "on-background": "#1a1c1f",
+              "secondary-container": "#a7bcff",
+              "on-tertiary-container": "#ffece6",
+              "on-surface": "#1a1c1f",
+              "error-container": "#ffdad6",
+              "on-tertiary-fixed-variant": "#802a00",
+              "surface-container-low": "#f3f3f8",
+              "secondary-fixed-dim": "#b3c5ff",
+              "error": "#ba1a1a"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            vertical-align: middle;
+        }
+        .segmented-control input:checked + label {
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            color: #1a1c1f;
+        }
+        .state-content {
+            display: none;
+        }
+        #login-state:checked ~ #state-a,
+        #recovery-state:checked ~ #state-b {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface antialiased overflow-x-hidden min-h-screen">
+<!-- TopAppBar -->
+<header class="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl fixed top-0 w-full z-50 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+<div class="flex items-center justify-between px-6 h-16 w-full max-w-2xl mx-auto">
+<div class="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity active:scale-95" data-interaction="back">
+<span class="material-symbols-outlined text-[#1562f0]" data-icon="close">close</span>
+</div>
+<h1 class="font-['Inter'] font-semibold tracking-tight text-lg text-slate-900">Welcome Back</h1>
+<div class="w-8"></div> <!-- Spacer for balance -->
+</div>
+</header>
+<main class="pt-24 pb-12 px-6 max-w-lg mx-auto flex flex-col min-h-screen">
+<!-- Header Section -->
+<div class="text-center mb-8">
+<h2 class="text-3xl font-extrabold tracking-tight mb-2 font-headline">Welcome Back</h2>
+<p class="text-on-surface-variant font-medium">Access your local community vault.</p>
+</div>
+<!-- Segmented Control Toggle Container -->
+<div class="relative flex flex-col flex-1">
+<div class="segmented-control bg-surface-container-high p-1 rounded-2xl flex relative mb-8 h-12 shrink-0">
+<input class="hidden" id="login-state" name="state-toggle" type="radio"/>
+<label class="flex-1 flex items-center justify-center text-sm font-semibold rounded-xl cursor-pointer transition-all duration-200 text-on-surface-variant z-10" for="login-state">
+                ID &amp; Password
+            </label>
+<input checked="" class="hidden" id="recovery-state" name="state-toggle" type="radio"/>
+<label class="flex-1 flex items-center justify-center text-sm font-semibold rounded-xl cursor-pointer transition-all duration-200 text-on-surface-variant z-10" for="recovery-state">
+                Recovery Key
+            </label>
+</div>
+<!-- Logic Controls (Hidden) -->
+<input checked="" class="hidden" id="recovery-state" name="display-switch" type="radio"/>
+<input class="hidden" id="login-state" name="display-switch" type="radio"/>
+<!-- STATE A: ID & Password -->
+<div class="state-content space-y-6 w-full" id="state-a">
+<div class="space-y-4">
+<div class="group">
+<label class="block text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 ml-1">Verra ID</label>
+<div class="relative">
+<span class="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant font-medium">@</span>
+<input class="w-full bg-surface-container-highest border-none rounded-2xl py-4 pl-10 pr-4 focus:ring-2 focus:ring-primary-container transition-all font-medium text-on-surface" placeholder="YourID" type="text" value="SarahV"/>
+</div>
+</div>
+<div class="group">
+<label class="block text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 ml-1">Password</label>
+<div class="relative">
+<input class="w-full bg-surface-container-highest border-none rounded-2xl py-4 px-4 focus:ring-2 focus:ring-primary-container transition-all font-medium text-on-surface" placeholder="••••••••••••" type="password" value="password123"/>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-primary-container font-semibold text-sm hover:opacity-80">Show</button>
+</div>
+</div>
+<div class="flex justify-end">
+<a class="text-sm font-semibold text-primary-container hover:underline" href="#">Forgot Password?</a>
+</div>
+</div>
+<div class="pt-4 space-y-6">
+<button class="w-full bg-gradient-to-br from-primary to-primary-container text-white py-5 rounded-full font-bold text-lg shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:opacity-90 active:scale-[0.98] transition-all">
+                    Log In
+                </button>
+<div class="flex flex-col items-center gap-3 py-4">
+<div class="w-12 h-12 bg-surface-container-low rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-primary-container text-3xl" data-icon="face">face</span>
+</div>
+<p class="text-xs text-on-surface-variant text-center max-w-[200px] leading-relaxed">
+                        Biometric login will be enabled after first access.
+                    </p>
+</div>
+</div>
+</div>
+<!-- STATE B: Recovery Key -->
+<div class="state-content space-y-8 w-full pb-8" id="state-b">
+<div class="bg-surface-container-low rounded-2xl p-6">
+<p class="text-sm text-on-surface-variant leading-relaxed text-center font-medium">
+                    Use your securely saved Recovery QR or alphanumeric code to restore your vault.
+                </p>
+</div>
+<!-- Scan Area -->
+<div class="relative group cursor-pointer">
+<div class="w-full aspect-square max-w-[280px] mx-auto border-2 border-dashed border-outline-variant rounded-3xl flex flex-col items-center justify-center gap-4 bg-white hover:bg-surface-container-lowest transition-colors group-active:scale-95 duration-200">
+<div class="w-16 h-16 bg-primary-container/10 rounded-full flex items-center justify-center mb-2">
+<span class="material-symbols-outlined text-primary-container text-4xl" data-icon="qr_code_scanner">qr_code_scanner</span>
+</div>
+<div class="text-center px-6">
+<p class="font-bold text-on-surface">Tap to Scan Recovery QR</p>
+<p class="text-xs text-on-surface-variant mt-1">from Camera or Photos</p>
+</div>
+</div>
+</div>
+<!-- Divider -->
+<div class="flex items-center gap-4">
+<div class="h-[1px] flex-1 bg-surface-container-high"></div>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-[0.2em]">OR</span>
+<div class="h-[1px] flex-1 bg-surface-container-high"></div>
+</div>
+<!-- Manual Entry -->
+<div class="space-y-4">
+<label class="block text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2 ml-1">Enter Recovery Code</label>
+<div class="bg-surface-container-high/40 rounded-2xl p-0.5 shadow-inner">
+<textarea class="w-full border-none rounded-[calc(1rem-2px)] py-4 px-4 focus:ring-0 transition-all font-medium text-on-surface resize-none leading-relaxed bg-surface shadow-sm" placeholder="Enter your recovery code here..." rows="4"></textarea>
+</div>
+</div>
+<button class="w-full bg-primary text-white py-5 rounded-full font-bold text-lg shadow-[0_8px_30px_rgb(0,75,195,0.2)] hover:bg-primary-container active:scale-[0.98] transition-all">
+                Restore Vault
+            </button>
+</div>
+</div>
+<!-- Bottom Security Badge -->
+<div class="mt-auto flex flex-col items-center gap-4 py-8">
+<div class="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-surface-container-high">
+<span class="material-symbols-outlined text-primary-container text-sm" data-icon="verified_user" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface">End-to-End Encrypted</span>
+</div>
+</div>
+</main>
+</body></html>

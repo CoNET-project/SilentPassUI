@@ -4,7 +4,8 @@ import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
-import Home from "./pages/Home"
+import AppEntryGate from "@/components/AppEntryGate"
+import Home from "@/components/Home/Home"
 import History from "./pages/History/MyWalletDashboardNew"
 import Pay from "./pages/Pay"
 import QrOperationPage from "./pages/Pay/QrOperationPage"
@@ -39,6 +40,8 @@ import ExampleCardNew from '@/pages/Vouchers/example/ExampleCardNew'
 import BeamioTransactions from '@/pages/Vouchers/example/uelCenter'
 import MobilePOS from '@/pages/Vouchers/example/Pos'
 import CardManager from '@/pages/cardManager'
+import WalletOverview from '@/pages/Wallet/WalletOverview'
+import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -1169,24 +1172,28 @@ function AppShell() {
 				<div className="flex-1 min-h-0 flex flex-col">
 				<Routes>
 				<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
-				<Route path="/" element={<Home />} />
-				<Route path="/History" element={<History />} />
-				<Route path="/Pay" element={<Pay />} />
-				<Route path="/qr" element={<QrOperationPage />} />
-				<Route path="/Chat" element={<Chat />} />
-				<Route path="/chat/:id" element={<ChatDetail />} />
-				<Route path="/settings" element={<Market />} />
-				<Route path="/browser" element={<Browser />} />
-				<Route path="/myWallet" element={<MyWallet />} />
-				<Route path="/HistoryAll" element={<HistoryAll />} />
-				<Route path="/vouchers-example" element={<VouchersExample />} />
-				<Route path="/example-express" element={<ExampleExpress />} />
-				<Route path="/ten-key-input" element={<TenKeyInput />} />
-				<Route path="/example-card" element={<EmapmpleCard />} />
-				<Route path="/example-new-card" element={<NewCardExample />} />
-				<Route path="/transfertion" element={<BeamioTransactions />} />
-				<Route path="/native-pos" element={<MobilePOS />} />
-				<Route path="/render-action" element={<RenderActionPage />} />
+				<Route element={<AppEntryGate />}>
+					<Route path="/" element={<Home />} />
+					<Route path="/wallet" element={<WalletOverview />} />
+					<Route path="/History" element={<History />} />
+					<Route path="/Pay" element={<Pay />} />
+					<Route path="/qr" element={<QrOperationPage />} />
+					<Route path="/Chat" element={<Chat />} />
+					<Route path="/chat/:id" element={<ChatDetail />} />
+					<Route path="/settings" element={<Market />} />
+					<Route path="/browser" element={<Browser />} />
+					<Route path="/myWallet" element={<MyWallet />} />
+					<Route path="/myBrands" element={<MyBrandsPage />} />
+					<Route path="/HistoryAll" element={<HistoryAll />} />
+					<Route path="/vouchers-example" element={<VouchersExample />} />
+					<Route path="/example-express" element={<ExampleExpress />} />
+					<Route path="/ten-key-input" element={<TenKeyInput />} />
+					<Route path="/example-card" element={<EmapmpleCard />} />
+					<Route path="/example-new-card" element={<NewCardExample />} />
+					<Route path="/transfertion" element={<BeamioTransactions />} />
+					<Route path="/native-pos" element={<MobilePOS />} />
+					<Route path="/render-action" element={<RenderActionPage />} />
+				</Route>
 				</Routes>
 				</div>
 			</div>

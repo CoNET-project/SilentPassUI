@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Security Backup - Verra</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-container": "#ededf2",
+                        "background": "#f9f9fe",
+                        "surface-container-highest": "#e2e2e7",
+                        "primary-fixed": "#dbe1ff",
+                        "on-surface": "#1a1c1f",
+                        "secondary-fixed": "#dbe1ff",
+                        "primary-fixed-dim": "#b3c5ff",
+                        "on-primary-fixed-variant": "#003fa5",
+                        "tertiary-fixed-dim": "#ffb59a",
+                        "on-tertiary-container": "#ffece6",
+                        "outline": "#737687",
+                        "secondary-container": "#a7bcff",
+                        "secondary-fixed-dim": "#b3c5ff",
+                        "on-primary-container": "#edefff",
+                        "surface": "#f9f9fe",
+                        "surface-bright": "#f9f9fe",
+                        "surface-container-low": "#f3f3f8",
+                        "surface-variant": "#e2e2e7",
+                        "tertiary-container": "#c04300",
+                        "on-tertiary-fixed": "#370d00",
+                        "surface-dim": "#d9dade",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#424655",
+                        "inverse-on-surface": "#f0f0f5",
+                        "on-secondary": "#ffffff",
+                        "inverse-primary": "#b3c5ff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-fixed": "#00184a",
+                        "on-tertiary-fixed-variant": "#802a00",
+                        "on-primary": "#ffffff",
+                        "inverse-surface": "#2e3034",
+                        "tertiary-fixed": "#ffdbce",
+                        "primary-container": "#1562f0",
+                        "tertiary": "#973300",
+                        "on-secondary-fixed-variant": "#2e447f",
+                        "on-tertiary": "#ffffff",
+                        "secondary": "#465c99",
+                        "on-secondary-container": "#344a86",
+                        "on-primary-fixed": "#00184a",
+                        "on-error-container": "#93000a",
+                        "primary": "#004bc3",
+                        "error-container": "#ffdad6",
+                        "surface-tint": "#0054d8",
+                        "outline-variant": "#c3c6d8",
+                        "on-background": "#1a1c1f",
+                        "error": "#ba1a1a",
+                        "surface-container-high": "#e8e8ed"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #004bc3 0%, #1562f0 100%);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-container-low font-body text-on-surface min-h-screen flex flex-col overflow-x-hidden">
+<!-- TopAppBar Execution -->
+<header class="flex items-center justify-between px-6 py-4 w-full sticky top-0 z-50 bg-[#f9f9fe]/70 backdrop-blur-lg shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-[#e8e8ed] transition-colors active:scale-95 duration-200">
+<span class="material-symbols-outlined text-[#1562f0]" data-icon="arrow_back">arrow_back</span>
+</button>
+<span class="text-xl font-bold tracking-tighter text-[#1a1c1f]">Verra</span>
+<div class="w-10"></div> <!-- Spacer for centering -->
+</header>
+<main class="flex-1 max-w-lg mx-auto w-full px-6 py-8 flex flex-col">
+<!-- Header Section -->
+<div class="mb-10 text-center md:text-left">
+<h1 class="text-4xl font-extrabold tracking-tight text-on-surface mb-4">Security Backup</h1>
+<p class="text-on-surface-variant text-lg leading-relaxed">
+                Your Recovery Code is your master key. If you lose your phone, this is the only way to get your funds back.
+            </p>
+</div>
+<!-- Central Visual: QR Glass Card -->
+<section class="mb-10">
+<div class="relative group">
+<!-- Decorative Glow -->
+<div class="absolute inset-0 bg-primary opacity-5 blur-3xl rounded-full"></div>
+<div class="glass-card relative rounded-lg p-8 border border-white/40 shadow-sm flex flex-col items-center">
+<!-- Dynamic QR Visual Container -->
+<div class="w-64 h-64 bg-surface-container-highest rounded-lg flex items-center justify-center p-4 mb-6">
+<img alt="Recovery QR Code" class="w-full h-full object-contain mix-blend-multiply opacity-90" data-alt="Modern high-tech recovery QR code with blue glowing accents and minimalist vector patterns on white background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCO92yJ-tLAlp0XpIliBVhr_B7AquwTNqIr3m8IjFO3zO00asWHBp2Ull-aVwlyv2lpPKC4JI-tLn-IXyIqnmjiQgedZK0Ee-F_qRZ9S4Lq7F_usC-Fh4YnA78kvHu4vORCRUhqZz6GvVrMX3edcoM3oCl8UOSFglXKN36Bj160zi0BONJlhVoIB6ElzJwX-wpyaWdjs5KnWv6_vl7VFXGxRhJn3CVeNHSnDo7nZpwfL9IyKkX_GW_euxCqX-oykmdvMOiG0PoFNIf_"/>
+</div>
+<!-- Recovery Code Display -->
+<div class="bg-surface-container-low w-full rounded-md p-4 flex items-center justify-between">
+<span class="font-mono text-sm tracking-widest text-on-surface uppercase select-all">VRA-9X2L-44BK-9922</span>
+<span class="material-symbols-outlined text-primary text-sm" data-icon="enhanced_encryption" style="font-variation-settings: 'FILL' 1;">enhanced_encryption</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Action Grid -->
+<div class="grid grid-cols-1 gap-4 mb-10">
+<button class="primary-gradient text-white font-bold py-4 px-8 rounded-full flex items-center justify-center gap-3 shadow-md active:scale-95 transition-transform">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+                Save to Photos
+            </button>
+<button class="bg-surface-container-high text-on-surface font-bold py-4 px-8 rounded-full flex items-center justify-center gap-3 hover:bg-surface-container-highest active:scale-95 transition-transform">
+<span class="material-symbols-outlined" data-icon="content_copy">content_copy</span>
+                Copy Recovery Code
+            </button>
+</div>
+<!-- Compliance Checkbox -->
+<div class="mt-auto mb-8 bg-surface-container-lowest/50 p-6 rounded-lg border border-white/20">
+<label class="flex items-start gap-4 cursor-pointer group">
+<div class="relative flex items-center justify-center mt-1">
+<input class="peer appearance-none w-6 h-6 rounded-md bg-surface-container-highest border-none checked:bg-primary transition-colors cursor-pointer" type="checkbox"/>
+<span class="material-symbols-outlined absolute text-white text-lg scale-0 peer-checked:scale-100 transition-transform pointer-events-none" data-icon="check">check</span>
+</div>
+<span class="text-on-surface font-medium leading-snug">
+                    I have securely saved my recovery code
+                </span>
+</label>
+</div>
+<!-- Bottom Primary Action -->
+<div class="pb-10">
+<button class="w-full bg-primary text-white font-bold py-5 rounded-full flex items-center justify-center gap-2 group hover:shadow-lg active:scale-95 transition-all">
+                Next
+                <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</main>
+<!-- Navigation Shell Suppressed as per Task-Focused/Linear Journey Rule -->
+</body></html>

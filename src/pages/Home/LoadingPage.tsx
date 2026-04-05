@@ -1,9 +1,27 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
-import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowLeft, ArrowRight, ShieldCheck, AlertTriangle, X } from "lucide-react"
+import {
+	Zap,
+	ChevronRight,
+	Fingerprint,
+	Gift,
+	Check,
+	Loader,
+	Globe,
+	ArrowLeft,
+	ArrowRight,
+	ShieldCheck,
+	AlertTriangle,
+	X,
+	Nfc,
+	Coffee,
+	Bike,
+	Utensils,
+	User,
+} from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, getMyAssets } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
 
@@ -24,17 +42,20 @@ import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import CreateUsernamePinScreen, { type CreateUsernamePinScreenRef } from './CreateUsernamePinScreen'
 import RecoveryQRScreen from './RecoveryQRScreen'
-import RestoreEntryScreen from './RestoreEntryScreen'
-import RestoreWithQRScreen from './RestoreWithQRScreen'
-import RestoreWithUsernamePinScreen from './RestoreWithUsernamePinScreen'
+import RestoreWalletUnifiedScreen from './RestoreWalletUnifiedScreen'
 import WalletReadyScreen from './WalletReadyScreen'
+import { WALLET_READY_INTENT_KEY } from './walletReadyIntent'
+import OnboardingWelcomeScreen from './OnboardingWelcomeScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
+import { VerraBrandLockup } from '@/components/branding/VerraBrandLockup'
+import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
-/** `public/logo512.png` — respects `package.json` homepage / `PUBLIC_URL` */
-const CASHTREES_LOGO_PWA = `${process.env.PUBLIC_URL ?? ''}/logo512.png`
+/** Initial entry hero — user-provided city sunset (onboard.html） */
+const ONBOARD_HERO_BG = `${process.env.PUBLIC_URL ?? ''}/onboard-hero-city.png`
+const ONBOARD_HERO_MARQUEE_SEC_PER_LOOP = 160
 const ISSUED_NFT_START_ID = 100_000_000_000
 
 /** 从 NFT tokenId 推导卡号显示：issued NFT 用序号，tier NFT 用 tokenId */
@@ -44,6 +65,287 @@ function formatMemberNo(tokenId: string | number): string {
 		return `M-${String(n - ISSUED_NFT_START_ID + 1).padStart(6, '0')}`
 	}
 	return `M-${String(n).padStart(6, '0')}`
+}
+
+function OnboardHeroMarquee() {
+	const viewportRef = useRef<HTMLDivElement | null>(null)
+	const trackRef = useRef<HTMLDivElement | null>(null)
+	const panel0Ref = useRef<HTMLDivElement | null>(null)
+
+	useLayoutEffect(() => {
+		if (typeof window === 'undefined') return
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+		const vp = viewportRef.current
+		const track = trackRef.current
+		const p0 = panel0Ref.current
+		if (!vp || !track || !p0) return
+
+		let segmentPx = 0
+		let offsetPx = 0
+		let raf = 0
+		let last = performance.now()
+
+		const applyLayout = () => {
+			const w = Math.max(1, Math.round(vp.clientWidth))
+			const prevSeg = segmentPx
+			const prevOff = offsetPx
+
+			track.style.width = `${2 * w}px`
+			p0.style.flexShrink = '0'
+			p0.style.width = `${w}px`
+			const p1 = track.children[1]
+			if (p1 instanceof HTMLElement) {
+				p1.style.flexShrink = '0'
+				p1.style.width = `${w}px`
+			}
+			void track.offsetHeight
+
+			segmentPx = Math.max(1, p0.offsetWidth)
+
+			if (prevSeg > 0 && segmentPx !== prevSeg) {
+				let u = -prevOff / prevSeg
+				u -= Math.floor(u)
+				offsetPx = -u * segmentPx
+			}
+			while (offsetPx <= -segmentPx) offsetPx += segmentPx
+			while (offsetPx > 0) offsetPx -= segmentPx
+			track.style.transform = `translate3d(${offsetPx}px,0,0.01px)`
+		}
+
+		applyLayout()
+
+		const ro = new ResizeObserver(applyLayout)
+		ro.observe(vp)
+
+		const tick = (now: number) => {
+			const dt = Math.min(Math.max(now - last, 0), 100)
+			last = now
+			const seg = segmentPx
+			if (seg <= 0) {
+				raf = requestAnimationFrame(tick)
+				return
+			}
+			offsetPx -= (seg / (ONBOARD_HERO_MARQUEE_SEC_PER_LOOP * 1000)) * dt
+			while (offsetPx <= -seg) {
+				offsetPx += seg
+			}
+			track.style.transform = `translate3d(${offsetPx}px,0,0.01px)`
+			raf = requestAnimationFrame(tick)
+		}
+
+		raf = requestAnimationFrame(tick)
+
+		return () => {
+			cancelAnimationFrame(raf)
+			ro.disconnect()
+		}
+	}, [])
+
+	return (
+		<div
+			ref={viewportRef}
+			className="pointer-events-none absolute inset-0 z-0 min-h-full overflow-hidden"
+		>
+			<div className="absolute inset-0 hidden motion-reduce:block" aria-hidden>
+				<img
+					src={ONBOARD_HERO_BG}
+					alt=""
+					className="h-full w-full object-cover blur-sm"
+					draggable={false}
+				/>
+			</div>
+			<div
+				ref={trackRef}
+				className="absolute left-0 top-0 z-0 flex h-full flex-nowrap motion-reduce:hidden will-change-transform [transform:translate3d(0,0,0.01px)]"
+				aria-hidden
+			>
+				<div ref={panel0Ref} className="relative h-full shrink-0 overflow-hidden">
+					<img
+						src={ONBOARD_HERO_BG}
+						alt=""
+						className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+						draggable={false}
+					/>
+				</div>
+				<div className="relative h-full shrink-0 overflow-hidden">
+					<img
+						src={ONBOARD_HERO_BG}
+						alt=""
+						className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+						draggable={false}
+					/>
+				</div>
+			</div>
+			<div className="absolute inset-0 z-10 bg-[#1562f0]/40 mix-blend-multiply" aria-hidden />
+			<div
+				className="absolute inset-0 z-20 bg-gradient-to-b from-[#1562f0]/60 via-transparent to-[#1562f0]/80"
+				aria-hidden
+			/>
+		</div>
+	)
+}
+
+/** 首屏铺满：避免仅依赖 100dvh（部分机型 dvh 小于实际可视高度 → 底部露白）。高度由外层 fixed inset-0 + flex-1 传递。 */
+const INITIAL_SPLASH_VIEWPORT = 'min-h-0 w-full flex-1'
+const INITIAL_HEADLINE_TO_BODY_SPACE_Y =
+	'space-y-5 sm:space-y-6 md:space-y-7 [@media(max-height:720px)]:space-y-4'
+const INITIAL_COPY_TO_CTA_MARGIN_TOP = 'mt-5 sm:mt-6 md:mt-7 [@media(max-height:720px)]:mt-4'
+const INITIAL_HERO_TO_COPY_MARGIN = 'mb-3 md:mb-5 [@media(max-height:720px)]:mb-2'
+const INITIAL_COPY_TO_BANNER_MARGIN = 'mt-3 md:mt-5 [@media(max-height:720px)]:mt-2'
+
+type InitialEntrySplashProps = {
+	appVersion: string
+	isStandalone: boolean
+	onGetStarted: () => void
+	onRestoreWallet: () => void
+}
+
+/** Must stay module-scoped: an inline component inside LoadingPage gets a new `type` every parent render → full remount and marquee reset. */
+function InitialEntrySplash({
+	appVersion,
+	isStandalone,
+	onGetStarted,
+	onRestoreWallet,
+}: InitialEntrySplashProps) {
+	return (
+		<div
+			className={[
+				'relative flex w-full flex-col overflow-hidden overscroll-none font-sans',
+				INITIAL_SPLASH_VIEWPORT,
+				'bg-[#1562f0]',
+			].join(' ')}
+		>
+			<OnboardHeroMarquee />
+
+			{appVersion ? (
+				<div className="absolute right-4 top-[max(0.5rem,calc(env(safe-area-inset-top)+0.25rem))] z-[60] text-[11px] font-medium text-white/50 tabular-nums md:right-8">
+					v{appVersion}
+				</div>
+			) : null}
+
+			<nav
+				className="fixed top-0 z-50 flex w-full items-center justify-center border-b border-white/10 bg-black/10 px-6 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md"
+				aria-label="Verra"
+			>
+				<VerraBrandLockup variant="onDark" size="standard" className="h-10" />
+			</nav>
+
+			<main className="relative z-30 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col items-center overflow-hidden px-4 pb-2 pt-[calc(env(safe-area-inset-top)+4.25rem)] text-center sm:px-6 [@media(max-height:720px)]:pb-1 [@media(max-height:720px)]:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
+				<div className="flex w-full min-h-0 max-w-4xl flex-1 flex-col items-center justify-center gap-0 py-1 [@media(max-height:720px)]:py-0">
+					<div
+						className={[
+							'relative z-0 shrink-0 pb-8 [@media(max-height:720px)]:pb-6 sm:pb-10 md:mb-0 [@media(max-height:720px)]:scale-[0.94] [@media(max-height:720px)]:origin-center',
+							INITIAL_HERO_TO_COPY_MARGIN,
+						].join(' ')}
+					>
+						<div className="relative flex h-[11rem] w-[11rem] items-center justify-center rounded-full border-[3px] border-[#1562f0]/40 shadow-[0_0_60px_rgba(21,98,240,0.3)] sm:h-[14rem] sm:w-[14rem] [@media(max-height:720px)]:h-[9.25rem] [@media(max-height:720px)]:w-[9.25rem]">
+							<div
+								className="pointer-events-none absolute inset-0 animate-ping rounded-full border-[1.5px] border-white/20 opacity-20"
+								style={{ animationDuration: '3s' }}
+								aria-hidden
+							/>
+							<div
+								className="relative flex h-[9.25rem] w-[9.25rem] items-center justify-center overflow-hidden rounded-full sm:h-[11.25rem] sm:w-[11.25rem] [@media(max-height:720px)]:h-[7.75rem] [@media(max-height:720px)]:w-[7.75rem]"
+								style={{
+									background:
+										'radial-gradient(circle, rgba(255, 181, 154, 0.8) 0%, rgba(179, 255, 171, 0.2) 70%)',
+								}}
+							>
+								<div
+									className="absolute inset-0 bg-gradient-to-br from-[#ffb59a] to-[#b3ffab] opacity-40"
+									aria-hidden
+								/>
+								<span className="relative z-10 flex h-full w-full items-center justify-center">
+									<Nfc
+										className="block h-12 w-12 shrink-0 text-white drop-shadow-lg sm:h-14 sm:w-14 [@media(max-height:720px)]:h-10 [@media(max-height:720px)]:w-10"
+										strokeWidth={1.5}
+										aria-hidden
+									/>
+								</span>
+							</div>
+							<div className="absolute -right-1 -top-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-md sm:-right-2 sm:-top-4 sm:h-12 sm:w-12">
+								<Coffee className="h-4 w-4 shrink-0 text-white sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+							</div>
+							<div className="absolute top-1/2 -left-8 flex h-10 w-10 shrink-0 -translate-y-1/2 items-center justify-center rounded-full bg-white/20 backdrop-blur-md sm:-left-10 sm:h-12 sm:w-12">
+								<Bike className="h-4 w-4 shrink-0 text-white sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+							</div>
+							<div className="absolute -bottom-1 right-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-md sm:-bottom-2 sm:right-4 sm:h-12 sm:w-12">
+								<Utensils className="h-4 w-4 shrink-0 text-white sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+							</div>
+							<div className="absolute -bottom-6 left-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-md sm:-bottom-8 sm:left-6 sm:h-12 sm:w-12">
+								<User className="h-4 w-4 shrink-0 text-white sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+							</div>
+						</div>
+					</div>
+
+					<div className={['relative z-20 max-w-2xl shrink-0', INITIAL_HEADLINE_TO_BODY_SPACE_Y].join(' ')}>
+						<h1 className="font-extrabold leading-tight tracking-tight text-[#fef9c3] text-[1.5rem] sm:text-3xl md:text-4xl [@media(max-height:720px)]:text-[1.35rem] [@media(max-height:720px)]:leading-snug">
+							<span className="block">Your community&apos;s heartbeat,</span>
+							<span className="block">found in your phone.</span>
+						</h1>
+						<div className="mx-auto max-w-xl space-y-0 text-sm font-light leading-tight tracking-wide text-white/90 sm:text-base md:text-lg [&_p+p]:-mt-1 sm:[&_p+p]:-mt-1.5 [@media(max-height:720px)]:text-[13px] [@media(max-height:720px)]:leading-snug">
+							<p>Discover and connect with independent</p>
+							<p>businesses you love.</p>
+							<p>Every tap tells a local story.</p>
+						</div>
+					</div>
+
+					{isStandalone ? (
+						<div
+							className={[
+								'mb-2 w-full max-w-md shrink-0 rounded-2xl border border-amber-200/40 bg-amber-950/35 p-3 text-left backdrop-blur-md [@media(max-height:720px)]:p-2.5',
+								INITIAL_COPY_TO_BANNER_MARGIN,
+							].join(' ')}
+						>
+							<p className="text-[14px] font-medium leading-snug text-amber-50 [@media(max-height:720px)]:text-[13px]">
+								Opened from home screen? Wallet data from Safari doesn&apos;t transfer. Use{' '}
+								<strong className="text-white">Restore Wallet</strong> with your recovery code below.
+							</p>
+						</div>
+					) : null}
+
+					<div
+						className={[
+							'flex w-full max-w-md shrink-0 flex-col items-center gap-3 [@media(max-height:720px)]:gap-2',
+							INITIAL_COPY_TO_CTA_MARGIN_TOP,
+						].join(' ')}
+					>
+						<AppButton
+							fullWidth
+							className="
+              group relative overflow-hidden rounded-full !h-auto min-h-[52px] px-8 py-4 text-base font-bold tracking-wide
+              sm:min-h-[56px] sm:px-10 sm:py-5 sm:text-lg
+              [@media(max-height:720px)]:min-h-[48px] [@media(max-height:720px)]:py-3.5 [@media(max-height:720px)]:text-[15px]
+              !bg-[#1562f0] hover:!opacity-[0.94] active:!scale-[0.98]
+              !text-white
+              !shadow-xl
+              focus-visible:!ring-2 focus-visible:!ring-white/60 focus-visible:!ring-offset-2 focus-visible:!ring-offset-[#0e4cbb]/40
+            "
+							onClick={onGetStarted}
+						>
+							<span className="relative z-10 inline-flex items-center justify-center gap-2 uppercase">
+								Get Started
+								<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.5} aria-hidden />
+							</span>
+						</AppButton>
+						<button
+							type="button"
+							onClick={onRestoreWallet}
+							className="text-sm font-medium tracking-wide text-white/75 transition-colors hover:text-white focus:outline-none focus-visible:underline"
+						>
+							Already have a Verra ID?{' '}
+							<span className="underline underline-offset-4">Restore Wallet</span>
+						</button>
+					</div>
+				</div>
+			</main>
+
+			<footer className="relative z-30 w-full shrink-0 px-6 pt-1 text-center pb-[calc(2rem+env(safe-area-inset-bottom))] [@media(max-height:720px)]:pt-0.5">
+				<p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/50">Powered by Beamio</p>
+			</footer>
+		</div>
+	)
 }
 
 // Simple mobile-style onboarding modal for CashTrees (SilentPass UI shell)
@@ -148,7 +450,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const [loading, SetLoading] = useState(true)
 	const navigate = useNavigate()
 
-	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'WalletReadyScreen'|'RestoreEntryScreen'|'RestoreWithQRScreen'|'RestoreWithUsernamePinScreen'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'OnboardingWelcomeScreen'|'WalletReadyScreen'|'RestoreWalletScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(false)
 	const [qrDataUrl, setQrDataUrl] = useState('')
 	const [recoveryCode, setRecoveryCode]  = useState('')
@@ -158,7 +460,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	// Redeem from URL (beamiocard + redeemcode)
 	const [redeemFromUrl, setRedeemFromUrl] = useState<{ cardAddress: string; redeemCode: string } | null>(null)
 	const [hasCheckedUrl, setHasCheckedUrl] = useState(false)
-	/** 从 URL 的 MasterKey 参数进入的 recover 模式，restore 失败时预填到 RestoreWithQRScreen */
+	/** 从 URL 的 MasterKey 参数进入的 recover 模式，restore 失败时预填恢复码 */
 	const [restoreFromUrlMasterKey, setRestoreFromUrlMasterKey] = useState('')
 	const [redeemDetails, setRedeemDetails] = useState<import('@/services/BeamioCard').RedeemDetailsForDisplay | null>(null)
 	const [redeemDetailsLoading, setRedeemDetailsLoading] = useState(false)
@@ -171,6 +473,12 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const homeCalledRef = useRef(false)
 	const [redeemActivating, setRedeemActivating] = useState(false)
 	const [redeemPostCreateInProgress, setRedeemPostCreateInProgress] = useState(false)
+	/** Create Wallet 加密中：全屏居中 loading，隐藏 BeamioNavBack，避免顶光晕被裁切 */
+	const [createWalletLoading, setCreateWalletLoading] = useState(false)
+
+	useEffect(() => {
+		if (settingsOpen !== "CreateUsernamePinScreen") setCreateWalletLoading(false)
+	}, [settingsOpen])
 
 	// 隐藏全局 footer：redeem 进行中 Loading 或 Card Active 成功页
 	useEffect(() => {
@@ -269,14 +577,14 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 					} catch (_) {}
 					setIsInitialEntry(true)
 					setRestoreFromUrlMasterKey(masterKeyParam)
-					setSettingsOpen('RestoreWithQRScreen')
+					setSettingsOpen('RestoreWalletScreen')
 					setHasCheckedUrl(true)
 					onInitComplete?.()
 					return
 				}
-				// beamioTag 存在但无 MasterKey：直接进入 RestoreEntryScreen（恢复 wallet 入口）
+				// beamioTag 存在但无 MasterKey：直接进入统一恢复页
 				setIsInitialEntry(true)
-				setSettingsOpen("RestoreEntryScreen")
+				setSettingsOpen('RestoreWalletScreen')
 				setHasCheckedUrl(true)
 				onInitComplete?.()
 				return
@@ -318,7 +626,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	useEffect(() => {
 		if (typeof window === 'undefined') return
 		const isCardActive = redeemFromUrl && !redeeming && redeemResult?.success
-		const isWalletReady = settingsOpen === 'WalletReadyScreen'
+		const isWalletReady =
+			settingsOpen === 'WalletReadyScreen' || settingsOpen === 'OnboardingWelcomeScreen'
 		if ((isCardActive || isWalletReady) && beamioTag && recoveryCode) {
 			const t = setTimeout(() => applyPwaUrlParams(beamioTag, recoveryCode), isCardActive ? 300 : 400)
 			return () => clearTimeout(t)
@@ -329,7 +638,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	// loading ready 后：无 redeem URL 则直接进入 home（防重复调用）；WalletReadyScreen 阶段不触发
 	useEffect(() => {
 		if (isInitialEntry || !hasCheckedUrl || redeemFromUrl !== null || loading) return
-		if (settingsOpen === 'WalletReadyScreen') return
+		if (settingsOpen === 'WalletReadyScreen' || settingsOpen === 'OnboardingWelcomeScreen') return
 		if (homeCalledRef.current) return
 		homeCalledRef.current = true
 		setIsInitialEntry(false)
@@ -449,117 +758,27 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		return () => { cancelled = true }
 	}, [redeemFromUrl, isInitialEntry])
 
-	const InitialEntryScreen = () => (
-  <div
-    className="
-      pt-[env(safe-area-inset-top)]
-      pb-[env(safe-area-inset-bottom)]
-      pl-[env(safe-area-inset-left)]
-      pr-[env(safe-area-inset-right)]
-      w-full h-screen bg-[#F8F9FA] relative
-    "
-  >
-    {APP_VERSION && <div className="absolute top-[env(safe-area-inset-top)] right-6 md:right-8 z-10 text-[11px] text-slate-400/50">v{APP_VERSION}</div>}
-    <div className="h-full max-w-lg mx-auto px-6 md:px-8">
-      <div className="h-full flex flex-col items-center">
-        <div className="flex-1 min-h-4" />
+	const initialSplashOnly = isInitialEntry && !redeemFromUrl
 
-        <div className="flex flex-col items-center text-center">
-          <img
-            src={CASHTREES_LOGO_PWA}
-            alt="CashTrees"
-            className="w-[172px] h-[172px] object-contain select-none"
-            draggable={false}
-          />
-
-          <div className="mt-2 text-[40px] md:text-[44px] font-extrabold tracking-[-0.02em] text-[#0F172A]">
-            CVERRA
-          </div>
-
-          <p className="mt-1.5 max-w-[280px] text-[15px] md:text-base font-normal leading-snug text-slate-500">
-            Local Spending, Simplified.
-          </p>
-        </div>
-
-        {isStandalone && (
-          <div className="w-full mt-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
-            <p className="text-[15px] font-medium text-amber-800 dark:text-amber-200 leading-snug">
-              Opened from home screen? Wallet data from Safari doesn&apos;t transfer. Use <strong>Restore Wallet</strong> with your recovery code below.
-            </p>
-          </div>
-        )}
-
-        <div className="w-full mt-6 space-y-4">
-          <AppButton
-            fullWidth
-            className="
-              rounded-[999px] !h-auto min-h-[56px] py-5 text-[17px] font-bold
-              !bg-gradient-to-r !from-[#1562f0] !to-[#0e4cbb] hover:!opacity-[0.96] active:!scale-[0.99]
-              !text-white
-              !shadow-[0_14px_32px_rgba(21,98,240,0.42)]
-              active:!shadow-[0_10px_24px_rgba(21,98,240,0.32)]
-              focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/70 focus-visible:!ring-offset-2
-            "
-            onClick={() => setSettingsOpen("CreateUsernamePinScreen")}
-          >
-            Create Wallet
-          </AppButton>
-
-          <AppButton
-            fullWidth
-            variant="secondary"
-            className="
-              rounded-[999px] !h-auto min-h-[56px] py-5 text-[17px] font-bold
-              !bg-white hover:!bg-slate-50
-              border border-slate-200/90
-              !text-[#0F172A]
-              !shadow-[0_10px_26px_rgba(15,23,42,0.07)]
-              active:!shadow-[0_7px_18px_rgba(15,23,42,0.05)]
-              focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/40 focus-visible:!ring-offset-2
-            "
-            onClick={() => setSettingsOpen("RestoreEntryScreen")}
-          >
-            Restore Wallet
-          </AppButton>
-        </div>
-
-        <div className="flex-1 min-h-4" />
-
-        <div
-          className="
-            sticky bottom-0 w-full
-            pt-4 pb-[calc(14px+env(safe-area-inset-bottom))]
-            text-[13px] font-normal text-slate-400 text-center
-            bg-[#F8F9FA]
-          "
-        >
-          <div>Card Ready. Non-custodial.</div>
-          {APP_VERSION ? (
-            <div className="mt-1 text-[11px] font-medium text-slate-400/75 tabular-nums">
-              v{APP_VERSION}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  </div>
-)
-
-
-	
 	return (
-		<div className="
-
-				/* 👇 安全区补偿 */
-				pt-[env(safe-area-inset-top)]
-				pb-[env(safe-area-inset-bottom)]
-				pl-[env(safe-area-inset-left)]
-				pr-[env(safe-area-inset-right)]
-
-		">
-			<div className="">
+		<div
+			className={[
+				'pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]',
+				initialSplashOnly
+					? 'fixed inset-0 z-0 flex min-h-0 flex-col overflow-hidden bg-[#1562f0] pt-0 pb-0'
+					: 'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
+			].join(' ')}
+		>
+			<div className={initialSplashOnly ? 'flex min-h-0 flex-1 flex-col' : ''}>
 				{
-					isInitialEntry ? (redeemFromUrl ? <RedeemSplashStep onActivate={() => setSettingsOpen("CreateUsernamePinScreen")} redeemDetails={redeemDetails} redeemDetailsLoading={redeemDetailsLoading} /> : <InitialEntryScreen />) : (hasCheckedUrl && !redeemFromUrl) ? null : (
+					isInitialEntry ? (redeemFromUrl ? <RedeemSplashStep onActivate={() => setSettingsOpen("CreateUsernamePinScreen")} redeemDetails={redeemDetails} redeemDetailsLoading={redeemDetailsLoading} /> : (
+						<InitialEntrySplash
+							appVersion={APP_VERSION}
+							isStandalone={isStandalone}
+							onGetStarted={() => setSettingsOpen('CreateUsernamePinScreen')}
+							onRestoreWallet={() => setSettingsOpen('RestoreWalletScreen')}
+						/>
+					)) : (hasCheckedUrl && !redeemFromUrl) ? null : (
 					<>
 						{/* Card Active 成功画面：redeem 完成后显示 */}
 						{redeemFromUrl && !redeeming && redeemResult?.success ? (
@@ -646,7 +865,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							<div className="flex items-center justify-between pt-6 pb-4">
 								<div className="flex items-center gap-1.5">
 									<img
-										src={CASHTREES_LOGO_PWA}
+										src={VERRA_BRAND_LOGO_SRC}
 										alt=""
 										className="h-[72px] w-[72px] object-contain shrink-0 select-none"
 										draggable={false}
@@ -787,31 +1006,43 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						exit={{ x: "100%" }}
 						transition={{ duration: 0.3, ease: "easeOut" }}
 					>
-						{/* 顶部 Header：占据空间，确保不被内容遮挡，返回按钮可点击 */}
-						<div className="relative shrink-0 z-[100]" style={{ minHeight: TOP_OFFSET }}>
-							<BeamioNavBack
-								title=''
-								onClose={() => {
-									if (settingsOpen === 'WalletReadyScreen') setSettingsOpen('RecoveryQRScreen')
-									else if (settingsOpen === 'RecoveryQRScreen') setSettingsOpen('CreateUsernamePinScreen')
-									else if (settingsOpen === 'RestoreWithQRScreen' || settingsOpen === 'RestoreWithUsernamePinScreen') setSettingsOpen('RestoreEntryScreen')
-									else if (settingsOpen === 'CreateUsernamePinScreen') {
-										const handled = createUsernameRef.current?.goBack()
-										if (!handled) setSettingsOpen('')
-									} else setSettingsOpen('')
-								}}
-								showMore={false}
-								onMore={() => {}}
-							/>
-						</div>
+						{/* RecoveryQR / Welcome / Wallet ready / Create Verra ID / Restore 无 BeamioNavBack；其余子页用顶栏 */}
+						{settingsOpen !== 'RecoveryQRScreen' &&
+							settingsOpen !== 'OnboardingWelcomeScreen' &&
+							settingsOpen !== 'WalletReadyScreen' &&
+							settingsOpen !== 'RestoreWalletScreen' &&
+							settingsOpen !== 'CreateUsernamePinScreen' &&
+							(
+							<div className="relative shrink-0 z-[100]" style={{ minHeight: TOP_OFFSET }}>
+								<BeamioNavBack
+									title=''
+									onClose={() => {
+										if (settingsOpen === 'CreateUsernamePinScreen') {
+											const handled = createUsernameRef.current?.goBack()
+											if (!handled) setSettingsOpen('')
+										} else setSettingsOpen('')
+									}}
+									showMore={false}
+									onMore={() => {}}
+								/>
+							</div>
+						)}
 
-					{/* 内容区域 */}
-						<div 
-							className="flex-1 overflow-y-auto min-h-0"
+					{/* 内容区域；Security Backup / Welcome / Create Verra ID 单屏 flex，禁用外层滚动条 */}
+						<div
+							className={
+								settingsOpen === 'RecoveryQRScreen' ||
+								settingsOpen === 'OnboardingWelcomeScreen' ||
+								settingsOpen === 'WalletReadyScreen' ||
+								settingsOpen === 'CreateUsernamePinScreen' ||
+								settingsOpen === 'RestoreWalletScreen'
+									? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+									: 'min-h-0 flex-1 overflow-y-auto'
+							}
 						>
 							
 							{
-								settingsOpen === 'CreateUsernamePinScreen' && <CreateUsernamePinScreen ref={createUsernameRef} isRedeemFlow={!!redeemFromUrl} close={qr => {
+								settingsOpen === 'CreateUsernamePinScreen' && <CreateUsernamePinScreen ref={createUsernameRef} isRedeemFlow={!!redeemFromUrl} onRequestClose={() => setSettingsOpen('')} onCreatingWalletChange={setCreateWalletLoading} close={qr => {
 									setQrDataUrl(qr.qrDataUrl)
 									setRecoveryCode(qr.passcode)
 									setBeamioTag(qr.beamioTag ?? '')
@@ -837,38 +1068,61 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										setSettingsOpen('')
 									} : async () => {
 										await init(temp, { dontClose: true })
-										setSettingsOpen('WalletReadyScreen')
+										setSettingsOpen('OnboardingWelcomeScreen')
 									}} />
 							}
 							{
-								settingsOpen === 'WalletReadyScreen' && <WalletReadyScreen
-									usdcBalance={formatWithThousands(usdcBal || '0')}
-									onGoToHome={() => home()}
-									address={eoaAddress || undefined}
-									balanceFiat={formatAmount(parseFloat(usdcBal || '0') || 0, 'CAD')}
-									beamioTag={beamioTag || undefined}
-								/>
+								settingsOpen === 'OnboardingWelcomeScreen' && (
+									<OnboardingWelcomeScreen
+										beamioTag={beamioTag || undefined}
+										onEnterHome={() => setSettingsOpen('WalletReadyScreen')}
+									/>
+								)
 							}
 							{
-								settingsOpen === 'RestoreEntryScreen' && <RestoreEntryScreen onUseRecoveryQR={() => {
-									setSettingsOpen('RestoreWithQRScreen')
-								}} onUseUsernamePin={() => {
-									setSettingsOpen('RestoreWithUsernamePinScreen')
-								}} />
+								settingsOpen === 'WalletReadyScreen' && (
+									<WalletReadyScreen
+										usdcBalance={formatWithThousands(usdcBal || '0')}
+										onCashierTopUp={() => {
+											try {
+												sessionStorage.setItem(WALLET_READY_INTENT_KEY, 'activate')
+											} catch {
+												/* ignore */
+											}
+											home()
+											navigate('/')
+										}}
+										onNfcSync={() => {
+											try {
+												sessionStorage.setItem(WALLET_READY_INTENT_KEY, 'nfcSync')
+											} catch {
+												/* ignore */
+											}
+											home()
+											navigate('/')
+										}}
+										onFinishLater={() => home()}
+										address={eoaAddress || undefined}
+										balanceFiat={formatAmount(parseFloat(usdcBal || '0') || 0, 'CAD')}
+										beamioTag={beamioTag || undefined}
+									/>
+								)
 							}
 							{
-								settingsOpen === 'RestoreWithQRScreen' && <RestoreWithQRScreen
-									initialRecoveryCode={restoreFromUrlMasterKey}
-									onRestore={temp => {
-										setSettingsOpen('')
-										setRestoreFromUrlMasterKey('')
-										init(temp)
-									}} />
-							}
-							{
-								settingsOpen === 'RestoreWithUsernamePinScreen' && <RestoreWithUsernamePinScreen onRestore={temp => {
-									init(temp)
-								}} />
+								settingsOpen === 'RestoreWalletScreen' && (
+									<RestoreWalletUnifiedScreen
+										initialRecoveryCode={restoreFromUrlMasterKey}
+										onClose={() => {
+											setSettingsOpen('')
+											setRestoreFromUrlMasterKey('')
+										}}
+										onRestore={temp => {
+											setSettingsOpen('')
+											setRestoreFromUrlMasterKey('')
+											void init(temp)
+										}}
+									/>
+								)
 							}
 						</div>
 					</motion.div>

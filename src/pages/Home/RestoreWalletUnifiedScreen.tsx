@@ -1,0 +1,378 @@
+import { FormEvent, useEffect, useState } from 'react'
+import { AppButton } from '@/components/button/AppButton'
+import { onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
+import ScanBtn from '@/components/scanBtn/ScanButton'
+import { useDaemonContext } from '@/providers/DaemonProvider'
+import {
+	AlertCircle,
+	Eye,
+	EyeOff,
+	Fingerprint,
+	QrCode,
+	ShieldCheck,
+} from 'lucide-react'
+import { VerraFloatingNavChrome } from './VerraFloatingNavChrome'
+import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from '@/ui/appContentSpacing'
+
+type RestoreTab = 'login' | 'recovery'
+
+export type RestoreWalletUnifiedScreenProps = {
+	onClose: () => void
+	onRestore: (temp: encrypt_keys_object) => void | Promise<void>
+	initialRecoveryCode?: string
+}
+
+/** 单页：ID & Password + Recovery Key（recoverRestore.html），整页 flex 填满、禁止外层纵向滚动 */
+export default function RestoreWalletUnifiedScreen({
+	onClose,
+	onRestore,
+	initialRecoveryCode = '',
+}: RestoreWalletUnifiedScreenProps) {
+	const [tab, setTab] = useState<RestoreTab>('recovery')
+	const { scanRef, scanData } = useDaemonContext()
+
+	// —— Recovery —
+	const [recoveryCode, setRecoveryCode] = useState(initialRecoveryCode)
+	const [recoveryLoading, setRecoveryLoading] = useState(false)
+	const [recoveryError, setRecoveryError] = useState('')
+
+	// —— Login —
+	const [username, setUsername] = useState('')
+	const [pin, setPin] = useState('')
+	const [peekPin, setPeekPin] = useState(false)
+	const [loginLoading, setLoginLoading] = useState(false)
+	const [loginError, setLoginError] = useState('')
+
+	useEffect(() => {
+		if (initialRecoveryCode) {
+			setRecoveryCode(initialRecoveryCode)
+			setTab('recovery')
+		}
+	}, [initialRecoveryCode])
+
+	useEffect(() => {
+		const run = async () => {
+			if (!scanData || /^http/i.test(scanData)) {
+				if (scanData && /^http/i.test(scanData)) setRecoveryError('Invalid recovery code format')
+				return
+			}
+			setRecoveryCode(scanData)
+			setRecoveryError('')
+		}
+		run()
+	}, [scanData])
+
+	useEffect(() => {
+		const off = onWalletEvent('scan:url', (url: string) => {
+			if (tab !== 'recovery') return
+			if (/^http/i.test(url)) {
+				setRecoveryError('Invalid recovery code format')
+				return
+			}
+			if (url?.length) {
+				setRecoveryCode(url)
+				setRecoveryError('')
+			}
+		})
+		return () => {
+			if (typeof off === 'function') off()
+		}
+	}, [tab])
+
+	useEffect(() => {
+		if (!recoveryError) return
+		const t = setTimeout(() => setRecoveryError(''), 4000)
+		return () => clearTimeout(t)
+	}, [recoveryError])
+
+	useEffect(() => {
+		if (!loginError) return
+		const t = setTimeout(() => setLoginError(''), 4000)
+		return () => clearTimeout(t)
+	}, [loginError])
+
+	const formatBeamioName = () => {
+		let trimmed = username.trim().replace(/^@+/, '')
+		if (!trimmed) {
+			setLoginError('Please enter a username')
+			return ''
+		}
+		if (!/^[a-zA-Z0-9_.-]{3,20}$/.test(trimmed)) {
+			setLoginError('Use 3–20 letters, numbers, dots, _ or -')
+			return ''
+		}
+		return trimmed
+	}
+
+	const handleLoginSubmit = async (e: FormEvent) => {
+		e.preventDefault()
+		setLoginError('')
+		const trimmed = formatBeamioName()
+		if (!trimmed) return
+		const password = pin.trim()
+		if (password.length < 6) {
+			setLoginError('Password must be at least 6 characters')
+			return
+		}
+		setLoginLoading(true)
+		const canRestore = await restoreWithUserPin(trimmed, password)
+		setLoginLoading(false)
+		if (!canRestore || typeof canRestore === 'boolean') {
+			setLoginError('Something went wrong while restoring your wallet.')
+			return
+		}
+		onRestore(canRestore)
+	}
+
+	const handleRecoverySubmit = async (e: FormEvent) => {
+		e.preventDefault()
+		setRecoveryError('')
+		if (!recoveryCode.trim()) {
+			setRecoveryError('Please enter your recovery code.')
+			return
+		}
+		setRecoveryLoading(true)
+		const canRestore = await restoreWithRedeem(recoveryCode, '')
+		setRecoveryLoading(false)
+		if (!canRestore) {
+			setRecoveryError('Invalid recovery code')
+			return
+		}
+		onRestore(canRestore)
+	}
+
+	const onOpenScanner = () => {
+		scanRef.current?.start()
+	}
+
+	return (
+		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f9f9fe] font-sans text-[#1a1c1f]">
+			<VerraFloatingNavChrome onBack={onClose} tone="restore" />
+
+			<div
+				className={`flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
+			>
+				<div className={`shrink-0 text-center ${APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB}`}>
+					<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] sm:text-3xl">Welcome Back</h1>
+					<p className="mt-0.5 text-[11px] font-medium text-[#424655] sm:text-xs">Access your local community vault.</p>
+				</div>
+
+				<div className="mt-2 flex h-10 shrink-0 rounded-2xl bg-[#e8e8ed] p-1" role="tablist" aria-label="Restore method">
+					<button
+						type="button"
+						role="tab"
+						aria-selected={tab === 'login'}
+						onClick={() => {
+							setTab('login')
+							setLoginError('')
+						}}
+						className={`flex flex-1 items-center justify-center rounded-xl text-[11px] font-semibold transition sm:text-xs ${
+							tab === 'login'
+								? 'bg-white text-[#1a1c1f] shadow-sm'
+								: 'text-[#424655]'
+						}`}
+					>
+						ID &amp; Password
+					</button>
+					<button
+						type="button"
+						role="tab"
+						aria-selected={tab === 'recovery'}
+						onClick={() => {
+							setTab('recovery')
+							setRecoveryError('')
+						}}
+						className={`flex flex-1 items-center justify-center rounded-xl text-[11px] font-semibold transition sm:text-xs ${
+							tab === 'recovery'
+								? 'bg-white text-[#1a1c1f] shadow-sm'
+								: 'text-[#424655]'
+						}`}
+					>
+						Recovery Key
+					</button>
+				</div>
+
+				<div className="hidden" aria-hidden>
+					<ScanBtn />
+				</div>
+
+				<div className="relative mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+					{tab === 'login' ? (
+						<form onSubmit={handleLoginSubmit} className="flex flex-col" noValidate>
+							<div className="flex flex-col gap-2">
+								<div>
+									<label className="mb-1 ml-0.5 block text-[10px] font-bold uppercase tracking-widest text-[#424655]">
+										Verra ID
+									</label>
+									<div className="relative">
+										<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-[#424655]">
+											@
+										</span>
+										<input
+											type="text"
+											autoCapitalize="none"
+											autoCorrect="off"
+											spellCheck={false}
+											autoComplete="username"
+											className={`w-full rounded-2xl border-none bg-[#e2e2e7] py-2.5 pl-8 pr-3 text-sm font-medium text-[#1a1c1f] placeholder:text-[#737687] outline-none ring-0 transition focus:ring-2 focus:ring-inset focus:ring-[#1562f0] ${
+												loginError && !username.trim() ? 'ring-2 ring-inset ring-red-400/60' : ''
+											}`}
+											placeholder="YourID"
+											value={username}
+											onChange={e => {
+												setUsername(e.target.value.replace(/@/g, ''))
+												setLoginError('')
+											}}
+										/>
+									</div>
+								</div>
+								<div>
+									<label className="mb-1 ml-0.5 block text-[10px] font-bold uppercase tracking-widest text-[#424655]">
+										Password
+									</label>
+									<div className="relative">
+										<input
+											type={peekPin ? 'text' : 'password'}
+											autoComplete="current-password"
+											autoCapitalize="none"
+											autoCorrect="off"
+											spellCheck={false}
+											className={`w-full rounded-2xl border-none bg-[#e2e2e7] py-2.5 pl-3 pr-12 text-sm font-medium text-[#1a1c1f] outline-none ring-0 transition focus:ring-2 focus:ring-inset focus:ring-[#1562f0] ${
+												loginError && !pin.trim() ? 'ring-2 ring-inset ring-red-400/60' : ''
+											}`}
+											placeholder="••••••••"
+											value={pin}
+											onChange={e => {
+												setPin(e.target.value)
+												setLoginError('')
+											}}
+										/>
+										<button
+											type="button"
+											tabIndex={-1}
+											className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-xs font-semibold text-[#1562f0] hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/45"
+											onPointerDown={e => {
+												e.preventDefault()
+												setPeekPin(true)
+											}}
+											onPointerUp={() => setPeekPin(false)}
+											onPointerLeave={() => setPeekPin(false)}
+											onClick={() => {
+												if (typeof window !== 'undefined' && 'ontouchstart' in window) setPeekPin(p => !p)
+											}}
+											aria-label={peekPin ? 'Hide password' : 'Show password'}
+										>
+											{peekPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+										</button>
+									</div>
+								</div>
+								{loginError && (
+									<div className="flex items-start gap-1.5 text-red-600">
+										<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+										<span className="text-[11px] font-semibold leading-snug">{loginError}</span>
+									</div>
+								)}
+								<div className="flex shrink-0 items-center justify-center gap-2 py-1">
+									<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f3f3f8]">
+										<Fingerprint className="h-5 w-5 text-[#1562f0]" strokeWidth={2} />
+									</div>
+									<div className="max-w-[200px] space-y-0.5 text-[10px] leading-snug text-[#424655]">
+										<p>Biometric login will be enabled</p>
+										<p>after first access.</p>
+									</div>
+								</div>
+								<div className="shrink-0 pt-2">
+									<AppButton
+										type="submit"
+										fullWidth
+										disabled={loginLoading}
+										loading={loginLoading}
+										className="h-12 rounded-full text-base font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75"
+									>
+										Log In
+									</AppButton>
+								</div>
+							</div>
+						</form>
+					) : (
+						<form onSubmit={handleRecoverySubmit} className="flex flex-col" noValidate>
+							<div className="flex flex-col gap-2">
+								<div className="shrink-0 rounded-2xl bg-[#f3f3f8] px-3 py-2">
+									<p className="text-center text-[11px] font-medium leading-snug text-[#424655]">
+										Use your securely saved Recovery QR or alphanumeric code to restore your vault.
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={onOpenScanner}
+									className="flex h-[100px] max-h-[22vmin] shrink-0 flex-col items-center justify-center gap-1 rounded-3xl border-2 border-dashed border-[#c3c6d8] bg-white transition hover:bg-[#f9f9fe] active:scale-[0.98]"
+								>
+									<div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1562f0]/10">
+										<QrCode className="h-6 w-6 text-[#1562f0]" strokeWidth={2.25} />
+									</div>
+									<div className="text-center px-3">
+										<p className="text-sm font-bold text-[#1a1c1f]">Tap to Scan Recovery QR</p>
+										<p className="text-[10px] text-[#424655]">from Camera or Photos</p>
+									</div>
+								</button>
+								<div className="flex shrink-0 items-center gap-2 py-0.5">
+									<div className="h-px flex-1 bg-[#e8e8ed]" />
+									<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#424655]">OR</span>
+									<div className="h-px flex-1 bg-[#e8e8ed]" />
+								</div>
+								<div className="flex w-full shrink-0 flex-col">
+									<label className="mb-1 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-[#424655]">
+										Enter Recovery Code
+									</label>
+									<textarea
+										className={`min-h-[4.5rem] w-full resize-none rounded-2xl border-none bg-[#e2e2e7] px-3 py-2.5 text-xs font-medium leading-relaxed text-[#1a1c1f] placeholder:text-[#737687] outline-none ring-0 focus:ring-2 focus:ring-inset focus:ring-[#1562f0] ${
+											recoveryError ? 'ring-2 ring-inset ring-red-400/60' : ''
+										}`}
+										placeholder="Enter your recovery code here..."
+										value={recoveryCode}
+										onChange={e => {
+											setRecoveryCode(e.target.value)
+											setRecoveryError('')
+										}}
+										rows={3}
+										autoComplete="off"
+									/>
+									{recoveryError && (
+										<div className="mt-1 flex shrink-0 items-start gap-1.5 text-red-600">
+											<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+											<span className="text-[11px] font-semibold leading-snug">{recoveryError}</span>
+										</div>
+									)}
+									<div className="shrink-0 pt-2">
+										<AppButton
+											type="submit"
+											fullWidth
+											disabled={recoveryLoading || !recoveryCode.trim()}
+											loading={recoveryLoading}
+											className={`h-12 rounded-full text-base font-bold transition active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 ${
+												!recoveryCode.trim() && !recoveryLoading
+													? '!cursor-not-allowed !bg-slate-300 !text-slate-500 !shadow-none'
+													: '!bg-[#004bc3] !text-white shadow-[0_8px_30px_rgb(0,75,195,0.2)] hover:!bg-[#1562f0]'
+											}`}
+										>
+											Restore Vault
+										</AppButton>
+									</div>
+								</div>
+							</div>
+						</form>
+					)}
+				</div>
+
+				<div className="mt-6 flex shrink-0 justify-center pt-2">
+					<div className="flex items-center gap-2 rounded-full border border-[#e8e8ed] bg-white px-3 py-1.5 shadow-sm">
+						<ShieldCheck className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2.25} />
+						<span className="text-[9px] font-bold uppercase tracking-widest text-[#1a1c1f]">
+							End-to-End Encrypted
+						</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "outline": "#737687",
+              "on-tertiary": "#ffffff",
+              "tertiary-container": "#c04300",
+              "surface": "#f9f9fe",
+              "on-surface": "#1a1c1f",
+              "on-tertiary-fixed-variant": "#802a00",
+              "on-primary-container": "#edefff",
+              "on-error": "#ffffff",
+              "error": "#ba1a1a",
+              "on-primary": "#ffffff",
+              "surface-variant": "#e2e2e7",
+              "surface-tint": "#0054d8",
+              "secondary-fixed-dim": "#b3c5ff",
+              "secondary-container": "#a7bcff",
+              "on-surface-variant": "#424655",
+              "primary-fixed-dim": "#b3c5ff",
+              "on-primary-fixed": "#00184a",
+              "surface-container-high": "#e8e8ed",
+              "secondary": "#465c99",
+              "outline-variant": "#c3c6d8",
+              "surface-container-highest": "#e2e2e7",
+              "inverse-surface": "#2e3034",
+              "surface-container": "#ededf2",
+              "primary-fixed": "#dbe1ff",
+              "inverse-primary": "#b3c5ff",
+              "secondary-fixed": "#dbe1ff",
+              "on-primary-fixed-variant": "#003fa5",
+              "on-secondary-container": "#344a86",
+              "on-background": "#1a1c1f",
+              "on-secondary-fixed": "#00184a",
+              "tertiary-fixed-dim": "#ffb59a",
+              "tertiary-fixed": "#ffdbce",
+              "error-container": "#ffdad6",
+              "primary": "#004bc3",
+              "background": "#f9f9fe",
+              "on-secondary-fixed-variant": "#2e447f",
+              "on-tertiary-fixed": "#370d00",
+              "on-error-container": "#93000a",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary-container": "#ffece6",
+              "on-secondary": "#ffffff",
+              "primary-container": "#1562f0",
+              "tertiary": "#973300",
+              "surface-dim": "#d9dade",
+              "surface-bright": "#f9f9fe",
+              "surface-container-low": "#f3f3f8",
+              "inverse-on-surface": "#f0f0f5"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .monospaced-figures {
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body selection:bg-primary/20">
+<!-- Background Content (Blurred Home Page) -->
+<div class="fixed inset-0 z-0 overflow-hidden blur-xl scale-105 opacity-40 pointer-events-none">
+<!-- Mock Top Bar -->
+<header class="flex justify-between items-center px-6 py-4">
+<div class="text-lg font-bold tracking-tighter">Digital Wallet</div>
+<div class="w-10 h-10 rounded-full bg-surface-container-highest"></div>
+</header>
+<main class="px-6 space-y-8">
+<!-- Balance Card -->
+<div class="bg-gradient-to-br from-primary to-primary-container h-48 rounded-lg p-6 flex flex-col justify-between">
+<div class="text-white/80 text-sm">Main Account</div>
+<div class="text-white text-4xl font-bold">$12,450.00</div>
+</div>
+<!-- Bento Grid of Actions -->
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low h-32 rounded-lg"></div>
+<div class="bg-surface-container-low h-32 rounded-lg"></div>
+<div class="bg-surface-container-low h-32 rounded-lg"></div>
+<div class="bg-surface-container-low h-32 rounded-lg"></div>
+</div>
+</main>
+</div>
+<!-- Activation Intercept Overlay -->
+<div class="fixed inset-0 z-40 bg-on-surface/5 flex items-end md:items-center justify-center p-0 md:p-6 backdrop-blur-[2px]">
+<!-- The Glass Sheet Modal -->
+<div class="relative w-full max-w-lg bg-surface/80 backdrop-blur-2xl rounded-t-xl md:rounded-lg shadow-[0_4px_32px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col border border-white/20">
+<!-- Handle for mobile visual cue -->
+<div class="w-full flex justify-center pt-4 md:hidden">
+<div class="w-10 h-1.5 bg-surface-container-highest rounded-full"></div>
+</div>
+<!-- Content Container -->
+<div class="px-8 pt-8 pb-12 space-y-10">
+<!-- Header -->
+<div class="space-y-2 text-center md:text-left">
+<span class="inline-block px-3 py-1 bg-primary/10 text-primary text-[10px] font-extrabold tracking-[0.2em] rounded-full">STEP 05 • FINAL</span>
+<h1 class="text-4xl font-extrabold tracking-tight text-on-surface leading-tight uppercase">ONE LAST STEP</h1>
+<p class="text-on-surface-variant text-lg leading-relaxed">Activate Your Digital Wallet</p>
+</div>
+<!-- Interaction Options -->
+<div class="grid grid-cols-1 gap-6">
+<!-- Option 1: QR Code -->
+<button class="group relative flex items-center p-6 bg-surface-container-lowest rounded-lg text-left transition-all duration-300 hover:shadow-[0_8px_24px_rgba(0,0,0,0.04)] hover:bg-surface-bright active:scale-[0.98]">
+<div class="flex-shrink-0 w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-4xl" data-icon="qr_code_2">qr_code_2</span>
+</div>
+<div class="ml-6 flex-grow">
+<h3 class="font-bold text-lg text-on-surface">Show to Cashier to Top up</h3>
+<p class="text-sm text-on-surface-variant mt-1 leading-snug">Generate a unique code for physical terminal verification.</p>
+</div>
+<div class="ml-4 text-outline-variant group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-2xl">chevron_right</span>
+</div>
+</button>
+<!-- Option 2: NFC -->
+<button class="group relative flex items-center p-6 bg-surface-container-lowest rounded-lg text-left transition-all duration-300 hover:shadow-[0_8px_24px_rgba(0,0,0,0.04)] hover:bg-surface-bright active:scale-[0.98]">
+<div class="flex-shrink-0 w-16 h-16 rounded-lg bg-surface-container-low flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-4xl" data-icon="contactless">contactless</span>
+</div>
+<div class="ml-6 flex-grow">
+<h3 class="font-bold text-lg text-on-surface">Tap NFC Key to Sync</h3>
+<p class="text-sm text-on-surface-variant mt-1 leading-snug">Hold your device near the Verra station to auto-link.</p>
+</div>
+<div class="ml-4 text-outline-variant group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-2xl">chevron_right</span>
+</div>
+</button>
+</div>
+<!-- Footer Visual/Context -->
+<div class="p-6 bg-surface-container-low rounded-lg flex items-start gap-4">
+<span class="material-symbols-outlined text-primary" data-icon="info">info</span>
+<p class="text-[13px] text-on-surface-variant leading-relaxed">
+                        Your wallet remains inactive for security until a hardware connection is established. This ensures only you can access your encrypted assets.
+                    </p>
+</div>
+<!-- Secondary Action -->
+<div class="flex justify-center pt-2">
+<button class="text-on-surface-variant hover:text-on-surface font-medium text-sm px-6 py-2 rounded-full hover:bg-surface-container-high transition-colors">
+                        Close and finish later
+                    </button>
+</div>
+</div>
+<!-- Bottom Aesthetic Gradient Stripe -->
+<div class="h-1.5 w-full bg-gradient-to-r from-primary via-primary-container to-secondary"></div>
+</div>
+</div>
+<!-- Decorative Elements -->
+<div class="fixed top-20 right-[-100px] w-80 h-80 bg-primary/5 rounded-full blur-[100px] -z-10"></div>
+<div class="fixed bottom-20 left-[-100px] w-80 h-80 bg-secondary/5 rounded-full blur-[100px] -z-10"></div>
+</body></html>

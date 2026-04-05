@@ -8,6 +8,8 @@ import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEv
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
+import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
+import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { createOrGetWallet, storeSystemData, postBeamio} from "@/services/beamio"
@@ -34,7 +36,7 @@ import PayScreen from '@/pages/Pay/send'
 
 import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
-import bIcon from '@/components/assets/logo512.png'
+import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
@@ -49,6 +51,8 @@ import {
 } from '@/services/BeamioCard'
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
+import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
+import { resolveCardImageUrl } from '@/pages/Brands/MyBrandsListSection'
 import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
@@ -64,13 +68,6 @@ const CASH_TREES_HERO_BG_FADE_MS = 480
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
-
-function resolveCardImageUrl(url: string | undefined): string | undefined {
-	if (!url?.trim()) return undefined
-	const u = url.trim()
-	if (/^ipfs:\/\//i.test(u)) return `https://ipfs.io/ipfs/${u.replace(/^ipfs:\/\//i, '')}`
-	return u
-}
 
 /** beamio 表示 name 的 protocol，与 ChatList displayName 一致。兼容 beamio 与 searchResult 两种类型 */
 const displayName = (item: beamio | searchResult | null | undefined) => {
@@ -238,30 +235,6 @@ function isTemplateOnlySunNdefUrl(urlStr: string | undefined): boolean {
 	}
 }
 
-/** Android：`JavascriptInterface` 注入 `window.CashTreesAndroid`。iOS：`WKScriptMessageHandler` + 注入 `window.CashTreesIOS`（方法签名对齐 Android）。 */
-type CashTreesNativeNfcBridge = {
-	getNfcStatus: () => string
-	startPhysicalCardBind: () => void
-	cancelPhysicalCardBind?: () => void
-}
-
-/** 当前原生壳：由宿主注入的全局决定，优于 UA 猜测。 */
-export function getCashTreesNativeNfcHost(): 'android' | 'ios' | null {
-	if (typeof window === 'undefined') return null
-	const w = window as Window & { CashTreesAndroid?: CashTreesNativeNfcBridge; CashTreesIOS?: CashTreesNativeNfcBridge }
-	if (typeof w.CashTreesAndroid?.getNfcStatus === 'function') return 'android'
-	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return 'ios'
-	return null
-}
-
-export function getCashTreesNativeNfcBridge(): CashTreesNativeNfcBridge | null {
-	if (typeof window === 'undefined') return null
-	const w = window as Window & { CashTreesAndroid?: CashTreesNativeNfcBridge; CashTreesIOS?: CashTreesNativeNfcBridge }
-	if (typeof w.CashTreesAndroid?.getNfcStatus === 'function') return w.CashTreesAndroid
-	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return w.CashTreesIOS
-	return null
-}
-
 type HomeStoreCardRow = {
 	id: string
 	name: string
@@ -338,7 +311,7 @@ const Home = ({}) => {
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
-		myBrandCards, myBrandCardDetails, myBrandsFeedLoading,
+		myBrandCards, myBrandCardDetails, myBrandsFeedLoading, homeTotalPowerCad,
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
@@ -392,6 +365,7 @@ const Home = ({}) => {
 	const [topUpOracleError, setTopUpOracleError] = useState(false)
 	const [topUpRateRefreshStatus, setTopUpRateRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
 	const [showGiftSheet, setShowGiftSheet] = useState(false)
+	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)
 	const [giftAmount, setGiftAmount] = useState('')
 	const [giftRecipient, setGiftRecipient] = useState('')
 	const [giftMessage, setGiftMessage] = useState('')
@@ -433,6 +407,7 @@ const Home = ({}) => {
 	const [nfcLinkActionTagId, setNfcLinkActionTagId] = useState<string | null>(null)
 	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
 	const cashTreesNfcReq = useRef(0)
+	const activateWalletPanelRef = useRef<HTMLDivElement | null>(null)
 	const [cashTreesHeroBgIndex, setCashTreesHeroBgIndex] = useState(0)
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
@@ -746,52 +721,6 @@ const Home = ({}) => {
 			default:
 				return `US$ ${formatWithThousands(v, 2)}`
 		}
-	}
-
-	/** 用于 exampleExpress 风格的大数字拆分展示。合计：EOA USDC + AA USDC + CCSA 卡余额，转换为用户设定的 currency */
-	function getValuationParts(): { symbol: string; whole: string; decimal: string } {
-		// 1) EOA USDC 转换为目标币种
-		const usdcRate = fxRateUSDCToCurrency(currency)
-		const eoaValue = currency === 'USDC' ? usdcbalance : usdcbalance * usdcRate
-
-		// 2) AA 账号 USDC（getMyAssets 返回，与 EOA 分开）
-		const aaUsdc = Number(ccsaAssets?.usdcBalance ?? 0)
-		const aaValue = currency === 'USDC' ? aaUsdc : aaUsdc * usdcRate
-
-		// 3) CCSA 积分按卡币种计价，转换为目标币种。CCSA 卡币种通常为 CAD
-		const ccsaPoints = Number(ccsaAssets?.points ?? 0)
-		const ccsaCurrency = ccsaAssets?.cardCurrency ?? 'CAD'
-		let ccsaValue = 0
-		if (ccsaCurrency === 'USDC') {
-			// 卡币种为 USDC 时，直接按 USDC→目标币种折算
-			ccsaValue = currency === 'USDC' ? ccsaPoints : ccsaPoints * usdcRate
-		} else {
-			// 卡币种为法币（如 CAD）：1 ccsaCurrency = ? target 货币
-			// 公式：targetPerCcsa = (1 USD = X target) / (1 USD = Y ccsaCurrency) = X/Y
-			const targetPerUsd = (currencyData as Record<string, number>)[currency] ?? (currency === 'USD' ? 1 : 0)
-			const ccsaPerUsd = (currencyData as Record<string, number>)[ccsaCurrency] ?? (ccsaCurrency === 'CAD' ? 1.35 : 1)
-			const ccsaRate = ccsaPerUsd > 0 ? targetPerUsd / ccsaPerUsd : 0
-			ccsaValue = ccsaPoints * ccsaRate
-		}
-
-		const total = eoaValue + aaValue + ccsaValue
-		const fixed = currency === 'JPY' ? 0 : 2
-		const formatted = formatWithThousands(total, fixed)
-		const [whole = '0', dec = fixed === 0 ? '00' : '00'] = formatted.split('.')
-		let symbol = '$'
-		switch (currency) {
-			case 'EUR': symbol = '€'; break
-			case 'TWD': symbol = 'NT$'; break
-			case 'SGD': symbol = 'SG$'; break
-			case 'HKD': symbol = 'HK$'; break
-			case 'JPY': symbol = 'JP¥'; break
-			case 'CNY': symbol = 'RMB¥'; break
-			case 'CAD': symbol = 'CA$'; break
-			case 'USD': symbol = 'US$'; break
-			case 'USDC': symbol = ''; break
-			default: symbol = 'US$'
-		}
-		return { symbol: symbol || '', whole, decimal: dec }
 	}
 
 	const claimFaucet = async () => {
@@ -1477,6 +1406,8 @@ const Home = ({}) => {
 	/** 链上/后端「已关联实体卡」；以 listLinkedNfcCards 为准。 */
 	const cashTreesPhysicalCardBoundEffective = cashTreesCardDisplay.isPhysicalCardBound
 
+	const deviceHasNfcReadCapability = useMemo(() => detectDeviceNfcCapability(), [cashTreesNativeNfcStatus])
+
 	useEffect(() => {
 		const apply = () => {
 			const native = getCashTreesNativeNfcBridge()
@@ -1642,6 +1573,56 @@ const Home = ({}) => {
 		}
 		navigate('/myWallet')
 	}
+
+	/**
+	 * WalletReadyScreen follow-up:
+	 * - Cashier: scroll Activate Wallet panel.
+	 * - NFC: `startCashTreesPhysicalCardBind` → native read → `cashtreesnfc` → `postNfcLinkApp` (SUN only) then
+	 *   `postNfcLinkAppClaimWithKey` sends the logged-in EOA `privateKey` to backend `POST /api/nfcLinkAppClaimWithKey`
+	 *   to complete the link / redeem workflow (same as rest of Home NFC bind).
+	 */
+	useEffect(() => {
+		if (!profiles?.[0]?.keyID) return
+		let intent: string | null = null
+		try {
+			intent = sessionStorage.getItem(WALLET_READY_INTENT_KEY)
+		} catch {
+			return
+		}
+		if (!intent) return
+
+		if (intent === 'activate') {
+			if (!showActivateWalletPanel) {
+				try {
+					sessionStorage.removeItem(WALLET_READY_INTENT_KEY)
+				} catch {
+					/* ignore */
+				}
+				return
+			}
+			try {
+				sessionStorage.removeItem(WALLET_READY_INTENT_KEY)
+			} catch {
+				/* ignore */
+			}
+			const t = window.setTimeout(() => {
+				activateWalletPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+			}, 200)
+			return () => window.clearTimeout(t)
+		}
+
+		if (intent === 'nfcSync') {
+			try {
+				sessionStorage.removeItem(WALLET_READY_INTENT_KEY)
+			} catch {
+				/* ignore */
+			}
+			const t = window.setTimeout(() => {
+				startCashTreesPhysicalCardBind()
+			}, 200)
+			return () => window.clearTimeout(t)
+		}
+	}, [profiles?.[0]?.keyID, showActivateWalletPanel])
 
 	const cancelCashTreesNfcBind = () => {
 		getCashTreesNativeNfcBridge()?.cancelPhysicalCardBind?.()
@@ -2002,7 +1983,7 @@ const Home = ({}) => {
 							{/* Content — 浅底、白卡片、青柠强调 */}
 							<div className="space-y-8 px-5 pt-4">
 							{showActivateWalletPanel ? (
-								<div className="px-1 pt-2 pb-4">
+								<div ref={activateWalletPanelRef} className="px-1 pt-2 pb-4">
 									{/* WebView：isolate 限制叠层；避免负 z-index 在部分 WebView 下吞掉后续兄弟节点绘制 */}
 									<div className="relative isolate flex flex-col items-center rounded-[2.5rem] border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
 										<div className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest">
@@ -2049,7 +2030,7 @@ const Home = ({}) => {
 																		bgColor="#ffffff"
 																		fgColor="#000000"
 																		imageSettings={{
-																			src: bIcon,
+																			src: VERRA_BRAND_LOGO_SRC,
 																			height: 56,
 																			width: 56,
 																			excavate: true,
@@ -2076,19 +2057,21 @@ const Home = ({}) => {
 											</p>
 										</div>
 
-										<button
-											type="button"
-											className="w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex flex-col items-center cursor-pointer group text-left"
-										>
-											<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-												<CreditCard size={14} aria-hidden /> Option 2: Got a Card?
-											</span>
-											<div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mb-2 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
-												<Radio size={20} className="text-[#1562f0]" aria-hidden />
-											</div>
-											<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Sync NFC Card</p>
-											<p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Tap funded card to phone.</p>
-										</button>
+										{deviceHasNfcReadCapability ? (
+											<button
+												type="button"
+												className="w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex flex-col items-center cursor-pointer group text-left"
+											>
+												<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+													<CreditCard size={14} aria-hidden /> Option 2: Got a Card?
+												</span>
+												<div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mb-2 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
+													<Radio size={20} className="text-[#1562f0]" aria-hidden />
+												</div>
+												<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Sync NFC Card</p>
+												<p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Tap funded card to phone.</p>
+											</button>
+										) : null}
 									</div>
 								</div>
 							) : (
@@ -2207,12 +2190,7 @@ const Home = ({}) => {
 													Total Power
 												</p>
 												<h3 className="text-xl font-extrabold tracking-tight text-slate-900 tabular-nums min-[480px]:text-3xl dark:text-slate-100 [@media(max-height:700px)]:text-lg">
-													{(() => {
-														const p = getValuationParts()
-														if (currency === 'USDC') return `${p.whole}.${p.decimal} USDC`
-														if (currency === 'JPY') return `${p.symbol} ${p.whole}`
-														return `${p.symbol} ${p.whole}.${p.decimal}`
-													})()}
+													CA$ {homeTotalPowerCad.whole}.{homeTotalPowerCad.frac}
 												</h3>
 											</div>
 										</div>
@@ -2266,10 +2244,11 @@ const Home = ({}) => {
 										</h2>
 										<button
 											type="button"
-											onClick={() => navigate('/myWallet')}
-											className="text-xs font-semibold text-[#004bc3] dark:text-[#6ba3ff]"
+											onClick={() => setShowMyBrandsDrawer(true)}
+											className="flex items-center gap-1 text-[12px] font-semibold text-[#1562f0] transition-colors hover:text-[#0e4cbb]"
 										>
 											See all
+											<ChevronRight size={16} strokeWidth={2.5} />
 										</button>
 									</div>
 									<div className="flex flex-col rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
@@ -2305,11 +2284,14 @@ const Home = ({}) => {
 												const imgUrl = resolveCardImageUrl(detail?.meta?.image)
 												const ptsRaw = detail?.assets?.points
 												const ptsNum = Number(ptsRaw ?? '')
+												const cardGlobalCurrency = (
+													detail?.assets?.cardCurrency ?? uc.currency ?? 'CAD'
+												).toUpperCase()
 												const pointsLine =
 													detail === undefined
 														? '…'
 														: Number.isFinite(ptsNum)
-															? `${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} pts`
+															? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
 															: '—'
 												const activePasses =
 													detail?.assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired)
@@ -2789,6 +2771,11 @@ const Home = ({}) => {
 								<p className="mb-6 text-sm text-gray-500 dark:text-slate-400">
 									Manage your linked physical keys. Only one card can be active at a time to prevent conflicts.
 								</p>
+								{!deviceHasNfcReadCapability && (
+									<p className="mb-4 rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
+										This device cannot read NFC. You can still manage cards already linked to your account. To bind a new card, use a phone or tablet with NFC.
+									</p>
+								)}
 								{linkedNfcListLoading && linkedNfcCards.length === 0 && (
 									<div className="mb-4 flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
 										<Loader2 className="h-4 w-4 animate-spin text-[#1562f0]" aria-hidden />
@@ -2885,11 +2872,13 @@ const Home = ({}) => {
 								</div>
 								<button
 									type="button"
+									disabled={!deviceHasNfcReadCapability}
 									onClick={() => {
+										if (!deviceHasNfcReadCapability) return
 										setShowCardManagementModal(false)
 										startCashTreesPhysicalCardBind()
 									}}
-									className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 py-4 font-bold text-white shadow-md transition-all hover:bg-gray-800 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+									className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 py-4 font-bold text-white shadow-md transition-all hover:bg-gray-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:hover:bg-slate-100"
 								>
 									<Plus size={20} aria-hidden />
 									Bind Another Card
@@ -3018,7 +3007,7 @@ const Home = ({}) => {
 																		bgColor="#ffffff"
 																		fgColor="#000000"
 																		imageSettings={{
-																			src: bIcon,
+																			src: VERRA_BRAND_LOGO_SRC,
 																			height: Math.min(
 																				56,
 																				Math.max(36, Math.round((56 * paySheetQrSize) / 256))
@@ -3116,7 +3105,7 @@ const Home = ({}) => {
 																bgColor="#ffffff"
 																fgColor="#000000"
 																imageSettings={{
-																	src: bIcon,
+																	src: VERRA_BRAND_LOGO_SRC,
 																	height: 52,
 																	width: 52,
 																	excavate: true,
@@ -4216,7 +4205,7 @@ const Home = ({}) => {
 				</div>
 			</div>
 
-			
+			<MyBrandsFullScreenDrawer open={showMyBrandsDrawer} onClose={() => setShowMyBrandsDrawer(false)} />
 		</div>
 	)
 }

@@ -1,141 +1,168 @@
-import React from 'react'
-import { Check, Wallet, Store, CreditCard, Shield, ArrowRight } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { QrCode, Nfc, ChevronRight, Info } from 'lucide-react'
+import { detectDeviceNfcCapability } from '@/utils/cashTreesNativeNfc'
 
 type WalletReadyScreenProps = {
-	/** 保留兼容 LoadingPage 传参；新布局不展示余额 */
+	/** 保留兼容 LoadingPage 传参 */
 	usdcBalance?: string
-	onGoToHome: () => void
+	/** Show to Cashier：进首页并突出 Activate Wallet（收银员充值 QR） */
+	onCashierTopUp: () => void
+	/**
+	 * Tap NFC: go Home then start physical bind; after SUN read, client calls `postNfcLinkApp` then
+	 * `postNfcLinkAppClaimWithKey` (EOA privateKey → `POST /api/nfcLinkAppClaimWithKey`) to finish binding.
+	 */
+	onNfcSync: () => void
+	/** Close and finish later */
+	onFinishLater: () => void
 	address?: string
 	balanceFiat?: string
-	/** 用于头像首字与 @handle 胶囊，如 alex.tag → @alex.tag */
 	beamioTag?: string
 }
 
 /**
- * Master Key / 恢复流程后：账户已创建，引导进入 CashTrees 前激活 Smart Account
+ * Onboarding 最后一屏 — lastStep.htm：模糊主页 + 玻璃底表「ONE LAST STEP」
  */
 export default function WalletReadyScreen({
-	onGoToHome,
+	onCashierTopUp,
+	onNfcSync,
+	onFinishLater,
 	beamioTag,
+	usdcBalance = '0',
+	balanceFiat,
 }: WalletReadyScreenProps) {
+	const [deviceHasNfc, setDeviceHasNfc] = useState(() =>
+		typeof window !== 'undefined' ? detectDeviceNfcCapability() : false
+	)
+	useEffect(() => {
+		const run = () => setDeviceHasNfc(detectDeviceNfcCapability())
+		run()
+		const t = window.setTimeout(run, 0)
+		return () => clearTimeout(t)
+	}, [])
+
 	const handle = (beamioTag || '').replace(/^@/, '').trim()
-	const displayHandle = handle ? `@${handle}` : '@beamio'
-	const initial = (handle.charAt(0) || 'B').toUpperCase()
+	const displayHandle = handle ? `@${handle}` : 'you'
+	const mockBalance =
+		balanceFiat && balanceFiat.trim().length > 0
+			? balanceFiat
+			: `$${usdcBalance}`.replace(/^\$\$/, '$')
 
 	return (
-		<div
-			className="box-border flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#F7F8FA] px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] dark:bg-slate-950"
-			style={{ height: '100dvh', maxHeight: '100dvh' }}
-		>
-			<div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-col">
-				{/* Success header */}
-				<div className="flex shrink-0 flex-col items-center text-center">
-					<div
-						className="mb-3 flex h-[3.75rem] w-[3.75rem] items-center justify-center rounded-full bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] sm:mb-4 sm:h-[4.5rem] sm:w-[4.5rem] dark:shadow-[0_0_0_8px_rgba(21,98,240,0.2),0_12px_40px_rgba(21,98,240,0.35)]"
-						style={{
-							boxShadow: `0 0 0 8px rgba(21, 98, 240, 0.18), 0 12px 40px rgba(21, 98, 240, 0.32)`,
-						}}
-					>
-						<Check size={32} strokeWidth={3.5} className="text-white" aria-hidden />
-					</div>
-					<h1
-						className="text-xl font-bold leading-tight tracking-tight text-[#0F172A] sm:text-[1.75rem] dark:text-slate-100"
-					>
-						Account Created
-					</h1>
-					<p className="mt-2 max-w-[280px] text-[15px] font-medium leading-snug text-slate-500 dark:text-slate-400">
-						Your secure identity is ready to use.
-					</p>
-				</div>
-
-				{/* Profile pill */}
-				<div className="mt-3 flex shrink-0 justify-center sm:mt-5">
-					<div
-						className="inline-flex items-center gap-3 rounded-full border border-slate-200/80 bg-white py-2.5 pl-2.5 pr-5 shadow-sm dark:border-slate-600 dark:bg-slate-800"
-						style={{ boxShadow: '0 4px 24px rgba(15, 23, 42, 0.06)' }}
-					>
-						<div
-							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] text-lg font-bold text-white"
-							aria-hidden
-						>
-							{initial}
+		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f9f9fe] text-[#1a1c1f]">
+			{/* Blurred mock home (lastStep background) */}
+			<div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+				<div className="h-full min-h-[120%] origin-top scale-105 opacity-40 blur-xl">
+					<header className="flex items-center justify-between px-6 py-4">
+						<div className="text-lg font-bold tracking-tighter">Digital Wallet</div>
+						<div className="h-10 w-10 rounded-full bg-[#e2e2e7]" />
+					</header>
+					<main className="space-y-8 px-6">
+						<div className="flex h-48 flex-col justify-between rounded-lg bg-gradient-to-br from-[#004bc3] to-[#1562f0] p-6">
+							<div className="text-sm text-white/80">Main Account</div>
+							<div className="text-4xl font-bold tabular-nums text-white">{mockBalance}</div>
 						</div>
-						<span className="text-base font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
-							{displayHandle}
-						</span>
-					</div>
-				</div>
-
-				{/* Activation card — flex-1 + inner scroll so the viewport never gains a page scrollbar */}
-				<div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-800/90 dark:shadow-xl sm:mt-5">
-					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-5 py-4 sm:px-6 sm:py-5">
-						<div className="mx-auto mb-3 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-200 bg-slate-50 sm:mb-4 sm:h-[4.5rem] sm:w-[4.5rem] dark:border-slate-600 dark:bg-slate-900/50">
-							<Wallet className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8 dark:text-slate-500" strokeWidth={1.75} aria-hidden />
+						<div className="grid grid-cols-2 gap-4">
+							{[0, 1, 2, 3].map((i) => (
+								<div key={i} className="h-32 rounded-lg bg-[#f3f3f8]" />
+							))}
 						</div>
-						<h2 className="shrink-0 text-center text-base font-bold text-[#0F172A] sm:text-lg dark:text-slate-100">
-							Next: Activate Wallet
-						</h2>
-						<p className="mx-auto mt-2 max-w-[300px] shrink-0 text-center text-[13px] leading-snug text-slate-500 sm:mt-3 sm:text-[14px] sm:leading-relaxed dark:text-slate-400">
-							To deploy your Smart Account on the network, you&apos;ll need to complete a quick setup inside the app:
-						</p>
+					</main>
+				</div>
+			</div>
 
-						<ul className="mt-3 flex shrink-0 flex-col gap-2 sm:mt-4 sm:gap-3">
-						<li className="flex items-center gap-3 rounded-2xl bg-slate-100/90 px-3 py-2.5 sm:px-4 sm:py-3.5 dark:bg-slate-900/60">
-							<span
-								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/18 dark:bg-[#1562f0]/25"
-							>
-								<Store
-									className="h-[18px] w-[18px] text-[#1562f0] dark:text-[#6ba3ff]"
-									strokeWidth={2.2}
-									aria-hidden
-								/>
-							</span>
-							<span className="text-left text-[14px] font-semibold text-slate-800 dark:text-slate-200">
-								Load cash at any Alliance Store
-							</span>
-						</li>
-						<li className="flex items-center gap-3 rounded-2xl bg-slate-100/90 px-3 py-2.5 sm:px-4 sm:py-3.5 dark:bg-slate-900/60">
-							<span
-								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/18 dark:bg-[#1562f0]/25"
-							>
-								<CreditCard
-									className="h-[18px] w-[18px] text-[#1562f0] dark:text-[#6ba3ff]"
-									strokeWidth={2.2}
-									aria-hidden
-								/>
-							</span>
-							<span className="text-left text-[14px] font-semibold text-slate-800 dark:text-slate-200">
-								Or sync a pre-funded physical card
-							</span>
-						</li>
-						</ul>
+			<div className="pointer-events-none fixed top-20 right-[-100px] -z-10 h-80 w-80 rounded-full bg-[#004bc3]/5 blur-[100px]" aria-hidden />
+			<div className="pointer-events-none fixed bottom-20 left-[-100px] -z-10 h-80 w-80 rounded-full bg-[#465c99]/5 blur-[100px]" aria-hidden />
+
+			{/* Activation overlay + glass sheet */}
+			<div className="absolute inset-0 z-10 flex items-end justify-center bg-[#1a1c1f]/5 backdrop-blur-[2px] md:items-center md:p-6">
+				<div
+					className="flex max-h-[min(92dvh,100%)] w-full max-w-lg flex-col overflow-hidden rounded-t-xl border border-white/20 bg-[#f9f9fe]/80 shadow-[0_4px_32px_rgba(0,0,0,0.08)] backdrop-blur-2xl md:rounded-lg"
+					style={{ WebkitBackdropFilter: 'blur(24px)' }}
+				>
+					<div className="flex w-full justify-center pt-4 md:hidden">
+						<div className="h-1.5 w-10 rounded-full bg-[#e2e2e7]" />
 					</div>
 
-					<div className="shrink-0 border-t border-slate-100/80 px-5 py-3 dark:border-slate-700/80 sm:px-6 sm:py-3.5">
-						<div
-							className="flex items-center justify-center gap-2 rounded-xl bg-[#1562f0]/12 py-2 dark:bg-[#1562f0]/18 sm:py-2.5"
-						>
-							<Shield
-								className="h-4 w-4 shrink-0 text-[#0e4cbb] dark:text-[#6ba3ff]"
-								strokeWidth={2.5}
-								aria-hidden
-							/>
-							<span className="text-[11px] font-bold tracking-widest text-[#0e4cbb] dark:text-[#6ba3ff]">
-								ZERO SETUP FEES
-							</span>
+					<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 pb-10 pt-8">
+						<div className="space-y-10">
+							<div className="space-y-2 text-center md:text-left">
+								<span className="inline-block rounded-full bg-[#004bc3]/10 px-3 py-1 text-[10px] font-extrabold tracking-[0.2em] text-[#004bc3]">
+									STEP 05 • FINAL
+								</span>
+								<h1 className="text-4xl font-extrabold uppercase leading-tight tracking-tight text-[#1a1c1f]">
+									One last step
+								</h1>
+								<p className="text-lg leading-relaxed text-[#424655]">Activate Your Digital Wallet</p>
+								<p className="text-center text-sm font-medium text-[#424655] md:text-left">
+									Signed in as <span className="font-bold text-[#004bc3]">{displayHandle}</span>
+								</p>
+							</div>
+
+							<div className="grid grid-cols-1 gap-6">
+								<button
+									type="button"
+									onClick={onCashierTopUp}
+									className="group relative flex items-center rounded-lg bg-white p-6 text-left transition-all duration-300 hover:bg-[#f9f9fe] hover:shadow-[0_8px_24px_rgba(0,0,0,0.04)] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/35"
+								>
+									<div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-[#f3f3f8] text-[#004bc3] transition-transform duration-300 group-hover:scale-110">
+										<QrCode className="h-9 w-9" strokeWidth={2} aria-hidden />
+									</div>
+									<div className="ml-6 min-w-0 flex-1">
+										<h3 className="text-lg font-bold text-[#1a1c1f]">
+											Show to Cashier to Top up
+										</h3>
+										<p className="mt-1 text-sm leading-snug text-[#424655]">
+											Generate a unique code for physical terminal verification.
+										</p>
+									</div>
+									<div className="ml-4 shrink-0 text-[#c3c6d8] transition-colors group-hover:text-[#004bc3]">
+										<ChevronRight className="h-7 w-7" strokeWidth={2} aria-hidden />
+									</div>
+								</button>
+
+								{deviceHasNfc ? (
+									<button
+										type="button"
+										onClick={onNfcSync}
+										className="group relative flex items-center rounded-lg bg-white p-6 text-left transition-all duration-300 hover:bg-[#f9f9fe] hover:shadow-[0_8px_24px_rgba(0,0,0,0.04)] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/35"
+									>
+										<div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-[#f3f3f8] text-[#004bc3] transition-transform duration-300 group-hover:scale-110">
+											<Nfc className="h-9 w-9" strokeWidth={2} aria-hidden />
+										</div>
+										<div className="ml-6 min-w-0 flex-1">
+											<h3 className="text-lg font-bold text-[#1a1c1f]">Tap NFC Key to Sync</h3>
+											<p className="mt-1 text-sm leading-snug text-[#424655]">
+												Hold your device near the Verra station to auto-link.
+											</p>
+										</div>
+										<div className="ml-4 shrink-0 text-[#c3c6d8] transition-colors group-hover:text-[#004bc3]">
+											<ChevronRight className="h-7 w-7" strokeWidth={2} aria-hidden />
+										</div>
+									</button>
+								) : null}
+							</div>
+
+							<div className="flex items-start gap-4 rounded-lg bg-[#f3f3f8] p-6">
+								<Info className="h-6 w-6 shrink-0 text-[#004bc3]" strokeWidth={2} aria-hidden />
+								<p className="text-[13px] leading-relaxed text-[#424655]">
+									Your wallet remains inactive for security until a hardware connection is established. This ensures only
+									you can access your encrypted assets.
+								</p>
+							</div>
+
+							<div className="flex justify-center pt-2">
+								<button
+									type="button"
+									onClick={onFinishLater}
+									className="rounded-full px-6 py-2 text-sm font-medium text-[#424655] transition-colors hover:bg-[#e8e8ed] hover:text-[#1a1c1f]"
+								>
+									Close and finish later
+								</button>
+							</div>
 						</div>
 					</div>
-				</div>
 
-				<div className="mt-3 shrink-0 sm:mt-4">
-					<button
-						type="button"
-						onClick={onGoToHome}
-						className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] text-[17px] font-bold text-white shadow-[0_12px_32px_rgba(21,98,240,0.35)] transition-all hover:opacity-[0.96] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/75 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F8FA] dark:from-[#3d8ef5] dark:to-[#1562f0] dark:shadow-[0_12px_36px_rgba(21,98,240,0.4)] dark:focus-visible:ring-offset-slate-950"
-					>
-						Enter CashTrees
-						<ArrowRight className="h-5 w-5" strokeWidth={2.5} aria-hidden />
-					</button>
+					<div className="h-1.5 w-full shrink-0 bg-gradient-to-r from-[#004bc3] via-[#1562f0] to-[#465c99]" />
 				</div>
 			</div>
 		</div>

@@ -8,6 +8,8 @@ import { ReactComponent as ShoppingIconGrey } from './assets/shopping-1-icon.gre
 import { ReactComponent as ShoppingBlueIcon } from './assets/shopping-1-icon.blue.svg'
 import { ReactComponent as WalletBlueIcon } from './assets/wallet-1-icon-blue.svg'
 import { ReactComponent as WalletIconGrey } from './assets/wallet-1-icon-grey.svg'
+import { ReactComponent as HomeIconGrey } from './assets/home-icon-grey.svg'
+import { ReactComponent as HomeIconBlue } from './assets/home-icon-blue.svg'
 import { ReactComponent as ChatBlueIcon } from './assets/chat-blue.svg'
 import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 
@@ -20,8 +22,8 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import type { Transition } from 'framer-motion'
 
 
-/** Footer 可点击 tab；首格 key 仍为 `/history`（与 badge 一致），但路由指向首页 `/` */
-type TabKey = '/history' | '/pay' | '/chat' | '/settings'
+/** Footer 可点击 tab；首格 `/history` 对应首页 `/`；第二格为 Wallet */
+type TabKey = '/history' | '/wallet' | '/pay' | '/chat' | '/settings'
 type ActiveKey = TabKey | 'home'
 type Phase = 'idle' | 'moving' | 'settling' | 'impact'
 
@@ -161,6 +163,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	
 	const [badgeMap, setBadgeMap] = useState<Record<TabKey, number>>({
 		'/history': 0,
+		'/wallet': 0,
 		'/pay': 0,        // ✅ 中间 B icon 不用（即使有值也不会显示）
 		'/chat': 0,
 		'/settings': hasNewVersion ? 1 : 0
@@ -220,6 +223,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		const p = (pathname || '/').toLowerCase()
 		if (p === '/' || p.startsWith('/?')) return '/history'
 		if (p.startsWith('/history')) return '/history'
+		if (p.startsWith('/wallet')) return '/wallet'
 		if (p.startsWith('/pay') || p.startsWith('/qr')) return '/pay'
 		if (p.startsWith('/chat')) return '/chat'
 		if (p.startsWith('/settings')) return '/settings'
@@ -249,6 +253,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 		if (k === '/history') {
 			navigate('/')
+		} else if (k === '/wallet') {
+			navigate('/wallet')
 		} else {
 			navigate(k)
 		}
@@ -259,10 +265,17 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		([
 			{
 			key: '/history' as const,
-				iconGrey: <WalletIconGrey className={ICON_CLASS} />,
-				iconBlue: <WalletBlueIcon className={ICON_CLASS} />,
+				iconGrey: <HomeIconGrey className={ICON_CLASS} />,
+				iconBlue: <HomeIconBlue className={ICON_CLASS} />,
 				title: '',//'Transactions',
 				badge: getBadge('/history'),
+			},
+			{
+				key: '/wallet' as const,
+				iconGrey: <WalletIconGrey className={ICON_CLASS} />,
+				iconBlue: <WalletBlueIcon className={ICON_CLASS} />,
+				title: '',
+				badge: getBadge('/wallet'),
 			},
 			{
 				key: '/settings' as const,
@@ -509,7 +522,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			}}
 		>
 			 {/* ✅ 玻璃层：tab bar 左 | 右侧独立的 search 圆形按钮（与 footer 同步显隐） */}
-			<div className="ml-4 max-w-[200px] pointer-events-auto origin-bottom-left" style={{ transform: 'scale(1.5)' }}>
+			<div className="ml-4 max-w-[248px] pointer-events-auto origin-bottom-left" style={{ transform: 'scale(1.5)' }}>
 				<div
 					className="
 						relative
@@ -541,7 +554,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						<div className="relative h-full">
 						<motion.div
 							className="
-							absolute inset-y-0 left-0 w-1/4
+							absolute inset-y-0 left-0 w-1/5
 							overflow-hidden
 							-top-2 -bottom-2
 							border border-white/20
@@ -566,7 +579,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 					{/* ✅ 前景内容层：不裁切，所以 badge 可以越界 */}
 					<div className="relative pt-1 pb-1.5 overflow-visible pointer-events-auto">
-						<div className="relative grid grid-cols-4 items-center gap-0 overflow-visible">
+						<div className="relative grid grid-cols-5 items-center gap-0 overflow-visible">
 						{tabs.map(t => (
 							<Item
 							key={t.key}

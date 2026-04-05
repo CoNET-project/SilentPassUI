@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode, useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
+import React, { createContext, useContext, ReactNode, useState, useEffect, useLayoutEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanButton"
 import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS } from "@/services/beamio"
@@ -14,8 +14,12 @@ import {
 } from '@/services/BeamioCard'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
-import { baseEndpoint } from '@/utils/constants'
+import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
+import usdc_abi from '@/services/ABI/usdc_abi.json'
+import { getUsdcBalanceFromApi } from '@/services/beamio'
+import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { fetchMergedRecentActivityFromIndexer, type TxView } from '@/pages/History/recentActivityIndexerMerge'
+import { loadMyBrandsFeedLocalCache, saveMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
 
 /** CoNET mainnet RPC（与 App CoreContract 一致） */
 const CONET_MAINNET_RPC_HTTP = 'https://mainnet-rpc.conet.network'
@@ -28,6 +32,43 @@ export type MyBrandCardFeedDetailsMap = Record<
 	{ meta: CardMetadataFromUri | null; assets: Awaited<ReturnType<typeof getMyAssets>> | null }
 >
 
+/** /home「Total Power」：仅 CAD 展示用（whole.frac）；由全局 wallet 喂料写入 */
+export type HomeTotalPowerCad = { whole: string; frac: string }
+
+/** EOA+AA USDC（各算一次）+ 所有 BeamioUserCard 的 points 按卡币种经 Oracle（currencyData）折 CAD */
+function computeHomeTotalPowerCad(
+	eoaUsdcStr: string,
+	aaUsdcStr: string,
+	cardDetails: MyBrandCardFeedDetailsMap,
+	d: currencyData
+): HomeTotalPowerCad {
+	const dr = d as Record<string, number>
+	const cadPerUsdc = (Number(dr.CAD) || 1.35) * (Number(dr.USDC) || 1)
+	const eoaU = Math.max(0, Number(eoaUsdcStr) || 0)
+	const aaU = Math.max(0, Number(aaUsdcStr) || 0)
+	const cadFromUsdc = (eoaU + aaU) * cadPerUsdc
+	let pointsCad = 0
+	for (const entry of Object.values(cardDetails)) {
+		const assets = entry?.assets
+		if (!assets) continue
+		const pts = Number(assets.points ?? 0)
+		if (!Number.isFinite(pts) || pts <= 0) continue
+		const pCur = (assets.cardCurrency ?? 'CAD').toUpperCase()
+		if (pCur === 'CAD') {
+			pointsCad += pts
+		} else if (pCur === 'USDC') {
+			pointsCad += pts * cadPerUsdc
+		} else {
+			const targetPerUsd = Number(dr.CAD) > 0 ? Number(dr.CAD) : 1.35
+			const srcRaw = dr[pCur]
+			const srcPerUsd = typeof srcRaw === 'number' && srcRaw > 0 ? srcRaw : 1
+			pointsCad += pts * (targetPerUsd / srcPerUsd)
+		}
+	}
+	const totalCad = cadFromUsdc + pointsCad
+	const [whole, frac = '00'] = totalCad.toFixed(2).split('.')
+	return { whole, frac }
+}
 
 type DaemonContext = {
 	historyPayData: searchResult|null
@@ -191,7 +232,10 @@ type DaemonContext = {
   setUsdcbalance: (val: number) => void
 	usdcToUSD: number
 	setUsdcToUSD: (val: number) => void
-
+	/** Base 上 Beamio AA 的 USDC 余额（`ethers.formatUnits(..., 6)` 字符串）；由全局 wallet feed（与 Recent Activity 同轨 6s）更新 */
+	aaAccountUsdcBalance: string
+	/** /home Total Power：EOA+AA USDC + 全部 BeamioUserCard points，Oracle（currencyData）折 CAD；与 My Brands / 6s 喂料同轨 */
+	homeTotalPowerCad: HomeTotalPowerCad
 
   paymentLink: any
   setPaymentLink: (val: any) => void
@@ -288,6 +332,8 @@ const defaultContextValue: DaemonContext = {
 	setMyAddress: (val: string) => {},
 	usdcToUSD: 0,
 	setUsdcToUSD: (val: number) => {},
+	aaAccountUsdcBalance: '0',
+	homeTotalPowerCad: { whole: '0', frac: '00' },
 	listenningProcess: false,
 	setListenningProcess: (va: boolean) => {},
 	setSendToMemo: (val: string) => {},
@@ -479,18 +525,43 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   const [myBrandCards, setMyBrandCards] = useState<UserCardInfo[]>([])
   const [myBrandCardDetails, setMyBrandCardDetails] = useState<MyBrandCardFeedDetailsMap>({})
+  const myBrandCardDetailsRef = useRef<MyBrandCardFeedDetailsMap>({})
+  useEffect(() => {
+    myBrandCardDetailsRef.current = myBrandCardDetails
+  }, [myBrandCardDetails])
+  const lastEoaUsdcForPowerRef = useRef('0')
+  const lastAaUsdcForPowerRef = useRef('0')
   const [myBrandsFeedLoading, setMyBrandsFeedLoading] = useState(false)
   const [myBrandsFeedLastConetBlock, setMyBrandsFeedLastConetBlock] = useState(0)
   const myBrandsFeedInFlight = useRef(false)
 
-  const runMyBrandsFeedTick = useCallback(async () => {
-    if (myBrandsFeedInFlight.current) return
+  /** EOA 切换或登出：从本地恢复 My Brands；无缓存则保持直至首轮拉取（不清空已有 state 除非无效 profile） */
+  useLayoutEffect(() => {
+    const raw = profiles?.[0]?.keyID?.trim() ?? ''
+    const eoaLower = raw.toLowerCase()
+    if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      setMyBrandCards([])
+      setMyBrandCardDetails({})
+      return
+    }
+    const hit = loadMyBrandsFeedLocalCache(eoaLower)
+    if (hit) {
+      setMyBrandCards(hit.cards)
+      setMyBrandCardDetails(hit.details)
+    } else {
+      setMyBrandCards([])
+      setMyBrandCardDetails({})
+    }
+  }, [profiles?.[0]?.keyID])
+
+  const runMyBrandsFeedTick = useCallback(async (): Promise<MyBrandCardFeedDetailsMap | null> => {
+    if (myBrandsFeedInFlight.current) return null
     const profile = profilesRef.current?.[0]
     if (!profile || (!profile.keyID && !profile.privateKeyArmor && !profile.aaAccount)) {
       setMyBrandCards([])
       setMyBrandCardDetails({})
       setMyBrandsFeedLoading(false)
-      return
+      return {}
     }
     myBrandsFeedInFlight.current = true
     setMyBrandsFeedLoading(true)
@@ -498,9 +569,13 @@ export function DaemonProvider({ children }: DaemonProps) {
       const { cards } = await getCardsOfOwnerWithDetailsForProfile(profile)
       setMyBrandCards(cards)
       setMyBrandsFeedLastConetBlock(conetBlockRef.current)
+      const eoaSave = profile.keyID?.trim().toLowerCase() ?? ''
       if (cards.length === 0) {
         setMyBrandCardDetails({})
-        return
+        if (eoaSave && ethers.isAddress(eoaSave)) {
+          saveMyBrandsFeedLocalCache(eoaSave, [], {})
+        }
+        return {}
       }
       const next: MyBrandCardFeedDetailsMap = {}
       await Promise.all(
@@ -518,9 +593,13 @@ export function DaemonProvider({ children }: DaemonProps) {
         })
       )
       setMyBrandCardDetails(next)
+      if (eoaSave && ethers.isAddress(eoaSave)) {
+        saveMyBrandsFeedLocalCache(eoaSave, cards, next)
+      }
+      return next
     } catch {
-      setMyBrandCards(profile.issuedCards ?? [])
-      setMyBrandCardDetails({})
+      /** 拉取失败：不覆盖内存/本地缓存，下一轮再试；Total Power 等用 ref 兜底 */
+      return null
     } finally {
       setMyBrandsFeedLoading(false)
       myBrandsFeedInFlight.current = false
@@ -587,6 +666,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [privacyMode, setPrivacyMode] = useState<boolean>(false);
   const [beamio, setBeamio] = useState<beamio|null>(null)
   const [usdcbalance, setUsdcbalance] = useState(0)
+	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState('0')
+	const [homeTotalPowerCad, setHomeTotalPowerCad] = useState<HomeTotalPowerCad>({ whole: '0', frac: '00' })
 	const [showFooter, setShowFooter] = useState(true)
 	const [chatSearchOpen, setChatSearchOpen] = useState(false)
 	const [secureCode, setSecureCode] = useState('')
@@ -608,20 +689,28 @@ export function DaemonProvider({ children }: DaemonProps) {
 		EUR: 0,
 		TWD: 0
 	})
+	const currencyDataRef = useRef(currencyData)
+	useEffect(() => {
+		currencyDataRef.current = currencyData
+	}, [currencyData])
 
   const noAaRecentActivityInFlight = useRef(false)
   const [recentActivityNoAaItems, setRecentActivityNoAaItems] = useState<TxView[]>([])
   const [recentActivityNoAaLoading, setRecentActivityNoAaLoading] = useState(false)
   const [recentActivityNoAaError, setRecentActivityNoAaError] = useState<string | null>(null)
 
-  /** AA 检测 + indexer Recent Activity：同时拉取 EOA 与独立 AA（若有），合并后按时间倒序；与 My Brands 同轨 6s setTimeout 链 */
-  const runNoAaWalletFeedTick = useCallback(async () => {
+  /** AA 检测 + indexer Recent Activity + EOA USDC + Total Power CAD；与 My Brands 同轨 6s setTimeout 链 */
+  const runNoAaWalletFeedTick = useCallback(async (cardDetails: MyBrandCardFeedDetailsMap | null) => {
     if (noAaRecentActivityInFlight.current) return
     const profile = profilesRef.current?.[0]
     if (!profile?.keyID?.trim()) {
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
+      setAaAccountUsdcBalance('0')
+      setHomeTotalPowerCad({ whole: '0', frac: '00' })
+      lastEoaUsdcForPowerRef.current = '0'
+      lastAaUsdcForPowerRef.current = '0'
       return
     }
     const eoa = profile.keyID.trim()
@@ -629,11 +718,17 @@ export function DaemonProvider({ children }: DaemonProps) {
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
+      setAaAccountUsdcBalance('0')
+      setHomeTotalPowerCad({ whole: '0', frac: '00' })
+      lastEoaUsdcForPowerRef.current = '0'
+      lastAaUsdcForPowerRef.current = '0'
       return
     }
 
     noAaRecentActivityInFlight.current = true
     setRecentActivityNoAaLoading(true)
+    let eoaUsdcStr = '0'
+    let aaUsdcStr = '0'
     try {
       let effectiveAa: string | undefined =
         profile.aaAccount?.trim() && ethers.isAddress(profile.aaAccount.trim())
@@ -701,18 +796,82 @@ export function DaemonProvider({ children }: DaemonProps) {
       const { items, error } = await fetchMergedRecentActivityFromIndexer(accounts)
       setRecentActivityNoAaItems(items)
       setRecentActivityNoAaError(error)
+
+      try {
+        const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
+        const eoaRaw = await usdcContract.balanceOf(eoaAddr)
+        eoaUsdcStr = ethers.formatUnits(eoaRaw, 6)
+        setUsdcbalance(parseFloat(eoaUsdcStr) || 0)
+      } catch (e) {
+        if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+        if (!isRpcDegraded()) {
+          const bal = await getUsdcBalanceFromApi(eoaAddr)
+          if (bal != null) {
+            eoaUsdcStr = bal
+            setUsdcbalance(parseFloat(bal) || 0)
+          }
+        }
+      }
+
+      if (!effectiveAa || effectiveAa.toLowerCase() === eoaAddr.toLowerCase()) {
+        aaUsdcStr = '0'
+        setAaAccountUsdcBalance('0')
+      } else {
+        try {
+          const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
+          const balanceRaw = await usdcContract.balanceOf(effectiveAa)
+          aaUsdcStr = ethers.formatUnits(balanceRaw, 6)
+          setAaAccountUsdcBalance(aaUsdcStr)
+        } catch (e) {
+          if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+          if (!isRpcDegraded()) {
+            const bal = await getUsdcBalanceFromApi(effectiveAa)
+            if (bal != null) {
+              aaUsdcStr = bal
+              setAaAccountUsdcBalance(bal)
+            }
+          }
+        }
+      }
+
+      lastEoaUsdcForPowerRef.current = eoaUsdcStr
+      lastAaUsdcForPowerRef.current = aaUsdcStr
+      const detailsForPower = cardDetails ?? myBrandCardDetailsRef.current
+      setHomeTotalPowerCad(
+        computeHomeTotalPowerCad(eoaUsdcStr, aaUsdcStr, detailsForPower, currencyDataRef.current)
+      )
     } finally {
       setRecentActivityNoAaLoading(false)
       noAaRecentActivityInFlight.current = false
     }
   }, [setProfiles])
 
+  /** Oracle（currencyData）刷新后立即用上次链上余额重算 Total Power CAD，不必等下一轮 6s */
+  useEffect(() => {
+    const profile = profilesRef.current?.[0]
+    if (!profile?.keyID?.trim()) {
+      setHomeTotalPowerCad({ whole: '0', frac: '00' })
+      return
+    }
+    setHomeTotalPowerCad(
+      computeHomeTotalPowerCad(
+        lastEoaUsdcForPowerRef.current,
+        lastAaUsdcForPowerRef.current,
+        myBrandCardDetailsRef.current,
+        currencyData
+      )
+    )
+  }, [currencyData])
+
   const runGlobalWalletFeedTick = useCallback(async () => {
-    await runMyBrandsFeedTick()
-    await runNoAaWalletFeedTick()
+    const cardDetails = await runMyBrandsFeedTick()
+    await runNoAaWalletFeedTick(cardDetails)
   }, [runMyBrandsFeedTick, runNoAaWalletFeedTick])
 
-  const refreshRecentActivityNoAa = useCallback(() => runNoAaWalletFeedTick(), [runNoAaWalletFeedTick])
+  const refreshRecentActivityNoAa = useCallback(async () => {
+    const cardDetails = await runMyBrandsFeedTick()
+    await runNoAaWalletFeedTick(cardDetails)
+  }, [runMyBrandsFeedTick, runNoAaWalletFeedTick])
 
   /** My Brands + Recent Activity（EOA+AA 合并）：setTimeout 串行链，每轮 await 结束后再排 6s */
   useEffect(() => {
@@ -824,7 +983,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				setServerIpAddress, serverPort, setServerPort, serverPac, setServerPac, _vpnTimeUsedInMin, privacyMode, setPrivacyMode, ignoreUrl, setIgnoreUrl, 				paymentLinkCode, setPaymentLinkCode, redeemFromUrl, setRedeemFromUrl, redeemResult, setRedeemResult, voucherPayFromScan, setVoucherPayFromScan,
 				isPassportInfoPopupOpen, setIsPassportInfoPopupOpen, activePassportUpdated, setActivePassportUpdated,beamio, setBeamio,payTag, setPayTag, myAddress, setMyAddress,
 				activePassport, setActivePassport, isSelectPassportPopupOpen, setIsSelectPassportPopupOpen, showReferralsInput, setShowReferralsInput, usdcToUSD, setUsdcToUSD,
-				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance, currencyData, setCurrencyData, refreshOracle,
+				setRandomSolanaRPC, randomSolanaRPC, isIOS, setIsIOS, isLocalProxy, setIsLocalProxy, globalProxy, setGlobalProxy,usdcbalance, setUsdcbalance, aaAccountUsdcBalance, homeTotalPowerCad, currencyData, setCurrencyData, refreshOracle,
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo, charts, setCharts,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "secondary-container": "#a7bcff",
+              "surface-tint": "#0054d8",
+              "tertiary-container": "#c04300",
+              "outline": "#737687",
+              "inverse-on-surface": "#f0f0f5",
+              "outline-variant": "#c3c6d8",
+              "on-error": "#ffffff",
+              "surface-container-high": "#e8e8ed",
+              "on-surface-variant": "#424655",
+              "secondary-fixed": "#dbe1ff",
+              "primary-container": "#1562f0",
+              "on-error-container": "#93000a",
+              "inverse-surface": "#2e3034",
+              "on-secondary-fixed": "#00184a",
+              "on-secondary-container": "#344a86",
+              "error": "#ba1a1a",
+              "surface-variant": "#e2e2e7",
+              "inverse-primary": "#b3c5ff",
+              "on-primary-fixed": "#00184a",
+              "on-primary-container": "#edefff",
+              "on-secondary": "#ffffff",
+              "surface-dim": "#d9dade",
+              "primary": "#004bc3",
+              "surface-container": "#ededf2",
+              "surface": "#f9f9fe",
+              "primary-fixed-dim": "#b3c5ff",
+              "tertiary-fixed-dim": "#ffb59a",
+              "surface-container-highest": "#e2e2e7",
+              "error-container": "#ffdad6",
+              "on-primary-fixed-variant": "#003fa5",
+              "on-tertiary-fixed-variant": "#802a00",
+              "tertiary": "#973300",
+              "on-tertiary-fixed": "#370d00",
+              "on-tertiary": "#ffffff",
+              "surface-container-lowest": "#ffffff",
+              "secondary-fixed-dim": "#b3c5ff",
+              "on-background": "#1a1c1f",
+              "tertiary-fixed": "#ffdbce",
+              "primary-fixed": "#dbe1ff",
+              "on-tertiary-container": "#ffece6",
+              "on-secondary-fixed-variant": "#2e447f",
+              "surface-container-low": "#f3f3f8",
+              "surface-bright": "#f9f9fe",
+              "on-surface": "#1a1c1f",
+              "background": "#f9f9fe",
+              "secondary": "#465c99",
+              "on-primary": "#ffffff"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-blur {
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .nfc-glow {
+            box-shadow: 0 0 60px rgba(21, 98, 240, 0.3);
+        }
+        .inner-glow {
+            background: radial-gradient(circle, rgba(255, 181, 154, 0.8) 0%, rgba(179, 255, 171, 0.2) 70%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body overflow-hidden">
+<div class="relative min-h-screen w-full flex flex-col items-center justify-between overflow-hidden">
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-primary/40 mix-blend-multiply z-10"></div>
+<div class="absolute inset-0 bg-gradient-to-b from-primary/60 via-transparent to-primary/80 z-20"></div>
+<img alt="vancouver street at sunset" class="w-full h-full object-cover blur-sm scale-105" data-alt="cinematic blurred view of vancouver main street at dusk with warm shop lights glowing and soft evening traffic bokeh" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDC8xW6jgMnoeuivrPanp5IpI87ViUfPD4Z0DwGSK2iG9hIKvo-ryV2_LmF0oJgeo2T34f7-Yc0LlFrcfk-gtct-JLs5vIfT3wpM2XeahrYD5Jj1F_UjjJ3EEIAWqtHZnis1oxdC5E-lXCLLGIXz8OXpPd4KXlKUoJ7KJiKTEOI0xo2u_sgCRfU7MZ3-1hIZnouqeGZ4xv3ndLmcUWaIfz-0W_A2uIFqx7o0TDiwy7uLVX1AleOn8ivh38ka20K9SrFemyOx2V0j6qN"/>
+</div>
+<nav class="fixed top-0 w-full z-50 flex items-center justify-center px-6 h-16 w-full glass-blur bg-white/10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-white text-2xl" style="font-variation-settings: 'FILL' 1;">blur_on</span>
+<span class="text-xl font-bold tracking-tighter text-white">Verra</span>
+</div>
+</nav>
+<main class="relative z-30 flex-1 flex flex-col items-center justify-center px-6 text-center mt-16 max-w-4xl mx-auto">
+<div class="relative mb-12">
+<div class="w-64 h-64 rounded-full border-[3px] border-primary-container/40 flex items-center justify-center nfc-glow relative">
+<div class="absolute inset-0 rounded-full border-[1.5px] border-white/20 animate-ping opacity-20" style="animation-duration: 3s;"></div>
+<div class="w-48 h-48 rounded-full inner-glow flex items-center justify-center relative overflow-hidden">
+<div class="w-full h-full absolute inset-0 opacity-40 bg-gradient-to-br from-[#ffb59a] to-[#b3ffab]"></div>
+<span class="material-symbols-outlined text-6xl text-white drop-shadow-lg" style="font-variation-settings: 'FILL' 1;">nfc</span>
+</div>
+<div class="absolute -top-4 -right-2 bg-white/20 backdrop-blur-md p-3 rounded-full">
+<span class="material-symbols-outlined text-white text-xl" data-icon="coffee_bean">coffee</span>
+</div>
+<div class="absolute top-1/2 -left-10 bg-white/20 backdrop-blur-md p-3 rounded-full">
+<span class="material-symbols-outlined text-white text-xl" data-icon="pedal_bike">pedal_bike</span>
+</div>
+<div class="absolute -bottom-2 right-4 bg-white/20 backdrop-blur-md p-3 rounded-full">
+<span class="material-symbols-outlined text-white text-xl" data-icon="restaurant">restaurant</span>
+</div>
+<div class="absolute -bottom-8 left-6 bg-white/20 backdrop-blur-md p-3 rounded-full">
+<span class="material-symbols-outlined text-white text-xl" data-icon="face">face</span>
+</div>
+</div>
+</div>
+<div class="space-y-6 mb-12">
+<h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-[#fef9c3] leading-tight max-w-2xl mx-auto">Your community's heartbeat, found in your phone.</h1>
+<p class="text-lg md:text-xl text-white/90 font-light tracking-wide max-w-xl mx-auto">Discover and connect with independent businesses you love. Every tap tells a local story.</p>
+</div>
+<div class="w-full flex flex-col items-center gap-6">
+<button class="group relative px-12 py-5 bg-primary-container text-white rounded-full font-bold text-lg tracking-wide shadow-xl transition-all duration-300 active:scale-95 hover:bg-primary-container/90 overflow-hidden">
+<span class="relative z-10 flex items-center gap-2">GET STARTED
+                        <span class="material-symbols-outlined">arrow_forward</span></span>
+<div class="absolute inset-0 bg-gradient-to-r from-primary to-primary-container opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</button>
+<button class="text-white/70 hover:text-white transition-colors text-sm font-medium tracking-wide">
+    Already have a Verra ID? <span class="underline underline-offset-4">Restore Wallet!</span>
+</button></div>
+</main>
+<footer class="relative z-30 pb-12 pt-6 w-full text-center">
+<p class="text-[10px] uppercase tracking-[0.3em] text-white/50 font-bold">
+                POWERED BY BEAMIO
+            </p>
+</footer>
+</div>
+</body></html>

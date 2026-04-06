@@ -1,386 +1,289 @@
 <!DOCTYPE html>
 
-<html lang="en"><head>
+<html class="light" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Membership Card Setup | Verra Business</title>
+<title>Verra Business OS - Settings Hub</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-        tailwind.config = {
-          darkMode: "class",
-          theme: {
-            extend: {
-              colors: {
-                "outline-variant": "#abadaf",
-                "on-primary-container": "#001e59",
-                "on-secondary": "#eff2ff",
-                "surface-container-highest": "#d9dde0",
-                "secondary-fixed-dim": "#cad5ed",
-                "surface-container": "#e5e9eb",
-                "primary-container": "#7a9dff",
-                "primary-fixed": "#7a9dff",
-                "surface-container-lowest": "#ffffff",
-                "outline": "#747779",
-                "secondary-fixed": "#d8e3fb",
-                "on-primary-fixed-variant": "#00276d",
-                "inverse-primary": "#5f8bff",
-                "tertiary-fixed": "#f797ef",
-                "background": "#f5f7f9",
-                "on-error": "#ffefee",
-                "on-error-container": "#570008",
-                "tertiary-fixed-dim": "#e88ae1",
-                "primary-dim": "#0047b8",
-                "on-tertiary-fixed": "#400041",
-                "error": "#b31b25",
-                "tertiary-dim": "#7f2d7e",
-                "on-primary-fixed": "#000000",
-                "surface": "#f5f7f9",
-                "on-surface": "#2c2f31",
-                "on-background": "#2c2f31",
-                "error-dim": "#9f0519",
-                "on-tertiary": "#ffeef8",
-                "on-surface-variant": "#595c5e",
-                "on-secondary-fixed-variant": "#515c70",
-                "surface-variant": "#d9dde0",
-                "secondary": "#515c70",
-                "on-secondary-fixed": "#354053",
-                "surface-dim": "#d0d5d8",
-                "surface-container-high": "#dfe3e6",
-                "on-tertiary-container": "#610e62",
-                "secondary-dim": "#455064",
-                "tertiary": "#8d3a8b",
-                "tertiary-container": "#f797ef",
-                "primary-fixed-dim": "#648eff",
-                "surface-tint": "#0051d1",
-                "secondary-container": "#d8e3fb",
-                "surface-container-low": "#eef1f3",
-                "on-secondary-container": "#475266",
-                "on-primary": "#f1f2ff",
-                "inverse-on-surface": "#9a9d9f",
-                "surface-bright": "#f5f7f9",
-                "primary": "#0051d1",
-                "error-container": "#fb5151",
-                "on-tertiary-fixed-variant": "#6c1a6c",
-                "inverse-surface": "#0b0f10"
-              },
-              fontFamily: {
-                "headline": ["Manrope"],
-                "body": ["Inter"],
-                "label": ["Inter"]
-              },
-              borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-fixed-variant": "#6c1a6c",
+                    "primary-container": "#7a9dff",
+                    "tertiary-dim": "#7f2d7e",
+                    "on-primary-fixed": "#000000",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary-fixed-variant": "#00276d",
+                    "secondary-fixed": "#d8e3fb",
+                    "on-primary-container": "#001e59",
+                    "on-surface": "#2c2f31",
+                    "on-tertiary": "#ffeef8",
+                    "error-container": "#fb5151",
+                    "inverse-primary": "#5f8bff",
+                    "tertiary": "#8d3a8b",
+                    "on-error-container": "#570008",
+                    "on-secondary-fixed-variant": "#515c70",
+                    "tertiary-container": "#f797ef",
+                    "on-primary": "#f1f2ff",
+                    "surface-container-high": "#dfe3e6",
+                    "primary-fixed": "#7a9dff",
+                    "outline": "#747779",
+                    "surface-container": "#e5e9eb",
+                    "on-surface-variant": "#595c5e",
+                    "on-secondary-fixed": "#354053",
+                    "tertiary-fixed-dim": "#e88ae1",
+                    "surface-variant": "#d9dde0",
+                    "surface-bright": "#f5f7f9",
+                    "inverse-surface": "#0b0f10",
+                    "error-dim": "#9f0519",
+                    "on-tertiary-fixed": "#400041",
+                    "surface-container-low": "#eef1f3",
+                    "surface-container-highest": "#d9dde0",
+                    "surface-tint": "#0051d1",
+                    "on-tertiary-container": "#610e62",
+                    "primary-fixed-dim": "#648eff",
+                    "tertiary-fixed": "#f797ef",
+                    "secondary-container": "#d8e3fb",
+                    "primary": "#0051d1",
+                    "primary-dim": "#0047b8",
+                    "outline-variant": "#abadaf",
+                    "on-error": "#ffefee",
+                    "on-secondary": "#eff2ff",
+                    "background": "#f5f7f9",
+                    "surface": "#f5f7f9",
+                    "on-background": "#2c2f31",
+                    "secondary-fixed-dim": "#cad5ed",
+                    "secondary": "#515c70",
+                    "inverse-on-surface": "#9a9d9f",
+                    "error": "#b31b25",
+                    "on-secondary-container": "#475266",
+                    "surface-dim": "#d0d5d8",
+                    "secondary-dim": "#455064"
             },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
           },
-        }
+        },
+      }
     </script>
 <style>
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-            vertical-align: middle;
         }
-        .glass-nav {
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+        .tonal-transition {
+            background-image: linear-gradient(to bottom, rgba(245, 247, 249, 1), rgba(245, 247, 249, 0.7));
         }
-        .editorial-shadow {
-            box-shadow: 0 20px 40px rgba(21, 98, 240, 0.06);
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f7f9;
         }
-        .kinetic-gradient {
-            background: linear-gradient(135deg, #0051d1 0%, #7a9dff 100%);
+        h1, h2, h3 {
+            font-family: 'Manrope', sans-serif;
+        }
+        .editorial-label {
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            font-weight: 700;
+        }
+        /* Suppression of side nav on mobile as per requirement of "mobile" context but allowing drawer for structure */
+        @media (max-width: 768px) {
+            .drawer-hide { display: none; }
         }
     </style>
 <style>
-        body {
-            min-height: max(884px, 100dvh);
-        }
-    </style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
 </head>
-<body class="bg-surface font-body text-on-surface antialiased">
-<!-- Sidebar Navigation -->
-<aside class="h-screen w-72 fixed left-0 top-0 border-r-0 bg-slate-50 dark:bg-slate-950 flex flex-col py-8 gap-2 z-50 hidden lg:flex">
-<div class="px-8 mb-8 flex items-center gap-3">
-<div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white">
-<span class="material-symbols-outlined" data-icon="storefront">storefront</span>
-</div>
-<div>
-<h2 class="font-manrope text-sm font-black text-blue-600 tracking-tight">Verra Business</h2>
-<p class="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Merchant OS</p>
-</div>
-</div>
-<nav class="flex-1">
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Dashboard</span>
-</a>
-<a class="bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm rounded-full mx-4 my-1 flex items-center gap-3 px-4 py-3" href="#">
-<span class="material-symbols-outlined" data-icon="loyalty" style="font-variation-settings: 'FILL' 1;">loyalty</span>
-<span class="font-manrope text-sm font-bold tracking-wide uppercase">Programs</span>
-</a>
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Transactions</span>
-</a>
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="group">group</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Members</span>
-</a>
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Wallet</span>
-</a>
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="storefront">storefront</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Market</span>
-</a>
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Settings</span>
-</a>
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="point_of_sale">point_of_sale</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Terminals</span>
-</a>
-<a class="text-slate-500 dark:text-slate-400 mx-4 my-1 flex items-center gap-3 px-4 py-3 hover:text-blue-500 transition-transform translate-x-1" href="#">
-<span class="material-symbols-outlined" data-icon="insights">insights</span>
-<span class="font-manrope text-sm font-semibold tracking-wide uppercase">Insights</span>
-</a>
-</nav>
-<div class="px-8 mt-auto pt-8 border-t border-slate-200/50">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden">
-<img alt="Merchant Logo" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlpvx-se5ANQOo19JTitVMGtS4a4L8EGQKuxOqOgR4jQJxDv3Yrk5odKsE8r7FuR_GiKJLE_-YBW0sBAIZLPGJoj8YC6Q_eRJHMVyPEOflEAR-jp14Sjz0o5roJ6d6jIJcC8f-5vrQLhKKjcQamHJ_iy5h5jI6OrTLseY8oJxa2p6bkj7FrjyJPaBQGwgD58MSzDDwjwGnmdj2qR1SRQivexYf8lfaawxcl34DfqFPR7-JE4GTZ2w4uB5PNrTyrVd6P85fR8Qp3rs"/>
-</div>
-<div class="flex flex-col">
-<span class="text-xs font-bold text-on-surface">Verra Business</span>
-<span class="text-[10px] text-primary font-bold">Premium Tier</span>
-</div>
-</div>
-</div>
-</aside>
-<!-- Main Content Area -->
-<main class="lg:ml-72 min-h-screen relative pb-24">
+<body class="text-on-surface antialiased overflow-x-hidden">
 <!-- TopAppBar -->
-<header class="fixed top-0 w-full z-40 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)] flex items-center justify-between px-6 h-16 lg:px-12 lg:h-20">
+<header class="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md z-50 flex items-center justify-between px-6 border-b border-slate-100 md:left-72 md:px-10">
 <div class="flex items-center gap-4">
-<button class="lg:hidden p-2 hover:bg-blue-50/50 transition-colors rounded-full">
-<span class="material-symbols-outlined text-blue-600" data-icon="menu">menu</span>
-</button>
-<h1 class="font-manrope text-xl font-bold tracking-tight text-on-surface">Membership Card Setup</h1>
+<button class="md:hidden material-symbols-outlined text-slate-600">menu</button>
+<div class="hidden md:block"></div>
 </div>
+<h1 class="text-lg font-bold text-slate-900 absolute left-1/2 -translate-x-1/2">Settings</h1>
 <div class="flex items-center gap-4">
-<div class="hidden md:flex gap-6 mr-6">
-<span class="text-slate-500 font-semibold text-sm">Dashboard</span>
-<span class="text-blue-600 font-bold text-sm">Programs</span>
-<span class="text-slate-500 font-semibold text-sm">Members</span>
-</div>
-<div class="w-10 h-10 rounded-full border-2 border-primary/20 p-0.5">
-<img alt="Profile" class="w-full h-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGauwjYx-8B_s5rarEHdBn5v3TJ3THkYjK0wXyRIXyfiSSTLWyam10DBkaIt29hLwIalBuebc1KXsOvMT0_YvDPz4H3D3EebVJGkwrDlrFJj7DWEen0HGmhWjKt7BoIIWz-XySI-gwKJYTtwXg9KH_AkAJHX1fRyzwvKCXLdvwZJ5AFwG_d2p7OfsanjXu_y8u45x82JxosKyLuYsORqRa77nYHmzEYnRuegWow4aGXJKwFRgdsAQJz3wHCIakcrBwSE_0j-gh1dM"/>
+<button class="material-symbols-outlined text-slate-500 hover:bg-slate-100 p-2 rounded-full transition-colors">notifications</button>
+<div class="w-9 h-9 rounded-full overflow-hidden border border-slate-200">
+<img alt="User profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBuPJW_FAd81hpTL8Up53ZyBWxjL_mdOPsZHozEnefnc2viKuypHxkQtYiChzwtW1fv3KF1KmMJ_A4eKXw5OaVfSrQp4hKKVyIPd-u5dVwEmQxEp4gYo0CiKJoQVjXfxkz4M2bMznILTMrad-Zeuj-KZWwGDcpTqMefnrG6wL2HUzSet3rK185_EBxqcrlozY5S6exsGfWtNef-urgDDUttW69lstVAPmu0ikvrK9LCz_OQEWyTHY7Kb_X-ng81xLQ2Gd5NqNv5MjA"/>
 </div>
 </div>
 </header>
-<!-- Content Canvas -->
-<div class="pt-24 px-6 lg:px-16 max-w-5xl mx-auto">
-<!-- Hero Header Section -->
-<section class="mb-12 mt-8">
-<div class="inline-flex items-center gap-2 px-4 py-1.5 bg-tertiary-container rounded-full mb-6">
-<span class="material-symbols-outlined text-on-tertiary-container text-sm" data-icon="redeem" style="font-variation-settings: 'FILL' 1;">redeem</span>
-<span class="text-[11px] font-bold text-on-tertiary-container uppercase tracking-wider">20 bonus B-Units available</span>
-</div>
-<h2 class="font-headline text-4xl lg:text-5xl font-extrabold text-on-surface tracking-tight leading-tight mb-4">
-                    Set up your first <br class="hidden md:block"/> membership card program
-                </h2>
-<p class="font-body text-on-surface-variant text-lg lg:max-w-3xl leading-relaxed">
-                    Choose your merchant starter kit. It includes everything you need to launch your digital network and physical tap-to-pay experience.
-                </p>
+<main class="min-h-screen pt-24 pb-12 px-6 max-w-2xl mx-auto">
+<!-- Hero Section / Context -->
+<section class="mb-10 mt-4">
+<p class="editorial-label text-primary mb-2">Account Hub</p>
+<h2 class="text-3xl font-extrabold text-slate-900 leading-tight">Configuration</h2>
+<p class="text-on-surface-variant mt-2 text-sm">Welcome to Verra Business OS. Complete your security protocol to unlock full operational features.</p>
 </section>
-<!-- Pricing Options Bento Grid -->
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
-<!-- Option 1: Standard -->
-<div class="bg-surface-container-lowest p-8 rounded-lg editorial-shadow border border-transparent hover:border-primary/10 transition-all group flex flex-col justify-between">
-<div>
-<div class="flex justify-between items-start mb-6">
-<div>
-<h3 class="font-headline text-2xl font-bold mb-1">Standard Program</h3>
-<p class="text-on-surface-variant text-sm font-medium">Best for quick launch with standard generic NFC cards.</p>
+<!-- Sub-menu Items (Bento-lite Cards) -->
+<div class="flex flex-col gap-5">
+<!-- Business Profile -->
+<button class="group w-full text-left bg-surface-container-lowest rounded-lg p-6 flex items-center gap-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] active:scale-95 transition-transform">
+<div class="w-12 h-12 rounded-2xl bg-surface-container-low flex items-center justify-center text-primary transition-colors group-hover:bg-primary group-hover:text-white">
+<span class="material-symbols-outlined">storefront</span>
 </div>
-<div class="text-right">
-<span class="font-headline text-2xl font-extrabold text-on-surface">C$69</span>
-<p class="text-[10px] font-bold text-outline uppercase tracking-wider">ONE-TIME</p>
+<div class="flex-1">
+<div class="flex items-center justify-between">
+<h3 class="font-bold text-slate-900">Business Profile</h3>
+<span class="text-[10px] font-bold bg-surface-container px-2 py-0.5 rounded-full text-slate-500 uppercase tracking-wider">Ready</span>
 </div>
+<p class="text-xs text-on-surface-variant mt-1">Manage identity, address, and public info.</p>
 </div>
-<div class="mb-8 p-4 bg-surface-container-low rounded-xl">
-<div class="flex items-center gap-3 mb-2">
-<span class="material-symbols-outlined text-primary" data-icon="toll">toll</span>
-<span class="text-on-surface font-bold text-sm">2,000 B-Units Included</span>
+<span class="material-symbols-outlined text-slate-300">chevron_right</span>
+</button>
+<!-- Security & Backup (Critical State) -->
+<button class="group w-full text-left bg-surface-container-lowest rounded-lg p-6 flex items-center gap-5 shadow-[0_10px_30px_rgba(179,27,37,0.05)] active:scale-95 transition-transform relative overflow-hidden">
+<div class="absolute top-0 left-0 w-1 h-full bg-error"></div>
+<div class="w-12 h-12 rounded-2xl bg-error/10 flex items-center justify-center text-error group-hover:bg-error group-hover:text-white transition-colors">
+<span class="material-symbols-outlined" data-weight="fill">verified_user</span>
 </div>
-<p class="text-[11px] text-on-surface-variant ml-9">Covers ~1,000 customer payments</p>
+<div class="flex-1">
+<div class="flex items-center justify-between">
+<h3 class="font-bold text-slate-900">Security &amp; Backup</h3>
+<span class="text-[10px] font-bold bg-error text-white px-2 py-0.5 rounded-full uppercase tracking-wider">Critical</span>
 </div>
-<ul class="space-y-4 mb-10">
-<li class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="check_circle">check_circle</span>
-<span class="text-sm font-medium text-on-surface-variant">System Activation</span>
-</li>
-<li class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="check_circle">check_circle</span>
-<span class="text-sm font-medium text-on-surface-variant">10x VERRA Generic NFC Cards</span>
-</li>
-<li class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="check_circle">check_circle</span>
-<span class="text-sm font-medium text-on-surface-variant">Order more generic cards anytime (C$1.50/ea)</span>
-</li>
-</ul>
+<p class="text-xs text-on-surface-variant mt-1">Manage recovery keys and credentials.</p>
 </div>
-<button class="w-full py-4 bg-surface-container-highest text-on-surface font-bold rounded-full hover:bg-surface-variant transition-colors">
-                        Activate Standard Kit
-                    </button>
+<span class="material-symbols-outlined text-error">priority_high</span>
+</button>
+<!-- Team Access -->
+<button class="group w-full text-left bg-surface-container-lowest rounded-lg p-6 flex items-center gap-5 shadow-[0_4px_20px_rgba(0,0,0,0.02)] active:scale-95 transition-transform">
+<div class="w-12 h-12 rounded-2xl bg-surface-container-low flex items-center justify-center text-slate-600 transition-colors group-hover:bg-primary group-hover:text-white">
+<span class="material-symbols-outlined">group</span>
 </div>
-<!-- Option 2: Custom (Recommended) -->
-<div class="relative kinetic-gradient p-1 rounded-lg editorial-shadow overflow-hidden">
-<div class="bg-surface-container-lowest p-8 rounded-[1.85rem] h-full flex flex-col justify-between relative overflow-hidden">
-<div class="absolute -top-10 -right-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl"></div>
-<div class="relative z-10">
-<div class="flex justify-between items-start mb-6">
-<div>
-<div class="inline-block px-3 py-1 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-full mb-2">RECOMMENDED</div>
-<h3 class="font-headline text-2xl font-bold mb-1">Custom Program</h3>
-<p class="text-on-surface-variant text-sm font-medium">Best for growing brands needing a fully custom physical and digital presence.</p>
+<div class="flex-1">
+<div class="flex items-center justify-between">
+<h3 class="font-bold text-slate-900">Team Access</h3>
+<span class="text-[10px] font-bold bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wider">0 Members</span>
 </div>
-<div class="text-right">
-<span class="font-headline text-2xl font-extrabold text-primary">C$139</span>
-<p class="text-[10px] font-bold text-outline uppercase tracking-wider">ONE-TIME</p>
+<p class="text-xs text-on-surface-variant mt-1">Manage staff roles and permissions.</p>
 </div>
+<span class="material-symbols-outlined text-slate-300">chevron_right</span>
+</button>
+<!-- Billing & Quota -->
+<button class="group w-full text-left bg-primary relative rounded-lg p-6 flex items-center gap-5 shadow-[0_20px_40px_rgba(21,98,240,0.15)] active:scale-95 transition-transform overflow-hidden">
+<!-- Decorative Mesh -->
+<div class="absolute inset-0 opacity-20 pointer-events-none bg-gradient-to-br from-primary-container to-white mix-blend-overlay"></div>
+<div class="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
+<span class="material-symbols-outlined" data-weight="fill">account_balance_wallet</span>
 </div>
-<div class="mb-8 p-4 bg-primary/5 rounded-xl border border-primary/10">
-<div class="flex items-center gap-3 mb-2">
-<span class="material-symbols-outlined text-primary" data-icon="toll" style="font-variation-settings: 'FILL' 1;">toll</span>
-<span class="text-on-surface font-bold text-sm">5,000 B-Units Included</span>
-</div>
-<p class="text-[11px] text-on-surface-variant ml-9">Covers ~2,500 customer payments</p>
-</div>
-<ul class="space-y-4 mb-10">
-<li class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
-<span class="text-sm font-medium text-on-surface-variant">System Activation</span>
-</li>
-<li class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
-<span class="text-sm font-medium text-on-surface-variant">20x VERRA Generic NFC Cards</span>
-</li>
-<li class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
-<span class="text-sm font-medium text-on-surface-variant">Custom Design Service Unlocked</span>
-</li>
-<li class="flex items-start gap-3">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="verified">verified</span>
-<span class="text-sm font-medium text-on-surface-variant">Order custom cards from factory (from C$2.50/ea)</span>
-</li>
-</ul>
-</div>
-<button class="relative z-10 w-full py-4 kinetic-gradient text-white font-bold rounded-full shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform">
-                            Activate Custom Kit
-                        </button>
+<div class="flex-1 z-10">
+<div class="flex items-center justify-between">
+<h3 class="font-bold text-white">Billing &amp; Quota</h3>
+<div class="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
+<span class="material-symbols-outlined text-[10px] text-white">token</span>
+<span class="text-[10px] font-bold text-white uppercase tracking-wider">20 Bonus Units</span>
 </div>
 </div>
+<p class="text-xs text-white/80 mt-1">Manage B-Units and payments.</p>
 </div>
-<!-- Card Visualization Section -->
-<section class="mb-20 grid grid-cols-1 md:grid-cols-12 gap-12 items-center bg-surface-container-low p-8 lg:p-12 rounded-xl">
-<div class="md:col-span-5 relative h-64">
-<div class="absolute inset-0 kinetic-gradient rounded-lg transform rotate-[-6deg] translate-x-2 shadow-xl opacity-20"></div>
-<div class="absolute inset-0 bg-white/80 backdrop-blur-md rounded-lg p-8 border border-white/50 shadow-2xl flex flex-col justify-between overflow-hidden">
-<div class="flex justify-between items-start">
-<span class="material-symbols-outlined text-4xl text-primary" data-icon="contactless">contactless</span>
-<div class="text-right">
-<p class="text-[10px] font-black uppercase tracking-widest text-primary/60">Verra Business</p>
-<p class="text-sm font-bold text-on-surface">Member Platinum</p>
+<span class="material-symbols-outlined text-white/50 z-10">chevron_right</span>
+</button>
 </div>
+<!-- System Settings Section -->
+<section class="mt-12">
+<h4 class="editorial-label text-slate-400 mb-4 px-1">System Architecture</h4>
+<div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-2 gap-4">
+<div class="p-4 bg-surface-container-lowest rounded-2xl flex flex-col gap-2">
+<span class="material-symbols-outlined text-primary">analytics</span>
+<span class="text-xs font-bold text-slate-900">Operations</span>
+<span class="text-[10px] text-on-surface-variant">Active Monitoring</span>
 </div>
-<div class="mt-4 flex flex-col items-center justify-center flex-1">
-<span class="material-symbols-outlined text-6xl text-primary/30 mb-2" data-icon="contactless">contactless</span>
-<p class="font-manrope text-lg font-extrabold tracking-tight text-primary/40 uppercase">@YOURBRAND</p>
-</div>
-<div class="flex justify-between items-end">
-<span class="text-xs font-bold text-on-surface uppercase tracking-wider">YOUR LOGO HERE</span>
-<div class="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" data-icon="all_inclusive">all_inclusive</span>
-</div>
-</div>
-</div>
-</div>
-<div class="md:col-span-7">
-<h4 class="font-headline text-2xl font-bold mb-2">The Premium Card Experience</h4>
-<p class="text-primary font-bold text-sm mb-4">Your digital cards go live instantly. Your physical NFC cards ship within 24 hours.</p>
-<p class="text-on-surface-variant leading-relaxed mb-6">
-                        Your customers receive a digital-first membership card that integrates seamlessly with their mobile wallet. With the Custom Program, every pixel reflects your brand's unique identity.
-                    </p>
-<div class="flex gap-4">
-<div class="flex flex-col">
-<span class="text-2xl font-black text-primary">1.2s</span>
-<span class="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Tap-to-Pay</span>
-</div>
-<div class="w-px h-10 bg-outline-variant/20 mx-2"></div>
-<div class="flex flex-col">
-<span class="text-2xl font-black text-primary">100%</span>
-<span class="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Cloud Sync</span>
-</div>
+<div class="p-4 bg-surface-container-lowest rounded-2xl flex flex-col gap-2">
+<span class="material-symbols-outlined text-primary">database</span>
+<span class="text-xs font-bold text-slate-900">Data Storage</span>
+<span class="text-[10px] text-on-surface-variant">Cloud Sync On</span>
 </div>
 </div>
 </section>
-<!-- Footer Explanation -->
-<footer class="border-t border-outline-variant/10 pt-12 pb-12">
-<div class="max-w-3xl">
-<h5 class="font-headline text-xl font-bold mb-6 flex items-center gap-2">
-<span class="material-symbols-outlined text-primary" data-icon="help_outline">help_outline</span>
-                        How setup works
-                    </h5>
-<div class="space-y-8">
+<!-- NavigationDrawer (Suppressed on Mobile viewport as main UI but kept for structure requirements) -->
+<aside class="hidden md:flex fixed left-0 top-0 h-screen w-72 flex-col bg-white border-r border-slate-100 z-50 overflow-y-auto">
+<div class="p-8 pb-6">
+<div class="text-2xl font-black text-primary mb-10 tracking-tighter">VERRA</div>
+<div class="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl">
+<div class="w-10 h-10 rounded-full overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBg0k66IvQ-i_cyBq_E2j4nS5muAuYa8CTUafbO6cCpdQpoXZRRhyRmCDesWtVNdywOS8LG4FHfH6R-ufRd8cMnowEsWNdX4ygSzgrZZ9VvtQtYvoT-_byYQJI3sRKmpiIAWWQQl7yACd6KgiG487FR5TQVHyILN5Z4qtwiH-fOMhSmzBjT46HlqMe0fCrEAVgOaWbTdzKPtjtH-8cL6s3IOEA0ph9CtcYYiQYkTeSAjLNuAZ6mBIvpI9TH8zeO1PFB3TYWJ_rrKo4"/>
+</div>
 <div>
-<h6 class="font-bold text-on-surface mb-2">Transaction Consumption &amp; Economics</h6>
-<p class="text-sm text-on-surface-variant leading-relaxed mb-4">
-                                B-Units power your direct digital infrastructure. Instead of paying percentage cuts on every sale to traditional POS gateways, your system simply consumes a microscopic amount of fuel for interactions.
-                            </p>
-<a class="inline-flex items-center gap-2 text-primary text-sm font-bold hover:underline" href="#">
-                                Learn how 5,000 B-Units saves you money ↗
-                                <span class="material-symbols-outlined text-sm" data-icon="open_in_new">open_in_new</span>
+<p class="font-bold text-sm text-slate-900">Verra Admin</p>
+<p class="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Business Console</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 px-4 space-y-6">
+<div>
+<p class="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3">Main</p>
+<div class="space-y-1">
+<a class="flex items-center gap-3 text-slate-600 px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors group" href="#">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">dashboard</span>
+<span class="text-sm font-semibold">Overview</span>
+</a>
+<a class="flex items-center gap-3 text-slate-600 px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors group" href="#">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">account_balance_wallet</span>
+<span class="text-sm font-semibold">Assets</span>
 </a>
 </div>
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
-<div class="p-6 bg-surface-container rounded-lg">
-<p class="text-xs font-black text-primary uppercase tracking-widest mb-2">Refills</p>
-<p class="text-sm text-on-surface leading-tight">B-Units can be set to auto-refill so your program never goes offline. A standard 2% fee applies to all top-ups.</p>
 </div>
-<div class="p-6 bg-surface-container rounded-lg">
-<p class="text-xs font-black text-primary uppercase tracking-widest mb-2">Consumption</p>
-<p class="text-sm text-on-surface leading-tight">Your starter package units are permanent and only consumed as your customers interact with your network.</p>
+<div>
+<p class="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3">Management</p>
+<div class="space-y-1">
+<a class="flex items-center gap-3 text-slate-600 px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors group" href="#">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">settings_applications</span>
+<span class="text-sm font-semibold">Operations</span>
+</a>
+<a class="flex items-center gap-3 text-slate-600 px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors group" href="#">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">payments</span>
+<span class="text-sm font-semibold">Financials</span>
+</a>
 </div>
 </div>
+<div>
+<p class="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3">System</p>
+<div class="space-y-1">
+<a class="flex items-center gap-3 bg-primary/5 text-primary px-4 py-3 rounded-xl transition-colors" href="#">
+<span class="material-symbols-outlined fill-1">settings</span>
+<span class="text-sm font-bold">System Configuration</span>
+</a>
 </div>
 </div>
-</footer>
-</div>
-<!-- Mobile FAB -->
-<button class="fixed bottom-24 right-6 lg:hidden w-14 h-14 kinetic-gradient text-white rounded-full shadow-2xl flex items-center justify-center z-50">
-<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</nav>
+<div class="p-4 border-t border-slate-100">
+<button class="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl hover:bg-slate-800 transition-colors group">
+<span class="material-symbols-outlined text-sm">lock</span>
+<span class="text-sm font-bold">Lock Wallet</span>
 </button>
+<p class="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-4">v2.4.0</p>
+</div>
+</aside>
+<!-- Desktop Overlay (Visual Aid for context) -->
+<div class="hidden md:block fixed right-8 bottom-8 z-40">
+<div class="bg-white p-6 rounded-xl shadow-xl max-w-xs border-l-4 border-primary">
+<p class="font-bold text-slate-900 text-sm">Onboarding Milestone</p>
+<p class="text-xs text-on-surface-variant mt-2">You are viewing the mobile optimization of the Verra Hub. Secure your keys to continue to the Financials dashboard.</p>
+</div>
+</div>
 </main>
-<!-- Mobile Bottom Navigation -->
-<div class="lg:hidden fixed bottom-0 w-full h-16 bg-white/80 backdrop-blur-xl border-t border-slate-200 flex items-center justify-around px-4 z-40">
-<button class="flex flex-col items-center gap-1 text-slate-500">
-<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-<span class="text-[9px] font-bold uppercase">Home</span>
-</button>
-<button class="flex flex-col items-center gap-1 text-blue-600">
-<span class="material-symbols-outlined" data-icon="loyalty" style="font-variation-settings: 'FILL' 1;">loyalty</span>
-<span class="text-[9px] font-bold uppercase">Programs</span>
-</button>
-<button class="flex flex-col items-center gap-1 text-slate-500">
-<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
-<span class="text-[9px] font-bold uppercase">Wallet</span>
-</button>
-<button class="flex flex-col items-center gap-1 text-slate-500">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-<span class="text-[9px] font-bold uppercase">Set</span>
-</button>
-</div>
+<!-- Footer Space -->
+<footer class="mt-auto py-8 text-center px-6">
+<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest opacity-50">End of Configuration Hub</p>
+</footer>
 </body></html>

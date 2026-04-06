@@ -28,6 +28,13 @@ import packageJson from '../../../package.json'
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl'
 import { BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { OnboardingBusinessDetailsScreen } from '@/pages/Home/OnboardingBusinessDetailsScreen'
+import {
+	clearSessionOnboardingBusinessDraft,
+	loadSessionOnboardingBusinessDraft,
+	mergeSessionOnboardingDraftIntoEoa,
+	saveSessionOnboardingBusinessDraft,
+} from '@/utils/verraBusinessProfileLocal'
+import type { VerraBusinessProfileBusinessType } from '@/utils/verraBusinessProfileLocal'
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 const ISSUED_NFT_START_ID = 100_000_000_000
@@ -61,15 +68,23 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const [isInitialEntry, setIsInitialEntry] = useState(true)
 	/** Cover splash（newOnloading.html 风格）— 在进入 InitialEntryScreen 前展示 */
 	const [showOnboardingCover, setShowOnboardingCover] = useState(true)
-	const [coverBusinessType, setCoverBusinessType] = useState<"solo" | "chain" | "ngo">("solo")
-	const [coverTermsAccepted, setCoverTermsAccepted] = useState(false)
+	const [coverBusinessType, setCoverBusinessType] = useState<VerraBusinessProfileBusinessType>(() => {
+		const d = loadSessionOnboardingBusinessDraft()
+		const bt = d?.businessType
+		return bt === 'chain' || bt === 'ngo' || bt === 'solo' ? bt : 'solo'
+	})
+	const [coverTermsAccepted, setCoverTermsAccepted] = useState(() =>
+		Boolean(loadSessionOnboardingBusinessDraft()?.onboardingTermsAccepted)
+	)
 	/** Select Type → Details（单列业务资料）→ Identity（InitialEntryScreen） */
 	const [showOnboardingBusinessDetails, setShowOnboardingBusinessDetails] = useState(false)
-	const [detailBusinessName, setDetailBusinessName] = useState("")
-	const [detailCategory, setDetailCategory] = useState("retail")
-	const [detailCountry, setDetailCountry] = useState("")
-	const [detailCity, setDetailCity] = useState("")
-	const [detailProvince, setDetailProvince] = useState("")
+	const [detailBusinessName, setDetailBusinessName] = useState(
+		() => loadSessionOnboardingBusinessDraft()?.storeName ?? ''
+	)
+	const [detailCategory, setDetailCategory] = useState(() => loadSessionOnboardingBusinessDraft()?.category ?? 'retail')
+	const [detailCountry, setDetailCountry] = useState(() => loadSessionOnboardingBusinessDraft()?.country ?? '')
+	const [detailCity, setDetailCity] = useState(() => loadSessionOnboardingBusinessDraft()?.city ?? '')
+	const [detailProvince, setDetailProvince] = useState(() => loadSessionOnboardingBusinessDraft()?.province ?? '')
 	/** Full-screen creating overlay owned here so it survives InitialEntry → Recovery layout swap (avoids flash). */
 	const [workspaceCreating, setWorkspaceCreating] = useState(false)
 	const [qrDataUrl, setQrDataUrl] = useState('')
@@ -93,11 +108,34 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const [redeemActivating, setRedeemActivating] = useState(false)
 	const [redeemPostCreateInProgress, setRedeemPostCreateInProgress] = useState(false)
 
+	useEffect(() => {
+		if (!isInitialEntry) return
+		saveSessionOnboardingBusinessDraft({
+			businessType: coverBusinessType,
+			onboardingTermsAccepted: coverTermsAccepted,
+			storeName: detailBusinessName,
+			category: detailCategory,
+			country: detailCountry,
+			city: detailCity,
+			province: detailProvince,
+		})
+	}, [
+		isInitialEntry,
+		coverBusinessType,
+		coverTermsAccepted,
+		detailBusinessName,
+		detailCategory,
+		detailCountry,
+		detailCity,
+		detailProvince,
+	])
+
 
 	const init = async (temp?: encrypt_keys_object, opts?: { dontClose?: boolean }) => {
 
 		const isAcc = await checkStorage()
 		if (!isAcc) {
+			clearSessionOnboardingBusinessDraft()
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
 			setShowOnboardingCover(true)
@@ -121,6 +159,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 		
 		if (!temp || !profiles ) {
+			clearSessionOnboardingBusinessDraft()
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
 			setShowOnboardingCover(true)
@@ -171,8 +210,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		await storeSystemData()
 		const eoa = profiles[0]?.keyID?.trim()
 		if (eoa && ethers.isAddress(eoa)) {
+			const eoaNorm = ethers.getAddress(eoa)
 			setEoaAddress(eoa)
 			setMyAddress(eoa)
+			mergeSessionOnboardingDraftIntoEoa(eoaNorm)
 		}
 		SetLoading(false)
 		setIsInitialEntry(false)

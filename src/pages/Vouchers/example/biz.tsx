@@ -1,15 +1,18 @@
 import React, { Fragment, useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { motion, LayoutGroup } from 'framer-motion';
+import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
+import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
-import { storeSystemData, getBalance, formatWithThousands, purchaseBUnitFromBase, postToIPFS } from '@/services/beamio';
+import { storeSystemData, getBalance, formatWithThousands, purchaseBUnitFromBase, postToIPFS, postBeamio } from '@/services/beamio';
 import Chat from '@/pages/chat/chat';
 import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
 import BeamioMeMainScreen from '@/components/Setting';
-import { searchUsername, getOracleCadUsdcFromConet } from '@/services/beamio';
+import { searchUsername, getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
+import { formatAmount } from '@/services/currency';
+import contracts from '@/utils/contracts';
 import {
   checkRedeemAdminCodeValid,
   isCardAdmin,
@@ -54,6 +57,12 @@ import {
   compressToJpeg,
   resizeToFitLimit,
 } from '@/utils/ipfsCardImageUpload';
+import {
+  loadBusinessProfileDraftForEoa,
+  patchBusinessProfileDraftForEoa,
+  type VerraBusinessProfileDraft,
+} from '@/utils/verraBusinessProfileLocal';
+import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions';
 import {
   CHARGE_BUINT_LEDGER_MAX_ENTRIES,
   loadChargeBUnitLedgerMap,
@@ -199,7 +208,14 @@ import {
   Wifi,
   BatteryFull,
   Timer,
+  LogIn,
+  ChevronLeft,
+  ChevronDown,
+  Globe,
+  Cloud,
 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import qrCenterIcon from '@/components/assets/32x32.svg';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
 
 const getImg = (avatarSeed: string | undefined) =>
@@ -209,7 +225,31 @@ const USDC_ICON_URL = 'https://assets.coingecko.com/coins/images/6319/small/usdc
 const BASE_ICON_URL = 'https://beamio.app/app/static/media/base-logo.275b67e94556e30ce59b.png';
 
 /** Self-custody / security hero illustration (`public/assets/mbiz-self-custody-hero.png`) */
-const BIZ_SELF_CUSTODY_HERO_IMG = `${process.env.PUBLIC_URL ?? ''}/assets/mbiz-self-custody-hero.png`;
+const WALLET_SEND_SETTLE_BASE = 'https://api.settleonbase.xyz';
+
+function walletSendDisplayName(item: searchResult): string {
+  const lastname = (item.last_name ?? '').split('\r\n');
+  const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0] ?? '') ? '' : lastname[0] || ''}`.trim();
+  return fullName || item.username || item.address;
+}
+
+function walletSendShortAddr(addr: string): string {
+  if (!addr) return '';
+  return addr.length >= 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
+}
+
+async function walletSendRetryRpc<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (i < retries) await new Promise((r) => setTimeout(r, 800));
+    }
+  }
+  throw last;
+}
 
 /**
  * Merchant OS brand blue — primary + hover/active for solid CTAs, shadows use RGB of `#1562f0`.
@@ -430,7 +470,24 @@ function membersOwnedProgramsToUserCardInfoForTopup(rows: MembersOwnedProgramOve
   return out
 }
 
-/** Flattened row for Members & Loyalty table (beamio.app `/api/cardMemberTopups` mode=members + program name) */
+/** Same EOA resolution as `feederEoa` — cache keys for Members must match feeder `account` suffix. */
+function membersBizViewerResolvedForCache(
+  profileKeyId: string | undefined,
+  myAddr: string | undefined,
+  cardOwnerFallback: string | undefined,
+): string | null {
+  const menuEoa = (profileKeyId ?? myAddr ?? '').trim()
+  if (menuEoa && ethers.isAddress(menuEoa)) return ethers.getAddress(menuEoa)
+  const o = cardOwnerFallback?.trim()
+  if (o && ethers.isAddress(o)) return ethers.getAddress(o)
+  return null
+}
+
+function membersLoyaltyDirectoryBundleCacheKey(eoaLower: string, viewerNormLower: string): string {
+  return `eoa:${eoaLower}:biz:members-loyalty-directory:v1:${viewerNormLower}`
+}
+
+/** Flattened row for Members & Loyalty table (beamio.app `/api/cardMemberTopups` mode=directory + program name) */
 type BizTopupMemberTableRow = {
   cardLower: string
   programName: string
@@ -443,6 +500,27 @@ type BizTopupMemberTableRow = {
   firstSeenTs: number
   lastSeenTs: number
   beamioTag: string
+  /** Server `beamio_member_topup_events`：该会员在此卡是否曾 NFC / App top-up */
+  usedNfcTopup?: boolean
+  usedAppTopup?: boolean
+  firstTopupSource?: string | null
+  firstTopupAtIso?: string
+}
+
+/** Persisted Members Directory — local-first display; written only on successful feeder/fetch (trusted-cache protocol). */
+type MembersLoyaltyDirectoryTrustedBundleV1 = {
+  topupRows: BizTopupMemberTableRow[]
+  serverRollup: { totalTopupEvents: number; totalRepeatTopupEvents: number }
+  chainCumulativeMintDisplay: number | null
+}
+
+function saveMembersLoyaltyDirectoryBundleTrusted(
+  currentEoaLower: string,
+  viewerNorm: string,
+  bundle: MembersLoyaltyDirectoryTrustedBundleV1,
+): void {
+  if (!currentEoaLower || !viewerNorm) return
+  saveTrustedCache(membersLoyaltyDirectoryBundleCacheKey(currentEoaLower, viewerNorm.toLowerCase()), bundle)
 }
 
 const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
@@ -726,100 +804,83 @@ function directoryMemberTierFromPoints(points: number): { label: 'Gold' | 'Silve
 
 type MembersDirectorySegment = 'app' | 'anon_nfc';
 
+/** Members tab — no AA / day-0 editorial (`newOnloading.html` Members canvas: insights + glass empty state). */
 function MembersLoyaltyNoAaEditorial(props: { onSetUpFirstProgram: () => void }) {
   const { onSetUpFirstProgram } = props;
-  const [segment, setSegment] = useState<MembersDirectorySegment>('app');
-  return (
-    <div className="w-full space-y-8 px-1 pb-28 pt-2 sm:px-2 lg:pb-12">
-      <section className="space-y-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">Member Management</span>
-        <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">Directory</h2>
-      </section>
+  const communityIllustrationUrl =
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuCjSNDXE_2MyXIQslRAMdgV-KlIL1-w-XXcPTrVIEO4gBHy1g3uptEt3jAzL9YoF65jP1hkEFmJMXb5fzJzibusTTIQGpJaTFcFOTnY5rZlCvKvFHC2zRpg06KOtMWcSMQ3tK1qEwCvPqUDgGD9gCsV5YE13khP91osczIH6et7wDgTZKCvWvTGMfeex3BQrXKZBTEfMChbbjW-210t9VyMqasasNVcRwU2yuXNuWYN6Bu3FKFKn0N3SiQ2XmNgYlrhnSH4ID46vaQ';
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-[0_4px_20px_rgba(21,98,240,0.04)] sm:col-span-2 lg:col-span-1">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Total Members</p>
-          <div className="flex items-end justify-between gap-2">
-            <span className="text-3xl font-extrabold text-[#0051d1]">0</span>
-            <Users className="size-8 shrink-0 text-[#7a9dff]" strokeWidth={2} aria-hidden />
+  return (
+    <div className="w-full -mx-6 rounded-2xl bg-[#f5f7f9] px-5 py-5 pb-20 md:-mx-10 md:px-8 md:py-6 md:pb-24">
+      <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="flex flex-col gap-1 rounded-lg border border-[#0051d1]/5 bg-white p-5 shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total Members</span>
+          <div className="flex items-baseline gap-2">
+            <span className="font-sans text-3xl font-black text-[#2c2f31]">0</span>
+            <span className="text-xs font-medium text-slate-400">Global</span>
           </div>
         </div>
-        <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">Active NFCs</p>
-          <span className="text-xl font-bold text-[#2c2f31]">0</span>
+        <div className="flex flex-col gap-1 rounded-lg border border-[#0051d1]/5 bg-white p-5 shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Active Anonymous NFCs</span>
+          <div className="flex items-baseline gap-2">
+            <span className="font-sans text-3xl font-black text-[#2c2f31]">0</span>
+            <span className="text-xs font-medium text-slate-400">Unclaimed</span>
+          </div>
         </div>
-        <div className="rounded-lg border border-[#abadaf]/10 border-l-4 border-l-[#b31b25] bg-white p-5">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">At-Risk High-Value</p>
-          <span className="text-xl font-bold text-[#b31b25]">0</span>
+        <div className="flex flex-col gap-1 rounded-lg border border-[#0051d1]/5 bg-white p-5 shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">At-Risk High-Value</span>
+          <div className="flex items-baseline gap-2">
+            <span className="font-sans text-3xl font-black text-[#2c2f31]">0</span>
+            <span className="text-xs font-medium text-slate-400">Retention</span>
+          </div>
         </div>
       </section>
 
-      <div className="flex max-w-md gap-1 rounded-full bg-[#eef1f3] p-1">
-        <button
-          type="button"
-          onClick={() => setSegment('app')}
-          className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
-            segment === 'app' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
-          } ${bizFocusRingClass}`}
-        >
-          App Users
-        </button>
-        <button
-          type="button"
-          onClick={() => setSegment('anon_nfc')}
-          className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
-            segment === 'anon_nfc' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
-          } ${bizFocusRingClass}`}
-        >
-          Anonymous NFC
-        </button>
-      </div>
-
-      <div className="relative max-w-2xl">
-        <Search className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
-        <input
-          id="members-directory-search"
-          readOnly
-          className="w-full cursor-not-allowed rounded-lg border-none bg-[#eef1f3] py-4 pl-12 pr-4 text-sm text-[#2c2f31] opacity-80"
-          placeholder="Search BeamioTags or Names…"
-          type="search"
-          aria-disabled
-        />
-      </div>
-
-      <section className="space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-lg font-bold text-[#2c2f31]">{segment === 'app' ? 'App Users' : 'Anonymous NFC'}</h3>
-          <span className="text-xs font-bold uppercase tracking-tighter text-[#0051d1]">Sort by: Recent</span>
+      <section className="mx-auto flex max-w-2xl flex-col items-center justify-center py-8 text-center">
+        <div className="relative mb-8 aspect-square w-full max-w-sm">
+          <div className="absolute inset-0 rounded-full bg-[#0051d1]/5 opacity-50 blur-3xl" aria-hidden />
+          <div className="absolute inset-0 z-10 overflow-hidden rounded-xl border border-white/50 bg-white/70 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
+            <img
+              src={communityIllustrationUrl}
+              alt="Minimal community illustration"
+              className="h-full w-full object-cover opacity-90 mix-blend-multiply"
+            />
+            <div className="pointer-events-none absolute bottom-8 right-8 flex items-center gap-3 rounded-xl border border-[#0051d1]/10 bg-white/90 p-4 shadow-lg backdrop-blur-md">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#7a9dff]">
+                <Nfc className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
+              </div>
+              <div className="text-left">
+                <div className="mb-1 h-2 w-16 rounded-full bg-slate-200" aria-hidden />
+                <div className="h-1.5 w-10 rounded-full bg-slate-100" aria-hidden />
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white/60 p-10 text-center">
-          <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
-          <p className="text-sm font-semibold text-[#2c2f31]">No members yet</p>
-          <p className="mt-2 text-sm text-[#595c5e]">
-            {segment === 'app'
-              ? 'Activate your Smart Terminal and first program to see App Users here.'
-              : 'Anonymous NFC tags will appear after you issue hardware or digital NFC flows.'}
-          </p>
+
+        <h2 className="mb-6 font-sans text-3xl font-extrabold tracking-tight text-[#2c2f31] md:text-4xl">
+          Your community starts here.
+        </h2>
+        <p className="mb-10 max-w-xl px-4 text-lg font-medium leading-relaxed text-[#595c5e]">
+          When customers tap your physical NFC cards or buy your digital cards in the Verra App, their profiles and balances will securely appear
+          here.
+        </p>
+
+        <div className="flex w-full flex-col items-center gap-6 px-6">
           <button
             type="button"
             onClick={onSetUpFirstProgram}
-            className={`mt-6 rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
+            className={`w-full rounded-full bg-[#0051d1] px-10 py-4 font-sans text-lg font-bold text-[#f1f2ff] shadow-[0_20px_40px_rgba(21,98,240,0.06)] transition-all hover:bg-[#0047b8] active:scale-[0.98] md:w-auto ${bizFocusRingClass}`}
           >
             Set up your first program
           </button>
+          <div className="flex max-w-lg items-start gap-2 text-slate-400">
+            <Lock className="mt-0.5 size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+            <p className="text-left text-xs font-medium uppercase tracking-widest">
+              Customer data is end-to-end encrypted and visible only to your business.
+            </p>
+          </div>
         </div>
       </section>
-
-      <div className="fixed bottom-28 right-6 z-40 lg:bottom-12">
-        <button
-          type="button"
-          onClick={onSetUpFirstProgram}
-          className={`flex size-14 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-xl transition-transform active:scale-90 ${bizFocusRingClass}`}
-          title="Add member program"
-        >
-          <UserPlus className="size-6" strokeWidth={2.25} aria-hidden />
-        </button>
-      </div>
     </div>
   );
 }
@@ -830,7 +891,7 @@ const STAFF_SOFTPOS_UI_PRIMARY = '#1562f0';
 function StaffSoftPosHero(props: { onLinkNew: () => void }) {
   const { onLinkNew } = props;
   return (
-    <div className="mb-10 grid grid-cols-1 gap-6 md:mb-12">
+    <div className="mb-6 grid grid-cols-1 gap-4 md:mb-8">
       <div className="relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-lg bg-white p-6 shadow-sm sm:min-h-[400px] sm:p-8">
         <div className="pointer-events-none absolute top-0 right-0 h-full w-1/2 select-none opacity-10" aria-hidden>
           <Nfc
@@ -869,9 +930,14 @@ function WalletsTreasuryShell(props: {
   cadPrimary: string;
   usdcSecondary: string;
   settlementActive: boolean;
+  /** AA (smart account) address for Receive QR; when missing, Receive falls back to `onReceive`. */
+  aaReceiveAddress: string | null;
+  /** EOA used for Coinbase off-ramp (`/api/coinbase-offramp`), same as SilentPassUI `SellWithCoinbaseButton`. */
+  cashOutEoaAddress: string | null;
   onReceive: () => void;
   onSend: () => void;
-  onCashOut: () => void;
+  /** When Cash Out is clicked but no settlement EOA is available (e.g. open Market / fuel). */
+  onCashOutUnavailable: () => void;
   onViewAllHistory: () => void;
   onOpenMarketRefuel: () => void;
 }) {
@@ -879,12 +945,85 @@ function WalletsTreasuryShell(props: {
     cadPrimary,
     usdcSecondary,
     settlementActive,
+    aaReceiveAddress,
+    cashOutEoaAddress,
     onReceive,
     onSend,
-    onCashOut,
+    onCashOutUnavailable,
     onViewAllHistory,
     onOpenMarketRefuel,
   } = props;
+  const [receiveQrOpen, setReceiveQrOpen] = useState(false);
+  const [cashOutModalOpen, setCashOutModalOpen] = useState(false);
+  const [cashOutLoading, setCashOutLoading] = useState(false);
+  const [cashOutError, setCashOutError] = useState('');
+
+  const aaQrValue = useMemo(() => {
+    const t = aaReceiveAddress?.trim() ?? '';
+    if (!t) return '';
+    try {
+      return ethers.getAddress(t);
+    } catch {
+      return '';
+    }
+  }, [aaReceiveAddress]);
+
+  useEffect(() => {
+    if (!receiveQrOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setReceiveQrOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [receiveQrOpen]);
+
+  useEffect(() => {
+    if (!cashOutModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !cashOutLoading) setCashOutModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cashOutModalOpen, cashOutLoading]);
+
+  useEffect(() => {
+    if (!cashOutModalOpen) {
+      setCashOutError('');
+    }
+  }, [cashOutModalOpen]);
+
+  const openCoinbaseOfframp = useCallback(async () => {
+    const addr = cashOutEoaAddress?.trim();
+    if (!addr || !ethers.isAddress(addr)) {
+      setCashOutError('Wallet address is not available.');
+      return;
+    }
+    setCashOutLoading(true);
+    setCashOutError('');
+    try {
+      const params = new URLSearchParams({ address: ethers.getAddress(addr) }).toString();
+      const res = await fetch(`${WALLET_SEND_SETTLE_BASE}/api/coinbase-offramp?${params}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        setCashOutError('Could not start Coinbase. Try again later.');
+        return;
+      }
+      const data = (await res.json()) as { offrampUrl?: string };
+      if (!data.offrampUrl) {
+        setCashOutError('Invalid response from server.');
+        return;
+      }
+      window.open(data.offrampUrl, '_blank', 'noopener,noreferrer');
+      setCashOutModalOpen(false);
+    } catch {
+      setCashOutError('Something went wrong.');
+    } finally {
+      setCashOutLoading(false);
+    }
+  }, [cashOutEoaAddress]);
+
   return (
     <div className="w-full">
       <section className="relative overflow-hidden rounded-xl border border-slate-100/80 bg-white p-10 text-center shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
@@ -907,7 +1046,10 @@ function WalletsTreasuryShell(props: {
       <section className="mt-8 flex gap-4">
         <button
           type="button"
-          onClick={onReceive}
+          onClick={() => {
+            if (aaQrValue) setReceiveQrOpen(true);
+            else onReceive();
+          }}
           className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
@@ -923,11 +1065,17 @@ function WalletsTreasuryShell(props: {
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
             <ArrowUp className="size-5 text-[#0051d1] transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
           </div>
-          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Send</span>
+          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Send USDC</span>
         </button>
         <button
           type="button"
-          onClick={onCashOut}
+          onClick={() => {
+            if (cashOutEoaAddress?.trim() && ethers.isAddress(cashOutEoaAddress.trim())) {
+              setCashOutModalOpen(true);
+            } else {
+              onCashOutUnavailable();
+            }
+          }}
           className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
@@ -1011,6 +1159,920 @@ function WalletsTreasuryShell(props: {
         </button>
         .
       </p>
+
+      {receiveQrOpen && aaQrValue ? (
+        <div
+          className="fixed inset-0 z-[240] flex flex-col justify-end sm:items-center sm:justify-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="wallet-receive-qr-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-[#0b0f10]/40 backdrop-blur-md transition-opacity"
+            aria-label="Close receive dialog"
+            onClick={() => setReceiveQrOpen(false)}
+          />
+          <div className="relative z-10 mt-auto w-full max-w-md rounded-t-[2rem] border border-[#abadaf]/15 bg-[#f5f7f9] shadow-[0_-10px_40px_rgba(21,98,240,0.12)] sm:mt-0 sm:rounded-3xl">
+            <div className="border-b border-[#abadaf]/15 bg-[#ffffff] px-6 pb-5 pt-3 sm:rounded-t-3xl">
+              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#d9dde0] sm:hidden" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">Receive</p>
+                  <h2 id="wallet-receive-qr-title" className="mt-1 font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
+                    USDC to Smart Account
+                  </h2>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-[#595c5e]">
+                    Scan with any wallet that supports USDC on Base. Funds credit your merchant AA.
+                  </p>
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#abadaf]/25 bg-[#eef1f3] px-3 py-1.5">
+                    <UsdcBaseCompositeIcon size={18} badgeSize={11} />
+                    <span className="text-[11px] font-bold text-[#2c2f31]">USDC on Base</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReceiveQrOpen(false)}
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#515c70] transition-colors hover:bg-[#e5e9eb] ${bizFocusRingClass}`}
+                  aria-label="Close"
+                >
+                  <X className="size-5" strokeWidth={2} aria-hidden />
+                </button>
+              </div>
+            </div>
+            <div className="space-y-5 px-6 py-6">
+              <div className="mx-auto w-fit rounded-xl border border-black/10 bg-white p-3 text-center shadow-[0_4px_20px_rgba(21,98,240,0.06)]">
+                <QRCodeCanvas
+                  value={aaQrValue}
+                  size={176}
+                  level="H"
+                  includeMargin
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                  imageSettings={{
+                    src: qrCenterIcon,
+                    height: 44,
+                    width: 44,
+                    excavate: true,
+                  }}
+                  className="inline-block rounded-lg"
+                />
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-1 text-[11px] leading-none text-[#747779]">
+                  <span className="font-bold uppercase tracking-wider text-[#abadaf]">Smart Account</span>
+                  <span className="font-mono font-semibold text-[#515c70]">{fmtAddr(aaQrValue)}</span>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[#abadaf]/20 bg-white px-4 py-3">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#747779]">Address</p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <AddressCapsule
+                    address={aaQrValue}
+                    className="max-w-[min(100%,280px)] border-[#abadaf]/30 bg-[#f5f7f9] text-[#2c2f31]"
+                  />
+                </div>
+                <p className="mt-3 text-[11px] font-medium leading-relaxed text-[#747779]">
+                  Send USDC on Base only. Other tokens or networks may be lost.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {cashOutModalOpen ? (
+        <div
+          className="fixed inset-0 z-[245] flex items-center justify-center bg-[#2c2f31]/10 p-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="wallet-cash-out-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Close cash out dialog backdrop"
+            onClick={() => !cashOutLoading && setCashOutModalOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-lg bg-[#ffffff] shadow-[0_40px_80px_rgba(21,98,240,0.12)]">
+            <button
+              type="button"
+              disabled={cashOutLoading}
+              onClick={() => setCashOutModalOpen(false)}
+              className={`absolute right-6 top-6 flex h-10 w-10 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] disabled:opacity-50 ${bizFocusRingClass}`}
+              aria-label="Close"
+            >
+              <X className="size-5" strokeWidth={2} aria-hidden />
+            </button>
+            <div className="p-8 md:p-12">
+              <div className="mb-8 flex justify-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#0051d1]/5">
+                  <Landmark className="size-8 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                </div>
+              </div>
+              <div className="mb-8 text-center">
+                <h2
+                  id="wallet-cash-out-title"
+                  className="mb-2 font-sans text-2xl font-extrabold tracking-tight text-[#2c2f31] md:text-3xl"
+                >
+                  Withdraw to Bank Account
+                </h2>
+                <p className="px-2 text-sm font-medium leading-relaxed text-[#595c5e]">
+                  Move USDC from your Main Vault (EOA) to your local bank via our secure partner gateway. You will complete KYC and payout details on
+                  Coinbase.
+                </p>
+              </div>
+              <div className="relative mb-8 overflow-hidden rounded-lg bg-[#eef1f3] p-6">
+                <div className="mb-4 flex items-center gap-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white p-1 shadow-sm">
+                    <span className="text-xs font-extrabold text-[#0051d1]">CB</span>
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e] opacity-70">Verified Partner</p>
+                    <h4 className="font-sans text-lg font-bold text-[#2c2f31]">Coinbase</h4>
+                  </div>
+                </div>
+                <p className="text-left text-[0.875rem] leading-relaxed text-[#595c5e]">
+                  Fiat off-ramp is handled by Coinbase. Beamio does not store your bank details. You will be redirected to complete conversion and bank
+                  settlement in a new tab.
+                </p>
+                <div className="pointer-events-none absolute -bottom-8 -right-8 h-24 w-24 rounded-full bg-[#0051d1]/5 blur-2xl" aria-hidden />
+              </div>
+              <div className="mb-10 flex flex-wrap items-center justify-center gap-6">
+                <div className="flex items-center gap-1.5 opacity-70">
+                  <Lock className="size-3.5 shrink-0 text-[#515c70]" strokeWidth={2} aria-hidden />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#515c70]">Secure Redirect</span>
+                </div>
+                <div className="flex items-center gap-1.5 opacity-70">
+                  <ShieldCheck className="size-3.5 shrink-0 text-[#515c70]" strokeWidth={2} aria-hidden />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#515c70]">Partner Compliance</span>
+                </div>
+              </div>
+              {cashOutError ? (
+                <p className="mb-4 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-900">
+                  {cashOutError}
+                </p>
+              ) : null}
+              <div className="flex flex-col gap-4">
+                <button
+                  type="button"
+                  disabled={cashOutLoading}
+                  onClick={() => void openCoinbaseOfframp()}
+                  className={`flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.2)] transition-all hover:bg-[#0047b8] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                >
+                  {cashOutLoading ? (
+                    <Loader2 className="size-5 animate-spin" aria-hidden />
+                  ) : (
+                    <>
+                      Continue to Coinbase
+                      <ExternalLink className="size-4" aria-hidden />
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={cashOutLoading}
+                  onClick={() => setCashOutModalOpen(false)}
+                  className={`h-14 rounded-full text-sm font-semibold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:opacity-50 ${bizFocusRingClass}`}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+            <div className="bg-[#eef1f3]/80 px-8 py-4 text-center">
+              <p className="text-[10px] font-medium leading-relaxed text-[#595c5e]/70">
+                By continuing, you agree to Coinbase&apos;s{' '}
+                <a
+                  href="https://www.coinbase.com/legal/user_agreement"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-[#0051d1] underline-offset-2 hover:underline"
+                >
+                  Terms
+                </a>{' '}
+                and{' '}
+                <a
+                  href="https://www.coinbase.com/legal/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-[#0051d1] underline-offset-2 hover:underline"
+                >
+                  Privacy Policy
+                </a>
+                . Settlement timing depends on your bank and region.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Wallet tab — no AA / day-0 layout mirroring `newOnloading.html` main canvas (bento, activation CTA, empty history). */
+function WalletsNoAaOnloadingShell(props: {
+  cadHeadline: string;
+  usdcLine: string;
+  bUnitBalance: number | null;
+  onReceive: () => void;
+  onViewFullReport: () => void;
+  onGoToPrograms: () => void;
+}) {
+  const { cadHeadline, usdcLine, bUnitBalance, onReceive, onViewFullReport, onGoToPrograms } = props;
+  const bUnitStr =
+    bUnitBalance != null && Number.isFinite(bUnitBalance)
+      ? Number(bUnitBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : '—';
+
+  return (
+    <div className="w-full -mx-6 rounded-2xl bg-[#f5f7f9] px-5 py-5 md:-mx-10 md:px-8 md:py-6">
+      <div className="mb-6 grid grid-cols-12 gap-4 md:gap-5">
+        {/* Settlement: page gray → white shell → inner light gray panel */}
+        <div className="col-span-12 lg:col-span-8">
+          <div className="rounded-2xl border border-[#abadaf]/12 bg-white p-2 shadow-[0_20px_40px_rgba(0,0,0,0.04)] md:p-2.5">
+            <div className="relative flex min-h-[260px] flex-col justify-between overflow-hidden rounded-xl bg-[#f9fafb] px-6 py-7 md:px-8 md:py-8">
+              <div className="relative z-10">
+                <div className="mb-6 flex items-center gap-2">
+                  <ShieldCheck className="size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                  <span className="text-xs font-bold tracking-tight text-[#595c5e]">Settlement Account Active</span>
+                </div>
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Available Balance</p>
+                <div className="flex flex-wrap items-baseline gap-3">
+                  <h2 className="font-sans text-5xl font-extrabold text-[#2c2f31]">{cadHeadline}</h2>
+                  <span className="text-sm font-medium text-[#595c5e]">{usdcLine}</span>
+                </div>
+              </div>
+              <div className="relative z-10 mt-10 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={onReceive}
+                  className={`flex items-center gap-2 rounded-full bg-[#0051d1] px-6 py-3 text-xs font-bold text-[#f1f2ff] shadow-lg shadow-[#0051d1]/10 transition-transform active:scale-95 ${bizFocusRingClass}`}
+                >
+                  <ArrowDownToLine className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Receive
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="flex cursor-not-allowed items-center gap-2 rounded-full bg-white px-6 py-3 text-xs font-bold text-[#595c5e] opacity-60 shadow-sm ring-1 ring-[#e5e9eb]"
+                  aria-disabled
+                >
+                  <ArrowUpFromLine className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Send
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="flex cursor-not-allowed items-center gap-2 rounded-full bg-white px-6 py-3 text-xs font-bold text-[#595c5e] opacity-60 shadow-sm ring-1 ring-[#e5e9eb]"
+                  aria-disabled
+                >
+                  <Landmark className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Cash Out
+                </button>
+              </div>
+              <div className="pointer-events-none absolute -bottom-16 -right-16 h-48 w-48 rounded-full bg-[#0051d1]/5 blur-3xl" aria-hidden />
+            </div>
+          </div>
+        </div>
+
+        <div className="col-span-12 flex min-h-[260px] flex-col justify-between rounded-lg bg-gradient-to-br from-[#0051d1] to-[#0047b8] p-8 text-white shadow-lg lg:col-span-4">
+          <div>
+            <div className="mb-6 flex items-start justify-between">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-md">
+                <Ticket className="size-5 text-white" strokeWidth={2} aria-hidden />
+              </div>
+              <span className="rounded-full bg-white/20 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest backdrop-blur-md">
+                Bonus Units
+              </span>
+            </div>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-white/70">B-Unit Balance</p>
+            <h3 className="font-sans text-4xl font-extrabold">{bUnitStr}</h3>
+          </div>
+          <div className="mt-4 border-t border-white/10 pt-6">
+            <p className="text-[11px] font-medium leading-relaxed text-white/80">
+              Units are ready for your upcoming loyalty programs rewards.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Activate: same 3-layer stack — canvas gray (outer wrapper) → white shell → inner panel */}
+      <div className="mb-10 rounded-2xl border border-[#abadaf]/12 bg-white p-2 shadow-[0_20px_40px_rgba(0,0,0,0.04)] md:p-2.5">
+        <div className="flex flex-col items-stretch justify-between gap-6 rounded-xl bg-[#f9fafb] p-6 md:flex-row md:items-center md:justify-between md:p-8">
+          <div className="flex flex-col items-center gap-6 md:flex-row md:items-center">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-[#e5e9eb] bg-white shadow-sm">
+              <Rocket className="size-8 text-[#0051d1]" strokeWidth={2} aria-hidden />
+            </div>
+            <div className="text-center md:text-left">
+              <h4 className="mb-1 font-sans text-xl font-bold text-[#2c2f31]">Activate your first program</h4>
+              <p className="max-w-md text-sm font-medium text-[#595c5e]">
+                Launch a merchant program to start accepting digital settlements and growing your customer base.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onGoToPrograms}
+            className={`w-full shrink-0 rounded-full bg-[#0051d1] px-8 py-4 text-sm font-bold text-[#f1f2ff] shadow-md transition-all hover:opacity-90 active:scale-95 md:w-auto ${bizFocusRingClass}`}
+          >
+            Go to Programs
+          </button>
+        </div>
+      </div>
+
+      <section>
+        <div className="mb-6 flex items-center justify-between px-2">
+          <h3 className="font-sans text-xl font-bold tracking-tight text-[#2c2f31]">Financial History</h3>
+          <button
+            type="button"
+            onClick={onViewFullReport}
+            className={`flex items-center gap-1 text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-70 ${bizFocusRingClass}`}
+          >
+            View Full Report
+            <ChevronRight className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-[#abadaf]/5 bg-white px-6 py-16 text-center shadow-sm">
+          <div className="relative mb-6 h-40 w-40">
+            <div className="absolute inset-0 rounded-full bg-[#eef1f3]" aria-hidden />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="absolute h-28 w-20 translate-x-1 rotate-6 rounded-lg border border-[#e5e9eb] bg-white shadow-sm" aria-hidden />
+              <div
+                className="absolute flex h-28 w-20 -translate-x-1 -rotate-6 flex-col gap-1.5 rounded-lg border border-[#e5e9eb] bg-white p-3 shadow-md"
+                aria-hidden
+              >
+                <div className="h-1.5 w-10 rounded-full bg-[#e5e9eb]" />
+                <div className="h-1.5 w-6 rounded-full bg-[#eef1f3]" />
+                <div className="mt-auto h-5 w-5 self-end rounded-full bg-[#0051d1]/10" />
+              </div>
+            </div>
+            <div className="absolute right-0 top-0 h-6 w-6 rounded-full bg-[#f797ef]/30 blur-md" aria-hidden />
+            <div className="absolute bottom-2 left-0 h-10 w-10 rounded-full bg-[#7a9dff]/20 blur-lg" aria-hidden />
+          </div>
+          <h5 className="mb-2 font-sans text-lg font-bold text-[#2c2f31]">No transactions yet</h5>
+          <p className="max-w-sm text-sm font-medium leading-relaxed text-[#595c5e]">
+            Your incoming settlements and transfers will appear here once your first program is live.
+          </p>
+          <div className="mt-8 flex gap-6">
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef1f3]">
+                <CreditCard className="size-4 text-[#595c5e]" strokeWidth={2} aria-hidden />
+              </div>
+              <span className="text-[9px] font-bold uppercase tracking-tight text-[#595c5e]">Link Bank</span>
+            </div>
+            <div className="h-10 w-px self-center bg-[#abadaf]/20" aria-hidden />
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef1f3]">
+                <Fingerprint className="size-4 text-[#595c5e]" strokeWidth={2} aria-hidden />
+              </div>
+              <span className="text-[9px] font-bold uppercase tracking-tight text-[#595c5e]">Verify ID</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/** Wallet tab — Send USDC sheet (`newOnloading.html` search + list; Pay `send/index.tsx` + `chat` BeamioTransfer / Smart Routing). */
+function WalletSendUsdcSheet(props: {
+  open: boolean;
+  onClose: () => void;
+  myAddress: string;
+  usdcbalance: number;
+  setScanData: (v: string) => void;
+  setScanIntent: (v: '' | 'voucherPay' | 'payBill' | 'payByNfc') => void;
+  setVoucherPayAmount: (v: string) => void;
+  setVoucherPayToAA: (v: string) => void;
+  setVoucherPayFromScan: (v: boolean) => void;
+  navigate: (to: string, options?: { state?: unknown }) => void;
+}) {
+  const {
+    open,
+    onClose,
+    myAddress,
+    usdcbalance,
+    setScanData,
+    setScanIntent,
+    setVoucherPayAmount,
+    setVoucherPayToAA,
+    setVoucherPayFromScan,
+    navigate,
+  } = props;
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [results, setResults] = useState<searchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selected, setSelected] = useState<searchResult | null>(null);
+  const [sendAmount, setSendAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [successTx, setSuccessTx] = useState('');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const normalizedQuery = searchQuery.trim().replace(/^@/, '');
+
+  useEffect(() => {
+    if (!open) return;
+    setSearchQuery('');
+    setResults([]);
+    setSelected(null);
+    setSendAmount('');
+    setNote('');
+    setSendError('');
+    setSuccessTx('');
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !processing) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, processing, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (selected) {
+      setResults([]);
+      return;
+    }
+    const q = normalizedQuery;
+    if (q.length < 2) {
+      setResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      setSendError('');
+      try {
+        const isAddr = ethers.isAddress(q);
+        const searchKey = isAddr ? ethers.getAddress(q) : q;
+        const res = await searchUsername(searchKey);
+        setResults(Array.isArray(res?.results) ? res.results : []);
+      } catch {
+        setResults([]);
+        setSendError('Search failed. Try again.');
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 320);
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [normalizedQuery, open, selected]);
+
+  const pickRecipient = useCallback((row: searchResult) => {
+    setSelected(row);
+    setResults([]);
+    setSearchQuery('');
+    setSendError('');
+  }, []);
+
+  const resolveToAddress = useCallback((): string | null => {
+    if (selected?.address && ethers.isAddress(selected.address.trim())) {
+      try {
+        return ethers.getAddress(selected.address.trim());
+      } catch {
+        return null;
+      }
+    }
+    const q = normalizedQuery;
+    if (ethers.isAddress(q)) {
+      try {
+        return ethers.getAddress(q);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }, [selected, normalizedQuery]);
+
+  const executeSend = useCallback(async () => {
+    setSendError('');
+    const rawAmt = sendAmount.trim();
+    const amt = Number(rawAmt);
+    if (!(amt > 0) || !Number.isFinite(amt)) {
+      setSendError('Enter a valid amount.');
+      return;
+    }
+    if (amt > usdcbalance) {
+      setSendError('Insufficient USDC balance in Main Vault (EOA).');
+      return;
+    }
+    const toRaw = resolveToAddress();
+    if (!toRaw || !myAddress || !ethers.isAddress(myAddress)) {
+      setSendError('Select a recipient or enter a valid Beamio tag / address.');
+      return;
+    }
+    const toAddress = toRaw;
+    if (toAddress.toLowerCase() === myAddress.toLowerCase()) {
+      setSendError('You cannot send to your own wallet.');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const aaFactory = new ethers.Contract(
+        contracts.BeamioAAAcountFactory.address,
+        contracts.BeamioAAAcountFactory.abi,
+        baseEndpoint
+      );
+      let payeeIsAA = false;
+      try {
+        payeeIsAA = !!(await walletSendRetryRpc(() => aaFactory.isBeamioAccount(toAddress)));
+      } catch {
+        payeeIsAA = false;
+      }
+
+      const usdcAmountStr = amt.toFixed(6);
+      const currencyAmount = formatAmount(amt, 'USDC');
+
+      if (payeeIsAA) {
+        const paymentUrl = `https://beamio.app/Vouchers?Amount=${encodeURIComponent(rawAmt)}&currency=${encodeURIComponent('USDC')}&acceptTokens=USDC&to=${encodeURIComponent(toAddress)}`;
+        setScanData(paymentUrl);
+        setScanIntent('payBill');
+        setVoucherPayAmount(rawAmt);
+        setVoucherPayToAA(toAddress);
+        setVoucherPayFromScan(true);
+        navigate('/History', {
+          state: { smartRoutingPayload: { paymentUrl, amount: rawAmt, currency: 'USDC' as ICurrency, toAddress } },
+        });
+        onClose();
+        return;
+      }
+
+      const params = new URLSearchParams({
+        amount: usdcAmountStr,
+        usdcAmount: usdcAmountStr,
+        currency: 'USDC',
+        currencyAmount,
+        toAddress,
+        note: note.trim(),
+      }).toString();
+      const requestEndpoint = `${WALLET_SEND_SETTLE_BASE}/api/BeamioTransfer?${params}`;
+      const response = await fetch(requestEndpoint, { method: 'GET' });
+      if (response.status !== 402) {
+        setSendError('Could not start transfer. Try again.');
+        return;
+      }
+      const body402 = await response.json().catch(() => ({})) as { accepts?: Array<{ payTo?: string; maxAmountRequired?: string | number; data?: { reqUrl?: string } }> };
+      const message = Array.isArray(body402.accepts) ? body402.accepts[0] : null;
+      if (!message?.payTo || message.maxAmountRequired == null) {
+        setSendError('Invalid payment challenge.');
+        return;
+      }
+      const pay = BigInt(Number(message.maxAmountRequired).toFixed(0));
+      const paymentHeader = await AuthorizationSign(pay, message.payTo);
+      if (!paymentHeader) {
+        setSendError('Signing failed. Check your wallet key.');
+        return;
+      }
+      const retryUrl = message.data?.reqUrl ?? requestEndpoint;
+      const secondResponse = await fetch(retryUrl, {
+        method: 'GET',
+        headers: {
+          'X-PAYMENT': paymentHeader,
+          'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
+        },
+        // @ts-ignore custom flag used by app fetch layer where wired
+        __is402Retry: true,
+      });
+      const result = await secondResponse.json().catch(() => ({})) as { USDC_tx?: string; error?: string };
+      if (!secondResponse.ok || !result.USDC_tx) {
+        setSendError(result.error || 'Transfer failed.');
+        return;
+      }
+      setSuccessTx(result.USDC_tx);
+    } catch (e) {
+      setSendError((e as Error)?.message || 'Something went wrong.');
+    } finally {
+      setProcessing(false);
+    }
+  }, [
+    sendAmount,
+    note,
+    usdcbalance,
+    myAddress,
+    resolveToAddress,
+    setScanData,
+    setScanIntent,
+    setVoucherPayAmount,
+    setVoucherPayToAA,
+    setVoucherPayFromScan,
+    navigate,
+    onClose,
+  ]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[250] flex flex-col justify-end sm:items-center sm:justify-center sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wallet-send-usdc-title"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-[#0b0f10]/40 backdrop-blur-md transition-opacity"
+        aria-label="Close send dialog"
+        onClick={() => !processing && onClose()}
+      />
+      <div className="relative z-10 mt-auto max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-[2rem] border border-[#abadaf]/15 bg-[#f5f7f9] shadow-[0_-10px_40px_rgba(21,98,240,0.12)] sm:mt-0 sm:max-h-[85vh] sm:rounded-3xl">
+        <div className="sticky top-0 z-10 border-b border-[#abadaf]/15 bg-[#ffffff] px-6 pb-4 pt-3 sm:rounded-t-3xl">
+          <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-[#d9dde0] sm:hidden" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">Transfer</p>
+              <h2 id="wallet-send-usdc-title" className="mt-1 font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
+                Send USDC
+              </h2>
+              <p className="mt-2 text-xs font-medium leading-relaxed text-[#595c5e]">
+                Search by Beamio tag or paste a Base address. Gas is sponsored for direct EOA sends.
+              </p>
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#abadaf]/25 bg-[#eef1f3] px-3 py-1.5">
+                <UsdcBaseCompositeIcon size={18} badgeSize={11} />
+                <span className="text-[11px] font-bold text-[#2c2f31]">From Main Vault (EOA)</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={processing}
+              onClick={() => onClose()}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#515c70] transition-colors hover:bg-[#e5e9eb] disabled:opacity-50 ${bizFocusRingClass}`}
+              aria-label="Close"
+            >
+              <X className="size-5" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-5 px-6 py-6">
+          {successTx ? (
+            <div className="rounded-2xl border border-[#abadaf]/20 bg-white px-5 py-8 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#0051d1] text-2xl text-white">✓</div>
+              <p className="mt-4 text-sm font-semibold text-[#515c70]">Successfully sent</p>
+              <p className="mt-1 font-mono text-lg font-bold text-[#0051d1]">
+                {formatAmount(Number(sendAmount), 'USDC')} USDC
+              </p>
+              <a
+                href={`https://basescan.org/tx/${successTx}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-4 inline-flex items-center gap-2 text-xs font-bold text-[#0051d1] underline-offset-2 hover:underline ${bizFocusRingClass}`}
+              >
+                View on BaseScan
+                <ExternalLink className="size-3.5" aria-hidden />
+              </a>
+              <button
+                type="button"
+                onClick={onClose}
+                className={`mt-6 w-full rounded-full bg-[#0051d1] py-3 text-sm font-bold text-white ${bizFocusRingClass}`}
+              >
+                Done
+              </button>
+            </div>
+          ) : (
+            <>
+              {selected ? (
+                <div className="flex items-center gap-4 rounded-lg border border-[#abadaf]/15 bg-[#ffffff] p-4 shadow-sm">
+                  <div className="relative shrink-0">
+                    <div className="size-14 overflow-hidden rounded-full bg-[#eef1f3]">
+                      {selected.image ? (
+                        <img src={selected.image} alt="" className="size-full object-cover" />
+                      ) : (
+                        <img src={getImg(selected.username || selected.address)} alt="" className="size-full object-cover" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-bold text-[#2c2f31]">{walletSendDisplayName(selected)}</p>
+                    <p className="text-xs font-medium text-[#0051d1]">@{selected.username || '—'}</p>
+                    <p className="mt-0.5 font-mono text-[11px] text-[#747779]">{walletSendShortAddr(selected.address)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={processing}
+                    onClick={() => setSelected(null)}
+                    className={`shrink-0 rounded-full p-2 text-[#515c70] hover:bg-[#eef1f3] disabled:opacity-50 ${bizFocusRingClass}`}
+                    aria-label="Clear recipient"
+                  >
+                    <X className="size-4" aria-hidden />
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
+                  <input
+                    id="wallet-send-search"
+                    type="text"
+                    autoComplete="off"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search Beamio tags or paste address…"
+                    disabled={processing}
+                    className="w-full rounded-lg border-none bg-[#eef1f3] py-4 pl-12 pr-4 text-sm text-[#2c2f31] outline-none placeholder:text-[#747779] focus:ring-2 focus:ring-[#0051d1]/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                    inputMode="search"
+                  />
+                  {searchLoading ? (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="size-5 animate-spin text-[#0051d1]" aria-hidden />
+                    </div>
+                  ) : null}
+                  {results.length > 0 ? (
+                    <ul className="absolute left-0 right-0 top-full z-20 mt-2 max-h-56 overflow-y-auto rounded-lg border border-[#abadaf]/15 bg-[#ffffff] py-1 shadow-lg">
+                      {results.map((row) => (
+                        <li key={`${row.address}-${row.username}`}>
+                          <button
+                            type="button"
+                            onClick={() => pickRecipient(row)}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[#eef1f3]"
+                          >
+                            <div className="size-11 shrink-0 overflow-hidden rounded-full bg-[#d9dde0]">
+                              {row.image ? (
+                                <img src={row.image} alt="" className="size-full object-cover" />
+                              ) : (
+                                <img src={getImg(row.username || row.address)} alt="" className="size-full object-cover" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold text-[#2c2f31]">{walletSendDisplayName(row)}</p>
+                              <p className="truncate text-xs font-medium text-[#0051d1]">@{row.username || '—'}</p>
+                            </div>
+                            <span className="shrink-0 font-mono text-[10px] text-[#747779]">{walletSendShortAddr(row.address)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="wallet-send-amount" className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[#747779]">
+                  Amount (USDC)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="wallet-send-amount"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(e.target.value)}
+                    disabled={processing}
+                    placeholder="0.00"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="min-w-0 flex-1 rounded-lg border border-[#abadaf]/25 bg-[#ffffff] px-4 py-3 text-base font-semibold text-[#2c2f31] outline-none focus:ring-2 focus:ring-[#0051d1]/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                  />
+                  <button
+                    type="button"
+                    disabled={processing}
+                    onClick={() => setSendAmount(String(usdcbalance))}
+                    className={`shrink-0 rounded-lg border border-[#0051d1]/30 bg-[#7a9dff]/15 px-4 text-xs font-bold text-[#0051d1] ${bizFocusRingClass}`}
+                  >
+                    MAX
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-[#747779]">
+                  Available: {formatAmount(usdcbalance, 'USDC')} USDC
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="wallet-send-note" className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[#747779]">
+                  Note (optional)
+                </label>
+                <input
+                  id="wallet-send-note"
+                  type="text"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value.replace(/[\r\n]/g, ''))}
+                  disabled={processing}
+                  placeholder={"What's this for?"}
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-[#abadaf]/25 bg-[#ffffff] px-4 py-3 text-sm text-[#2c2f31] outline-none focus:ring-2 focus:ring-[#0051d1]/20"
+                />
+              </div>
+
+              {sendError ? (
+                <p className="rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">{sendError}</p>
+              ) : null}
+
+              <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#ffffff] px-4 py-3 text-[11px] leading-relaxed text-[#747779]">
+                Recipients with a Beamio Smart Account open <span className="font-semibold text-[#8d3a8b]">Smart Routing</span> to complete payment (same as Pay). EOA recipients get a direct USDC transfer after you sign the USDC authorization.
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  processing ||
+                  !sendAmount.trim() ||
+                  !(Number(sendAmount) > 0) ||
+                  (!selected && !ethers.isAddress(normalizedQuery))
+                }
+                onClick={() => void executeSend()}
+                className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-3.5 text-sm font-bold text-white shadow-md transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+              >
+                {processing ? <Loader2 className="size-5 animate-spin" aria-hidden /> : <Send className="size-5" strokeWidth={2} aria-hidden />}
+                {processing ? 'Processing…' : 'Send USDC'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Staff / Terminals — no AA / day-0 (`newOnloading.html` Terminals canvas). */
+function StaffTerminalsNoAaOnloadingShell(props: {
+  protocolFuelBUnitsDisplay: string;
+  onLinkNew: () => void;
+}) {
+  const { protocolFuelBUnitsDisplay, onLinkNew } = props;
+  return (
+    <div className="w-full space-y-5 pb-20 pt-1 md:pb-10">
+      <div className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 sm:hidden">
+        <Sparkles className="size-5 shrink-0 text-emerald-600" strokeWidth={2} aria-hidden />
+        <span className="text-sm font-bold text-emerald-700">{protocolFuelBUnitsDisplay} Bonus B-Units Available</span>
+      </div>
+
+      <section className="relative flex flex-col gap-8 overflow-hidden rounded-3xl border border-slate-200 bg-white p-8 shadow-sm lg:p-12">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-blue-50 opacity-60 blur-3xl" aria-hidden />
+        <div className="relative z-10 max-w-2xl space-y-4">
+          <span className="inline-block rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1562f0]">
+            New Feature
+          </span>
+          <h2 className="font-sans text-4xl font-extrabold leading-tight tracking-tight text-[#0f172a]">
+            Ready to accept payments?
+          </h2>
+          <p className="text-base font-medium leading-relaxed text-slate-500">
+            Install the Verra SoftPOS app on any NFC-enabled device to turn it into a secure payment terminal. No extra hardware required—just tap and
+            go.
+          </p>
+        </div>
+        <div className="relative z-10">
+          <button
+            type="button"
+            onClick={onLinkNew}
+            className={`flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-br from-[#1562f0] to-[#3b82f6] px-10 py-4 text-base font-bold text-white shadow-xl shadow-blue-200/80 transition-all active:scale-[0.98] sm:w-auto ${bizFocusRingClass}`}
+          >
+            Link New SoftPOS Terminal
+            <PlusCircle className="size-5 shrink-0" strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-sans text-xl font-extrabold text-[#0f172a]">Active Terminals</h3>
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Live View</span>
+        </div>
+        <div className="flex flex-col items-center gap-6 rounded-3xl border-2 border-dashed border-slate-200 bg-white/50 p-12 text-center sm:p-16">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-50">
+            <MonitorSmartphone className="size-10 text-slate-300" strokeWidth={1.5} aria-hidden />
+          </div>
+          <div className="space-y-2">
+            <h4 className="font-bold text-slate-900">No active devices found</h4>
+            <p className="max-w-xs text-sm font-medium text-slate-500">
+              Once you link a device using the Verra app, it will appear here for real-time tracking.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-6">
+        <h3 className="font-sans text-xl font-extrabold text-[#0f172a]">Getting Started</h3>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="group space-y-4 rounded-3xl border border-slate-100 bg-white p-8 shadow-sm transition-colors hover:border-blue-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-50 transition-colors group-hover:bg-purple-100">
+              <Cloud className="size-6 text-purple-600" strokeWidth={2} aria-hidden />
+            </div>
+            <div className="space-y-2">
+              <h4 className="font-bold text-lg text-[#0f172a]">Pure Software Solution</h4>
+              <p className="text-sm font-medium leading-relaxed text-slate-500">
+                Turn any smartphone or tablet into a payment terminal instantly. No need for bulky hardware or messy cables.
+              </p>
+            </div>
+          </div>
+          <div className="group space-y-4 rounded-3xl border border-slate-100 bg-white p-8 shadow-sm transition-colors hover:border-blue-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 transition-colors group-hover:bg-blue-100">
+              <Zap className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+            </div>
+            <div className="space-y-2">
+              <h4 className="font-bold text-lg text-[#0f172a]">Instant Deployment</h4>
+              <p className="text-sm font-medium leading-relaxed text-slate-500">
+                Go live in under 60 seconds. Simply sign in to the app, verify your identity, and start accepting cards.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1286,6 +2348,213 @@ function MessagesDayZeroShell(props: {
 const BIZ_CACHE_PREFIX = 'beamio:biz-example:'
 /** Fallback when CoNET oracle fetch fails */
 const ORACLE_CAD_USDC_FALLBACK = 0.740
+
+/** `newOnloading.html` Member Profile drawer — Directory list detail (App / Anonymous NFC). */
+function memberDirectoryCadFromPoints(pts: number, cadPerUsdc: number): string {
+  if (!Number.isFinite(cadPerUsdc) || cadPerUsdc <= 0 || !Number.isFinite(pts)) return '—';
+  const cad = pts / cadPerUsdc;
+  return `C$${cad.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function memberDirectoryFormatTsSec(sec: number): string {
+  if (!sec || sec <= 0) return '—';
+  const ms = sec < 10_000_000_000 ? sec * 1000 : sec;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+type MemberDirectoryProfileDrawerProps = {
+  row: BizTopupMemberTableRow;
+  segment: MembersDirectorySegment;
+  cadPerUsdcOracle: number;
+  onClose: () => void;
+  onSendGift: () => void;
+};
+
+/** Returns motion layers for `AnimatePresence` (multiple direct children). */
+function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileDrawerProps): React.ReactElement[] {
+  const { row, segment, cadPerUsdcOracle, onClose, onSendGift } = props;
+  const pts = directoryMemberPointsHuman(row);
+  const tier = directoryMemberTierFromPoints(pts);
+  const tagRaw = row.beamioTag.replace(/^@/, '').trim();
+  const displayTitle = segment === 'app' ? formatDirectoryMemberDisplayName(row.beamioTag) : 'Anonymous member';
+  const headlineTag =
+    segment === 'app'
+      ? tagRaw
+        ? `@${tagRaw}`
+        : `@${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`
+      : `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
+  const avatarSeed = segment === 'app' ? tagRaw || row.memberAddress : row.memberAddress;
+
+  const tierProgressPct = Math.min(100, Math.round((pts / 500) * 100));
+  const toNextLabel =
+    pts >= 500 ? 'Platinum tier reached' : pts >= 200 ? `${Math.max(0, Math.ceil(500 - pts))} pts to Platinum` : `${Math.max(0, Math.ceil(200 - pts))} pts to Gold`;
+
+  const cadDisplay = memberDirectoryCadFromPoints(pts, cadPerUsdcOracle);
+
+  const addrKey = row.memberAddress.toLowerCase();
+
+  return [
+    <motion.button
+      type="button"
+      key={`${addrKey}-member-profile-scrim`}
+      layout={false}
+      className="fixed inset-0 z-[119] cursor-default bg-[#2c2f31]/20 backdrop-blur-sm"
+      aria-label="Close profile"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+      onClick={onClose}
+    />,
+    <motion.div
+      key={`${addrKey}-member-profile-panel`}
+      layout={false}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="member-profile-drawer-title"
+      className="fixed right-0 top-0 z-[120] flex h-full w-[92%] max-w-sm flex-col bg-white shadow-2xl md:w-80"
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      transition={{ type: 'spring', damping: 32, stiffness: 360, mass: 0.85 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+        <div className="flex items-center justify-between px-6 pb-2 pt-6">
+          <button
+            type="button"
+            onClick={onClose}
+            className={`flex size-10 items-center justify-center rounded-full text-[#9a9d9f] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+            aria-label="Close"
+          >
+            <X className="size-5" strokeWidth={2} aria-hidden />
+          </button>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">Profile Details</span>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 pb-24">
+          <div className="mb-8 flex flex-col items-center">
+            <div className="mb-4 rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] p-1">
+              <div className="size-24 overflow-hidden rounded-full border-4 border-white bg-[#dfe3e6]">
+                <img src={getImg(avatarSeed)} alt="" className="size-full object-cover" />
+              </div>
+            </div>
+            <h3 id="member-profile-drawer-title" className="text-center font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
+              {headlineTag}
+            </h3>
+            <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
+            <div
+              className={`mt-3 inline-flex items-center rounded-full border px-3 py-1 ${
+                tier.gold ? 'border-amber-100/50 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-100 text-slate-700'
+              }`}
+            >
+              <span className="font-sans text-xs font-bold">{tier.gold ? 'Gold Member' : 'Silver Member'}</span>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <div className="mb-3 flex items-end justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Tier Progress</span>
+              <span className="text-xs font-bold text-[#0051d1]">{tierProgressPct}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
+              <div className="h-full rounded-full bg-[#0051d1] transition-all" style={{ width: `${tierProgressPct}%` }} />
+            </div>
+            <div className="mt-3 flex justify-between text-[11px] font-medium text-[#595c5e]">
+              <span>{cadDisplay} volume (oracle)</span>
+              <span className="text-right font-bold text-[#0047b8]">{toNextLabel}</span>
+            </div>
+          </div>
+
+          <div className="mb-8 grid grid-cols-1 gap-3">
+            <div className="rounded-lg border border-white bg-[#eef1f3] p-5 shadow-sm">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Stored Balance</p>
+              <p className="font-sans text-2xl font-extrabold text-[#2c2f31]">{cadDisplay}</p>
+              <div className="my-4 h-px bg-[#abadaf]/30" />
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Program</p>
+              <p className="truncate font-sans text-sm font-bold text-[#2c2f31]">{row.programName}</p>
+              <div className="my-4 h-px bg-[#abadaf]/30" />
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Recorded top-ups</p>
+              <p className="font-sans text-lg font-bold text-[#2c2f31]">{row.topupCount.toLocaleString()}</p>
+              <div className="my-4 h-px bg-[#abadaf]/30" />
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Top-up channel</p>
+              <p className="font-sans text-sm font-bold text-[#2c2f31]">{formatMemberTopupChannelLabel(row)}</p>
+            </div>
+          </div>
+
+          <div className="mb-10 flex gap-3">
+            <button
+              type="button"
+              onClick={onSendGift}
+              className={`flex h-12 flex-1 items-center justify-center rounded-full bg-[#0051d1] font-sans text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-[0.98] ${bizFocusRingClass}`}
+            >
+              <Gift className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
+              Send Gift
+            </button>
+            <button
+              type="button"
+              disabled
+              className="flex h-12 flex-1 cursor-not-allowed items-center justify-center rounded-full border-2 border-[#dfe3e6] bg-white font-sans text-sm font-bold text-[#595c5e] opacity-70"
+              title="Refund workflows coming soon"
+            >
+              Issue Refund
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            <h4 className="text-[11px] font-black uppercase tracking-widest text-[#abadaf]">Activity Trail</h4>
+            <div className="relative">
+              <div className="absolute bottom-6 left-[9px] top-6 w-0.5 bg-[#e5e9eb]" aria-hidden />
+              <div className="relative flex gap-4 pb-6">
+                <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#0051d1] ring-4 ring-white">
+                  <Banknote className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="font-sans text-sm font-bold text-[#2c2f31]">Program points: {pts.toFixed(2)}</p>
+                  <p className="mt-1 text-xs text-[#595c5e]">Last activity · {memberDirectoryFormatTsSec(row.lastSeenTs)}</p>
+                </div>
+              </div>
+              <div className="relative flex gap-4 pb-6">
+                <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b] ring-4 ring-white">
+                  <RefreshCw className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="font-sans text-sm font-bold text-[#2c2f31]">Top-up events</p>
+                  <p className="mt-1 text-xs text-[#595c5e]">{row.topupCount.toLocaleString()} recorded on server</p>
+                </div>
+              </div>
+              <div className="relative flex gap-4">
+                <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#d9dde0] ring-4 ring-white">
+                  <LogIn className="size-2.5 text-[#595c5e]" strokeWidth={2.5} aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="font-sans text-sm font-bold text-[#2c2f31]">First seen</p>
+                  <p className="mt-1 text-xs text-[#595c5e]">{memberDirectoryFormatTsSec(row.firstSeenTs)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-lg border border-[#abadaf]/20 bg-[#f5f7f9] p-4">
+            <p className="text-[11px] font-medium leading-relaxed text-[#595c5e]">
+              Member card:{' '}
+              <span className="font-mono text-xs text-[#2c2f31]">{row.memberAddress.slice(0, 6)}…{row.memberAddress.slice(-4)}</span>
+              {row.aaAddress ? (
+                <>
+                  <br />
+                  AA:{' '}
+                  <span className="font-mono text-xs text-[#2c2f31]">
+                    {row.aaAddress.slice(0, 6)}…{row.aaAddress.slice(-4)}
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </div>
+        </div>
+    </motion.div>,
+  ];
+}
+
 /** Set to false to hide the Linked Merchant Card panel */
 const SHOW_LINKED_MERCHANT_CARD_PANEL = false
 const USER_CARD_ADMIN_READ_ABI = [
@@ -2598,6 +3867,70 @@ function txDisplayRowTimestampSec(r: TxDisplayRow): number {
   return normalizeIndexerTimestampToUnixSec((r.raw as { timestamp?: unknown }).timestamp)
 }
 
+/** True when indexer `displayJson.terminal` matches a Staff POS tag (`@handle` optional). */
+function terminalTagEqualsTxTerminal(termTag: string, txTerminal: string): boolean {
+  const rawA = termTag.trim().toLowerCase()
+  const rawB = txTerminal.trim().toLowerCase()
+  if (!rawA || !rawB) return false
+  const aAt = rawA.startsWith('@') ? rawA : `@${rawA}`
+  const bAt = rawB.startsWith('@') ? rawB : `@${rawB}`
+  return aAt === bAt || aAt.slice(1) === bAt.slice(1)
+}
+
+/**
+ * Ledger row belongs to a Staff SoftPOS terminal: same terminal label as Transactions filter,
+ * or indexer `subordinate` is that terminal's linked EOA.
+ */
+function txMatchesTerminalForStaffLastActivity(tx: TxDisplayRow, term: { id: string; tag: string; name?: string }): boolean {
+  const termEoa = term.id.trim().toLowerCase()
+  const txTerm = tx.terminal?.trim() ?? ''
+  if (txTerm && terminalTagEqualsTxTerminal(term.tag, txTerm)) return true
+  const nm = term.name?.trim().toLowerCase()
+  if (nm && txTerm && nm === txTerm.toLowerCase()) return true
+  const sub = tx.subordinate?.trim()
+  if (sub && ethers.isAddress(sub)) {
+    try {
+      if (ethers.getAddress(sub).toLowerCase() === termEoa) return true
+    } catch {
+      /* ignore */
+    }
+  }
+  const rawSub = (tx.raw as { subordinate?: unknown }).subordinate
+  if (typeof rawSub === 'string' && ethers.isAddress(rawSub)) {
+    try {
+      if (ethers.getAddress(rawSub).toLowerCase() === termEoa) return true
+    } catch {
+      /* ignore */
+    }
+  }
+  return false
+}
+
+/** Latest indexer tx timestamp for this terminal → English locale string (matches Transactions-style time). */
+function terminalLastActivityLabelFromIndexerTxs(
+  txs: readonly TxDisplayRow[],
+  term: { id: string; tag: string; name?: string }
+): string | null {
+  let best = 0
+  for (const tx of txs) {
+    if (txDisplayRowIsIndexerBunitLedger(tx)) continue
+    if (!txMatchesTerminalForStaffLastActivity(tx, term)) continue
+    const ts = txDisplayRowTimestampSec(tx)
+    if (ts > best) best = ts
+  }
+  if (best <= 0) return null
+  const d = new Date(best * 1000)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
 /** Display B-Units from `fees.bServiceUnits6`: Charge row + merged TX_TIP child (`tipRaw`) when present. */
 function chargeDisplayRowBUnitsTotal(tx: TxDisplayRow): number {
   if (tx.type !== 'Charge') return 0
@@ -3117,11 +4450,9 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
 }
 
 /**
- * Overview / Staff feeder cadence: **CoNET L1 block events** (`conetDepinProvider.on('block')`, ~6s/block), not wall-clock `setInterval`.
- * Base reads still use `baseRpcProviderDirect`; CoNET chain only provides the metronome (see `beamio-no-setinterval.mdc`).
+ * Verra Merchant（Merchant OS）链上 KPI / metadata / Staff：以 **localStorage trusted cache 本地为主**，CoNET L1 `block` 后台拉取为辅（`beamio-ai-onchain-fetch.mdc`）。
+ * 节拍由 **DaemonProvider** 统一 `conetDepinProvider.on('block')` 触发（与 Members 串行，见 `registerMerchantOsOverviewBackgroundWork`），**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
  */
-/** Tabs where the feeder runs; other tabs do not subscribe (avoids duplicate RPC with per-control effects). */
-const BIZ_OVERVIEW_FEEDER_TABS = new Set(['Overview', 'Staff', 'MembersLoyalty']);
 
 /** In-memory fetch cache: 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
 const FETCH_TTL_MS = 30_000;
@@ -3197,6 +4528,13 @@ function saveTrustedCache<T>(key: string, value: T) {
   }
 }
 
+/** Logged-in CoNET EOA for localStorage — `eoa:${...}:*` keys; must match EOA-switch cleanup `startsWith(eoa:${old}:)`. */
+function bizWalletStoragePartitionLower(profileKeyId: string | undefined, myAddr: string | undefined): string | null {
+  const raw = (profileKeyId ?? myAddr ?? '').trim();
+  if (!raw || !ethers.isAddress(raw)) return null;
+  return ethers.getAddress(raw).toLowerCase();
+}
+
 const fmtAddr = (a: string | undefined) => (a && a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : (a || '—'));
 
 /** beamio.app cardMemberTopups — mode=card */
@@ -3205,6 +4543,8 @@ type BeamioCardMemberTopupsCardResponse = {
   cardAddress: string
   totalTopupCount: number
   totalRepeatTopupCount: number
+  nfcActivationCount?: number
+  appActivationCount?: number
 }
 
 /** beamio.app cardMemberTopups — mode=members (one page) */
@@ -3224,6 +4564,30 @@ type BeamioCardMemberTopupsMembersResponse = {
     topupUsdcTotalE6: string
     lastTopupAt: string
     lastBaseTxHash: string | null
+  }>
+}
+
+/** beamio.app cardMemberTopups — mode=directory (members + NFC/App channel fields) */
+type BeamioCardMemberDirectoryPageResponse = {
+  mode: 'directory'
+  cardAddress: string
+  total: number
+  limit: number
+  offset: number
+  page: number
+  members: Array<{
+    memberEoa: string
+    memberAa: string
+    tierTokenId: string
+    topupCount: number
+    topupPointsTotalE6: string
+    topupUsdcTotalE6: string
+    lastTopupAt: string
+    lastBaseTxHash: string | null
+    usedNfc: boolean
+    usedApp: boolean
+    firstTopupSource: string | null
+    firstTopupAt: string
   }>
 }
 
@@ -3283,16 +4647,50 @@ async function fetchBeamioCardMemberTopupsMembersPageHttp(
   return json;
 }
 
-/** Paginate until all members for a card are loaded (server max limit 2000 per page). */
-async function fetchAllBeamioCardMemberTopupMembersHttp(
+async function fetchBeamioCardMemberDirectoryPageHttp(
+  cardAddress: string,
+  limit: number,
+  offset: number
+): Promise<BeamioCardMemberDirectoryPageResponse> {
+  const url = `${BEAMIO_APP_URL}/api/cardMemberTopups?${new URLSearchParams({
+    cardAddress: ethers.getAddress(cardAddress),
+    mode: 'directory',
+    limit: String(limit),
+    offset: String(offset),
+  })}`;
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[members-loyalty][cardMemberTopups][directory] request', {
+      cardAddress: ethers.getAddress(cardAddress),
+      limit,
+      offset,
+      url,
+    });
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`cardMemberTopups directory: HTTP ${res.status}`);
+  const json = await res.json() as BeamioCardMemberDirectoryPageResponse;
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[members-loyalty][cardMemberTopups][directory] response', {
+      cardAddress: ethers.getAddress(cardAddress),
+      status: res.status,
+      total: json.total,
+      page: json.page,
+      membersCount: Array.isArray(json.members) ? json.members.length : 0,
+    });
+  }
+  return json;
+}
+
+/** Paginate until all members for a card are loaded (server max limit 2000 per page). Uses mode=directory for NFC/App fields. */
+async function fetchAllBeamioCardMemberDirectoryHttp(
   cardAddress: string
-): Promise<{ members: BeamioCardMemberTopupsMembersResponse['members']; total: number }> {
+): Promise<{ members: BeamioCardMemberDirectoryPageResponse['members']; total: number }> {
   const pageLimit = 2000;
   let offset = 0;
-  const acc: BeamioCardMemberTopupsMembersResponse['members'] = [];
+  const acc: BeamioCardMemberDirectoryPageResponse['members'] = [];
   let total = 0;
   while (true) {
-    const page = await fetchBeamioCardMemberTopupsMembersPageHttp(cardAddress, pageLimit, offset);
+    const page = await fetchBeamioCardMemberDirectoryPageHttp(cardAddress, pageLimit, offset);
     total = Number(page.total) || 0;
     acc.push(...(page.members ?? []));
     if (acc.length >= total || (page.members?.length ?? 0) < pageLimit) break;
@@ -3300,6 +4698,24 @@ async function fetchAllBeamioCardMemberTopupMembersHttp(
   }
   return { members: acc, total };
 }
+
+function formatMemberTopupChannelLabel(row: BizTopupMemberTableRow): string {
+  const n = row.usedNfcTopup === true;
+  const a = row.usedAppTopup === true;
+  if (n && a) return 'NFC & App';
+  if (n) return 'NFC';
+  if (a) return 'App';
+  return '—';
+}
+
+function formatRegistryApiRowChannel(m: { usedNfc: boolean; usedApp: boolean }): string {
+  if (m.usedNfc && m.usedApp) return 'NFC & App';
+  if (m.usedNfc) return 'NFC';
+  if (m.usedApp) return 'App';
+  return '—';
+}
+
+const MEMBER_REGISTRY_PAGE_SIZE = 20;
 
 /** 地址胶囊：短缩地址 + 右侧 copy 图标，点击复制到剪贴板，成功后显示绿色 check */
 const AddressCapsule = ({ address, className = '' }: { address: string; className?: string }) => {
@@ -3537,7 +4953,25 @@ const CardIssuanceTierIdentityIcon = ({ preset }: { preset: CardIssuanceTierPres
 };
 
 export default function MerchantOS() {
- const { beamio, profiles, myAddress, setProfiles, setMessageCount, allNodes } = useDaemonContext();
+ const navigate = useNavigate();
+ const {
+   beamio,
+   setBeamio,
+   profiles,
+   myAddress,
+   setProfiles,
+   setMessageCount,
+   allNodes,
+   usdcbalance,
+   setScanData,
+   setScanIntent,
+   setVoucherPayAmount,
+   setVoucherPayToAA,
+   setVoucherPayFromScan,
+   registerMembersLoyaltyBackgroundWork,
+   registerMerchantOsOverviewBackgroundWork,
+ } = useDaemonContext();
+ const [walletSendUsdcOpen, setWalletSendUsdcOpen] = useState(false);
  const [activeTab, setActiveTab] = useState('Overview');
  const [cardIssuanceProgramName, setCardIssuanceProgramName] = useState('VERRA');
  const [cardIssuanceCurrencySymbol, setCardIssuanceCurrencySymbol] = useState(() =>
@@ -3564,6 +4998,11 @@ export default function MerchantOS() {
     text: string;
   } | null>(null);
  const cardIssuanceIconFileRef = useRef<HTMLInputElement>(null);
+ const settingsMerchantLogoFileRef = useRef<HTMLInputElement>(null);
+ const [settingsMerchantLogoUploading, setSettingsMerchantLogoUploading] = useState(false);
+ const [settingsMerchantLogoError, setSettingsMerchantLogoError] = useState('');
+ /** Settings: full-screen slide-over editor for Business Profile */
+ const [settingsBusinessProfileOverlayOpen, setSettingsBusinessProfileOverlayOpen] = useState(false);
  const [cardIssuanceOnchainFetch, setCardIssuanceOnchainFetch] = useState<'idle' | 'loading' | 'done'>('idle');
  const [cardIssuanceExistingCard, setCardIssuanceExistingCard] = useState<{
    cardAddress: string;
@@ -3579,6 +5018,22 @@ export default function MerchantOS() {
  /** Tier row selected for App / Physical preview card (gradient + badge). */
  const [cardIssuancePreviewTierId, setCardIssuancePreviewTierId] = useState<string | null>(null);
  const cardConfigPreviewAnchorRef = useRef<HTMLDivElement | null>(null);
+ /** Issued program: `overview` matches `newOnloading.html`; `configure` shows the full Card Configurator. */
+ const [cardIssuanceActiveProgramView, setCardIssuanceActiveProgramView] = useState<'overview' | 'configure'>(
+   'overview'
+ );
+
+ useEffect(() => {
+   if (activeTab !== 'Card Issuance Setup') {
+     setCardIssuanceActiveProgramView('overview');
+   }
+ }, [activeTab]);
+
+ useEffect(() => {
+   if (!cardIssuanceExistingCard) {
+     setCardIssuanceActiveProgramView('overview');
+   }
+ }, [cardIssuanceExistingCard]);
 
  useEffect(() => {
    if (cardIssuanceTiers.length === 0) {
@@ -3626,6 +5081,72 @@ export default function MerchantOS() {
    const start = tierHex ?? '#1562f0';
    return `linear-gradient(135deg, ${start} 0%, #7a9dff 100%)`;
  }, [cardIssuancePreviewSelectedTier]);
+
+ const programsOverviewActiveCardGradientCss = useMemo(() => {
+   const tiers = cardIssuanceExistingCard?.meta?.tiers;
+   if (tiers?.length) {
+     const sorted = [...tiers].sort((a, b) => {
+       const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
+       const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
+       const ca = Number.isFinite(na) ? na : 0;
+       const cb = Number.isFinite(nb) ? nb : 0;
+       return cb - ca;
+     });
+     const top = sorted[0];
+     const tierHex = tierBackgroundColorForPayload(top?.backgroundColor ?? '');
+     const start = tierHex ?? '#1562f0';
+     return `linear-gradient(135deg, ${start} 0%, #7a9dff 100%)`;
+   }
+   return cardIssuancePreviewCardGradientCss;
+ }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewCardGradientCss]);
+
+ const programsOverviewDisplayName = useMemo(() => {
+   if (!cardIssuanceExistingCard) {
+     return cardIssuancePreviewProgram;
+   }
+   return (
+     cardIssuanceExistingCard.meta?.name?.trim() ||
+     cardIssuanceExistingCard.userCard.name ||
+     cardIssuancePreviewProgram
+   );
+ }, [cardIssuanceExistingCard, cardIssuancePreviewProgram]);
+
+ const programsOverviewShareImage = useMemo(() => {
+   if (!cardIssuanceExistingCard) {
+     return cardIssuanceShareImageUrl.trim();
+   }
+   return (cardIssuanceExistingCard.meta?.image ?? '').trim() || cardIssuanceShareImageUrl.trim();
+ }, [cardIssuanceExistingCard, cardIssuanceShareImageUrl]);
+
+ const programsOverviewHeroTierLabel = useMemo(() => {
+   const tiers = cardIssuanceExistingCard?.meta?.tiers;
+   if (!tiers?.length) {
+     return (cardIssuancePreviewSelectedTier?.name ?? 'Member').trim() || 'Member';
+   }
+   const sorted = [...tiers].sort((a, b) => {
+     const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
+     const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
+     const ca = Number.isFinite(na) ? na : 0;
+     const cb = Number.isFinite(nb) ? nb : 0;
+     return cb - ca;
+   });
+   return sorted[0]?.name?.trim() || 'Member';
+ }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewSelectedTier?.name]);
+
+ const programsOverviewTiersSortedAscending = useMemo(() => {
+   const tiers = cardIssuanceExistingCard?.meta?.tiers;
+   if (!tiers?.length) {
+     return [] as CardTierMetadata[];
+   }
+   return [...tiers].sort((a, b) => {
+     const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
+     const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
+     const ca = Number.isFinite(na) ? na : Number.POSITIVE_INFINITY;
+     const cb = Number.isFinite(nb) ? nb : Number.POSITIVE_INFINITY;
+     return ca - cb;
+   });
+ }, [cardIssuanceExistingCard?.meta?.tiers]);
+
  const bizNumericNoSpinnerClass =
    '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]';
 
@@ -3708,6 +5229,114 @@ export default function MerchantOS() {
      }
    },
    [profiles]
+ );
+
+ const persistBeamioProfileImage = useCallback(
+   async (ipfsImageUrl: string): Promise<boolean> => {
+     const tmpData = CoNET_Data;
+     const p0 = tmpData?.profiles?.[0];
+     if (!tmpData || !p0?.privateKeyArmor || !beamio) {
+       setSettingsMerchantLogoError('Profile not available. Ensure your wallet is ready.');
+       return false;
+     }
+     const bo: beamio = {
+       firstName: beamio.firstName ?? '',
+       lastName: beamio.lastName ?? '',
+       accountName: beamio.accountName,
+       image: ipfsImageUrl,
+       darkTheme: beamio.darkTheme ?? false,
+       isETHFaucet: beamio.isETHFaucet || false,
+       isUSDCFaucet: beamio.isUSDCFaucet || false,
+       initialLoading: beamio.initialLoading || false,
+       createdAt: beamio.createdAt || Date.now(),
+       currency: beamio.currency || 'USD',
+       language: beamio.language || 'en',
+       pgpPublicKeyID: beamio.pgpPublicKeyID ?? '',
+       pgpPublicKeyArmor: beamio.pgpPublicKeyArmor ?? '',
+     };
+     try {
+       const ok = await postBeamio(bo, p0.privateKeyArmor);
+       if (!ok) {
+         setSettingsMerchantLogoError('Could not save profile to server.');
+         return false;
+       }
+       tmpData.beamio = bo;
+       setCoNET_Data(tmpData);
+       await storeSystemData();
+       setBeamio({ ...bo });
+       setSettingsMerchantLogoError('');
+       return true;
+     } catch (err: unknown) {
+       setSettingsMerchantLogoError((err as Error)?.message ?? 'Save failed.');
+       return false;
+     }
+   },
+   [beamio, setBeamio]
+ );
+
+ const handleSettingsMerchantLogoPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+   async (e) => {
+     const input = e.currentTarget;
+     const file = input.files?.[0];
+     input.value = '';
+     if (!file || !file.type.startsWith('image/')) return;
+     const isSvg = file.type === 'image/svg+xml';
+     const p0 = profiles?.[0];
+     if (!p0?.privateKeyArmor) {
+       setSettingsMerchantLogoError('Profile not available for upload.');
+       return;
+     }
+     setSettingsMerchantLogoError('');
+     setSettingsMerchantLogoUploading(true);
+     try {
+       let blob: Blob = file;
+       if (!isSvg && file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
+         blob = await resizeToFitLimit(file, IPFS_UPLOAD_TARGET_MAX_BYTES);
+       }
+       let dataUrl = await blobToDataUrl(blob);
+       let hash: string | null = null;
+       try {
+         hash = await postToIPFS(p0, dataUrl);
+       } catch (err: unknown) {
+         const msg = (err as Error)?.message ?? String(err);
+         if (typeof msg === 'string' && msg.includes('413') && !isSvg) {
+           blob = await compressToJpeg(blob, IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES);
+           dataUrl = await blobToDataUrl(blob);
+           hash = await postToIPFS(p0, dataUrl);
+         } else {
+           throw err;
+         }
+       }
+       if (!hash) {
+         setSettingsMerchantLogoError('Logo upload failed.');
+         return;
+       }
+       const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+       await persistBeamioProfileImage(url);
+     } catch (err: unknown) {
+       setSettingsMerchantLogoError((err as Error)?.message ?? 'Logo upload failed.');
+     } finally {
+       setSettingsMerchantLogoUploading(false);
+     }
+   },
+   [profiles, persistBeamioProfileImage]
+ );
+
+ const handleSettingsMerchantLogoRemove = useCallback(async () => {
+   if (!beamio?.accountName?.trim()) return;
+   const fallback = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(beamio.accountName)}`;
+   setSettingsMerchantLogoError('');
+   setSettingsMerchantLogoUploading(true);
+   try {
+     await persistBeamioProfileImage(fallback);
+   } finally {
+     setSettingsMerchantLogoUploading(false);
+   }
+ }, [beamio?.accountName, persistBeamioProfileImage]);
+
+ const settingsMerchantLogoIsPersistedCustom = Boolean(
+   beamio?.image &&
+     (beamio.image.includes('getFragment?hash=') || beamio.image.includes('ipfs.conet.network'))
  );
 
  const handlePublishCardIssuance = useCallback(async () => {
@@ -4035,6 +5664,58 @@ export default function MerchantOS() {
  const [buintRedeemSubmitLoading, setBuintRedeemSubmitLoading] = useState(false);
  const [buintRedeemUiError, setBuintRedeemUiError] = useState('');
  const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
+ /** Checksummed EOA for Verra business profile local draft (`verra_business_profile_draft_v1:`). */
+ const businessProfileEoaResolved = useMemo(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return '';
+   return ethers.getAddress(raw);
+ }, [profiles?.[0]?.keyID, myAddress]);
+ const [businessProfileForm, setBusinessProfileForm] = useState<VerraBusinessProfileDraft>({});
+ const patchBizBusinessProfile = useCallback((patch: Partial<VerraBusinessProfileDraft>) => {
+   if (!businessProfileEoaResolved) return;
+   const merged = patchBusinessProfileDraftForEoa(businessProfileEoaResolved, patch);
+   setBusinessProfileForm(merged);
+ }, [businessProfileEoaResolved]);
+ const businessProfileProvinceOptions = useMemo(() => {
+   const c = businessProfileForm.country ?? '';
+   if (!c) return [];
+   const r = ONBOARDING_REGIONS_BY_COUNTRY[c];
+   return r ? [...r] : [];
+ }, [businessProfileForm.country]);
+ useEffect(() => {
+   if (activeTab !== 'Settings' || !businessProfileEoaResolved) return;
+   setBusinessProfileForm(loadBusinessProfileDraftForEoa(businessProfileEoaResolved) ?? {});
+ }, [activeTab, businessProfileEoaResolved]);
+ useEffect(() => {
+   if (activeTab !== 'Settings') {
+     setSettingsBusinessProfileOverlayOpen(false);
+   }
+ }, [activeTab]);
+ useEffect(() => {
+   if (!settingsBusinessProfileOverlayOpen) return;
+   const prevOverflow = document.body.style.overflow;
+   document.body.style.overflow = 'hidden';
+   return () => {
+     document.body.style.overflow = prevOverflow;
+   };
+ }, [settingsBusinessProfileOverlayOpen]);
+ useEffect(() => {
+   if (!settingsBusinessProfileOverlayOpen) return;
+   const onKey = (e: KeyboardEvent) => {
+     if (e.key === 'Escape') setSettingsBusinessProfileOverlayOpen(false);
+   };
+   document.addEventListener('keydown', onKey);
+   return () => document.removeEventListener('keydown', onKey);
+ }, [settingsBusinessProfileOverlayOpen]);
+ const settingsBusinessStoreNameInputValue = useMemo(
+   () => businessProfileForm.storeName ?? displayName(beamio ?? undefined) ?? '',
+   [businessProfileForm.storeName, beamio],
+ );
+ /** Wallet-scoped localStorage partition (bizSite: different EOA login → different `eoa:…:` storage prefix). */
+ const walletStoragePartitionLower = useMemo(
+   () => bizWalletStoragePartitionLower(profiles?.[0]?.keyID, myAddress),
+   [profiles?.[0]?.keyID, myAddress],
+ );
  /** Staff / POS / Overview chain reads: merchant-issued BeamioUserCard when present; else infra `BEAMIO_USER_CARD_ASSET_ADDRESS`. */
  const staffProgramBeamioCardAddress = useMemo(
    () => merchantOwnCardAddress ?? FIXED_USER_CARD_CONTRACT_ADDRESS,
@@ -4043,11 +5724,16 @@ export default function MerchantOS() {
  const fixedCardAdminsCacheKey = `card-admins:${staffProgramBeamioCardAddress.toLowerCase()}:v2`;
  const linkedMerchantAdminsCacheKey = `linked-merchants:${staffProgramBeamioCardAddress.toLowerCase()}:v2`;
  const fixedCardMetadataCacheKey = `card-metadata:${staffProgramBeamioCardAddress.toLowerCase()}`;
+ const merchantActivationStatsCacheKey = `card-activation-stats:${staffProgramBeamioCardAddress.toLowerCase()}`;
  const overviewPeriodType = useMemo(() => overviewTimeFilterToPeriodType(timeFilter), [timeFilter]);
  const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${staffProgramBeamioCardAddress.toLowerCase()}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
  const [fixedCardMetadata, setFixedCardMetadata] = useState<FixedUserCardMetadata | null>(() => loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey));
+ /** API `cardMetadata.topupStats`: top-up 成功且当时无会员 NFT 的累计（NFC 近场 / App USDC），用于 Overview「Member activations」。 */
+ const [merchantActivationStats, setMerchantActivationStats] = useState<{ nfc: number; app: number } | null>(() =>
+   loadTrustedCache<{ nfc: number; app: number }>(merchantActivationStatsCacheKey) ?? null,
+ );
  /** Points / voucher token label on Daily Dashboard (metadata `Symbol` or issuance form fallback for own card). */
  const dashboardPointsCurrencySymbol = useMemo(() => {
    const fromMeta = fixedCardMetadata?.currencySymbol?.trim();
@@ -4057,6 +5743,10 @@ export default function MerchantOS() {
    }
    return DASHBOARD_DEFAULT_POINTS_SYMBOL;
  }, [fixedCardMetadata?.currencySymbol, merchantOwnCardAddress, cardIssuanceCurrencySymbol]);
+ useEffect(() => {
+   const next = loadTrustedCache<{ nfc: number; app: number }>(merchantActivationStatsCacheKey) ?? null;
+   setMerchantActivationStats(next);
+ }, [merchantActivationStatsCacheKey]);
  const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
  const [adminNetworkSummaryToday, setAdminNetworkSummaryToday] = useState<{ cadVol: number; txCount: number; usdc: number; vouchers: number } | null>(null);
  /** Chain cumulative admin subtree stats (not tied to Overview date filter) — same shape as period summary */
@@ -4240,6 +5930,17 @@ export default function MerchantOS() {
  }, [indexerTransactions, currentEoa])
 
  const [rawTxJsonModal, setRawTxJsonModal] = useState<TxDisplayRow | null>(null);
+ /** Ledger row → Smart Receipt drawer (`newOnloading.html` pattern) */
+ const [smartReceiptTx, setSmartReceiptTx] = useState<TxDisplayRow | null>(null);
+
+ useEffect(() => {
+   if (!smartReceiptTx) return;
+   const onKey = (e: KeyboardEvent) => {
+     if (e.key === 'Escape') setSmartReceiptTx(null);
+   };
+   window.addEventListener('keydown', onKey);
+   return () => window.removeEventListener('keydown', onKey);
+ }, [smartReceiptTx]);
  /** Transactions table: payer/payee address (lowercase) → @beamioTag from searchUsername (Top-Up / Charge / Tip) */
  const [txReportingBeamioTagByAddress, setTxReportingBeamioTagByAddress] = useState<Record<string, string>>({});
  /** Charge payer → program/staff BeamioUserCard tier capsule (metadata.name + background_color from per-NFT JSON) */
@@ -4283,7 +5984,7 @@ export default function MerchantOS() {
  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
  const [customFuelAmount, setCustomFuelAmount] = useState('');
  /** Market UI: Auto-Refill card only (not wired to payments). */
- const [marketAutoRefillOn, setMarketAutoRefillOn] = useState(true);
+ const [marketAutoRefillOn, setMarketAutoRefillOn] = useState(false);
  const [marketRefuelProcessing, setMarketRefuelProcessing] = useState(false);
  const [marketRefuelSuccess, setMarketRefuelSuccess] = useState<string | null>(null);
  const [marketRefuelError, setMarketRefuelError] = useState<string | null>(null);
@@ -4329,7 +6030,7 @@ export default function MerchantOS() {
  useEffect(() => {
    membersOwnedProgramsRef.current = membersOwnedPrograms;
  }, [membersOwnedPrograms]);
- /** Members & Loyalty: rows from `beamio.app/api/cardMemberTopups` (mode=members), refreshed by feeder; cache keys include EOA */
+ /** Members & Loyalty: rows from `beamio.app/api/cardMemberTopups` (mode=directory), refreshed by feeder; cache keys include EOA */
  const [membersLoyaltyTopupRows, setMembersLoyaltyTopupRows] = useState<BizTopupMemberTableRow[]>([]);
  /** Per-card rollup sums from `mode=card` (total / repeat top-up event counts on server) */
  const [membersLoyaltyServerRollup, setMembersLoyaltyServerRollup] = useState<{
@@ -4341,6 +6042,59 @@ export default function MerchantOS() {
  const [membersLoyaltyProgramKey, setMembersLoyaltyProgramKey] = useState<string>('all');
  /** Member Directory UI — `newOnloading.html` App Users vs Anonymous NFC */
  const [membersDirectorySegment, setMembersDirectorySegment] = useState<MembersDirectorySegment>('app');
+ const [membersDirectoryDetailRow, setMembersDirectoryDetailRow] = useState<BizTopupMemberTableRow | null>(null);
+ /** Single-program server paginated registry (`mode=directory`) */
+ const [memberRegistryPage, setMemberRegistryPage] = useState(1);
+ const [memberRegistryRows, setMemberRegistryRows] = useState<BeamioCardMemberDirectoryPageResponse['members']>([]);
+ const [memberRegistryTotal, setMemberRegistryTotal] = useState(0);
+ const [memberRegistryLoading, setMemberRegistryLoading] = useState(false);
+ useEffect(() => {
+   setMemberRegistryPage(1);
+ }, [membersLoyaltyProgramKey]);
+ useEffect(() => {
+   if (activeTab !== 'MembersLoyalty') return;
+   if (membersLoyaltyProgramKey === 'all') {
+     setMemberRegistryRows([]);
+     setMemberRegistryTotal(0);
+     setMemberRegistryLoading(false);
+     return;
+   }
+   const card = membersLoyaltyProgramKey.trim();
+   if (!card || !ethers.isAddress(card)) {
+     setMemberRegistryRows([]);
+     setMemberRegistryTotal(0);
+     return;
+   }
+   let cancelled = false;
+   setMemberRegistryLoading(true);
+   const offset = (memberRegistryPage - 1) * MEMBER_REGISTRY_PAGE_SIZE;
+   void fetchBeamioCardMemberDirectoryPageHttp(card, MEMBER_REGISTRY_PAGE_SIZE, offset)
+     .then((r) => {
+       if (cancelled) return;
+       setMemberRegistryRows(Array.isArray(r.members) ? r.members : []);
+       setMemberRegistryTotal(Number(r.total) || 0);
+     })
+     .catch(() => {
+       if (!cancelled) {
+         setMemberRegistryRows([]);
+         setMemberRegistryTotal(0);
+       }
+     })
+     .finally(() => {
+       if (!cancelled) setMemberRegistryLoading(false);
+     });
+   return () => {
+     cancelled = true;
+   };
+ }, [activeTab, membersLoyaltyProgramKey, memberRegistryPage]);
+ useEffect(() => {
+   if (!membersDirectoryDetailRow) return;
+   const onKey = (e: KeyboardEvent) => {
+     if (e.key === 'Escape') setMembersDirectoryDetailRow(null);
+   };
+   window.addEventListener('keydown', onKey);
+   return () => window.removeEventListener('keydown', onKey);
+ }, [membersDirectoryDetailRow]);
  const [isIssueCardModalOpen, setIsIssueCardModalOpen] = useState(false);
  const [issueCardStep, setIssueCardStep] = useState(1);
  const [issueTarget, setIssueTarget] = useState('');
@@ -4357,6 +6111,16 @@ export default function MerchantOS() {
  /** `balanceOf(AA, 0)` on `BEAMIO_USER_CARD_ASSET_ADDRESS` (points token), human units (÷1e6) */
  const [aaUserCardPointsToken0Balance, setAaUserCardPointsToken0Balance] = useState<number | null>(null);
  const [subordinateBalances, setSubordinateBalances] = useState<Record<string, string | null>>({});
+
+ useEffect(() => {
+   setMembersDirectoryDetailRow(null);
+ }, [membersDirectorySegment]);
+
+ useEffect(() => {
+   if (activeTab !== 'MembersLoyalty') {
+     setMembersDirectoryDetailRow(null);
+   }
+ }, [activeTab]);
 
  const handleApplyAlliance = useCallback((aId: AllianceId) => {
    setApplyingAlliance(aId);
@@ -4749,7 +6513,14 @@ export default function MerchantOS() {
    invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
    invalidateFetchCache('indexer:tips');
    invalidateFetchCache('eoa:');
-     const keys = [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey];
+     const keys = [
+       fixedCardAdminsCacheKey,
+       linkedMerchantAdminsCacheKey,
+       fixedCardMetadataCacheKey,
+       merchantActivationStatsCacheKey,
+       linkedTerminalsCacheKey,
+       isAdminTrustedCacheKey,
+     ];
      keys.forEach((k) => window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`));
      Object.keys(window.localStorage).filter((k) => (k.startsWith(BIZ_CACHE_PREFIX + 'card:') && (k.includes('mint-limit-quota') || k.includes('quota-and-mint-counter'))) || (k.startsWith(BIZ_CACHE_PREFIX) && k.includes('buint:balance:'))).forEach((k) => window.localStorage.removeItem(k));
      setFixedCardAdmins([]);
@@ -4763,6 +6534,7 @@ export default function MerchantOS() {
      setAdminMintLimitQuota(null);
      setAdminMintCounterFromClear(null);
      setProtocolFuelReserveBalance(null);
+     setMerchantActivationStats(null);
      setAdminRetryCount((c) => c + 1);
      try {
        Object.keys(window.localStorage)
@@ -4776,7 +6548,16 @@ export default function MerchantOS() {
    } catch {
      setAdminRetryCount((c) => c + 1);
    }
- }, [fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, fixedCardMetadataCacheKey, linkedTerminalsCacheKey, isAdminTrustedCacheKey, currentEoa, staffProgramBeamioCardAddress]);
+ }, [
+   fixedCardAdminsCacheKey,
+   linkedMerchantAdminsCacheKey,
+   fixedCardMetadataCacheKey,
+   merchantActivationStatsCacheKey,
+   linkedTerminalsCacheKey,
+   isAdminTrustedCacheKey,
+   currentEoa,
+   staffProgramBeamioCardAddress,
+ ]);
 
  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
  const [payoutStep, setPayoutStep] = useState(1);
@@ -4841,6 +6622,11 @@ export default function MerchantOS() {
      setAaUsdcBalance(null);
      setIsCurrentUserCardAdmin(null);
      setAdminRetryCount((c) => c + 1);
+     setMembersOwnedPrograms(null);
+     membersOwnedProgramsRef.current = null;
+     setMembersLoyaltyTopupRows([]);
+     setMembersLoyaltyServerRollup({ totalTopupEvents: 0, totalRepeatTopupEvents: 0 });
+     setMembersLoyaltyChainCumulativeMintDisplay(null);
    }
    prevEoaRef.current = currentEoa;
  }, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, staffProgramBeamioCardAddress]);
@@ -4953,6 +6739,24 @@ export default function MerchantOS() {
  const [resetTerminalLimitModal, setResetTerminalLimitModal] = useState<TerminalRecord | null>(null);
  const [resetTerminalLimitLoading, setResetTerminalLimitLoading] = useState(false);
  const [resetTerminalLimitError, setResetTerminalLimitError] = useState<string | null>(null);
+ /** Staff tab: which terminal row has the ⋮ actions menu open */
+ const [staffTerminalActionMenuOpenId, setStaffTerminalActionMenuOpenId] = useState<string | null>(null);
+
+ useEffect(() => {
+   if (staffTerminalActionMenuOpenId == null) return;
+   const onDown = (e: MouseEvent) => {
+     const el = e.target;
+     if (!(el instanceof Element)) return;
+     if (el.closest('[data-staff-terminal-menu]')) return;
+     setStaffTerminalActionMenuOpenId(null);
+   };
+   document.addEventListener('mousedown', onDown);
+   return () => document.removeEventListener('mousedown', onDown);
+ }, [staffTerminalActionMenuOpenId]);
+
+ useEffect(() => {
+   setStaffTerminalActionMenuOpenId(null);
+ }, [activeTab]);
  const [newDeviceName, setNewDeviceName] = useState('');
  const [newTerminalMintLimit, setNewTerminalMintLimit] = useState('1000');
  const [deviceHandleResolved, setDeviceHandleResolved] = useState<{ username: string; address: string; image?: string } | null>(null);
@@ -5089,14 +6893,75 @@ export default function MerchantOS() {
    }
    return indexerTransactions.filter((tx) => bizTxMatchesTransactionTableFilters(tx, ctx))
  }, [
+             indexerTransactions,
+             activeLedger,
+             txSearchTerm,
+             txFilterType,
+             txFilterTerminal,
+             profiles,
+             effectiveAdminAddress,
+             ])
+
+ /** Staff Active Terminals: Last activity from latest matching Transactions / indexer row (not table filters). */
+ const staffTerminalLastActivityFromLedger = useMemo(() => {
+   const out: Record<string, string> = {}
+   for (const term of terminals) {
+     const label = terminalLastActivityLabelFromIndexerTxs(indexerTransactions, term)
+     if (label) out[term.id.toLowerCase()] = label
+   }
+   return out
+ }, [indexerTransactions, terminals])
+
+ /** Dashboard (Overview): activity row counts for selected `timeFilter`, ignoring Transactions table search/filters. */
+ const overviewDashboardActivityFilterCtx = useMemo(
+   (): BizTxTableFilterCtx => ({
+     activeLedger: 'All',
+     txSearchTerm: '',
+     txFilterType: 'All',
+     txFilterTerminal: 'All',
+     hasAaAccount: Boolean(profiles?.[0]?.aaAccount?.trim()),
+     merchantAdminLower:
+       effectiveAdminAddress && ethers.isAddress(effectiveAdminAddress)
+         ? effectiveAdminAddress.toLowerCase()
+         : null,
+   }),
+   [profiles?.[0]?.aaAccount, effectiveAdminAddress]
+ )
+
+ const overviewDashboardActivityTxs = useMemo(() => {
+   const endSec = Math.floor(Date.now() / 1000)
+   const startSec = overviewPeriodStartUnixSec(timeFilter, endSec)
+   return indexerTransactions.filter((tx) => {
+     if (!bizTxMatchesTransactionTableFilters(tx, overviewDashboardActivityFilterCtx)) return false
+     const ts = txDisplayRowTimestampSec(tx)
+     if (ts <= 0) return false
+     return ts >= startSec && ts <= endSec
+   })
+ }, [
    indexerTransactions,
-   activeLedger,
-   txSearchTerm,
-   txFilterType,
-   txFilterTerminal,
-   profiles,
-   effectiveAdminAddress,
+   timeFilter,
+   overviewDashboardActivityFilterCtx,
+   overviewRefreshTrigger,
  ])
+
+ const overviewActivityTopupCount = useMemo(
+   () => overviewDashboardActivityTxs.filter((t) => t.type === 'In-Store Top-Up').length,
+   [overviewDashboardActivityTxs]
+ )
+ const overviewActivityChargeCount = useMemo(
+   () => overviewDashboardActivityTxs.filter((t) => t.type === 'Charge').length,
+   [overviewDashboardActivityTxs]
+ )
+ const overviewActivityTipCount = useMemo(
+   () => overviewDashboardActivityTxs.filter((t) => t.type === 'Tip').length,
+   [overviewDashboardActivityTxs]
+ )
+ /** All-time（API DB）：无会员 NFT 用户经 NFC / App 首笔成功 top-up 次数；与 `timeFilter` 无关。 */
+ const overviewMemberActivationsFromApi = useMemo(() => {
+   const nfc = merchantActivationStats?.nfc ?? 0;
+   const app = merchantActivationStats?.app ?? 0;
+   return { total: nfc + app, nfc, app };
+ }, [merchantActivationStats]);
 
  /** Latest `handleRefreshAA` for deferred calls (e.g. post–B-Unit refuel) without stale closures */
  const handleRefreshAARef = useRef<(() => Promise<void>) | undefined>(undefined);
@@ -5977,7 +7842,286 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (resolved) setFeederEoa(resolved);
  }, [profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
 
- /** Unified Base overview feeder: one batch per **CoNET L1 new block** on Overview + Staff tabs. Card metadata without login; Daily Dashboard network summary uses card-level `getGlobalStatsFull` (all admins). Staff terminal stats remain per-admin. */
+ /** Members loyalty：由 DaemonProvider 在 CoNET `block` 上调度后台刷新（非 Members tab 也可更新）；禁止与 feeder 重复拉取。 */
+ const membersLoyaltyBgActiveRef = useRef(true);
+ useEffect(() => {
+   membersLoyaltyBgActiveRef.current = true;
+   const tick = async () => {
+     if (!membersLoyaltyBgActiveRef.current || !profiles?.[0]) return;
+     const account =
+       feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : '';
+     if (!account) return;
+     const walletPartition = bizWalletStoragePartitionLower(profiles[0].keyID, myAddress);
+     const membersOwnedProgramsCacheKey =
+       walletPartition && account && ethers.isAddress(account)
+         ? `eoa:${walletPartition}:biz:members-owned-programs:v1:${ethers.getAddress(account).toLowerCase()}`
+         : '';
+     const cachedMembersOwnedPrograms = membersOwnedProgramsCacheKey
+       ? loadTrustedCache<MembersOwnedProgramOverviewRow[]>(membersOwnedProgramsCacheKey)
+       : null;
+     let ownedCardsForTopupMerge: UserCardInfo[] = [];
+     let programOverviewRows: MembersOwnedProgramOverviewRow[] =
+       membersOwnedProgramsRef.current ?? [];
+
+     await globalFetchQueue;
+     try {
+       const p0 = profiles[0];
+       const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
+       ownedCardsForTopupMerge = cards ?? [];
+       if (!membersLoyaltyBgActiveRef.current) return;
+       if (!trusted && (!cards || cards.length === 0)) {
+         if (cachedMembersOwnedPrograms != null) {
+           if (!membersLoyaltyBgActiveRef.current) return;
+           setMembersOwnedPrograms(cachedMembersOwnedPrograms);
+           programOverviewRows = cachedMembersOwnedPrograms;
+           ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
+         }
+       } else if (!cards || cards.length === 0) {
+         if (!membersLoyaltyBgActiveRef.current) return;
+         setMembersOwnedPrograms([]);
+         programOverviewRows = [];
+         setMembersLoyaltyChainCumulativeMintDisplay(0);
+         if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, []);
+         if (walletPartition && account && ethers.isAddress(account)) {
+           saveMembersLoyaltyDirectoryBundleTrusted(walletPartition, ethers.getAddress(account).toLowerCase(), {
+             topupRows: [],
+             serverRollup: { totalTopupEvents: 0, totalRepeatTopupEvents: 0 },
+             chainCumulativeMintDisplay: 0,
+           });
+         }
+       } else {
+         const rows: MembersOwnedProgramOverviewRow[] = [];
+         for (const uc of cards) {
+           if (!membersLoyaltyBgActiveRef.current) break;
+           const addr = ethers.getAddress(uc.cardAddress);
+           const cRead = new ethers.Contract(addr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+           let ownerAddr = ethers.getAddress(account);
+           try {
+             const o = (await cRead.owner()) as string;
+             if (o && ethers.isAddress(o)) ownerAddr = ethers.getAddress(o);
+           } catch {
+             /* keep fallback */
+           }
+           let meta: CardMetadataFromUri | null = null;
+           try {
+             meta =
+               (await getCardMetadataFromApi(addr)) ??
+               (await getCardMetadataFrom1155Json(addr)) ??
+               (await getCardMetadataFromUri(addr));
+           } catch {
+             meta = null;
+           }
+           const programName =
+             (typeof meta?.name === 'string' && meta.name.trim()) ||
+             (typeof uc.name === 'string' && uc.name.trim()) ||
+             `Program ${fmtAddr(addr)}`;
+           const image = typeof meta?.image === 'string' ? meta.image : undefined;
+           let ownerDisplayName = '';
+           let ownerAccountName = '';
+           let ownerImage: string | undefined;
+           try {
+             const res = await searchUsername(ownerAddr);
+             const peer = res?.results?.[0] as Parameters<typeof displayName>[0] | undefined;
+             if (peer) {
+               ownerDisplayName = displayName(peer);
+               ownerAccountName = String(
+                 (peer as { accountName?: string; username?: string }).accountName ??
+                   (peer as { username?: string }).username ??
+                   ''
+               ).replace(/^@/, '');
+               ownerImage = typeof (peer as { image?: string }).image === 'string' ? (peer as { image: string }).image : undefined;
+             }
+           } catch {
+             /* ignore */
+           }
+           let issuedLifetime: number | null = null;
+           try {
+             const gs = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+             if (gs) issuedLifetime = amountE6ToDisplayNumber(gs.cumulativeIssued);
+           } catch {
+             /* ignore */
+           }
+           rows.push({
+             cardAddress: addr,
+             programName,
+             image,
+             ownerAddress: ownerAddr,
+             currency: uc.currency,
+             ownerDisplayName,
+             ownerAccountName,
+             ownerImage,
+             issuedLifetime,
+           });
+         }
+         if (!membersLoyaltyBgActiveRef.current) return;
+         setMembersOwnedPrograms(rows);
+         programOverviewRows = rows;
+         if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, rows);
+       }
+     } catch {
+       if (!membersLoyaltyBgActiveRef.current) return;
+       if (cachedMembersOwnedPrograms != null) {
+         setMembersOwnedPrograms(cachedMembersOwnedPrograms);
+         programOverviewRows = cachedMembersOwnedPrograms;
+         ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
+       }
+     }
+
+     if (
+       ownedCardsForTopupMerge.length === 0 &&
+       membersOwnedProgramsRef.current != null &&
+       membersOwnedProgramsRef.current.length > 0
+     ) {
+       if (!membersLoyaltyBgActiveRef.current) return;
+       ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(membersOwnedProgramsRef.current);
+       programOverviewRows = membersOwnedProgramsRef.current;
+     }
+
+     if (account && ethers.isAddress(account) && ownedCardsForTopupMerge.length > 0) {
+       try {
+         const membersFetchPartition = walletPartition ?? ethers.getAddress(account).toLowerCase();
+         const nameByCardLower = new Map<string, string>();
+         for (const p of programOverviewRows) {
+           nameByCardLower.set(p.cardAddress.toLowerCase(), p.programName);
+         }
+         let sumChainCumulativeMint = 0n;
+         let chainMintOkCount = 0;
+         for (const uc of ownedCardsForTopupMerge) {
+           if (!membersLoyaltyBgActiveRef.current) break;
+           const addrG = ethers.getAddress(uc.cardAddress);
+           const cardLowerG = addrG.toLowerCase();
+           const cacheKeyChainMint = `eoa:${membersFetchPartition}:card:${cardLowerG}:global-stats-cumulative-mint`;
+           const mintStr = await fetchWithCache(cacheKeyChainMint, async () => {
+             const g = await callGetGlobalStatsFullParsed(addrG, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+             if (!g) throw new Error('getGlobalStatsFull parse');
+             return g.cumulativeMint.toString();
+           }).catch(() => null as string | null);
+           if (!membersLoyaltyBgActiveRef.current) break;
+           if (mintStr == null) continue;
+           sumChainCumulativeMint += BigInt(mintStr);
+           chainMintOkCount += 1;
+         }
+         const merged: BizTopupMemberTableRow[] = [];
+         let sumTopupEvents = 0;
+         let sumRepeatTopupEvents = 0;
+         for (const uc of ownedCardsForTopupMerge) {
+           if (!membersLoyaltyBgActiveRef.current) break;
+           const addr = ethers.getAddress(uc.cardAddress);
+           const cardLower = addr.toLowerCase();
+           const programName =
+             nameByCardLower.get(cardLower) ||
+             (typeof uc.name === 'string' && uc.name.trim()) ||
+             `Program ${fmtAddr(addr)}`;
+           const cacheKeyRollup = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:rollup:${cardLower}`;
+           const rollup = await fetchWithCache(cacheKeyRollup, () => fetchBeamioCardMemberTopupRollupHttp(addr));
+           if (!membersLoyaltyBgActiveRef.current) break;
+           sumTopupEvents += Number(rollup.totalTopupCount) || 0;
+           sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
+           const cacheKeyMembers = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:directoryAll:v1:${cardLower}`;
+           const { members, total } = await fetchWithCache(cacheKeyMembers, () =>
+             fetchAllBeamioCardMemberDirectoryHttp(addr)
+           );
+           if (!membersLoyaltyBgActiveRef.current) break;
+           if (total > 0 && members.length < total && process.env.NODE_ENV !== 'production') {
+             console.warn('[membersLoyalty:daemon] member page count < total', {
+               card: cardLower,
+               got: members.length,
+               total,
+             });
+           }
+           for (const m of members) {
+             const eoaM = m.memberEoa && ethers.isAddress(m.memberEoa) ? ethers.getAddress(m.memberEoa) : '';
+             if (!eoaM) continue;
+             const aaRaw = m.memberAa?.trim();
+             const aa =
+               aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+                 ? ethers.getAddress(aaRaw)
+                 : undefined;
+             let lastTs = 0;
+             try {
+               const t = Date.parse(m.lastTopupAt);
+               if (Number.isFinite(t)) lastTs = Math.floor(t / 1000);
+             } catch {
+               /* ignore */
+             }
+             let firstTs = 0;
+             const dirM = m as (typeof m) & {
+               usedNfc?: boolean;
+               usedApp?: boolean;
+               firstTopupSource?: string | null;
+               firstTopupAt?: string;
+             };
+             try {
+               const ft = Date.parse(String(dirM.firstTopupAt ?? ''));
+               if (Number.isFinite(ft)) firstTs = Math.floor(ft / 1000);
+             } catch {
+               /* ignore */
+             }
+             merged.push({
+               cardLower,
+               programName,
+               memberAddress: eoaM,
+               aaAddress: aa,
+               topupCount: Number(m.topupCount) || 0,
+               totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
+               firstSeenTs: firstTs,
+               lastSeenTs: lastTs,
+               beamioTag: '',
+               usedNfcTopup: Boolean(dirM.usedNfc),
+               usedAppTopup: Boolean(dirM.usedApp),
+               firstTopupSource: dirM.firstTopupSource ?? null,
+               firstTopupAtIso: dirM.firstTopupAt ? String(dirM.firstTopupAt) : undefined,
+             });
+           }
+         }
+         merged.sort((a, b) => b.lastSeenTs - a.lastSeenTs);
+         let chainDisplayForBundle: number | null = null;
+         if (!membersLoyaltyBgActiveRef.current) return;
+         if (ownedCardsForTopupMerge.length > 0) {
+           const chainVolumeDisplay =
+             chainMintOkCount > 0 ? amountE6ToDisplayNumber(sumChainCumulativeMint) : null;
+           setMembersLoyaltyChainCumulativeMintDisplay((prev) => {
+             const next = resolveTopupVolumePointsDisplay(chainVolumeDisplay, prev);
+             chainDisplayForBundle = next;
+             return next;
+           });
+         }
+         if (!membersLoyaltyBgActiveRef.current) return;
+         const rollupAgg = {
+           totalTopupEvents: sumTopupEvents,
+           totalRepeatTopupEvents: sumRepeatTopupEvents,
+         };
+         setMembersLoyaltyTopupRows(merged);
+         setMembersLoyaltyServerRollup(rollupAgg);
+         if (walletPartition && account && ethers.isAddress(account)) {
+           saveMembersLoyaltyDirectoryBundleTrusted(walletPartition, ethers.getAddress(account).toLowerCase(), {
+             topupRows: merged,
+             serverRollup: rollupAgg,
+             chainCumulativeMintDisplay: chainDisplayForBundle,
+           });
+         }
+       } catch (e) {
+         if (process.env.NODE_ENV !== 'production') {
+           console.warn('[membersLoyalty:daemon] cardMemberTopups failed:', e);
+         }
+       }
+     }
+   };
+
+   registerMembersLoyaltyBackgroundWork(tick);
+   return () => {
+     membersLoyaltyBgActiveRef.current = false;
+     registerMembersLoyaltyBackgroundWork(null);
+   };
+ }, [
+   registerMembersLoyaltyBackgroundWork,
+   profiles,
+   myAddress,
+   feederEoa,
+   walletStoragePartitionLower,
+ ]);
+
+ /** Unified Base overview feeder: one batch per **CoNET L1 new block**（Daemon 全局守护，全 Merchant OS 生命周期内持续刷新，不限当前 Tab）。 */
  const feederInProgressRef = useRef(false);
  const feederCancelledRef = useRef(false);
  const feederAccountRef = useRef('');
@@ -5991,7 +8135,6 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  const prevActiveTabForTxRef = useRef<string>(activeTab);
  feederAccountRef.current = feederEoa ?? '';
  useEffect(() => {
-   if (!BIZ_OVERVIEW_FEEDER_TABS.has(activeTab)) return;
    feederCancelledRef.current = false;
    /** Resolved wallet for quota / BUint / consumption; null when not logged in (still fetch global stats + metadata). */
    const accountResolved = feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : null;
@@ -6039,6 +8182,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const cachedTipsLifetime = adminTipsLifetimeStorageKey ? loadTrustedCache<number>(adminTipsLifetimeStorageKey) : null;
 
    if (cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
+   const cachedActivationStats = loadTrustedCache<{ nfc: number; app: number }>(merchantActivationStatsCacheKey);
+   if (cachedActivationStats != null) setMerchantActivationStats(cachedActivationStats);
    if (effectiveAdmin && ethers.isAddress(effectiveAdmin)) {
      if (cachedNetworkSummary != null) setAdminNetworkSummaryToday(cachedNetworkSummary);
      else setAdminNetworkSummaryToday(null);
@@ -6072,7 +8217,6 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
      const feederWork = async () => {
        await globalFetchQueue;
-       let ownedCardsForTopupMerge: UserCardInfo[] = [];
 
        // 0. Card metadata (HTTP, merged into CoNET block-tick refresh)
        if (!feederCancelledRef.current) {
@@ -6082,8 +8226,23 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            );
            let parsed: FixedUserCardMetadata | null = null;
            if (apiRes.ok) {
-             const apiData = await apiRes.json() as { cardOwner?: string; metadata?: unknown };
+             const apiData = await apiRes.json() as {
+               cardOwner?: string;
+               metadata?: unknown;
+               topupStats?: {
+                 nfcActivationCount?: number;
+                 appActivationCount?: number;
+               };
+             };
              parsed = parseFixedUserCardMetadata(apiData.metadata, typeof apiData.cardOwner === 'string' ? apiData.cardOwner : undefined);
+             if (apiData.topupStats && !feederCancelledRef.current) {
+               const act = {
+                 nfc: Number(apiData.topupStats.nfcActivationCount) || 0,
+                 app: Number(apiData.topupStats.appActivationCount) || 0,
+               };
+               setMerchantActivationStats(act);
+               saveTrustedCache(merchantActivationStatsCacheKey, act);
+             }
            }
            if (!parsed) {
              const normalizedCardAddress = staffProgramBeamioCardAddress.toLowerCase().replace(/^0x/, '');
@@ -6303,223 +8462,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          }
        }
 
-       // 2c. Members & Loyalty: all BeamioUserCard programs owned by the merchant (factory) + on-chain owner + Beamio profile + lifetime issued
-       const membersOwnedProgramsCacheKey =
-         currentEoa && account && ethers.isAddress(account)
-           ? `eoa:${currentEoa}:biz:members-owned-programs:v1:${ethers.getAddress(account).toLowerCase()}`
-           : '';
-       const cachedMembersOwnedPrograms = membersOwnedProgramsCacheKey
-         ? loadTrustedCache<MembersOwnedProgramOverviewRow[]>(membersOwnedProgramsCacheKey)
-         : null;
-       if (activeTab === 'MembersLoyalty' && profiles?.[0] && account && ethers.isAddress(account) && !feederCancelledRef.current) {
-         try {
-           const p0 = profiles[0];
-           const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
-           ownedCardsForTopupMerge = cards ?? [];
-           if (feederCancelledRef.current) return;
-           if (!trusted && (!cards || cards.length === 0)) {
-             if (!feederCancelledRef.current && cachedMembersOwnedPrograms != null) {
-               setMembersOwnedPrograms(cachedMembersOwnedPrograms);
-               ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
-             }
-           } else if (!cards || cards.length === 0) {
-             if (!feederCancelledRef.current) {
-               setMembersOwnedPrograms([]);
-               setMembersLoyaltyChainCumulativeMintDisplay(0);
-               if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, []);
-             }
-           } else {
-             const rows: MembersOwnedProgramOverviewRow[] = [];
-             for (const uc of cards) {
-               if (feederCancelledRef.current) break;
-               const addr = ethers.getAddress(uc.cardAddress);
-               const cRead = new ethers.Contract(addr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
-               let ownerAddr = ethers.getAddress(account);
-               try {
-                 const o = (await cRead.owner()) as string;
-                 if (o && ethers.isAddress(o)) ownerAddr = ethers.getAddress(o);
-               } catch {
-                 /* keep fallback */
-               }
-               let meta: CardMetadataFromUri | null = null;
-               try {
-                 meta =
-                   (await getCardMetadataFromApi(addr)) ??
-                   (await getCardMetadataFrom1155Json(addr)) ??
-                   (await getCardMetadataFromUri(addr));
-               } catch {
-                 meta = null;
-               }
-               const programName =
-                 (typeof meta?.name === 'string' && meta.name.trim()) ||
-                 (typeof uc.name === 'string' && uc.name.trim()) ||
-                 `Program ${fmtAddr(addr)}`;
-               const image = typeof meta?.image === 'string' ? meta.image : undefined;
-               let ownerDisplayName = '';
-               let ownerAccountName = '';
-               let ownerImage: string | undefined;
-               try {
-                 const res = await searchUsername(ownerAddr);
-                 const peer = res?.results?.[0] as Parameters<typeof displayName>[0] | undefined;
-                 if (peer) {
-                   ownerDisplayName = displayName(peer);
-                   ownerAccountName = String(
-                     (peer as { accountName?: string; username?: string }).accountName ??
-                       (peer as { username?: string }).username ??
-                       ''
-                   ).replace(/^@/, '');
-                   ownerImage = typeof (peer as { image?: string }).image === 'string' ? (peer as { image: string }).image : undefined;
-                 }
-               } catch {
-                 /* ignore */
-               }
-               let issuedLifetime: number | null = null;
-               try {
-                 const gs = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
-                 if (gs) issuedLifetime = amountE6ToDisplayNumber(gs.cumulativeIssued);
-               } catch {
-                 /* ignore */
-               }
-               rows.push({
-                 cardAddress: addr,
-                 programName,
-                 image,
-                 ownerAddress: ownerAddr,
-                 currency: uc.currency,
-                 ownerDisplayName,
-                 ownerAccountName,
-                 ownerImage,
-                 issuedLifetime,
-               });
-             }
-             if (!feederCancelledRef.current) {
-               setMembersOwnedPrograms(rows);
-               if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, rows);
-             }
-           }
-         } catch {
-           if (!feederCancelledRef.current && cachedMembersOwnedPrograms != null) {
-             setMembersOwnedPrograms(cachedMembersOwnedPrograms);
-             ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
-           }
-         }
-       }
-
-       // 2c/2d gap: table can show programs from React state or disk while this tick's `cards` was [] (untrusted) and cache key miss — still merge card addresses for chain KPI + members API.
-       if (
-         activeTab === 'MembersLoyalty' &&
-         ownedCardsForTopupMerge.length === 0 &&
-         membersOwnedProgramsRef.current != null &&
-         membersOwnedProgramsRef.current.length > 0 &&
-         !feederCancelledRef.current
-       ) {
-         ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(membersOwnedProgramsRef.current);
-       }
-
-       // 2d. Members & Loyalty: beamio.app `cardMemberTopups` (rollup + all member rows per owned program). EOA-scoped `fetchWithCache` keys.
-       // Use feeder `account` (same as 2c), not `currentEoa`: when menu EOA is empty, `feederEoa` may fall back to `fixedCardMetadata.cardOwner` — then `currentEoa` is falsy and this block would never run, leaving Top-up volume (points) as "—" despite valid chain data.
-       if (
-         activeTab === 'MembersLoyalty' &&
-         account &&
-         ethers.isAddress(account) &&
-         ownedCardsForTopupMerge.length > 0 &&
-         !feederCancelledRef.current
-       ) {
-         try {
-           const eoaKey = ethers.getAddress(account).toLowerCase();
-           const nameByCardLower = new Map<string, string>();
-           for (const p of membersOwnedPrograms ?? []) {
-             nameByCardLower.set(p.cardAddress.toLowerCase(), p.programName);
-           }
-           let sumChainCumulativeMint = 0n;
-           let chainMintOkCount = 0;
-           for (const uc of ownedCardsForTopupMerge) {
-             if (feederCancelledRef.current) break;
-             const addrG = ethers.getAddress(uc.cardAddress);
-             const cardLowerG = addrG.toLowerCase();
-             const cacheKeyChainMint = `eoa:${eoaKey}:card:${cardLowerG}:global-stats-cumulative-mint`;
-             const mintStr = await fetchWithCache(cacheKeyChainMint, async () => {
-               const g = await callGetGlobalStatsFullParsed(addrG, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
-               if (!g) throw new Error('getGlobalStatsFull parse');
-               return g.cumulativeMint.toString();
-             }).catch(() => null as string | null);
-             if (feederCancelledRef.current) break;
-             if (mintStr == null) continue;
-             sumChainCumulativeMint += BigInt(mintStr);
-             chainMintOkCount += 1;
-           }
-           const merged: BizTopupMemberTableRow[] = [];
-           let sumTopupEvents = 0;
-           let sumRepeatTopupEvents = 0;
-           for (const uc of ownedCardsForTopupMerge) {
-             if (feederCancelledRef.current) break;
-             const addr = ethers.getAddress(uc.cardAddress);
-             const cardLower = addr.toLowerCase();
-             const programName =
-               nameByCardLower.get(cardLower) ||
-               (typeof uc.name === 'string' && uc.name.trim()) ||
-               `Program ${fmtAddr(addr)}`;
-             const cacheKeyRollup = `eoa:${eoaKey}:beamio:cardMemberTopups:rollup:${cardLower}`;
-             const rollup = await fetchWithCache(cacheKeyRollup, () => fetchBeamioCardMemberTopupRollupHttp(addr));
-             if (feederCancelledRef.current) break;
-             sumTopupEvents += Number(rollup.totalTopupCount) || 0;
-             sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
-             const cacheKeyMembers = `eoa:${eoaKey}:beamio:cardMemberTopups:membersAll:${cardLower}`;
-             const { members, total } = await fetchWithCache(cacheKeyMembers, () => fetchAllBeamioCardMemberTopupMembersHttp(addr));
-             if (feederCancelledRef.current) break;
-             if (total > 0 && members.length < total && process.env.NODE_ENV !== 'production') {
-               console.warn('[feeder] Members loyalty: member page count < total', { card: cardLower, got: members.length, total });
-             }
-             for (const m of members) {
-               const eoaM = m.memberEoa && ethers.isAddress(m.memberEoa) ? ethers.getAddress(m.memberEoa) : '';
-               if (!eoaM) continue;
-               const aaRaw = m.memberAa?.trim();
-               const aa =
-                 aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
-                   ? ethers.getAddress(aaRaw)
-                   : undefined;
-               let lastTs = 0;
-               try {
-                 const t = Date.parse(m.lastTopupAt);
-                 if (Number.isFinite(t)) lastTs = Math.floor(t / 1000);
-               } catch {
-                 /* ignore */
-               }
-               merged.push({
-                 cardLower,
-                 programName,
-                 memberAddress: eoaM,
-                 aaAddress: aa,
-                 topupCount: Number(m.topupCount) || 0,
-                 totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
-                 firstSeenTs: 0,
-                 lastSeenTs: lastTs,
-                 beamioTag: '',
-               });
-             }
-           }
-          merged.sort((a, b) => b.lastSeenTs - a.lastSeenTs);
-          if (!feederCancelledRef.current && ownedCardsForTopupMerge.length > 0) {
-            const chainVolumeDisplay =
-              chainMintOkCount > 0 ? amountE6ToDisplayNumber(sumChainCumulativeMint) : null;
-            setMembersLoyaltyChainCumulativeMintDisplay((prev) =>
-              resolveTopupVolumePointsDisplay(chainVolumeDisplay, prev)
-            );
-          }
-           if (!feederCancelledRef.current) {
-             setMembersLoyaltyTopupRows(merged);
-             setMembersLoyaltyServerRollup({
-               totalTopupEvents: sumTopupEvents,
-               totalRepeatTopupEvents: sumRepeatTopupEvents,
-             });
-           }
-         } catch (e) {
-           if (process.env.NODE_ENV !== 'production') {
-             console.warn('[feeder] Members loyalty API (cardMemberTopups) failed:', e);
-           }
-           /* keep previous membersLoyaltyTopupRows — trusted-cache style */
-         }
-       }
+       // Members 2c/2d：已迁至 DaemonProvider CoNET `block` + `registerMembersLoyaltyBackgroundWork`（后台更新，不依赖当前 Tab）。
 
        // 3. Protocol Fuel Reserve: CoNET BUint.balanceOf sum for user EOA + AA (same CoNET block tick as indexer reads below).
        // Trusted-cache protocol: only overwrite on full successful read; partial RPC failure → keep last trusted (persisted + in-memory).
@@ -6625,23 +8568,21 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      }
    };
 
+   registerMerchantOsOverviewBackgroundWork(() => runFeeder());
    void runFeeder();
-   const onConetL1Block = (_blockNumber: number) => {
-     void runFeeder();
-   };
-   conetDepinProvider.on('block', onConetL1Block);
    return () => {
      feederCancelledRef.current = true;
-     conetDepinProvider.off('block', onConetL1Block);
+     registerMerchantOsOverviewBackgroundWork(null);
    };
  }, [
-   activeTab,
+   registerMerchantOsOverviewBackgroundWork,
    feederEoa,
    overviewRefreshTrigger,
    effectiveAdminAddress,
    fixedCardAdmins,
    currentEoa,
    fixedCardMetadataCacheKey,
+   merchantActivationStatsCacheKey,
    fixedCardMetadata?.cardOwner,
    profiles?.[0]?.keyID,
    profiles?.[0]?.aaAccount,
@@ -7142,22 +9083,6 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (!Number.isFinite(usdc)) return '≈ — USDC';
    return `≈ ${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
  }, [eoaUsdcBalance]);
- /** Settings editorial hero: progress bar 20–100% from onboarding signals */
- const settingsEditorialSetupPercent = useMemo(() => {
-   const steps = [
-     Boolean(profiles?.[0]?.keyID?.trim()),
-     hasAaAccount,
-     Boolean(beamio?.accountName?.trim()),
-     profileOwnsIssuedBeamioCardFetched && profileOwnsIssuedBeamioCard,
-   ].filter(Boolean).length;
-   return Math.min(100, Math.max(20, steps * 20));
- }, [
-   profiles,
-   hasAaAccount,
-   beamio?.accountName,
-   profileOwnsIssuedBeamioCardFetched,
-   profileOwnsIssuedBeamioCard,
- ]);
  const topupMemberTableRowsAll = useMemo((): BizTopupMemberTableRow[] => membersLoyaltyTopupRows, [membersLoyaltyTopupRows]);
 
  const membersTopupDirectoryFiltered = useMemo(() => {
@@ -7190,6 +9115,15 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    };
  }, [topupMemberTableRowsAll, membersLoyaltyServerRollup, membersLoyaltyChainCumulativeMintDisplay]);
 
+ const programsOverviewAvgMemberCad = useMemo(() => {
+   const n = membersTopupKpisAll.count;
+   const vol = membersTopupKpisAll.volumePointsChain;
+   if (n <= 0 || vol == null || !Number.isFinite(vol)) {
+     return null;
+   }
+   return vol / n;
+ }, [membersTopupKpisAll.count, membersTopupKpisAll.volumePointsChain]);
+
  /** Linked SoftPOS terminals ≈ Active NFC touchpoints for Directory bento */
  const membersDirectoryActiveNfcCount = useMemo(() => terminals.length, [terminals]);
 
@@ -7211,137 +9145,30 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return membersTopupDirectorySorted.filter((r) => !r.beamioTag || !r.beamioTag.replace(/^@/, '').trim());
  }, [membersTopupDirectorySorted, membersDirectorySegment]);
 
- useEffect(() => {
-   if (activeTab !== 'MembersLoyalty' || !currentEoa) return;
-   const menuEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
-   const resolved = menuEoa && ethers.isAddress(menuEoa) ? ethers.getAddress(menuEoa) : null;
-   if (!resolved) return;
-   const k = `eoa:${currentEoa}:biz:members-owned-programs:v1:${resolved.toLowerCase()}`;
-   const c = loadTrustedCache<MembersOwnedProgramOverviewRow[]>(k);
+useEffect(() => {
+  if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
+  const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
+  if (!viewer) return;
+  const viewerLower = viewer.toLowerCase();
+  const k = `eoa:${walletStoragePartitionLower}:biz:members-owned-programs:v1:${viewerLower}`;
+  const c = loadTrustedCache<MembersOwnedProgramOverviewRow[]>(k);
   if (c != null) {
     membersOwnedProgramsRef.current = c;
     setMembersOwnedPrograms(c);
   }
- }, [activeTab, currentEoa, profiles?.[0]?.keyID, myAddress]);
-
-/** Members & Loyalty KPI fallback: compute Top-up volume (points) directly from visible program cards.
- * This runs once per relevant state change (no polling) and reuses `fetchWithCache` (30s TTL + dedup + global queue). */
-useEffect(() => {
-  if (activeTab !== 'MembersLoyalty') return;
-  const rows = membersOwnedPrograms ?? membersOwnedProgramsRef.current ?? [];
-  if (!rows.length) {
-    setMembersLoyaltyChainCumulativeMintDisplay(0);
-    return;
+  const bundle = loadTrustedCache<MembersLoyaltyDirectoryTrustedBundleV1>(
+    membersLoyaltyDirectoryBundleCacheKey(walletStoragePartitionLower, viewerLower),
+  );
+  if (bundle) {
+    setMembersLoyaltyTopupRows(bundle.topupRows);
+    setMembersLoyaltyServerRollup(
+      bundle.serverRollup ?? { totalTopupEvents: 0, totalRepeatTopupEvents: 0 },
+    );
+    if (bundle.chainCumulativeMintDisplay !== undefined) {
+      setMembersLoyaltyChainCumulativeMintDisplay(bundle.chainCumulativeMintDisplay);
+    }
   }
-  let cancelled = false;
-  void (async () => {
-    let sum = 0n;
-    let okCount = 0;
-    for (const row of rows) {
-      if (cancelled) return;
-      if (!row.cardAddress || !ethers.isAddress(row.cardAddress)) continue;
-      const addr = ethers.getAddress(row.cardAddress);
-      const key = `card:${addr.toLowerCase()}:global-stats-cumulative-mint`;
-      const mintStr = await fetchWithCache(key, async () => {
-        const g = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
-        if (!g) throw new Error('getGlobalStatsFull parse');
-        return g.cumulativeMint.toString();
-      }).catch(() => null as string | null);
-      if (mintStr == null) continue;
-      sum += BigInt(mintStr);
-      okCount += 1;
-    }
-    if (!cancelled && okCount > 0) {
-      setMembersLoyaltyChainCumulativeMintDisplay(amountE6ToDisplayNumber(sum));
-    }
-  })();
-  return () => {
-    cancelled = true;
-  };
-}, [activeTab, membersOwnedPrograms]);
-
-/** Members & Loyalty API fallback: keep "Top-up members / Repeat top-ups" fresh even if feeder 2d path is skipped in a tick.
- * Triggered by visible program rows (no interval), and reuses fetch cache (30s TTL). */
-useEffect(() => {
-  if (activeTab !== 'MembersLoyalty') return;
-  const rows = membersOwnedPrograms ?? membersOwnedProgramsRef.current ?? [];
-  const cards = [...new Set(
-    rows
-      .map((r) => (r.cardAddress && ethers.isAddress(r.cardAddress) ? ethers.getAddress(r.cardAddress) : ''))
-      .filter(Boolean)
-  )];
-  if (cards.length === 0) {
-    setMembersLoyaltyTopupRows([]);
-    setMembersLoyaltyServerRollup({ totalTopupEvents: 0, totalRepeatTopupEvents: 0 });
-    return;
-  }
-  let cancelled = false;
-  void (async () => {
-    const nameByCardLower = new Map<string, string>();
-    for (const r of rows) {
-      if (r.cardAddress && ethers.isAddress(r.cardAddress)) {
-        nameByCardLower.set(ethers.getAddress(r.cardAddress).toLowerCase(), r.programName);
-      }
-    }
-    const merged: BizTopupMemberTableRow[] = [];
-    let sumTopupEvents = 0;
-    let sumRepeatTopupEvents = 0;
-    for (const addr of cards) {
-      if (cancelled) return;
-      const lower = addr.toLowerCase();
-      const rollup = await fetchWithCache(
-        `card:${lower}:beamio:cardMemberTopups:rollup`,
-        () => fetchBeamioCardMemberTopupRollupHttp(addr)
-      ).catch(() => null as BeamioCardMemberTopupsCardResponse | null);
-      if (rollup) {
-        sumTopupEvents += Number(rollup.totalTopupCount) || 0;
-        sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
-      }
-      const payload = await fetchWithCache(
-        `card:${lower}:beamio:cardMemberTopups:membersAll`,
-        () => fetchAllBeamioCardMemberTopupMembersHttp(addr)
-      ).catch(() => null as { members: BeamioCardMemberTopupsMembersResponse['members']; total: number } | null);
-      const members = payload?.members ?? [];
-      for (const m of members) {
-        const eoaM = m.memberEoa && ethers.isAddress(m.memberEoa) ? ethers.getAddress(m.memberEoa) : '';
-        if (!eoaM) continue;
-        const aaRaw = m.memberAa?.trim();
-        const aa =
-          aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
-            ? ethers.getAddress(aaRaw)
-            : undefined;
-        let lastTs = 0;
-        try {
-          const t = Date.parse(m.lastTopupAt);
-          if (Number.isFinite(t)) lastTs = Math.floor(t / 1000);
-        } catch {
-          /* ignore */
-        }
-        merged.push({
-          cardLower: lower,
-          programName: nameByCardLower.get(lower) || `Program ${fmtAddr(addr)}`,
-          memberAddress: eoaM,
-          aaAddress: aa,
-          topupCount: Number(m.topupCount) || 0,
-          totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
-          firstSeenTs: 0,
-          lastSeenTs: lastTs,
-          beamioTag: '',
-        });
-      }
-    }
-    if (cancelled) return;
-    merged.sort((a, b) => b.lastSeenTs - a.lastSeenTs);
-    setMembersLoyaltyTopupRows(merged);
-    setMembersLoyaltyServerRollup({
-      totalTopupEvents: sumTopupEvents,
-      totalRepeatTopupEvents: sumRepeatTopupEvents,
-    });
-  })();
-  return () => {
-    cancelled = true;
-  };
-}, [activeTab, membersOwnedPrograms]);
+}, [activeTab, walletStoragePartitionLower, profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
 
  const closeIssueCardModal = useCallback(() => {
    setIsIssueCardModalOpen(false);
@@ -7499,10 +9326,7 @@ const marketBUnitRunwayDays = useMemo(() => {
  const netSettlementBalanceLifetime = totalCTreeReceivedLifetime - topUpsIssuedLifetime;
  const totalUSDCBalance = salesUSDC + tipsUSDC;
 
- const overviewNoAaNfcActivationCount = useMemo(() => {
-   if (hasAaAccount) return 0;
-   return indexerTransactions.reduce((n, t) => n + (t.source === 'NFC' ? 1 : 0), 0);
- }, [hasAaAccount, indexerTransactions]);
+ const overviewMemberActivationTotal = overviewMemberActivationsFromApi.total;
 
  const today = new Date();
  const dateString = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -7796,7 +9620,6 @@ const marketBUnitRunwayDays = useMemo(() => {
          <NavItem
            icon={Users}
            label="Members"
-           activeLabel="Members (Active)"
            isActive={activeTab === 'MembersLoyalty'}
            onClick={() => handleTabChange('MembersLoyalty')}
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
@@ -7836,7 +9659,7 @@ const marketBUnitRunwayDays = useMemo(() => {
 
      {/* --- Main Content Area --- */}
      <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out min-w-0">
-       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200/60 bg-white/70 px-3 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl sm:px-6">
+       <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-slate-200/60 bg-white/70 px-3 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl sm:px-5">
          <div className="flex min-w-0 items-center gap-3">
            <button
              type="button"
@@ -7847,12 +9670,12 @@ const marketBUnitRunwayDays = useMemo(() => {
              <Menu size={22} />
            </button>
            <h2
-             className={`truncate text-xl font-black uppercase tracking-tight sm:text-2xl ${
+             className={`truncate text-lg font-black uppercase tracking-tight sm:text-xl ${
                activeTab === 'Overview' && !hasAaAccount
                  ? 'font-extrabold tracking-tight text-[#1562f0] normal-case'
                  : activeTab === 'Overview'
                    ? 'font-extrabold tracking-tighter text-blue-600 normal-case'
-                   : activeTab === 'Wallets' || activeTab === 'MembersLoyalty' || activeTab === 'Market'
+                   : activeTab === 'Wallets' || activeTab === 'MembersLoyalty' || activeTab === 'Market' || activeTab === 'Transactions' || activeTab === 'Settings'
                      ? 'font-extrabold tracking-tight text-[#0051d1] normal-case'
                      : 'font-extrabold tracking-tighter text-slate-900 normal-case'
              }`}
@@ -7865,9 +9688,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                    ? 'Wallet'
                    : activeTab === 'MembersLoyalty'
                      ? 'Members'
-                     : activeTab === 'Settings' || (activeTab === 'Transactions' && transactionsSidebarAccent === 'transactions')
-                       ? 'Editorial Overview'
-                       : activeTab}
+                     : activeTab === 'Transactions'
+                       ? 'Transactions'
+                       : activeTab === 'Settings'
+                         ? 'Configuration'
+                         : activeTab}
            </h2>
          </div>
          <div className="flex items-center gap-3 sm:gap-6">
@@ -7971,6 +9796,33 @@ const marketBUnitRunwayDays = useMemo(() => {
                </button>
              </>
            )}
+           {activeTab === 'Transactions' && !hideTransactionsPanel && (
+             <>
+               <button
+                 type="button"
+                 onClick={() => {
+                   const el = document.getElementById('transactions-ledger-search');
+                   el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                   window.setTimeout(() => {
+                     if (el instanceof HTMLInputElement) el.focus();
+                   }, 280);
+                 }}
+                 className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Search transactions"
+               >
+                 <Search size={20} strokeWidth={2} aria-hidden />
+               </button>
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Messages')}
+                 className="relative rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 title="Messages"
+               >
+                 <Bell size={20} strokeWidth={2} aria-hidden />
+                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-white bg-red-500" aria-hidden />
+               </button>
+             </>
+           )}
            {activeTab === 'Overview' && isAdminForUI && (
              <button
                type="button"
@@ -7996,10 +9848,10 @@ const marketBUnitRunwayDays = useMemo(() => {
        </header>
 
 
-       <div className="flex-1 min-h-0 relative overflow-y-auto p-3 sm:p-6">
+       <div className="flex-1 min-h-0 relative overflow-y-auto p-2 sm:p-4">
         {activeTab === 'Overview' && (
           <div
-            className={`mx-auto w-full animate-in fade-in duration-500 ${hasAaAccount ? 'max-w-[1400px] space-y-5' : 'max-w-[1400px] space-y-6'}`}
+            className={`mx-auto w-full animate-in fade-in duration-500 ${hasAaAccount ? 'max-w-[1400px] space-y-4' : 'max-w-[1400px] space-y-5'}`}
           >
             {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && showFixedCardMetadata && (
               <div className="flex justify-end">
@@ -8072,7 +9924,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                   <div className="pointer-events-none fixed top-1/2 -right-40 -z-10 h-[600px] w-[600px] rounded-full bg-[#1562f0]/5 blur-[120px]" aria-hidden />
 
                   {/* Onboarding banner */}
-                  <section className="mb-12 flex flex-col items-center justify-between gap-8 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 shadow-sm md:flex-row md:p-10">
+                  <section className="mb-6 flex flex-col items-center justify-between gap-5 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-6 shadow-sm md:flex-row md:p-8">
                     <div className="min-w-0 flex-1">
                       <div className="mb-3 flex flex-wrap items-center gap-2">
                         <span className="rounded bg-[#1562f0]/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
@@ -8116,9 +9968,9 @@ const marketBUnitRunwayDays = useMemo(() => {
                   </section>
 
                   {/* Tier 1 — KPI strip */}
-                  <section className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-3">
-                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0]/20 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <div className="mb-6 flex items-center justify-between">
+                  <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0]/20 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-4 flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Capital Retained</span>
                         <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
                       </div>
@@ -8135,8 +9987,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                         </p>
                       </div>
                     </div>
-                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff]/20 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <div className="mb-6 flex items-center justify-between">
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff]/20 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-4 flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Active Cards</span>
                         <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
                       </div>
@@ -8158,8 +10010,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                         </div>
                       </div>
                     </div>
-                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb]/20 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <div className="mb-6 flex items-center justify-between">
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb]/20 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-4 flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Quota</span>
                         <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
                       </div>
@@ -8182,7 +10034,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                   </section>
 
                   {/* Tier 2 — Today&apos;s activity */}
-                  <section className="mb-12 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 md:p-10">
+                  <section className="mb-8 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 md:p-10">
                     <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-2 rounded-full bg-[#1562f0]/20" aria-hidden />
@@ -8195,7 +10047,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                     </div>
                     {(() => {
                       const muted =
-                        topUpsIssued <= 0 && totalSales <= 0 && totalTips <= 0 && overviewNoAaNfcActivationCount <= 0;
+                        /* member activations：API 全量累计，参与 empty-state 变灰 */
+                        topUpsIssued <= 0 &&
+                        totalSales <= 0 &&
+                        totalTips <= 0 &&
+                        overviewMemberActivationTotal <= 0;
                       const rowClass = muted ? 'opacity-50' : '';
                       return (
                         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
@@ -8246,16 +10102,19 @@ const marketBUnitRunwayDays = useMemo(() => {
                               <Nfc className="size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">NFC Activations</p>
+                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
                               <h3
                                 className={`text-xl font-extrabold ${
-                                  overviewNoAaNfcActivationCount <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
+                                  overviewMemberActivationTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
                                 }`}
                               >
-                                {overviewNoAaNfcActivationCount} {overviewNoAaNfcActivationCount === 1 ? 'Card' : 'Cards'}
+                                {overviewMemberActivationTotal.toLocaleString()}{' '}
+                                {overviewMemberActivationTotal === 1 ? 'activation' : 'activations'}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {overviewNoAaNfcActivationCount <= 0 ? 'No activity' : 'Indexed'}
+                                {overviewMemberActivationTotal <= 0
+                                  ? 'No activity'
+                                  : `${overviewMemberActivationsFromApi.nfc.toLocaleString()} NFC • ${overviewMemberActivationsFromApi.app.toLocaleString()} app · All-time`}
                               </p>
                             </div>
                           </div>
@@ -8317,208 +10176,293 @@ const marketBUnitRunwayDays = useMemo(() => {
                 </div>
               </>
             ) : (
-          <div className="space-y-5">
-             {/* Row 1: Panels 1-4, 2 per row */}
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-               {/* Panel 1: Total Gross Sales */}
-               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
-                 <div>
-                   <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center">
-                        <TrendingUp size={24} className="text-slate-700" />
-                     </div>
-                     <span className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full text-[12px] font-medium">
-                       {timeFilter === 'Today' ? 'Today (local)' : timeFilter}
-                     </span>
-                   </div>
-                   <p className="text-[13px] text-slate-500 mb-1">Total Gross Sales (CAD Base)</p>
-                   <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalSales.toFixed(2)}</p>
-                 </div>
-                 <div className="mt-4 flex flex-wrap gap-3">
-                   <div className="bg-blue-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
-                     <div className="flex items-center gap-1">
-                       <img src={USDC_ICON_URL} alt="USDC" className="w-[10px] h-[10px] rounded-full shrink-0 object-cover" />
-                       <span className="text-[11px] font-semibold text-blue-600">USDC Payments</span>
-                     </div>
-                     <span className="text-[16px] font-bold text-blue-600">${salesUSDC.toFixed(2)}</span>
-                     <span className="text-[10px] text-slate-500">≈ ${(salesUSDC * 1.35).toFixed(2)} CAD</span>
-                   </div>
-                   {isAdminForUI && (
-                   <div className="bg-emerald-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
-                     <div className="flex items-center gap-1">
-					 <Ticket size={12} className="text-emerald-600" />
-                       <span className="text-[11px] font-semibold text-emerald-600">{dashboardPointsCurrencySymbol}</span>
-                     </div>
-                     <span className="text-[16px] font-bold text-black">${salesCTree.toFixed(2)}</span>
-                     <span className="text-[10px] text-slate-500">≈ ${salesCTree.toFixed(2)} CAD</span>
-                   </div>
-                   )}
-                 </div>
-               </div>
+          <div className="relative space-y-8 px-1 pb-6 sm:px-2">
+            <div
+              className="pointer-events-none fixed top-1/2 -right-40 -z-10 h-[600px] w-[600px] rounded-full bg-[#1562f0]/5 blur-[120px]"
+              aria-hidden
+            />
 
-               {/* Panel 2: Tips Collected */}
-               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
-                 <div>
-                   <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center">
-                        <Heart size={24} className="text-rose-500 fill-rose-100" />
-                     </div>
-                   </div>
-                   <p className="text-[13px] text-slate-500 mb-1">Tips Collected (CAD Base)</p>
-                   <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalTips.toFixed(2)}</p>
-                 </div>
-                 <div className="mt-4 flex flex-wrap gap-3">
-                   <div className="bg-blue-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
-                     <div className="flex items-center gap-1">
-                       <img src={USDC_ICON_URL} alt="USDC" className="w-[10px] h-[10px] rounded-full shrink-0 object-cover" />
-                       <span className="text-[11px] font-semibold text-blue-600">USDC Payments</span>
-                     </div>
-                     <span className="text-[16px] font-bold text-blue-600">${tipsUSDC.toFixed(2)}</span>
-                     <span className="text-[10px] text-slate-500">
-                       ≈ $
-                       {(tipsUSDC / (oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK)).toFixed(2)} CAD
-                     </span>
-                   </div>
-				   {isAdminForUI && (
-                   <div className="bg-emerald-50/50 px-3 py-2 rounded-2xl flex flex-col gap-0.5 shrink-0 min-w-[140px]">
-                     <div className="flex items-center gap-1">
-                       <Ticket size={12} className="text-emerald-600" />
-                       <span className="text-[11px] font-semibold text-emerald-600">{dashboardPointsCurrencySymbol}</span>
-                     </div>
-                     <span className="text-[16px] font-bold text-black">${tipsCTree.toFixed(2)}</span>
-                     <span className="text-[10px] text-slate-500">≈ ${tipsCTree.toFixed(2)} CAD</span>
-                   </div>
-                   )}
-                 </div>
-               </div>
+            {/* Tier 1 — KPI strip (`newOnloading.html`) */}
+            <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <div
+                  className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-[#1562f0]/5 blur-2xl transition-colors group-hover:bg-[#1562f0]/10"
+                  aria-hidden
+                />
+                <div className="relative mb-4 flex items-center justify-between">
+                  <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Total capital retained
+                  </span>
+                  <span className="rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold text-[#1562f0]">(Current)</span>
+                </div>
+                <div className="relative space-y-1">
+                  <h2 className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                    {`C$${totalCTreeReceivedLifetime.toFixed(2)}`}
+                  </h2>
+                  <p className="flex items-center gap-1 text-xs font-bold text-[#1562f0]">
+                    <TrendingUp className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                    Lifetime sales + tips (merchant dashboard)
+                  </p>
+                </div>
+              </div>
 
-               {/* Panel 3: In-Store Top-Ups */}
-               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
-                 <div>
-                   <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
-                        <ArrowUpFromLine size={24} className="text-emerald-600" />
-                     </div>
-                   </div>
-                   <p className="text-[13px] text-slate-500 mb-1">In-Store Top-Ups</p>
-                   <p className="text-[11px] text-slate-400 mb-2">Selected range · token mint (all paths)</p>
-                   <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${topUpsIssued.toFixed(2)}</p>
-                   {topUpsUsdcMintOnly > 0 ? (
-                     <p className="text-[11px] text-slate-500 mt-2">USDC top-up mint: ${topUpsUsdcMintOnly.toFixed(2)}</p>
-                   ) : null}
-                 </div>
-                 <div className="mt-6 pt-6 border-t border-slate-100">
-                   {isAdminForUI ? (
-                     effectiveAdminAddress ? (
-                       <div className="bg-rose-50 px-4 py-3 rounded-2xl flex items-center justify-between">
-                         <div className="flex flex-col gap-0.5">
-                           <span className="text-[12px] font-semibold text-slate-700">Issued {dashboardPointsCurrencySymbol}</span>
-                           <span className="text-[12px] font-medium text-rose-600">
-                             Quota: ${(topUpsUsedFromClear / 1000).toFixed(1)}k / {topUpsQuota >= 1e15 ? 'Unlimited' : `$${(topUpsQuota / 1000).toFixed(0)}k`}
-                           </span>
-                         </div>
-                         <span className="text-[18px] font-bold text-rose-600">${topUpsUsedFromClear.toFixed(2)}</span>
-                       </div>
-                     ) : (
-                       <p className="text-[12px] text-slate-500 text-center font-medium">—</p>
-                     )
-                   ) : (
-                     <p className="text-[12px] text-slate-400 text-center">No active issuing networks.</p>
-                   )}
-                 </div>
-               </div>
+              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">Active cards</span>
+                  <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
+                </div>
+                <div className="space-y-1">
+                  <h2 className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                    {membersTopupKpisAll.count.toLocaleString()}
+                  </h2>
+                  <div className="flex -space-x-3 pt-2">
+                    {topupMemberTableRowsAll.slice(0, 3).map((row, avi) => (
+                      <img
+                        key={`${row.memberAddress}-${avi}`}
+                        src={getImg(row.beamioTag?.replace(/^@/, '') || row.memberAddress)}
+                        alt=""
+                        className="h-8 w-8 rounded-full border-2 border-white object-cover"
+                      />
+                    ))}
+                    {membersTopupKpisAll.count > 3 ? (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#e5e9eb] text-[10px] font-bold text-[#2c2f31]">
+                        +{membersTopupKpisAll.count - 3}
+                      </div>
+                    ) : membersTopupKpisAll.count === 0 ? (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#eef1f3]">
+                        <Users className="size-4 text-slate-400" strokeWidth={2} aria-hidden />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
 
-               {/* Panel 4: Protocol Fuel Reserve */}
-               <div className="bg-gradient-to-br from-zinc-900 to-black rounded-[36px] p-6 sm:p-8 shadow-xl border border-white/10 flex flex-col justify-between text-white">
-                 <div>
-                   <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/30">
-                        <Fuel size={24} className="text-amber-500" />
-                     </div>
-                     <span className="bg-transparent border border-amber-500/50 text-amber-500 px-2.5 py-1 rounded-full text-[12px] font-medium flex items-center gap-1">
-                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> ACTIVE
-                     </span>
-                   </div>
-                   <p className="text-[13px] text-slate-400 mb-1">Protocol Fuel Reserve</p>
-                   <p className="text-[40px] font-bold text-white tracking-tighter leading-none">{protocolFuelReserve.toLocaleString()}</p>
-                 </div>
-                 <div className="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
-                   <p className="text-[13px] text-slate-400">{overviewPeriodConsumptionCaption(timeFilter)}</p>
-                   <p className="text-[16px] font-semibold text-amber-500">
-                     {protocolFuelConsumptionDisplayVal >= 0 ? '' : '-'}
-                     {Math.abs(protocolFuelConsumptionDisplayVal).toFixed(2)} Units
-                   </p>
-                 </div>
-                 <button
-                   type="button"
-                   onClick={() => { setActiveTab('Market'); setSelectedProduct('fuel'); }}
-                   className="mt-6 w-full bg-transparent border-2 border-amber-500 text-amber-500 py-4 rounded-[16px] font-bold text-[15px] hover:bg-amber-500/10 transition-colors"
-                 >
-                   Top Up Fuel
-                 </button>
-               </div>
-             </div>
+              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">System quota</span>
+                  <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
+                </div>
+                <div className="space-y-1">
+                  <h2 className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                    {protocolFuelReserve.toFixed(2)}{' '}
+                    <span className="text-lg font-bold text-slate-400">B-Units</span>
+                  </h2>
+                  <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
+                    <div
+                      className="h-full rounded-full bg-[#1562f0]"
+                      style={{
+                        width: `${Math.min(100, Math.max(4, (protocolFuelReserve / 5000) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="pt-1 text-[10px] font-bold uppercase text-slate-400">
+                    {protocolFuelReserve >= 4000
+                      ? 'High capacity headroom'
+                      : protocolFuelReserve >= 1500
+                        ? 'Healthy reserve'
+                        : 'Refuel recommended'}
+                  </p>
+                </div>
+              </div>
+            </section>
 
-             {/* Row 2: Panels 5-6, 2 per row — only when user has AA */}
-             {profiles?.[0]?.aaAccount && (
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-               {/* Panel 5: Direct Crypto Revenue */}
-               <div className="bg-white rounded-[36px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col justify-between">
-                 <div>
-                   <div className="flex justify-between items-start mb-4">
-                     <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
-                        <UsdcBaseCompositeIcon size={32} badgeSize={20} />
-                     </div>
-                     <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[12px] font-medium">Self-Custody</span>
-                   </div>
-                   <p className="text-[13px] text-slate-500 mb-1">Direct Crypto Revenue</p>
-                   <div className="flex items-baseline gap-2 mb-4">
-                     <p className="text-[40px] font-semibold text-black tracking-tighter leading-none">${totalUSDCBalance.toFixed(2)}</p>
-                     <span className="text-[14px] font-medium text-slate-500 uppercase">USDC</span>
-                   </div>
-                   <p className="text-[13px] font-medium text-slate-500 leading-relaxed max-w-sm">
-                     Direct payments routed to your AA wallet. CashTrees does not settle this balance.
-                   </p>
-                 </div>
-                 <button
-                   type="button"
-                   className="w-full bg-slate-50 text-slate-700 py-4 rounded-[16px] font-semibold text-[15px] hover:bg-slate-100 hover:text-slate-900 border border-slate-200 transition-all flex items-center justify-center gap-2"
-                 >
-                   Off-ramp via Coinbase <ExternalLink size={18} />
-                 </button>
-               </div>
+            {/* Tier 2 — Today&apos;s activity */}
+            <section className="mb-8 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 md:p-10">
+              <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-2 rounded-full bg-[#1562f0]" aria-hidden />
+                  <h2 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`Today's Activity`}</h2>
+                  <span className="rounded-full bg-white/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#595c5e]">
+                    {timeFilter === 'Today' ? 'Today (local)' : timeFilter}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('Transactions')}
+                  className={`inline-flex items-center gap-2 text-sm font-bold text-[#1562f0] transition-colors hover:underline ${bizFocusRingClass} rounded-sm`}
+                >
+                  View live feed
+                  <ArrowRight className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-[#1562f0] shadow-sm">
+                    <PlusCircle className="size-7" strokeWidth={1.75} aria-hidden />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
+                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${topUpsIssued.toFixed(2)}`}</h3>
+                    <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                      {overviewActivityTopupCount.toLocaleString()} transactions
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-[#8d3a8b] shadow-sm">
+                    <Landmark className="size-7" strokeWidth={1.75} aria-hidden />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
+                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${totalSales.toFixed(2)}`}</h3>
+                    <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                      {overviewActivityChargeCount.toLocaleString()} payments
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-emerald-600 shadow-sm">
+                    <Heart className="size-7" strokeWidth={1.75} aria-hidden />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
+                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${totalTips.toFixed(2)}`}</h3>
+                    <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                      {overviewActivityTipCount.toLocaleString()} micro-tips
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-[#7a9dff] shadow-sm">
+                    <Nfc className="size-7" strokeWidth={1.75} aria-hidden />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
+                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                      {overviewMemberActivationsFromApi.total.toLocaleString()}{' '}
+                      {overviewMemberActivationsFromApi.total === 1 ? 'activation' : 'activations'}
+                    </h3>
+                    <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                      {overviewMemberActivationsFromApi.nfc.toLocaleString()} NFC • {overviewMemberActivationsFromApi.app.toLocaleString()}{' '}
+                      app · All-time
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-               {/* Panel 6: CashTrees Settlement */}
-               <div className="relative flex flex-col justify-between overflow-hidden rounded-[36px] border border-slate-800 bg-gradient-to-br from-slate-900 via-[#0f2748] to-slate-950 p-6 text-white sm:p-8 shadow-[0_20px_50px_rgba(21,98,240,0.2)]">
-                 <div className={`pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full ${bizGlowBlurClass} blur-[80px]`} />
-                 <div className="relative z-10">
-                   <div className="flex justify-between items-start mb-6">
-                     <p className="text-[14px] font-semibold text-[#1562f0] flex items-center gap-2">
-                       <Ticket size={18} /> CashTrees Settlement
-                     </p>
-                     <span className="bg-white/10 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-[12px] font-medium border border-white/5">Net Balance</span>
-                   </div>
-                   <div className="flex items-baseline gap-2 mb-6">
-                     <p className="text-5xl sm:text-[56px] font-light tracking-tight leading-none">${netSettlementBalanceLifetime.toFixed(2)}</p>
-                     <span className="text-xl sm:text-2xl text-slate-400 font-light">CAD</span>
-                   </div>
-                   <div className="flex items-center gap-3 text-[14px] font-medium text-slate-400 bg-black/20 p-4 rounded-[20px] w-max backdrop-blur-sm border border-white/5">
-                     <span className="text-white">+${totalCTreeReceivedLifetime.toFixed(2)} Recv</span>
-                     <span className="text-slate-600">|</span>
-                     <span className="text-rose-400">-${topUpsIssuedLifetime.toFixed(2)} Issued</span>
-                   </div>
-                 </div>
-                 <button
-                   type="button"
-                   onClick={() => setIsPayoutModalOpen(true)}
-                   className={`relative z-10 w-full py-4 rounded-[20px] font-semibold text-[17px] transition-all flex items-center justify-center gap-2 active:scale-[0.98] mt-6 ${bizUiPrimarySolid}`}
-                 >
-                   <Landmark size={20} /> Request CAD Settlement
-                 </button>
-               </div>
-             </div>
-             )}
-           </div>
+            {/* Tier 3 — Trends & conversions */}
+            <section className="grid grid-cols-1 gap-8 md:grid-cols-2">
+              <div className="flex min-h-[340px] flex-col justify-between rounded-lg bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <div>
+                  <h3 className="mb-2 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31]">Reload velocity</h3>
+                  <p className="mb-8 max-w-xs text-sm text-slate-500">
+                    Tracking the momentum of recurring top-ups over the last 24 hours.
+                  </p>
+                </div>
+                <div className="relative flex h-32 w-full items-end gap-2 overflow-hidden">
+                  {[
+                    { h: 40, o: 0.3 },
+                    { h: 60, o: 0.4 },
+                    { h: 30, o: 0.2 },
+                    { h: 80, o: 0.6 },
+                    { h: 55, o: 0.45 },
+                    { h: 95, o: 0.8 },
+                    { h: 70, o: 1, solid: true },
+                  ].map((bar, bi) => (
+                    <div
+                      key={bi}
+                      className={`flex-1 rounded-t-lg ${bar.solid ? 'bg-[#1562f0]' : 'bg-[#1562f0]/10'}`}
+                      style={
+                        bar.solid
+                          ? { height: `${bar.h}%` }
+                          : {
+                              height: `${bar.h}%`,
+                              background: 'linear-gradient(0deg, #1562f022 0%, #1562f0 100%)',
+                              opacity: bar.o,
+                            }
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-6">
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Avg. time</p>
+                    <p className="font-manrope text-lg font-bold text-[#2c2f31]">—</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Peak hour</p>
+                    <p className="font-manrope text-lg font-bold text-[#2c2f31]">—</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
+                    <p
+                      className={`text-sm font-bold ${overviewActivityTopupCount + overviewActivityChargeCount > 0 ? 'text-[#1562f0]' : 'text-slate-400'}`}
+                    >
+                      {overviewActivityTopupCount + overviewActivityChargeCount > 0 ? 'Accelerating' : 'Quiet'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-h-[340px] rounded-lg bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <h3 className="mb-2 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31]">Gift pack conversions</h3>
+                <p className="mb-10 text-sm text-slate-500">Journey from initial discovery to successful redemption.</p>
+                {(() => {
+                  const funnelBase = Math.max(
+                    1,
+                    membersTopupKpisAll.totalTopupEvents,
+                    membersTopupKpisAll.repeatMembers,
+                    membersTopupKpisAll.count
+                  )
+                  const wSel = Math.min(100, Math.round((membersTopupKpisAll.repeatMembers / funnelBase) * 100))
+                  const wRed = Math.min(100, Math.round((membersTopupKpisAll.count / funnelBase) * 100))
+                  const effPct =
+                    membersTopupKpisAll.totalTopupEvents > 0
+                      ? Math.min(100, (membersTopupKpisAll.count / membersTopupKpisAll.totalTopupEvents) * 100).toFixed(1)
+                      : '0.0'
+                  return (
+                    <>
+                      <div className="space-y-4">
+                        <div>
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-600">Discovery</span>
+                            <span className="text-xs font-black text-[#1562f0]">
+                              {membersTopupKpisAll.totalTopupEvents.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex h-8 w-full overflow-hidden rounded-lg bg-[#eef1f3]">
+                            <div className="h-full w-full bg-[#7a9dff]" />
+                          </div>
+                        </div>
+                        <div className="pl-8">
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-600">Selection</span>
+                            <span className="text-xs font-black text-[#1562f0]">
+                              {membersTopupKpisAll.repeatMembers.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex h-8 w-full overflow-hidden rounded-lg bg-[#eef1f3]">
+                            <div className="h-full bg-[#1562f0]" style={{ width: `${wSel}%` }} />
+                          </div>
+                        </div>
+                        <div className="pl-16">
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-600">Redemption</span>
+                            <span className="text-xs font-black text-[#1562f0]">
+                              {membersTopupKpisAll.count.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex h-8 w-full overflow-hidden rounded-lg bg-[#eef1f3]">
+                            <div className="h-full bg-[#0047b8]" style={{ width: `${wRed}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-10 flex items-center gap-4 rounded-xl bg-[#1562f0]/5 p-4">
+                        <Star className="size-5 shrink-0 fill-[#1562f0] text-[#1562f0]" strokeWidth={1.5} aria-hidden />
+                        <div>
+                          <p className="text-xs font-bold text-[#2c2f31]">{effPct}% total efficiency</p>
+                          <p className="text-[10px] font-medium text-slate-500">Unique members per top-up event (rollup)</p>
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            </section>
+
+            
+          </div>
             )}
           </div>
         )}
@@ -8601,6 +10545,57 @@ const marketBUnitRunwayDays = useMemo(() => {
                return null
              }
            };
+
+           const smartReceiptRouteLines = (tx: TxDisplayRow): { title: string; sub: string; amountCad: number }[] => {
+             if (tx.type !== 'Charge') return [];
+             const raw = tx.raw as Record<string, unknown>;
+             const meta = parseIndexerMetaTuple(raw.meta);
+             const cur = beamioFiatCurrencyLabel(Number(meta.currencyFiat));
+             const route = raw.route;
+             if (!Array.isArray(route) || route.length === 0) {
+               const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6);
+               const usdc = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6);
+               if (finalFiat > 0) {
+                 return [
+                   {
+                     title: 'Amount settled',
+                     sub: `${cur} invoice`,
+                     amountCad: approximateCadFromFinalRequestFiat6(finalFiat, cur, cadOracle),
+                   },
+                 ];
+               }
+               if (usdc > 0) {
+                 return [
+                   {
+                     title: 'USDC settlement',
+                     sub: `${usdc.toFixed(2)} USDC`,
+                     amountCad: usdc / cadOracle,
+                   },
+                 ];
+               }
+               return [];
+             }
+             const out: { title: string; sub: string; amountCad: number }[] = [];
+             for (const item of route) {
+               if (!item || typeof item !== 'object') continue;
+               const o = item as Record<string, unknown>;
+               const off = parseIndexerUintE6Field(o.offsetInRequestCurrencyE6 ?? o.amountE6);
+               const at = Number(o.assetType ?? 255);
+               const amtUsdc = parseIndexerUintE6Field(o.amountE6);
+               const cad = approximateCadFromFinalRequestFiat6(off, cur, cadOracle);
+               if (at === 1) {
+                 out.push({ title: 'Stored value deducted', sub: 'Program balance', amountCad: cad });
+               } else {
+                 out.push({
+                   title: 'Auto settlement via USDC',
+                   sub: amtUsdc > 0 ? `≈ ${amtUsdc.toFixed(2)} USDC` : 'On-chain',
+                   amountCad: cad,
+                 });
+               }
+             }
+             return out;
+           };
+
            const txEditorialEmpty =
              !indexerTransactionsLoading &&
              indexerTransactions.length === 0 &&
@@ -8610,60 +10605,8 @@ const marketBUnitRunwayDays = useMemo(() => {
              activeLedger === 'All';
 
            return (
-           <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-300 font-sans text-[#2c2f31]">
-              {/* marketExample.html Transactions: hero + merchant health */}
-              <section className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-                <div className="flex min-h-[280px] flex-col justify-between rounded-xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff] p-8 text-[#f1f2ff] shadow-[0_20px_40px_rgba(0,81,209,0.15)] sm:p-10 lg:col-span-8">
-                  <div>
-                    <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/90">Total Ecosystem Value</span>
-                    <h2 className="mt-2 text-4xl font-extrabold tracking-tight sm:text-6xl">
-                      {protocolFuelReserve.toFixed(2)}{' '}
-                      <span className="text-2xl opacity-60 sm:text-3xl">B-Units</span>
-                    </h2>
-                  </div>
-                  <div className="mt-8 flex flex-wrap gap-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('Market');
-                        setSelectedProduct('fuel');
-                      }}
-                      className="rounded-full bg-white/10 px-6 py-3 font-bold text-white backdrop-blur-md transition-all hover:bg-white/20"
-                    >
-                      Quick Mint
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isAdminForUI) setIsPayoutModalOpen(true);
-                        else setActiveTab('Wallets');
-                      }}
-                      className="rounded-full bg-white px-6 py-3 font-bold text-[#0051d1] shadow-lg transition-all hover:bg-opacity-90"
-                    >
-                      Withdrawal
-                    </button>
-                  </div>
-                </div>
-                <div className="flex flex-col justify-center rounded-xl bg-[#eef1f3] p-8 sm:p-10 lg:col-span-4">
-                  <span className="mb-4 block text-sm font-bold text-[#0051d1]">Merchant Health</span>
-                  <div className="space-y-6">
-                    <div className="flex items-end justify-between">
-                      <span className="text-xs font-medium text-[#595c5e]">Activation Status</span>
-                      <span className="text-sm font-bold text-[#2c2f31]">{settingsEditorialSetupPercent}% Complete</span>
-                    </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-[#dfe3e6]">
-                      <div
-                        className="h-full rounded-full bg-[#0051d1] transition-all duration-500"
-                        style={{ width: `${settingsEditorialSetupPercent}%` }}
-                      />
-                    </div>
-                    <p className="text-xs leading-relaxed text-[#595c5e]">
-                      Your ledger is initialized and ready for high-volume minting and burning of B-Units.
-                    </p>
-                  </div>
-                </div>
-              </section>
-
+           <>
+           <div className="mx-auto max-w-screen-xl space-y-4 sm:space-y-5 animate-in fade-in duration-300 font-sans text-[#2c2f31]">
               <div className="flex w-max flex-wrap rounded-[20px] border border-slate-200/50 bg-white/60 p-1.5 shadow-sm backdrop-blur-xl">
                 <button type="button" onClick={() => setActiveLedger('All')} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${activeLedger === 'All' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}>
                   All Ledgers
@@ -8681,6 +10624,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                 <div className="relative w-full sm:max-w-md">
                   <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
                   <input
+                    id="transactions-ledger-search"
                     type="search"
                     placeholder="Search transactions..."
                     value={txSearchTerm}
@@ -8802,7 +10746,16 @@ const marketBUnitRunwayDays = useMemo(() => {
                           animate={{ x: 0, opacity: 1 }}
                           transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.88 }}
                           style={{ display: 'table-row' }}
-                          className="hover:bg-slate-50/50 transition-colors group"
+                          role="button"
+                          tabIndex={0}
+                          className="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                          onClick={() => setSmartReceiptTx(tx)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSmartReceiptTx(tx);
+                            }
+                          }}
                         >
                            <td className="px-8 py-5 align-middle">
                              <div className="flex items-center gap-4">
@@ -8825,7 +10778,10 @@ const marketBUnitRunwayDays = useMemo(() => {
                                      </span>
                                      <button
                                        type="button"
-                                       onClick={() => setRawTxJsonModal(tx)}
+                                       onClick={(ev) => {
+                                         ev.stopPropagation();
+                                         setRawTxJsonModal(tx);
+                                       }}
                                        className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-[#1562f0] transition-colors shrink-0"
                                        title="View TxDisplayRow JSON (includes raw Transaction)"
                                        aria-label="View TxDisplayRow JSON"
@@ -8839,7 +10795,10 @@ const marketBUnitRunwayDays = useMemo(() => {
                                        <span className="whitespace-nowrap">{tx.id} • {tx.time}</span>
                                        <button
                                          type="button"
-                                         onClick={() => setRawTxJsonModal(tx)}
+                                         onClick={(ev) => {
+                                           ev.stopPropagation();
+                                           setRawTxJsonModal(tx);
+                                         }}
                                          className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-[#1562f0] transition-colors shrink-0"
                                          title="View TxDisplayRow JSON (includes raw Transaction)"
                                          aria-label="View TxDisplayRow JSON"
@@ -9130,6 +11089,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                                    href={`https://basescan.org/tx/${tx.indexerTxId}`}
                                    target="_blank"
                                    rel="noopener noreferrer"
+                                   onClick={(ev) => ev.stopPropagation()}
                                    className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-colors cursor-pointer"
                                    title="View transaction on BaseScan"
                                  >
@@ -9264,72 +11224,375 @@ const marketBUnitRunwayDays = useMemo(() => {
               </div>
               </section>
            </div>
+
+           <AnimatePresence>
+           {smartReceiptTx ? (() => {
+             const tx = smartReceiptTx;
+             const rawP = tx.raw as Record<string, unknown>;
+             const payerAddr =
+               typeof rawP.payer === 'string' && ethers.isAddress(rawP.payer)
+                 ? ethers.getAddress(rawP.payer)
+                 : '';
+             const payerLower = payerAddr.toLowerCase();
+             const payerTag = payerLower ? txReportingBeamioTagByAddress[payerLower] : '';
+             const tierCap =
+               tx.type === 'Charge' && payerLower ? chargePayerInfraTierCapsuleByPayer[payerLower] : undefined;
+             const routeRaw = rawP.route;
+             const isMixedSession =
+               tx.type === 'Charge' && Array.isArray(routeRaw) && routeRaw.length > 1;
+             const receiptBadge =
+               tx.type === 'Charge'
+                 ? isMixedSession
+                   ? 'Mixed Payment Session'
+                   : 'Charge'
+                 : tx.type.includes('Top-Up')
+                   ? 'Top-up'
+                   : 'Tip';
+             const routeLines = smartReceiptRouteLines(tx);
+             const totalCad = calculateTxNetValueCAD(tx);
+             const tipCad = mergedChargeTipCad(tx);
+             const statusIsPending = tx.status === 'Pending';
+
+             const breakdownBlock = (() => {
+               if (tx.type === 'Charge') {
+                 const raw = tx.raw as Record<string, unknown>;
+                 const meta = parseIndexerMetaTuple(raw.meta);
+                 const cur = beamioFiatCurrencyLabel(Number(meta.currencyFiat));
+                 type Br = { label: string; value: string; discount?: boolean };
+                 const rows: Br[] = [];
+                 let usedDisplayBreakdown = false;
+                 try {
+                   const dj = raw.displayJson;
+                   if (typeof dj === 'string' && dj.trim()) {
+                     const o = JSON.parse(dj) as {
+                       chargeBreakdown?: {
+                         requestCurrency?: string;
+                         subtotalCurrencyAmount?: string;
+                         taxAmountCurrencyAmount?: string;
+                         tipCurrencyAmount?: string;
+                       };
+                     };
+                     const b = o.chargeBreakdown;
+                     if (b) {
+                       usedDisplayBreakdown = true;
+                       const ccy = String(b.requestCurrency ?? cur).toUpperCase();
+                       const sym = ccy === 'CAD' ? 'C$' : '$';
+                       const sub = parseFloat(String(b.subtotalCurrencyAmount ?? '').replace(/,/g, ''));
+                       const tax = parseFloat(String(b.taxAmountCurrencyAmount ?? '').replace(/,/g, ''));
+                       const tip = parseFloat(String(b.tipCurrencyAmount ?? '').replace(/,/g, ''));
+                       if (Number.isFinite(sub) && sub > 0) rows.push({ label: 'Original price', value: `${sym}${sub.toFixed(2)}` });
+                       if (Number.isFinite(tax) && tax > 0) rows.push({ label: 'Tax', value: `${sym}${tax.toFixed(2)}` });
+                       if (Number.isFinite(tip) && tip > 0) rows.push({ label: 'Staff tip', value: `${sym}${tip.toFixed(2)}` });
+                     }
+                   }
+                 } catch {
+                   /* fall back to meta */
+                 }
+                 const disc = parseIndexerUintE6Field(meta.discountAmountFiat6);
+                 const pctOff = discountRateBpsToPercentOffLabel(meta.discountRateBps);
+                 if (disc > 0) {
+                   const discCad = approximateCadFromFinalRequestFiat6(disc, cur, cadOracle);
+                   const tierHint = tierCap?.name ? ` (${tierCap.name})` : '';
+                   rows.push({
+                     label: pctOff ? `Member discount (${pctOff}% off)${tierHint}` : `Member discount${tierHint}`,
+                     value: `-$${discCad.toFixed(2)} CAD`,
+                     discount: true,
+                   });
+                 }
+                 if (!usedDisplayBreakdown) {
+                   const req = parseIndexerUintE6Field(meta.requestAmountFiat6);
+                   const taxM = parseIndexerUintE6Field(meta.taxAmountFiat6);
+                   if (rows.length === 0) {
+                     if (req > 0)
+                       rows.push({
+                         label: 'Subtotal',
+                         value: `$${approximateCadFromFinalRequestFiat6(req, cur, cadOracle).toFixed(2)} CAD`,
+                       });
+                     if (taxM > 0)
+                       rows.push({
+                         label: 'Tax',
+                         value: `$${approximateCadFromFinalRequestFiat6(taxM, cur, cadOracle).toFixed(2)} CAD`,
+                       });
+                     if (tipCad > 0) rows.push({ label: 'Staff tip', value: `$${tipCad.toFixed(2)} CAD` });
+                   }
+                 }
+                 return (
+                   <div className="space-y-3">
+                     {rows.map((r) => (
+                       <div key={r.label} className="flex items-center justify-between text-sm">
+                         <span className={r.discount ? 'font-bold text-[#0051d1]' : 'text-[#595c5e]'}>{r.label}</span>
+                         <span className={`font-medium ${r.discount ? 'font-bold text-[#0051d1]' : 'text-[#2c2f31]'}`}>{r.value}</span>
+                       </div>
+                     ))}
+                     <div className="flex items-center justify-between border-t border-[#e5e9eb] pt-4">
+                       <span className="text-base font-bold text-[#2c2f31]">Total charged</span>
+                       <span className="text-xl font-extrabold text-[#2c2f31]">${totalCad.toFixed(2)} CAD</span>
+                     </div>
+                   </div>
+                 );
+               }
+               if (tx.type.includes('Top-Up')) {
+                 return (
+                   <div className="space-y-3">
+                     <div className="flex items-center justify-between text-sm">
+                       <span className="text-[#595c5e]">Amount issued</span>
+                       <span className="font-medium text-[#2c2f31]">${(tx.ctreeAmount || totalCad).toFixed(2)} CAD</span>
+                     </div>
+                     {tx.usdcAmount > 0 ? (
+                       <div className="flex items-center justify-between text-sm">
+                         <span className="text-[#595c5e]">USDC on-chain</span>
+                         <span className="font-medium text-[#2c2f31]">{tx.usdcAmount.toFixed(2)} USDC</span>
+                       </div>
+                     ) : null}
+                     <div className="flex items-center justify-between border-t border-[#e5e9eb] pt-4">
+                       <span className="text-base font-bold text-[#2c2f31]">Net issued</span>
+                       <span className="text-xl font-extrabold text-emerald-600">+${totalCad.toFixed(2)} CAD</span>
+                     </div>
+                   </div>
+                 );
+               }
+               return (
+                 <div className="space-y-3">
+                   <div className="flex items-center justify-between text-sm">
+                     <span className="text-[#595c5e]">Tip (USDC)</span>
+                     <span className="font-medium text-rose-600">{tx.usdcAmount.toFixed(2)} USDC</span>
+                   </div>
+                   <div className="flex items-center justify-between border-t border-[#e5e9eb] pt-4">
+                     <span className="text-base font-bold text-[#2c2f31]">Tip (approx.)</span>
+                     <span className="text-xl font-extrabold text-rose-600">${totalCad.toFixed(2)} CAD</span>
+                   </div>
+                 </div>
+               );
+             })();
+
+             return [
+               <motion.button
+                 type="button"
+                 key={`${tx.indexerTxId}-smart-receipt-scrim`}
+                 layout={false}
+                 className="fixed inset-0 z-[74] cursor-default bg-[#2c2f31]/20 backdrop-blur-sm font-sans"
+                 aria-label="Close smart receipt"
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 exit={{ opacity: 0 }}
+                 transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                 onClick={() => setSmartReceiptTx(null)}
+               />,
+               <motion.div
+                 key={`${tx.indexerTxId}-smart-receipt-panel`}
+                 layout={false}
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="smart-receipt-title"
+                 className="fixed right-0 top-0 z-[75] flex h-full w-full max-w-lg flex-col border-l border-[#abadaf]/33 bg-white font-sans text-[#2c2f31] shadow-2xl"
+                 initial={{ x: '100%' }}
+                 animate={{ x: 0 }}
+                 exit={{ x: '100%' }}
+                 transition={{ type: 'spring', damping: 32, stiffness: 360, mass: 0.85 }}
+                 onClick={(e) => e.stopPropagation()}
+               >
+                   <div className="flex shrink-0 items-center justify-between border-b border-[#eef1f3] bg-white px-8 pb-6 pt-10">
+                     <div>
+                       <span className="mb-2 inline-block rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#0051d1]">
+                         {receiptBadge}
+                       </span>
+                       <h3 id="smart-receipt-title" className="font-black tracking-tighter text-2xl text-[#2c2f31]">
+                         Smart Receipt
+                       </h3>
+                     </div>
+                     <button
+                       type="button"
+                       onClick={() => setSmartReceiptTx(null)}
+                       className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] shadow-sm transition-colors hover:bg-[#dfe3e6]"
+                       aria-label="Close"
+                     >
+                       <X size={22} strokeWidth={2} />
+                     </button>
+                   </div>
+                   <div className="min-h-0 flex-1 overflow-y-auto px-8 py-8">
+                     <div className="mb-8 overflow-hidden rounded-[2rem] border border-[#abadaf]/15 bg-white shadow-sm">
+                       <div className="flex flex-col items-center border-b border-[#e5e9eb] bg-[#eef1f3]/50 px-6 py-6 text-center">
+                         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] shadow-lg shadow-[#0051d1]/20">
+                           <Receipt className="size-8 text-white" strokeWidth={2} aria-hidden />
+                         </div>
+                         <p className="text-lg font-bold text-[#2c2f31]">{tx.terminal || 'Terminal'}</p>
+                         <p className="mt-1 text-xs font-medium text-[#747779]">
+                           {[tx.dateStr, tx.time].filter(Boolean).join(' · ')}
+                           {payerTag ? ` · ${payerTag}` : ''}
+                           {!payerTag && payerAddr
+                             ? ` · ${payerAddr.slice(0, 6)}…${payerAddr.slice(-4)}`
+                             : ''}
+                         </p>
+                       </div>
+                       <div className="space-y-4 border-b border-[#e5e9eb] px-8 py-8">
+                         <p className="text-[10px] font-black uppercase tracking-widest text-[#595c5e]">Transaction breakdown</p>
+                         {breakdownBlock}
+                       </div>
+                       {tx.type === 'Charge' ? (
+                         <div className="space-y-6 px-8 py-8">
+                           {routeLines.length > 0 ? (
+                             <>
+                               <p className="text-[10px] font-black uppercase tracking-widest text-[#0051d1]">
+                                 Payment routing strategy
+                               </p>
+                               <div className="space-y-4">
+                                 {routeLines.map((ln, ri) => (
+                                   <div key={`${ln.title}-${ln.sub}-${ri}`} className="flex items-center gap-4">
+                                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#0051d1]">
+                                       {ln.title.includes('Stored') ? (
+                                         <Wallet size={20} strokeWidth={2} aria-hidden />
+                                       ) : (
+                                         <ArrowRightLeft size={20} strokeWidth={2} aria-hidden />
+                                       )}
+                                     </div>
+                                     <div className="min-w-0 flex-1">
+                                       <p className="text-sm font-bold text-[#2c2f31]">{ln.title}</p>
+                                       <p className="text-[11px] text-[#747779]">{ln.sub}</p>
+                                     </div>
+                                     <span className="shrink-0 text-sm font-bold text-[#9f0519]">
+                                       -${ln.amountCad.toFixed(2)}
+                                     </span>
+                                   </div>
+                                 ))}
+                               </div>
+                             </>
+                           ) : null}
+                           <div
+                             className={`flex items-center justify-between rounded-2xl bg-[#0051d1] px-6 py-6 text-white shadow-lg shadow-[#0051d1]/20 ${routeLines.length > 0 ? 'mt-8' : ''}`}
+                           >
+                             <div>
+                               <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Total settled</p>
+                               <p className="mt-1 text-2xl font-black tracking-tight">${totalCad.toFixed(2)} CAD</p>
+                             </div>
+                             <CheckCircle2 className="size-10 shrink-0 opacity-40" strokeWidth={2} aria-hidden />
+                           </div>
+                         </div>
+                       ) : null}
+                     </div>
+
+                     {/^0x[0-9a-fA-F]{64}$/.test(tx.indexerTxId) ? (
+                       <a
+                         href={`https://basescan.org/tx/${tx.indexerTxId}`}
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         className="mb-6 flex items-center justify-center gap-2 rounded-full border border-[#abadaf]/40 py-3 text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3]"
+                       >
+                         <ExternalLink size={16} aria-hidden />
+                         View on BaseScan
+                       </a>
+                     ) : null}
+
+                     <div className="space-y-3">
+                       <button
+                         type="button"
+                         disabled
+                         title="Coming soon"
+                         className="flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-full bg-[#0051d1] py-4 text-base font-extrabold text-white opacity-60 shadow-xl shadow-[#0051d1]/20"
+                       >
+                         Issue Refund
+                         <RefreshCcw size={18} aria-hidden />
+                       </button>
+                       <button
+                         type="button"
+                         disabled
+                         title="Coming soon"
+                         className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-full border border-[#abadaf] py-3.5 text-sm font-bold text-[#595c5e] opacity-60"
+                       >
+                         <Download size={16} aria-hidden />
+                         Export PDF
+                       </button>
+                     </div>
+                   </div>
+                   <div className="shrink-0 border-t border-[#eef1f3] px-8 py-4 text-center text-[11px] font-medium text-[#747779]">
+                     {statusIsPending ? 'Pending settlement' : 'Settled'} · TX-{indexerTxIdBodyPrefix6(tx.indexerTxId)}
+                   </div>
+                 </motion.div>,
+             ];
+           })() : null}
+           </AnimatePresence>
+           </>
            );
          })()}
 
          {/* --- STORE WALLETS TAB --- */}
          {activeTab === 'Wallets' && (
            <div className="animate-in fade-in duration-300">
-             <div className="relative mx-auto max-w-7xl px-6 pb-24 md:px-10 lg:pb-12">
-               <div className="mx-auto w-full max-w-2xl">
-                 <WalletsTreasuryShell
-                   cadPrimary={walletTreasuryCadPrimary}
-                   usdcSecondary={walletTreasuryUsdcSecondary}
-                   settlementActive={hasAaAccount}
+             <div className="relative mx-auto max-w-7xl px-6 pb-16 md:px-10 lg:pb-10">
+               {hasAaAccount ? (
+                 <div className="mx-auto w-full max-w-2xl">
+                   <WalletsTreasuryShell
+                     cadPrimary={walletTreasuryCadPrimary}
+                     usdcSecondary={walletTreasuryUsdcSecondary}
+                     settlementActive={hasAaAccount}
+                     aaReceiveAddress={profiles?.[0]?.aaAccount?.trim() ?? null}
+                     cashOutEoaAddress={(() => {
+                       const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+                       if (!raw || !ethers.isAddress(raw)) return null;
+                       try {
+                         return ethers.getAddress(raw);
+                       } catch {
+                         return null;
+                       }
+                     })()}
+                     onReceive={() => {
+                       handleTabChange('Market');
+                     }}
+                     onSend={() => {
+                       const canSend = Boolean(profiles?.[0]?.privateKeyArmor && myAddress && ethers.isAddress(myAddress));
+                       if (canSend) setWalletSendUsdcOpen(true);
+                       else handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
+                     }}
+                     onCashOutUnavailable={() => {
+                       handleTabChange('Market');
+                       setSelectedProduct('fuel');
+                     }}
+                     onViewAllHistory={() => {
+                       handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
+                     }}
+                     onOpenMarketRefuel={() => {
+                       handleTabChange('Market');
+                       setSelectedProduct('fuel');
+                     }}
+                   />
+                 </div>
+               ) : (
+                 <WalletsNoAaOnloadingShell
+                   cadHeadline={walletTreasuryCadPrimary}
+                   usdcLine={walletTreasuryUsdcSecondary}
+                   bUnitBalance={protocolFuelReserveBalance}
                    onReceive={() => {
                      handleTabChange('Market');
                    }}
-                   onSend={() => {
+                   onViewFullReport={() => {
                      handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
                    }}
-                   onCashOut={() => {
-                     handleTabChange('Market');
-                     setSelectedProduct('fuel');
-                   }}
-                   onViewAllHistory={() => {
-                     handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
-                   }}
-                   onOpenMarketRefuel={() => {
-                     handleTabChange('Market');
-                     setSelectedProduct('fuel');
+                   onGoToPrograms={() => {
+                     handleTabChange('Card Issuance Setup');
                    }}
                  />
-               </div>
-
-               {!hasAaAccount ? (
-                 <section className="mx-auto mt-12 max-w-2xl rounded-2xl border border-slate-200/80 bg-white/90 p-8 shadow-sm backdrop-blur-sm">
-                   <h3 className="text-lg font-bold text-slate-900">Unlock settlement accounts</h3>
-                   <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">
-                     Activate your Smart Terminal (AA) to unlock zero-gas routing, liquid reserve, and protocol fuel from Market.
-                   </p>
-                   <div className="mt-6 flex flex-wrap gap-3">
-                     <button
-                       type="button"
-                       onClick={() => handleTabChange('Card Issuance Setup')}
-                       className={`rounded-full bg-[#0051d1] px-6 py-2.5 text-sm font-bold text-white shadow-md transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
-                     >
-                       Programs
-                     </button>
-                     <button
-                       type="button"
-                       onClick={() => handleTabChange('Market')}
-                       className={`rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-bold text-slate-800 transition-colors hover:bg-slate-50 ${bizFocusRingClass}`}
-                     >
-                       Market
-                     </button>
-                   </div>
-                 </section>
-               ) : null}
+               )}
              </div>
+             <WalletSendUsdcSheet
+               open={walletSendUsdcOpen}
+               onClose={() => setWalletSendUsdcOpen(false)}
+               myAddress={myAddress?.trim() ?? ''}
+               usdcbalance={usdcbalance}
+               setScanData={setScanData}
+               setScanIntent={setScanIntent}
+               setVoucherPayAmount={setVoucherPayAmount}
+               setVoucherPayToAA={setVoucherPayToAA}
+               setVoucherPayFromScan={setVoucherPayFromScan}
+               navigate={navigate}
+             />
            </div>
          )}
 
          {/* --- MARKET TAB (`newOnloading.html`: balance, refill packages, redeem) --- */}
          {activeTab === 'Market' && (
            <div className="relative mx-auto w-full max-w-7xl animate-in fade-in duration-300">
-             <main className="flex-1 w-full px-4 pb-28 pt-2 sm:px-6 md:px-10 md:pb-24 lg:pb-12">
-               <section className="mb-12">
-                 <div className="flex flex-col justify-between gap-8 md:flex-row md:items-center">
+             <main className="flex-1 w-full px-4 pb-20 pt-2 sm:px-6 md:px-10 md:pb-16 lg:pb-10">
+               <section className="mb-6">
+                 <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
                    <div>
                      <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">Current Balance</h2>
                      <div className="flex flex-wrap items-baseline gap-3">
@@ -9352,7 +11615,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                        </div>
                      ) : null}
                    </div>
-                   <div className="flex w-full max-w-[220px] flex-col items-end rounded-xl border border-slate-100 bg-white p-6 text-right shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
+                   <div className="flex w-full max-w-[220px] flex-col items-end rounded-xl border border-slate-100 bg-white p-5 text-right shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
                      <div className="mb-2 flex w-full items-center justify-end gap-3">
                        <span className="text-sm font-bold text-[#595c5e]">Auto-Refill</span>
                        <button
@@ -9375,8 +11638,104 @@ const marketBUnitRunwayDays = useMemo(() => {
                  </div>
                </section>
 
-               <section id="market-fuel-marketplace" className="mb-12">
-                 <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+               {!hasAaAccount ? (
+                 <>
+                   {/* Activation narrative — aligned with newOnloading.html */}
+                   <section className="mx-auto mb-10 max-w-2xl text-center">
+                     <h2 className="mb-4 font-sans text-4xl font-extrabold tracking-tight text-[#2c2f31] md:text-5xl">
+                       Activate your business infrastructure
+                     </h2>
+                     <p className="text-lg font-medium leading-relaxed text-slate-600">
+                       B-Units are the{' '}
+                       <span className="font-semibold text-[#2c2f31]">microscopic fuel</span> that powers card issuance, top-ups, and secure
+                       commerce interactions in your network.
+                     </p>
+                   </section>
+
+                   {/* Starter kits — newOnloading.html Option 01 / 02 */}
+                   <section className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-2">
+                     <div className="group flex h-full flex-col rounded-lg border-none bg-slate-50 p-7 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all duration-500 hover:shadow-[0_40px_80px_rgba(21,98,240,0.05)]">
+                       <div className="mb-5">
+                         <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600">Option 01</span>
+                         <h3 className="mt-2 font-sans text-3xl font-extrabold text-[#2c2f31]">Standard Kit</h3>
+                       </div>
+                       <div className="mb-5 flex items-baseline gap-2">
+                         <span className="text-sm font-bold text-slate-600">C$</span>
+                         <span className="font-sans text-5xl font-black text-[#2c2f31]">69</span>
+                       </div>
+                       <div className="mb-8 flex-1 space-y-3">
+                         <div className="flex items-center gap-3">
+                           <Zap className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                           <span className="text-slate-600">
+                             Includes <strong className="text-[#2c2f31]">2,000 B-Units</strong>
+                           </span>
+                         </div>
+                         <div className="flex items-center gap-3">
+                           <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                           <span className="text-slate-600">Core Issuance Features</span>
+                         </div>
+                         <div className="flex items-center gap-3">
+                           <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                           <span className="text-slate-600">Standard API Access</span>
+                         </div>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => setSelectedProduct('standard_kit')}
+                         className={`w-full rounded-full bg-slate-200 py-5 text-base font-bold text-[#2c2f31] transition-all duration-300 hover:bg-[#1562f0] hover:text-white ${bizFocusRingClass}`}
+                       >
+                         Select Standard
+                       </button>
+                     </div>
+
+                     <div className="group relative">
+                       <div className="absolute inset-0 -z-10 rounded-lg bg-[#1562f0]/5 blur-3xl" aria-hidden />
+                       <div className="relative flex h-full flex-col overflow-hidden rounded-lg border-none bg-white p-7 shadow-[0_40px_80px_rgba(21,98,240,0.12)]">
+                         <div className="absolute right-0 top-0 rounded-bl-2xl bg-[#1562f0] px-6 py-2 text-xs font-bold uppercase tracking-widest text-white">
+                           Recommended
+                         </div>
+                         <div className="mb-5">
+                           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Option 02</span>
+                           <h3 className="mt-2 font-sans text-3xl font-extrabold text-[#2c2f31]">Custom Kit</h3>
+                         </div>
+                         <div className="mb-5 flex items-baseline gap-2">
+                           <span className="text-sm font-bold text-slate-600">C$</span>
+                           <span className="font-sans text-5xl font-black text-[#2c2f31]">139</span>
+                         </div>
+                         <div className="mb-8 flex-1 space-y-3">
+                           <div className="flex items-center gap-3">
+                             <Star className="size-5 shrink-0 fill-[#1562f0] text-[#1562f0]" strokeWidth={2} aria-hidden />
+                             <span className="text-[#2c2f31]">
+                               Includes <strong className="text-lg text-[#1562f0]">5,000 B-Units</strong>
+                             </span>
+                           </div>
+                           <div className="flex items-center gap-3">
+                             <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                             <span className="text-slate-600">Priority Transaction Processing</span>
+                           </div>
+                           <div className="flex items-center gap-3">
+                             <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                             <span className="text-slate-600">Premium Developer Sandbox</span>
+                           </div>
+                           <div className="flex items-center gap-3">
+                             <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                             <span className="text-slate-600">24/7 Priority Ecosystem Support</span>
+                           </div>
+                         </div>
+                         <button
+                           type="button"
+                           onClick={() => setSelectedProduct('custom_kit')}
+                           className={`w-full rounded-full bg-[#1562f0] py-5 text-base font-bold text-white shadow-[0_20px_40px_rgba(21,98,240,0.3)] transition-all duration-300 hover:scale-[1.02] ${bizFocusRingClass}`}
+                         >
+                           Select Recommended
+                         </button>
+                       </div>
+                     </div>
+                   </section>
+                 </>
+               ) : (
+               <section id="market-fuel-marketplace" className="mb-8">
+                 <div className="mb-5 flex flex-col justify-between gap-3 md:flex-row md:items-end">
                    <div>
                      <h3 className="font-sans text-2xl font-extrabold text-[#2c2f31]">Refill Packages</h3>
                      <p className="mt-1 text-sm text-slate-500">Select a fuel package to recharge your merchant wallet.</p>
@@ -9386,8 +11745,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  </div>
 
-                 <div className="grid grid-cols-1 items-stretch gap-8 md:grid-cols-3">
-                   <div className="flex flex-col gap-6 rounded-lg border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
+                 <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-3">
+                   <div className="flex flex-col gap-4 rounded-lg border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
                      <div className="flex items-start justify-between">
                        <div>
                          <h4 className="font-sans text-xl font-extrabold text-[#2c2f31]">Starter Pack</h4>
@@ -9411,11 +11770,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                      </button>
                    </div>
 
-                   <div className="relative z-10 flex scale-100 flex-col gap-6 overflow-hidden rounded-lg border-2 border-[#0051d1]/20 bg-white p-8 shadow-[0_30px_60px_rgba(21,98,240,0.12)] md:scale-[1.05]">
-                     <div className="absolute right-0 top-0 rounded-bl-xl bg-[#0051d1] px-6 py-2">
+                   <div className="relative z-10 flex scale-100 flex-col gap-4 overflow-hidden rounded-lg border-2 border-[#0051d1]/20 bg-white p-6 shadow-[0_30px_60px_rgba(21,98,240,0.12)] md:scale-[1.05]">
+                     <div className="absolute right-0 top-0 rounded-bl-xl bg-[#0051d1] px-5 py-1.5">
                        <span className="text-[11px] font-black uppercase tracking-wider text-white">+10% Bonus</span>
                      </div>
-                     <div className="flex items-start justify-between pt-4">
+                     <div className="flex items-start justify-between pt-2">
                        <div>
                          <h4 className="font-sans text-2xl font-extrabold text-[#0051d1]">Standard</h4>
                          <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~1,925 orders</p>
@@ -9441,7 +11800,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                      </button>
                    </div>
 
-                   <div className="flex flex-col gap-6 rounded-lg border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
+                   <div className="flex flex-col gap-4 rounded-lg border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
                      <div className="flex items-start justify-between">
                        <div>
                          <div className="mb-2 inline-block rounded bg-[#f797ef] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#610e62]">
@@ -9472,30 +11831,12 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  </div>
 
-                 {!hasAaAccount ? (
-                   <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                       <div>
-                         <p className="text-sm font-bold text-slate-900">Activate your smart wallet first</p>
-                         <p className="mt-1 text-sm text-slate-500">
-                           AA activation uses the entry pack (1 USDC). Continue here after your Programs setup, or go to the starter flow.
-                         </p>
-                       </div>
-                       <button
-                         type="button"
-                         onClick={() => setSelectedProduct('starter')}
-                         className={`shrink-0 rounded-full bg-emerald-600 px-8 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-emerald-500 ${bizFocusRingClass}`}
-                       >
-                         Starter activation (1 USDC)
-                       </button>
-                     </div>
-                   </div>
-                 ) : (
-                   <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                     <p className="mb-4 text-sm font-bold text-slate-900">Custom USDC top-up</p>
-                     <p className="mb-4 text-xs font-medium text-slate-500">0.01 USDC per B-Unit · enter amount, then continue to secure checkout.</p>
-                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                       <div className="flex-1">
+                 <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                   <p className="mb-3 text-sm font-bold text-slate-900">Custom USDC top-up</p>
+                   <p className="mb-3 text-xs font-medium text-slate-500">0.01 USDC per B-Unit · enter amount, then continue to secure checkout.</p>
+                   <div className="flex flex-col gap-2">
+                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                       <div className="min-w-0 flex-1">
                          <label htmlFor="market-custom-fuel" className="sr-only">
                            USDC amount
                          </label>
@@ -9513,27 +11854,28 @@ const marketBUnitRunwayDays = useMemo(() => {
                              className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-4 text-lg font-semibold text-slate-900 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                            />
                          </div>
-                         <p className="mt-2 text-xs font-medium text-slate-500">
-                           Yields {(Number(customFuelAmount) || 0) * 100} B-Units (display estimate)
-                         </p>
                        </div>
                        <button
                          type="button"
                          onClick={() => setSelectedProduct('custom_fuel')}
                          disabled={!customFuelAmount || Number(customFuelAmount) <= 0}
-                         className={`rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-md transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                         className={`shrink-0 rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-md transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
                        >
                          Continue
                        </button>
                      </div>
+                     <p className="text-xs font-medium text-slate-500">
+                       Yields {(Number(customFuelAmount) || 0) * 100} B-Units (display estimate)
+                     </p>
                    </div>
-                 )}
+                 </div>
                </section>
+               )}
 
                <section className="max-w-2xl">
-                 <div className="rounded-xl border border-white/40 bg-[#eef1f3] p-8">
-                   <h3 className="mb-6 font-sans text-lg font-bold text-[#2c2f31]">Have a Redeem Code?</h3>
-                   <div className="flex flex-col gap-4 sm:flex-row">
+                 <div className="rounded-xl border border-white/40 bg-[#eef1f3] p-6">
+                   <h3 className="mb-4 font-sans text-lg font-bold text-[#2c2f31]">Have a Redeem Code?</h3>
+                   <div className="flex flex-col gap-3 sm:flex-row">
                      <input
                        className="flex-1 rounded-full border border-slate-200 bg-white px-6 py-4 text-sm text-[#2c2f31] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20"
                        placeholder="VR-XXXX-XXXX-XXXX"
@@ -9590,7 +11932,7 @@ const marketBUnitRunwayDays = useMemo(() => {
 
          {/* --- PARTNER ALLIANCES TAB --- (aligned with newBiz: joined cards + join CTA + Routing Rules) */}
          {activeTab === 'Alliances' && (
-           <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+           <div className="max-w-[1400px] mx-auto space-y-4 sm:space-y-5 animate-in fade-in duration-300">
              <div className="mb-6">
                <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Partner Alliances</h3>
                <p className="text-[15px] font-medium text-slate-500 mt-1">Manage your Ecosystem NFTs (ERC-1155) that grant routing logic and settlement privileges.</p>
@@ -9678,7 +12020,7 @@ const marketBUnitRunwayDays = useMemo(() => {
 
          {/* --- MEMBERS & LOYALTY TAB --- */}
          {activeTab === 'MembersLoyalty' && (
-           <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative space-y-6 sm:space-y-8">
+           <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative space-y-4 sm:space-y-5">
              {!hasAaAccount ? (
                <MembersLoyaltyNoAaEditorial
                  onSetUpFirstProgram={() => {
@@ -9686,7 +12028,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                  }}
                />
              ) : (
-             <div className="relative w-full space-y-8 px-1 pb-28 pt-2 sm:px-2 lg:pb-12">
+             <div className="relative w-full space-y-5 px-1 pb-20 pt-2 sm:px-2 lg:pb-10">
                <section className="space-y-2">
                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">Member Management</span>
                  <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">Directory</h2>
@@ -9772,6 +12114,129 @@ const marketBUnitRunwayDays = useMemo(() => {
                  </div>
                </div>
 
+               {membersLoyaltyProgramKey !== 'all' && (
+                 <section
+                   className="rounded-xl border border-[#abadaf]/15 bg-white p-4 shadow-sm sm:p-6"
+                   aria-labelledby="member-registry-heading"
+                 >
+                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                     <div>
+                       <h3 id="member-registry-heading" className="text-sm font-extrabold uppercase tracking-wider text-[#595c5e]">
+                         Registered members
+                       </h3>
+                       <p className="mt-1 max-w-xl text-xs text-[#595c5e]">
+                         Member EOA and AA recorded by the API after successful top-ups. Channel: NFC (SoftPOS) or App (USDC), or both.
+                       </p>
+                     </div>
+                     {memberRegistryLoading ? (
+                       <span className="text-xs font-semibold text-[#0051d1]">Loading…</span>
+                     ) : (
+                       <span className="text-xs font-bold text-[#2c2f31]">{memberRegistryTotal.toLocaleString()} total</span>
+                     )}
+                   </div>
+                   <div className="overflow-x-auto">
+                     <table className="w-full min-w-[760px] border-collapse text-left text-[13px]">
+                       <thead>
+                         <tr className="border-b border-[#eef1f3] text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
+                           <th className="py-2.5 pr-3">Member EOA</th>
+                           <th className="py-2.5 pr-3">Member AA</th>
+                           <th className="py-2.5 pr-3">Channel</th>
+                           <th className="py-2.5 pr-3">Top-ups</th>
+                           <th className="py-2.5 pr-3">First top-up</th>
+                           <th className="py-2.5">Last activity</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {memberRegistryRows.length === 0 && !memberRegistryLoading ? (
+                           <tr>
+                             <td colSpan={6} className="py-10 text-center text-sm text-[#595c5e]">
+                               No registered members for this program yet.
+                             </td>
+                           </tr>
+                         ) : (
+                           memberRegistryRows.map((m, ri) => {
+                             const eoaOk = m.memberEoa && ethers.isAddress(m.memberEoa);
+                             const aaShow =
+                               m.memberAa &&
+                               ethers.isAddress(m.memberAa) &&
+                               m.memberAa.toLowerCase() !== ethers.ZeroAddress.toLowerCase();
+                             const firstSec = m.firstTopupAt ? Math.floor(Date.parse(m.firstTopupAt) / 1000) : 0;
+                             const lastSec = m.lastTopupAt ? Math.floor(Date.parse(m.lastTopupAt) / 1000) : 0;
+                             return (
+                               <tr key={`reg-${m.memberEoa}-${ri}`} className="border-b border-[#fafbfb]">
+                                 <td className="py-2.5 pr-2 align-middle">
+                                   {eoaOk ? (
+                                     <AddressCapsule
+                                       address={ethers.getAddress(m.memberEoa)}
+                                       className="border-[#abadaf]/20 bg-[#f8f9fa] text-[#2c2f31]"
+                                     />
+                                   ) : (
+                                     <span className="text-[#abadaf]">—</span>
+                                   )}
+                                 </td>
+                                 <td className="py-2.5 pr-2 align-middle">
+                                   {aaShow ? (
+                                     <AddressCapsule
+                                       address={ethers.getAddress(m.memberAa)}
+                                       className="border-[#abadaf]/20 bg-[#f8f9fa] text-[#2c2f31]"
+                                     />
+                                   ) : (
+                                     <span className="text-[#abadaf]">—</span>
+                                   )}
+                                 </td>
+                                 <td className="py-2.5 pr-2 align-middle">
+                                   <span className="inline-flex rounded-full bg-[#eef1f3] px-2.5 py-0.5 text-[11px] font-bold text-[#2c2f31]">
+                                     {formatRegistryApiRowChannel(m)}
+                                   </span>
+                                 </td>
+                                 <td className="py-2.5 pr-2 align-middle font-semibold tabular-nums text-[#2c2f31]">
+                                   {(Number(m.topupCount) || 0).toLocaleString()}
+                                 </td>
+                                 <td className="py-2.5 pr-2 align-middle text-xs text-[#595c5e]">
+                                   {memberDirectoryFormatTsSec(firstSec)}
+                                 </td>
+                                 <td className="py-2.5 align-middle text-xs text-[#595c5e]">
+                                   {memberDirectoryFormatTsSec(lastSec)}
+                                 </td>
+                               </tr>
+                             );
+                           })
+                         )}
+                       </tbody>
+                     </table>
+                   </div>
+                   {memberRegistryTotal > MEMBER_REGISTRY_PAGE_SIZE ? (
+                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#eef1f3] pt-4">
+                       <button
+                         type="button"
+                         disabled={memberRegistryPage <= 1 || memberRegistryLoading}
+                         onClick={() => setMemberRegistryPage((p) => Math.max(1, p - 1))}
+                         className={`inline-flex items-center gap-1 rounded-full border border-[#abadaf]/25 bg-white px-4 py-2 text-xs font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
+                       >
+                         <ChevronLeft className="size-4" strokeWidth={2} aria-hidden />
+                         Previous
+                       </button>
+                       <span className="text-xs font-semibold text-[#595c5e]">
+                         Page {memberRegistryPage} of{' '}
+                         {Math.max(1, Math.ceil(memberRegistryTotal / MEMBER_REGISTRY_PAGE_SIZE))}
+                       </span>
+                       <button
+                         type="button"
+                         disabled={
+                           memberRegistryLoading ||
+                           memberRegistryPage >= Math.ceil(memberRegistryTotal / MEMBER_REGISTRY_PAGE_SIZE)
+                         }
+                         onClick={() => setMemberRegistryPage((p) => p + 1)}
+                         className={`inline-flex items-center gap-1 rounded-full border border-[#abadaf]/25 bg-white px-4 py-2 text-xs font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
+                       >
+                         Next
+                         <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
+                       </button>
+                     </div>
+                   ) : null}
+                 </section>
+               )}
+
                <section className="space-y-6">
                  <div className="flex items-center justify-between px-2">
                    <h3 className="text-lg font-bold text-[#2c2f31]">
@@ -9789,9 +12254,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                          const tagRaw = row.beamioTag.replace(/^@/, '').trim();
                          const displayName = formatDirectoryMemberDisplayName(row.beamioTag);
                          return (
-                           <div
+                           <button
+                             type="button"
                              key={`${row.cardLower}-${row.memberAddress.toLowerCase()}`}
-                             className="group flex items-center gap-4 rounded-lg border border-transparent bg-white p-4 shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10"
+                             onClick={() => setMembersDirectoryDetailRow(row)}
+                             className={`group flex w-full items-center gap-4 rounded-lg border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10 ${bizFocusRingClass}`}
                            >
                              <div className="relative shrink-0">
                                <img
@@ -9811,6 +12278,9 @@ const marketBUnitRunwayDays = useMemo(() => {
                                <p className="truncate font-bold text-[#2c2f31]">{displayName}</p>
                                <p className="text-xs font-medium text-[#0051d1]">@{tagRaw}</p>
                                <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
+                               <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
+                                 {formatMemberTopupChannelLabel(row)}
+                               </p>
                              </div>
                              <div className="shrink-0 text-right">
                                <p className="font-extrabold tabular-nums text-[#2c2f31]">${pts.toFixed(2)}</p>
@@ -9822,7 +12292,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                                  {tier.label}
                                </span>
                              </div>
-                           </div>
+                           </button>
                          );
                        })}
                      </div>
@@ -9844,9 +12314,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                        const tier = directoryMemberTierFromPoints(pts);
                        const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
                        return (
-                         <div
+                         <button
+                           type="button"
                            key={`${row.cardLower}-${row.memberAddress.toLowerCase()}`}
-                           className="group flex items-center gap-4 rounded-lg border border-transparent bg-white p-4 shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10"
+                           onClick={() => setMembersDirectoryDetailRow(row)}
+                           className={`group flex w-full items-center gap-4 rounded-lg border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10 ${bizFocusRingClass}`}
                          >
                            <div className="relative shrink-0">
                              <img src={getImg(row.memberAddress)} alt="" className="size-14 rounded-full object-cover" />
@@ -9862,6 +12334,9 @@ const marketBUnitRunwayDays = useMemo(() => {
                              <p className="truncate font-bold text-[#2c2f31]">Anonymous member</p>
                              <p className="truncate font-mono text-xs font-medium text-[#595c5e]">{shortAddr}</p>
                              <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
+                             <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
+                               {formatMemberTopupChannelLabel(row)}
+                             </p>
                            </div>
                            <div className="shrink-0 text-right">
                              <p className="font-extrabold tabular-nums text-[#2c2f31]">${pts.toFixed(2)}</p>
@@ -9873,7 +12348,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                                {tier.label}
                              </span>
                            </div>
-                         </div>
+                         </button>
                        );
                      })}
                    </div>
@@ -9888,94 +12363,20 @@ const marketBUnitRunwayDays = useMemo(() => {
                  )}
                </section>
 
-               <details className="group/details overflow-hidden rounded-lg border border-[#abadaf]/20 bg-white shadow-sm open:shadow-md">
-                 <summary
-                   className={`flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 text-base font-bold text-[#2c2f31] sm:px-6 sm:text-lg [&::-webkit-details-marker]:hidden ${bizFocusRingClass}`}
-                 >
-                   Your membership programs
-                   <ChevronRight className="size-5 shrink-0 text-[#595c5e] transition-transform group-open/details:rotate-90" aria-hidden />
-                 </summary>
-                 <div className="overflow-x-auto border-t border-[#abadaf]/15">
-                   <table className="w-full min-w-[800px]">
-                     <thead className="border-b border-[#eef1f3] bg-[#f5f7f9]/80 text-left">
-                       <tr>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Program</th>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Contract</th>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Currency</th>
-                         <th className="px-6 py-4 text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Program owner</th>
-                         <th className="px-6 py-4 text-right text-[11px] font-semibold uppercase tracking-wider text-[#595c5e]">Lifetime issued</th>
-                       </tr>
-                     </thead>
-                     <tbody className="divide-y divide-[#eef1f3]">
-                       {membersOwnedPrograms === null ? (
-                         <tr>
-                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-[#595c5e]">
-                             Loading programs…
-                           </td>
-                         </tr>
-                       ) : membersOwnedPrograms.length === 0 ? (
-                         <tr>
-                           <td colSpan={5} className="px-6 py-10 text-center text-sm font-medium text-[#595c5e]">
-                             No BeamioUserCard programs found for this wallet. Create one in Programs or Market.
-                           </td>
-                         </tr>
-                       ) : (
-                         membersOwnedPrograms.map((row) => (
-                           <tr key={row.cardAddress.toLowerCase()} className="hover:bg-[#f5f7f9]/80">
-                             <td className="px-6 py-4">
-                               <div className="flex items-center gap-3">
-                                 {row.image ? (
-                                   <img
-                                     src={row.image}
-                                     alt={row.programName}
-                                     className="h-10 w-10 rounded-lg border border-[#abadaf]/20 object-cover"
-                                   />
-                                 ) : (
-                                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0051d1]/10 text-xs font-bold text-[#0051d1]">
-                                     {row.programName.slice(0, 2).toUpperCase()}
-                                   </div>
-                                 )}
-                                 <span className="text-[14px] font-semibold text-[#2c2f31]">{row.programName}</span>
-                               </div>
-                             </td>
-                             <td className="px-6 py-4">
-                               <AddressCapsule address={row.cardAddress} className="border-[#abadaf]/25 bg-[#f5f7f9] text-[#595c5e]" />
-                             </td>
-                             <td className="px-6 py-4 text-[13px] font-medium text-[#2c2f31]">{row.currency}</td>
-                             <td className="px-6 py-4">
-                               {row.ownerDisplayName || row.ownerAccountName ? (
-                                 <div className="flex min-w-0 items-center gap-2">
-                                   <img
-                                     src={row.ownerImage || getImg(row.ownerAccountName || undefined)}
-                                     alt=""
-                                     className="h-9 w-9 shrink-0 rounded-full border border-[#abadaf]/20 object-cover"
-                                   />
-                                   <div className="min-w-0">
-                                     <div className="truncate text-[13px] font-semibold text-[#2c2f31]">{row.ownerDisplayName || '—'}</div>
-                                     {row.ownerAccountName ? (
-                                       <div className="truncate text-[11px] font-medium text-[#595c5e]">@{row.ownerAccountName}</div>
-                                     ) : null}
-                                   </div>
-                                 </div>
-                               ) : (
-                                 <AddressCapsule address={row.ownerAddress} className="border-[#abadaf]/25 bg-[#f5f7f9] text-[#595c5e]" />
-                               )}
-                             </td>
-                             <td className="px-6 py-4 text-right text-[14px] font-semibold tabular-nums text-[#2c2f31]">
-                               {row.issuedLifetime != null ? row.issuedLifetime.toFixed(2) : '—'}
-                             </td>
-                           </tr>
-                         ))
-                       )}
-                     </tbody>
-                   </table>
-                 </div>
-               </details>
-
-               <p className="px-1 text-[11px] font-medium leading-relaxed text-[#595c5e]">
-                 Member rows from <span className="font-mono">beamio.app/api/cardMemberTopups</span> (mode=members). Refreshes with the Overview feeder
-                 (~30s HTTP cache per card).
-               </p>
+               <AnimatePresence>
+                 {membersDirectoryDetailRow
+                   ? memberDirectoryProfileDrawerMotionLayers({
+                       row: membersDirectoryDetailRow,
+                       segment: membersDirectorySegment,
+                       cadPerUsdcOracle: oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK,
+                       onClose: () => setMembersDirectoryDetailRow(null),
+                       onSendGift: () => {
+                         setMembersDirectoryDetailRow(null);
+                         handleTabChange('Market');
+                       },
+                     })
+                   : null}
+               </AnimatePresence>
 
                <div className="fixed bottom-28 right-6 z-40 lg:bottom-12">
                  <button
@@ -10204,6 +12605,23 @@ const marketBUnitRunwayDays = useMemo(() => {
          {/* --- STAFF TERMINALS TAB (SoftPOS — newOnloading.html) --- */}
          {activeTab === 'Staff' && (
            <div className="relative mx-auto w-full max-w-5xl animate-in px-3 py-6 fade-in duration-300 sm:px-6 md:py-8">
+             {!hasAaAccount ? (
+               <StaffTerminalsNoAaOnloadingShell
+                 protocolFuelBUnitsDisplay={
+                   protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                     ? Number(protocolFuelReserveBalance).toLocaleString('en-US', {
+                         minimumFractionDigits: 2,
+                         maximumFractionDigits: 2,
+                       })
+                     : '0.00'
+                 }
+                 onLinkNew={() => {
+                   setActiveTab('Market');
+                   setSelectedProduct('starter');
+                 }}
+               />
+             ) : (
+               <>
              <StaffSoftPosHero
                onLinkNew={() => {
                  if (!hasAaAccount) {
@@ -10218,26 +12636,6 @@ const marketBUnitRunwayDays = useMemo(() => {
                  setActiveTab('Market');
                }}
              />
-             {!hasAaAccount ? (
-               <>
-                 <section className="mb-10 md:mb-12">
-                   <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                     <h2 className="font-sans text-2xl font-extrabold tracking-tight text-[#2c2f31]">Active Terminals</h2>
-                     <span className="w-fit rounded-full bg-[#eef1f3] px-4 py-2 text-sm font-bold text-[#1562f0]">0 Connected</span>
-                   </div>
-                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-14 text-center">
-                     <p className="text-sm font-medium text-[#595c5e]">
-                       Create your Smart Account from Market to link SoftPOS terminals and manage devices here.
-                     </p>
-                   </div>
-                 </section>
-                 <StaffTerminalsInfoGrid />
-                 <p className="mt-6 text-center text-xs text-[#595c5e]">
-                   Smart Terminal routing uses zero-gas AA. Complete setup in Market or Programs first.
-                 </p>
-               </>
-             ) : (
-               <>
              {showStaffSmartTerminalLockedPanel && (
                <div className="flex min-h-[320px] flex-col items-center justify-center py-10 md:py-12">
                  <div className="w-full max-w-md rounded-3xl border border-white/20 bg-white/70 p-10 text-center shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md backdrop-saturate-150">
@@ -10263,35 +12661,32 @@ const marketBUnitRunwayDays = useMemo(() => {
              {showStaffSmartTerminalLockedPanel && <StaffTerminalsInfoGrid />}
 
              {showStaffTerminalsManagement && (
-               <section className="mb-10 md:mb-12">
-                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+               <section className="mb-6 md:mb-8">
+                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                    <h2 className="font-sans text-2xl font-extrabold tracking-tight text-[#2c2f31]">Active Terminals</h2>
                    <span className="w-fit rounded-full bg-[#eef1f3] px-4 py-2 text-sm font-bold text-[#1562f0]">
                      {terminalsLoading ? '…' : `${terminals.length} Connected`}
                    </span>
                  </div>
-                 <p className="mb-6 text-sm font-medium text-[#515c70]">
+                 <p className="mb-4 text-sm font-medium text-[#515c70]">
                    Manage linked POS devices, EOA addresses, and issuance limits. Use the hero button to link a new SoftPOS terminal.
                  </p>
                  {terminalsLoading ? (
-                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-16 text-[#595c5e]">
+                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-12 text-[#595c5e]">
                      <span className="inline-flex items-center gap-2 text-sm font-medium">
                        <span className="size-4 animate-spin rounded-full border-2 border-[#abadaf] border-t-[#1562f0]" />
                        Loading terminals...
                      </span>
                    </div>
                  ) : terminals.length === 0 ? (
-                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-14 text-center">
+                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-10 text-center">
                      <p className="text-sm font-medium text-[#595c5e]">
                        No terminals linked yet. Use &quot;Link New SoftPOS Terminal&quot; above to add one.
                      </p>
                    </div>
                  ) : (
-                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                      {terminals.map((term, termIdx) => {
-                       const viewerEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
-                       const viewerNorm =
-                         viewerEoa && ethers.isAddress(viewerEoa) ? ethers.getAddress(viewerEoa).toLowerCase() : '';
                        const s = terminalStats[term.id.toLowerCase()];
                        const issued = s != null ? s.mintCounterFromClear : null;
                        const unlimited = s != null && s.remainingAvailable >= Number.MAX_SAFE_INTEGER;
@@ -10327,41 +12722,24 @@ const marketBUnitRunwayDays = useMemo(() => {
                                  {term.name?.trim() ? `${term.name} • SoftPOS` : 'SoftPOS'}
                                </p>
                                <div className="mb-3 min-w-0">
-                                 <span className="mb-1 block text-[10px] font-bold uppercase text-[#515c70]/60">Linked EOA</span>
                                  <AddressCapsule
                                    address={term.id}
                                    className="max-w-full border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
                                  />
                                </div>
                                <div className="mb-2 flex flex-wrap gap-4">
-                                 <div className="flex min-w-[7rem] flex-col">
-                                   <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Parent admin</span>
-                                   <div className="text-xs font-medium text-[#2c2f31]">
-                                     {term.parentAdminAddress === undefined ? (
-                                       '—'
-                                     ) : term.parentAdminAddress === null ? (
-                                       'Card owner'
-                                     ) : viewerNorm &&
-                                       ethers.getAddress(term.parentAdminAddress).toLowerCase() === viewerNorm ? (
-                                       <span className="font-semibold text-[#1562f0]">You</span>
-                                     ) : (
-                                       <AddressCapsule
-                                         address={term.parentAdminAddress}
-                                         className="mt-0.5 max-w-[200px] border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
-                                       />
-                                     )}
-                                   </div>
-                                 </div>
                                  <div className="flex flex-col">
                                    <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Last activity</span>
-                                   <span className="text-xs font-medium text-[#2c2f31]">{term.lastActive}</span>
+                                   <span className="text-xs font-medium text-[#2c2f31]" title="From latest matching ledger row in Transactions">
+                                     {staffTerminalLastActivityFromLedger[term.id.toLowerCase()] ?? '—'}
+                                   </span>
                                  </div>
-                                 <div className="flex min-w-0 flex-1 flex-col">
+                                 <div className="flex min-w-0 flex-1 flex-col items-end text-right">
                                    <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Issuance</span>
                                    {s == null || issued == null ? (
                                      <span className="text-xs font-medium text-[#abadaf]">—</span>
                                    ) : (
-                                     <div className="flex flex-col gap-1.5">
+                                     <div className="flex flex-col items-end gap-1.5">
                                        <span className="text-xs font-semibold tabular-nums text-[#2c2f31]">
                                          ${issued.toLocaleString(undefined, { maximumFractionDigits: 2 })}{' '}
                                          <span className="text-[11px] font-medium text-[#abadaf]">
@@ -10372,7 +12750,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                                          </span>
                                        </span>
                                        {quota != null && quota > 0 ? (
-                                         <div className="h-1.5 w-full max-w-[7rem] overflow-hidden rounded-full bg-[#dfe3e6]">
+                                         <div className="h-1.5 w-[7rem] shrink-0 overflow-hidden rounded-full bg-[#dfe3e6]">
                                            <div
                                              className={`h-full rounded-full transition-all duration-500 ${
                                                issued >= quota
@@ -10389,40 +12767,57 @@ const marketBUnitRunwayDays = useMemo(() => {
                                    )}
                                  </div>
                                </div>
-                               <div className="flex flex-wrap items-center gap-2">
-                                 <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                                   <CheckCircle2 className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
-                                   {term.status}
-                                 </span>
-                               </div>
                              </div>
-                             <div className="flex shrink-0 flex-col items-end gap-2 self-start">
+                             <div
+                               className="relative shrink-0 self-start"
+                               data-staff-terminal-menu
+                             >
                                <button
                                  type="button"
-                                 className="rounded-full p-2 text-[#515c70] transition-colors hover:bg-[#eef1f3]"
-                                 aria-label="Terminal actions"
+                                 onClick={() =>
+                                   setStaffTerminalActionMenuOpenId((prev) =>
+                                     prev === term.id ? null : term.id
+                                   )
+                                 }
+                                 className={`rounded-full p-2 text-[#515c70] transition-colors hover:bg-[#eef1f3] ${staffTerminalActionMenuOpenId === term.id ? 'bg-[#eef1f3]' : ''}`}
+                                 aria-label="Terminal menu"
+                                 aria-expanded={staffTerminalActionMenuOpenId === term.id}
+                                 aria-haspopup="menu"
                                >
                                  <MoreVertical className="size-5" strokeWidth={2} aria-hidden />
                                </button>
-                               <button
-                                 type="button"
-                                 onClick={() => {
-                                   setResetTerminalLimitError(null);
-                                   setResetTerminalLimitModal(term);
-                                 }}
-                                 className="rounded-[14px] bg-blue-50 p-2.5 text-blue-900 transition-colors hover:bg-[#1562f0] hover:text-white"
-                                 title="Reset terminal issuance limit (parent admin)"
-                               >
-                                 <RefreshCcw size={18} />
-                               </button>
-                               <button
-                                 type="button"
-                                 onClick={() => setDeleteTerminalToRemove(term)}
-                                 className="rounded-[14px] bg-rose-50 p-2.5 text-rose-500 transition-colors hover:bg-rose-500 hover:text-white"
-                                 title="Revoke Authorization"
-                               >
-                                 <Trash2 size={18} />
-                               </button>
+                               {staffTerminalActionMenuOpenId === term.id ? (
+                                 <div
+                                   className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,14rem)] overflow-hidden rounded-xl border border-[#abadaf]/25 bg-white py-1 shadow-lg shadow-black/10"
+                                   role="menu"
+                                 >
+                                   <button
+                                     type="button"
+                                     role="menuitem"
+                                     className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+                                     onClick={() => {
+                                       setStaffTerminalActionMenuOpenId(null);
+                                       setResetTerminalLimitError(null);
+                                       setResetTerminalLimitModal(term);
+                                     }}
+                                   >
+                                     <RefreshCcw className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                                     Reset Terminal Limit
+                                   </button>
+                                   <button
+                                     type="button"
+                                     role="menuitem"
+                                     className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 ${bizFocusRingClass}`}
+                                     onClick={() => {
+                                       setStaffTerminalActionMenuOpenId(null);
+                                       setDeleteTerminalToRemove(term);
+                                     }}
+                                   >
+                                     <Trash2 className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                                     Revoke Terminal
+                                   </button>
+                                 </div>
+                               ) : null}
                              </div>
                            </div>
                          </div>
@@ -10440,8 +12835,8 @@ const marketBUnitRunwayDays = useMemo(() => {
 
          {activeTab === 'Card Issuance Setup' && (
            !hasAaAccount ? (
-             <div className="mx-auto w-full max-w-5xl animate-in fade-in duration-300 bg-[#f5f7f9] px-4 pb-24 pt-4 font-sans antialiased text-slate-800 sm:px-6 lg:px-0 md:pt-8">
-               <header className="mb-12 mt-2 space-y-5 md:mt-8 md:space-y-6">
+             <div className="mx-auto w-full max-w-5xl animate-in fade-in duration-300 bg-[#f5f7f9] px-4 pb-20 pt-4 font-sans antialiased text-slate-800 sm:px-6 lg:px-0 md:pt-6">
+               <header className="mb-8 mt-2 space-y-4 md:mt-6 md:space-y-5">
                  <div className="inline-flex items-center gap-2 rounded-full bg-[#f797ef] px-4 py-1.5">
                    <Gift className="size-[15px] shrink-0 text-[#610e62]" strokeWidth={2.25} aria-hidden />
                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#610e62]">
@@ -10460,8 +12855,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                    experience.
                  </p>
                </header>
-               <section className="mb-16 grid grid-cols-1 gap-6 md:grid-cols-2">
-                 <div className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] transition-colors hover:border-slate-300">
+               <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2">
+                 <div className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.06)] transition-colors hover:border-slate-300">
                    <div>
                      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                        <div className="min-w-0 pr-2">
@@ -10507,7 +12902,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                  </div>
                  <div className="relative overflow-hidden rounded-2xl border-2 border-[#0051d1] bg-white shadow-[0_20px_40px_rgba(21,98,240,0.08)]">
                    <div className="pointer-events-none absolute inset-0 rounded-[14px] bg-gradient-to-br from-[#0051d1]/[0.04] to-transparent" aria-hidden />
-                   <div className="relative flex h-full flex-col justify-between p-8">
+                   <div className="relative flex h-full flex-col justify-between p-6">
                      <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-[#0051d1]/5 blur-3xl" aria-hidden />
                      <div className="relative z-10">
                        <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -10556,13 +12951,13 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  </div>
                </section>
-               <section className="mb-20 grid grid-cols-1 items-center gap-12 rounded-xl bg-[#eef1f3] p-8 md:grid-cols-12 lg:p-12">
-                 <div className="relative h-64 md:col-span-5">
+               <section className="mb-12 grid grid-cols-1 items-center gap-8 rounded-xl bg-[#eef1f3] p-6 md:grid-cols-12 lg:p-8">
+                 <div className="relative h-56 md:col-span-5">
                    <div
                      className="absolute inset-0 translate-x-2 rounded-lg bg-gradient-to-br from-[#0051d1] to-[#7a9dff] opacity-20 shadow-xl [-webkit-transform:rotate(-6deg)] [transform:rotate(-6deg)]"
                      aria-hidden
                    />
-                   <div className="absolute inset-0 flex flex-col justify-between overflow-hidden rounded-lg border border-white/50 bg-white/80 p-8 shadow-2xl backdrop-blur-md">
+                   <div className="absolute inset-0 flex flex-col justify-between overflow-hidden rounded-lg border border-white/50 bg-white/80 p-6 shadow-2xl backdrop-blur-md">
                      <div className="flex items-start justify-between">
                        <Nfc className="size-10 shrink-0 text-[#0051d1]" strokeWidth={1.5} aria-hidden />
                        <div className="text-right">
@@ -10604,16 +12999,16 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  </div>
                </section>
-               <footer className="border-t border-slate-200/80 pt-12 pb-12">
+               <footer className="border-t border-slate-200/80 pt-8 pb-8">
                  <div className="max-w-3xl">
-                   <h4 className="mb-6 flex items-center gap-2 text-xl font-bold tracking-tight text-slate-800">
+                   <h4 className="mb-4 flex items-center gap-2 text-xl font-bold tracking-tight text-slate-800">
                      <HelpCircle className="size-6 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                      How setup works
                    </h4>
-                   <div className="space-y-8">
+                   <div className="space-y-5">
                      <div>
                        <h5 className="mb-2 text-base font-bold text-slate-800">Transaction Consumption &amp; Economics</h5>
-                       <p className="mb-4 text-sm font-normal leading-relaxed text-slate-600">
+                       <p className="mb-3 text-sm font-normal leading-relaxed text-slate-600">
                          B-Units power your digital infrastructure. Each transaction, member addition, or balance update consumes exactly 2 B-Units.
                          A 2% reload fee applies to all system unit purchases.
                        </p>
@@ -10626,14 +13021,14 @@ const marketBUnitRunwayDays = useMemo(() => {
                          <ChevronRight className="size-4 shrink-0" strokeWidth={2} aria-hidden />
                        </button>
                      </div>
-                     <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-                       <div className="rounded-xl bg-[#e5e9eb] p-6">
+                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                       <div className="rounded-xl bg-[#e5e9eb] p-5">
                          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#0051d1]">Refills</p>
                          <p className="text-sm font-normal leading-snug text-slate-800">
                            B-Units can be set to auto-refill so your program never goes offline. A standard 2% fee applies to all top-ups.
                          </p>
                        </div>
-                       <div className="rounded-xl bg-[#e5e9eb] p-6">
+                       <div className="rounded-xl bg-[#e5e9eb] p-5">
                          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#0051d1]">Consumption</p>
                          <p className="text-sm font-normal leading-snug text-slate-800">
                            Your starter package units are permanent and only consumed as your customers interact with your network.
@@ -10645,19 +13040,40 @@ const marketBUnitRunwayDays = useMemo(() => {
                </footer>
              </div>
            ) : (
-           <div className="mx-auto w-full max-w-[1280px] animate-in fade-in duration-300 bg-[#f5f7f9] px-3 pb-12 pt-2 font-sans antialiased text-[#2c2f31] sm:px-5 lg:px-8">
-             <header className="mb-8 flex flex-col gap-4 border-b border-[#abadaf]/25 pb-6 sm:flex-row sm:items-center sm:justify-between">
+           <div className="mx-auto w-full max-w-[1280px] animate-in fade-in duration-300 bg-[#f5f7f9] px-3 pb-8 pt-2 font-sans antialiased text-[#2c2f31] sm:px-5 lg:px-8">
+             <header className="mb-6 flex flex-col gap-3 border-b border-[#abadaf]/25 pb-4 sm:flex-row sm:items-center sm:justify-between">
                <div className="min-w-0">
-                 <h2 className="text-2xl font-extrabold tracking-tight text-[#1562f0] sm:text-[1.65rem]">Card Configurator</h2>
+                 <h2 className="font-manrope text-2xl font-extrabold tracking-tight text-[#1562f0] sm:text-[1.65rem]">
+                   {cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview'
+                     ? 'Programs Management'
+                     : 'Card Configurator'}
+                 </h2>
                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#747779]">Verra Studio · Loyalty Engine</p>
-                 <nav className="mt-3 hidden min-[1440px]:flex items-center gap-6" aria-label="Configurator nav">
+                 <nav
+                   className={
+                     cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview'
+                       ? 'mt-3 hidden'
+                       : 'mt-3 hidden min-[1440px]:flex items-center gap-6'
+                   }
+                   aria-label="Configurator nav"
+                 >
                    <span className="cursor-default text-sm font-semibold text-[#747779]">Drafts</span>
                    <span className="border-b-2 border-[#1562f0] pb-1 text-sm font-semibold text-[#1562f0]">Templates</span>
                    <span className="cursor-default text-sm font-semibold text-[#747779]">History</span>
                  </nav>
                </div>
-               {!cardIssuanceExistingCard && cardIssuanceOnchainFetch !== 'loading' ? (
+               {(!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') &&
+               cardIssuanceOnchainFetch !== 'loading' ? (
                  <div className="flex flex-wrap items-center gap-3">
+                   {cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'configure' ? (
+                     <button
+                       type="button"
+                       onClick={() => setCardIssuanceActiveProgramView('overview')}
+                       className={`rounded-full border border-[#abadaf]/40 bg-white px-5 py-2 text-sm font-bold text-[#2c2f31] shadow-sm transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+                     >
+                       Back to overview
+                     </button>
+                   ) : null}
                    <button
                      type="button"
                      onClick={() =>
@@ -10679,196 +13095,42 @@ const marketBUnitRunwayDays = useMemo(() => {
                ) : null}
              </header>
 
-             <div className="mb-10">
-               {cardIssuanceOnchainFetch === 'loading' || !cardIssuanceExistingCard ? (
+             <div className="mb-6">
+               {cardIssuanceOnchainFetch === 'loading' ? (
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
-                   {cardIssuanceOnchainFetch === 'loading'
-                     ? 'Checking the User Card factory for cards owned by your wallet…'
-                     : 'Define the parameters and rewards logic for your new merchant card program.'}
+                   Checking the User Card factory for cards owned by your wallet…
                  </p>
-               ) : null}
+               ) : !cardIssuanceExistingCard ? (
+                 <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
+                   Define the parameters and rewards logic for your new merchant card program.
+                 </p>
+               ) : cardIssuanceActiveProgramView === 'overview' ? (
+                 <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
+                   Your active program at a glance: retained capital, members, card preview, tiers, and shortcuts to campaigns and terminals.
+                 </p>
+               ) : (
+                 <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
+                   Edit brand, tiers, and publishing options for your issued card.
+                 </p>
+               )}
              </div>
 
              {cardIssuanceOnchainFetch === 'loading' ? (
-               <div className="flex flex-col items-center justify-center gap-4 rounded-lg bg-white py-24 shadow-sm">
+               <div className="flex flex-col items-center justify-center gap-3 rounded-lg bg-white py-16 shadow-sm">
                  <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
                  <p className="text-sm font-medium text-[#595c5e]">Loading your issued card from the factory…</p>
                </div>
-             ) : cardIssuanceExistingCard ? (
-               <section className="space-y-8 rounded-lg bg-white p-8 shadow-sm sm:p-10">
-                 <div className="flex items-start gap-4">
-                   <div className="w-12 h-12 rounded-full bg-[#1562f0]/10 flex items-center justify-center shrink-0">
-                     <CreditCard className="w-6 h-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                   </div>
-                   <div className="min-w-0 flex-1">
-                     <h4 className="text-xl font-bold text-slate-900">Issued BeamioUserCard</h4>
-                   </div>
-                 </div>
-                 <div className="space-y-6 sm:pl-0">
-                   <div className="space-y-2">
-                     <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Contract</span>
-                     <div className="flex flex-wrap items-center gap-3">
-                       <AddressCapsule
-                         address={cardIssuanceExistingCard.cardAddress}
-                         className="bg-slate-50 border-slate-200 text-slate-800"
-                       />
-                       <a
-                         href={`https://basescan.org/address/${cardIssuanceExistingCard.cardAddress}`}
-                         target="_blank"
-                         rel="noopener noreferrer"
-                         className="inline-flex items-center gap-1 text-sm font-bold text-[#1562f0] hover:underline"
-                       >
-                         Basescan
-                         <ExternalLink className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />
-                       </a>
-                     </div>
-                   </div>
-                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                     <div className="space-y-2">
-                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Card name</span>
-                       <p className="text-lg font-bold text-slate-900">
-                         {cardIssuanceExistingCard.meta?.name?.trim() ||
-                           cardIssuanceExistingCard.userCard.name ||
-                           '—'}
-                       </p>
-                     </div>
-                     <div className="space-y-2">
-                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">On-chain currency</span>
-                       <p className="text-lg font-bold text-slate-900">{cardIssuanceExistingCard.userCard.currency}</p>
-                     </div>
-                   </div>
-                   <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-4">
-                     <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                       Membership upgrade mode
-                     </span>
-                     {cardIssuanceExistingCard.upgradeType === 0 ||
-                     cardIssuanceExistingCard.upgradeType === 1 ||
-                     cardIssuanceExistingCard.upgradeType === 2 ? (
-                       <>
-                         <p className="text-lg font-bold text-slate-900">
-                           <span className="font-mono text-base text-[#1562f0] tabular-nums">
-                             {cardIssuanceExistingCard.upgradeType}
-                           </span>
-                           <span className="mx-2 text-slate-300">·</span>
-                           {CARD_ISSUANCE_UPGRADE_TYPE_UI[cardIssuanceExistingCard.upgradeType as 0 | 1 | 2].title}
-                         </p>
-                         <p className="text-sm text-slate-600 font-medium leading-snug">
-                           {CARD_ISSUANCE_UPGRADE_TYPE_UI[cardIssuanceExistingCard.upgradeType as 0 | 1 | 2].detail}
-                         </p>
-                       </>
-                     ) : (
-                       <p className="text-sm font-medium text-slate-600">
-                         Could not read <span className="font-mono">upgradeType</span> on-chain
-                         {cardIssuanceExistingCard.upgradeType >= 0
-                           ? ` (raw: ${cardIssuanceExistingCard.upgradeType})`
-                           : ''}
-                         .
-                       </p>
-                     )}
-                   </div>
-                   {cardIssuanceExistingCard.meta?.image ? (
-                     <div className="space-y-2">
-                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Share image</span>
-                       <img
-                         src={cardIssuanceExistingCard.meta.image}
-                         alt=""
-                         className="h-24 w-24 rounded-xl border border-slate-200 object-cover shadow-sm"
-                       />
-                     </div>
-                   ) : null}
-                   {cardIssuanceExistingCard.meta?.categories && cardIssuanceExistingCard.meta.categories.length > 0 ? (
-                     <div className="space-y-3">
-                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Categories</span>
-                       <div className="flex overflow-x-auto gap-4 pb-1 scrollbar-hide">
-                         {cardIssuanceExistingCard.meta.categories.map((catId) => {
-                           const opt = CARD_ISSUANCE_CATEGORY_OPTIONS.find(
-                             (o) => o.id === catId.toLowerCase()
-                           );
-                           const Icon = opt?.Icon ?? Sparkles;
-                           const circle = opt?.circleClass ?? 'bg-slate-100 text-slate-600';
-                           const label = opt?.label ?? catId;
-                           return (
-                             <div
-                               key={catId}
-                               className="flex-shrink-0 flex flex-col items-center gap-2 min-w-[4.5rem]"
-                             >
-                               <div
-                                 className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm ${circle}`}
-                               >
-                                 <Icon className="w-7 h-7" strokeWidth={2} aria-hidden />
-                               </div>
-                               <span className="text-[11px] font-bold text-slate-600 tracking-tight text-center leading-tight max-w-[5rem]">
-                                 {label}
-                               </span>
-                             </div>
-                           );
-                         })}
-                       </div>
-                     </div>
-                   ) : null}
-				   
-                   {cardIssuanceExistingCard.meta?.tiers && cardIssuanceExistingCard.meta.tiers.length > 0 ? (
-                     <div className="space-y-3">
-                       <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Tiers (metadata)</span>
-                       <div className="overflow-x-auto rounded-xl border border-slate-100">
-                         <table className="w-full text-left text-sm">
-                           <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-widest font-bold">
-                             <tr>
-                               <th className="px-4 py-3">Name</th>
-                               <th className="px-4 py-3">
-                                 {`Min (${cardIssuanceExistingCard.userCard.currency?.trim() || '—'})`}
-                               </th>
-                               <th className="px-4 py-3">Description</th>
-                             </tr>
-                           </thead>
-                           <tbody className="divide-y divide-slate-100">
-                             {[...cardIssuanceExistingCard.meta.tiers]
-                               .sort((a, b) => {
-                                 const na =
-                                   a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
-                                 const nb =
-                                   b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
-                                 const ca = Number.isFinite(na) ? na : Number.POSITIVE_INFINITY;
-                                 const cb = Number.isFinite(nb) ? nb : Number.POSITIVE_INFINITY;
-                                 return ca - cb;
-                               })
-                               .map((t, i) => {
-                                 const minRaw =
-                                   t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
-                                 const minLabel = Number.isFinite(minRaw)
-                                   ? (minRaw / 1e6).toLocaleString()
-                                   : '—';
-                                 return (
-                                   <tr key={`${t.index ?? 'idx'}-${i}`} className="bg-white">
-                                     <td className="px-4 py-3 font-semibold text-slate-900">{t.name ?? '—'}</td>
-                                     <td className="px-4 py-3 font-mono text-slate-700">{minLabel}</td>
-                                     <td className="px-4 py-3 text-slate-600">{t.description ?? '—'}</td>
-                                   </tr>
-                                 );
-                               })}
-                           </tbody>
-                         </table>
-                       </div>
-                     </div>
-                   ) : null}
-                   {!cardIssuanceExistingCard.meta ? (
-                     <p className="text-sm font-medium text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-                       Metadata JSON was not available from the API or URI. Contract address and on-chain currency are still shown above.
-                     </p>
-                   ) : null}
-                 </div>
-               </section>
-             ) : (
-             <div className="grid min-w-0 grid-cols-1 gap-10 min-[1440px]:grid-cols-12">
-               <div className="min-w-0 space-y-10 min-[1440px]:col-span-7">
-                 <section className="rounded-lg bg-white p-8 shadow-sm sm:p-10">
-                   <div className="mb-8 flex items-center gap-3">
+             ) : (!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') ? (
+             <div className="grid min-w-0 grid-cols-1 gap-6 min-[1440px]:grid-cols-12">
+               <div className="min-w-0 space-y-6 min-[1440px]:col-span-7">
+                 <section className="rounded-lg bg-white p-6 shadow-sm sm:p-8">
+                   <div className="mb-5 flex items-center gap-3">
                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
                        <Palette className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
                      </div>
                      <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Brand &amp; Content</h3>
                    </div>
-                   <div className="grid grid-cols-2 gap-8">
+                   <div className="grid grid-cols-2 gap-5">
                      <div className="col-span-2 space-y-2 md:col-span-1">
                        <label
                          htmlFor="card-issuance-program-name"
@@ -11031,7 +13293,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                  </div>
                  </section>
 
-                 <section className="rounded-lg bg-white p-8 shadow-sm sm:p-10">
+                 <section className="rounded-lg bg-white p-6 shadow-sm sm:p-8">
                    <div className="mb-2 flex items-center gap-3">
                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
                        <Wallet className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
@@ -11135,8 +13397,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  </section>
 
-                 <section className="rounded-lg bg-white p-8 shadow-sm sm:p-10">
-                   <div className="mb-8 flex items-center gap-3">
+                 <section className="rounded-lg bg-white p-6 shadow-sm sm:p-8">
+                   <div className="mb-5 flex items-center gap-3">
                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
                        <BarChart3 className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
                      </div>
@@ -11198,8 +13460,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  </section>
 
-                 <section className="flex min-h-0 min-w-0 flex-col rounded-lg bg-white p-8 shadow-sm sm:p-10">
-                   <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                 <section className="flex min-h-0 min-w-0 flex-col rounded-lg bg-white p-6 shadow-sm sm:p-8">
+                   <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                      <div className="flex items-start gap-3">
                        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
                          <Layers className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
@@ -11537,8 +13799,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                </div>
 
                <div ref={cardConfigPreviewAnchorRef} className="relative min-[1440px]:col-span-5">
-                 <div className="space-y-8 min-[1440px]:sticky min-[1440px]:top-28">
-                   <div className="mb-6 flex items-center justify-between px-1">
+                 <div className="space-y-5 min-[1440px]:sticky min-[1440px]:top-24">
+                   <div className="mb-4 flex items-center justify-between px-1">
                      <h4 className="text-xs font-black uppercase tracking-[0.2em] text-[#747779]">Realtime Preview</h4>
                      <div className="flex rounded-full bg-[#dfe3e6] p-1">
                        <button
@@ -11789,7 +14051,236 @@ const marketBUnitRunwayDays = useMemo(() => {
                  </div>
                </div>
              </div>
-             )}
+             ) : cardIssuanceExistingCard ? (
+               <div className="max-w-7xl space-y-12 pb-8">
+                 <section className="grid grid-cols-1 gap-6 md:grid-cols-3" aria-label="Program KPIs">
+                   <div className="group rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-xl">
+                     <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Total capital retained</p>
+                     <div className="flex items-baseline gap-2">
+                       <span className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                         {`C$${totalCTreeReceivedLifetime.toFixed(2)}`}
+                       </span>
+                     </div>
+                     <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-[#648eff]">
+                       <TrendingUp className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+                       <span>Lifetime sales + tips (merchant dashboard)</span>
+                     </div>
+                   </div>
+                   <div className="group rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-xl">
+                     <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Active holders</p>
+                     <div className="flex items-baseline gap-2">
+                       <span className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                         {membersTopupKpisAll.count.toLocaleString()}
+                       </span>
+                     </div>
+                     <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-[#648eff]">
+                       <UserPlus className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+                       <span>
+                         {membersTopupKpisAll.totalTopupEvents.toLocaleString()} top-up events ·{' '}
+                         {membersTopupKpisAll.repeatMembers.toLocaleString()} repeat top-ups
+                       </span>
+                     </div>
+                   </div>
+                   <div className="group rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-xl">
+                     <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Avg. wallet balance</p>
+                     <div className="flex items-baseline gap-2">
+                       <span className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                         {programsOverviewAvgMemberCad != null
+                           ? `C$${programsOverviewAvgMemberCad.toFixed(2)}`
+                           : '—'}
+                       </span>
+                     </div>
+                     <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-500">
+                       <Landmark className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+                       <span>
+                         {programsOverviewAvgMemberCad != null
+                           ? 'Avg. cumulative points per member (chain roll-up)'
+                           : 'Open Members to load top-up metrics'}
+                       </span>
+                     </div>
+                   </div>
+                 </section>
+
+                 <section className="grid grid-cols-1 gap-10 lg:grid-cols-12">
+                   <div className="space-y-6 lg:col-span-5">
+                     <div className="flex items-center justify-between gap-3">
+                       <h3 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">Active card</h3>
+                       <button
+                         type="button"
+                         onClick={() => {
+                           setCardIssuanceActiveProgramView('configure');
+                           window.scrollTo({ top: 0, behavior: 'smooth' });
+                         }}
+                         className={`text-sm font-bold text-[#1562f0] transition-colors hover:underline ${bizFocusRingClass} rounded-sm`}
+                       >
+                         Edit card design
+                       </button>
+                     </div>
+                     <div className="relative group/prev">
+                       <div
+                         className="relative flex aspect-[1.58/1] w-full flex-col justify-between overflow-hidden rounded-2xl p-8 text-white shadow-[0_30px_60px_-15px_rgba(21,98,240,0.3)]"
+                         style={{ background: programsOverviewActiveCardGradientCss }}
+                       >
+                         <div className="pointer-events-none absolute inset-0 z-[1] bg-white/10 backdrop-blur-[2px]" aria-hidden />
+                         <div className="relative z-10 flex items-start justify-between">
+                           <div className="flex items-center gap-3">
+                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-md">
+                               {programsOverviewShareImage ? (
+                                 <img src={programsOverviewShareImage} alt="" className="h-8 w-8 object-contain" />
+                               ) : (
+                                 <Sparkles className="h-7 w-7 text-white" strokeWidth={2} aria-hidden />
+                               )}
+                             </div>
+                             <span className="font-manrope text-xl font-bold uppercase italic tracking-tighter">
+                               {programsOverviewDisplayName}
+                             </span>
+                           </div>
+                           <Nfc className="h-10 w-10 shrink-0 opacity-80" strokeWidth={1.5} aria-hidden />
+                         </div>
+                         <div className="relative z-10 flex justify-between gap-4">
+                           <div>
+                             <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">Premium tier</p>
+                             <p className="mt-1 font-manrope text-lg font-bold tracking-wide">
+                               {programsOverviewHeroTierLabel}
+                             </p>
+                             <p className="mt-2 font-mono text-xs tracking-[0.15em] opacity-90">
+                               {cardIssuanceExistingCard.userCard.currency?.trim() || 'Points'}
+                             </p>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                     <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-500">
+                       <span className="font-bold uppercase tracking-widest text-slate-400">Contract</span>
+                       <AddressCapsule
+                         address={cardIssuanceExistingCard.cardAddress}
+                         className="bg-[#eef1f3] border-[#abadaf]/30 text-[#2c2f31]"
+                       />
+                       <a
+                         href={`https://basescan.org/address/${cardIssuanceExistingCard.cardAddress}`}
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         className="inline-flex items-center gap-1 font-bold text-[#1562f0] hover:underline"
+                       >
+                         Basescan
+                         <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                       </a>
+                     </div>
+                   </div>
+
+                   <div className="flex flex-col justify-between gap-8 rounded-2xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-8 lg:col-span-7">
+                     <div>
+                       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+                         <h3 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">Tiers &amp; rules</h3>
+                         <span className="rounded-full border border-[#1562f0]/15 bg-white px-4 py-1 text-xs font-bold text-[#1562f0]">
+                           {(programsOverviewTiersSortedAscending.length || cardIssuanceTiers.length).toLocaleString()} active tiers
+                         </span>
+                       </div>
+                       <div className="space-y-4">
+                         {programsOverviewTiersSortedAscending.length > 0 ? (
+                           programsOverviewTiersSortedAscending.map((t, i) => {
+                             const minRaw = t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
+                             const minLabel = Number.isFinite(minRaw) ? (minRaw / 1e6).toLocaleString() : '—';
+                             const sub = (t.description?.trim() ||
+                               `From ${minLabel} (${cardIssuanceExistingCard.userCard.currency?.trim() || 'pts'})`) as string;
+                             const medal = ['🥉', '🥈', '🥇'][Math.min(i, 2)] as string;
+                             const band = (['Entry level', 'Intermediate', 'High volume'] as const)[Math.min(i, 2)];
+                             const isTop = i === programsOverviewTiersSortedAscending.length - 1;
+                             return (
+                               <div
+                                 key={`${t.index ?? 't'}-${i}`}
+                                 className={`flex items-center justify-between gap-4 rounded-xl border border-transparent bg-white p-5 transition-all hover:border-[#1562f0]/20 ${
+                                   isTop ? 'ring-1 ring-[#1562f0]/10' : ''
+                                 }`}
+                               >
+                                 <div className="flex min-w-0 items-center gap-4">
+                                   <div className="text-3xl" aria-hidden>
+                                     {medal}
+                                   </div>
+                                   <div className="min-w-0">
+                                     <h4 className="font-manrope font-bold text-[#2c2f31]">{t.name ?? 'Tier'}</h4>
+                                     <p className="text-sm text-slate-500 line-clamp-2">{sub}</p>
+                                   </div>
+                                 </div>
+                                 <div className="shrink-0 text-right">
+                                   <p className="font-manrope font-bold text-[#2c2f31]">—</p>
+                                   <p
+                                     className={`text-[10px] font-bold uppercase tracking-wider ${
+                                       isTop ? 'text-[#1562f0]' : 'text-slate-400'
+                                     }`}
+                                   >
+                                     {band}
+                                   </p>
+                                 </div>
+                               </div>
+                             );
+                           })
+                         ) : (
+                           <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white p-6 text-sm font-medium text-slate-600">
+                             No tier metadata on this card yet. Open the configurator to define tiers before publishing updates.
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                     <button
+                       type="button"
+                       onClick={() => {
+                         setCardIssuanceActiveProgramView('configure');
+                         window.scrollTo({ top: 0, behavior: 'smooth' });
+                       }}
+                       className={`flex w-full items-center justify-center gap-3 rounded-full bg-[#1562f0] py-4 font-manrope text-base font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:bg-[#0047b8] active:scale-[0.98] ${bizFocusRingClass}`}
+                     >
+                       Manage rules &amp; tiers
+                       <SlidersHorizontal className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+                     </button>
+                   </div>
+                 </section>
+
+                 <section className="space-y-6" aria-label="Inventory hub">
+                   <h3 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">Inventory hub</h3>
+                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+                     <div className="group flex items-center gap-8 rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1">
+                       <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-[#eef1f3]">
+                         <Package className="h-10 w-10 text-[#1562f0]" strokeWidth={1.75} aria-hidden />
+                       </div>
+                       <div className="min-w-0 flex-1">
+                         <h4 className="font-manrope text-xl font-bold text-[#2c2f31]">Gift packs</h4>
+                         <p className="mt-1 font-semibold text-[#1562f0]">
+                           {membersTopupKpisAll.totalTopupEvents.toLocaleString()} recorded top-up events
+                         </p>
+                         <button
+                           type="button"
+                           onClick={() => handleTabChange('MembersLoyalty')}
+                           className={`mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#2c2f31] transition-colors group-hover:text-[#1562f0] ${bizFocusRingClass} rounded-sm`}
+                         >
+                           Manage gift packs
+                           <ArrowRight className="h-5 w-5" strokeWidth={2} aria-hidden />
+                         </button>
+                       </div>
+                     </div>
+                     <div className="group flex items-center gap-8 rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1">
+                       <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-[#eef1f3]">
+                         <MonitorSmartphone className="h-10 w-10 text-[#1562f0]" strokeWidth={1.75} aria-hidden />
+                       </div>
+                       <div className="min-w-0 flex-1">
+                         <h4 className="font-manrope text-xl font-bold text-[#2c2f31]">NFC inventory</h4>
+                         <p className="mt-1 font-medium text-[#2c2f31]/70">
+                           {terminals.length.toLocaleString()} linked terminals
+                         </p>
+                         <button
+                           type="button"
+                           onClick={() => handleTabChange('Staff')}
+                           className={`mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#2c2f31] transition-colors group-hover:text-[#1562f0] ${bizFocusRingClass} rounded-sm`}
+                         >
+                           Order more cards
+                           <ShoppingCart className="h-5 w-5" strokeWidth={2} aria-hidden />
+                         </button>
+                       </div>
+                     </div>
+                   </div>
+                 </section>
+               </div>
+             ) : null}
            </div>
            )
          )}
@@ -11797,219 +14288,608 @@ const marketBUnitRunwayDays = useMemo(() => {
          {activeTab === 'Settings' && (
            <div
              id="biz-settings-root"
-             className="relative z-10 mx-auto w-full max-w-5xl animate-in fade-in duration-300 pb-16 font-sans text-[#2c2f31] antialiased"
+             className="relative z-10 mx-auto w-full max-w-2xl animate-in fade-in duration-300 overflow-x-hidden px-4 pb-12 font-sans text-[#2c2f31] antialiased sm:px-6"
            >
-             {/* Align with marketExample.html Settings: day-zero progress, critical security, bento grid, footer */}
-             <div className="mb-12 grid grid-cols-1 gap-8 md:grid-cols-12">
-               <div className="flex flex-col items-center justify-between gap-6 rounded-xl bg-[#eef1f3] p-8 md:col-span-12 md:flex-row">
-                 <div className="w-full flex-1">
-                   <div className="mb-4 flex items-center justify-between">
-                     <h2 className="text-3xl font-extrabold tracking-tight">Day Zero: Get Started</h2>
-                     <span className="text-lg font-bold text-[#0051d1]">{settingsEditorialSetupPercent}% Complete</span>
-                   </div>
-                   <div className="h-4 w-full overflow-hidden rounded-full bg-[#dfe3e6]">
-                     <div
-                       className="h-full rounded-full bg-gradient-to-br from-[#0051d1] to-[#7a9dff] shadow-[0_0_15px_rgba(0,81,209,0.3)] transition-all duration-500"
-                       style={{ width: `${settingsEditorialSetupPercent}%` }}
-                     />
-                   </div>
-                 </div>
-                 <div className="flex items-center gap-2 text-sm font-medium text-[#595c5e]">
-                   <Zap className="size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   Finish setup to unlock global terminal access
-                 </div>
-               </div>
-             </div>
+             <div
+               className="pointer-events-none absolute top-1/3 -right-20 size-96 rounded-full bg-[#0051d1]/5 blur-3xl"
+               aria-hidden
+             />
+             <div
+               className="pointer-events-none absolute bottom-0 -left-20 size-80 rounded-full bg-[#8d3a8b]/5 blur-3xl"
+               aria-hidden
+             />
 
-             <section className="relative mb-12 overflow-hidden">
-               <div
-                 className="pointer-events-none absolute -right-20 -top-20 size-80 rounded-full bg-rose-500/10 blur-3xl"
-                 aria-hidden
-               />
-               <div className="flex flex-col items-center gap-10 rounded-lg border border-white/40 bg-white p-10 shadow-[20px_40px_40px_rgba(21,98,240,0.03)] md:flex-row">
-                 <div className="flex size-24 shrink-0 items-center justify-center rounded-full bg-rose-500/10">
-                   <Shield className="size-11 text-rose-600" strokeWidth={2} aria-hidden />
+             {/* Settings hub — `newOnloading.html` (main: hero + bento + system architecture + footer) */}
+             <section className="relative mb-10 mt-4">
+               <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.05em] text-[#0051d1]">Account Hub</p>
+               <h3 className="font-manrope text-3xl font-extrabold leading-tight tracking-tight text-slate-900">Configuration</h3>
+               <p className="mt-2 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                 Welcome to Verra Business OS. Complete your security protocol to unlock full operational features.
+               </p>
+             </section>
+
+             <div className="mb-10 flex flex-col gap-5">
+               <button
+                 type="button"
+                 aria-expanded={settingsBusinessProfileOverlayOpen}
+                 aria-controls="biz-settings-profile-overlay-panel"
+                 onClick={() => setSettingsBusinessProfileOverlayOpen(true)}
+                 className={`${bizFocusRingClass} group flex w-full items-center gap-5 rounded-lg bg-white p-6 text-left shadow-[0_4px_20px_rgba(0,0,0,0.02)] transition-transform active:scale-[0.98]`}
+               >
+                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eef1f3] text-[#0051d1] transition-colors group-hover:bg-[#0051d1] group-hover:text-white">
+                   <Store className="size-6" strokeWidth={2} aria-hidden />
                  </div>
                  <div className="min-w-0 flex-1">
-                   <div className="mb-3 flex flex-wrap items-center gap-3">
-                     <span className="rounded-full bg-rose-600 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white">
+                   <div className="flex items-center justify-between gap-2">
+                     <h3 className="font-bold text-slate-900">Business Profile</h3>
+                     <span className="shrink-0 rounded-full bg-[#e5e9eb] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                       {businessProfileEoaResolved ? 'Ready' : 'Setup'}
+                     </span>
+                   </div>
+                   <p className="mt-1 text-xs text-[#595c5e]">Manage identity, address, and public info.</p>
+                 </div>
+                 <ChevronRight className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
+               </button>
+
+               <button
+                 type="button"
+                 id="biz-settings-security"
+                 className={`${bizFocusRingClass} group relative flex w-full items-center gap-5 overflow-hidden rounded-lg bg-white p-6 text-left shadow-[0_10px_30px_rgba(179,27,37,0.05)] transition-transform active:scale-[0.98]`}
+               >
+                 <div className="absolute left-0 top-0 h-full w-1 bg-[#b31b25]" aria-hidden />
+                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#b31b25]/10 text-[#b31b25] transition-colors group-hover:bg-[#b31b25] group-hover:text-white">
+                   <ShieldCheck className="size-6" strokeWidth={2} aria-hidden />
+                 </div>
+                 <div className="min-w-0 flex-1">
+                   <div className="flex items-center justify-between gap-2">
+                     <h3 className="font-bold text-slate-900">Security &amp; Backup</h3>
+                     <span className="shrink-0 rounded-full bg-[#b31b25] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
                        Critical
                      </span>
-                     <h3 className="text-2xl font-bold">Security: Back up your account recovery phrase</h3>
                    </div>
-                   <p className="mb-6 max-w-2xl text-lg leading-relaxed text-[#595c5e]">
-                     Verra is <span className="font-bold text-[#2c2f31]">non-custodial</span>. Back up your account recovery phrase now.
-                     If you lose it,{' '}
-                     <span className="font-bold underline decoration-rose-500/30 decoration-2">we cannot recover your funds</span>. This is the
-                     only key to your business capital.
-                   </p>
-                   <div className="flex flex-wrap gap-4">
-                     <button
-                       type="button"
-                       onClick={() =>
-                         document.getElementById('biz-settings-root')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                       }
-                       className="group flex items-center gap-3 rounded-full bg-[#0051d1] px-8 py-4 font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all active:scale-95 hover:bg-[#0047b8]"
-                     >
-                       Start Backup Process
-                       <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" strokeWidth={2} aria-hidden />
-                     </button>
-                     <a
-                       href={BEAMIO_APP_URL}
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       className="rounded-full bg-[#e5e9eb] px-8 py-4 font-bold text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]"
-                     >
-                       Learn more about self-custody
-                     </a>
-                   </div>
+                   <p className="mt-1 text-xs text-[#595c5e]">Manage recovery keys and credentials.</p>
                  </div>
-                 <div className="hidden shrink-0 rotate-3 overflow-hidden rounded-lg shadow-2xl lg:block lg:h-48 lg:w-48">
-                   <img
-                     alt="Self-custody and account security illustration"
-                     className="size-full object-cover"
-                     src={BIZ_SELF_CUSTODY_HERO_IMG}
-                   />
+                 <AlertTriangle className="size-5 shrink-0 text-[#b31b25]" strokeWidth={2} aria-hidden />
+               </button>
+
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Staff')}
+                 className={`${bizFocusRingClass} group flex w-full items-center gap-5 rounded-lg bg-white p-6 text-left shadow-[0_4px_20px_rgba(0,0,0,0.02)] transition-transform active:scale-[0.98]`}
+               >
+                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eef1f3] text-[#515c70] transition-colors group-hover:bg-[#0051d1] group-hover:text-white">
+                   <Users className="size-6" strokeWidth={2} aria-hidden />
+                 </div>
+                 <div className="min-w-0 flex-1">
+                   <div className="flex items-center justify-between gap-2">
+                     <h3 className="font-bold text-slate-900">Team Access</h3>
+                     <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                       {terminals.length === 0 ? '0 Members' : `${terminals.length} Terminals`}
+                     </span>
+                   </div>
+                   <p className="mt-1 text-xs text-[#595c5e]">Manage staff roles and permissions.</p>
+                 </div>
+                 <ChevronRight className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
+               </button>
+
+               <button
+                 type="button"
+                 onClick={() => handleTabChange('Market')}
+                 className={`${bizFocusRingClass} group relative flex w-full items-center gap-5 overflow-hidden rounded-lg bg-[#0051d1] p-6 text-left shadow-[0_20px_40px_rgba(21,98,240,0.15)] transition-transform active:scale-[0.98]`}
+               >
+                 <div
+                   className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#7a9dff] to-white opacity-20 mix-blend-overlay"
+                   aria-hidden
+                 />
+                 <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-white backdrop-blur-md">
+                   <Wallet className="size-6" strokeWidth={2} aria-hidden />
+                 </div>
+                 <div className="relative z-[1] min-w-0 flex-1">
+                   <div className="flex flex-wrap items-center justify-between gap-2">
+                     <h3 className="font-bold text-white">Billing &amp; Quota</h3>
+                     <div className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5">
+                       <Coins className="size-3.5 shrink-0 text-white" strokeWidth={2} aria-hidden />
+                       <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                         {protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                           ? `${Number(protocolFuelReserveBalance).toFixed(2)} Bonus Units`
+                           : 'B-Units'}
+                       </span>
+                     </div>
+                   </div>
+                   <p className="mt-1 text-xs text-white/80">Manage B-Units and payments.</p>
+                 </div>
+                 <ChevronRight className="relative z-[1] size-5 shrink-0 text-white/50" strokeWidth={2} aria-hidden />
+               </button>
+             </div>
+
+             <section className="mt-12">
+               <h4 className="mb-4 px-1 text-[0.65rem] font-bold uppercase tracking-[0.05em] text-slate-400">System Architecture</h4>
+               <div className="grid grid-cols-2 gap-4 rounded-lg bg-[#eef1f3] p-4">
+                 <div className="flex flex-col gap-2 rounded-2xl bg-white p-4">
+                   <BarChart3 className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                   <span className="text-xs font-bold text-slate-900">Operations</span>
+                   <span className="text-[10px] font-medium text-[#595c5e]">Active Monitoring</span>
+                 </div>
+                 <div className="flex flex-col gap-2 rounded-2xl bg-white p-4">
+                   <Database className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                   <span className="text-xs font-bold text-slate-900">Data Storage</span>
+                   <span className="text-[10px] font-medium text-[#595c5e]">Cloud Sync On</span>
                  </div>
                </div>
              </section>
 
-             <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-               <div className="group rounded-lg bg-white p-8 shadow-sm transition-all duration-500 hover:shadow-xl hover:shadow-[#0051d1]/5">
-                 <div className="mb-10 flex items-start justify-between">
-                   <div>
-                     <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.1em] text-[#595c5e]">Legal Identity</span>
-                     <h3 className="text-2xl font-extrabold">Tax & Legal: GST/HST</h3>
-                   </div>
-                   <div className="flex size-12 items-center justify-center rounded-full bg-[#eef1f3] transition-colors group-hover:bg-[#7a9dff]/20">
-                     <Gavel className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   </div>
-                 </div>
-                 <div className="space-y-6">
-                   <div className="flex items-center justify-between rounded-md bg-[#eef1f3] p-4">
-                     <div className="flex items-center gap-4">
-                       <FileText className="size-5 text-[#595c5e]" strokeWidth={2} aria-hidden />
-                       <span className="font-bold">Business Registration</span>
-                     </div>
-                     <button
-                       type="button"
-                       onClick={() =>
-                         document.getElementById('biz-settings-root')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                       }
-                       className="flex items-center gap-1 font-bold text-[#0051d1]"
-                     >
-                       Configure <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
-                     </button>
-                   </div>
-                   <div className="flex items-center justify-between rounded-md bg-[#eef1f3] p-4">
-                     <div className="flex items-center gap-4">
-                       <Landmark className="size-5 text-[#595c5e]" strokeWidth={2} aria-hidden />
-                       <span className="font-bold">GST/HST Number</span>
-                     </div>
-                     <span className="flex items-center gap-1 text-[#595c5e] opacity-50">Pending Info</span>
-                   </div>
-                 </div>
-                 <div className="mt-8 flex items-center gap-3 text-sm italic text-[#595c5e]">
-                   <Info className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-                   Tax identification is required for processing payments over $10k.
-                 </div>
-               </div>
+             <footer className="mt-10 py-8 text-center">
+               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 opacity-50">End of Configuration Hub</p>
+             </footer>
 
-               <div className="group rounded-lg bg-white p-8 shadow-sm transition-all duration-500 hover:shadow-xl hover:shadow-[#0051d1]/5">
-                 <div className="mb-10 flex items-start justify-between">
-                   <div>
-                     <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.1em] text-[#595c5e]">Presence</span>
-                     <h3 className="text-2xl font-extrabold">Store Info</h3>
-                   </div>
-                   <div className="flex size-12 items-center justify-center rounded-full bg-[#eef1f3] transition-colors group-hover:bg-[#7a9dff]/20">
-                     <Store className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   </div>
-                 </div>
-                 <div className="mb-6 grid grid-cols-2 gap-4">
-                   <div className="rounded-md bg-[#eef1f3] p-5 text-center">
-                     <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Status</p>
-                     <p className="font-bold text-[#0051d1]">Live</p>
-                   </div>
-                   <div className="rounded-md bg-[#eef1f3] p-5 text-center">
-                     <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Region</p>
-                     <p className="font-bold text-[#2c2f31]">North America</p>
-                   </div>
-                 </div>
-                 <div className="space-y-4">
-                   <div>
-                     <label htmlFor="biz-settings-public-name" className="mb-1 ml-2 block text-[11px] font-black uppercase text-[#595c5e]">
-                       Public Name
-                     </label>
-                     <input
-                       id="biz-settings-public-name"
-                       readOnly
-                       type="text"
-                       value={displayName(beamio ?? undefined) || 'Merchant OS HQ'}
-                       className="w-full rounded-md border-0 bg-[#eef1f3] py-4 pl-6 pr-6 text-sm font-medium text-[#2c2f31] focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20"
-                     />
-                   </div>
-                   <div>
-                     <label htmlFor="biz-settings-support-email" className="mb-1 ml-2 block text-[11px] font-black uppercase text-[#595c5e]">
-                       Support Email
-                     </label>
-                     <input
-                       id="biz-settings-support-email"
-                       readOnly
-                       type="email"
-                       placeholder="support@yourbrand.com"
-                       defaultValue=""
-                       className="w-full rounded-md border-0 bg-[#eef1f3] py-4 pl-6 pr-6 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20"
-                     />
-                   </div>
-                 </div>
-                 <div className="mt-8 flex justify-end">
+             {settingsBusinessProfileOverlayOpen ? (
+             <div
+               className="fixed inset-0 z-[60] flex justify-end font-sans text-[#2c2f31] antialiased"
+               role="presentation"
+             >
+               <button
+                 type="button"
+                 className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+                 aria-label="Close business profile editor"
+                 onClick={() => setSettingsBusinessProfileOverlayOpen(false)}
+               />
+               <div
+                 id="biz-settings-profile-overlay-panel"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="biz-settings-profile-overlay-title"
+                 className="relative z-10 flex h-full w-full max-w-2xl flex-col bg-[#f5f7f9] shadow-2xl animate-in slide-in-from-right duration-300"
+                 onClick={(e) => e.stopPropagation()}
+               >
+                 <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+                   <h2 id="biz-settings-profile-overlay-title" className="font-manrope text-lg font-bold tracking-tight text-slate-900">
+                     Business Profile
+                   </h2>
                    <button
                      type="button"
-                     onClick={() =>
-                       document.getElementById('biz-settings-root')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                     }
-                     className="rounded-full bg-[#7a9dff]/20 px-6 py-3 font-bold text-[#0051d1] transition-colors hover:bg-[#7a9dff]/30"
+                     onClick={() => setSettingsBusinessProfileOverlayOpen(false)}
+                     className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                     aria-label="Close"
                    >
-                     Update Details
+                     <X className="size-5" strokeWidth={2} aria-hidden />
                    </button>
                  </div>
-               </div>
-             </div>
-
-             <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3">
-               <div className="flex gap-4 rounded-lg border border-[#f797ef]/20 bg-[#f797ef]/10 p-6 md:col-span-1">
-                 <Sparkles className="size-6 shrink-0 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
-                 <div>
-                   <p className="text-sm font-bold">Smart Suggestion</p>
-                   <p className="mt-1 text-xs leading-relaxed text-[#595c5e]">
-                     Adding a custom logo increases customer trust by 14%.
-                   </p>
+                 <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-16 pt-5 sm:px-6">
+             <form
+               id="biz-settings-profile-form"
+               className="relative space-y-8"
+               onSubmit={(e) => e.preventDefault()}
+             >
+               <div id="biz-settings-business-profile" className="scroll-mt-6 flex flex-col gap-8">
+               <section>
+                 <div className="mb-6 flex items-center gap-2">
+                   <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
+                   <h4 className="font-manrope text-xl font-bold">Brand identity</h4>
                  </div>
-               </div>
-               <div className="flex items-center justify-between rounded-lg bg-[#eef1f3] p-6 md:col-span-2">
-                 <div className="flex min-w-0 items-center gap-4">
-                   <div className="size-10 shrink-0 overflow-hidden rounded-full grayscale">
-                     <img
-                       alt=""
-                       className="size-full object-cover"
-                       src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-cs5E3jm9BDYUsm_8bEFGmIKm33Gm4Y0PmyAXMmqq97OvKwP1vC-Eql3t_263WZCIWNTtvxaiiBc2xM1fkY5aAhRbUPvtJ47PjpzVn-qmV9XG1O3N8VZSUUU2Qtb5cWavTO0P553Rzt31bLlIIri-AXitjffrCfgA0tYwCSzmD7l9yrmv1zfjvsHDZjliM23ivVAkaWvaqqBZrs28JGorqaIEDK0yrTmhwSOODUco2OIpmzP0z5nn_5IX8AIl9Po3-vzvQ0t6YoE"
+                 <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+                   <div>
+                     <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400">Logo upload</label>
+                     <input
+                       ref={settingsMerchantLogoFileRef}
+                       type="file"
+                       accept="image/*"
+                       className="hidden"
+                       onChange={handleSettingsMerchantLogoPick}
+                     />
+                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                       <div className="w-full max-w-[280px] shrink-0">
+                         {!beamio?.image ? (
+                           <button
+                             type="button"
+                             onClick={() => settingsMerchantLogoFileRef.current?.click()}
+                             disabled={settingsMerchantLogoUploading}
+                             className="flex min-h-[140px] w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#abadaf] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60"
+                           >
+                             {settingsMerchantLogoUploading ? (
+                               <Loader2 className="h-8 w-8 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                             ) : (
+                               <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
+                             )}
+                             <span className="mt-2 text-[11px] font-bold text-[#747779]">
+                               {settingsMerchantLogoUploading ? 'Uploading…' : 'Upload image (PNG, JPEG, or SVG)'}
+                             </span>
+                           </button>
+                         ) : (
+                           <div className="relative h-[140px] w-full overflow-hidden rounded-xl border-2 border-dashed border-[#abadaf] bg-[#eef1f3]">
+                             <img src={beamio.image} alt="" className="h-full w-full object-contain" />
+                             {settingsMerchantLogoUploading ? (
+                               <div
+                                 className="absolute inset-0 flex items-center justify-center bg-black/35"
+                                 aria-busy
+                                 aria-label="Uploading"
+                               >
+                                 <Loader2 className="h-8 w-8 animate-spin text-white" strokeWidth={2} aria-hidden />
+                               </div>
+                             ) : null}
+                             <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/25 to-transparent p-2">
+                               <button
+                                 type="button"
+                                 disabled={settingsMerchantLogoUploading}
+                                 onClick={() => settingsMerchantLogoFileRef.current?.click()}
+                                 className="rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-bold text-[#0051d1] shadow-sm ring-1 ring-black/5 transition hover:bg-white disabled:opacity-50"
+                               >
+                                 Replace
+                               </button>
+                               {settingsMerchantLogoIsPersistedCustom ? (
+                                 <button
+                                   type="button"
+                                   disabled={settingsMerchantLogoUploading}
+                                   aria-label="Remove merchant logo"
+                                   onClick={() => void handleSettingsMerchantLogoRemove()}
+                                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:opacity-50"
+                                 >
+                                   <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                 </button>
+                               ) : null}
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                       <div className="min-w-0 flex-1">
+                         <p className="text-sm font-medium text-[#2c2f31]">Square SVG, PNG, or JPG</p>
+                         <p className="mt-1 text-xs text-[#595c5e]">
+                           Same pipeline as Card Configurator merchant logo: resized if needed, posted to IPFS, then saved to your Beamio
+                           profile. Recommended 512×512px.
+                         </p>
+                         {settingsMerchantLogoError ? (
+                           <p className="mt-2 text-xs font-medium text-amber-700" role="alert">
+                             {settingsMerchantLogoError}
+                           </p>
+                         ) : null}
+                       </div>
+                     </div>
+                   </div>
+                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-store-name">
+                         Store name
+                       </label>
+                       <input
+                         id="biz-settings-store-name"
+                         type="text"
+                         value={settingsBusinessStoreNameInputValue}
+                         onChange={(e) => patchBizBusinessProfile({ storeName: e.target.value })}
+                         disabled={!businessProfileEoaResolved}
+                         placeholder="Your store name"
+                         autoComplete="organization"
+                         className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                       />
+                     </div>
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-beamiotag">
+                         BeamioTag
+                       </label>
+                       <input
+                         id="biz-settings-beamiotag"
+                         readOnly
+                         type="text"
+                         value={beamio?.accountName ? `@${beamio.accountName.replace(/^@/, '')}` : ''}
+                         placeholder="@your_handle"
+                         className="w-full cursor-not-allowed rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#595c5e] opacity-90"
+                       />
+                     </div>
+                   </div>
+                   <div>
+                     <label className="mb-4 block text-xs font-bold uppercase tracking-widest text-slate-400">Brand color</label>
+                     <div className="flex flex-wrap items-center gap-4">
+                       <button type="button" className="size-10 rounded-full bg-[#1562f0] ring-4 ring-[#1562f0]/20 ring-offset-2" aria-label="Primary blue" />
+                       <button type="button" className="size-8 rounded-full bg-[#8d3a8b] transition-transform hover:scale-110" aria-label="Tertiary purple" />
+                       <button type="button" className="size-8 rounded-full bg-[#1b7e4c] transition-transform hover:scale-110" aria-label="Green" />
+                       <button type="button" className="size-8 rounded-full bg-[#d14400] transition-transform hover:scale-110" aria-label="Orange" />
+                       <button type="button" className="size-8 rounded-full bg-[#2c2f31] transition-transform hover:scale-110" aria-label="Dark" />
+                       <div className="mx-2 hidden h-8 w-px bg-slate-200 sm:block" aria-hidden />
+                       <div className="flex items-center gap-2 rounded-full border border-[#abadaf]/20 bg-[#eef1f3] px-3 py-1.5">
+                         <span className="text-[10px] font-bold text-[#595c5e]">HEX</span>
+                         <input
+                           type="text"
+                           value={businessProfileForm.brandHex ?? '#1562F0'}
+                           onChange={(e) => patchBizBusinessProfile({ brandHex: e.target.value })}
+                           disabled={!businessProfileEoaResolved}
+                           placeholder="#1562F0"
+                           autoComplete="off"
+                           className="w-24 border-0 bg-transparent p-0 text-xs font-bold uppercase focus:ring-0 disabled:cursor-not-allowed disabled:opacity-70"
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               </section>
+
+               <section>
+                 <div className="mb-8 flex items-center gap-2">
+                   <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
+                   <h4 className="font-manrope text-xl font-bold">Business biography</h4>
+                 </div>
+                 <div className="rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+                   <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-public-bio">
+                     Public bio
+                   </label>
+                   <textarea
+                     id="biz-settings-public-bio"
+                     value={businessProfileForm.publicBio ?? ''}
+                     onChange={(e) => patchBizBusinessProfile({ publicBio: e.target.value })}
+                     disabled={!businessProfileEoaResolved}
+                     placeholder="Share your store’s story with your customers..."
+                     rows={5}
+                     className={`min-h-[120px] w-full resize-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                   />
+                 </div>
+               </section>
+
+               <section>
+                 <div className="mb-8 flex items-center gap-2">
+                   <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
+                   <h4 className="font-manrope text-xl font-bold">Business information</h4>
+                 </div>
+                 <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+                   <div>
+                     <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-legal-name">
+                       Legal business name
+                     </label>
+                     <input
+                       id="biz-settings-legal-name"
+                       type="text"
+                       value={businessProfileForm.legalBusinessName ?? ''}
+                       onChange={(e) => patchBizBusinessProfile({ legalBusinessName: e.target.value })}
+                       disabled={!businessProfileEoaResolved}
+                       placeholder="Legal Name Inc."
+                       autoComplete="organization"
+                       className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                      />
                    </div>
-                   <p className="text-sm font-medium text-[#2c2f31]">
-                     Compliance Check: <span className="font-bold text-[#0051d1]">Tier 1 Active</span>
-                   </p>
+                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-tax-id">
+                         Tax ID / GST number
+                       </label>
+                       <input
+                         id="biz-settings-tax-id"
+                         type="text"
+                         value={businessProfileForm.taxId ?? ''}
+                         onChange={(e) => patchBizBusinessProfile({ taxId: e.target.value })}
+                         disabled={!businessProfileEoaResolved}
+                         placeholder="123456789 RT0001"
+                         autoComplete="off"
+                         className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                       />
+                     </div>
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-website">
+                         Website URL
+                       </label>
+                       <input
+                         id="biz-settings-website"
+                         type="url"
+                         value={businessProfileForm.website ?? ''}
+                         onChange={(e) => patchBizBusinessProfile({ website: e.target.value })}
+                         disabled={!businessProfileEoaResolved}
+                         placeholder="https://www.yourbrand.ca"
+                         autoComplete="url"
+                         className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                       />
+                     </div>
+                   </div>
                  </div>
+               </section>
+
+               <section>
+                 <div className="mb-8 flex items-center gap-2">
+                   <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
+                   <h4 className="font-manrope text-xl font-bold">Location details</h4>
+                 </div>
+                 <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+                   <div>
+                     <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-street">
+                       Street address
+                     </label>
+                     <input
+                       id="biz-settings-street"
+                       type="text"
+                       value={businessProfileForm.streetAddress ?? ''}
+                       onChange={(e) => patchBizBusinessProfile({ streetAddress: e.target.value })}
+                       disabled={!businessProfileEoaResolved}
+                       placeholder="123 Barista Lane"
+                       autoComplete="street-address"
+                       className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                     />
+                   </div>
+                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-city">
+                         City
+                       </label>
+                       <input
+                         id="biz-settings-city"
+                         type="text"
+                         value={businessProfileForm.city ?? ''}
+                         onChange={(e) => patchBizBusinessProfile({ city: e.target.value })}
+                         disabled={!businessProfileEoaResolved}
+                         placeholder="Toronto"
+                         autoComplete="address-level2"
+                         className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                     />
+                     </div>
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-postal">
+                         Postal code
+                       </label>
+                       <input
+                         id="biz-settings-postal"
+                         type="text"
+                         value={businessProfileForm.postalCode ?? ''}
+                         onChange={(e) => patchBizBusinessProfile({ postalCode: e.target.value })}
+                         disabled={!businessProfileEoaResolved}
+                         placeholder="M5V 2L1"
+                         autoComplete="postal-code"
+                         className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                       />
+                     </div>
+                   </div>
+                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-province">
+                         Province
+                       </label>
+                       <div className="relative">
+                         <select
+                           id="biz-settings-province"
+                           value={businessProfileForm.province ?? ''}
+                           onChange={(e) => patchBizBusinessProfile({ province: e.target.value })}
+                           disabled={!businessProfileEoaResolved || businessProfileProvinceOptions.length === 0}
+                           className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
+                         >
+                           <option value="">
+                             {businessProfileForm.country ? 'Select province / state' : 'Select country first'}
+                           </option>
+                           {businessProfileProvinceOptions.map((opt) => (
+                             <option key={opt.value} value={opt.value}>
+                               {opt.label}
+                             </option>
+                           ))}
+                         </select>
+                         <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
+                       </div>
+                     </div>
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-country">
+                         Country
+                       </label>
+                       <div className="relative">
+                         <select
+                           id="biz-settings-country"
+                           value={businessProfileForm.country ?? ''}
+                           onChange={(e) => {
+                             const v = e.target.value;
+                             patchBizBusinessProfile({ country: v, province: '' });
+                           }}
+                           disabled={!businessProfileEoaResolved}
+                           className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
+                         >
+                           <option value="">Select country</option>
+                           <option value="CA">Canada</option>
+                           <option value="US">United States</option>
+                           <option value="GB">United Kingdom</option>
+                           <option value="AU">Australia</option>
+                           <option value="DE">Germany</option>
+                         </select>
+                         <Globe className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               </section>
+
+               <section>
+                 <div className="mb-8 flex items-center gap-2">
+                   <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
+                   <h4 className="font-manrope text-xl font-bold">Contact &amp; preferences</h4>
+                 </div>
+                 <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+                   <div>
+                     <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-support-email-2">
+                       Support email
+                     </label>
+                     <input
+                       id="biz-settings-support-email-2"
+                       type="email"
+                       value={businessProfileForm.supportEmail ?? ''}
+                       onChange={(e) => patchBizBusinessProfile({ supportEmail: e.target.value })}
+                       disabled={!businessProfileEoaResolved}
+                       placeholder="support@yourbrand.ca"
+                       autoComplete="email"
+                       className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                     />
+                   </div>
+                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-category">
+                         Business category
+                       </label>
+                       <div className="relative">
+                         <select
+                           id="biz-settings-category"
+                           value={businessProfileForm.category ?? ''}
+                           onChange={(e) => patchBizBusinessProfile({ category: e.target.value })}
+                           disabled={!businessProfileEoaResolved}
+                           className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
+                         >
+                           <option value="">Select category (e.g., Cafe, Retail, Bakery)</option>
+                           <option value="cafe">Cafe</option>
+                           <option value="retail">Retail</option>
+                           <option value="bakery">Bakery</option>
+                           <option value="tech">Tech Services</option>
+                         </select>
+                         <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
+                       </div>
+                     </div>
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-timezone">
+                         Timezone
+                       </label>
+                       <div className="relative">
+                         <select
+                           id="biz-settings-timezone"
+                           value={businessProfileForm.timezone ?? 'ET'}
+                           onChange={(e) => patchBizBusinessProfile({ timezone: e.target.value })}
+                           disabled={!businessProfileEoaResolved}
+                           className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
+                         >
+                           <option value="ET">(GMT-05:00) Eastern time</option>
+                           <option value="PT">(GMT-08:00) Pacific time</option>
+                           <option value="GMT">(GMT+00:00) London</option>
+                         </select>
+                         <CalendarDays className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               </section>
+
+               <section>
+                 <div className="mb-8 flex items-center gap-2">
+                   <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
+                   <h4 className="font-manrope text-xl font-bold">Internal documentation</h4>
+                 </div>
+                 <div className="rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
+                   <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-merchant-remarks">
+                     Merchant remarks
+                   </label>
+                   <textarea
+                     id="biz-settings-merchant-remarks"
+                     value={businessProfileForm.merchantRemarks ?? ''}
+                     onChange={(e) => patchBizBusinessProfile({ merchantRemarks: e.target.value })}
+                     disabled={!businessProfileEoaResolved}
+                     placeholder="Add internal notes or business reference information here (not visible to customers)"
+                     rows={5}
+                     className={`min-h-[120px] w-full resize-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                   />
+                 </div>
+               </section>
+               </div>
+
+               <div className="pt-4">
                  <button
                    type="button"
-                   onClick={() =>
-                     document.getElementById('biz-settings-root')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                   }
-                   className="shrink-0 text-xs font-bold uppercase tracking-widest text-[#595c5e] transition-colors hover:text-[#0051d1]"
+                   onClick={() => handleTabChange('Card Issuance Setup')}
+                   className="group relative w-full overflow-hidden rounded-full bg-[#0051d1] py-5 font-manrope text-lg font-bold text-white shadow-[0_20px_40px_rgba(21,98,240,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98]"
                  >
-                   View Audit Log
+                   <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                   <span className="relative z-10">Save changes</span>
                  </button>
+                 
+               </div>
+
+
+             </form>
+                 </div>
                </div>
              </div>
+             ) : null}
            </div>
          )}
 
@@ -13557,6 +16437,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                   )}
                 </div>
               </div>
+              {!hasAaAccount && !isMerchantKitStripeProduct && selectedProduct !== 'starter' ? (
+                <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-[13px] font-medium text-amber-100">
+                  Activate your Smart Account to complete this purchase. Use Starter activation (1 USDC) first, then return for refills.
+                </div>
+              ) : null}
               {(selectedProduct === 'custom_fuel' || selectedProduct === 'starter') && marketRefuelError ? (
                 <div className="rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-[13px] font-medium text-red-300">
                   {marketRefuelError}
@@ -13582,7 +16467,12 @@ const marketBUnitRunwayDays = useMemo(() => {
                 <button
                   type="button"
                   onClick={() => void handleMarketPurchase()}
-                  disabled={marketRefuelProcessing || !Number.isFinite(marketCustomFuelUsdc) || marketCustomFuelUsdc < 1}
+                  disabled={
+                    marketRefuelProcessing ||
+                    !Number.isFinite(marketCustomFuelUsdc) ||
+                    marketCustomFuelUsdc < 1 ||
+                    !hasAaAccount
+                  }
                   className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-600 disabled:text-slate-400 disabled:shadow-none transition-all flex items-center justify-center gap-2"
                 >
                   <Fuel size={20} fill="currentColor" strokeWidth={1.5} /> Refuel Now
@@ -13652,7 +16542,10 @@ const marketBUnitRunwayDays = useMemo(() => {
               <button
                 type="button"
                 onClick={() => void handleMarketPurchase()}
-                disabled={selectedProduct === 'starter' && marketRefuelProcessing}
+                disabled={
+                  (selectedProduct === 'starter' && marketRefuelProcessing) ||
+                  (selectedProduct !== 'starter' && !hasAaAccount)
+                }
                 className={`flex items-center gap-2 px-8 py-4 rounded-[16px] font-semibold text-[16px] text-white transition-all shadow-lg active:scale-95 ${
                  selectedProduct === 'fuel' ? 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/20' :
                  selectedProduct === 'starter' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' :
@@ -13975,8 +16868,8 @@ const marketBUnitRunwayDays = useMemo(() => {
            )}
 
            {issueCardStep === 3 && (
-             <div className="flex h-full flex-col items-center justify-center p-8 py-16 animate-in zoom-in-95">
-               <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-[#1562f0] shadow-[0_0_40px_rgba(21,98,240,0.5)]">
+             <div className="flex h-full flex-col items-center justify-center p-6 py-12 animate-in zoom-in-95">
+               <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-[#1562f0] shadow-[0_0_40px_rgba(21,98,240,0.5)]">
                  <Check size={48} className="text-white" strokeWidth={2.5} />
                </div>
                <h3 className="mb-3 text-[20px] font-semibold text-slate-300">Successfully Issued</h3>
@@ -13985,7 +16878,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                    ? `$${parseFloat(issueValue || '0').toFixed(2)} ${issueTokenSymbol.replace('$', '')}`
                    : issueValue}
                </div>
-               <p className="mb-12 max-w-xs text-center text-[14px] font-medium text-slate-500">
+               <p className="mb-8 max-w-xs text-center text-[14px] font-medium text-slate-500">
                  ERC-1155 Asset recorded for {issueTarget} (demo). On production, mint via Beamio User Card flows.
                </p>
                <button

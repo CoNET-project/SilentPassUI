@@ -25,7 +25,6 @@ import {
   Store,
   Plus,
   Search,
-  Bell,
   SlidersHorizontal,
   Plane,
   Gamepad2,
@@ -38,6 +37,8 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
+import { ReactComponent as ShoppingBlueIcon } from "@/components/Footer/assets/shopping-1-icon.blue.svg"
 import { beamioApi } from "@/utils/constants"
 import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
 import { fiatPrefix } from "@/services/currency"
@@ -51,11 +52,10 @@ import blackCard from "./assets/BlackCard.png"
 import cardFaceTexture from "./assets/cardFaceTexture.png"
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
+/** Discover（/settings）顶栏胶囊：与 Footer `/settings` tab 同款 shopping 蓝标；底色与页内主色 #0051d1 一致 */
+const DISCOVER_CAPSULE_ACCENT = "#0051d1"
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
 const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
-
-const discoverProfileImage = (avatarSeed: string | undefined) =>
-  `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || "@Beamio")}`
 
 const DISCOVER_LATEST_CARDS_LIMIT = 20
 
@@ -1080,6 +1080,7 @@ const PurchaseCreditsSheet = ({
 export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
+	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
 	const { profiles, myAddress, setShowFooter, beamio } = useDaemonContext()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
@@ -1195,7 +1196,6 @@ export default function Market() {
 		setSettingsOpen("USDCTopup")
 	}
 
-	const discoverAvatarSrc = beamio?.image?.trim() || discoverProfileImage(beamio?.accountName)
 	const q = discoverQuery.trim().toLowerCase()
 	const showDiscoverSenPho = !q || /sen|pho|cafe|viet|noodle/.test(q)
 	const showDiscoverLumina = !q || /lumina|coffee|roast|cafe/.test(q)
@@ -1228,30 +1228,37 @@ export default function Market() {
 		<>
 		<div className="w-full h-full min-h-0 h-screen bg-[#f5f7f9] dark:bg-slate-950 overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100 text-[#2c2f31] dark:text-slate-100 antialiased">
 
-		{/* 滚动容器：Discover 布局对齐 example/market.html */}
-		<div className="flex-1 min-h-0 overflow-y-auto pb-24 [scrollbar-width:thin]">
-		<header className="sticky top-0 z-30 w-full bg-white/70 dark:bg-slate-900/85 backdrop-blur-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.35)]">
-			<div
-				className="flex items-center justify-between px-6 py-4 w-full max-w-lg mx-auto"
-				style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
-			>
-				<div className="flex items-center gap-3 min-w-0">
-					<div className="w-10 h-10 rounded-full bg-[#0051d1]/10 dark:bg-blue-500/20 flex items-center justify-center overflow-hidden border-2 border-[#0051d1]/20 dark:border-blue-400/30 shrink-0">
-						<img src={discoverAvatarSrc} alt="Profile" className="w-full h-full object-cover" />
-					</div>
-					<h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#0051d1] dark:text-[#7a9dff] truncate">
-						Prepaid
-					</h1>
-				</div>
-				<button
-					type="button"
-					className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:opacity-80 active:scale-95 transition-all"
-					aria-label="Notifications"
+		{/* 与 Home / Wallet：随主滚动区 scrollTop 淡入淡出 */}
+		<div
+			className="pointer-events-none fixed left-4 right-4 z-40 flex items-center justify-start transition-opacity duration-300"
+			style={{
+				top: "max(1rem, env(safe-area-inset-top, 0px))",
+				opacity: capsuleOpacity,
+			}}
+			aria-hidden
+		>
+			<div className="flex items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800">
+				<div
+					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
+					style={{ backgroundColor: DISCOVER_CAPSULE_ACCENT }}
 				>
-					<Bell className="w-6 h-6" strokeWidth={2} />
-				</button>
+					<ShoppingBlueIcon className="h-[22px] w-[22px] block shrink-0" aria-hidden />
+				</div>
+				<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Discover</span>
 			</div>
-		</header>
+		</div>
+
+		{/* 滚动容器：Discover 布局对齐 example/market.html */}
+		<div
+			ref={setScrollRef}
+			onScroll={onCapsuleScroll}
+			className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-24 [scrollbar-width:thin]"
+			style={{ WebkitOverflowScrolling: "touch", flex: "1 1 0%", minHeight: 0 }}
+		>
+			<div
+				className="shrink-0"
+				style={{ minHeight: "calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)" }}
+			/>
 
 		<div className="animate-in fade-in duration-300 pb-8 max-w-lg mx-auto w-full">
 			<section className="px-6 pt-6 pb-2">

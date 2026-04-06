@@ -5,9 +5,13 @@ import {
 
 import { useEffect, useRef, useState } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
+import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-blue.svg'
 import Chat from './chat'
 
 import ChatList from './components/ChatList'
+
+/** 与 Wallet / Discover 顶栏胶囊圆标底色一致 */
+const CHAT_CAPSULE_ACCENT = '#1562f0'
 
 const Home = () => {
 	const {
@@ -60,20 +64,37 @@ const Home = () => {
 		{/* ✅ 当没选中聊天对象时：固定胶囊 + ChatList */}
 		{!chatData && (
 			<>
-				{/* 固定独立胶囊：Title，与 Home/History 一致，随滚动渐隐 */}
+				{/* 与 Home / Wallet / Discover：Footer 同款图标 + 胶囊样式，随滚动渐隐 */}
 				<div
-					className="fixed left-0 right-0 z-30 flex items-center justify-between px-5 transition-opacity duration-300"
-					style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+					className="pointer-events-none fixed left-4 right-4 z-40 flex items-center justify-start transition-opacity duration-300"
+					style={{
+						top: 'max(1rem, env(safe-area-inset-top, 0px))',
+						opacity: capsuleOpacity,
+					}}
+					aria-hidden
 				>
-					<div className="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
-						<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Chat</h1>
+					<div className="flex items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800">
+						<div
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
+							style={{ backgroundColor: CHAT_CAPSULE_ACCENT }}
+						>
+							<ChatBlueIcon className="h-[22px] w-[22px] block shrink-0" aria-hidden />
+						</div>
+						<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Chat</span>
 					</div>
 				</div>
 
-				{/* 滚动容器：与 Home 一致，flex-1 直接子元素，ref+onScroll 绑定此处 */}
-				<div ref={setScrollRef} onScroll={onCapsuleScroll} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#F1F8ED] pb-[env(safe-area-inset-bottom)]">
-					{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
-					<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
+				{/* 滚动容器：与 Home / Wallet 一致 */}
+				<div
+					ref={setScrollRef}
+					onScroll={onCapsuleScroll}
+					className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-[#F1F8ED] pb-[env(safe-area-inset-bottom)]"
+					style={{ WebkitOverflowScrolling: 'touch', flex: '1 1 0%', minHeight: 0 }}
+				>
+					<div
+						className="shrink-0"
+						style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
+					/>
 					<ChatList
 						// 这里你传你维护的 chat list（通常是 profile.chat）
 						list={profiles?.[0]?.chat || []}

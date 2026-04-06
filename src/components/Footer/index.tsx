@@ -28,6 +28,10 @@ type ActiveKey = TabKey | 'home'
 type Phase = 'idle' | 'moving' | 'settling' | 'impact'
 
 const ICON_CLASS = 'w-[18px] h-[18px] block'
+/** 未缩放内容约 34px 高 × FOOTER_BAR_SCALE，用于与右侧 Search 垂直居中对齐 */
+const FOOTER_BAR_LAYOUT_W_PX = 210
+const FOOTER_BAR_SCALE = 1.28
+const FOOTER_BAR_VISUAL_H_PX = Math.round(34 * FOOTER_BAR_SCALE)
 const SLOT_H = 'h-6'
 
 
@@ -512,7 +516,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		<motion.div
 			ref={footerRef}
 			data-html2canvas-ignore
-			className="fixed left-0 right-0 z-50"
+			className="fixed left-0 right-0 z-50 flex items-center justify-between pl-4 pr-4 overflow-visible"
 			animate={barControls}
 			initial={false}
 			style={{
@@ -521,8 +525,19 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				pointerEvents: 'none'
 			}}
 		>
-			 {/* ✅ 玻璃层：tab bar 左 | 右侧独立的 search 圆形按钮（与 footer 同步显隐） */}
-			<div className="ml-4 max-w-[248px] pointer-events-auto origin-bottom-left" style={{ transform: 'scale(1.5)' }}>
+			 {/* ✅ 玻璃层：左侧 tab bar（布局宽 × scale 控制视觉长度）；右侧 Search 同行 flex 垂直居中 */}
+			<div
+				className="pointer-events-auto flex w-max shrink-0 flex-col justify-end overflow-visible"
+				style={{ height: FOOTER_BAR_VISUAL_H_PX }}
+			>
+			<div
+				className="shrink-0 origin-bottom-left pointer-events-auto"
+				style={{
+					width: FOOTER_BAR_LAYOUT_W_PX,
+					maxWidth: FOOTER_BAR_LAYOUT_W_PX,
+					transform: `scale(${FOOTER_BAR_SCALE})`,
+				}}
+			>
 				<div
 					className="
 						relative
@@ -595,7 +610,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					</div>
 				
 			</div>
-				{/* Search：footer 右侧独立的圆形按钮，与 footer 同步显隐动画（同一 motion.div） */}
+			</div>
+				{/* Search：与左侧 tab bar 同一行垂直居中，随 footer 同步显隐 */}
 				<button
 					type="button"
 					onClick={() => {
@@ -603,7 +619,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						setShowFooter(false)
 					}}
 					className="
-						fixed bottom-[1.5rem] right-4 w-10 h-10 rounded-full flex items-center justify-center border flex-shrink-0 pointer-events-auto z-10
+						w-10 h-10 rounded-full flex items-center justify-center border shrink-0 pointer-events-auto
 						focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90
 						dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900
 					"

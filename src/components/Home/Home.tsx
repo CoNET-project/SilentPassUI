@@ -1885,7 +1885,8 @@ const Home = ({}) => {
 				<div
 					className="pointer-events-none fixed left-4 right-4 z-30 flex items-center justify-between transition-opacity duration-300"
 					style={{
-						top: 'max(1rem, env(safe-area-inset-top))',
+						// 与下方主内容顶部占位一致；WebView 常返回 safe-area 0，需至少 1rem 与浏览器+PWA 视觉对齐
+						top: 'max(1rem, env(safe-area-inset-top, 0px))',
 						opacity: capsuleOpacity,
 					}}
 				>
@@ -1974,10 +1975,12 @@ const Home = ({}) => {
 				>
 					{!openSearch && (
 						<>
-							{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离 */}
+							{/* 顶部留白：与固定胶囊 top 同源 max(1rem, safe-area) + 5rem；避免 WebView 下 safe-area=0 时面板贴顶 */}
 							<div
 								className="shrink-0"
-								style={{ minHeight: 'calc(env(safe-area-inset-top, 0px) + 5rem)' }}
+								style={{
+									minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)',
+								}}
 							/>
 
 							{/* Content — 浅底、白卡片、青柠强调 */}
@@ -2082,7 +2085,7 @@ const Home = ({}) => {
 
 							{/* Universal Pay Hub + Quick Actions：与首屏剩余高度对齐，短屏压缩留白/NFC，保证白卡片与下方双键同屏可见 */}
 							<div
-								className="mb-10 flex min-h-[calc(100svh-5rem-env(safe-area-inset-top,0px)-11rem-env(safe-area-inset-bottom,0px))] flex-col gap-3 min-[480px]:gap-5 [@media(max-height:740px)]:min-h-[calc(100svh-5rem-env(safe-area-inset-top,0px)-9.5rem-env(safe-area-inset-bottom,0px))]"
+								className="mb-10 flex min-h-[calc(100svh-5rem-max(1rem,env(safe-area-inset-top,0px))-11rem-env(safe-area-inset-bottom,0px))] flex-col gap-3 min-[480px]:gap-5 [@media(max-height:740px)]:min-h-[calc(100svh-5rem-max(1rem,env(safe-area-inset-top,0px))-9.5rem-env(safe-area-inset-bottom,0px))]"
 							>
 								{/* 顶对齐：与「刘海+5rem + pt-4」后首控件一致；勿 justify-center 避免 NFC 条被压在视窗中部 */}
 								<section className="shrink-0">
@@ -2090,7 +2093,8 @@ const Home = ({}) => {
 										{(() => {
 											const host = getCashTreesNativeNfcHost()
 											let label = 'NFC not available on this device'
-											let tone: 'emerald' | 'amber' | 'slate' = 'slate'
+											/** 默认 amber：无原生桥（浏览器/PWA）时与 WebView「不可用」态同色，避免仅浏览器走 slate 灰字 */
+											let tone: 'emerald' | 'amber' | 'slate' = 'amber'
 											if (host) {
 												if (cashTreesNativeNfcStatus === 'ready') {
 													label = 'NFC Active & Ready'
@@ -2106,7 +2110,7 @@ const Home = ({}) => {
 													tone = 'amber'
 												} else {
 													label = 'NFC not available'
-													tone = 'slate'
+													tone = 'amber'
 												}
 											}
 											const circle =

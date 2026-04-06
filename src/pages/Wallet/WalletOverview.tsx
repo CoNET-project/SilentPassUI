@@ -4,7 +4,9 @@
 
 import React, { useMemo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Nfc, ChevronRight, Plus, Bell, Store } from 'lucide-react'
+import { Nfc, ChevronRight, Store } from 'lucide-react'
+import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
+import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { detectDeviceNfcCapability } from '@/utils/cashTreesNativeNfc'
 import usdcIcon from '@/components/assets/usdc.png'
@@ -18,15 +20,13 @@ function formatAaUsdcDisplay(raw: string): string {
 	return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+/** 与 Home 顶栏左侧胶囊 `homeAccent` 一致 */
+const WALLET_CAPSULE_ACCENT = '#1562f0'
+
 export default function WalletOverview() {
 	const navigate = useNavigate()
-	const {
-		beamio,
-		aaAccountUsdcBalance,
-		myBrandCards,
-		myBrandCardDetails,
-		myBrandsFeedLoading,
-	} = useDaemonContext()
+	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
+	const { aaAccountUsdcBalance, myBrandCards, myBrandCardDetails, myBrandsFeedLoading } = useDaemonContext()
 	const aaUsdcFormatted = formatAaUsdcDisplay(aaAccountUsdcBalance ?? '0')
 
 	const myBrandCardsSorted = useMemo(
@@ -44,44 +44,40 @@ export default function WalletOverview() {
 		return () => clearTimeout(t)
 	}, [])
 
-	const profileSrc =
-		beamio?.image?.trim() ||
-		'https://lh3.googleusercontent.com/aida-public/AB6AXuC54IEiMtuPojIQGuk6jxb2z5y4LSAAsq4Aj62mUr-rXaTfEoL9Gb8rkP3eP_fNT1Lp9eFF2bzVs79g4ZEyBH5B9HqfYIZSlRptyIW4nhYFFIiJWsB_4Vs803QUUyiIf_lxbJ9UbK2xRJUgo9DyxsgUdZooixBW-NYV1TDUzvwFpbwKrwA6-04gPa8HgtHF0y5Z2LjnWsWRixEDHnyIfTKAUryD-vH14fx7gCaLmVYxeNbf6AOvqrSt9YuYFV9qZTSgYkoILYxJPi81'
-
 	return (
-		<div className="min-h-full bg-[#F2F2F7] dark:bg-slate-950 text-slate-900 dark:text-slate-50 pb-28">
-			<header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-6 py-4 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl">
-				<div className="flex items-center gap-3">
-					<h1 className="text-xl font-bold tracking-tight font-['Inter',sans-serif]">Wallet</h1>
-					<button
-						type="button"
-						onClick={() => navigate('/History')}
-						className="p-1 rounded-full hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors active:scale-95"
-						aria-label="Add"
+		<div className="flex h-full min-h-0 flex-1 flex-col bg-[#F2F2F7] text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+			{/* 与 Home 一致：随主滚动区 scrollTop 淡入淡出 */}
+			<div
+				className="pointer-events-none fixed left-4 right-4 z-40 flex items-center justify-start transition-opacity duration-300"
+				style={{
+					top: 'max(1rem, env(safe-area-inset-top, 0px))',
+					opacity: capsuleOpacity,
+				}}
+				aria-hidden
+			>
+				<div className="flex items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800">
+					<div
+						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
+						style={{ backgroundColor: WALLET_CAPSULE_ACCENT }}
 					>
-						<Plus className="w-5 h-5" strokeWidth={2.5} />
-					</button>
+						<WalletBlueIcon className="h-[22px] w-[22px] block shrink-0" aria-hidden />
+					</div>
+					<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Wallet</span>
 				</div>
-				<div className="flex items-center gap-3">
-					<button
-						type="button"
-						className="p-2 rounded-full hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors active:scale-95"
-						aria-label="Notifications"
-					>
-						<Bell className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-					</button>
-					<button
-						type="button"
-						onClick={() => navigate('/myWallet')}
-						className="w-10 h-10 rounded-full overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm active:scale-95 transition-transform"
-						aria-label="Profile"
-					>
-						<img src={profileSrc} alt="" className="w-full h-full object-cover" />
-					</button>
-				</div>
-			</header>
+			</div>
 
-			<main className="pt-24 px-6 max-w-2xl mx-auto space-y-8">
+			<div
+				ref={setScrollRef}
+				onScroll={onCapsuleScroll}
+				className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-28"
+				style={{ WebkitOverflowScrolling: 'touch', flex: '1 1 0%', minHeight: 0 }}
+			>
+				{/* 与 Home 一致：刘海 + 5rem，避免首屏与固定胶囊重叠 */}
+				<div
+					className="shrink-0"
+					style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
+				/>
+				<main className="px-6 max-w-2xl mx-auto w-full space-y-8">
 				<section className="space-y-1">
 					<p className="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">
 						Total Purchasing Power
@@ -260,7 +256,8 @@ export default function WalletOverview() {
 						</div>
 					</section>
 				)}
-			</main>
+				</main>
+			</div>
 			<MyBrandsFullScreenDrawer open={showMyBrandsDrawer} onClose={() => setShowMyBrandsDrawer(false)} />
 		</div>
 	)

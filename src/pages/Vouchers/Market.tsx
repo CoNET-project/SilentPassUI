@@ -37,8 +37,6 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
-import { ReactComponent as ShoppingBlueIcon } from "@/components/Footer/assets/shopping-1-icon.blue.svg"
 import { beamioApi } from "@/utils/constants"
 import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
 import { fiatPrefix } from "@/services/currency"
@@ -52,8 +50,6 @@ import blackCard from "./assets/BlackCard.png"
 import cardFaceTexture from "./assets/cardFaceTexture.png"
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
-/** Discover（/settings）顶栏胶囊：与 Footer `/settings` tab 同款 shopping 蓝标；底色与页内主色 #0051d1 一致 */
-const DISCOVER_CAPSULE_ACCENT = "#0051d1"
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
 const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
@@ -1080,7 +1076,6 @@ const PurchaseCreditsSheet = ({
 export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
 	const { profiles, myAddress, setShowFooter, beamio } = useDaemonContext()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
@@ -1178,15 +1173,6 @@ export default function Market() {
 		flash()
 	}
 
-	/** Discover — Green Card “Get” opens CashTrees top-up (202 = min / green tier). */
-	const openDiscoverGreenCardTopup = () => {
-		setShowFooter(false)
-		setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
-		setTopupItemId(202)
-		setTopupPresetAmountEmpty(false)
-		setSettingsOpen("USDCTopup")
-	}
-
 	/** Discover — API card opens top-up for that card address. */
 	const openDiscoverCardTopup = (cardAddress: string) => {
 		setShowFooter(false)
@@ -1228,36 +1214,14 @@ export default function Market() {
 		<>
 		<div className="w-full h-full min-h-0 h-screen bg-[#f5f7f9] dark:bg-slate-950 overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100 text-[#2c2f31] dark:text-slate-100 antialiased">
 
-		{/* 与 Home / Wallet：随主滚动区 scrollTop 淡入淡出 */}
-		<div
-			className="pointer-events-none fixed left-4 right-4 z-40 flex items-center justify-start transition-opacity duration-300"
-			style={{
-				top: "max(1rem, env(safe-area-inset-top, 0px))",
-				opacity: capsuleOpacity,
-			}}
-			aria-hidden
-		>
-			<div className="flex items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800">
-				<div
-					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
-					style={{ backgroundColor: DISCOVER_CAPSULE_ACCENT }}
-				>
-					<ShoppingBlueIcon className="h-[22px] w-[22px] block shrink-0" aria-hidden />
-				</div>
-				<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Discover</span>
-			</div>
-		</div>
-
 		{/* 滚动容器：Discover 布局对齐 example/market.html */}
 		<div
-			ref={setScrollRef}
-			onScroll={onCapsuleScroll}
 			className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-24 [scrollbar-width:thin]"
 			style={{ WebkitOverflowScrolling: "touch", flex: "1 1 0%", minHeight: 0 }}
 		>
 			<div
 				className="shrink-0"
-				style={{ minHeight: "calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)" }}
+				style={{ minHeight: "calc(max(1rem, env(safe-area-inset-top, 0px)) + 1rem)" }}
 			/>
 
 		<div className="animate-in fade-in duration-300 pb-8 max-w-lg mx-auto w-full">
@@ -1282,53 +1246,6 @@ export default function Market() {
 					>
 						<SlidersHorizontal className="w-5 h-5" strokeWidth={2} />
 					</button>
-				</div>
-			</section>
-
-			<section className="px-6 py-6">
-				<button
-					type="button"
-					onClick={openDiscoverGreenCardTopup}
-					className="relative w-full h-48 rounded-2xl overflow-hidden shadow-xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff] p-8 flex flex-col justify-center text-left active:scale-[0.99] transition-transform"
-				>
-					<div className="absolute inset-0 opacity-25 bg-[url('https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&q=80')] bg-cover bg-center" />
-					<div className="absolute right-[-20px] bottom-[-20px] w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-					<div className="relative z-10">
-						<span className="inline-block px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-white text-[10px] font-bold uppercase tracking-widest mb-3">
-							Limited Offer
-						</span>
-						<h2 className="font-bold text-2xl sm:text-3xl text-white leading-tight max-w-[220px]">
-							Unlock 10% Member Rewards
-						</h2>
-						<p className="text-white/85 text-sm mt-2 font-medium">Top up your store card to unlock tiers.</p>
-					</div>
-				</button>
-			</section>
-
-			<section className="py-4">
-				<div className="px-6 mb-4 flex justify-between items-end gap-2">
-					<h3 className="font-bold text-xl text-[#2c2f31] dark:text-slate-100">Categories</h3>
-					<span className="text-[#0051d1] dark:text-[#7a9dff] text-xs font-bold uppercase tracking-wider shrink-0">
-						View All
-					</span>
-				</div>
-				<div className="flex overflow-x-auto px-6 gap-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-					{[
-						{ icon: Plane, label: "Travel", ring: "bg-blue-50 dark:bg-blue-950/50 text-[#0051d1] dark:text-[#7a9dff]" },
-						{ icon: Gamepad2, label: "Gaming", ring: "bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300" },
-						{ icon: ShoppingBag, label: "Shopping", ring: "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-300" },
-						{ icon: Utensils, label: "Food", ring: "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300" },
-						{ icon: Clapperboard, label: "Movies", ring: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300" },
-					].map(({ icon: Icon, label, ring }) => (
-						<div key={label} className="flex-shrink-0 flex flex-col items-center gap-2 w-[72px]">
-							<div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform ${ring}`}>
-								<Icon className="w-7 h-7" strokeWidth={2} />
-							</div>
-							<span className="text-xs font-bold text-[#595c5e] dark:text-slate-400 tracking-tight text-center leading-tight">
-								{label}
-							</span>
-						</div>
-					))}
 				</div>
 			</section>
 

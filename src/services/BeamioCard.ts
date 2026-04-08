@@ -1915,7 +1915,8 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 /** 从 beamioApi 拉取 card_owner + metadata_json，转为 CardMetadataFromUri。优先用此接口，不依赖链上 uri 与 RPC。 */
 export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
 	const key = cardAddress.toLowerCase()
-	const cached = cardMetadataCache.get(key)
+	const cacheKey = `api:${key}`
+	const cached = cardMetadataCache.get(cacheKey)
 	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
 		const { timestamp, ...meta } = cached
 		return meta
@@ -1934,7 +1935,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
 		}
-		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
+		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
 	} catch {
 		return null
@@ -1995,7 +1996,8 @@ function parseNftTierMetadataJson(json: {
 /** 从 BeamioUserCard 的 uri 获取 metadata（name、image、tiers）。创建卡时传入的 uri 如 https://api.beamio.io/metadata/{id}.json；tiers 含创建卡时配置的 name/description */
 export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
 	const key = cardAddress.toLowerCase()
-	const cached = cardMetadataCache.get(key)
+	const cacheKey = `uri:${key}`
+	const cached = cardMetadataCache.get(cacheKey)
 	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
 		const { timestamp, ...meta } = cached
 		return meta
@@ -2026,7 +2028,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			image: json?.image ?? json?.shareTokenMetadata?.image,
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 		}
-		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
+		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
 	} catch {
 		return null

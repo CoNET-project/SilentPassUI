@@ -307,11 +307,19 @@ function AppShell() {
 			return el.scrollWidth > el.clientWidth
 		}
 
-		const hasHorizontalScrollableAncestor = (target: HTMLElement | null) => {
+		/** touch 落在文本节点 / SVG 上时 e.target 可能不是 Element，closest/canScroll 会失效或异常 */
+		const touchTargetToElement = (t: EventTarget | null): Element | null => {
+			if (t == null) return null
+			if (t instanceof Element) return t
+			if (t instanceof Text) return t.parentElement
+			return null
+		}
+
+		const hasHorizontalScrollableAncestor = (target: Element | null) => {
 			const root = (document.scrollingElement as HTMLElement) || document.documentElement
-			let el: HTMLElement | null = target
+			let el: Element | null = target
 			while (el && el !== root) {
-				if (canScrollX(el)) return true
+				if (el instanceof HTMLElement && canScrollX(el)) return true
 				el = el.parentElement
 			}
 			return false
@@ -336,15 +344,15 @@ function AppShell() {
 			if (!t) return
 			touchStartX = t.clientX
 			touchStartY = t.clientY
-			const target = e.target as HTMLElement | null
+			const targetEl = touchTargetToElement(e.target)
 			const vw = window.innerWidth || document.documentElement.clientWidth || 0
 			const startedAtEdge = touchStartX <= EDGE_GUARD_PX || touchStartX >= vw - EDGE_GUARD_PX
 			// 保留可横向滚动容器（例如 Market 横向菜单）的手势，不拦截其内部 touch
-			edgeSwipeBlock = startedAtEdge && !hasHorizontalScrollableAncestor(target)
+			edgeSwipeBlock = startedAtEdge && !hasHorizontalScrollableAncestor(targetEl)
 		}
 
 		const handleTouchMove = (e: TouchEvent) => {
-			const target = e.target as HTMLElement | null
+			const touchTarget = e.target
 
 			const touch = e.touches[0]
 			if (!touch) return
@@ -359,19 +367,32 @@ function AppShell() {
 				}
 			}
 
-			if (!target) return
+			if (!touchTarget) return
 
-			let el: HTMLElement | null = target
+			const elHit = touchTargetToElement(touchTarget)
+			if (!elHit) return
+
+			/** 可点击控件（含点在按钮内文字/SVG 子节点时）：勿对 touchmove preventDefault，否则会吞掉 tap */
+			if (
+				elHit.closest(
+					"button, a[href], input, textarea, select, [role='button'], label, summary, [data-touch-priority='1']"
+				)
+			) {
+				return
+			}
+
 			const root = (document.scrollingElement as HTMLElement) || document.documentElement
+			let node: Element | null = elHit
+			while (node && node !== root && !(node instanceof HTMLElement && canScroll(node))) {
+				node = node.parentElement
+			}
 
-			while (el && el !== root && !canScroll(el)) el = el.parentElement
-
-			if (!el || el === root) {
+			if (!node || node === root) {
 				stopEvent(e)
 				return
 			}
 
-			const current = el
+			const current = node as HTMLElement
 
 			if (bodyRef.current && current === bodyRef.current) {
 			return
@@ -393,14 +414,16 @@ function AppShell() {
 
 		const handleTouchEnd = (e: TouchEvent) => {
 			edgeSwipeBlock = false
-			const target = e.target as HTMLElement | null
-			if (!target) return
+			const elHit = touchTargetToElement(e.target)
+			if (!elHit) return
 
-			let el: HTMLElement | null = target
+			let el: Element | null = elHit
 			const root = (document.scrollingElement as HTMLElement) || document.documentElement
 
 			while (el && el !== root) {
-				if ((el as any).__lastTouchY !== undefined) delete (el as any).__lastTouchY
+				if (el instanceof HTMLElement && (el as any).__lastTouchY !== undefined) {
+					delete (el as any).__lastTouchY
+				}
 				el = el.parentElement
 			}
 		}
@@ -1180,7 +1203,8 @@ function AppShell() {
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />
 					<Route path="/chat/:id" element={<ChatDetail />} />
-					<Route path="/settings" element={<Market />} />
+					<Route path="/settings" element={<MyWallet />} />
+					<Route path="/discover" element={<Market />} />
 					<Route path="/browser" element={<Browser />} />
 					<Route path="/myWallet" element={<MyWallet />} />
 					<Route path="/myBrands" element={<MyBrandsPage />} />

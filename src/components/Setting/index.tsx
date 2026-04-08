@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react'
+import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { Popup } from 'antd-mobile'
 import { CoNET_Data } from '../../utils/globals'
@@ -20,6 +21,12 @@ import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
 import packageJson from '../../../package.json'
+import {
+	loadSettingsFollowCounts,
+	saveSettingsFollowCounts,
+	loadSettingsCurrencyLabel,
+	saveSettingsCurrencyLabel,
+} from '@/utils/settingsScreenLocalCache'
 
 const version = `Version ${(packageJson as { version?: string }).version ?? ''}`
 
@@ -140,6 +147,8 @@ export default function BeamioMeMainScreen() {
 	const [copied, setCopied] = React.useState(false)
 	const [followingCount, setFollowingCount] = useState(0)
 	const [followerCount, setFollowerCount] = useState(0)
+	/** Language & Currency 行：本地缓存优先，beamio 到达后再对齐并落盘 */
+	const [currencyDisplay, setCurrencyDisplay] = useState('USDC')
 	const [firstName, setFirstName] = useState('')
 	const [lastName, setLastName] = useState('')
 	const [createAt, setCreatedAt] = useState(0)
@@ -208,7 +217,6 @@ export default function BeamioMeMainScreen() {
 			setCreatedAt(beamio.createdAt || 0)
 		}
 
-		getFollowerStatus(profile.keyID)
 	}
 
 	useEffect(() => {
@@ -218,6 +226,47 @@ export default function BeamioMeMainScreen() {
 		initProcess()
 		
 	}, [])
+
+	/** Follow 数量：先读 localStorage，再拉 API；失败保留缓存。按 EOA 隔离。 */
+	useEffect(() => {
+		const eoa = profiles?.[0]?.keyID?.trim()
+		if (!eoa || !ethers.isAddress(eoa)) {
+			setFollowingCount(0)
+			setFollowerCount(0)
+			return
+		}
+		const hit = loadSettingsFollowCounts(eoa)
+		if (hit) {
+			setFollowingCount(hit.followingCount)
+			setFollowerCount(hit.followerCount)
+		}
+		const curHit = loadSettingsCurrencyLabel(eoa)
+		if (curHit) setCurrencyDisplay(curHit)
+
+		let cancelled = false
+		;(async () => {
+			try {
+				const res = await getMyFollowStatus(eoa)
+				if (cancelled || !res) return
+				setFollowingCount(res.followingCount)
+				setFollowerCount(res.followerCount)
+				saveSettingsFollowCounts(eoa, res.followingCount, res.followerCount)
+			} catch {
+				/* 保留已展示的本地缓存 */
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [profiles?.[0]?.keyID])
+
+	useEffect(() => {
+		const cur = beamio?.currency?.trim()
+		if (!cur) return
+		setCurrencyDisplay(cur)
+		const eoa = profiles?.[0]?.keyID?.trim()
+		if (eoa && ethers.isAddress(eoa)) saveSettingsCurrencyLabel(eoa, cur)
+	}, [beamio?.currency, profiles?.[0]?.keyID])
 
 	const getPrivatekey = (): string => {
 		const profile = CoNET_Data?.profiles?.[0]
@@ -298,18 +347,6 @@ export default function BeamioMeMainScreen() {
 				/>
 			</Popup>
 		)
-	}
-
-	const getFollowerStatus = async (wallet: string) => {
-		if (!myAddress) return
-
-		
-		const res = await getMyFollowStatus(wallet)
-		if (res) {
-			setFollowingCount(res.followingCount)
-			setFollowerCount(res.followerCount)
-		}
-		
 	}
 
 	const ProfileInformation = () => {
@@ -630,7 +667,7 @@ export default function BeamioMeMainScreen() {
 									}
 									title="Language & Currency"
 									right={<span className="text-[15px] font-semibold text-slate-400">
-										{beamio?.currency||'USDC'}
+										{currencyDisplay}
 									</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{

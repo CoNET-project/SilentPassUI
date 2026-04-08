@@ -13,8 +13,7 @@ import { ReactComponent as HomeIconBlue } from './assets/home-icon-blue.svg'
 import { ReactComponent as ChatBlueIcon } from './assets/chat-blue.svg'
 import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 
-import { ReactComponent as BLogo } from './assets/center-scan-icon.blue.svg'
-import { ReactComponent as BLogoLight } from './assets/B-icon-light.svg'
+import { ReactComponent as LedgerIcon } from './assets/ledger.svg'
 
 import { Search } from 'lucide-react'
 import { searchUsername, storeSystemData } from '@/services/beamio'
@@ -28,6 +27,8 @@ type ActiveKey = TabKey | 'home'
 type Phase = 'idle' | 'moving' | 'settling' | 'impact'
 
 const ICON_CLASS = 'w-[18px] h-[18px] block'
+/** Ledger / Pay tab：相对其它 tab 图标放大至 115% */
+const LEDGER_ICON_CLASS = `${ICON_CLASS} origin-center scale-[1.15]`
 /** 未缩放内容约 34px 高 × FOOTER_BAR_SCALE，用于与右侧 Search 垂直居中对齐 */
 const FOOTER_BAR_LAYOUT_W_PX = 210
 const FOOTER_BAR_SCALE = 1.28
@@ -78,10 +79,6 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		cancelled = true
 	}
 	}, [visible, barControls])
-
-	const openPayWorkflow = () => {
-		scanRef.current?.start()
-	}
 
 	const navigate = useNavigate()
 	const { pathname } = useLocation()
@@ -145,7 +142,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	}, [visible, sampleBackgroundColor])
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
-	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, scanRef, setShowFooter, setChatSearchOpen } = useDaemonContext()
+	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, setShowFooter, setChatSearchOpen } = useDaemonContext()
 
 	const [showBar, setShowBar] = useState(true)
 
@@ -230,7 +227,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		if (p.startsWith('/wallet')) return '/wallet'
 		if (p.startsWith('/pay') || p.startsWith('/qr')) return '/pay'
 		if (p.startsWith('/chat')) return '/chat'
-		if (p.startsWith('/settings')) return '/settings'
+		if (p.startsWith('/settings') || p.startsWith('/discover')) return '/settings'
 		return 'home'
 	}, [pathname])
 
@@ -238,27 +235,23 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		const el = document.activeElement as HTMLElement | null
 		el?.blur()
 
-		// ✅ 进入页面即清除该 tab badge（中间 /pay 跳过）
-		if (k !== '/pay') {
-			setBadgeMap(v => ({ ...v, [k]: 0 }))
-			if (k === '/chat') {
-				setMessageCount(0)
-				// seenMsgRef.current.clear() // ✅ 需要“彻底重置计数”才开
-			}
-			// ✅ 从 /chat 离开时也清除 messageCount
-			if (pathname.startsWith('/chat')) {
-				setMessageCount(0)
-			}
-		} else {
-			// 打开 QR 操作页（扫描 / 我的二维码）
-			openPayWorkflow()
-			return
+		setBadgeMap(v => ({ ...v, [k]: 0 }))
+		if (k === '/chat') {
+			setMessageCount(0)
+		}
+		if (pathname.startsWith('/chat')) {
+			setMessageCount(0)
 		}
 
 		if (k === '/history') {
 			navigate('/')
 		} else if (k === '/wallet') {
 			navigate('/wallet')
+		} else if (k === '/settings') {
+			/* 中间购物图标 → Discover */
+			navigate('/discover')
+		} else if (k === '/pay') {
+			navigate('/Pay')
 		} else {
 			navigate(k)
 		}
@@ -289,18 +282,18 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				badge: getBadge('/settings')
 			},
 			{
-				key: '/pay' as const,
-				iconGrey:  <BLogo className={ICON_CLASS} />,
-				iconBlue: <BLogo className={ICON_CLASS} /> ,
-				title: '',
-				// ✅ 不要 badge
-			},
-			{
 				key: '/chat' as const,
 				iconGrey: <ChatGreyIcon className={ICON_CLASS} />,
 				iconBlue: <ChatBlueIcon className={ICON_CLASS} />,
 				title: '', //'Chat',
 				badge: getBadge('/chat'),
+			},
+			{
+				key: '/pay' as const,
+				iconGrey: <LedgerIcon className={LEDGER_ICON_CLASS} />,
+				iconBlue: <LedgerIcon className={LEDGER_ICON_CLASS} />,
+				title: '',
+				// ✅ 不要 badge
 			},
 		] as const),
 		// ✅ 依赖 getBadge / badgeMap / darkModle

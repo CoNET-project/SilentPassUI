@@ -8,7 +8,7 @@ import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEv
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
+import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
 import { useNavigate } from "react-router-dom"
@@ -19,7 +19,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Nfc, SlidersHorizontal, CheckCircle2, Trash2, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift, UserCircle, MessageCircle, Layers, Search }
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Key, Home as HomeHardwareIcon, Ban, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift, UserCircle, MessageCircle, Layers, Search }
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -52,7 +52,7 @@ import {
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
-import { resolveCardImageUrl } from '@/pages/Brands/MyBrandsListSection'
+import { resolveCardImageUrl, resolveHeldTierPresentation } from '@/pages/Brands/MyBrandsListSection'
 import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
@@ -81,6 +81,12 @@ const displayName = (item: beamio | searchResult | null | undefined) => {
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+
+/** CAD 展示用 whole.frac，与 DaemonProvider computeHomeTotalPowerCad 一致 */
+function cadPartsFromNumber(n: number): { whole: string; frac: string } {
+	const [whole, frac = '00'] = Math.max(0, n).toFixed(2).split('.')
+	return { whole, frac }
+}
 
 /** Open Relay QR：与 signAAtoEOA `deadlineSeconds` 一致，用于进度条比例 */
 const PAY_RELAY_QR_TTL_SECONDS = 300
@@ -145,7 +151,7 @@ type CashTreesNativeNfcStatus =
 	| 'ready'
 	| 'permission_denied'
 
-type CashTreesNfcOverlayPhase = 'hidden' | 'tap' | 'fetch' | 'result' | 'error'
+type CashTreesNfcOverlayPhase = 'hidden' | 'scanning' | 'fetch' | 'result' | 'error'
 
 type CashTreesNfcLinkOverlayResult = {
 	redeemTxHash?: string | null
@@ -312,6 +318,7 @@ const Home = ({}) => {
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails, myBrandsFeedLoading, homeTotalPowerCad,
+		aaAccountUsdcBalance,
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
@@ -1360,8 +1367,15 @@ const Home = ({}) => {
 	}, [showLinkPay])
 
 
-	/** Home 主视觉：浅灰底 + 青柠强调（与产品 mock 对齐） */
-	const homeAccent = '#1562f0'
+	/** 顶部左侧胶囊：beamioTag 协议（对齐 BeamioPayMe / beamio-capsule）— 头像优先 `image`，否则 `getImg(tag)`；展示单一 `@` + tag */
+	const { homeBeamioTagLabel, homeCapsuleAvatarSrc } = useMemo(() => {
+		const raw = (beamio?.accountName ?? '').trim()
+		const normalized = raw.replace(/^@+/, '') || 'Beamio'
+		const label = `@${normalized}`
+		const img = beamio?.image != null ? String(beamio.image).trim() : ''
+		const src = img || getImg(normalized)
+		return { homeBeamioTagLabel: label, homeCapsuleAvatarSrc: src }
+	}, [beamio?.accountName, beamio?.image])
 
 	/** CashTrees 卡片区：AA 短地址；Total CAD = (EOA+AA) USDC × BeamioOracle(USDC→CAD) + 基础设施卡 points 按卡币种折 CAD */
 	const cashTreesCardDisplay = useMemo(() => {
@@ -1407,6 +1421,19 @@ const Home = ({}) => {
 	const cashTreesPhysicalCardBoundEffective = cashTreesCardDisplay.isPhysicalCardBound
 
 	const deviceHasNfcReadCapability = useMemo(() => detectDeviceNfcCapability(), [cashTreesNativeNfcStatus])
+
+	/** 仅原生壳读卡器：无 CashTrees WebView 注入或 `no_hardware` 时不在顶部展示「关联 NFC」+（纯浏览器 Web NFC 不计入） */
+	const hasNativeNfcReaderForLink = useMemo(() => {
+		const native = getCashTreesNativeNfcBridge()
+		if (!native?.getNfcStatus) return false
+		try {
+			const s = native.getNfcStatus()
+			if (s === 'no_hardware') return false
+			return s === 'ready' || s === 'disabled' || s === 'nfc_permission_denied'
+		} catch {
+			return false
+		}
+	}, [cashTreesNativeNfcStatus])
 
 	useEffect(() => {
 		const apply = () => {
@@ -1556,14 +1583,12 @@ const Home = ({}) => {
 		return () => window.removeEventListener('cashtreesnfc', onNfc)
 	}, [profiles, refreshLinkedNfcCards])
 
-	const startCashTreesPhysicalCardBind = () => {
+	const startCashTreesPhysicalCardBind = useCallback(() => {
 		const native = getCashTreesNativeNfcBridge()
 		if (native?.startPhysicalCardBind) {
 			cashTreesNfcReq.current++
-			/** iOS：`NFCTagReaderSession` 必须由系统全屏扫描 UI 承载，无法关闭；避免与 PWA 遮罩叠两层。Android 仍用应用内引导。 */
-			if (getCashTreesNativeNfcHost() !== 'ios') {
-				setCashTreesNfcOverlay({ phase: 'tap' })
-			}
+			/** 含 iOS：先显示 scanning 加载层，提示等待读卡；系统全屏 NFC UI 仍由原生承载 */
+			setCashTreesNfcOverlay({ phase: 'scanning' })
 			try {
 				native.startPhysicalCardBind()
 			} catch {
@@ -1572,7 +1597,7 @@ const Home = ({}) => {
 			return
 		}
 		navigate('/myWallet')
-	}
+	}, [navigate])
 
 	/**
 	 * WalletReadyScreen follow-up:
@@ -1622,7 +1647,7 @@ const Home = ({}) => {
 			}, 200)
 			return () => window.clearTimeout(t)
 		}
-	}, [profiles?.[0]?.keyID, showActivateWalletPanel])
+	}, [profiles?.[0]?.keyID, showActivateWalletPanel, startCashTreesPhysicalCardBind])
 
 	const cancelCashTreesNfcBind = () => {
 		getCashTreesNativeNfcBridge()?.cancelPhysicalCardBind?.()
@@ -1862,10 +1887,43 @@ const Home = ({}) => {
 	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；改为单层 flex 链并写死 flex-basis */
 	const homeScrollUsesSingleFlexChain = showActivateWalletPanel && !openSearch
 
+	/** 与 DaemonProvider「points」折 CAD 同源，用于 Hub 双列（USDC / Merchant） */
+	const homeHubWalletCad = useMemo(() => {
+		const d = currencyData as Record<string, number>
+		const cadPerUsdc = (Number(d.CAD) || 1.35) * (Number(d.USDC) || 1)
+		const eoaU = Math.max(0, Number(usdcbalance) || 0)
+		const aaU = Math.max(0, Number(aaAccountUsdcBalance) || 0)
+		return cadPartsFromNumber((eoaU + aaU) * cadPerUsdc)
+	}, [usdcbalance, aaAccountUsdcBalance, currencyData])
+
+	const homeHubMerchantCad = useMemo(() => {
+		const d = currencyData as Record<string, number>
+		const cadPerUsdc = (Number(d.CAD) || 1.35) * (Number(d.USDC) || 1)
+		let pointsCad = 0
+		for (const entry of Object.values(myBrandCardDetails)) {
+			const assets = entry?.assets
+			if (!assets) continue
+			const pts = Number(assets.points ?? 0)
+			if (!Number.isFinite(pts) || pts <= 0) continue
+			const pCur = (assets.cardCurrency ?? 'CAD').toUpperCase()
+			if (pCur === 'CAD') {
+				pointsCad += pts
+			} else if (pCur === 'USDC') {
+				pointsCad += pts * cadPerUsdc
+			} else {
+				const targetPerUsd = Number(d.CAD) > 0 ? Number(d.CAD) : 1.35
+				const srcRaw = d[pCur]
+				const srcPerUsd = typeof srcRaw === 'number' && srcRaw > 0 ? srcRaw : 1
+				pointsCad += pts * (targetPerUsd / srcPerUsd)
+			}
+		}
+		return cadPartsFromNumber(pointsCad)
+	}, [myBrandCardDetails, currencyData])
+
 	return (
 		<div
 			className="
-		box-border flex h-full min-h-[100vh] w-full flex-col bg-[#F3F8FF] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900
+		box-border flex h-full min-h-[100vh] w-full flex-col bg-[#f8f9fa] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900 dark:bg-slate-950
 		"
 		>
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
@@ -1883,7 +1941,7 @@ const Home = ({}) => {
 			{/* 顶部栏：左右胶囊同一行 items-center 上下对齐；中间不拦截触摸 */}
 			{!openSearch && (
 				<div
-					className="pointer-events-none fixed left-4 right-4 z-30 flex items-center justify-between transition-opacity duration-300"
+					className="pointer-events-none fixed left-4 right-4 z-30 grid grid-cols-[1fr_auto_1fr] items-center gap-2 transition-opacity duration-300"
 					style={{
 						// 与下方主内容顶部占位一致；WebView 常返回 safe-area 0，需至少 1rem 与浏览器+PWA 视觉对齐
 						top: 'max(1rem, env(safe-area-inset-top, 0px))',
@@ -1893,57 +1951,82 @@ const Home = ({}) => {
 					<button
 						type="button"
 						onClick={() => navigate('/myWallet')}
-						className="flex items-center justify-start"
+						className="flex items-center justify-self-start"
 						style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
 						aria-label="Open wallet"
 					>
-						<div className="flex items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
-							<div
-								className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-base font-bold text-white"
-								style={{ backgroundColor: homeAccent }}
-							>
-								{beamio?.image ? (
-									<img
-										src={beamio.image}
-										alt={beamio.accountName}
-										className="h-full w-full object-cover"
-										draggable={false}
-									/>
-								) : (
-									<span className="leading-none">
-										{(beamio?.accountName || 'B').replace(/^@/, '').charAt(0).toUpperCase() || '?'}
-									</span>
-								)}
+						<div className="flex min-w-0 max-w-full items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
+							<div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-200/80 dark:bg-slate-700/80 dark:ring-slate-600/80">
+								<img
+									src={homeCapsuleAvatarSrc}
+									alt=""
+									className="h-full w-full object-cover"
+									draggable={false}
+								/>
 							</div>
-							<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
-								@{beamio?.accountName?.replace(/^@/, '') || 'Beamio'}
+							<span className="min-w-0 truncate text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
+								{homeBeamioTagLabel}
 							</span>
 						</div>
 					</button>
-					{hasAAWallet ? (
-						<button
-							type="button"
-							onClick={openCardManagement}
-							className="flex items-center justify-end"
-							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
-							aria-label="NFC cards"
+					<div
+						className="pointer-events-none min-w-0 max-w-[46vw] justify-self-center min-[400px]:max-w-[min(56vw,14rem)]"
+						aria-hidden
+					/>
+					{linkedNfcListLoading && linkedNfcCards.length === 0 ? (
+						<div
+							className="pointer-events-none flex items-center justify-self-end"
+							aria-busy
+							aria-label="Loading linked cards"
 						>
-							<div className="relative flex items-center justify-center rounded-full border border-slate-100/90 bg-white py-2 pl-2.5 pr-2.5 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
-								<SlidersHorizontal
-									className="h-5 w-5 shrink-0 text-[#0F172A] dark:text-slate-100"
+							<div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-100/90 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800">
+								<Loader2
+									className="h-5 w-5 shrink-0 animate-spin text-blue-600 dark:text-blue-400"
 									strokeWidth={2.2}
 									aria-hidden
 								/>
-								{linkedNfcCards.length > 0 && (
-									<span
-										className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#1562f0] dark:border-slate-800"
-										aria-hidden
-									/>
-								)}
+							</div>
+						</div>
+					) : linkedNfcCards.length > 0 ? (
+						<button
+							type="button"
+							onClick={openCardManagement}
+							className="relative flex h-10 w-10 items-center justify-center justify-self-end rounded-full transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+							aria-label="Physical keys"
+						>
+							{/* Match Vouchers/example/codingTemp.html header: material-symbols sensors */}
+							<svg
+								className="h-6 w-6 shrink-0 text-blue-600 dark:text-blue-400"
+								viewBox="0 0 24 24"
+								fill="currentColor"
+								aria-hidden
+							>
+								<path d="M7.76 16.24C6.67 15.16 6 13.66 6 12s.67-3.16 1.76-4.24l1.42 1.42C8.45 9.9 8 10.9 8 12s.45 2.1 1.17 2.83zm8.48 0C17.33 15.16 18 13.66 18 12s-.67-3.16-1.76-4.24l-1.42 1.42C15.55 9.9 16 10.9 16 12s-.45 2.1-1.17 2.83zM12 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2m8 2c0 2.21-.9 4.21-2.35 5.65l1.42 1.42C20.88 17.26 22 14.76 22 12s-1.12-5.26-2.93-7.07l-1.42 1.42C19.1 7.79 20 9.79 20 12M6.35 6.35 4.93 4.93C3.12 6.74 2 9.24 2 12s1.12 5.26 2.93 7.07l1.42-1.42C4.9 16.21 4 14.21 4 12s.9-4.21 2.35-5.65" />
+							</svg>
+							<span
+								className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#1562f0] dark:border-slate-800"
+								aria-hidden
+							/>
+						</button>
+					) : hasNativeNfcReaderForLink ? (
+						<button
+							type="button"
+							onClick={() => startCashTreesPhysicalCardBind()}
+							className="flex items-center justify-self-end"
+							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+							aria-label="Link NFC card"
+						>
+							<div className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-100/90 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] hover:bg-slate-200/50 dark:border-slate-700/80 dark:bg-slate-800 dark:hover:bg-slate-800/50">
+								<Plus
+									className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400"
+									strokeWidth={2.2}
+									aria-hidden
+								/>
 							</div>
 						</button>
 					) : (
-						<span className="pointer-events-none w-0 shrink-0" aria-hidden />
+						<span className="pointer-events-none w-0 shrink-0 justify-self-end" aria-hidden />
 					)}
 				</div>
 			)}
@@ -2063,7 +2146,9 @@ const Home = ({}) => {
 										{deviceHasNfcReadCapability ? (
 											<button
 												type="button"
+												onClick={() => startCashTreesPhysicalCardBind()}
 												className="w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex flex-col items-center cursor-pointer group text-left"
+												aria-label="Sync NFC card: start native NFC read"
 											>
 												<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
 													<CreditCard size={14} aria-hidden /> Option 2: Got a Card?
@@ -2083,126 +2168,72 @@ const Home = ({}) => {
 
 
 
-							{/* Universal Pay Hub + Quick Actions：与首屏剩余高度对齐，短屏压缩留白/NFC，保证白卡片与下方双键同屏可见 */}
-							<div
-								className="mb-10 flex min-h-[calc(100svh-5rem-max(1rem,env(safe-area-inset-top,0px))-11rem-env(safe-area-inset-bottom,0px))] flex-col gap-3 min-[480px]:gap-5 [@media(max-height:740px)]:min-h-[calc(100svh-5rem-max(1rem,env(safe-area-inset-top,0px))-9.5rem-env(safe-area-inset-bottom,0px))]"
-							>
-								{/* 顶对齐：与「刘海+5rem + pt-4」后首控件一致；勿 justify-center 避免 NFC 条被压在视窗中部 */}
+							{/* Universal Pay Hub（codingTemp.html）：NFC 独立 + 渐变卡 + 白底 Show Pay Code + Quick Actions */}
+							<div className="mb-10 flex flex-col gap-6 min-[480px]:gap-8">
+								{/* Premium Universal Pay Hub — signature gradient */}
 								<section className="shrink-0">
-									<div className="flex flex-col items-center gap-4 rounded-[24px] bg-white p-4 text-center shadow-[0_10px_40px_rgba(0,0,0,0.05)] min-[480px]:gap-6 min-[480px]:p-6 sm:gap-8 sm:p-8 dark:border dark:border-slate-700 dark:bg-slate-900 dark:shadow-none [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:p-4">
-										{(() => {
-											const host = getCashTreesNativeNfcHost()
-											let label = 'NFC not available on this device'
-											/** 默认 amber：无原生桥（浏览器/PWA）时与 WebView「不可用」态同色，避免仅浏览器走 slate 灰字 */
-											let tone: 'emerald' | 'amber' | 'slate' = 'amber'
-											if (host) {
-												if (cashTreesNativeNfcStatus === 'ready') {
-													label = 'NFC Active & Ready'
-													tone = 'emerald'
-												} else if (cashTreesNativeNfcStatus === 'unknown') {
-													label = 'Checking NFC…'
-													tone = 'slate'
-												} else if (cashTreesNativeNfcStatus === 'permission_denied') {
-													label = 'NFC permission required'
-													tone = 'amber'
-												} else if (cashTreesNativeNfcStatus === 'disabled' || cashTreesNativeNfcStatus === 'no_hardware') {
-													label = 'NFC off or unavailable'
-													tone = 'amber'
-												} else {
-													label = 'NFC not available'
-													tone = 'amber'
-												}
-											}
-											const circle =
-												tone === 'emerald'
-													? 'bg-emerald-50 dark:bg-emerald-950/40'
-													: tone === 'amber'
-														? 'bg-amber-50 dark:bg-amber-950/40'
-														: 'bg-slate-100 dark:bg-slate-800'
-											const iconC =
-												tone === 'emerald'
-													? 'text-emerald-500 dark:text-emerald-400'
-													: tone === 'amber'
-														? 'text-amber-600 dark:text-amber-400'
-														: 'text-slate-500 dark:text-slate-400'
-											const textC =
-												tone === 'emerald'
-													? 'text-emerald-600 dark:text-emerald-400'
-													: tone === 'amber'
-														? 'text-amber-700 dark:text-amber-300'
-														: 'text-slate-600 dark:text-slate-400'
-											return (
-												<div className="flex flex-col items-center gap-1.5 [@media(max-height:700px)]:gap-1">
-													<div
-														className={`flex h-12 w-12 items-center justify-center rounded-full min-[480px]:h-14 min-[480px]:w-14 ${circle} [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11`}
-													>
-														<Sparkles
-															className={`h-6 w-6 min-[480px]:h-7 min-[480px]:w-7 ${iconC} [@media(max-height:700px)]:h-5 [@media(max-height:700px)]:w-5`}
-															strokeWidth={2}
-															aria-hidden
-														/>
+									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1562f0] to-[#4c1d95] text-white shadow-2xl">
+										<div
+											aria-hidden
+											className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(ellipse_at_80%_0%,rgba(255,255,255,0.45),transparent_55%)]"
+										/>
+										<div className="relative z-10">
+											<div className="p-8 pb-6 pt-7 min-[480px]:p-8">
+												<div className="mb-6 flex items-start justify-between">
+													<div className="space-y-1">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+															Total Purchasing Power
+														</p>
+														<h2 className="text-4xl font-extrabold tabular-nums tracking-tight">
+															CA$ {homeTotalPowerCad.whole}.{homeTotalPowerCad.frac}
+														</h2>
 													</div>
-													<p
-														className={`text-[10px] font-bold uppercase tracking-wide min-[480px]:text-xs ${textC} [@media(max-height:700px)]:text-[9px]`}
-													>
-														{label}
-													</p>
 												</div>
-											)
-										})()}
-										<div className="min-w-0 space-y-2 min-[480px]:space-y-4 [@media(max-height:700px)]:space-y-1.5">
-											<h2 className="text-lg font-bold leading-snug text-[#1C1C1E] min-[400px]:text-xl min-[480px]:text-2xl dark:text-slate-100 [@media(max-height:700px)]:text-base [@media(max-height:700px)]:leading-tight">
-												Tap at any Verra SoftPOS to pay seamlessly.
-											</h2>
-											<div className="relative mx-auto flex aspect-square w-full max-h-[min(12rem,30svh)] max-w-[min(12rem,30svh)] min-[480px]:max-h-[12rem] min-[480px]:max-w-[12rem] items-center justify-center [@media(max-height:700px)]:max-h-[min(7.5rem,26svh)] [@media(max-height:700px)]:max-w-[min(7.5rem,26svh)]">
-												<div
-													aria-hidden
-													className="absolute inset-0 animate-ping rounded-full border-2 border-[#1562f0]/10 opacity-20"
-												/>
-												<div
-													aria-hidden
-													className="absolute inset-[12.5%] rounded-full border-2 border-[#1562f0]/20"
-												/>
-												<div className="flex h-[50%] w-[50%] items-center justify-center rounded-full bg-[#1562f0]/15 dark:bg-[#1562f0]/25">
-													<Nfc
-														className="h-[58%] w-[58%] text-[#1562f0]"
-														strokeWidth={1.75}
-														aria-hidden
-													/>
+												<div className="grid grid-cols-2 gap-4">
+													<div className="space-y-1 text-left">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+															USDC Balance
+														</p>
+														<p className="text-lg font-bold tabular-nums">
+															CA$ {homeHubWalletCad.whole}.{homeHubWalletCad.frac}
+														</p>
+													</div>
+													<div className="space-y-1 text-right">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+															Merchant Assets
+														</p>
+														<p className="text-lg font-bold tabular-nums">
+															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
+														</p>
+													</div>
 												</div>
 											</div>
-										</div>
-										<div className="w-full space-y-3 min-[480px]:space-y-6 [@media(max-height:700px)]:space-y-2">
-											<button
-												type="button"
-												onClick={() => {
-													setPayReceiveQrMode('pay')
-													setShowPayReceiveSheet(true)
-													setShowFooter(false)
-												}}
-												className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#0e4cbb] to-[#1562f0] px-5 py-3.5 text-base font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all duration-300 hover:opacity-90 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:px-8 min-[480px]:py-5 min-[480px]:text-lg dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:py-3 [@media(max-height:700px)]:text-sm"
-											>
-												<QrCode
-													className="h-5 w-5 shrink-0 min-[480px]:h-7 min-[480px]:w-7 [@media(max-height:700px)]:h-[1.125rem] [@media(max-height:700px)]:w-[1.125rem]"
-													strokeWidth={2.2}
-													aria-hidden
-												/>
-												Show Pay Code
-											</button>
-											<div className="text-center">
-												<p className="mb-0.5 text-[10px] font-medium tracking-wide text-slate-400 min-[480px]:mb-1 min-[480px]:text-xs dark:text-slate-500">
-													Total Power
-												</p>
-												<h3 className="text-xl font-extrabold tracking-tight text-slate-900 tabular-nums min-[480px]:text-3xl dark:text-slate-100 [@media(max-height:700px)]:text-lg">
-													CA$ {homeTotalPowerCad.whole}.{homeTotalPowerCad.frac}
-												</h3>
+											<div className="space-y-6 px-8 pb-8">
+												<div className="py-2 text-center">
+													<p className="text-sm font-medium leading-relaxed text-white/80">
+														Tap at any Verra SoftPOS to pay seamlessly.
+													</p>
+												</div>
+												<button
+													type="button"
+													data-touch-priority="1"
+													onClick={() => {
+														setPayReceiveQrMode('pay')
+														setShowPayReceiveSheet(true)
+														setShowFooter(false)
+													}}
+													style={{ touchAction: 'manipulation' }}
+													className="relative z-10 flex w-full min-h-[48px] items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-[#1562f0] shadow-xl shadow-black/20 transition-all duration-300 hover:bg-slate-50 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1562f0]"
+												>
+													<QrCode className="h-6 w-6 shrink-0" strokeWidth={2.2} aria-hidden />
+													<span className="text-base font-bold uppercase tracking-widest">Show Pay Code</span>
+												</button>
 											</div>
 										</div>
 									</div>
 								</section>
-								<div className="min-h-0 min-w-0 flex-1 basis-0" aria-hidden />
 
-								{/* Quick Actions — 与 temp1.html (154–174) 同结构 */}
+								{/* Quick Actions — 与 codingTemp.html 同结构 */}
 								<section className="shrink-0 flex gap-2 min-[480px]:gap-3 [@media(max-height:700px)]:gap-2">
 									<button
 										type="button"
@@ -2281,10 +2312,9 @@ const Home = ({}) => {
 												const detail = myBrandCardDetails[addrKey]
 												const title =
 													(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
-												const tierLbl =
-													detail?.meta?.tiers?.find((t) => t.name)?.name ??
-													detail?.meta?.tiers?.[0]?.name
-												const subtitle = tierLbl || `${uc.currency} merchant card`
+												const tierPres = resolveHeldTierPresentation(detail as unknown)
+												const subtitleFallback = `${uc.currency} merchant card`
+												const subtitle = tierPres.tierName.trim() || subtitleFallback
 												const imgUrl = resolveCardImageUrl(detail?.meta?.image)
 												const ptsRaw = detail?.assets?.points
 												const ptsNum = Number(ptsRaw ?? '')
@@ -2307,11 +2337,14 @@ const Home = ({}) => {
 															? `${activePasses} active Pass${activePasses !== 1 ? 'es' : ''}`
 															: 'No active Passes'
 												return (
-													<button
+													<div
 														key={uc.cardAddress}
-														type="button"
-														onClick={() => navigate('/myWallet')}
-														className="group flex w-full cursor-pointer items-center gap-4 rounded-lg p-3 text-left transition-colors hover:bg-[#edeeef] dark:hover:bg-slate-700/80"
+														className="flex w-full items-center gap-4 rounded-lg border-l-[3px] border-transparent p-3 text-left"
+														style={
+															tierPres.accentColor
+																? { borderLeftColor: tierPres.accentColor }
+																: undefined
+														}
 													>
 														<div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[#c3c6d8]/25 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900">
 															{imgUrl ? (
@@ -2327,9 +2360,28 @@ const Home = ({}) => {
 														</div>
 														<div className="min-w-0 flex-1">
 															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{title}</p>
-															<p className="text-[11px] leading-tight text-[#424655] dark:text-slate-400">
+															<p
+																className="text-[11px] leading-tight text-[#424655] dark:text-slate-400"
+																style={
+																	tierPres.accentColor
+																		? { color: tierPres.accentColor }
+																		: undefined
+																}
+															>
 																{subtitle}
 															</p>
+															{tierPres.discountLabel ? (
+																<p
+																	className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1562f0] dark:text-[#6ba3ff]"
+																	style={
+																		tierPres.accentColor
+																			? { color: tierPres.accentColor }
+																			: undefined
+																	}
+																>
+																	{tierPres.discountLabel}
+																</p>
+															) : null}
 														</div>
 														<div className="shrink-0 text-right">
 															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{pointsLine}</p>
@@ -2343,7 +2395,7 @@ const Home = ({}) => {
 																{passLine}
 															</p>
 														</div>
-													</button>
+													</div>
 												)
 											})
 										)}
@@ -2368,8 +2420,9 @@ const Home = ({}) => {
 								compact
 								compactLimit={RECENT_ACTIVITY_PREVIEW_COUNT}
 								bare
-								sectionTitleClassName="text-base font-bold text-[#0F172A] dark:text-slate-100 tracking-tight"
+								sectionTitleClassName="text-lg font-bold tracking-tight text-[#0F172A] dark:text-slate-100"
 								viewAllClassName="text-[#1562f0] hover:text-[#0e4cbb]"
+								onCompactViewAll={() => navigate('/Pay')}
 							/>
 								</>
 							)}
@@ -2605,29 +2658,36 @@ const Home = ({}) => {
 							<button
 								type="button"
 								className={`absolute inset-0 border-0 p-0 ${
-									cashTreesNfcOverlay.phase === 'fetch' ? 'cursor-default' : 'cursor-pointer'
+									cashTreesNfcOverlay.phase === 'fetch' || cashTreesNfcOverlay.phase === 'scanning'
+										? 'cursor-default'
+										: 'cursor-pointer'
 								} bg-gray-900/45 dark:bg-black/55 backdrop-blur-md`}
 								aria-label="Dismiss"
 								onClick={() => {
-									if (cashTreesNfcOverlay.phase !== 'fetch') {
+									if (
+										cashTreesNfcOverlay.phase !== 'fetch' &&
+										cashTreesNfcOverlay.phase !== 'scanning'
+									) {
 										cancelCashTreesNfcBind()
 									}
 								}}
 							/>
 							<div className="relative z-10 w-full max-w-[300px] rounded-[2rem] border-2 border-[#1562f0]/45 dark:border-[#1562f0]/50 bg-white dark:bg-slate-900 shadow-xl shadow-[#1562f0]/15 overflow-hidden min-h-[280px] flex flex-col">
-								{(cashTreesNfcOverlay.phase === 'tap' || cashTreesNfcOverlay.phase === 'fetch') && (
+								{(cashTreesNfcOverlay.phase === 'scanning' || cashTreesNfcOverlay.phase === 'fetch') && (
 									<>
 										<div className="relative flex-1 flex flex-col items-center justify-center px-6 pt-10 pb-6 min-h-[220px]">
 											<div className="absolute inset-3 border-2 border-[#1562f0]/25 rounded-[1.65rem] pointer-events-none" />
-											{cashTreesNfcOverlay.phase === 'tap' ? (
+											{cashTreesNfcOverlay.phase === 'scanning' ? (
 												<>
-													<Nfc
-														className="w-[7.5rem] h-[7.5rem] text-gray-200 dark:text-slate-700 mb-4"
-														strokeWidth={1.25}
+													<Loader2
+														className="w-16 h-16 text-[#1562f0] dark:text-[#6ba3ff] animate-spin mb-4"
 														aria-hidden
 													/>
-													<p className="text-xs text-gray-500 dark:text-slate-400 text-center font-medium leading-relaxed">
-														Hold the CashTrees NTAG card near the NFC sensor on your phone.
+													<p className="text-lg font-bold text-gray-900 dark:text-slate-100 text-center">
+														Waiting for NFC card scan
+													</p>
+													<p className="text-xs text-gray-500 dark:text-slate-400 text-center mt-2 leading-relaxed px-1">
+														Hold your CashTrees card near the NFC sensor on your phone when prompted.
 													</p>
 												</>
 											) : (
@@ -2715,9 +2775,18 @@ const Home = ({}) => {
 											</p>
 										) : (
 											<p className="text-xs text-gray-500 dark:text-slate-400 text-center mb-4">
-												Tap retry after checking NFC and try again.
+												Check NFC is on, then retry or close.
 											</p>
 										)}
+										{getCashTreesNativeNfcBridge()?.startPhysicalCardBind ? (
+											<button
+												type="button"
+												onClick={() => startCashTreesPhysicalCardBind()}
+												className="w-full py-3.5 mb-2 bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] dark:from-[#3d8ef5] dark:to-[#1562f0] text-white font-bold rounded-full shadow-md shadow-[#1562f0]/25 border border-[#1562f0]/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80"
+											>
+												Retry scan
+											</button>
+										) : null}
 										<button
 											type="button"
 											onClick={() => cancelCashTreesNfcBind()}
@@ -2753,124 +2822,169 @@ const Home = ({}) => {
 								onClick={() => setShowCardManagementModal(false)}
 							/>
 							<motion.div
-								className="pointer-events-auto relative z-10 mt-auto flex max-h-[85dvh] flex-col overflow-y-auto overscroll-contain rounded-t-[2.5rem] bg-[#F3F8FF] p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:bg-slate-900 dark:shadow-[0_-10px_40px_rgba(0,0,0,0.35)]"
+								className="pointer-events-auto relative z-10 mt-auto flex max-h-[90dvh] flex-col overflow-y-auto overscroll-contain rounded-t-[2rem] bg-[#F2F2F7] px-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-2 shadow-[0_-10px_40px_rgba(0,0,0,0.08)] dark:bg-slate-950 dark:shadow-[0_-10px_40px_rgba(0,0,0,0.35)]"
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
 								exit={{ y: '100%' }}
 								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
 								onClick={(e) => e.stopPropagation()}
 							>
-								<div className="mx-auto mb-6 h-1.5 w-12 shrink-0 rounded-full bg-gray-300 dark:bg-slate-600" />
-								<div className="mb-6 flex items-center justify-between gap-2">
-									<h3 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-slate-100">NFC Cards</h3>
+								<div className="mx-auto mb-5 h-1.5 w-12 shrink-0 rounded-full bg-[#c3c6d8] dark:bg-slate-600" />
+								<div className="mb-2 flex items-center justify-between gap-2">
+									<h3 className="text-2xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-50">Physical Keys</h3>
 									<button
 										type="button"
 										onClick={() => setShowCardManagementModal(false)}
-										className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-base font-bold text-gray-600 hover:bg-gray-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-blue-600 transition-colors hover:bg-black/5 dark:text-blue-400 dark:hover:bg-white/10"
 										aria-label="Close"
 									>
-										✕
+										<X className="h-5 w-5" strokeWidth={2.2} aria-hidden />
 									</button>
 								</div>
-								<p className="mb-6 text-sm text-gray-500 dark:text-slate-400">
-									Manage your linked physical keys. Only one card can be active at a time to prevent conflicts.
+								<p className="mb-6 text-sm leading-relaxed text-[#424655] dark:text-slate-400">
+									Manage your secure hardware authentication devices and access tokens.
 								</p>
 								{!deviceHasNfcReadCapability && (
-									<p className="mb-4 rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
-										This device cannot read NFC. You can still manage cards already linked to your account. To bind a new card, use a phone or tablet with NFC.
+									<p className="mb-4 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
+										This device cannot read NFC. You can still manage keys already linked to your account. To register a new key, use a phone or tablet with NFC.
 									</p>
 								)}
 								{linkedNfcListLoading && linkedNfcCards.length === 0 && (
-									<div className="mb-4 flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
+									<div className="mb-4 flex items-center gap-2 text-sm text-[#424655] dark:text-slate-400">
 										<Loader2 className="h-4 w-4 animate-spin text-[#1562f0]" aria-hidden />
-										Loading linked cards…
+										Loading keys…
 									</div>
 								)}
 								{cardMgmtError && (
-									<p className="mb-4 rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
+									<p className="mb-4 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
 										{cardMgmtError}
 									</p>
 								)}
-								<div className="mb-auto space-y-3">
-									{linkedNfcCards.map((card) => (
-										<div
-											key={card.id}
-											className={`flex items-center justify-between rounded-2xl border bg-white p-4 shadow-sm transition-all dark:bg-slate-800 ${
-												card.isPrimaryUi && card.linkState === 'active'
-													? 'border-[#1562f0] dark:border-[#1562f0]'
-													: 'border-gray-100 dark:border-slate-600'
-											}`}
-										>
-											<div className="flex min-w-0 items-center">
+								<div className="mb-auto space-y-6">
+									{linkedNfcCards.map((card, cardIndex) => {
+										const isPaused = card.linkState === 'deactive'
+										const isPrimary = card.linkState === 'active' && card.isPrimaryUi
+										const isActiveSecondary = card.linkState === 'active' && !card.isPrimaryUi
+										const title = isPaused
+											? 'Paused hardware key'
+											: isPrimary
+												? 'Primary hardware key'
+												: 'Linked hardware key'
+										const idLine = `ID: VR-${card.last4}-${String(cardIndex + 1).padStart(2, '0')}`
+										return (
+											<div
+												key={card.id}
+												className={`rounded-2xl border border-[#c3c6d8]/15 bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.03)] dark:border-slate-700/50 dark:bg-slate-900 ${
+													isPaused ? 'opacity-80' : ''
+												}`}
+											>
+												<div className="mb-6 flex items-start justify-between gap-3">
+													<div className="flex min-w-0 items-center gap-4">
+														<div
+															className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${
+																isPrimary
+																	? 'bg-gradient-to-br from-[#004bc3] to-[#1562f0] text-white'
+																	: isActiveSecondary
+																		? 'bg-[#edeeef] text-[#465c99] dark:bg-slate-800 dark:text-[#b3c5ff]'
+																		: 'bg-[#e1e3e4] text-[#424655] dark:bg-slate-700 dark:text-slate-400'
+															}`}
+														>
+															{isPrimary ? (
+																<Key className="h-7 w-7" strokeWidth={2} aria-hidden />
+															) : isActiveSecondary ? (
+																<HomeHardwareIcon className="h-7 w-7" strokeWidth={2} aria-hidden />
+															) : (
+																<Ban className="h-7 w-7" strokeWidth={2} aria-hidden />
+															)}
+														</div>
+														<div className="min-w-0">
+															<h4
+																className={`text-lg font-bold tracking-tight ${
+																	isPaused ? 'text-[#424655] dark:text-slate-500' : 'text-[#191c1d] dark:text-slate-100'
+																}`}
+															>
+																{title}
+															</h4>
+															<p
+																className={`mt-0.5 font-mono text-sm ${
+																	isPaused ? 'text-[#424655]/60 dark:text-slate-500/80' : 'text-[#424655] dark:text-slate-400'
+																}`}
+															>
+																{idLine}
+															</p>
+															{isPaused && (
+																<p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+																	Paused on server
+																</p>
+															)}
+														</div>
+													</div>
+													<div className="flex flex-col items-end gap-2 shrink-0">
+														<span
+															className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${
+																card.linkState === 'active'
+																	? 'bg-[#1562f0]/10 text-[#004bc3] dark:bg-[#1562f0]/20 dark:text-[#6ba3ff]'
+																	: 'bg-[#c3c6d8]/30 text-[#424655] dark:bg-slate-600 dark:text-slate-300'
+															}`}
+														>
+															{card.linkState === 'active' ? 'Active' : 'Inactive'}
+														</span>
+														{isPrimary && card.linkState === 'active' && (
+															<p className="text-[10px] text-[#424655] dark:text-slate-500">Primary device</p>
+														)}
+													</div>
+												</div>
 												<div
-													className={`mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-														card.linkState === 'active'
-															? 'bg-[#1562f0]/20 text-[#1562f0] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]'
-															: 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'
+													className={`flex items-center justify-between border-t pt-4 ${
+														isPaused ? 'border-[#e1e3e4]/30 dark:border-slate-600/50' : 'border-[#edeeef] dark:border-slate-700'
 													}`}
 												>
-													<Radio size={18} aria-hidden />
-												</div>
-												<div className="min-w-0">
-													<h4 className="font-bold text-gray-900 dark:text-slate-100">CashTrees Card</h4>
-													<p className="font-mono text-xs text-gray-500 dark:text-slate-400">•••• {card.last4}</p>
-													{card.linkState === 'deactive' && (
-														<p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-															Paused on server
-														</p>
+													{card.linkState === 'deactive' ? (
+														<button
+															type="button"
+															onClick={() => void enableLinkedNfcOnServer(card.tagId)}
+															disabled={nfcLinkActionTagId !== null}
+															className="px-2 text-sm font-semibold text-[#004bc3] transition-colors hover:!text-[#1562f0] disabled:opacity-50 dark:text-blue-400"
+														>
+															{nfcLinkActionTagId === card.tagId ? (
+																<span className="inline-flex items-center gap-1">
+																	<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Enable
+																</span>
+															) : (
+																'Unfreeze key'
+															)}
+														</button>
+													) : !card.isPrimaryUi ? (
+														<button
+															type="button"
+															onClick={() => setLinkedNfcPrimaryById(card.id)}
+															disabled={nfcLinkActionTagId !== null}
+															className="px-2 text-sm font-semibold text-[#004bc3] transition-colors hover:!text-[#1562f0] disabled:opacity-50 dark:text-blue-400"
+														>
+															Set primary
+														</button>
+													) : (
+														<span className="px-2 text-sm font-semibold text-[#004bc3]/40 dark:text-slate-500">Settings</span>
 													)}
-												</div>
-											</div>
-											<div className="flex shrink-0 items-center gap-2">
-												{card.linkState === 'deactive' && (
 													<button
 														type="button"
-														onClick={() => void enableLinkedNfcOnServer(card.tagId)}
+														onClick={() => void removeLinkedNfcOnServer(card.tagId)}
 														disabled={nfcLinkActionTagId !== null}
-														className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+														className="inline-flex items-center gap-1 px-2 text-sm font-semibold text-red-600 transition-opacity hover:opacity-75 disabled:opacity-50 dark:text-red-400"
 													>
 														{nfcLinkActionTagId === card.tagId ? (
 															<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-														) : (
-															'Enable'
-														)}
+														) : null}
+														Freeze key
 													</button>
-												)}
-												{card.linkState === 'active' && !card.isPrimaryUi && (
-													<button
-														type="button"
-														onClick={() => setLinkedNfcPrimaryById(card.id)}
-														disabled={nfcLinkActionTagId !== null}
-														className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
-													>
-														Activate
-													</button>
-												)}
-												{card.linkState === 'active' && card.isPrimaryUi && (
-													<span className="flex items-center gap-1 rounded-lg bg-[#1562f0]/20 px-3 py-1.5 text-xs font-bold text-[#1562f0] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
-														<CheckCircle2 size={14} aria-hidden /> Active
-													</span>
-												)}
-												<button
-													type="button"
-													onClick={() => void removeLinkedNfcOnServer(card.tagId)}
-													disabled={nfcLinkActionTagId !== null}
-													className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40"
-													aria-label="Remove card link"
-												>
-													{nfcLinkActionTagId === card.tagId ? (
-														<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-													) : (
-														<Trash2 size={16} aria-hidden />
-													)}
-												</button>
+												</div>
 											</div>
-										</div>
-									))}
+										)
+									})}
 									{!linkedNfcListLoading && linkedNfcCards.length === 0 && (
-										<div className="rounded-2xl border border-dashed border-gray-100 bg-white py-10 text-center dark:border-slate-700 dark:bg-slate-800">
-											<Smartphone size={32} className="mx-auto mb-2 text-gray-300 dark:text-slate-600" aria-hidden />
-											<p className="text-sm font-medium text-gray-400 dark:text-slate-500">No physical cards linked.</p>
+										<div className="rounded-2xl border border-dashed border-[#c3c6d8] bg-white py-10 text-center dark:border-slate-600 dark:bg-slate-900">
+											<Smartphone size={32} className="mx-auto mb-2 text-[#c3c6d8] dark:text-slate-600" aria-hidden />
+											<p className="text-sm font-medium text-[#424655] dark:text-slate-500">No physical keys linked.</p>
 										</div>
 									)}
 								</div>
@@ -2882,11 +2996,22 @@ const Home = ({}) => {
 										setShowCardManagementModal(false)
 										startCashTreesPhysicalCardBind()
 									}}
-									className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 py-4 font-bold text-white shadow-md transition-all hover:bg-gray-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:hover:bg-slate-100"
+									className="group mt-8 flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[#737687] p-8 transition-all duration-300 hover:border-[#1562f0] hover:bg-[#1562f0]/5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[#737687] disabled:hover:bg-transparent dark:border-slate-500 dark:hover:border-[#1562f0]"
 								>
-									<Plus size={20} aria-hidden />
-									Bind Another Card
+									<PlusCircle className="h-6 w-6 text-[#737687] transition-colors group-hover:text-[#004bc3] dark:text-slate-400" strokeWidth={2} aria-hidden />
+									<span className="text-lg font-bold tracking-tight text-[#737687] transition-colors group-hover:text-[#004bc3] dark:text-slate-400 dark:group-hover:text-blue-400">
+										Register New Hardware Key
+									</span>
 								</button>
+								<div className="mt-10 flex gap-4 rounded-2xl border border-[#c3c6d8]/20 bg-[#edeeef] p-6 dark:border-slate-700 dark:bg-slate-800/80">
+									<ShieldCheck className="h-8 w-8 shrink-0 text-[#004bc3] dark:text-[#6ba3ff]" strokeWidth={2} aria-hidden />
+									<div>
+										<h4 className="mb-1 font-bold text-[#191c1d] dark:text-slate-100">Hardware Security Layer</h4>
+										<p className="text-sm leading-relaxed text-[#424655] dark:text-slate-400">
+											Verra keys use physical-layer encryption. Freezing a key immediately revokes access across all terminal endpoints globally.
+										</p>
+									</div>
+								</div>
 							</motion.div>
 						</motion.div>
 					)}

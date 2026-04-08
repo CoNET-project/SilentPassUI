@@ -18,7 +18,7 @@ import {
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { QRCodeCanvas } from "qrcode.react"
 import bIcon from '@/components/assets/32x32.svg'
-import StepAmount,{RampMode} from './StepAmount'
+import StepAmount, { type RampMode } from './StepAmount'
 import { AppButton } from "../button/AppButton";
 const remote = 'https://beamio.app'
 
@@ -34,10 +34,17 @@ type BeamioAddUSDCFlowProps = {
 	embedInSheet?: boolean
 	/** embedInSheet 时 Cancel 的回调 */
 	onCancel?: () => void
+	/** 入金 / 出金（影响 Coinbase session；默认 onramp） */
+	initialMode?: RampMode
 }
 
-export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onCancel }: BeamioAddUSDCFlowProps = {}) {
-	const [screen, setScreen] = useState<Screen>("hub");
+export default function BeamioAddUSDCFlow({
+	autoStartCoinbase,
+	embedInSheet,
+	onCancel,
+	initialMode,
+}: BeamioAddUSDCFlowProps = {}) {
+	const [screen, setScreen] = useState<Screen>('hub')
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode
@@ -47,7 +54,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 	const username = beamio?.accountName||''
 	const address = myAddress
 	const shortAddress = fmtAddr(myAddress)
-	const [mode, setMode] = useState<RampMode>('onramp')
+	const [mode, setMode] = useState<RampMode>(() => initialMode ?? 'onramp')
 	const [amount, setAmount] = useState('0')
 	const [coinbaseUrl, setCoinbaseUrl] = useState('')
 	const [loading, setLoading] = useState(false)

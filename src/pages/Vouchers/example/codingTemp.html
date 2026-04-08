@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Add Funds - Digital Atrium</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@700;800&amp;family=Space+Grotesk:wght@500&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-primary": "#b3c5ff",
+                    "surface-bright": "#f9f9fe",
+                    "inverse-surface": "#2e3034",
+                    "error-container": "#ffdad6",
+                    "on-tertiary-fixed-variant": "#45474b",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary-container": "#b7c8ff",
+                    "on-primary": "#ffffff",
+                    "secondary": "#0052d2",
+                    "on-surface-variant": "#434654",
+                    "on-secondary": "#ffffff",
+                    "surface-tint": "#1b56cd",
+                    "on-tertiary-fixed": "#1a1c1f",
+                    "surface-dim": "#d9dade",
+                    "surface-container": "#ededf2",
+                    "tertiary-fixed-dim": "#c6c6cb",
+                    "on-primary-fixed": "#00184a",
+                    "outline": "#737685",
+                    "on-primary-fixed-variant": "#003fa5",
+                    "error": "#ba1a1a",
+                    "surface-container-high": "#e7e8ed",
+                    "tertiary-fixed": "#e2e2e7",
+                    "secondary-container": "#266af8",
+                    "tertiary-container": "#535458",
+                    "secondary-fixed": "#dbe1ff",
+                    "primary-container": "#004bc3",
+                    "inverse-on-surface": "#f0f0f5",
+                    "primary-fixed": "#dbe1ff",
+                    "on-secondary-fixed-variant": "#003fa5",
+                    "on-error": "#ffffff",
+                    "on-background": "#1a1c1f",
+                    "primary": "#003692",
+                    "primary-fixed-dim": "#b3c5ff",
+                    "secondary-fixed-dim": "#b3c5ff",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-fixed": "#00184a",
+                    "on-surface": "#1a1c1f",
+                    "outline-variant": "#c3c6d6",
+                    "tertiary": "#3b3d41",
+                    "surface-container-low": "#f3f3f8",
+                    "on-error-container": "#93000a",
+                    "surface-container-highest": "#e2e2e7",
+                    "on-secondary-container": "#fefcff",
+                    "surface-variant": "#e2e2e7",
+                    "on-tertiary-container": "#c8c8cd",
+                    "surface": "#f9f9fe",
+                    "background": "#f9f9fe"
+            },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Space Grotesk"],
+                    "mono": ["JetBrains Mono"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .mono-numbers {
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: -0.05em;
+        }
+        .digital-atrium-glass {
+            background: rgba(249, 249, 254, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-screen flex flex-col overflow-hidden">
+<!-- Top Navigation Bar -->
+<header class="fixed top-0 w-full z-50 bg-[#f9f9fe]/80 dark:bg-slate-950/80 backdrop-blur-xl flex justify-between items-center px-6 py-4 w-full">
+<div class="flex items-center gap-4">
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container-low hover:bg-[#f3f3f8] transition-colors active:scale-95 duration-200">
+<span class="material-symbols-outlined text-[#004bc3]" data-icon="arrow_back">arrow_back</span>
+</button>
+<h1 class="font-headline font-bold text-xl tracking-tight text-on-surface">Add Funds</h1>
+</div>
+<div class="w-12"></div> <!-- Spacer for symmetry -->
+</header>
+<main class="flex-1 flex flex-col px-6 pb-8 max-w-lg mx-auto w-full pt-32">
+<!-- Balance Overview -->
+<!-- Amount Input Field (Recessed) -->
+<section class="mb-8">
+<div class="bg-surface-container-highest rounded-lg p-8 flex flex-col items-center justify-center relative overflow-hidden group">
+<label class="text-on-surface-variant font-medium text-sm mb-2 opacity-60">Top-Up Amount</label>
+<div class="flex items-baseline gap-1">
+<span class="text-2xl font-headline font-bold text-primary-container">$</span>
+<span class="text-6xl font-headline font-extrabold mono-numbers tracking-tighter text-primary-container">0.00</span>
+</div>
+</div>
+</section>
+<!-- Payment Selection (Interactive Expansion) -->
+<section class="space-y-4 mb-auto">
+<!-- Bento Grid / Pill Cards for Payment Selection -->
+<div class="grid grid-cols-1 gap-3">
+<!-- Selected / Active Card (Initially Credit Card) -->
+<div class="bg-surface-container-lowest p-5 rounded-lg flex items-center justify-between shadow-[0_4px_24px_rgba(0,0,0,0.04)] border-none transition-all active:scale-[0.98]">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-primary-container/10 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-primary-container" data-icon="credit_card">credit_card</span>
+</div>
+<div>
+<p class="font-headline font-bold leading-tight">Credit Card</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary-container" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<!-- Secondary Methods (Expanded State Preview) -->
+<div class="grid grid-cols-3 gap-3">
+<!-- Cash -->
+<div class="bg-surface-container-low p-4 rounded-lg flex flex-col items-center justify-center gap-2 hover:bg-surface-container-high transition-colors cursor-pointer group">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="payments">payments</span>
+<span class="text-xs font-semibold">Cash</span>
+</div>
+<!-- Airdrop -->
+<div class="bg-surface-container-low p-4 rounded-lg flex flex-col items-center justify-center gap-2 hover:bg-surface-container-high transition-colors cursor-pointer group">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="sensors">sensors</span>
+<span class="text-xs font-semibold">Airdrop</span>
+</div>
+<!-- Web3 -->
+<div class="bg-surface-container-low p-4 rounded-lg flex flex-col items-center justify-center gap-2 hover:bg-surface-container-high transition-colors cursor-pointer group">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="text-xs font-semibold">USDC</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Numeric Keypad (Floating Glass Layout) -->
+<section class="grid grid-cols-3 gap-y-4 gap-x-8 text-center mt-8 py-4">
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">1</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">2</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">3</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">4</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">5</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">6</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">7</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">8</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">9</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">.</button>
+<button class="text-2xl font-headline font-bold py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">0</button>
+<button class="flex items-center justify-center py-2 hover:bg-surface-container-low rounded-full transition-colors active:scale-90">
+<span class="material-symbols-outlined text-outline" data-icon="backspace">backspace</span>
+</button>
+</section>
+<!-- Primary Action Button (Fixed Bottom Anchor) -->
+<div class="mt-8">
+<button class="w-full bg-gradient-to-r from-primary-container to-secondary text-white py-5 rounded-full font-headline font-bold text-lg shadow-[0_4px_24px_rgba(0,75,195,0.2)] hover:shadow-[0_8px_32px_rgba(0,75,195,0.3)] transition-all active:scale-[0.98]">
+                Confirm Top-Up
+            </button>
+</div>
+</main>
+<!-- Floating Security Chip -->
+<div class="fixed bottom-32 left-1/2 -translate-x-1/2 digital-atrium-glass px-4 py-2 rounded-full flex items-center gap-2 border-none pointer-events-none opacity-80 scale-90">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="verified_user">verified_user</span>
+<span class="text-[10px] font-label tracking-wider uppercase text-on-surface-variant">Encrypted Transaction</span>
+</div>
+</body></html>

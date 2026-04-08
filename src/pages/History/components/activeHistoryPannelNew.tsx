@@ -334,6 +334,8 @@ interface ActiveHistoryPannelNewProps {
 	sectionTitleClassName?: string
 	/** 自定义 compact「View all」按钮 class；不传则沿用默认蓝色链接样式 */
 	viewAllClassName?: string
+	/** 若提供，则点击 View all 执行此回调（例如 navigate('/Pay')），不再打开全屏抽屉 */
+	onCompactViewAll?: () => void
 }
 
 const ActiveHistoryPannelNew = ({
@@ -345,6 +347,7 @@ const ActiveHistoryPannelNew = ({
 	bare = false,
 	sectionTitleClassName,
 	viewAllClassName,
+	onCompactViewAll,
 }: ActiveHistoryPannelNewProps) => {
 	const {
 		profiles,
@@ -1231,7 +1234,13 @@ const ActiveHistoryPannelNew = ({
 				{compact && (
 					<button
 						type="button"
-						onClick={() => setShowFullDrawer(true)}
+						onClick={() => {
+							if (onCompactViewAll) {
+								onCompactViewAll()
+								return
+							}
+							setShowFullDrawer(true)
+						}}
 						className={[
 							'flex items-center gap-1 text-[12px] font-semibold transition-colors',
 							viewAllClassName ?? 'text-[#1562f0] hover:text-[#0d47c7]',

@@ -1,309 +1,189 @@
 <!DOCTYPE html>
 
-<html class="light" lang="en"><head>
+<html lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Verra Business OS - Dashboard</title>
+<title>Restore Access | Verra Business OS</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
       tailwind.config = {
         darkMode: "class",
         theme: {
           extend: {
-            colors: {
-              "surface-container-highest": "#d9dde0",
-              "primary-fixed-dim": "#648eff",
-              "tertiary-container": "#f797ef",
-              "on-secondary-fixed": "#354053",
-              "secondary-fixed-dim": "#cad5ed",
-              "inverse-surface": "#0b0f10",
-              "on-tertiary": "#ffeef8",
-              "surface-tint": "#0051d1",
-              "surface-variant": "#d9dde0",
-              "primary-fixed": "#7a9dff",
-              "on-surface-variant": "#595c5e",
-              "on-primary-fixed": "#000000",
-              "surface-container-lowest": "#ffffff",
-              "surface-dim": "#d0d5d8",
-              "primary-container": "#7a9dff",
-              "surface": "#f5f7f9",
-              "surface-bright": "#f5f7f9",
-              "tertiary-fixed": "#f797ef",
-              "on-primary": "#f1f2ff",
-              "on-primary-fixed-variant": "#00276d",
-              "on-primary-container": "#001e59",
-              "outline-variant": "#abadaf",
-              "on-secondary": "#eff2ff",
-              "on-tertiary-fixed": "#400041",
-              "on-secondary-container": "#475266",
-              "error": "#b31b25",
-              "on-secondary-fixed-variant": "#515c70",
-              "secondary": "#515c70",
-              "background": "#f5f7f9",
-              "primary": "#0051d1",
-              "tertiary-fixed-dim": "#e88ae1",
-              "on-surface": "#2c2f31",
-              "surface-container": "#e5e9eb",
-              "error-container": "#fb5151",
-              "tertiary": "#8d3a8b",
-              "outline": "#747779",
-              "on-tertiary-container": "#610e62",
-              "surface-container-low": "#eef1f3",
-              "on-error": "#ffefee",
-              "error-dim": "#9f0519",
-              "surface-container-high": "#dfe3e6",
-              "on-background": "#2c2f31",
-              "primary-dim": "#0047b8",
-              "tertiary-dim": "#7f2d7e",
-              "inverse-primary": "#5f8bff",
-              "inverse-on-surface": "#9a9d9f",
-              "secondary-fixed": "#d8e3fb",
-              "secondary-dim": "#455064",
-              "secondary-container": "#d8e3fb",
-              "on-tertiary-fixed-variant": "#6c1a6c",
-              "on-error-container": "#570008"
+            "colors": {
+                    "secondary-container": "#d8e3fb",
+                    "secondary-fixed-dim": "#cad5ed",
+                    "tertiary-fixed-dim": "#e88ae1",
+                    "error-container": "#fb5151",
+                    "primary-fixed-dim": "#648eff",
+                    "on-error-container": "#570008",
+                    "error-dim": "#9f0519",
+                    "on-tertiary-fixed": "#400041",
+                    "tertiary-container": "#f797ef",
+                    "background": "#f5f7f9",
+                    "secondary-dim": "#455064",
+                    "on-primary-container": "#001e59",
+                    "inverse-primary": "#5f8bff",
+                    "inverse-on-surface": "#9a9d9f",
+                    "surface-bright": "#f5f7f9",
+                    "on-secondary-fixed": "#354053",
+                    "surface-container-low": "#eef1f3",
+                    "surface-container-high": "#dfe3e6",
+                    "surface-container-highest": "#d9dde0",
+                    "on-secondary-fixed-variant": "#515c70",
+                    "tertiary-fixed": "#f797ef",
+                    "secondary": "#515c70",
+                    "surface-tint": "#0051d1",
+                    "on-tertiary-container": "#610e62",
+                    "on-tertiary": "#ffeef8",
+                    "on-primary-fixed-variant": "#00276d",
+                    "on-surface": "#2c2f31",
+                    "surface-container": "#e5e9eb",
+                    "surface": "#f5f7f9",
+                    "on-error": "#ffefee",
+                    "outline-variant": "#abadaf",
+                    "primary-fixed": "#7a9dff",
+                    "outline": "#747779",
+                    "on-secondary-container": "#475266",
+                    "surface-dim": "#d0d5d8",
+                    "primary-dim": "#0047b8",
+                    "secondary-fixed": "#d8e3fb",
+                    "primary-container": "#7a9dff",
+                    "tertiary": "#8d3a8b",
+                    "surface-variant": "#d9dde0",
+                    "error": "#b31b25",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-fixed-variant": "#6c1a6c",
+                    "on-primary-fixed": "#000000",
+                    "on-surface-variant": "#595c5e",
+                    "on-primary": "#f1f2ff",
+                    "inverse-surface": "#0b0f10",
+                    "primary": "#0051d1",
+                    "on-background": "#2c2f31",
+                    "on-secondary": "#eff2ff",
+                    "tertiary-dim": "#7f2d7e"
             },
-            fontFamily: {
-              "headline": ["Manrope"],
-              "body": ["Inter"],
-              "label": ["Inter"]
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
             },
-            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+            "fontFamily": {
+                    "headline": [
+                            "Manrope"
+                    ],
+                    "body": [
+                            "Inter"
+                    ],
+                    "label": [
+                            "Inter"
+                    ]
+            }
           },
         },
       }
     </script>
 <style>
-      .material-symbols-outlined {
-        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        display: inline-block;
-        line-height: 1;
-        text-transform: none;
-        letter-spacing: normal;
-        word-wrap: normal;
-        white-space: nowrap;
-        direction: ltr;
-      }
-      .tonal-shift { background: linear-gradient(180deg, rgba(245, 247, 249, 0) 0%, #eef1f3 100%); }
-      .glass-nav { backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
-      body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .mesh-bg {
+            background-color: #f5f7f9;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(21, 98, 240, 0.05) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(122, 157, 255, 0.08) 0px, transparent 50%);
+        }
     </style>
 <style>
     body {
       min-height: max(884px, 100dvh);
     }
   </style>
-</head>
-<body class="bg-surface font-body text-on-surface selection:bg-primary-container selection:text-on-primary-container">
-<!-- TopAppBar -->
-<header class="fixed top-0 w-full z-50 bg-white/70 backdrop-blur-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)] flex justify-between items-center px-6 h-16 w-full">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-slate-900" data-icon="menu">menu</span>
-<h1 class="text-xl font-black text-slate-900 font-headline tracking-tight uppercase">WORKSPACE READY</h1>
-</div>
-<button class="bg-primary text-white px-4 py-2 rounded-full text-sm font-bold font-headline transition-all active:scale-95 duration-200 hover:bg-primary-dim">
-            Set Up First Program
-        </button>
-</header>
-<!-- Main Content Layout -->
-<div class="flex pt-16 min-h-screen">
-<!-- NavigationDrawer (Sidebar for Desktop) -->
-<aside class="hidden md:flex flex-col py-8 gap-4 h-full w-72 rounded-r-[2rem] bg-slate-50 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto shadow-[20px_0_40px_rgba(21,98,240,0.06)]">
-<div class="px-8 mb-6">
+  </head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col mesh-bg">
+<header class="fixed top-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
+<div class="flex items-center px-6 h-16 w-full max-w-7xl mx-auto justify-between">
 <div class="flex items-center gap-4">
-<div class="w-12 h-12 rounded-full bg-primary-container flex items-center justify-center overflow-hidden">
-<img alt="Merchant Profile" class="w-full h-full object-cover" data-alt="Modern minimalist corporate office building exterior with glass windows and blue sky reflection professional environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDD3F4v00W8BiI3_6_LahogqWw3wjTPNFbQp9sJs7ogm12HAtKI8CSy6vpq8rd_xjxG_KA6UcBMgagMEPfUowH230XXs0uBqVVXLHmUpPnfx7-5IipXCc1p2fQYFcTxrnxB8n62M2_oAeOX6m0waJvI_GLhHBrojEDD-29UmUDHPMOtGIohvpCcWDcLHtCb5daokBNQo19eCxrItQ39O_139AeM33QtoIdJ_70NuJTMSJQ_4ulxwOEnd3OzuUZnpLU1dM9g-1bl8y8"/>
+<span class="material-symbols-outlined text-blue-600 cursor-pointer active:scale-95 duration-150" data-icon="arrow_back">arrow_back</span>
+<h1 class="font-manrope font-bold text-lg tracking-tight">Recovery</h1>
 </div>
-<div>
-<h2 class="text-sm font-black font-headline text-slate-900">Verra Business</h2>
-<p class="text-xs text-slate-500 font-medium">Merchant OS</p>
+<div class="text-blue-600 font-black tracking-tighter text-xl">
+                Verra
+            </div>
 </div>
+</header>
+<main class="flex-grow flex items-center justify-center px-6 pt-24 pb-12">
+<div class="w-full max-w-lg">
+<div class="text-center mb-12">
+<h2 class="font-headline font-extrabold text-4xl lg:text-5xl text-on-surface tracking-tight mb-4 leading-tight">
+                    Restore Access
+                </h2>
+<p class="font-body text-on-surface-variant text-lg max-w-sm mx-auto leading-relaxed">
+                    Use your Recovery QR code to regain access to your workspace without a password.
+                </p>
 </div>
+<div class="bg-surface-container-lowest rounded-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)] p-2 relative overflow-hidden group">
+<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+<div class="border-2 border-dashed border-surface-container-high rounded-lg p-10 flex flex-col items-center justify-center transition-all duration-300 hover:border-primary/30 bg-surface-container-low/30">
+<div class="w-20 h-20 mb-6 bg-primary-container/20 rounded-full flex items-center justify-center text-primary relative">
+<span class="material-symbols-outlined text-4xl" data-icon="qr_code_scanner">qr_code_scanner</span>
+<div class="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full animate-pulse"></div>
 </div>
-<nav class="flex flex-col gap-1 flex-grow">
-<!-- Group 1: Overview -->
-<div class="px-6 mb-2 mt-2">
-<span class="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 font-headline">Overview</span>
-</div>
-<a class="flex items-center gap-3 py-3 px-6 bg-white text-primary rounded-full mx-2 font-headline text-sm font-bold shadow-sm transition-all duration-300" href="#">
-<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-                    Dashboard
-                </a>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="insights">insights</span>
-                    Insights
-                </a>
-<!-- Group 2: Assets -->
-<div class="px-6 mb-2 mt-6">
-<span class="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 font-headline">Assets</span>
-</div>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="loyalty">loyalty</span>
-                    Programs
-                </a>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="storefront">storefront</span>
-                    Market
-                </a>
-<!-- Group 3: Operations -->
-<div class="px-6 mb-2 mt-6">
-<span class="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 font-headline">Operations</span>
-</div>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
-                    Transactions
-                </a>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="group">group</span>
-                    Members
-                </a>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="chat_bubble">chat_bubble</span>
-                    Messages
-                </a>
-<!-- Group 4: Financials -->
-<div class="px-6 mb-2 mt-6">
-<span class="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 font-headline">Financials</span>
-</div>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
-                    Wallet
-                </a>
-<!-- Group 5: System -->
-<div class="px-6 mb-2 mt-6">
-<span class="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 font-headline">System</span>
-</div>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="point_of_sale">point_of_sale</span>
-                    Terminals
-                </a>
-<a class="flex items-center gap-3 py-3 px-6 text-slate-600 hover:bg-slate-200/50 hover:translate-x-1 transition-all mx-2 rounded-full font-headline text-sm font-medium" href="#">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-                    Settings
-                </a>
-</nav>
-<div class="px-4 mb-4">
-<button class="flex items-center gap-3 w-full py-3 px-6 bg-red-50 text-red-600 hover:bg-red-100 transition-all rounded-full font-headline text-sm font-bold">
-<span class="material-symbols-outlined" data-icon="lock">lock</span>
-    Lock Wallet
-  </button>
-</div><div class="px-8 py-6 border-t border-slate-200/50">
-<span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">v2.4.0</span>
-</div>
-</aside>
-<!-- Main Canvas -->
-<main class="flex-1 p-6 md:p-12 max-w-7xl mx-auto w-full">
-<!-- Activation Strip -->
-<section class="mb-10 p-6 md:p-8 bg-primary/5 rounded-xl border border-primary/10 flex flex-col md:flex-row items-center justify-between gap-6">
-<div class="flex-1">
-<div class="flex items-center gap-2 mb-2">
-<span class="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold tracking-widest rounded-sm uppercase font-headline">WORKSPACE READY</span>
-<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-<span class="text-[11px] text-slate-500 font-medium">Program not active yet</span>
-</div>
-<h2 class="text-xl md:text-2xl font-black font-headline text-slate-900 leading-tight mb-2">Set up your first membership card program</h2>
-<p class="text-sm text-slate-600 leading-relaxed max-w-2xl">
-                        You have <span class="text-primary font-bold">20 bonus B-Units</span> to get started. Create your first program to begin issuing membership cards and serving customers with stored value in Verra Business OS.
+<p class="font-body font-semibold text-on-surface text-center mb-2">
+                        Upload or scan your Recovery QR code image
                     </p>
-</div>
-<div class="flex items-center gap-3 shrink-0">
-<button class="bg-primary text-white px-6 py-3 rounded-full text-sm font-bold font-headline shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
-                        Set Up First Program
-                    </button>
-<button class="bg-white text-on-surface px-6 py-3 rounded-full text-sm font-bold font-headline border border-slate-200 hover:bg-slate-50 active:scale-95 transition-all">
-                        View B-Units
+<p class="font-label text-xs text-on-surface-variant uppercase tracking-[0.05em]">
+                        Supports PNG, JPG or PDF
+                    </p>
+<button class="mt-8 px-6 py-2.5 rounded-full bg-surface-container-high text-on-surface font-medium text-sm transition-all hover:bg-surface-container-highest active:scale-95">
+                        Select File
                     </button>
 </div>
-</section>
-<!-- Status Cards (Single Row Bento) -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-<!-- Card 1 -->
-<div class="bg-white rounded-lg p-6 flex flex-col justify-between border border-slate-100 hover:border-primary/20 transition-colors">
-<div>
-<div class="flex items-center justify-between mb-4">
-<span class="text-[11px] uppercase tracking-wider font-bold text-slate-400 font-headline">Program Status</span>
-<span class="material-symbols-outlined text-slate-300" data-icon="loyalty">loyalty</span>
 </div>
-<h3 class="text-lg font-bold text-slate-900 mb-1">Not active yet</h3>
-<p class="text-xs text-slate-500 leading-relaxed mb-6">Set up your first program to start issuing membership cards.</p>
-</div>
-<button class="flex items-center gap-2 text-primary text-xs font-bold font-headline hover:gap-3 transition-all">
-                        Go to Programs <span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+<div class="mt-10 flex flex-col gap-6 items-center">
+<button class="w-full h-14 rounded-full bg-primary text-white font-headline font-bold text-lg flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/40 active:scale-[0.98] transition-all relative overflow-hidden">
+<span class="relative z-10">Validate &amp; Restore</span>
+<span class="material-symbols-outlined relative z-10" data-icon="auto_awesome">auto_awesome</span>
+<div class="absolute inset-0 bg-gradient-to-r from-primary to-primary-container opacity-50"></div>
+<div class="absolute top-0 left-0 w-full h-[1px] bg-white/20"></div>
 </button>
+<a class="inline-flex items-center gap-2 text-primary font-body font-medium hover:underline transition-all" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="help">help</span>
+                    Where can I find my Recovery QR code?
+                </a>
 </div>
-<!-- Card 2 -->
-<div class="bg-white rounded-lg p-6 flex flex-col justify-between border border-slate-100 hover:border-primary/20 transition-colors">
-<div>
-<div class="flex items-center justify-between mb-4">
-<span class="text-[11px] uppercase tracking-wider font-bold text-slate-400 font-headline">Customer Balance</span>
-<span class="material-symbols-outlined text-slate-300" data-icon="account_balance_wallet">account_balance_wallet</span>
+<div class="mt-16 grid grid-cols-2 gap-4">
+<div class="p-6 bg-surface-container-low/50 rounded-lg backdrop-blur-md border border-white/40">
+<span class="material-symbols-outlined text-primary-fixed-dim mb-3 block" data-icon="lock_open">lock_open</span>
+<h3 class="font-headline font-bold text-sm mb-1">Encrypted Recovery</h3>
+<p class="text-[11px] text-on-surface-variant leading-normal">Your recovery data is decrypted locally using your device's secure enclave.</p>
 </div>
-<h3 class="text-lg font-bold text-slate-900 mb-1">C$0.00</h3>
-<p class="text-xs text-slate-500 leading-relaxed mb-6">No stored-value activity yet.</p>
-</div>
-<button class="flex items-center gap-2 text-primary text-xs font-bold font-headline hover:gap-3 transition-all">
-                        View Wallet <span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
-</button>
-</div>
-<!-- Card 3 -->
-<div class="bg-white rounded-lg p-6 flex flex-col justify-between border border-slate-100 hover:border-primary/20 transition-colors">
-<div>
-<div class="flex items-center justify-between mb-4">
-<span class="text-[11px] uppercase tracking-wider font-bold text-slate-400 font-headline">B-Units</span>
-<span class="material-symbols-outlined text-slate-300" data-icon="token">token</span>
-</div>
-<h3 class="text-lg font-bold text-slate-900 mb-1">20</h3>
-<p class="text-xs text-slate-500 leading-relaxed mb-6">Bonus B-Units available for setup and live operations.</p>
-</div>
-<button class="flex items-center gap-2 text-primary text-xs font-bold font-headline hover:gap-3 transition-all">
-                        View B-Units <span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
-</button>
+<div class="p-6 bg-surface-container-low/50 rounded-lg backdrop-blur-md border border-white/40">
+<span class="material-symbols-outlined text-primary-fixed-dim mb-3 block" data-icon="verified_user">verified_user</span>
+<h3 class="font-headline font-bold text-sm mb-1">Workspace Safety</h3>
+<p class="text-[11px] text-on-surface-variant leading-normal">Restoring access will log out all other active sessions for security.</p>
 </div>
 </div>
-<!-- Empty State / Main Content Area -->
-<section class="relative bg-white rounded-xl py-20 px-8 flex flex-col items-center text-center overflow-hidden border border-slate-100">
-<!-- Verra Rail Motif (Subtle Abstract) -->
-<div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/5 via-primary to-primary/5 opacity-20"></div>
-<div class="absolute -right-20 top-1/2 -translate-y-1/2 w-40 h-80 bg-primary/5 rounded-full blur-[100px]"></div>
-<div class="relative z-10">
-<div class="w-16 h-16 bg-surface-container-low rounded-2xl flex items-center justify-center mb-6 mx-auto">
-<span class="material-symbols-outlined text-slate-400 text-3xl" data-icon="inventory_2">inventory_2</span>
 </div>
-<h2 class="text-2xl font-black font-headline text-slate-900 mb-4 tracking-tight">No activity yet</h2>
-<p class="text-slate-500 max-w-lg mb-10 leading-relaxed mx-auto">
-                        Set up your first program to begin issuing membership cards, adding customer balance, and tracking live activity in Verra Business OS.
-                    </p>
-<div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-<button class="w-full sm:w-auto bg-primary text-white px-8 py-4 rounded-full text-sm font-bold font-headline hover:shadow-xl hover:shadow-primary/20 transition-all">
-                            Set Up First Program
-                        </button>
-<button class="w-full sm:w-auto px-8 py-4 text-slate-600 font-bold text-sm font-headline hover:bg-slate-50 rounded-full transition-all">
-                            Go to Wallet
-                        </button>
-</div>
-</div>
-</section>
 </main>
-</div>
-<!-- BottomNavBar (Mobile Only) -->
-<nav class="md:hidden fixed bottom-0 w-full bg-white/80 backdrop-blur-xl flex justify-around items-center h-20 px-4 z-50 shadow-[0_-10px_40px_rgba(21,98,240,0.06)]">
-<a class="flex flex-col items-center gap-1 text-primary" href="#">
-<span class="material-symbols-outlined" data-icon="dashboard" style="font-variation-settings: 'FILL' 1;">dashboard</span>
-<span class="text-[10px] font-bold font-headline">Dashboard</span>
-</a>
-<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
-<span class="material-symbols-outlined" data-icon="loyalty">loyalty</span>
-<span class="text-[10px] font-medium font-headline">Programs</span>
-</a>
-<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
-<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
-<span class="text-[10px] font-medium font-headline">Wallet</span>
-</a>
-<a class="flex flex-col items-center gap-1 text-slate-400" href="#">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-<span class="text-[10px] font-medium font-headline">Settings</span>
-</a>
-</nav>
+<footer class="mt-auto py-8 text-center">
+<p class="text-[10px] font-label uppercase tracking-widest text-on-surface-variant/60">
+            Powered by Verra Cryptographic Infrastructure
+        </p>
+</footer>
+<div class="fixed top-1/4 -left-20 w-64 h-64 bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
+<div class="fixed bottom-1/4 -right-20 w-96 h-96 bg-primary-container/10 rounded-full blur-[120px] pointer-events-none"></div>
 </body></html>

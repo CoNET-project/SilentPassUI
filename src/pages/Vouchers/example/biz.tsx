@@ -5,7 +5,16 @@ import { ethers } from 'ethers';
 import { useNavigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
-import { storeSystemData, getBalance, formatWithThousands, purchaseBUnitFromBase, postToIPFS, postBeamio } from '@/services/beamio';
+import {
+  storeSystemData,
+  getBalance,
+  formatWithThousands,
+  purchaseBUnitFromBase,
+  postToIPFS,
+  postBeamio,
+  recoverData,
+  pushAccountRecoverBusinessDraft,
+} from '@/services/beamio';
 import Chat from '@/pages/chat/chat';
 import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
@@ -45,7 +54,7 @@ import {
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_WSS } from '@/utils/constants';
-import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses';
+import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi';
@@ -58,8 +67,13 @@ import {
   resizeToFitLimit,
 } from '@/utils/ipfsCardImageUpload';
 import {
+  hasLiteBusinessChainAck,
+  hasVerraLiteBusinessRequiredFields,
   loadBusinessProfileDraftForEoa,
   patchBusinessProfileDraftForEoa,
+  pickVerraBusinessFieldsFromRecover,
+  setLiteBusinessChainAck,
+  VERRA_LITE_DEFAULT_CATEGORY_VALUE,
   type VerraBusinessProfileDraft,
 } from '@/utils/verraBusinessProfileLocal';
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions';
@@ -87,6 +101,14 @@ import {
   type TipsCollectedLedgerEntry,
 } from './bizTipsCollectedLedger';
 import { resolveTopupVolumePointsDisplay } from './topupVolume';
+import {
+  loadMergedPosTerminalPermissionPendingList,
+  merchantPosPermissionPartitionAddresses,
+  removePosTerminalPermissionPendingByChildEoaFromPartitions,
+  removePosTerminalPermissionPendingFromPartitions,
+  POS_TERMINAL_PERMISSION_PENDING_EVENT,
+  type PosTerminalPermissionPendingV1,
+} from '@/utils/posTerminalPermissionPending';
 import {
   generateRegisterPOSNonce,
   registerPOSApi,
@@ -422,8 +444,8 @@ const INITIAL_ALLIANCES_DB = {
 
 type AllianceId = keyof typeof INITIAL_ALLIANCES_DB;
 
-/** Default alliance row for `BEAMIO_USER_CARD_ASSET_ADDRESS` in this example UI */
-const ALLIANCE_ID_FOR_FIXED_USER_CARD: AllianceId = 'CashTrees';
+/** Merchant OS routing / tiers UI row (user-issued program; not tied to CCSA or infra card addresses). */
+const MERCHANT_PROGRAM_ALLIANCE_ID: AllianceId = 'CashTrees';
 
 /** Members & Loyalty (demo rows; not on-chain) */
 type BizLoyaltyMemberRow = {
@@ -491,6 +513,7 @@ function membersLoyaltyDirectoryBundleCacheKey(eoaLower: string, viewerNormLower
 type BizTopupMemberTableRow = {
   cardLower: string
   programName: string
+  currency?: string
   memberAddress: string
   /** Member AA (Beamio account), when known */
   aaAddress?: string
@@ -500,6 +523,8 @@ type BizTopupMemberTableRow = {
   firstSeenTs: number
   lastSeenTs: number
   beamioTag: string
+  /** Current card NFT #0 balance (display units), read from chain for AA/EOA holder */
+  currentCardToken0Balance?: number | null
   /** Server `beamio_member_topup_events`：该会员在此卡是否曾 NFC / App top-up */
   usedNfcTopup?: boolean
   usedAppTopup?: boolean
@@ -507,11 +532,14 @@ type BizTopupMemberTableRow = {
   firstTopupAtIso?: string
 }
 
+type MemberDirectoryUserType = 'app' | 'nfc' | 'both' | 'unknown'
+
 /** Persisted Members Directory — local-first display; written only on successful feeder/fetch (trusted-cache protocol). */
 type MembersLoyaltyDirectoryTrustedBundleV1 = {
   topupRows: BizTopupMemberTableRow[]
   serverRollup: { totalTopupEvents: number; totalRepeatTopupEvents: number }
   chainCumulativeMintDisplay: number | null
+  activeCardsCount?: number
 }
 
 function saveMembersLoyaltyDirectoryBundleTrusted(
@@ -531,15 +559,27 @@ const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
 
 const ISSUE_CARD_MIN_BUINTS = 200
 
-/** 指定商户卡地址 - 必须使用此卡 */
-const FIXED_USER_CARD_CONTRACT_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 const CONET_BUINT_ADDRESS = '0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879'
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xa7410a532544aB7d1bA70701D9D0E389e4f4Cc1F'
 const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
+const BUNIT_AIRDROP_BALANCE_ABI = ['function getBUnitBalance(address account) view returns (uint256)'] as const
 /** ERC-1155 `POINTS_ID` on BeamioUserCard is 0 — AA-held points balance for voucher display */
 const BEAMIO_USER_CARD_ERC1155_BALANCE_ABI = [
   'function balanceOf(address account, uint256 id) view returns (uint256)',
 ] as const
+const BEAMIO_USER_CARD_ERC1155_SUPPLY_ABI = [
+  'function totalSupply(uint256 id) view returns (uint256)',
+] as const
+/** Owner + admin list + ERC-1155 reads for customer-held points (dashboard KPI). */
+const BEAMIO_USER_CARD_OWNER_ADMIN_LIST_ABI = [
+  ...BEAMIO_USER_CARD_ERC1155_SUPPLY_ABI,
+  ...BEAMIO_USER_CARD_ERC1155_BALANCE_ABI,
+  'function owner() view returns (address)',
+  'function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)',
+] as const
 const BEAMIO_APP_URL = 'https://beamio.app'
+const DASHBOARD_POINTS_TOKEN_ID = 0n
+const ACTIVE_CARDS_LOOKBACK_DAYS = 90
 
 /** Programs → Checkout Center (see `marketExample.html`); Stripe uses `${BEAMIO_APP_URL}/api/merchantKitStripe/*`. */
 type MerchantKitCheckoutPlanId = 'standard_kit' | 'custom_kit'
@@ -797,6 +837,62 @@ function directoryMemberPointsHuman(row: BizTopupMemberTableRow): number {
   }
 }
 
+function directoryMemberBalancePrefix(currencyRaw: string | undefined): string {
+  const currency = (currencyRaw ?? '').trim().toUpperCase();
+  if (currency === 'CAD') return 'C$';
+  if (currency === 'USD' || currency === 'USDC') return '$';
+  if (currency) return `${currency} `;
+  return '';
+}
+
+function directoryMemberCurrentBalanceDisplay(row: BizTopupMemberTableRow): string {
+  const bal = row.currentCardToken0Balance;
+  const prefix = directoryMemberBalancePrefix(row.currency);
+  if (bal == null || !Number.isFinite(bal)) return `${prefix}—`;
+  return `${prefix}${bal.toFixed(2)}`;
+}
+
+function memberDirectoryUserTypeCacheKey(eoaLower: string, viewerNormLower: string): string {
+  return `eoa:${eoaLower}:biz:member-user-type-db:v1:${viewerNormLower}`
+}
+
+function inferMemberDirectoryUserTypeFromBeamioTag(beamioTag: string | null | undefined): MemberDirectoryUserType {
+  const handle = (beamioTag ?? '').replace(/^@/, '').trim()
+  if (!handle) return 'unknown'
+  if (handle.startsWith('CashTreeDamo_')) return 'nfc'
+  return 'app'
+}
+
+function mergeMemberDirectoryUserTypes(a: MemberDirectoryUserType, b: MemberDirectoryUserType): MemberDirectoryUserType {
+  if (b !== 'unknown') return b
+  if (a !== 'unknown') return a
+  return 'unknown'
+}
+
+function resolveMemberDirectoryUserType(
+  row: BizTopupMemberTableRow,
+  db: Record<string, MemberDirectoryUserType>
+): MemberDirectoryUserType {
+  const direct = inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag)
+  if (direct !== 'unknown') return direct
+  const memberLower = row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress).toLowerCase() : ''
+  const aaLower = row.aaAddress && ethers.isAddress(row.aaAddress) ? ethers.getAddress(row.aaAddress).toLowerCase() : ''
+  const cached = (memberLower && db[memberLower]) || (aaLower && db[aaLower]) || 'unknown'
+  if (cached !== 'unknown') return cached
+  return 'unknown'
+}
+
+function memberDirectoryUserTypeMatchesSegment(type: MemberDirectoryUserType, segment: MembersDirectorySegment): boolean {
+  if (segment === 'app') return type === 'app'
+  return type === 'nfc'
+}
+
+function formatMemberDirectoryUserTypeLabel(type: MemberDirectoryUserType): string {
+  if (type === 'nfc') return 'NFC'
+  if (type === 'app') return 'App'
+  return '—'
+}
+
 function directoryMemberTierFromPoints(points: number): { label: 'Gold' | 'Silver'; gold: boolean } {
   if (points >= 200) return { label: 'Gold', gold: true };
   return { label: 'Silver', gold: false };
@@ -881,6 +977,334 @@ function MembersLoyaltyNoAaEditorial(props: { onSetUpFirstProgram: () => void })
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+const LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'food-beverage', label: 'Food & Beverage' },
+  { value: 'grocery-convenience', label: 'Grocery & Convenience' },
+  { value: 'retail-shopping', label: 'Retail & Shopping' },
+  { value: 'education-training', label: 'Education & Training' },
+  { value: 'health-beauty', label: 'Health & Beauty' },
+  { value: 'fitness-wellness', label: 'Fitness & Wellness' },
+  { value: 'entertainment-leisure', label: 'Entertainment & Leisure' },
+  { value: 'local-services', label: 'Local business' },
+];
+
+/**
+ * Mobile-only day-0 shell when the merchant profile has no AA yet — matches
+ * `marketExample.html` (narrative + business fields + Programs CTA).
+ */
+function MobileNoAaLiteMemberSelectionPage(props: {
+  merchantEoa: string;
+  beamio: beamio | null;
+  privateKeyArmor?: string;
+  onBusinessDraftUpdated?: () => void;
+  onBack: () => void;
+  onLiteBusinessSavedToChain: () => void;
+  redeemAdminInProgress?: boolean;
+}) {
+  const {
+    merchantEoa,
+    beamio,
+    privateKeyArmor,
+    onBusinessDraftUpdated,
+    onBack,
+    onLiteBusinessSavedToChain,
+    redeemAdminInProgress,
+  } = props;
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
+  const [storeName, setStoreName] = useState('');
+  const [category, setCategory] = useState('');
+  const [country, setCountry] = useState('');
+  const [city, setCity] = useState('');
+  const [province, setProvince] = useState('');
+
+  const walletReady = Boolean(merchantEoa && ethers.isAddress(merchantEoa));
+
+  useEffect(() => {
+    if (!walletReady) return;
+    const d = loadBusinessProfileDraftForEoa(merchantEoa);
+    const nextStore = (d?.storeName ?? '').trim();
+    let nextCat = (d?.category ?? '').trim();
+    if (!nextCat) {
+      nextCat = VERRA_LITE_DEFAULT_CATEGORY_VALUE;
+      patchBusinessProfileDraftForEoa(merchantEoa, { category: nextCat });
+      onBusinessDraftUpdated?.();
+    }
+    setStoreName(nextStore);
+    setCategory(nextCat);
+    setCountry((d?.country ?? '').trim());
+    setCity((d?.city ?? '').trim());
+    setProvince((d?.province ?? '').trim());
+  }, [merchantEoa, walletReady, onBusinessDraftUpdated]);
+
+  const persist = useCallback(
+    (patch: Partial<VerraBusinessProfileDraft>) => {
+      if (!walletReady) return;
+      patchBusinessProfileDraftForEoa(merchantEoa, patch);
+      onBusinessDraftUpdated?.();
+    },
+    [merchantEoa, onBusinessDraftUpdated, walletReady]
+  );
+
+  const formComplete =
+    walletReady &&
+    storeName.trim().length > 0 &&
+    category.trim().length > 0 &&
+    country.trim().length > 0 &&
+    city.trim().length > 0 &&
+    province.trim().length > 0;
+
+  const categoryUnknown =
+    category.length > 0 && !LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS.some((o) => o.value === category);
+
+  const regionOptions = country ? ONBOARDING_REGIONS_BY_COUNTRY[country] ?? [] : [];
+
+  const runSaveToChainAndReleaseGate = async () => {
+    if (!formComplete || !beamio?.accountName?.trim() || !privateKeyArmor?.trim()) {
+      setPushError('Complete all fields and ensure your wallet is unlocked.');
+      return;
+    }
+    const snapshot = loadBusinessProfileDraftForEoa(merchantEoa);
+    if (!snapshot || !hasVerraLiteBusinessRequiredFields(snapshot)) {
+      setPushError('Complete all required fields.');
+      return;
+    }
+    setPushError('');
+    setPushBusy(true);
+    try {
+      const res = await pushAccountRecoverBusinessDraft(beamio, privateKeyArmor, snapshot);
+      if (res.ok) {
+        onLiteBusinessSavedToChain();
+      } else {
+        setPushError(res.error ?? 'Could not save to secure storage.');
+      }
+    } catch (e: unknown) {
+      setPushError(e instanceof Error ? e.message : 'Could not save to secure storage.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  return (
+    <div className="relative min-h-[min(884px,100dvh)] bg-[#f5f7f9] pb-32 text-[#2c2f31] antialiased">
+      {redeemAdminInProgress ? (
+        <div className="flex items-center gap-2 border-b border-[#1562f0]/15 bg-white/90 px-4 py-2.5 text-[13px] font-medium text-slate-800 shadow-sm backdrop-blur-sm">
+          <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#1562f0]/30 border-t-[#1562f0]" aria-hidden />
+          Redeeming admin access...
+        </div>
+      ) : null}
+
+      <header className="sticky top-0 z-10 flex items-center justify-between bg-[#f5f7f9]/70 px-4 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className={`shrink-0 rounded-xl p-1 text-[#1562f0] transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
+            aria-label="Back to home"
+          >
+            <ArrowLeft className="size-6" strokeWidth={2} aria-hidden />
+          </button>
+          <span className="truncate font-manrope text-lg font-black tracking-tight text-[#1562f0]">Verra Business Lite</span>
+        </div>
+      </header>
+
+      <main className="pb-4">
+        <section className="overflow-hidden bg-[#f5f7f9] px-4 pb-10 pt-6">
+          <div className="mx-auto max-w-md">
+            <h1 className="mb-4 font-manrope text-[2.5rem] font-extrabold leading-[1.1] tracking-tight">
+              Set up your business for <span className="text-[#1562f0]">Lite</span> commerce.
+            </h1>
+            <p className="mb-10 max-w-[85%] text-lg font-medium leading-relaxed text-[#595c5e]">
+              Create a dedicated workspace for global cards, payments, and smart-contract utility.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="translate-y-4 rounded-2xl bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)]">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#d8e3fb]">
+                  <LayoutDashboard className="size-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                </div>
+                <h3 className="mb-1 font-manrope text-sm font-bold">Business Control</h3>
+                <p className="text-[11px] font-medium leading-tight text-[#595c5e]">Centralized dashboard for all operational workflows.</p>
+              </div>
+              <div className="-translate-y-2 rounded-2xl bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)]">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#f797ef]/30">
+                  <Coins className="size-5 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
+                </div>
+                <h3 className="mb-1 font-manrope text-sm font-bold">Brand Identity</h3>
+                <p className="text-[11px] font-medium leading-tight text-[#595c5e]">Smart-contract loyalty and membership tiers.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="-mt-4 rounded-t-2xl bg-white px-4 py-10 shadow-[0_-20px_40px_rgba(0,0,0,0.02)]">
+          <div className="mx-auto max-w-md">
+            <div className="mb-10">
+              <h2 className="mb-2 font-manrope text-2xl font-bold tracking-tight">Tell us about your business</h2>
+              <p className="text-sm font-medium text-[#595c5e]">Essential for member discovery and program setup.</p>
+            </div>
+            {!walletReady ? (
+              <p className="text-sm font-medium text-amber-700">Wallet not ready. Please unlock or restore again.</p>
+            ) : null}
+            <div className={`space-y-8 ${!walletReady ? 'pointer-events-none opacity-50' : ''}`}>
+              <div className="space-y-2">
+                <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="lite-mobile-biz-name">
+                  Business Name
+                </label>
+                <input
+                  id="lite-mobile-biz-name"
+                  value={storeName}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setStoreName(v);
+                    persist({ storeName: v });
+                  }}
+                  className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                  placeholder="e.g., Main Street Roasters"
+                  type="text"
+                  autoComplete="organization"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="lite-mobile-biz-category">
+                  Business Category
+                </label>
+                <div className="relative">
+                  <select
+                    id="lite-mobile-biz-category"
+                    value={category}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCategory(v);
+                      persist({ category: v });
+                    }}
+                    className={`w-full appearance-none rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                  >
+                    <option value="">Select category (e.g., Cafe, Retail, Bakery)</option>
+                    {categoryUnknown ? (
+                      <option value={category}>{category}</option>
+                    ) : null}
+                    {LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
+                </div>
+              </div>
+              <div className="mb-8 space-y-2">
+                <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="lite-mobile-biz-country">
+                  Country
+                </label>
+                <div className="relative">
+                  <select
+                    id="lite-mobile-biz-country"
+                    value={country}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCountry(v);
+                      const regions = v ? ONBOARDING_REGIONS_BY_COUNTRY[v] ?? [] : [];
+                      const keepProv = regions.some((r) => r.value === province);
+                      const nextProv = keepProv ? province : '';
+                      setProvince(nextProv);
+                      persist({ country: v, province: nextProv });
+                    }}
+                    className={`w-full appearance-none rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                  >
+                    <option value="">Select country</option>
+                    <option value="CA">Canada</option>
+                    <option value="US">United States</option>
+                    <option value="GB">United Kingdom</option>
+                    <option value="AU">Australia</option>
+                    <option value="DE">Germany</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="lite-mobile-biz-city">
+                    City
+                  </label>
+                  <input
+                    id="lite-mobile-biz-city"
+                    value={city}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCity(v);
+                      persist({ city: v });
+                    }}
+                    className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                    placeholder="e.g., Vancouver"
+                    type="text"
+                    autoComplete="address-level2"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="lite-mobile-biz-province">
+                    Province
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="lite-mobile-biz-province"
+                      value={province}
+                      disabled={!country}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setProvince(v);
+                        persist({ province: v });
+                      }}
+                      className={`w-full appearance-none rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                    >
+                      <option value="">{country ? 'Select' : 'Select country first'}</option>
+                      {regionOptions.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-12 flex items-start gap-4 rounded-2xl bg-[#1562f0]/5 p-6">
+              <ShieldCheck className="mt-0.5 size-6 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+              <div>
+                <p className="mb-1 text-xs font-semibold text-[#1562f0]">Encrypted Infrastructure</p>
+                <p className="text-[11px] font-medium leading-relaxed text-[#595c5e]">
+                  Your data is stored using AES-256 encryption. We never share your commercial details with third-party brokers.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <div
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-[#abadaf]/20 bg-white/95 px-4 py-4 shadow-[0_-12px_32px_rgba(0,0,0,0.06)] backdrop-blur-xl"
+        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+      >
+        <div className="mx-auto max-w-md space-y-2">
+          {pushError ? (
+            <p className="text-center text-[13px] font-medium text-amber-700" role="alert">
+              {pushError}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            disabled={!formComplete || pushBusy}
+            onClick={() => void runSaveToChainAndReleaseGate()}
+            className={`w-full rounded-full bg-[#1562f0] py-4 text-center text-sm font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+          >
+            {pushBusy ? 'Saving to secure storage…' : 'Continue'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1096,56 +1520,13 @@ function WalletsTreasuryShell(props: {
             View All
           </button>
         </div>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg bg-white p-5 shadow-[0_2px_8px_rgba(21,98,240,0.02)] transition-shadow hover:shadow-lg">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7a9dff]/10">
-                <Plus className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#2c2f31]">Deposit</h3>
-                <p className="text-xs font-medium text-[#595c5e]">External Transfer · Today</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="font-bold text-[#0051d1]">+5,000.00 USDC</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#747779]">Completed</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between rounded-lg bg-white p-5 shadow-[0_2px_8px_rgba(21,98,240,0.02)] transition-shadow hover:shadow-lg">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e]">
-                <Minus className="size-5" strokeWidth={2} aria-hidden />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#2c2f31]">Withdrawal</h3>
-                <p className="text-xs font-medium text-[#595c5e]">Sent to Vault · Yesterday</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="font-bold text-[#2c2f31]">-2,000.00 USDC</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#747779]">Completed</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between rounded-lg bg-white p-5 shadow-[0_2px_8px_rgba(21,98,240,0.02)] transition-shadow hover:shadow-lg">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7a9dff]/10">
-                <RefreshCw className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#2c2f31]">Settlement</h3>
-                <p className="text-xs font-medium text-[#595c5e]">Daily Revenue · Yesterday</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="font-bold text-[#0051d1]">+850.00 USDC</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#747779]">Completed</p>
-            </div>
-          </div>
+        <div className="rounded-xl border border-dashed border-[#abadaf]/30 bg-white px-6 py-10 text-center shadow-[0_2px_8px_rgba(21,98,240,0.02)]">
+          <History className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.75} aria-hidden />
+          <p className="text-sm font-semibold text-[#2c2f31]">No financial history yet</p>
+          <p className="mt-2 text-sm text-[#595c5e]">
+            Open `Transactions` to view your live ledger once wallet activity is available.
+          </p>
         </div>
-        <p className="mt-4 px-2 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">
-          Illustrative preview — open Transactions for your live ledger
-        </p>
       </section>
 
       <p className="text-center text-[11px] font-medium text-[#595c5e]">
@@ -2378,9 +2759,11 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
   const pts = directoryMemberPointsHuman(row);
   const tier = directoryMemberTierFromPoints(pts);
   const tagRaw = row.beamioTag.replace(/^@/, '').trim();
-  const displayTitle = segment === 'app' ? formatDirectoryMemberDisplayName(row.beamioTag) : 'Anonymous member';
+  const displayTitle = tagRaw ? formatDirectoryMemberDisplayName(row.beamioTag) : segment === 'app' ? 'App user' : 'NFC user';
   const headlineTag =
-    segment === 'app'
+    tagRaw
+      ? `@${tagRaw}`
+      : segment === 'app'
       ? tagRaw
         ? `@${tagRaw}`
         : `@${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`
@@ -2573,6 +2956,20 @@ const USER_CARD_TIERS_AND_CURRENCY_READ_ABI = [
   'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
   'function currency() view returns (uint8)',
 ] as const
+
+const USER_CARD_CURRENCY_READ_ABI = ['function currency() view returns (uint8)'] as const
+
+async function fetchBeamioUserCardCurrencyTypeOnly(cardAddress: string, provider: ethers.Provider): Promise<number> {
+  const addr = ethers.getAddress(cardAddress)
+  const c = new ethers.Contract(addr, USER_CARD_CURRENCY_READ_ABI, provider)
+  try {
+    const v = Number(await c.currency())
+    if (!Number.isFinite(v) || v < 0) return 0
+    return v
+  } catch {
+    return 0
+  }
+}
 
 type BeamioUserCardChainTier = {
   index: number
@@ -2831,6 +3228,15 @@ function txDisplayRowIsIndexerBunitLedger(r: TxDisplayRow): boolean {
   return isIndexerBuintConsumePayee(raw.payee)
 }
 
+function dashboardActivityTypeFromIndexerRow(tx: { txCategory: string; payee: string }): 'Charge' | 'In-Store Top-Up' | 'Tip' | null {
+  if (shouldSkipIndexerRowForMerchantTxTable(tx)) return null
+  const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
+  if (!cat || TOPUP_BUINT_SERVICE_CATEGORY_LOWER.has(cat)) return null
+  if (cat === TX_MERCHANT_PAY_TIP_UPDATED.toLowerCase() || cat === TX_TIP_LEDGER_CATEGORY.toLowerCase()) return 'Tip'
+  if (INDEXER_TX_TOPUP_CATEGORIES.has(cat as `0x${string}`)) return 'In-Store Top-Up'
+  return 'Charge'
+}
+
 const INDEXER_READ_FULL_AND_EVENT_ABI = [
   `function getTransactionFullByTxId(bytes32 txId) view returns (tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, address topAdmin, address subordinate, tuple(address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta) full_)`,
   'event TransactionRecordSynced(uint256 indexed actionId, bytes32 indexed txId, bytes32 indexed txCategory, address payer, address payee)',
@@ -3024,7 +3430,7 @@ async function callGetGlobalStatsFullParsed(
 /**
  * Overview "Today": sum `getAdminStatsFull(..., PERIOD_HOUR, anchor in hour h)` for each UTC hour index
  * overlapping the client-local calendar day [local midnight, now]. Each hourly call already aggregates
- * the admin subtree on `BEAMIO_USER_CARD_ASSET_ADDRESS` (same as `getAdminStatsFull` period stats).
+ * the admin subtree on the staff program BeamioUserCard (same as `getAdminStatsFull` period stats).
  */
 async function aggregateAdminNetworkSummaryLocalTodayFromHourlyBuckets(
   cardAddress: string,
@@ -3294,6 +3700,7 @@ async function buildStaffTerminalRowsForCardOwnerFromAdminList(
 
 type TierRoutingDiscountsV1 = {
   schemaVersion: 1;
+  /** Legacy on-chain JSON field name: program BeamioUserCard address this routing applies to (not CCSA / infra). */
   infrastructureCard: string;
   currencyType: number;
   updatedAt: number;
@@ -3320,7 +3727,7 @@ function mergeTerminalAdminMetadataJson(existingJson: string | undefined, tierRo
   return JSON.stringify({ ...base, tierRoutingDiscounts: tierRouting });
 }
 
-/** Parse `tierRoutingDiscounts` from subordinate admin metadata JSON; must match infrastructure card. */
+/** Parse `tierRoutingDiscounts` from subordinate admin metadata JSON; `infrastructureCard` must match the program BeamioUserCard. */
 function tryParseTierRoutingFromAdminMetadataJson(
   metaJson: string,
   infrastructureCardAddress: string
@@ -3768,7 +4175,38 @@ function transactionFullMatchesUserWatch(full: Record<string, unknown>, watchLow
   return false
 }
 
-function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[]): TxDisplayRow[] {
+/**
+ * NFC / Container Charge: tip may exist only in `displayJson.chargeBreakdown` when indexer has no separate TX_TIP row
+ * (`tipCurrencyAmount` present on the main Charge displayJson only).
+ */
+function parseChargeBreakdownEmbeddedTip(raw: Record<string, unknown>): {
+  tipHuman: number
+  requestCurrencyUpper: string
+} | null {
+  try {
+    const dj = raw.displayJson
+    if (typeof dj !== 'string' || !dj.trim()) return null
+    const o = JSON.parse(dj) as { chargeBreakdown?: { tipCurrencyAmount?: string; requestCurrency?: string } }
+    const b = o.chargeBreakdown
+    if (!b) return null
+    const tip = parseFloat(String(b.tipCurrencyAmount ?? '').replace(/,/g, ''))
+    if (!Number.isFinite(tip) || tip <= 0) return null
+    const cur = String(b.requestCurrency ?? 'CAD').toUpperCase()
+    return { tipHuman: tip, requestCurrencyUpper: cur }
+  } catch {
+    return null
+  }
+}
+
+function chargeBreakdownTipHumanToCad(tipHuman: number, requestCurrencyUpper: string, cadOracle: number): number {
+  if (!Number.isFinite(tipHuman) || tipHuman <= 0 || !Number.isFinite(cadOracle) || cadOracle <= 0) return 0
+  const c = requestCurrencyUpper
+  if (c === 'CAD') return tipHuman
+  if (c === 'USD' || c === 'USDC') return tipHuman / cadOracle
+  return 0
+}
+
+function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrencyType: number | null): TxDisplayRow[] {
   return rows.map((tx, idx) => {
     const bUnits = Number(tx.bServiceUnits6 ?? '0') / 1_000_000
     const cat = String(tx.txCategory ?? '')
@@ -3779,7 +4217,17 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[]): TxDisplayR
     const type: TxDisplayRow['type'] = isTip ? 'Tip' : isTopUp ? 'In-Store Top-Up' : 'Charge'
     const total6 = Number(tx.finalRequestAmountUSDC6 ?? '0') / 1_000_000
     const totalFiat = Number(tx.finalRequestAmountFiat6 ?? '0') / 1_000_000
-    let total = total6 > 0 ? total6 : totalFiat
+    let total: number
+    if (type === 'Charge' && cardCurrencyType != null) {
+      const cardIsUsdc = cardCurrencyType === BEAMIO_CURRENCY_TYPE_USDC
+      if (cardIsUsdc) {
+        total = total6 > 0 ? total6 : totalFiat
+      } else {
+        total = totalFiat > 0 ? totalFiat : total6
+      }
+    } else {
+      total = total6 > 0 ? total6 : totalFiat
+    }
     let display: { handle?: string; source?: string; title?: string; terminal?: string } = {}
     try {
       if (tx.displayJson) display = JSON.parse(tx.displayJson) as typeof display
@@ -3817,7 +4265,7 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[]): TxDisplayR
     } else if (type === 'Charge') {
       method = total > 0 ? '$CTree or USDC' : 'USDC'
       ctreeAmount = 0
-      usdcAmount = total
+      usdcAmount = total6 > 0 ? total6 : 0
     } else if (isTip) {
       method = 'Tip'
       ctreeAmount = 0
@@ -3846,6 +4294,31 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[]): TxDisplayR
       topAdmin: tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined,
       subordinate: tx.subordinate && tx.subordinate !== ethers.ZeroAddress ? tx.subordinate : undefined,
       raw,
+    }
+  })
+}
+
+function normalizeTxDisplayRowsForCardCurrency(rows: TxDisplayRow[], cardCurrencyType: number | null): TxDisplayRow[] {
+  return rows.map((tx) => {
+    if (tx.type !== 'Charge') return tx
+    const raw = tx.raw as Record<string, unknown>
+    const total6 = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6)
+    const totalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
+    if (cardCurrencyType == null || !Number.isFinite(cardCurrencyType) || cardCurrencyType < 0) {
+      return {
+        ...tx,
+        usdcAmount: total6 > 0 ? total6 : 0,
+      }
+    }
+    const cardIsUsdc = cardCurrencyType === BEAMIO_CURRENCY_TYPE_USDC
+    const total = cardIsUsdc
+      ? (total6 > 0 ? total6 : totalFiat)
+      : (totalFiat > 0 ? totalFiat : total6)
+    return {
+      ...tx,
+      total,
+      usdcAmount: total6 > 0 ? total6 : 0,
+      method: total > 0 ? '$CTree or USDC' : 'USDC',
     }
   })
 }
@@ -4033,6 +4506,29 @@ function buildTipsCollectedLedgerEntriesFromMerged(rows: TxDisplayRow[]): TipsCo
         parentChargeIndexerTxLower: parent,
       })
     }
+    /** Charge-only embedded tip (`chargeBreakdown.tipCurrencyAmount`) when indexer has no TX_TIP row */
+    if (tx.type === 'Charge' && !tx.tipRaw && !txDisplayRowIsIndexerBunitLedger(tx)) {
+      const emb = parseChargeBreakdownEmbeddedTip(tx.raw as Record<string, unknown>)
+      if (emb) {
+        const chargeIdLower = tx.indexerTxId.toLowerCase()
+        const synId = `embedded-tip:${chargeIdLower}`
+        const currencyFiat = chargeBreakdownRequestCurrencyToCurrencyFiat(emb.requestCurrencyUpper)
+        const usdcBill = emb.requestCurrencyUpper === 'USDC'
+        out.push({
+          indexerTxId: synId,
+          timestampSec: txDisplayRowTimestampSec(tx),
+          finalRequestFiat6Human: usdcBill ? 0 : emb.tipHuman,
+          finalRequestUsdc6Human: usdcBill ? emb.tipHuman : 0,
+          currencyFiat,
+          usdcAmount: usdcBill ? emb.tipHuman : 0,
+          terminal: typeof tx.terminal === 'string' ? tx.terminal : '—',
+          displayId: tx.id,
+          hash: tx.hash,
+          beamioTag: tx.beamioTag,
+          parentChargeIndexerTxLower: chargeIdLower,
+        })
+      }
+    }
   }
   return out
 }
@@ -4043,12 +4539,91 @@ function txDisplayRowWithoutTipRaw(r: TxDisplayRow): TxDisplayRowCore {
   return rest
 }
 
+/** Normalize bytes32-like strings for TX_TIP ↔ Charge parent matching (lowercase 0x + 64 hex). */
+function normalizeBytes32HexLower(h: unknown): string {
+  if (h == null) return ''
+  let s = typeof h === 'string' ? h.trim() : ''
+  if (!s) return ''
+  if (!s.startsWith('0x') && /^[0-9a-fA-F]{64}$/.test(s)) s = `0x${s}`
+  try {
+    if (!ethers.isHexString(s) || ethers.dataLength(s) !== 32) return ''
+    return s.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
 /**
- * TX_TIP rows: `originalPaymentHash` = parent main payment `id` (readme).
+ * Indexer keys that identify a Charge row as the parent of a TX_TIP (`originalPaymentHash` may equal
+ * Transaction.id, Base `finishedHash`, or legacy `requestHash` — not always strictly `indexerTxId`).
+ */
+function chargeRowTipParentKeySet(p: TxDisplayRow): Set<string> {
+  const out = new Set<string>()
+  const add = (v: unknown) => {
+    const n = normalizeBytes32HexLower(v)
+    if (n && n !== ethers.ZeroHash.toLowerCase()) out.add(n)
+  }
+  add(p.indexerTxId)
+  const raw = p.raw as Record<string, unknown>
+  add(raw.id)
+  add(raw.originalPaymentHash)
+  try {
+    const dj = raw.displayJson
+    if (typeof dj === 'string' && dj) {
+      const o = JSON.parse(dj) as { finishedHash?: string; baseRelayTxHash?: string; requestHash?: string }
+      add(o?.finishedHash)
+      add(o?.baseRelayTxHash)
+      add(o?.requestHash)
+    }
+  } catch {
+    /* ignore */
+  }
+  return out
+}
+
+/** TX_TIP side: all plausible parent link hashes (MemberCard sets ledgerOriginalPaymentHash to Base tx hash; displayJson mirrors). */
+function tipRowParentLinkKeySet(t: TxDisplayRow): Set<string> {
+  const out = new Set<string>()
+  const add = (v: unknown) => {
+    const n = normalizeBytes32HexLower(v)
+    if (n && n !== ethers.ZeroHash.toLowerCase()) out.add(n)
+  }
+  add(t.originalPaymentHash)
+  const raw = t.raw as Record<string, unknown>
+  add(raw.originalPaymentHash)
+  try {
+    const dj = raw.displayJson
+    if (typeof dj === 'string' && dj) {
+      const o = JSON.parse(dj) as {
+        finishedHash?: string
+        originalPaymentHash?: string
+        baseRelayTxHash?: string
+      }
+      add(o?.finishedHash)
+      add(o?.originalPaymentHash)
+      add(o?.baseRelayTxHash)
+    }
+  } catch {
+    /* ignore */
+  }
+  return out
+}
+
+function tipRowMatchesChargeParent(t: TxDisplayRow, p: TxDisplayRow): boolean {
+  const tipKeys = tipRowParentLinkKeySet(t)
+  if (tipKeys.size === 0) return false
+  const parentKeys = chargeRowTipParentKeySet(p)
+  for (const k of tipKeys) {
+    if (parentKeys.has(k)) return true
+  }
+  return false
+}
+
+/**
+ * TX_TIP rows: `originalPaymentHash` = parent main payment `id` (readme); may also align via `displayJson.finishedHash`.
  * Merge into parent Charge: set `tipRaw`, `tip`, `total` = subtotal + tip; remove standalone tip rows.
  */
 function mergeTipRowsIntoParentCharges(rows: TxDisplayRow[]): TxDisplayRow[] {
-  const zero = ethers.ZeroHash.toLowerCase()
   const charges = rows.filter((r) => r.type === 'Charge')
   const tips = rows.filter((r) => r.type === 'Tip')
   const rest = rows.filter((r) => r.type !== 'Charge' && r.type !== 'Tip')
@@ -4056,11 +4631,7 @@ function mergeTipRowsIntoParentCharges(rows: TxDisplayRow[]): TxDisplayRow[] {
   const mergedCharges: TxDisplayRow[] = []
 
   for (const p of charges) {
-    const pid = p.indexerTxId.toLowerCase()
-    const matching = tips.filter((t) => {
-      const oph = (t.originalPaymentHash ?? '').toLowerCase().trim()
-      return oph && oph !== zero && oph === pid
-    })
+    const matching = tips.filter((t) => tipRowMatchesChargeParent(t, p))
     if (matching.length === 0) {
       mergedCharges.push(p)
       continue
@@ -4170,35 +4741,6 @@ function parseIndexerUintE6Field(v: unknown): number {
   }
 }
 
-/** First BeamioUserCard in indexer `route[]` (`assetType` 1 = ERC1155 program card). */
-function parseIndexerRouteFirstCardAsset(raw: Record<string, unknown>): string | null {
-  const route = raw.route
-  if (!Array.isArray(route) || route.length === 0) return null
-  for (const item of route) {
-    if (!item || typeof item !== 'object') continue
-    const o = item as Record<string, unknown>
-    const asset = o.asset
-    const assetType = Number(o.assetType ?? 255)
-    if (typeof asset === 'string' && ethers.isAddress(asset) && assetType === 1) {
-      return ethers.getAddress(asset)
-    }
-  }
-  return null
-}
-
-/** Payment Routing points suffix: staff program metadata symbol, infra card default, else staff symbol. */
-function paymentRoutingPointsSuffixFromRouteCard(
-  routeCardAsset: string | null,
-  staffProgramCardAddress: string,
-  dashboardPointsSymbol: string
-): string {
-  if (!routeCardAsset) return dashboardPointsSymbol
-  const r = routeCardAsset.toLowerCase()
-  if (r === staffProgramCardAddress.toLowerCase()) return dashboardPointsSymbol
-  if (r === BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()) return DASHBOARD_DEFAULT_POINTS_SYMBOL
-  return dashboardPointsSymbol
-}
-
 /** `TransactionMeta.currencyFiat` / `BeamioCurrency.CurrencyType` */
 const BEAMIO_FIAT_CURRENCY_LABELS = ['CAD', 'USD', 'JPY', 'CNY', 'USDC', 'HKD', 'EUR', 'SGD', 'TWD'] as const
 /** Index of `USDC` in `BEAMIO_FIAT_CURRENCY_LABELS` — tips with other `currencyFiat` are not “USDC Payments” (readme). */
@@ -4207,6 +4749,25 @@ function beamioFiatCurrencyLabel(code: unknown): string {
   const n = typeof code === 'number' && Number.isFinite(code) ? code : Number(code)
   if (!Number.isFinite(n) || n < 0 || n >= BEAMIO_FIAT_CURRENCY_LABELS.length) return 'CAD'
   return BEAMIO_FIAT_CURRENCY_LABELS[n]
+}
+
+/** Overview / KPI: human string for summed Charge amounts using on-card `currency()` (defaults to CAD label until type loads). */
+function formatMerchantChargeOverviewHuman(amount: number, beamioCurrencyType: number | null): string {
+  const t =
+    beamioCurrencyType != null && Number.isFinite(beamioCurrencyType) && beamioCurrencyType >= 0
+      ? beamioCurrencyType
+      : 0
+  const label = beamioFiatCurrencyLabel(t)
+  if (label === 'USDC') return `${amount.toFixed(2)} USDC`
+  if (label === 'CAD') return `C$${amount.toFixed(2)}`
+  if (label === 'USD') return `$${amount.toFixed(2)}`
+  return `${amount.toFixed(2)} ${label}`
+}
+
+/** `chargeBreakdown.requestCurrency` (uppercase) → `TransactionMeta.currencyFiat` index; unknown → CAD */
+function chargeBreakdownRequestCurrencyToCurrencyFiat(upper: string): number {
+  const idx = BEAMIO_FIAT_CURRENCY_LABELS.indexOf(upper as (typeof BEAMIO_FIAT_CURRENCY_LABELS)[number])
+  return idx >= 0 ? idx : 0
 }
 
 /** `TransactionMeta.discountRateBps` → display percent (1000 bps = 10%). Returns null if absent or zero. */
@@ -4432,6 +4993,48 @@ function tipsLedgerEntryUsdcPaymentHuman(e: TipsCollectedLedgerEntry): number {
 function tipsLedgerEntryNonUsdcCadOnly(e: TipsCollectedLedgerEntry, cadOracle: number): number {
   if (e.currencyFiat === BEAMIO_CURRENCY_TYPE_USDC) return 0
   return tipsLedgerEntryApproxCad(e, cadOracle)
+}
+
+function chargeTxDisplayRowApproxCad(tx: TxDisplayRow, cadOracle: number): number {
+  if (tx.type !== 'Charge') return 0
+  let tipCadExtra = 0
+  if (tx.tipRaw) {
+    const tr = tx.tipRaw.raw as Record<string, unknown>
+    const tipFiat = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
+    const tipMeta = parseIndexerMetaTuple(tr.meta)
+    if (tipFiat > 0) {
+      const tipCur = beamioFiatCurrencyLabel(Number(tipMeta.currencyFiat))
+      tipCadExtra = approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
+    } else if (tx.tipRaw.usdcAmount > 0) {
+      tipCadExtra = tx.tipRaw.usdcAmount / cadOracle
+    }
+  } else {
+    const emb = parseChargeBreakdownEmbeddedTip(tx.raw as Record<string, unknown>)
+    if (emb) {
+      tipCadExtra += chargeBreakdownTipHumanToCad(emb.tipHuman, emb.requestCurrencyUpper, cadOracle)
+    }
+  }
+
+  const raw = tx.raw as Record<string, unknown>
+  const meta = parseIndexerMetaTuple(raw.meta)
+  const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
+  if (finalFiat > 0) {
+    const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
+    return approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle) + tipCadExtra
+  }
+  return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0) + tipCadExtra
+}
+
+function chargeTxDisplayRowNetCad(tx: TxDisplayRow, cadOracle: number): number {
+  if (tx.type !== 'Charge') return 0
+  const raw = tx.raw as Record<string, unknown>
+  const meta = parseIndexerMetaTuple(raw.meta)
+  const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
+  if (finalFiat > 0) {
+    const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
+    return approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle)
+  }
+  return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0)
 }
 
 /** Append " Card" when the display name does not already end with "Card" (case-insensitive). */
@@ -4699,6 +5302,116 @@ async function fetchAllBeamioCardMemberDirectoryHttp(
   return { members: acc, total };
 }
 
+/**
+ * Customer-held points (token #0 display units): on-chain totalSupply minus balances held by the card owner
+ * and every admin (EOA + resolved Beamio AA). Charge-style flows redirect points into merchant-side accounts,
+ * so this matches "stored value across customer cards" rather than gross issuance (totalSupply alone).
+ */
+async function fetchCustomerHeldPointsToken0Display(cardAddress: string, provider: ethers.Provider): Promise<number> {
+  const card = new ethers.Contract(cardAddress, BEAMIO_USER_CARD_OWNER_ADMIN_LIST_ABI, provider);
+  const [supplyRaw, ownerRaw, triple] = await Promise.all([
+    card.totalSupply(DASHBOARD_POINTS_TOKEN_ID),
+    card.owner(),
+    card.getAdminListWithMetadata() as Promise<[string[], string[], string[]]>,
+  ]);
+  const totalSupply = BigInt(supplyRaw.toString());
+  const admins = triple[0] ?? [];
+  const merchantEoaLower = new Set<string>();
+  const pushEoa = (a: string) => {
+    if (!a || !ethers.isAddress(a)) return;
+    merchantEoaLower.add(ethers.getAddress(a).toLowerCase());
+  };
+  pushEoa(ownerRaw as string);
+  for (const a of admins) pushEoa(a);
+
+  const accountLower = new Set<string>();
+  for (const eoaL of merchantEoaLower) {
+    const eoa = ethers.getAddress(eoaL);
+    accountLower.add(eoa.toLowerCase());
+    try {
+      const aa = await resolveBeamioAaForEoaWithFallback(provider, eoa);
+      if (aa && ethers.isAddress(aa)) accountLower.add(ethers.getAddress(aa).toLowerCase());
+    } catch {
+      /* ignore */
+    }
+  }
+
+  let merchantHeld = 0n;
+  for (const low of accountLower) {
+    const rawBal = await card.balanceOf(ethers.getAddress(low), DASHBOARD_POINTS_TOKEN_ID);
+    merchantHeld += BigInt(rawBal.toString());
+  }
+
+  const customerHeld = totalSupply > merchantHeld ? totalSupply - merchantHeld : 0n;
+  return amountE6ToDisplayNumber(customerHeld);
+}
+
+async function fetchBeamioUserCardToken0BalanceDisplay(
+  cardAddress: string,
+  account: string,
+  provider: ethers.Provider
+): Promise<number> {
+  const card = new ethers.Contract(cardAddress, BEAMIO_USER_CARD_ERC1155_BALANCE_ABI, provider);
+  const raw = await card.balanceOf(ethers.getAddress(account), DASHBOARD_POINTS_TOKEN_ID);
+  return amountE6ToDisplayNumber(BigInt(raw.toString()));
+}
+
+async function fetchConetBUnitBalanceDisplay(
+  account: string,
+  provider: ethers.Provider
+): Promise<number> {
+  const normalized = ethers.getAddress(account);
+  try {
+    const buint = new ethers.Contract(CONET_BUINT_ADDRESS, ERC20_BALANCE_ABI, provider);
+    const raw = await buint.balanceOf(normalized);
+    return amountE6ToDisplayNumber(BigInt(raw.toString()));
+  } catch {
+    const buintAirdrop = new ethers.Contract(CONET_BUNIT_AIRDROP_ADDRESS, BUNIT_AIRDROP_BALANCE_ABI, provider);
+    const raw = await buintAirdrop.getBUnitBalance(normalized);
+    return amountE6ToDisplayNumber(BigInt(raw.toString()));
+  }
+}
+
+async function fetchRecentActiveAccountKeysForDashboard(
+  cardAddress: string,
+  topAdmin: string,
+  provider: ethers.Provider,
+  lookbackDays: number = ACTIVE_CARDS_LOOKBACK_DAYS
+): Promise<string[]> {
+  if (!cardAddress || !ethers.isAddress(cardAddress) || !topAdmin || !ethers.isAddress(topAdmin)) return [];
+  const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, provider);
+  const activeAccounts = new Set<string>();
+  const pageLimit = 100;
+  for (let periodOffset = 0; periodOffset < lookbackDays; periodOffset++) {
+    let pageOffset = 0;
+    while (true) {
+      const [total, , , page] =
+        await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(
+          ethers.getAddress(cardAddress),
+          ethers.getAddress(topAdmin),
+          PERIOD_DAY,
+          periodOffset,
+          pageOffset,
+          pageLimit,
+          TX_CATEGORY_ZERO,
+          0,
+          CHAIN_ID_FILTER_ALL
+        ) as [bigint, bigint, bigint, Array<{ txCategory: string; payee: string; payer: string; exists?: boolean }>];
+      for (const tx of page) {
+        if (!tx?.exists) continue;
+        const kind = dashboardActivityTypeFromIndexerRow({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' });
+        if (kind !== 'Charge' && kind !== 'In-Store Top-Up') continue;
+        if (typeof tx.payer === 'string' && ethers.isAddress(tx.payer) && tx.payer !== ethers.ZeroAddress) {
+          activeAccounts.add(ethers.getAddress(tx.payer).toLowerCase());
+        }
+      }
+      pageOffset += page.length;
+      if (page.length === 0 || page.length < pageLimit || pageOffset >= Number(total)) break;
+    }
+  }
+  return [...activeAccounts];
+}
+
 function formatMemberTopupChannelLabel(row: BizTopupMemberTableRow): string {
   const n = row.usedNfcTopup === true;
   const a = row.usedAppTopup === true;
@@ -4870,19 +5583,28 @@ function findLowestCardIssuanceTierId(tiers: CardIssuanceTierRow[]): string | nu
   return tiers[bestIdx].id;
 }
 
-/** Keep lowest tier Min aligned with Recharge “Minimum Top-up”. */
-function reconcileLowestTierThresholdWithMinTopup(
+/** Clamp all tier mins to Recharge “Minimum Top-up” and ensure every Min is unique. */
+function reconcileTierThresholdsWithMinTopup(
   tiers: CardIssuanceTierRow[],
   minTopupStr: string
 ): CardIssuanceTierRow[] {
   const raw = minTopupStr.replace(/,/g, '').trim();
   const topupN = Number.parseInt(raw, 10);
   if (!Number.isFinite(topupN)) return tiers;
-  const lowestId = findLowestCardIssuanceTierId(tiers);
-  if (!lowestId) return tiers;
-  const low = tiers.find((t) => t.id === lowestId);
-  if (!low || low.threshold === String(topupN)) return tiers;
-  return tiers.map((t) => (t.id === lowestId ? { ...t, threshold: String(topupN) } : t));
+  const used = new Set<number>();
+  let changed = false;
+  const next = tiers.map((t) => {
+    const parsed = cardIssuanceTierThresholdToInt(t.threshold);
+    let candidate = Math.max(topupN, parsed);
+    while (used.has(candidate)) candidate += 1;
+    used.add(candidate);
+    if (String(candidate) !== t.threshold) {
+      changed = true;
+      return { ...t, threshold: String(candidate) };
+    }
+    return t;
+  });
+  return changed ? next : tiers;
 }
 
 /**
@@ -4973,6 +5695,9 @@ export default function MerchantOS() {
  } = useDaemonContext();
  const [walletSendUsdcOpen, setWalletSendUsdcOpen] = useState(false);
  const [activeTab, setActiveTab] = useState('Overview');
+ /** Bumps when Lite onboarding form saves so `hasVerraLiteBusinessRequiredFields` is re-evaluated. */
+ const [liteBusinessFormRevision, setLiteBusinessFormRevision] = useState(0);
+ const [liteChainAckRevision, setLiteChainAckRevision] = useState(0);
  const [cardIssuanceProgramName, setCardIssuanceProgramName] = useState('VERRA');
  const [cardIssuanceCurrencySymbol, setCardIssuanceCurrencySymbol] = useState(() =>
    deriveCardIssuanceShortNameFromUnitName('VERRA')
@@ -5053,13 +5778,8 @@ export default function MerchantOS() {
    });
  }, [cardIssuanceTiers]);
 
- const cardIssuanceLowestTierId = useMemo(
-   () => findLowestCardIssuanceTierId(cardIssuanceTiers),
-   [cardIssuanceTiers]
- );
-
  useEffect(() => {
-   setCardIssuanceTiers((prev) => reconcileLowestTierThresholdWithMinTopup(prev, cardIssuanceMinTopup));
+  setCardIssuanceTiers((prev) => reconcileTierThresholdsWithMinTopup(prev, cardIssuanceMinTopup));
  }, [cardIssuanceMinTopup]);
 
  useEffect(() => {
@@ -5118,6 +5838,14 @@ export default function MerchantOS() {
    return (cardIssuanceExistingCard.meta?.image ?? '').trim() || cardIssuanceShareImageUrl.trim();
  }, [cardIssuanceExistingCard, cardIssuanceShareImageUrl]);
 
+const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
+  const draft = cardIssuanceShareImageUrl.trim();
+  if (draft) return draft;
+  const existingCardImage = (cardIssuanceExistingCard?.meta?.image ?? '').trim();
+  if (existingCardImage) return existingCardImage;
+  return (beamio?.image ?? '').trim();
+}, [cardIssuanceShareImageUrl, cardIssuanceExistingCard?.meta?.image, beamio?.image]);
+
  const programsOverviewHeroTierLabel = useMemo(() => {
    const tiers = cardIssuanceExistingCard?.meta?.tiers;
    if (!tiers?.length) {
@@ -5149,6 +5877,46 @@ export default function MerchantOS() {
 
  const bizNumericNoSpinnerClass =
    '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]';
+
+ /** Inline validation: tier / min top-up must not exceed metadata maximum (existing program) or form maximum top-up. */
+ const cardIssuanceRechargeLimitError = useMemo(() => {
+   const metaCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
+   const maxRaw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
+   const minRaw = cardIssuanceMinTopup.replace(/,/g, '').trim();
+   const formMaxN = maxRaw === '' ? NaN : Number.parseInt(maxRaw, 10);
+   const formMinN = minRaw === '' ? NaN : Number.parseInt(minRaw, 10);
+   if (metaCap != null && Number.isFinite(metaCap)) {
+     if (Number.isFinite(formMaxN) && formMaxN > metaCap) {
+       return `Maximum top-up cannot exceed ${metaCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`;
+     }
+     if (Number.isFinite(formMinN) && formMinN > metaCap) {
+       return `Minimum top-up cannot exceed ${metaCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`;
+     }
+   }
+   if (Number.isFinite(formMaxN)) {
+     for (const row of cardIssuanceTiers) {
+       const tierName = row.name.trim();
+       if (!tierName) continue;
+       const tr = row.threshold.replace(/,/g, '').trim();
+       if (tr === '') continue;
+       const tInt = Number.parseInt(tr, 10);
+       const tFloat = parseFloat(tr);
+       if (!Number.isFinite(tInt) || !Number.isFinite(tFloat) || tFloat !== tInt) continue;
+       if (metaCap != null && Number.isFinite(metaCap) && tInt > metaCap) {
+         return `Tier "${tierName}": threshold cannot exceed ${metaCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (maximum top-up from card metadata).`;
+       }
+       if (tInt > formMaxN) {
+         return `Tier "${tierName}": threshold cannot exceed maximum top-up (${formMaxN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}).`;
+       }
+     }
+   }
+   return '';
+ }, [
+   cardIssuanceExistingCard?.meta?.maximumTopupCad,
+   cardIssuanceMaxTopup,
+   cardIssuanceMinTopup,
+   cardIssuanceTiers,
+ ]);
 
  const buildCardIssuanceTiersPayload = useCallback((): TierMetadata[] | undefined => {
    if (cardIssuanceTiers.length === 0) return undefined;
@@ -5434,6 +6202,42 @@ export default function MerchantOS() {
      setCardIssuanceCreateError('Minimum top-up cannot be greater than maximum top-up.');
      return;
    }
+   const metadataMaxTopupCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
+   if (metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap)) {
+     if (maxTopupN > metadataMaxTopupCap) {
+       setCardIssuanceCreateError(
+         `Maximum top-up cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`
+       );
+       return;
+     }
+     if (minTopupN > metadataMaxTopupCap) {
+       setCardIssuanceCreateError(
+         `Minimum top-up cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`
+       );
+       return;
+     }
+   }
+   for (const row of cardIssuanceTiers) {
+     const tierName = row.name.trim();
+     if (!tierName) continue;
+     const tr = row.threshold.replace(/,/g, '').trim();
+     if (tr === '') continue;
+     const tInt = Number.parseInt(tr, 10);
+     const tFloat = parseFloat(tr);
+     if (!Number.isFinite(tFloat) || !Number.isFinite(tInt) || tFloat !== tInt) continue;
+     if (tInt > maxTopupN) {
+       setCardIssuanceCreateError(
+         `Tier "${tierName}": threshold cannot exceed maximum top-up (${maxTopupN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}).`
+       );
+       return;
+     }
+     if (metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap) && tInt > metadataMaxTopupCap) {
+       setCardIssuanceCreateError(
+         `Tier "${tierName}": threshold cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (maximum top-up from card metadata).`
+       );
+       return;
+     }
+   }
    setCardIssuanceCreateLoading(true);
    try {
      const res = await createBeamioCard({
@@ -5447,6 +6251,8 @@ export default function MerchantOS() {
            : {}),
        shareTokenMetadata: {
          name: metaName,
+         minimumTopup: minTopupN,
+         maximumTopup: maxTopupN,
          ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
          ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
          ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
@@ -5549,6 +6355,7 @@ export default function MerchantOS() {
    cardIssuanceDescription,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
+   cardIssuanceExistingCard?.meta?.maximumTopupCad,
    buildCardIssuanceTiersPayload,
  ]);
 
@@ -5716,24 +6523,54 @@ export default function MerchantOS() {
    () => bizWalletStoragePartitionLower(profiles?.[0]?.keyID, myAddress),
    [profiles?.[0]?.keyID, myAddress],
  );
- /** Staff / POS / Overview chain reads: merchant-issued BeamioUserCard when present; else infra `BEAMIO_USER_CARD_ASSET_ADDRESS`. */
- const staffProgramBeamioCardAddress = useMemo(
-   () => merchantOwnCardAddress ?? FIXED_USER_CARD_CONTRACT_ADDRESS,
-   [merchantOwnCardAddress],
- );
- const fixedCardAdminsCacheKey = `card-admins:${staffProgramBeamioCardAddress.toLowerCase()}:v2`;
- const linkedMerchantAdminsCacheKey = `linked-merchants:${staffProgramBeamioCardAddress.toLowerCase()}:v2`;
- const fixedCardMetadataCacheKey = `card-metadata:${staffProgramBeamioCardAddress.toLowerCase()}`;
- const merchantActivationStatsCacheKey = `card-activation-stats:${staffProgramBeamioCardAddress.toLowerCase()}`;
+ /** Staff / POS / Overview: user-issued program BeamioUserCard only (no CCSA / infrastructure fallback). */
+ const staffProgramBeamioCardAddress = useMemo((): string | null => {
+   if (merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)) {
+     return ethers.getAddress(merchantOwnCardAddress);
+   }
+   return null;
+ }, [merchantOwnCardAddress]);
+ /** Cache-key segment when no on-chain program card yet (EOA-scoped; not a contract address). */
+ const staffProgramCardCacheBucket = useMemo(() => {
+   if (staffProgramBeamioCardAddress) return staffProgramBeamioCardAddress.toLowerCase();
+   return `no-issued-program:${(currentEoa || 'anon').toLowerCase()}`;
+ }, [staffProgramBeamioCardAddress, currentEoa]);
+ const fixedCardAdminsCacheKey = `card-admins:${staffProgramCardCacheBucket}:v2`;
+ const linkedMerchantAdminsCacheKey = `linked-merchants:${staffProgramCardCacheBucket}:v2`;
+ const fixedCardMetadataCacheKey = `card-metadata:${staffProgramCardCacheBucket}`;
+ const merchantActivationStatsCacheKey = `card-activation-stats:${staffProgramCardCacheBucket}`;
+const retainedCapitalTrustedCacheKey =
+  staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)
+    ? `card:${staffProgramBeamioCardAddress.toLowerCase()}:dashboard:token0-customer-held:v2`
+    : '';
+const activeCardsTrustedCacheKey =
+  currentEoa && ethers.isAddress(currentEoa)
+    ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:dashboard:active-cards:v1`
+    : '';
  const overviewPeriodType = useMemo(() => overviewTimeFilterToPeriodType(timeFilter), [timeFilter]);
- const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${staffProgramBeamioCardAddress.toLowerCase()}`;
+const overviewNetworkSummaryCacheKey =
+  timeFilter === 'Today'
+    ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:ptoday-local`
+    : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
+const overviewNetworkSummaryLifetimeCacheKey =
+  `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:lifetime`;
+ const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${staffProgramCardCacheBucket}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
  const [linkedMerchantAdmins, setLinkedMerchantAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) ?? []);
  const [fixedCardMetadata, setFixedCardMetadata] = useState<FixedUserCardMetadata | null>(() => loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey));
+ /** On-chain `BeamioUserCard.currency()` for staff program card — Charges KPI + indexer row totals align with this, not implicit USDC. */
+ const [programCardBeamioCurrencyType, setProgramCardBeamioCurrencyType] = useState<number | null>(null);
+ useEffect(() => {
+   setProgramCardBeamioCurrencyType(null);
+ }, [staffProgramBeamioCardAddress]);
  /** API `cardMetadata.topupStats`: top-up 成功且当时无会员 NFT 的累计（NFC 近场 / App USDC），用于 Overview「Member activations」。 */
  const [merchantActivationStats, setMerchantActivationStats] = useState<{ nfc: number; app: number } | null>(() =>
    loadTrustedCache<{ nfc: number; app: number }>(merchantActivationStatsCacheKey) ?? null,
  );
+const [retainedCapitalDisplay, setRetainedCapitalDisplay] = useState<number | null>(null);
+const [activeCardsCount, setActiveCardsCount] = useState<number | null>(() =>
+  activeCardsTrustedCacheKey ? (loadTrustedCache<number>(activeCardsTrustedCacheKey) ?? null) : null
+);
  /** Points / voucher token label on Daily Dashboard (metadata `Symbol` or issuance form fallback for own card). */
  const dashboardPointsCurrencySymbol = useMemo(() => {
    const fromMeta = fixedCardMetadata?.currencySymbol?.trim();
@@ -5747,6 +6584,16 @@ export default function MerchantOS() {
    const next = loadTrustedCache<{ nfc: number; app: number }>(merchantActivationStatsCacheKey) ?? null;
    setMerchantActivationStats(next);
  }, [merchantActivationStatsCacheKey]);
+useEffect(() => {
+  if (!retainedCapitalTrustedCacheKey) {
+    setRetainedCapitalDisplay(null);
+    return;
+  }
+  setRetainedCapitalDisplay(loadTrustedCache<number>(retainedCapitalTrustedCacheKey) ?? null);
+}, [retainedCapitalTrustedCacheKey]);
+useEffect(() => {
+  setActiveCardsCount(activeCardsTrustedCacheKey ? (loadTrustedCache<number>(activeCardsTrustedCacheKey) ?? null) : null);
+}, [activeCardsTrustedCacheKey]);
  const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
  const [adminNetworkSummaryToday, setAdminNetworkSummaryToday] = useState<{ cadVol: number; txCount: number; usdc: number; vouchers: number } | null>(null);
  /** Chain cumulative admin subtree stats (not tied to Overview date filter) — same shape as period summary */
@@ -5761,7 +6608,7 @@ export default function MerchantOS() {
  const [adminMintLimitQuota, setAdminMintLimitQuota] = useState<number | null>(null);
  const [adminMintCounterFromClear, setAdminMintCounterFromClear] = useState<number | null>(null);
  const [protocolFuelReserveBalance, setProtocolFuelReserveBalance] = useState<number | null>(null);
- const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
+const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
  /** Refetch CoNET indexer tx list when entering Transactions or on a 30s tick there (Overview feeder uses Base card stats, not this list). */
  const [txListPollTick, setTxListPollTick] = useState(0);
  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
@@ -5769,6 +6616,109 @@ export default function MerchantOS() {
  const [adminRetryCount, setAdminRetryCount] = useState(0);
  const [redeemAdminInProgress, setRedeemAdminInProgress] = useState(false);
  const [indexerTransactions, setIndexerTransactions] = useState<TxDisplayRow[]>([]);
+useEffect(() => {
+  let cancelled = false;
+  const programAddr = staffProgramBeamioCardAddress;
+  const cachedTodayRaw = loadTrustedCache<BizNetworkSummaryRow>(overviewNetworkSummaryCacheKey);
+  const todayYmdForCache = formatLocalYmd(new Date());
+  const cachedToday =
+    timeFilter === 'Today' &&
+    cachedTodayRaw &&
+    cachedTodayRaw.localDayKey !== todayYmdForCache
+      ? null
+      : cachedTodayRaw;
+  const cachedLifetime = loadTrustedCache<{ cadVol: number; txCount: number; usdc: number; vouchers: number }>(
+    overviewNetworkSummaryLifetimeCacheKey
+  );
+
+  if (cachedToday != null) setAdminNetworkSummaryToday(cachedToday);
+  if (cachedLifetime != null) setAdminNetworkSummaryLifetime(cachedLifetime);
+
+  if (!programAddr || !ethers.isAddress(programAddr)) {
+    setAdminNetworkSummaryToday(null);
+    setAdminNetworkSummaryLifetime(null);
+    return () => { cancelled = true; };
+  }
+
+  void fetchWithCache(overviewNetworkSummaryCacheKey, async () => {
+    if (timeFilter === 'Today') {
+      const [periodLocalToday, parsedLifetime] = await Promise.all([
+        aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(programAddr, baseRpcProviderDirect),
+        callGetGlobalStatsFullParsed(programAddr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n),
+      ]);
+      if (!periodLocalToday || !parsedLifetime) throw new Error('overview summary unavailable');
+      const lifetimeSummary = {
+        cadVol: amountE6ToDisplayNumber(parsedLifetime.cumulativeTransferAmount),
+        txCount: Number(parsedLifetime.cumulativeTransfer),
+        usdc: amountE6ToDisplayNumber(parsedLifetime.cumulativeUSDCMint),
+        vouchers: amountE6ToDisplayNumber(parsedLifetime.cumulativeMint),
+      };
+      return { periodSummary: periodLocalToday, lifetimeSummary };
+    }
+
+    const parsed = await callGetGlobalStatsFullParsed(programAddr, overviewPeriodType, baseRpcProviderDirect);
+    if (!parsed) throw new Error('overview summary unavailable');
+    return {
+      periodSummary: {
+        cadVol: amountE6ToDisplayNumber(parsed.periodTransferAmount),
+        txCount: Number(parsed.periodTransfer),
+        usdc: amountE6ToDisplayNumber(parsed.periodUSDCMint),
+        vouchers: amountE6ToDisplayNumber(parsed.periodMint),
+      } satisfies BizNetworkSummaryRow,
+      lifetimeSummary: {
+        cadVol: amountE6ToDisplayNumber(parsed.cumulativeTransferAmount),
+        txCount: Number(parsed.cumulativeTransfer),
+        usdc: amountE6ToDisplayNumber(parsed.cumulativeUSDCMint),
+        vouchers: amountE6ToDisplayNumber(parsed.cumulativeMint),
+      },
+    };
+  }).then((result) => {
+    if (cancelled) return;
+    setAdminNetworkSummaryToday(result.periodSummary);
+    setAdminNetworkSummaryLifetime(result.lifetimeSummary);
+    saveTrustedCache(overviewNetworkSummaryCacheKey, result.periodSummary);
+    saveTrustedCache(overviewNetworkSummaryLifetimeCacheKey, result.lifetimeSummary);
+  }).catch(() => {
+    if (cancelled) return;
+    if (cachedToday != null) setAdminNetworkSummaryToday(cachedToday);
+    if (cachedLifetime != null) setAdminNetworkSummaryLifetime(cachedLifetime);
+  });
+
+  return () => { cancelled = true; };
+}, [
+  currentEoa,
+  overviewNetworkSummaryCacheKey,
+  overviewNetworkSummaryLifetimeCacheKey,
+  overviewPeriodType,
+  overviewRefreshTrigger,
+  staffProgramBeamioCardAddress,
+  timeFilter,
+]);
+useEffect(() => {
+  let cancelled = false;
+  const programAddr = staffProgramBeamioCardAddress;
+  const cached = retainedCapitalTrustedCacheKey ? loadTrustedCache<number>(retainedCapitalTrustedCacheKey) : null;
+
+  if (cached != null) setRetainedCapitalDisplay(cached);
+
+  if (!programAddr || !ethers.isAddress(programAddr) || !retainedCapitalTrustedCacheKey) {
+    setRetainedCapitalDisplay(null);
+    return () => { cancelled = true; };
+  }
+
+  void fetchWithCache(retainedCapitalTrustedCacheKey, async () =>
+    fetchCustomerHeldPointsToken0Display(programAddr, baseRpcProviderDirect)
+  ).then((retained) => {
+    if (cancelled || !Number.isFinite(retained)) return;
+    setRetainedCapitalDisplay(retained);
+    saveTrustedCache(retainedCapitalTrustedCacheKey, retained);
+  }).catch(() => {
+    if (cancelled || cached == null) return;
+    setRetainedCapitalDisplay(cached);
+  });
+
+  return () => { cancelled = true; };
+}, [overviewRefreshTrigger, retainedCapitalTrustedCacheKey, staffProgramBeamioCardAddress]);
  /** Transactions `filteredTx` useMemo lives after `effectiveAdminAddress` (EOA ledger + In-Store Top-Up visibility). */
  /** Sum Charge `fees.bServiceUnits6` from semi-persistent `chargeBUnitLedgerRef` ∩ table filters ∩ Overview `timeFilter` window. */
  const chargeBUnitLedgerRef = useRef<Map<string, ChargeBUnitLedgerEntry>>(new Map())
@@ -5918,12 +6868,18 @@ export default function MerchantOS() {
  useEffect(() => {
    if (!currentEoa || !ethers.isAddress(currentEoa)) return
    const e = currentEoa.toLowerCase()
-   const incoming = buildTipsCollectedLedgerEntriesFromMerged(indexerTransactions)
    const map = tipsCollectedLedgerRef.current
+   let prunedEmbedded = false
+   for (const tx of indexerTransactions) {
+     if (tx.type === 'Charge' && tx.tipRaw) {
+       const k = `embedded-tip:${tx.indexerTxId.toLowerCase()}`
+       if (map.delete(k)) prunedEmbedded = true
+     }
+   }
+   const incoming = buildTipsCollectedLedgerEntriesFromMerged(indexerTransactions)
    const onlyNew = incoming.filter((row) => !map.has(row.indexerTxId.toLowerCase()))
-   if (onlyNew.length === 0) return
-   const changed = mergeTipsCollectedLedgerEntries(map, onlyNew)
-   if (!changed) return
+   if (onlyNew.length === 0 && !prunedEmbedded) return
+   if (onlyNew.length > 0) mergeTipsCollectedLedgerEntries(map, onlyNew)
    trimTipsCollectedLedgerMap(map, TIPS_COLLECTED_LEDGER_MAX_ENTRIES)
    saveTipsCollectedLedgerMapDebounced(e, map)
    setTipsCollectedLedgerEpoch((n) => n + 1)
@@ -5948,7 +6904,7 @@ export default function MerchantOS() {
    Record<string, { name: string; backgroundColor?: string } | null>
  >({});
  /** Chain-verified admin status (EOA-scoped): local cache first, chain fetch as backup (beamio-ai-onchain-fetch) */
- const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:is-admin`;
+ const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:is-admin`;
  const [isCurrentUserCardAdmin, setIsCurrentUserCardAdmin] = useState<boolean | null>(() =>
    currentEoa && ethers.isAddress(currentEoa) ? (loadTrustedCache<boolean>(isAdminTrustedCacheKey) ?? null) : null
  );
@@ -5970,7 +6926,7 @@ export default function MerchantOS() {
  const routingModalHydratedFromChainRef = useRef(false);
  const routingHydrateAsyncGenRef = useRef(0);
  const lastRoutingHydrateWalletTagRef = useRef<string | null>(null);
- /** On-chain BeamioUserCard tiers when routing modal is open for `ALLIANCE_ID_FOR_FIXED_USER_CARD` */
+ /** On-chain BeamioUserCard tiers when routing modal is open for `MERCHANT_PROGRAM_ALLIANCE_ID` */
  const [routingModalChainTiers, setRoutingModalChainTiers] = useState<BeamioUserCardChainTier[] | null>(null);
  /** `BeamioUserCard.currency()` uint8 — aligns with `BeamioCurrency.CurrencyType` */
  const [routingModalChainCurrencyType, setRoutingModalChainCurrencyType] = useState<number | null>(null);
@@ -6032,6 +6988,7 @@ export default function MerchantOS() {
  }, [membersOwnedPrograms]);
  /** Members & Loyalty: rows from `beamio.app/api/cardMemberTopups` (mode=directory), refreshed by feeder; cache keys include EOA */
  const [membersLoyaltyTopupRows, setMembersLoyaltyTopupRows] = useState<BizTopupMemberTableRow[]>([]);
+const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Record<string, MemberDirectoryUserType>>({});
  /** Per-card rollup sums from `mode=card` (total / repeat top-up event counts on server) */
  const [membersLoyaltyServerRollup, setMembersLoyaltyServerRollup] = useState<{
    totalTopupEvents: number
@@ -6108,7 +7065,7 @@ export default function MerchantOS() {
 
  const [eoaUsdcBalance, setEoaUsdcBalance] = useState<string | null>(null);
  const [aaUsdcBalance, setAaUsdcBalance] = useState<string | null>(null);
- /** `balanceOf(AA, 0)` on `BEAMIO_USER_CARD_ASSET_ADDRESS` (points token), human units (÷1e6) */
+ /** `balanceOf(AA, 0)` on the user-issued program BeamioUserCard (points token), human units (÷1e6) */
  const [aaUserCardPointsToken0Balance, setAaUserCardPointsToken0Balance] = useState<number | null>(null);
  const [subordinateBalances, setSubordinateBalances] = useState<Record<string, string | null>>({});
 
@@ -6348,7 +7305,7 @@ export default function MerchantOS() {
  }, [alliancesDb]);
 
  useEffect(() => {
-   if (!isConfigModalOpen || configAllianceId !== ALLIANCE_ID_FOR_FIXED_USER_CARD) {
+   if (!isConfigModalOpen || configAllianceId !== MERCHANT_PROGRAM_ALLIANCE_ID) {
      routingModalHydratedFromChainRef.current = false;
      lastRoutingHydrateWalletTagRef.current = null;
      setRoutingModalChainTiers(null);
@@ -6358,12 +7315,21 @@ export default function MerchantOS() {
      setRoutingModalTiersError(null);
      return;
    }
+   if (!staffProgramBeamioCardAddress) {
+     routingModalHydratedFromChainRef.current = false;
+     setRoutingModalChainTiers(null);
+     setRoutingModalChainCurrencyType(null);
+     setRoutingModalCardTiersMeta(null);
+     setRoutingModalTiersLoading(false);
+     setRoutingModalTiersError('Issue a program card first.');
+     return;
+   }
    let cancelled = false;
    setRoutingModalTiersLoading(true);
    setRoutingModalTiersError(null);
    setRoutingModalCardTiersMeta(null);
 
-   const routingTierMetaKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:routing-tier-metadata`
+   const routingTierMetaKey = `card:${staffProgramCardCacheBucket}:routing-tier-metadata`
    void fetchWithCache(routingTierMetaKey, () =>
      fetchCardTierMetadataListForRouting(staffProgramBeamioCardAddress)
    )
@@ -6374,7 +7340,7 @@ export default function MerchantOS() {
        if (!cancelled) setRoutingModalCardTiersMeta(null);
      });
 
-   const routingOnchainTiersKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:onchain-tiers`
+   const routingOnchainTiersKey = `card:${staffProgramCardCacheBucket}:onchain-tiers`
    void fetchWithCache(routingOnchainTiersKey, () =>
      fetchBeamioUserCardTiersAndCurrencyFromChain(staffProgramBeamioCardAddress, baseRpcProviderDirect)
    )
@@ -6399,7 +7365,7 @@ export default function MerchantOS() {
     }, [isConfigModalOpen, configAllianceId, staffProgramBeamioCardAddress]);
 
  useEffect(() => {
-   if (!isConfigModalOpen || configAllianceId !== ALLIANCE_ID_FOR_FIXED_USER_CARD || !routingModalChainTiers?.length) return;
+   if (!isConfigModalOpen || configAllianceId !== MERCHANT_PROGRAM_ALLIANCE_ID || !routingModalChainTiers?.length) return;
    setTempDiscounts((prev) => {
      const next = { ...prev };
      routingModalChainTiers.forEach((ct) => {
@@ -6412,7 +7378,8 @@ export default function MerchantOS() {
 
  /** Load routing tax + tier discounts from first matching subordinate metadata on chain (fallback: local defaults / 0). */
  useEffect(() => {
-   if (!isConfigModalOpen || configAllianceId !== ALLIANCE_ID_FOR_FIXED_USER_CARD) return;
+   if (!isConfigModalOpen || configAllianceId !== MERCHANT_PROGRAM_ALLIANCE_ID) return;
+   if (!staffProgramBeamioCardAddress) return;
    if (routingModalTiersLoading || routingModalTiersError || !routingModalChainTiers?.length) return;
 
    const walletTag = `${(profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase()}|${(profiles?.[0]?.aaAccount ?? '').toLowerCase()}`;
@@ -6510,7 +7477,7 @@ export default function MerchantOS() {
 
  const clearCardCacheAndRetry = useCallback(() => {
    try {
-   invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
+   invalidateFetchCache(`card:${staffProgramCardCacheBucket}`);
    invalidateFetchCache('indexer:tips');
    invalidateFetchCache('eoa:');
      const keys = [
@@ -6520,6 +7487,7 @@ export default function MerchantOS() {
        merchantActivationStatsCacheKey,
        linkedTerminalsCacheKey,
        isAdminTrustedCacheKey,
+      retainedCapitalTrustedCacheKey,
      ];
      keys.forEach((k) => window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`));
      Object.keys(window.localStorage).filter((k) => (k.startsWith(BIZ_CACHE_PREFIX + 'card:') && (k.includes('mint-limit-quota') || k.includes('quota-and-mint-counter'))) || (k.startsWith(BIZ_CACHE_PREFIX) && k.includes('buint:balance:'))).forEach((k) => window.localStorage.removeItem(k));
@@ -6541,7 +7509,7 @@ export default function MerchantOS() {
          .filter(
            (k) =>
              k.startsWith(`${BIZ_CACHE_PREFIX}eoa:${currentEoa}:`) &&
-             (k.includes('network-summary:lifetime') || k.includes(':tips:lifetime'))
+            (k.includes('network-summary:lifetime') || k.includes('network-summary:global:') || k.includes(':tips:lifetime'))
          )
          .forEach((k) => window.localStorage.removeItem(k));
      } catch { /* ignore */ }
@@ -6555,6 +7523,7 @@ export default function MerchantOS() {
    merchantActivationStatsCacheKey,
    linkedTerminalsCacheKey,
    isAdminTrustedCacheKey,
+  retainedCapitalTrustedCacheKey,
    currentEoa,
    staffProgramBeamioCardAddress,
  ]);
@@ -6595,7 +7564,7 @@ export default function MerchantOS() {
      invalidateFetchCache('eoa:');
      invalidateFetchCache('aa:');
      invalidateFetchCache('indexer:tx');
-     invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
+     invalidateFetchCache(`card:${staffProgramCardCacheBucket}`);
      try {
        Object.keys(window.localStorage)
          .filter((k) => k.startsWith(`${BIZ_CACHE_PREFIX}eoa:${oldEoa}:`))
@@ -6741,6 +7710,32 @@ export default function MerchantOS() {
  const [resetTerminalLimitError, setResetTerminalLimitError] = useState<string | null>(null);
  /** Staff tab: which terminal row has the ⋮ actions menu open */
  const [staffTerminalActionMenuOpenId, setStaffTerminalActionMenuOpenId] = useState<string | null>(null);
+ /** POS chat `beamio_pos_terminal_permission_v1` queue (same localStorage as App.tsx inbound handler) */
+ const [posTerminalPermissionPending, setPosTerminalPermissionPending] = useState<PosTerminalPermissionPendingV1[]>([]);
+ /** EOA + AA + myAddress: must match `getCardsOfOwnerWithDetailsForProfile` owner pairing so Staff sees pending under either identity. */
+ const posPermissionPartitionAddressesList = useMemo(
+   () => merchantPosPermissionPartitionAddresses(profiles?.[0], myAddress),
+   [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress],
+ );
+ const staffPendingPosPermissions = useMemo(() => {
+   const terminalIds = new Set(terminals.map((t) => t.id.toLowerCase()));
+   return posTerminalPermissionPending.filter((p) => !terminalIds.has(p.childEoa.toLowerCase()));
+ }, [posTerminalPermissionPending, terminals]);
+
+ useEffect(() => {
+   const parts = posPermissionPartitionAddressesList;
+   const sync = () => {
+     if (parts.length === 0) {
+       setPosTerminalPermissionPending([]);
+       return;
+     }
+     setPosTerminalPermissionPending(loadMergedPosTerminalPermissionPendingList(parts));
+   };
+   sync();
+   if (typeof window === 'undefined') return undefined;
+   window.addEventListener(POS_TERMINAL_PERMISSION_PENDING_EVENT, sync);
+   return () => window.removeEventListener(POS_TERMINAL_PERMISSION_PENDING_EVENT, sync);
+ }, [posPermissionPartitionAddressesList]);
 
  useEffect(() => {
    if (staffTerminalActionMenuOpenId == null) return;
@@ -6952,6 +7947,23 @@ export default function MerchantOS() {
    () => overviewDashboardActivityTxs.filter((t) => t.type === 'Charge').length,
    [overviewDashboardActivityTxs]
  )
+/** Sum Charge CAD net totals (excluding tips) from indexer; fallback uses chain summary minus Tips Collected for the same window. */
+ const overviewActivityChargeCadTotal = useMemo(
+  () => {
+    const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
+    return overviewDashboardActivityTxs
+      .filter((t) => t.type === 'Charge')
+      .reduce((sum, t) => sum + chargeTxDisplayRowNetCad(t, cadOracle), 0)
+  },
+  [overviewDashboardActivityTxs, oracleCadUsdc]
+ )
+/** Period Activity Charges: prefer indexer-derived merchant ledger rows, but fall back to chain summary when indexer rows are not yet present. */
+const overviewActivityChargeDisplayTotal =
+  overviewActivityChargeCadTotal > 0
+    ? overviewActivityChargeCadTotal
+    : Math.max(0, (adminNetworkSummaryToday?.cadVol ?? 0) - tipsCollectedOverviewSums.cadTotal)
+const overviewActivityChargeDisplayCount =
+  overviewActivityChargeCount > 0 ? overviewActivityChargeCount : (adminNetworkSummaryToday?.txCount ?? 0)
  const overviewActivityTipCount = useMemo(
    () => overviewDashboardActivityTxs.filter((t) => t.type === 'Tip').length,
    [overviewDashboardActivityTxs]
@@ -7251,6 +8263,11 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
     setTerminals([]);
     return;
   }
+  if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+    setTerminals([]);
+    if (!opts?.silent) setTerminalsLoading(false);
+    return;
+  }
   if (!opts?.silent) setTerminalsLoading(true);
   try {
     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
@@ -7378,6 +8395,9 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      if (!userEOA || !ethers.isAddress(userEOA)) {
        throw new Error('Wallet not connected.');
      }
+     if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+       throw new Error('No issued program card.');
+     }
      const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
      const cardOwner = (await card.owner()) as string;
      const userAA = profiles?.[0]?.aaAccount?.trim();
@@ -7408,7 +8428,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    setRoutingRulesDeployError(null);
 
    setAlliancesDb((prev) => {
-     if (cid === ALLIANCE_ID_FOR_FIXED_USER_CARD && routingModalChainTiers && routingModalChainTiers.length > 0) {
+     if (cid === MERCHANT_PROGRAM_ALLIANCE_ID && routingModalChainTiers && routingModalChainTiers.length > 0) {
        const iconTypes = ['emerald', 'yellow'] as const;
        const updatedTiers = routingModalChainTiers.map((ct, i) => {
          const id = `chain-tier-${ct.index}`;
@@ -7428,7 +8448,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      return { ...prev, [cid]: { ...prev[cid], tiers: updatedTiers } };
    });
 
-   if (cid !== ALLIANCE_ID_FOR_FIXED_USER_CARD || !routingModalChainTiers?.length) {
+   if (cid !== MERCHANT_PROGRAM_ALLIANCE_ID || !routingModalChainTiers?.length) {
      setIsConfigModalOpen(false);
      return;
    }
@@ -7441,6 +8461,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
    if (!userEOA || !ethers.isAddress(userEOA)) {
      setRoutingRulesDeployError('Wallet address not available.');
+     return;
+   }
+   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+     setRoutingRulesDeployError('Issue a program card first.');
      return;
    }
 
@@ -7528,7 +8552,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
      }
 
-     invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
+     invalidateFetchCache(`card:${staffProgramCardCacheBucket}`);
      try {
        window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
      } catch {
@@ -7587,15 +8611,19 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    return () => { cancelled = true; };
  }, [profiles, overviewRefreshTrigger]);
 
- // Alliance voucher row: AA balance of ERC-1155 id 0 (points) on program BeamioUserCard (issued card or infra fallback)
+ // Alliance voucher row: AA balance of ERC-1155 id 0 (points) on the user-issued program BeamioUserCard
  useEffect(() => {
    const aaAddr = profiles?.[0]?.aaAccount?.trim();
    if (!aaAddr || !ethers.isAddress(aaAddr)) {
      setAaUserCardPointsToken0Balance(null);
      return;
    }
+   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+     setAaUserCardPointsToken0Balance(null);
+     return;
+   }
    let cancelled = false;
-   const key = `aa:beamioUserCard:balanceOf0:${ethers.getAddress(aaAddr).toLowerCase()}:${staffProgramBeamioCardAddress.toLowerCase()}`;
+   const key = `aa:beamioUserCard:balanceOf0:${ethers.getAddress(aaAddr).toLowerCase()}:${staffProgramCardCacheBucket}`;
    void fetchWithCache(key, async () => {
      const card = new ethers.Contract(
        staffProgramBeamioCardAddress,
@@ -7643,7 +8671,12 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (!params) return;
    const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
    if (!userEOA || !ethers.isAddress(userEOA)) return;
-   if (params.cardAddress.toLowerCase() !== staffProgramBeamioCardAddress.toLowerCase()) return;
+   if (
+     !staffProgramBeamioCardAddress ||
+     params.cardAddress.toLowerCase() !== staffProgramBeamioCardAddress.toLowerCase()
+   ) {
+     return;
+   }
 
    let cancelled = false;
    const run = async () => {
@@ -7689,6 +8722,15 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
  useEffect(() => {
    let cancelled = false;
+   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+     setFixedCardAdmins([]);
+     setLinkedMerchantAdmins([]);
+     setLinkedMerchantLookupDone(false);
+     return () => {
+       cancelled = true;
+     };
+   }
+
    const cachedAllAdmins = loadTrustedCache<string[]>(fixedCardAdminsCacheKey);
    const cachedAdmins = loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey);
 
@@ -7701,10 +8743,11 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      setLinkedMerchantLookupDone(true);
    }
 
-   const cardKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:admins:v2`;
+   const programAddrForAdmins = staffProgramBeamioCardAddress;
+   const cardKey = `card:${staffProgramCardCacheBucket}:admins:v2`;
    void fetchWithCache(cardKey, async () => {
      const card = new ethers.Contract(
-       staffProgramBeamioCardAddress,
+       programAddrForAdmins,
        USER_CARD_ADMIN_READ_ABI,
        baseEndpoint
      );
@@ -7782,13 +8825,19 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      setChainResolvedStatsAdminAddress(null);
      return;
    }
+   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+     setIsCurrentUserCardAdmin(false);
+     setChainResolvedStatsAdminAddress(null);
+     return;
+   }
+   const programCardAddr = staffProgramBeamioCardAddress;
    let cancelled = false;
    const cached = loadTrustedCache<boolean>(isAdminTrustedCacheKey);
    if (cached !== null) setIsCurrentUserCardAdmin(cached);
    setChainResolvedStatsAdminAddress(null);
-   const fetchKey = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:is-admin:v2`;
+   const fetchKey = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:is-admin:v2`;
    void fetchWithCache(fetchKey, async () => {
-     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const card = new ethers.Contract(programCardAddr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
      const addrs = [
        profiles?.[0]?.keyID,
        myAddress,
@@ -7881,12 +8930,15 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          setMembersOwnedPrograms([]);
          programOverviewRows = [];
          setMembersLoyaltyChainCumulativeMintDisplay(0);
+        setActiveCardsCount(0);
+        if (activeCardsTrustedCacheKey) saveTrustedCache(activeCardsTrustedCacheKey, 0);
          if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, []);
          if (walletPartition && account && ethers.isAddress(account)) {
            saveMembersLoyaltyDirectoryBundleTrusted(walletPartition, ethers.getAddress(account).toLowerCase(), {
              topupRows: [],
              serverRollup: { totalTopupEvents: 0, totalRepeatTopupEvents: 0 },
              chainCumulativeMintDisplay: 0,
+            activeCardsCount: 0,
            });
          }
        } else {
@@ -7986,6 +9038,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          }
          let sumChainCumulativeMint = 0n;
          let chainMintOkCount = 0;
+        const activeSinceSec = Math.floor(Date.now() / 1000) - ACTIVE_CARDS_LOOKBACK_DAYS * 24 * 3600;
+        const activeCardScopedKeys = new Set<string>();
          for (const uc of ownedCardsForTopupMerge) {
            if (!membersLoyaltyBgActiveRef.current) break;
            const addrG = ethers.getAddress(uc.cardAddress);
@@ -8021,6 +9075,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            const { members, total } = await fetchWithCache(cacheKeyMembers, () =>
              fetchAllBeamioCardMemberDirectoryHttp(addr)
            );
+          const topAdminForCard =
+            programOverviewRows.find((p) => p.cardAddress.toLowerCase() === cardLower)?.ownerAddress ?? account;
+          const cacheKeyRecentActive = `eoa:${membersFetchPartition}:card:${cardLower}:dashboard:active90d:v1:${topAdminForCard.toLowerCase()}`;
+          const recentActiveAccountKeys = await fetchWithCache(cacheKeyRecentActive, () =>
+            fetchRecentActiveAccountKeysForDashboard(addr, topAdminForCard, conetDepinProvider)
+          ).catch(() => [] as string[]);
+          const recentActiveSet = new Set(recentActiveAccountKeys.map((a) => a.toLowerCase()));
+          const aliasToScopedKey = new Map<string, string>();
            if (!membersLoyaltyBgActiveRef.current) break;
            if (total > 0 && members.length < total && process.env.NODE_ENV !== 'production') {
              console.warn('[membersLoyalty:daemon] member page count < total', {
@@ -8037,6 +9099,12 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
                aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
                  ? ethers.getAddress(aaRaw)
                  : undefined;
+            const eoaLower = eoaM.toLowerCase();
+            const aaLower = aa?.toLowerCase();
+            const balanceAccount = aa ?? eoaM;
+            const scopedKey = `${cardLower}:${balanceAccount.toLowerCase()}`;
+            aliasToScopedKey.set(eoaLower, scopedKey);
+            if (aaLower) aliasToScopedKey.set(aaLower, scopedKey);
              let lastTs = 0;
              try {
                const t = Date.parse(m.lastTopupAt);
@@ -8057,9 +9125,20 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              } catch {
                /* ignore */
              }
+            const cacheKeyBalance = `eoa:${membersFetchPartition}:card:${cardLower}:holder:${balanceAccount.toLowerCase()}:balance0:v1`;
+            const currentBalance = await fetchWithCache(cacheKeyBalance, () =>
+              fetchBeamioUserCardToken0BalanceDisplay(addr, balanceAccount, baseRpcProviderDirect)
+            ).catch(() => null as number | null);
+            const hasStoredValue = currentBalance != null && Number.isFinite(currentBalance) && currentBalance > 0;
+            const hasRecentTopup = lastTs > 0 && lastTs >= activeSinceSec;
+            const hasRecentChargeOrTopup = recentActiveSet.has(eoaLower) || (!!aaLower && recentActiveSet.has(aaLower));
+            if (hasStoredValue || hasRecentTopup || hasRecentChargeOrTopup) {
+              activeCardScopedKeys.add(scopedKey);
+            }
              merged.push({
                cardLower,
                programName,
+              currency: typeof uc.currency === 'string' ? uc.currency : undefined,
                memberAddress: eoaM,
                aaAddress: aa,
                topupCount: Number(m.topupCount) || 0,
@@ -8067,14 +9146,19 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
                firstSeenTs: firstTs,
                lastSeenTs: lastTs,
                beamioTag: '',
+              currentCardToken0Balance: currentBalance,
                usedNfcTopup: Boolean(dirM.usedNfc),
                usedAppTopup: Boolean(dirM.usedApp),
                firstTopupSource: dirM.firstTopupSource ?? null,
                firstTopupAtIso: dirM.firstTopupAt ? String(dirM.firstTopupAt) : undefined,
              });
            }
+          for (const activeKey of recentActiveSet) {
+            activeCardScopedKeys.add(aliasToScopedKey.get(activeKey) ?? `${cardLower}:${activeKey}`);
+          }
          }
          merged.sort((a, b) => b.lastSeenTs - a.lastSeenTs);
+        const nextActiveCardsCount = activeCardScopedKeys.size;
          let chainDisplayForBundle: number | null = null;
          if (!membersLoyaltyBgActiveRef.current) return;
          if (ownedCardsForTopupMerge.length > 0) {
@@ -8093,11 +9177,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          };
          setMembersLoyaltyTopupRows(merged);
          setMembersLoyaltyServerRollup(rollupAgg);
+        setActiveCardsCount(nextActiveCardsCount);
+        if (activeCardsTrustedCacheKey) saveTrustedCache(activeCardsTrustedCacheKey, nextActiveCardsCount);
          if (walletPartition && account && ethers.isAddress(account)) {
            saveMembersLoyaltyDirectoryBundleTrusted(walletPartition, ethers.getAddress(account).toLowerCase(), {
              topupRows: merged,
              serverRollup: rollupAgg,
              chainCumulativeMintDisplay: chainDisplayForBundle,
+            activeCardsCount: nextActiveCardsCount,
            });
          }
        } catch (e) {
@@ -8109,6 +9196,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    };
 
    registerMembersLoyaltyBackgroundWork(tick);
+  void tick();
    return () => {
      membersLoyaltyBgActiveRef.current = false;
      registerMembersLoyaltyBackgroundWork(null);
@@ -8119,6 +9207,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    myAddress,
    feederEoa,
    walletStoragePartitionLower,
+  activeCardsTrustedCacheKey,
  ]);
 
  /** Unified Base overview feeder: one batch per **CoNET L1 new block**（Daemon 全局守护，全 Merchant OS 生命周期内持续刷新，不限当前 Tab）。 */
@@ -8142,21 +9231,19 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
    // Load trusted cache for immediate display
    const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
-   const networkSummaryCacheKey =
-     timeFilter === 'Today'
-       ? `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:ptoday-local`
-       : `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:p${overviewPeriodType}`;
-   const networkSummaryLifetimeCacheKey =
-     effectiveAdmin && ethers.isAddress(effectiveAdmin)
-       ? `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:network-summary:lifetime`
-       : '';
+  const networkSummaryCacheKey =
+    timeFilter === 'Today'
+      ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:ptoday-local`
+      : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
+  const networkSummaryLifetimeCacheKey =
+    `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:lifetime`;
    const adminTipsLifetimeStorageKey =
      effectiveAdmin && ethers.isAddress(effectiveAdmin)
-       ? `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdmin.toLowerCase()}:tips:lifetime`
+       ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:admin:${effectiveAdmin.toLowerCase()}:tips:lifetime`
        : '';
    /** Use account (current EOA) for quota cache key so we fetch even when fixedCardAdmins not yet loaded */
-   const quotaCacheKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${accountResolved ? accountResolved.toLowerCase() : ''}:quota-and-mint-counter`;
-   const buintBalanceCacheKey = accountResolved ? `eoa:${accountResolved.toLowerCase()}:buint:balance` : '';
+   const quotaCacheKey = `card:${staffProgramCardCacheBucket}:admin:${accountResolved ? accountResolved.toLowerCase() : ''}:quota-and-mint-counter`;
+  const buintBalanceCacheKey = accountResolved ? `eoa:${accountResolved.toLowerCase()}:buint:balance:v2` : '';
    const aa = profiles?.[0]?.aaAccount?.trim();
    /** EOA + AA addresses for BUint reserve read (same closure as cache key — do not use stale empty `account` inside async feederWork). */
    const buintReserveTargets: string[] = [];
@@ -8184,15 +9271,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    if (cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
    const cachedActivationStats = loadTrustedCache<{ nfc: number; app: number }>(merchantActivationStatsCacheKey);
    if (cachedActivationStats != null) setMerchantActivationStats(cachedActivationStats);
-   if (effectiveAdmin && ethers.isAddress(effectiveAdmin)) {
-     if (cachedNetworkSummary != null) setAdminNetworkSummaryToday(cachedNetworkSummary);
-     else setAdminNetworkSummaryToday(null);
-     if (cachedNetworkSummaryLifetime != null) setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
-     else setAdminNetworkSummaryLifetime(null);
-   } else {
-     setAdminNetworkSummaryToday(null);
-     setAdminNetworkSummaryLifetime(null);
-   }
+  if (cachedNetworkSummary != null) setAdminNetworkSummaryToday(cachedNetworkSummary);
+  else setAdminNetworkSummaryToday(null);
+  if (cachedNetworkSummaryLifetime != null) setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
+  else setAdminNetworkSummaryLifetime(null);
    if (cachedQuota != null && accountResolved) {
      setAdminMintLimitQuota(cachedQuota.quota);
      setAdminMintCounterFromClear(cachedQuota.mintCounterFromClear);
@@ -8210,19 +9292,34 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      feederInProgressRef.current = true;
      const accountRaw = (feederAccountRef.current || feederEoa || '').trim();
      const account = accountRaw && ethers.isAddress(accountRaw) ? ethers.getAddress(accountRaw) : '';
-     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
-     const buint = new ethers.Contract(CONET_BUINT_ADDRESS, ERC20_BALANCE_ABI, conetDepinProvider);
+     const programAddr = staffProgramBeamioCardAddress;
+     const card =
+       programAddr && ethers.isAddress(programAddr)
+         ? new ethers.Contract(programAddr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect)
+         : null;
      const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
      const ACCOUNT_MODE_ALL = 0;
 
      const feederWork = async () => {
        await globalFetchQueue;
 
+       if (!feederCancelledRef.current && programAddr && ethers.isAddress(programAddr)) {
+         try {
+           const ccyKey = `card:${staffProgramCardCacheBucket}:beamio-currency-uint8`;
+           const ct = await fetchWithCache(ccyKey, () =>
+             fetchBeamioUserCardCurrencyTypeOnly(programAddr, baseRpcProviderDirect)
+           );
+           if (!feederCancelledRef.current) setProgramCardBeamioCurrencyType(ct);
+         } catch {
+           /* keep last trusted value */
+         }
+       }
+
        // 0. Card metadata (HTTP, merged into CoNET block-tick refresh)
-       if (!feederCancelledRef.current) {
+       if (!feederCancelledRef.current && programAddr) {
          try {
            const apiRes = await fetch(
-             `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(staffProgramBeamioCardAddress)}`
+             `${BEAMIO_APP_URL}/api/cardMetadata?cardAddress=${encodeURIComponent(programAddr)}`
            );
            let parsed: FixedUserCardMetadata | null = null;
            if (apiRes.ok) {
@@ -8245,7 +9342,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              }
            }
            if (!parsed) {
-             const normalizedCardAddress = staffProgramBeamioCardAddress.toLowerCase().replace(/^0x/, '');
+             const normalizedCardAddress = programAddr.toLowerCase().replace(/^0x/, '');
              const metadataResource = `0x${normalizedCardAddress}${'0'.repeat(64)}.json`;
              const metadataRes = await fetch(`${BEAMIO_APP_URL}/api/metadata/${metadataResource}`);
              if (metadataRes.ok) {
@@ -8263,16 +9360,19 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
 
        // 1. Daily Dashboard network summary: card-level `getGlobalStatsFull` (all admins). "Today" = local day via summed PERIOD_HOUR buckets.
-       if (effectiveAdmin && ethers.isAddress(effectiveAdmin) && !feederCancelledRef.current) {
+      if (
+        programAddr &&
+        !feederCancelledRef.current
+      ) {
          try {
            if (timeFilter === 'Today') {
              const [periodLocalToday, parsedLifetime] = await Promise.all([
                aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
-                 staffProgramBeamioCardAddress,
+                 programAddr,
                  baseRpcProviderDirect
                ),
                callGetGlobalStatsFullParsed(
-                 staffProgramBeamioCardAddress,
+                 programAddr,
                  PERIOD_DAY,
                  baseRpcProviderDirect,
                  0n,
@@ -8300,7 +9400,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              }
            } else {
              const parsed = await callGetGlobalStatsFullParsed(
-               staffProgramBeamioCardAddress,
+               programAddr,
                overviewPeriodType,
                baseRpcProviderDirect
              );
@@ -8336,16 +9436,35 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              setAdminNetworkSummaryLifetime(cachedNetworkSummaryLifetime);
            }
          }
-       } else if (!effectiveAdmin || !ethers.isAddress(effectiveAdmin)) {
+      } else if (!programAddr) {
          setAdminNetworkSummaryToday(null);
          setAdminNetworkSummaryLifetime(null);
        }
 
+      // 1b. Total capital retained: token#0 held by customers = totalSupply minus owner + all admins (EOA & AA).
+      // Keep this aligned with the current staff/program card instead of a separate owner-card field so Overview KPIs move together.
+       if (
+        programAddr &&
+        ethers.isAddress(programAddr) &&
+         retainedCapitalTrustedCacheKey &&
+         !feederCancelledRef.current
+       ) {
+         try {
+          const retained = await fetchCustomerHeldPointsToken0Display(programAddr, baseRpcProviderDirect);
+           if (Number.isFinite(retained) && !feederCancelledRef.current) {
+             setRetainedCapitalDisplay(retained);
+             saveTrustedCache(retainedCapitalTrustedCacheKey, retained);
+           }
+         } catch {
+           /* keep last trusted cache / state */
+         }
+       }
+
        // 2. Admin quota and mintCounterFromClear (account from feederAccountRef at execution time)
-       if (account && ethers.isAddress(account) && !feederCancelledRef.current) {
-         const step3QuotaCacheKey = `card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${ethers.getAddress(account).toLowerCase()}:quota-and-mint-counter`;
+       if (account && ethers.isAddress(account) && programAddr && !feederCancelledRef.current) {
+         const step3QuotaCacheKey = `card:${staffProgramCardCacheBucket}:admin:${ethers.getAddress(account).toLowerCase()}:quota-and-mint-counter`;
          const step3CachedQuota = loadTrustedCache<{ quota: number; mintCounterFromClear: number }>(step3QuotaCacheKey);
-         const cardDirect = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+         const cardDirect = new ethers.Contract(programAddr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
          try {
            const adminLower = ethers.getAddress(account).toLowerCase();
            const fetchStatsWithRawFallback = async (): Promise<{ mintCounterFromClear: bigint }> => {
@@ -8355,7 +9474,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              } catch {
                const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI]);
                const calldata = iface.encodeFunctionData('getAdminStatsFull', [account, 0, 0, 0]);
-               const hex = await baseRpcProviderDirect.call({ to: staffProgramBeamioCardAddress, data: calldata });
+               const hex = await baseRpcProviderDirect.call({ to: programAddr, data: calldata });
                const raw = (hex as string).replace(/^0x/, '');
                if (raw.length >= 1344) {
                  const structOffset = Number(BigInt('0x' + raw.slice(0, 64)));
@@ -8413,7 +9532,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
        // 2a. Card owner: sync Staff terminal roster from full on-chain admin list (same tick as Overview; trusted data replaces stale locals)
        let termListForStats = terminalsRef.current;
-       if (!feederCancelledRef.current && account && ethers.isAddress(account)) {
+       if (!feederCancelledRef.current && account && ethers.isAddress(account) && card && programAddr) {
          try {
            const cardOwnerSync = (await card.owner()) as string;
            if (cardOwnerSync && ethers.isAddress(cardOwnerSync)) {
@@ -8426,7 +9545,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              if (isOwnerSync) {
                const nextRoster = await buildStaffTerminalRowsForCardOwnerFromAdminList(
                  baseRpcProviderDirect,
-                 staffProgramBeamioCardAddress,
+                 programAddr,
                  cardOwnerSync,
                  terminalsRef.current
                );
@@ -8446,7 +9565,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
 
        // 2b. Staff table: per-linked-terminal admin stats (no separate useEffect / no fetchWithCache — same tick as Overview)
-       if (!feederCancelledRef.current) {
+       if (!feederCancelledRef.current && card && programAddr) {
          const termList = termListForStats;
          const termAddrs = termList.filter((t) => t.id && ethers.isAddress(t.id)).map((t) => ethers.getAddress(t.id));
          if (termAddrs.length === 0) {
@@ -8456,7 +9575,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            for (const taddr of termAddrs) {
              if (feederCancelledRef.current) break;
              const k = taddr.toLowerCase();
-             next[k] = await fetchBizTerminalChainStats(card, baseRpcProviderDirect, staffProgramBeamioCardAddress, taddr);
+             next[k] = await fetchBizTerminalChainStats(card, baseRpcProviderDirect, programAddr, taddr);
            }
            if (!feederCancelledRef.current) setTerminalStats(next);
          }
@@ -8473,7 +9592,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            let allOk = true;
            for (const addr of buintReserveTargets) {
              try {
-               sumRaw += (await buint.balanceOf(addr)) as bigint;
+              const display = await fetchConetBUnitBalanceDisplay(addr, conetDepinProvider);
+              sumRaw += BigInt(Math.round(display * 1_000_000));
              } catch {
                allOk = false;
                break;
@@ -8506,7 +9626,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        const forceTipsLifetime = tipsLifetimeScanNonceRef.current !== tipsLifetimeAppliedNonceRef.current;
        const tipsLifetimeDue =
          forceTipsLifetime || Date.now() - tipsLifetimeLastFullFetchMsRef.current >= TIPS_LIFETIME_MIN_INTERVAL_MS;
-       if (effectiveAdmin && ethers.isAddress(effectiveAdmin) && adminTipsLifetimeStorageKey && tipsLifetimeDue && !feederCancelledRef.current) {
+       if (
+         programAddr &&
+         effectiveAdmin &&
+         ethers.isAddress(effectiveAdmin) &&
+         adminTipsLifetimeStorageKey &&
+         tipsLifetimeDue &&
+         !feederCancelledRef.current
+       ) {
          try {
            let totalTips6 = 0n;
            const pageLimit = 100;
@@ -8519,7 +9646,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              let reportedTotal = 0n;
              while (true) {
                const [total, , , page] = await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(
-                 staffProgramBeamioCardAddress,
+                 programAddr,
                  ethers.getAddress(effectiveAdmin),
                  PERIOD_YEAR,
                  yearOff,
@@ -8591,26 +9718,58 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    timeFilter,
    staffProgramBeamioCardAddress,
    linkedTerminalsCacheKey,
+   merchantOwnCardAddress,
+   retainedCapitalTrustedCacheKey,
  ]);
 
- // Fetch BeamioIndexerDiamond transactions: admin UI shows only this admin's accounting (account-based, excludes subordinates).
+/** Transactions local-first hydrate: render last trusted/inbound ledger cache immediately, then let background fetch / WSS update it. */
+useEffect(() => {
+  const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
+  if (!eoaKey) {
+    setIndexerTransactions([]);
+    setIndexerTransactionsLoading(false);
+    setIndexerTransactionsRefreshing(false);
+    return;
+  }
+  const cached = loadInboundTxDisplayCache(eoaKey);
+  if (cached.length > 0) {
+    const normalized = normalizeTxDisplayRowsForCardCurrency(cached, programCardBeamioCurrencyType);
+    setIndexerTransactions(normalized);
+    saveInboundTxDisplayCache(eoaKey, normalized);
+    setIndexerTransactionsLoading(false);
+  }
+}, [currentEoa, programCardBeamioCurrencyType]);
+
+// Fetch BeamioIndexerDiamond transactions: local cache first, background fetch second; admin UI shows only this admin's accounting (account-based, excludes subordinates).
  useEffect(() => {
+  const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
+  const cachedLocal = eoaKey ? loadInboundTxDisplayCache(eoaKey) : [];
+   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+    if (cachedLocal.length === 0) setIndexerTransactions([]);
+     setIndexerTransactionsLoading(false);
+     setIndexerTransactionsRefreshing(false);
+     return;
+   }
    if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
-     setIndexerTransactions([]);
+    if (cachedLocal.length === 0) setIndexerTransactions([]);
      setIndexerTransactionsLoading(false);
      setIndexerTransactionsRefreshing(false);
      return;
    }
    let cancelled = false;
-   const hadLocalList = indexerTxListCountRef.current > 0;
+  if (cachedLocal.length > 0 && indexerTxListCountRef.current === 0) {
+    setIndexerTransactions(normalizeTxDisplayRowsForCardCurrency(cachedLocal, programCardBeamioCurrencyType));
+  }
+  const hadLocalList = indexerTxListCountRef.current > 0 || cachedLocal.length > 0;
    if (hadLocalList) {
      setIndexerTransactionsRefreshing(true);
+    setIndexerTransactionsLoading(false);
    } else {
      setIndexerTransactionsLoading(true);
    }
    const userAA = profiles?.[0]?.aaAccount?.trim();
    const userAAAddr = userAA && ethers.isAddress(userAA) ? ethers.getAddress(userAA) : '';
-   const txKey = `eoa:${currentEoa}:indexer:tx:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
+   const txKey = `eoa:${currentEoa}:indexer:tx:card:${staffProgramCardCacheBucket}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
    void fetchWithCache(txKey, async () => {
      const ACCOUNT_MODE_ALL = 0;
      const indexerAccount = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ACCOUNT_ABI, conetDepinProvider);
@@ -8787,9 +9946,13 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
     return all.sort((a, b) => Number(BigInt(b.timestamp) - BigInt(a.timestamp))).slice(0, 50);
    }).then((rows) => {
      if (cancelled) return;
-     const mapped = mergeTopupBunitFeeRowsIntoTopups(mapIndexerFetchedRowsToDisplay(rows));
-     const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
-     const deduped = mergeRenumberTxDisplays(mapped, eoaKey ? loadInboundTxDisplayCache(eoaKey) : []);
+    const mapped = mergeTopupBunitFeeRowsIntoTopups(
+      normalizeTxDisplayRowsForCardCurrency(
+        mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
+        programCardBeamioCurrencyType
+      )
+    );
+    const deduped = mergeRenumberTxDisplays(mapped, eoaKey ? loadInboundTxDisplayCache(eoaKey) : []);
      if (eoaKey) {
        const preTip = buildTipsCollectedLedgerEntriesFromPremergeTips(deduped)
        if (preTip.length > 0) {
@@ -8835,7 +9998,16 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      }
    });
    return () => { cancelled = true; };
- }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, overviewRefreshTrigger, txListPollTick, staffProgramBeamioCardAddress]);
+ }, [
+   effectiveAdminAddress,
+   profiles?.[0]?.aaAccount,
+   myAddress,
+   currentEoa,
+   overviewRefreshTrigger,
+   txListPollTick,
+   staffProgramBeamioCardAddress,
+   programCardBeamioCurrencyType,
+ ]);
 
  /** Entering Transactions: Overview may already reflect new Base stats while indexer list was cached or never polled on this tab. */
  useEffect(() => {
@@ -8848,17 +10020,29 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    setTxListPollTick((n) => n + 1);
  }, [activeTab, currentEoa]);
 
- /** While on Transactions, periodically invalidate indexer tx cache so the list catches new records without relying only on WSS. */
+/** Global ledger feed: keep Transactions cache warm in the background with a non-overlapping timeout chain, not tab-local `setInterval`. */
  useEffect(() => {
-   if (activeTab !== 'Transactions') return;
-   const id = window.setInterval(() => {
-     if (currentEoa && ethers.isAddress(currentEoa)) {
-       invalidateFetchCache(`eoa:${currentEoa}:indexer:tx:`);
-     }
-     setTxListPollTick((n) => n + 1);
-   }, 30_000);
-   return () => window.clearInterval(id);
- }, [activeTab, currentEoa]);
+  if (!currentEoa || !ethers.isAddress(currentEoa)) return;
+  if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) return;
+  if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) return;
+  let cancelled = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const scheduleNext = (delayMs: number) => {
+    timeoutId = setTimeout(() => {
+      if (cancelled) return;
+      invalidateFetchCache(`eoa:${currentEoa}:indexer:tx:`);
+      setTxListPollTick((n) => n + 1);
+      scheduleNext(30_000);
+    }, delayMs) as ReturnType<typeof setTimeout>;
+  };
+
+  scheduleNext(30_000);
+  return () => {
+    cancelled = true;
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  };
+}, [currentEoa, effectiveAdminAddress, staffProgramBeamioCardAddress]);
 
  /** WSS: CoNET BeamioIndexerDiamond `TransactionRecordSynced` → inbound rows for user EOA/AA (payer|payee|topAdmin|subordinate) */
  useEffect(() => {
@@ -8916,7 +10100,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          indexerInboundWssSeenRef.current.delete(tid);
          return;
        }
-       const mappedInbound = mapIndexerFetchedRowsToDisplay([row]);
+      const mappedInbound = normalizeTxDisplayRowsForCardCurrency(
+        mapIndexerFetchedRowsToDisplay([row], programCardBeamioCurrencyType),
+        programCardBeamioCurrencyType
+      );
        setIndexerTransactions((prev) => {
          const deduped = mergeRenumberTxDisplays(mappedInbound, prev);
          const withTopupBuint = mergeTopupBunitFeeRowsIntoTopups(deduped);
@@ -8958,7 +10145,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        }
      }, 150);
    };
- }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa]);
+ }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, programCardBeamioCurrencyType]);
 
  /** Resolve payer / payee beamioTag for Customer & Source (searchUsername + fetchWithCache). Includes Charge/Tip, not only Top-Up — AA payer may differ from profile accounts.address. */
  useEffect(() => {
@@ -9007,9 +10194,11 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    };
  }, [activeTab, indexerTransactions]);
 
- /** Charge rows: resolve payer tier on `BEAMIO_USER_CARD_ASSET_ADDRESS` for Customer & Source capsule */
+ /** Charge rows: resolve payer tier on the user-issued program BeamioUserCard for Customer & Source capsule */
  useEffect(() => {
    if (activeTab !== 'Transactions') return;
+   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) return;
+   const programForTiers = staffProgramBeamioCardAddress;
    const payers = new Set<string>();
    for (const tx of indexerTransactions) {
      if (tx.type !== 'Charge') continue;
@@ -9024,9 +10213,9 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      await Promise.all(
        [...payers].map(async (lower) => {
          try {
-           const cacheKey = `payer:${lower}:program:${staffProgramBeamioCardAddress.toLowerCase()}:tier-capsule-v3`;
+           const cacheKey = `payer:${lower}:program:${staffProgramCardCacheBucket}:tier-capsule-v3`;
            const val = await fetchWithCache(cacheKey, async () =>
-             fetchPayerInfraTierCapsuleMeta(ethers.getAddress(lower), baseRpcProviderDirect, staffProgramBeamioCardAddress)
+             fetchPayerInfraTierCapsuleMeta(ethers.getAddress(lower), baseRpcProviderDirect, programForTiers)
            );
            updates[lower] = val as { name: string; backgroundColor?: string } | null;
          } catch {
@@ -9043,17 +10232,51 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    };
  }, [activeTab, indexerTransactions, staffProgramBeamioCardAddress]);
 
+/** Transactions observations: write payer App/NFC source back into Members local user-type DB for first-open stability. */
+useEffect(() => {
+  if (!walletStoragePartitionLower || indexerTransactions.length === 0) return;
+  const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
+  if (!viewer) return;
+  const cacheKey = memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewer.toLowerCase());
+  setMemberDirectoryUserTypeDb((prev) => {
+    let changed = false;
+    const next = { ...prev };
+    for (const tx of indexerTransactions) {
+      const raw = tx.raw as Record<string, unknown>;
+      const payer = typeof raw.payer === 'string' && ethers.isAddress(raw.payer) ? ethers.getAddress(raw.payer).toLowerCase() : '';
+      if (!payer) continue;
+      const payerTag = txReportingBeamioTagByAddress[payer] ?? '';
+      const observed = inferMemberDirectoryUserTypeFromBeamioTag(payerTag);
+      if (observed === 'unknown') continue;
+      const merged = mergeMemberDirectoryUserTypes(next[payer] ?? 'unknown', observed);
+      if (merged !== (next[payer] ?? 'unknown')) {
+        next[payer] = merged;
+        changed = true;
+      }
+    }
+    if (changed) saveTrustedCache(cacheKey, next);
+    return changed ? next : prev;
+  });
+}, [
+  walletStoragePartitionLower,
+  indexerTransactions,
+  txReportingBeamioTagByAddress,
+  profiles?.[0]?.keyID,
+  myAddress,
+  fixedCardMetadata?.cardOwner,
+]);
+
  const isFixedUserCardAdmin = fixedCardAdmins.some((address) => normalizedAdminCandidates.includes(address.toLowerCase()));
  /** Chain-verified admin for UI: only true when chain confirms; avoids persisted-session/cache showing admin to non-admin on production */
  const isAdminForUI = isCurrentUserCardAdmin === true;
- /** Staff: hide «Smart Terminal Locked» once user owns a self-issued BeamioUserCard (even if not infra-card admin). */
+ /** Staff: hide «Smart Terminal Locked» once user owns a self-issued BeamioUserCard. */
  const showStaffSmartTerminalLockedPanel =
    !isAdminForUI && profileOwnsIssuedBeamioCardFetched && !profileOwnsIssuedBeamioCard;
- /** Staff: terminal list + Link New Terminal — infra-card admin or owner of at least one self-issued BeamioUserCard. */
+ /** Staff: terminal list + Link New Terminal — program card admin or owner of at least one self-issued BeamioUserCard. */
  const showStaffTerminalsManagement =
    isAdminForUI || (profileOwnsIssuedBeamioCardFetched && profileOwnsIssuedBeamioCard);
 
- /** User EOA is listed on the fixed card admin list → treat as joined to `ALLIANCE_ID_FOR_FIXED_USER_CARD` for UI */
+ /** User EOA is on the program card admin list → treat as joined to `MERCHANT_PROGRAM_ALLIANCE_ID` for UI */
  const merchantWalletEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
  const eoaOnFixedCardAdminList =
    !!merchantWalletEoa &&
@@ -9062,11 +10285,61 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
  const effectiveJoinedAlliances = useMemo(() => {
    if (!eoaOnFixedCardAdminList) return joinedAlliances;
-   if (joinedAlliances.includes(ALLIANCE_ID_FOR_FIXED_USER_CARD)) return joinedAlliances;
-   return [ALLIANCE_ID_FOR_FIXED_USER_CARD, ...joinedAlliances];
+   if (joinedAlliances.includes(MERCHANT_PROGRAM_ALLIANCE_ID)) return joinedAlliances;
+   return [MERCHANT_PROGRAM_ALLIANCE_ID, ...joinedAlliances];
  }, [joinedAlliances, eoaOnFixedCardAdminList]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
+ const merchantEoaForLiteForm = useMemo(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return '';
+   return ethers.getAddress(raw);
+ }, [profiles?.[0]?.keyID, myAddress]);
+
+ /** Local draft complete AND on-chain recover acknowledged (restore / create / Continue push). */
+ const verraLiteGateReleased = useMemo(() => {
+   if (!merchantEoaForLiteForm) return false;
+   const draft = loadBusinessProfileDraftForEoa(merchantEoaForLiteForm);
+   if (!hasVerraLiteBusinessRequiredFields(draft)) return false;
+   return hasLiteBusinessChainAck(merchantEoaForLiteForm);
+ }, [merchantEoaForLiteForm, liteBusinessFormRevision, liteChainAckRevision]);
+
+ const liteChainMigrationTriedRef = useRef(false);
+ useEffect(() => {
+   liteChainMigrationTriedRef.current = false;
+ }, [merchantEoaForLiteForm]);
+
+ /** One-shot: old profiles had full local draft but no ack key — confirm from chain recover for @ account. */
+ useEffect(() => {
+   if (liteChainMigrationTriedRef.current) return;
+   if (!merchantEoaForLiteForm || !beamio?.accountName?.trim()) return;
+   if (hasLiteBusinessChainAck(merchantEoaForLiteForm)) return;
+   const draft = loadBusinessProfileDraftForEoa(merchantEoaForLiteForm);
+   if (!hasVerraLiteBusinessRequiredFields(draft)) return;
+   liteChainMigrationTriedRef.current = true;
+   void (async () => {
+     try {
+       const h = ethers.solidityPackedKeccak256(['string'], [beamio.accountName!.trim()]);
+       const rd = await recoverData(h);
+       const flat = pickVerraBusinessFieldsFromRecover(rd);
+       if (hasVerraLiteBusinessRequiredFields(flat as VerraBusinessProfileDraft)) {
+         setLiteBusinessChainAck(merchantEoaForLiteForm);
+         setLiteChainAckRevision((n) => n + 1);
+       }
+     } catch {
+       liteChainMigrationTriedRef.current = false;
+     }
+   })();
+ }, [merchantEoaForLiteForm, beamio?.accountName, liteBusinessFormRevision, liteChainAckRevision]);
+
+ /** No AA on narrow viewports: land on Dashboard until Lite gate is released. */
+ useEffect(() => {
+   if (hasAaAccount) return;
+   if (typeof window === 'undefined') return;
+   if (!window.matchMedia('(max-width: 1023px)').matches) return;
+   if (verraLiteGateReleased) return;
+   setActiveTab('Overview');
+ }, [hasAaAccount, verraLiteGateReleased]);
  /** Wallet tab: Vault EOA USDC → CAD headline (oracle). */
  const walletTreasuryCadPrimary = useMemo(() => {
    if (eoaUsdcBalance == null || eoaUsdcBalance === '') return '—';
@@ -9105,7 +10378,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
  const membersTopupKpisAll = useMemo(() => {
    return {
-     count: topupMemberTableRowsAll.length,
+    count: activeCardsCount ?? topupMemberTableRowsAll.length,
      /** `getGlobalStatsFull.cumulativeMint` summed across owned programs (÷1e6); see BeamioUserCard readme */
      volumePointsChain: membersLoyaltyChainCumulativeMintDisplay,
      /** Server `beamio_card_topup_rollups.total_repeat_topup_count` summed across owned programs */
@@ -9113,7 +10386,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      /** Server total successful top-up events (all categories), summed across programs */
      totalTopupEvents: membersLoyaltyServerRollup.totalTopupEvents,
    };
- }, [topupMemberTableRowsAll, membersLoyaltyServerRollup, membersLoyaltyChainCumulativeMintDisplay]);
+}, [activeCardsCount, topupMemberTableRowsAll, membersLoyaltyServerRollup, membersLoyaltyChainCumulativeMintDisplay]);
 
  const programsOverviewAvgMemberCad = useMemo(() => {
    const n = membersTopupKpisAll.count;
@@ -9139,11 +10412,68 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  }, [topupMemberTableRowsAll]);
 
  const membersDirectorySegmentRows = useMemo(() => {
-   if (membersDirectorySegment === 'app') {
-     return membersTopupDirectorySorted.filter((r) => r.beamioTag && r.beamioTag.replace(/^@/, '').trim().length > 0);
-   }
-   return membersTopupDirectorySorted.filter((r) => !r.beamioTag || !r.beamioTag.replace(/^@/, '').trim());
- }, [membersTopupDirectorySorted, membersDirectorySegment]);
+  return membersTopupDirectorySorted.filter((r) =>
+    memberDirectoryUserTypeMatchesSegment(resolveMemberDirectoryUserType(r, memberDirectoryUserTypeDb), membersDirectorySegment)
+  );
+}, [membersTopupDirectorySorted, membersDirectorySegment, memberDirectoryUserTypeDb]);
+
+useEffect(() => {
+  if (activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') return;
+  const unresolved = new Set<string>();
+  for (const row of membersLoyaltyTopupRows) {
+    if (row.beamioTag && row.beamioTag.replace(/^@/, '').trim()) continue;
+    if (row.memberAddress && ethers.isAddress(row.memberAddress)) {
+      unresolved.add(ethers.getAddress(row.memberAddress).toLowerCase());
+    }
+    if (row.aaAddress && ethers.isAddress(row.aaAddress)) {
+      unresolved.add(ethers.getAddress(row.aaAddress).toLowerCase());
+    }
+  }
+  if (unresolved.size === 0) return;
+  let cancelled = false;
+  void (async () => {
+    const updates: Record<string, string> = {};
+    await Promise.all(
+      [...unresolved].map(async (lower) => {
+        try {
+          const tag = await fetchWithCache(`beamio:memberTag:${lower}`, async () => {
+            const ck = ethers.getAddress(lower);
+            const res = await searchUsername(ck);
+            const results = (res?.results ?? []) as Array<{ address?: string; username?: string; accountName?: string }>;
+            const exact = results.find((r) => (r?.address ?? '').toLowerCase() === lower);
+            const withName = results.find((r) => !!(r?.username ?? r?.accountName));
+            const peer = exact ?? withName ?? results[0];
+            const u = peer?.username ?? peer?.accountName;
+            if (!u) return '';
+            return u.startsWith('@') ? u : `@${u}`;
+          });
+          if (tag) updates[lower] = tag;
+        } catch {
+          /* ignore */
+        }
+      })
+    );
+    if (cancelled || Object.keys(updates).length === 0) return;
+    setMembersLoyaltyTopupRows((prev) => {
+      let changed = false;
+      const next = prev.map((row) => {
+        if (row.beamioTag && row.beamioTag.replace(/^@/, '').trim()) return row;
+        const memberLower =
+          row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress).toLowerCase() : '';
+        const aaLower =
+          row.aaAddress && ethers.isAddress(row.aaAddress) ? ethers.getAddress(row.aaAddress).toLowerCase() : '';
+        const tag = (memberLower && updates[memberLower]) || (aaLower && updates[aaLower]) || '';
+        if (!tag) return row;
+        changed = true;
+        return { ...row, beamioTag: tag };
+      });
+      return changed ? next : prev;
+    });
+  })();
+  return () => {
+    cancelled = true;
+  };
+}, [activeTab, membersLoyaltyTopupRows]);
 
 useEffect(() => {
   if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
@@ -9167,8 +10497,50 @@ useEffect(() => {
     if (bundle.chainCumulativeMintDisplay !== undefined) {
       setMembersLoyaltyChainCumulativeMintDisplay(bundle.chainCumulativeMintDisplay);
     }
+    if (bundle.activeCardsCount !== undefined) {
+      setActiveCardsCount(bundle.activeCardsCount);
+    }
+  }
+  const userTypeDb = loadTrustedCache<Record<string, MemberDirectoryUserType>>(
+    memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewerLower),
+  );
+  if (userTypeDb) {
+    setMemberDirectoryUserTypeDb(userTypeDb);
   }
 }, [activeTab, walletStoragePartitionLower, profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
+
+useEffect(() => {
+  if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
+  const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
+  if (!viewer || membersLoyaltyTopupRows.length === 0) return;
+  const cacheKey = memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewer.toLowerCase());
+  setMemberDirectoryUserTypeDb((prev) => {
+    let changed = false;
+    const next = { ...prev };
+    for (const row of membersLoyaltyTopupRows) {
+      const inferred = inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag);
+      if (inferred === 'unknown') continue;
+      const keys = [row.memberAddress, row.aaAddress].filter((v): v is string => !!v && ethers.isAddress(v));
+      for (const key of keys) {
+        const lower = ethers.getAddress(key).toLowerCase();
+        const merged = mergeMemberDirectoryUserTypes(next[lower] ?? 'unknown', inferred);
+        if (merged !== (next[lower] ?? 'unknown')) {
+          next[lower] = merged;
+          changed = true;
+        }
+      }
+    }
+    if (changed) saveTrustedCache(cacheKey, next);
+    return changed ? next : prev;
+  });
+}, [
+  activeTab,
+  walletStoragePartitionLower,
+  profiles?.[0]?.keyID,
+  myAddress,
+  fixedCardMetadata?.cardOwner,
+  membersLoyaltyTopupRows,
+]);
 
  const closeIssueCardModal = useCallback(() => {
    setIsIssueCardModalOpen(false);
@@ -9191,10 +10563,10 @@ useEffect(() => {
    if (!name || !Number.isFinite(disc)) return;
    const id = `ct_${Date.now()}`;
    setAlliancesDb((prev) => {
-     const row = prev[ALLIANCE_ID_FOR_FIXED_USER_CARD];
+     const row = prev[MERCHANT_PROGRAM_ALLIANCE_ID];
      return {
        ...prev,
-       [ALLIANCE_ID_FOR_FIXED_USER_CARD]: {
+       [MERCHANT_PROGRAM_ALLIANCE_ID]: {
          ...row,
          tiers: [...row.tiers, { id, name, discount: Math.round(disc), iconType: 'emerald' as const }],
        },
@@ -9234,18 +10606,19 @@ useEffect(() => {
 
  const handleOverviewRefresh = useCallback(() => {
    tipsLifetimeScanNonceRef.current += 1;
-   invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
+   invalidateFetchCache(`card:${staffProgramCardCacheBucket}`);
    invalidateFetchCache('indexer:tips');
    invalidateFetchCache('indexer:tx');
    invalidateFetchCache('eoa:');
    invalidateFetchCache('aa:');
    try {
-     const adminSummaryPrefix = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:admin:`;
-     const globalSummaryPrefix = `eoa:${currentEoa}:card:${staffProgramBeamioCardAddress.toLowerCase()}:network-summary:global:`;
+     const adminSummaryPrefix = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:admin:`;
+     const globalSummaryPrefix = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:`;
      Object.keys(window.localStorage)
        .filter((k) =>
          k.startsWith(`${BIZ_CACHE_PREFIX}${adminSummaryPrefix}`) ||
          k.startsWith(`${BIZ_CACHE_PREFIX}${globalSummaryPrefix}`) ||
+          (retainedCapitalTrustedCacheKey && k === `${BIZ_CACHE_PREFIX}${retainedCapitalTrustedCacheKey}`) ||
          (k.startsWith(`${BIZ_CACHE_PREFIX}card:`) && (k.includes('quota-and-mint-counter') || k.includes('mint-limit-quota'))) ||
          (k.startsWith(BIZ_CACHE_PREFIX) && k.includes('buint:balance'))
        )
@@ -9254,7 +10627,7 @@ useEffect(() => {
    setOverviewRefreshing(true);
    setOverviewRefreshTrigger((t) => t + 1);
    setTimeout(() => setOverviewRefreshing(false), 2500);
- }, [currentEoa, staffProgramBeamioCardAddress]);
+}, [currentEoa, retainedCapitalTrustedCacheKey, staffProgramBeamioCardAddress]);
 
  useEffect(() => {
    if (hideTransactionsPanel && activeTab === 'Transactions') {
@@ -9263,14 +10636,16 @@ useEffect(() => {
  }, [activeTab, hideTransactionsPanel]);
 
 
- // --- Financial Data: Overview network summary uses `getGlobalStatsFull` on the staff/program BeamioUserCard (full card). "Today" = local calendar day via summed PERIOD_HOUR global buckets; other ranges = global period slice. Tips / tx list may still be admin-scoped. ---
+// --- Financial Data: Overview network summary uses `getGlobalStatsFull` on the staff/program BeamioUserCard (full card).
+// Do not gate these global values on `effectiveAdminAddress`: the active session may resolve to AA first, while the card activity still exists on-chain.
+// "Today" = local calendar day via summed PERIOD_HOUR global buckets; other ranges = global period slice. Tips / tx list may still be admin-scoped. ---
  const adminToday = adminNetworkSummaryToday;
- const totalSales = effectiveAdminAddress && adminToday ? adminToday.cadVol : 0;
+const totalSales = adminToday ? adminToday.cadVol : 0;
  /** Tips Collected (CAD Base): sum of CAD-equivalent from `finalRequestAmountFiat6` + `currencyFiat` (and USDC6→CAD when fiat leg is zero). */
  const totalTips = tipsCollectedOverviewSums.cadTotal;
  // Panel 3: token 0 mint in selected period (periodMint — USDC top-up, redeem, airdrop, etc.). periodUSDCMint alone is often 0 when no USDC gateway mint.
- const topUpsIssued = effectiveAdminAddress && adminToday ? adminToday.vouchers : 0;
- const topUpsUsdcMintOnly = effectiveAdminAddress && adminToday ? adminToday.usdc : 0;
+const topUpsIssued = adminToday ? adminToday.vouchers : 0;
+const topUpsUsdcMintOnly = adminToday ? adminToday.usdc : 0;
 const topUpsQuota = adminMintLimitQuota ?? 0; // denominator: mint limit from chain
 const topUpsUsedFromClear = adminMintCounterFromClear ?? 0; // numerator: mintCounterFromClear from chain
 
@@ -9317,12 +10692,13 @@ const marketBUnitRunwayDays = useMemo(() => {
  const netSettlementBalance = totalCTreeReceived - topUpsIssued;
  /** CashTrees Settlement + CAD payout drawer: chain cumulative subtree + all-time tips — independent of header day/week/month/quarter/year */
  const adminLifetime = adminNetworkSummaryLifetime;
- const totalSalesLifetime = effectiveAdminAddress && adminLifetime ? adminLifetime.cadVol : 0;
+const totalSalesLifetime = adminLifetime ? adminLifetime.cadVol : 0;
  const totalTipsLifetime = adminTipsLifetimeUSDC ?? 0;
- const topUpsIssuedLifetime = effectiveAdminAddress && adminLifetime ? adminLifetime.vouchers : 0;
+const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
  const salesCTreeLifetime = totalSalesLifetime;
  const tipsCTreeLifetime = totalTipsLifetime;
  const totalCTreeReceivedLifetime = salesCTreeLifetime + tipsCTreeLifetime;
+const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
  const netSettlementBalanceLifetime = totalCTreeReceivedLifetime - topUpsIssuedLifetime;
  const totalUSDCBalance = salesUSDC + tipsUSDC;
 
@@ -9567,9 +10943,26 @@ const marketBUnitRunwayDays = useMemo(() => {
                      <ShieldCheck className="size-3 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
                      <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-500">Merchant OS</span>
                    </div>
-                   {displayName(beamio) ? (
-                     <p className="mt-1 truncate text-xs font-medium text-slate-600">{displayName(beamio)}</p>
-                   ) : null}
+                   {(() => {
+                     const rawTag = (beamio?.accountName ?? (beamio as { username?: string } | null)?.username ?? '')
+                       .trim()
+                       .replace(/^@+/, '')
+                     const tagLine = rawTag ? `@${rawTag}` : ''
+                     const nameLine = displayName(beamio)
+                     if (tagLine) {
+                       return (
+                         <>
+                           <p className="mt-1 truncate text-xs font-semibold text-[#0051d1]">{tagLine}</p>
+                           {nameLine ? (
+                             <p className="mt-0.5 truncate text-[11px] font-medium text-slate-600">{nameLine}</p>
+                           ) : null}
+                         </>
+                       )
+                     }
+                     return nameLine ? (
+                       <p className="mt-1 truncate text-xs font-medium text-slate-600">{nameLine}</p>
+                     ) : null
+                   })()}
                  </div>
                </div>
              </div>
@@ -9853,7 +11246,7 @@ const marketBUnitRunwayDays = useMemo(() => {
           <div
             className={`mx-auto w-full animate-in fade-in duration-500 ${hasAaAccount ? 'max-w-[1400px] space-y-4' : 'max-w-[1400px] space-y-5'}`}
           >
-            {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && showFixedCardMetadata && (
+            {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && staffProgramBeamioCardAddress && showFixedCardMetadata && (
               <div className="flex justify-end">
                 <div className="relative h-[280px] w-full max-w-xl overflow-hidden rounded-[32px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_40px_rgba(21,98,240,0.28)]">
                   {fixedCardMetadata?.image ? (
@@ -9886,7 +11279,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                             Linked Merchant Card
                           </span>
                           <div className="mt-2">
-                            <AddressCapsule address={staffProgramBeamioCardAddress} className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15" />
+                            <AddressCapsule address={staffProgramBeamioCardAddress!} className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15" />
                           </div>
                         </div>
                       </div>
@@ -9912,8 +11305,28 @@ const marketBUnitRunwayDays = useMemo(() => {
             )}
             {!hasAaAccount ? (
               <>
-                {/* No AA — `newOnloading.html` Business OS onboarding dashboard */}
-                <div className="relative px-1 pb-8 sm:px-2">
+                {!verraLiteGateReleased ? (
+                  <div className="lg:hidden -mx-2 w-[calc(100%+1rem)] sm:-mx-4 sm:w-[calc(100%+2rem)]">
+                    <MobileNoAaLiteMemberSelectionPage
+                      merchantEoa={merchantEoaForLiteForm}
+                      beamio={beamio ?? null}
+                      privateKeyArmor={profiles?.[0]?.privateKeyArmor}
+                      onBusinessDraftUpdated={() => setLiteBusinessFormRevision((n) => n + 1)}
+                      onBack={() => {
+                        window.location.href = '/';
+                      }}
+                      onLiteBusinessSavedToChain={() => {
+                        if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
+                        setLiteChainAckRevision((n) => n + 1);
+                      }}
+                      redeemAdminInProgress={redeemAdminInProgress}
+                    />
+                  </div>
+                ) : null}
+                {/* No AA — `newOnloading.html` Business OS onboarding dashboard (tablet / desktop, or mobile once Lite fields are complete) */}
+                <div
+                  className={`relative px-1 pb-8 sm:px-2 ${!verraLiteGateReleased ? 'hidden lg:block' : ''}`}
+                >
                   {redeemAdminInProgress && (
                     <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-white/90 px-3 py-1.5 text-[13px] font-medium text-slate-800 shadow-sm backdrop-blur-sm">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#1562f0]/30 border-t-[#1562f0]" />
@@ -10005,7 +11418,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                             <UserX className="size-3.5 text-slate-300" strokeWidth={2} aria-hidden />
                           </div>
                           <span className="text-[10px] font-bold uppercase text-slate-400">
-                            {membersTopupKpisAll.count <= 0 ? 'No active members' : 'Members with activity'}
+                            {membersTopupKpisAll.count <= 0 ? 'No funded or recently active cards' : 'Stored value or 90-day activity'}
                           </span>
                         </div>
                       </div>
@@ -10076,7 +11489,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                             <div>
                               <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
                               <h3 className={`text-xl font-extrabold ${totalSales <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
-                                C${totalSales.toFixed(2)}
+                                {formatMerchantChargeOverviewHuman(totalSales, programCardBeamioCurrencyType)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
                                 {totalSales <= 0 ? 'No activity' : 'Today'}
@@ -10197,11 +11610,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                 </div>
                 <div className="relative space-y-1">
                   <h2 className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
-                    {`C$${totalCTreeReceivedLifetime.toFixed(2)}`}
+                    {`C$${retainedCapitalLifetime.toFixed(2)}`}
                   </h2>
                   <p className="flex items-center gap-1 text-xs font-bold text-[#1562f0]">
                     <TrendingUp className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-                    Lifetime sales + tips (merchant dashboard)
+                    Current stored value across customer cards
                   </p>
                 </div>
               </div>
@@ -10266,15 +11679,12 @@ const marketBUnitRunwayDays = useMemo(() => {
               </div>
             </section>
 
-            {/* Tier 2 — Today&apos;s activity */}
+            {/* Tier 2 — period activity (title follows header timeFilter) */}
             <section className="mb-8 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 md:p-10">
               <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <div className="h-8 w-2 rounded-full bg-[#1562f0]" aria-hidden />
-                  <h2 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`Today's Activity`}</h2>
-                  <span className="rounded-full bg-white/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#595c5e]">
-                    {timeFilter === 'Today' ? 'Today (local)' : timeFilter}
-                  </span>
+                  <h2 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`${timeFilter}'s Activity`}</h2>
                 </div>
                 <button
                   type="button"
@@ -10304,9 +11714,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                   </div>
                   <div>
                     <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
-                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${totalSales.toFixed(2)}`}</h3>
+                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                      {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
+                    </h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                      {overviewActivityChargeCount.toLocaleString()} payments
+                      {overviewActivityChargeDisplayCount.toLocaleString()} payments
                     </p>
                   </div>
                 </div>
@@ -10473,41 +11885,25 @@ const marketBUnitRunwayDays = useMemo(() => {
            const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
            const calculateTxNetValueCAD = (tx: TxDisplayRow) => {
              if (tx.type.includes('Top-Up')) return tx.ctreeAmount || 0;
-             let tipCadExtra = 0
-             if (tx.type === 'Charge' && tx.tipRaw) {
+             if (tx.type === 'Charge') return chargeTxDisplayRowApproxCad(tx, cadOracle)
+             return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0);
+           };
+           /** Tip portion in CAD (merged TX_TIP child and/or embedded `chargeBreakdown.tipCurrencyAmount`). */
+           const mergedChargeTipCad = (tx: TxDisplayRow): number => {
+             if (tx.type !== 'Charge') return 0
+             if (tx.tipRaw) {
                const tr = tx.tipRaw.raw as Record<string, unknown>
                const tipFiat = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
                const tipMeta = parseIndexerMetaTuple(tr.meta)
                if (tipFiat > 0) {
                  const tipCur = beamioFiatCurrencyLabel(Number(tipMeta.currencyFiat))
-                 tipCadExtra = approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
-               } else if (tx.tipRaw.usdcAmount > 0) {
-                 tipCadExtra = tx.tipRaw.usdcAmount / cadOracle
+                 return approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
                }
+               if (tx.tipRaw.usdcAmount > 0) return tx.tipRaw.usdcAmount / cadOracle
              }
-             if (tx.type === 'Charge') {
-               const raw = tx.raw as Record<string, unknown>
-               const meta = parseIndexerMetaTuple(raw.meta)
-               const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
-               if (finalFiat > 0) {
-                 const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
-                 return approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle) + tipCadExtra
-               }
-               return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0) + tipCadExtra
-             }
-             return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0);
-           };
-           /** Tip portion in CAD (merged Charge + tipRaw). */
-           const mergedChargeTipCad = (tx: TxDisplayRow): number => {
-             if (tx.type !== 'Charge' || !tx.tipRaw) return 0
-             const tr = tx.tipRaw.raw as Record<string, unknown>
-             const tipFiat = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
-             const tipMeta = parseIndexerMetaTuple(tr.meta)
-             if (tipFiat > 0) {
-               const tipCur = beamioFiatCurrencyLabel(Number(tipMeta.currencyFiat))
-               return approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
-             }
-             if (tx.tipRaw.usdcAmount > 0) return tx.tipRaw.usdcAmount / cadOracle
+             const raw = tx.raw as Record<string, unknown>
+             const emb = parseChargeBreakdownEmbeddedTip(raw)
+             if (emb) return chargeBreakdownTipHumanToCad(emb.tipHuman, emb.requestCurrencyUpper, cadOracle)
              if (tx.tip > 0) return tx.tip / cadOracle
              return 0
            };
@@ -10516,7 +11912,7 @@ const marketBUnitRunwayDays = useMemo(() => {
             * so strikethrough can sit above final net when tier discount applies.
             */
            const chargeBreakdownStrikeCad = (tx: TxDisplayRow): number | null => {
-             if (tx.type !== 'Charge' || !tx.tipRaw) return null
+             if (tx.type !== 'Charge') return null
              try {
                const raw = tx.raw as Record<string, unknown>
                const dj = raw.displayJson
@@ -10552,26 +11948,40 @@ const marketBUnitRunwayDays = useMemo(() => {
              const meta = parseIndexerMetaTuple(raw.meta);
              const cur = beamioFiatCurrencyLabel(Number(meta.currencyFiat));
              const route = raw.route;
+             const appendEmbeddedTipLine = (
+               lines: { title: string; sub: string; amountCad: number }[]
+             ): { title: string; sub: string; amountCad: number }[] => {
+               if (tx.tipRaw) return lines
+               const emb = parseChargeBreakdownEmbeddedTip(raw)
+               if (!emb || !lines.length) return lines
+               const tipCad = chargeBreakdownTipHumanToCad(emb.tipHuman, emb.requestCurrencyUpper, cadOracle)
+               if (!(tipCad > 0)) return lines
+               const sub =
+                 emb.requestCurrencyUpper === 'CAD'
+                   ? `C$${emb.tipHuman.toFixed(2)}`
+                   : `${emb.tipHuman.toFixed(2)} ${emb.requestCurrencyUpper}`
+               return [...lines, { title: 'Tip', sub, amountCad: tipCad }]
+             }
              if (!Array.isArray(route) || route.length === 0) {
                const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6);
                const usdc = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6);
                if (finalFiat > 0) {
-                 return [
+                 return appendEmbeddedTipLine([
                    {
                      title: 'Amount settled',
                      sub: `${cur} invoice`,
                      amountCad: approximateCadFromFinalRequestFiat6(finalFiat, cur, cadOracle),
                    },
-                 ];
+                 ]);
                }
                if (usdc > 0) {
-                 return [
+                 return appendEmbeddedTipLine([
                    {
                      title: 'USDC settlement',
                      sub: `${usdc.toFixed(2)} USDC`,
                      amountCad: usdc / cadOracle,
                    },
-                 ];
+                 ]);
                }
                return [];
              }
@@ -10593,7 +12003,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                  });
                }
              }
-             return out;
+             return appendEmbeddedTipLine(out);
            };
 
            const txEditorialEmpty =
@@ -10921,10 +12331,14 @@ const marketBUnitRunwayDays = useMemo(() => {
                                      )}
                                    </div>
                                    <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
-                                     {tx.source === 'APP' ? <Smartphone size={14} className="text-emerald-800" /> : <Nfc size={14} className="text-slate-400" />}
-                                     <span>{tx.source === 'APP' ? 'App' : 'NFC'} • {tx.terminal}</span>
+                                    {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? (
+                                      <Nfc size={14} className="text-slate-400" />
+                                    ) : (
+                                      <Smartphone size={14} className="text-emerald-800" />
+                                    )}
+                                    <span>{inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? 'NFC' : 'App'} • {tx.terminal}</span>
                                    </div>
-                                   {tx.source === 'APP' && tx.beamioTag && (
+                                  {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'app' && tx.beamioTag && (
                                      <div className="hidden lg:group-hover:flex items-center gap-1 pt-0.5">
                                        <button type="button" className="rounded-md bg-[#1562f0]/20 p-1.5 text-blue-900 hover:bg-[#1562f0] hover:text-white transition-colors" title="Send Message">
                                          <MessageSquare size={14} />
@@ -10946,12 +12360,27 @@ const marketBUnitRunwayDays = useMemo(() => {
                                  const meta = parseIndexerMetaTuple(raw.meta)
                                  const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
                                  const pctOffStr = discountRateBpsToPercentOffLabel(meta.discountRateBps)
-                                 const pointsSuffix = paymentRoutingPointsSuffixFromRouteCard(
-                                   parseIndexerRouteFirstCardAsset(raw),
-                                   staffProgramBeamioCardAddress,
-                                   dashboardPointsCurrencySymbol
-                                 )
+                                 const pointsSuffix = dashboardPointsCurrencySymbol
                                  if (!(finalFiat > 0)) {
+                                   const finalUsdc = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6)
+                                   if (finalUsdc > 0) {
+                                     return (
+                                       <div className="flex flex-col gap-1.5 items-start">
+                                         <div className="flex items-start gap-2">
+                                           <Coins size={15} className="text-emerald-800 shrink-0 mt-0.5" strokeWidth={2} aria-hidden />
+                                           <div className="flex flex-col min-w-0">
+                                             <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
+                                               {finalUsdc.toFixed(2)}{' '}
+                                               <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+                                             </div>
+                                             <span className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                               ≈ ${(finalUsdc / cadOracle).toFixed(2)} CAD
+                                             </span>
+                                           </div>
+                                         </div>
+                                       </div>
+                                     )
+                                   }
                                    return <span className="text-[13px] font-medium text-slate-400">—</span>
                                  }
                                  const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
@@ -10963,6 +12392,20 @@ const marketBUnitRunwayDays = useMemo(() => {
                                    tipFiatAdd = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
                                    if (!(tipFiatAdd > 0) && tx.tipRaw.usdcAmount > 0) tipUsdcAdd = tx.tipRaw.usdcAmount
                                  }
+                                 let embeddedTipHuman = 0
+                                 if (!tx.tipRaw) {
+                                   const emb = parseChargeBreakdownEmbeddedTip(raw)
+                                   if (emb) {
+                                     const req = emb.requestCurrencyUpper
+                                     if (req === 'CAD' && curLabel === 'CAD') embeddedTipHuman = emb.tipHuman
+                                     else if (
+                                       (req === 'USD' || req === 'USDC') &&
+                                       (curLabel === 'USD' || curLabel === 'USDC')
+                                     ) {
+                                       embeddedTipHuman = emb.tipHuman
+                                     }
+                                   }
+                                 }
                                  const tipUsdcAsDisplayFiat =
                                    tipUsdcAdd > 0
                                      ? curLabel === 'CAD'
@@ -10971,7 +12414,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                                          ? tipUsdcAdd
                                          : tipUsdcAdd / cadOracle
                                      : 0
-                                 const displayFiatFull = finalFiat + tipFiatAdd + tipUsdcAsDisplayFiat
+                                 const displayFiatFull =
+                                   finalFiat + tipFiatAdd + tipUsdcAsDisplayFiat + embeddedTipHuman
                                  const cadApproxFull = mainCad + mergedChargeTipCad(tx)
                                  return (
                                    <div className="flex flex-col gap-1.5 items-start">
@@ -11001,11 +12445,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                                    const rawTop = tx.raw as Record<string, unknown>
                                    const meta = parseIndexerMetaTuple(tx.raw.meta)
                                    const reqFiat = parseIndexerUintE6Field(meta.requestAmountFiat6)
-                                   const pointsSuffixTop = paymentRoutingPointsSuffixFromRouteCard(
-                                     parseIndexerRouteFirstCardAsset(rawTop),
-                                     staffProgramBeamioCardAddress,
-                                     dashboardPointsCurrencySymbol
-                                   )
+                                   const pointsSuffixTop = dashboardPointsCurrencySymbol
                                    return (
                                      <div className="flex items-start gap-2">
                                        <Ticket size={15} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -11131,7 +12571,8 @@ const marketBUnitRunwayDays = useMemo(() => {
                            </td>
 
                            <td className="px-8 py-5 align-middle text-right">
-                             {tx.type === 'Charge' && tx.tipRaw ? (() => {
+                             {tx.type === 'Charge' &&
+                             (tx.tipRaw || mergedChargeTipCad(tx) > 0.001 || chargeBreakdownStrikeCad(tx) != null) ? (() => {
                                const tipCadCol = mergedChargeTipCad(tx)
                                const strikeCad = chargeBreakdownStrikeCad(tx)
                                const showStrike =
@@ -11831,44 +13272,6 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  </div>
 
-                 <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                   <p className="mb-3 text-sm font-bold text-slate-900">Custom USDC top-up</p>
-                   <p className="mb-3 text-xs font-medium text-slate-500">0.01 USDC per B-Unit · enter amount, then continue to secure checkout.</p>
-                   <div className="flex flex-col gap-2">
-                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                       <div className="min-w-0 flex-1">
-                         <label htmlFor="market-custom-fuel" className="sr-only">
-                           USDC amount
-                         </label>
-                         <div className="relative">
-                           <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-[#0051d1]">$</span>
-                           <input
-                             id="market-custom-fuel"
-                             type="number"
-                             min="1"
-                             inputMode="decimal"
-                             autoComplete="off"
-                             value={customFuelAmount}
-                             onChange={(e) => setCustomFuelAmount(e.target.value)}
-                             placeholder="0"
-                             className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-4 text-lg font-semibold text-slate-900 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                           />
-                         </div>
-                       </div>
-                       <button
-                         type="button"
-                         onClick={() => setSelectedProduct('custom_fuel')}
-                         disabled={!customFuelAmount || Number(customFuelAmount) <= 0}
-                         className={`shrink-0 rounded-full bg-[#0051d1] px-8 py-3 text-sm font-bold text-white shadow-md transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                       >
-                         Continue
-                       </button>
-                     </div>
-                     <p className="text-xs font-medium text-slate-500">
-                       Yields {(Number(customFuelAmount) || 0) * 100} B-Units (display estimate)
-                     </p>
-                   </div>
-                 </div>
                </section>
                )}
 
@@ -12022,11 +13425,41 @@ const marketBUnitRunwayDays = useMemo(() => {
          {activeTab === 'MembersLoyalty' && (
            <div className="max-w-[1400px] mx-auto animate-in fade-in duration-300 relative space-y-4 sm:space-y-5">
              {!hasAaAccount ? (
-               <MembersLoyaltyNoAaEditorial
-                 onSetUpFirstProgram={() => {
-                   handleTabChange('Card Issuance Setup');
-                 }}
-               />
+               <>
+                 {!verraLiteGateReleased ? (
+                   <div className="lg:hidden -mx-2 w-[calc(100%+1rem)] sm:-mx-4 sm:w-[calc(100%+2rem)]">
+                     <MobileNoAaLiteMemberSelectionPage
+                       merchantEoa={merchantEoaForLiteForm}
+                       beamio={beamio ?? null}
+                       privateKeyArmor={profiles?.[0]?.privateKeyArmor}
+                       onBusinessDraftUpdated={() => setLiteBusinessFormRevision((n) => n + 1)}
+                       onBack={() => {
+                         window.location.href = '/';
+                       }}
+                       onLiteBusinessSavedToChain={() => {
+                         if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
+                         setLiteChainAckRevision((n) => n + 1);
+                       }}
+                       redeemAdminInProgress={redeemAdminInProgress}
+                     />
+                   </div>
+                 ) : (
+                   <div className="lg:hidden">
+                     <MembersLoyaltyNoAaEditorial
+                       onSetUpFirstProgram={() => {
+                         handleTabChange('Card Issuance Setup');
+                       }}
+                     />
+                   </div>
+                 )}
+                 <div className="hidden lg:block">
+                   <MembersLoyaltyNoAaEditorial
+                     onSetUpFirstProgram={() => {
+                       handleTabChange('Card Issuance Setup');
+                     }}
+                   />
+                 </div>
+               </>
              ) : (
              <div className="relative w-full space-y-5 px-1 pb-20 pt-2 sm:px-2 lg:pb-10">
                <section className="space-y-2">
@@ -12078,7 +13511,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                      membersDirectorySegment === 'anon_nfc' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
                    } ${bizFocusRingClass}`}
                  >
-                   Anonymous NFC
+                  NFC Users
                  </button>
                </div>
 
@@ -12240,7 +13673,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                <section className="space-y-6">
                  <div className="flex items-center justify-between px-2">
                    <h3 className="text-lg font-bold text-[#2c2f31]">
-                     {membersDirectorySegment === 'app' ? 'App Users' : 'Anonymous NFC'}
+                    {membersDirectorySegment === 'app' ? 'App Users' : 'NFC Users'}
                    </h3>
                    <span className="text-xs font-bold uppercase tracking-tighter text-[#0051d1]">Sort by: Recent</span>
                  </div>
@@ -12253,6 +13686,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                          const tier = directoryMemberTierFromPoints(pts);
                          const tagRaw = row.beamioTag.replace(/^@/, '').trim();
                          const displayName = formatDirectoryMemberDisplayName(row.beamioTag);
+                        const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
                          return (
                            <button
                              type="button"
@@ -12278,12 +13712,22 @@ const marketBUnitRunwayDays = useMemo(() => {
                                <p className="truncate font-bold text-[#2c2f31]">{displayName}</p>
                                <p className="text-xs font-medium text-[#0051d1]">@{tagRaw}</p>
                                <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
-                               <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
-                                 {formatMemberTopupChannelLabel(row)}
-                               </p>
+                              <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
+                                {userType === 'both' ? (
+                                  <>
+                                    <Nfc size={12} className="shrink-0 text-slate-400" />
+                                    <Smartphone size={12} className="shrink-0 text-emerald-800" />
+                                  </>
+                                ) : userType === 'app' ? (
+                                  <Smartphone size={12} className="shrink-0 text-emerald-800" />
+                                ) : userType === 'nfc' ? (
+                                  <Nfc size={12} className="shrink-0 text-slate-400" />
+                                ) : null}
+                                <span>{formatMemberDirectoryUserTypeLabel(userType)}</span>
+                              </div>
                              </div>
                              <div className="shrink-0 text-right">
-                               <p className="font-extrabold tabular-nums text-[#2c2f31]">${pts.toFixed(2)}</p>
+                              <p className="font-extrabold tabular-nums text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
                                <span
                                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
                                    tier.gold ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
@@ -12303,7 +13747,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                        <p className="mt-2 text-sm text-[#595c5e]">
                          {topupMemberTableRowsAll.length === 0
                            ? 'No members returned from the API yet for your programs. After successful top-ups are recorded on the server, they appear here.'
-                           : 'No tagged members match this search or program filter.'}
+                          : 'No app-channel members match this search or program filter.'}
                        </p>
                      </div>
                    )
@@ -12313,6 +13757,9 @@ const marketBUnitRunwayDays = useMemo(() => {
                        const pts = directoryMemberPointsHuman(row);
                        const tier = directoryMemberTierFromPoints(pts);
                        const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
+                      const tagRaw = row.beamioTag.replace(/^@/, '').trim();
+                      const displayTitle = tagRaw ? formatDirectoryMemberDisplayName(row.beamioTag) : 'NFC user';
+                      const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
                        return (
                          <button
                            type="button"
@@ -12331,15 +13778,27 @@ const marketBUnitRunwayDays = useMemo(() => {
                              </div>
                            </div>
                            <div className="min-w-0 flex-1">
-                             <p className="truncate font-bold text-[#2c2f31]">Anonymous member</p>
-                             <p className="truncate font-mono text-xs font-medium text-[#595c5e]">{shortAddr}</p>
+                            <p className="truncate font-bold text-[#2c2f31]">{displayTitle}</p>
+                            <p className={`truncate text-xs font-medium ${tagRaw ? 'text-[#0051d1]' : 'font-mono text-[#595c5e]'}`}>
+                              {tagRaw ? `@${tagRaw}` : shortAddr}
+                            </p>
                              <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
-                             <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
-                               {formatMemberTopupChannelLabel(row)}
-                             </p>
+                            <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
+                              {userType === 'both' ? (
+                                <>
+                                  <Nfc size={12} className="shrink-0 text-slate-400" />
+                                  <Smartphone size={12} className="shrink-0 text-emerald-800" />
+                                </>
+                              ) : userType === 'app' ? (
+                                <Smartphone size={12} className="shrink-0 text-emerald-800" />
+                              ) : userType === 'nfc' ? (
+                                <Nfc size={12} className="shrink-0 text-slate-400" />
+                              ) : null}
+                              <span>{formatMemberDirectoryUserTypeLabel(userType)}</span>
+                            </div>
                            </div>
                            <div className="shrink-0 text-right">
-                             <p className="font-extrabold tabular-nums text-[#2c2f31]">${pts.toFixed(2)}</p>
+                            <p className="font-extrabold tabular-nums text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
                              <span
                                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
                                  tier.gold ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
@@ -12355,9 +13814,9 @@ const marketBUnitRunwayDays = useMemo(() => {
                  ) : (
                    <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white/60 p-10 text-center">
                      <Nfc className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
-                     <p className="text-sm font-semibold text-[#2c2f31]">No anonymous NFC-only members</p>
+                    <p className="text-sm font-semibold text-[#2c2f31]">No NFC users in this view</p>
                      <p className="mt-2 text-sm text-[#595c5e]">
-                       Rows without a BeamioTag show here when the API returns payer-only records.
+                      No NFC-channel members match this search or program filter.
                      </p>
                    </div>
                  )}
@@ -12636,6 +14095,96 @@ const marketBUnitRunwayDays = useMemo(() => {
                  setActiveTab('Market');
                }}
              />
+             {hasAaAccount && staffPendingPosPermissions.length > 0 ? (
+               <section className="mb-6 md:mb-8 rounded-2xl border border-amber-200/90 bg-amber-50/50 p-4 shadow-sm md:p-5">
+                 <div className="mb-2 flex flex-wrap items-center gap-2">
+                   <UserPlus className="size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden />
+                   <h2 className="font-sans text-lg font-extrabold tracking-tight text-[#2c2f31]">
+                     Pending terminal authorization
+                   </h2>
+                 </div>
+                 <p className="mb-4 text-sm font-medium text-[#515c70]">
+                   A POS device sent a workspace permission request. Register it below to link this SoftPOS terminal to your card.
+                 </p>
+                 <ul className="flex flex-col gap-3">
+                   {staffPendingPosPermissions.map((row) => {
+                     const tagPlain = row.childBeamioTag.replace(/^@/, '');
+                     return (
+                       <li
+                         key={row.sendId}
+                         className="flex flex-col gap-3 rounded-xl border border-[#abadaf]/25 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                       >
+                         <div className="min-w-0 flex-1 space-y-2">
+                           <div className="flex flex-wrap items-center gap-2">
+                             <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                               Awaiting approval
+                             </span>
+                             <span className="font-mono text-sm font-bold text-[#2c2f31]">
+                               @{tagPlain}
+                             </span>
+                           </div>
+                           <AddressCapsule
+                             address={row.childEoa.startsWith('0x') ? row.childEoa : `0x${row.childEoa}`}
+                             className="max-w-full border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
+                           />
+                           {row.parentBeamioTag ? (
+                             <p className="text-[11px] font-medium text-[#abadaf]">
+                               Parent workspace tag: @{row.parentBeamioTag.replace(/^@/, '')}
+                             </p>
+                           ) : null}
+                         </div>
+                         <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
+                           <button
+                             type="button"
+                             disabled={!showStaffTerminalsManagement}
+                             title={
+                               showStaffTerminalsManagement
+                                 ? undefined
+                                 : 'Unlock Smart Terminal management to register this device.'
+                             }
+                             onClick={() => {
+                               if (!showStaffTerminalsManagement) return;
+                               try {
+                                 const addr = ethers.getAddress(row.childEoa);
+                                 setDeviceHandleResolved({
+                                   username: tagPlain,
+                                   address: addr,
+                                   image: undefined,
+                                 });
+                                 setNewTerminalTag(`@${tagPlain}`);
+                                 setNewDeviceName(`POS ${tagPlain}`);
+                                 setDeviceHandleError(null);
+                                 setLinkTerminalError(null);
+                                 setIsAddTerminalOpen(true);
+                               } catch {
+                                 setLinkTerminalError('Invalid terminal address in permission request.');
+                               }
+                             }}
+                             className="rounded-xl bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1254d1] disabled:cursor-not-allowed disabled:opacity-50"
+                           >
+                             Approve &amp; register
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() => {
+                               if (posPermissionPartitionAddressesList.length > 0) {
+                                 removePosTerminalPermissionPendingFromPartitions(
+                                   posPermissionPartitionAddressesList,
+                                   row.sendId,
+                                 );
+                               }
+                             }}
+                             className="rounded-xl border border-[#abadaf]/40 bg-white px-4 py-2.5 text-sm font-semibold text-[#515c70] transition-colors hover:bg-[#f5f7f9]"
+                           >
+                             Dismiss
+                           </button>
+                         </div>
+                       </li>
+                     );
+                   })}
+                 </ul>
+               </section>
+             ) : null}
              {showStaffSmartTerminalLockedPanel && (
                <div className="flex min-h-[320px] flex-col items-center justify-center py-10 md:py-12">
                  <div className="w-full max-w-md rounded-3xl border border-white/20 bg-white/70 p-10 text-center shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md backdrop-saturate-150">
@@ -13049,18 +14598,6 @@ const marketBUnitRunwayDays = useMemo(() => {
                      : 'Card Configurator'}
                  </h2>
                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#747779]">Verra Studio · Loyalty Engine</p>
-                 <nav
-                   className={
-                     cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview'
-                       ? 'mt-3 hidden'
-                       : 'mt-3 hidden min-[1440px]:flex items-center gap-6'
-                   }
-                   aria-label="Configurator nav"
-                 >
-                   <span className="cursor-default text-sm font-semibold text-[#747779]">Drafts</span>
-                   <span className="border-b-2 border-[#1562f0] pb-1 text-sm font-semibold text-[#1562f0]">Templates</span>
-                   <span className="cursor-default text-sm font-semibold text-[#747779]">History</span>
-                 </nav>
                </div>
                {(!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') &&
                cardIssuanceOnchainFetch !== 'loading' ? (
@@ -13142,7 +14679,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                          id="card-issuance-program-name"
                          type="text"
                          value={cardIssuanceProgramName}
-                         onChange={(e) => setCardIssuanceProgramName(e.target.value)}
+                        onChange={(e) => setCardIssuanceProgramName(e.target.value)}
                          placeholder="e.g. Verra Platinum"
                          className={`w-full rounded-md border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                        />
@@ -13159,7 +14696,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                          id="card-issuance-currency"
                          type="text"
                          value={cardIssuanceCurrencySymbol}
-                         onChange={(e) => setCardIssuanceCurrencySymbol(normalizeCardIssuanceCurrencySymbolInput(e.target.value))}
+                        onChange={(e) => setCardIssuanceCurrencySymbol(normalizeCardIssuanceCurrencySymbolInput(e.target.value))}
                          placeholder="Auto-filled from unit name"
                          maxLength={CARD_ISSUANCE_SHORT_NAME_MAX_LEN}
                          spellCheck={false}
@@ -13215,7 +14752,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                            className="hidden"
                            onChange={handleCardIssuanceIconPick}
                          />
-                         {!cardIssuanceShareImageUrl ? (
+                        {!cardIssuanceEffectiveMerchantLogo ? (
                            <button
                              type="button"
                              onClick={() => cardIssuanceIconFileRef.current?.click()}
@@ -13232,24 +14769,26 @@ const marketBUnitRunwayDays = useMemo(() => {
                              </span>
                            </button>
                          ) : null}
-                         {cardIssuanceShareImageUrl ? (
+                        {cardIssuanceEffectiveMerchantLogo ? (
                            <div className="relative h-[140px] w-full shrink-0 overflow-hidden rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
                              <img
-                               src={cardIssuanceShareImageUrl}
+                              src={cardIssuanceEffectiveMerchantLogo}
                                alt=""
                                className="h-full w-full object-contain"
                              />
-                             <button
-                               type="button"
-                               aria-label="Remove merchant logo"
-                               onClick={() => {
-                                 setCardIssuanceShareImageUrl('');
-                                 if (cardIssuanceIconFileRef.current) cardIssuanceIconFileRef.current.value = '';
-                               }}
-                               className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
-                             >
-                               <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                             </button>
+                            {cardIssuanceShareImageUrl ? (
+                              <button
+                                type="button"
+                                aria-label="Remove merchant logo"
+                                onClick={() => {
+                                  setCardIssuanceShareImageUrl('');
+                                  if (cardIssuanceIconFileRef.current) cardIssuanceIconFileRef.current.value = '';
+                                }}
+                                className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
+                              >
+                                <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                              </button>
+                            ) : null}
                            </div>
                          ) : null}
                        </div>
@@ -13320,29 +14859,29 @@ const marketBUnitRunwayDays = useMemo(() => {
                            max={CARD_ISSUANCE_MAX_TOPUP_MAX}
                            step={1}
                            value={cardIssuanceMinTopup}
-                           onChange={(e) => {
-                             const raw = e.target.value.replace(/,/g, '');
-                             if (raw === '') {
-                               setCardIssuanceMinTopup('');
-                               return;
-                             }
-                             const beforeDot = raw.split('.')[0];
-                             const digitsOnly = beforeDot.replace(/\D/g, '');
-                             setCardIssuanceMinTopup(digitsOnly);
-                           }}
-                           onBlur={() => {
-                             const raw = cardIssuanceMinTopup.replace(/,/g, '').trim();
-                             let v = raw === '' ? NaN : Number.parseInt(raw, 10);
-                             if (!Number.isFinite(v)) {
-                               setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
-                               return;
-                             }
-                             v = Math.min(
-                               CARD_ISSUANCE_MAX_TOPUP_MAX,
-                               Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
-                             );
-                             setCardIssuanceMinTopup(String(v));
-                           }}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/,/g, '');
+                            if (raw === '') {
+                              setCardIssuanceMinTopup('');
+                              return;
+                            }
+                            const beforeDot = raw.split('.')[0];
+                            const digitsOnly = beforeDot.replace(/\D/g, '');
+                            setCardIssuanceMinTopup(digitsOnly);
+                          }}
+                          onBlur={() => {
+                            const raw = cardIssuanceMinTopup.replace(/,/g, '').trim();
+                            let v = raw === '' ? NaN : Number.parseInt(raw, 10);
+                            if (!Number.isFinite(v)) {
+                              setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
+                              return;
+                            }
+                            v = Math.min(
+                              CARD_ISSUANCE_MAX_TOPUP_MAX,
+                              Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                            );
+                            setCardIssuanceMinTopup(String(v));
+                          }}
                            placeholder="10"
                            className={`w-full rounded-md border-none bg-[#eef1f3] py-4 pl-10 pr-5 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                          />
@@ -13366,35 +14905,40 @@ const marketBUnitRunwayDays = useMemo(() => {
                            max={CARD_ISSUANCE_MAX_TOPUP_MAX}
                            step={1}
                            value={cardIssuanceMaxTopup}
-                           onChange={(e) => {
-                             const raw = e.target.value.replace(/,/g, '');
-                             if (raw === '') {
-                               setCardIssuanceMaxTopup('');
-                               return;
-                             }
-                             const beforeDot = raw.split('.')[0];
-                             const digitsOnly = beforeDot.replace(/\D/g, '');
-                             setCardIssuanceMaxTopup(digitsOnly);
-                           }}
-                           onBlur={() => {
-                             const raw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
-                             let v = raw === '' ? NaN : Number.parseInt(raw, 10);
-                             if (!Number.isFinite(v)) {
-                               setCardIssuanceMaxTopup(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
-                               return;
-                             }
-                             v = Math.min(
-                               CARD_ISSUANCE_MAX_TOPUP_MAX,
-                               Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
-                             );
-                             setCardIssuanceMaxTopup(String(v));
-                           }}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/,/g, '');
+                            if (raw === '') {
+                              setCardIssuanceMaxTopup('');
+                              return;
+                            }
+                            const beforeDot = raw.split('.')[0];
+                            const digitsOnly = beforeDot.replace(/\D/g, '');
+                            setCardIssuanceMaxTopup(digitsOnly);
+                          }}
+                          onBlur={() => {
+                            const raw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
+                            let v = raw === '' ? NaN : Number.parseInt(raw, 10);
+                            if (!Number.isFinite(v)) {
+                              setCardIssuanceMaxTopup(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
+                              return;
+                            }
+                            v = Math.min(
+                              CARD_ISSUANCE_MAX_TOPUP_MAX,
+                              Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                            );
+                            setCardIssuanceMaxTopup(String(v));
+                          }}
                            placeholder="100"
                            className={`w-full rounded-md border-none bg-[#eef1f3] py-4 pl-10 pr-5 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                          />
                        </div>
                      </div>
                    </div>
+                   {cardIssuanceRechargeLimitError ? (
+                     <p className="mt-3 text-sm font-medium text-amber-700" role="alert">
+                       {cardIssuanceRechargeLimitError}
+                     </p>
+                   ) : null}
                  </section>
 
                  <section className="rounded-lg bg-white p-6 shadow-sm sm:p-8">
@@ -13404,60 +14948,60 @@ const marketBUnitRunwayDays = useMemo(() => {
                      </div>
                      <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Smart Tier Logic</h3>
                    </div>
-                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                     {(
-                       [
-                         {
-                           key: 'single' as const,
-                           title: 'Single Top-up',
-                           desc: 'Permanent upgrades on one-time high value reloads.',
-                           Icon: ChevronsUp,
-                         },
-                         {
-                           key: 'cumulative' as const,
-                           title: 'Cumulative Spend',
-                           desc: 'Upgrade based on total history. Lifetime loyalty rewards.',
-                           Icon: Banknote,
-                         },
-                         {
-                           key: 'balance' as const,
-                           title: 'Current Balance',
-                           desc: 'Auto-adjust tiers as users spend and reload funds.',
-                           Icon: ArrowDownUp,
-                         },
-                       ] as const
-                     ).map(({ key, title, desc, Icon }) => {
-                       const selected = cardIssuanceTierRule === key;
-                       return (
-                         <label key={key} className="cursor-pointer">
-                           <input
-                             type="radio"
-                             name="card-issuance-core-rule"
-                             checked={selected}
-                             onChange={() => setCardIssuanceTierRule(key)}
-                             className="sr-only"
-                           />
-                           <div
-                             className={`flex h-full flex-col items-start gap-4 rounded-md border-2 p-5 transition-all ${
-                               selected
-                                 ? 'border-[#1562f0] bg-white'
-                                 : 'border-transparent bg-[#eef1f3] hover:border-[#1562f0]/25'
-                             }`}
-                           >
-                             <Icon
-                               className={`h-6 w-6 shrink-0 text-[#1562f0] transition-opacity ${selected ? 'opacity-100' : 'opacity-40'}`}
-                               strokeWidth={2}
-                               aria-hidden
-                             />
-                             <div className="space-y-1">
-                               <p className="text-xs font-black uppercase tracking-wider text-[#2c2f31]">{title}</p>
-                               <p className="text-[10px] font-medium leading-relaxed text-[#747779]">{desc}</p>
-                             </div>
-                           </div>
-                         </label>
-                       );
-                     })}
-                   </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {(
+                      [
+                        {
+                          key: 'single' as const,
+                          title: 'Single Top-up',
+                          desc: 'Permanent upgrades on one-time high value reloads.',
+                          Icon: ChevronsUp,
+                        },
+                        {
+                          key: 'cumulative' as const,
+                          title: 'Cumulative Spend',
+                          desc: 'Upgrade based on total history. Lifetime loyalty rewards.',
+                          Icon: Banknote,
+                        },
+                        {
+                          key: 'balance' as const,
+                          title: 'Current Balance',
+                          desc: 'Auto-adjust tiers as users spend and reload funds.',
+                          Icon: ArrowDownUp,
+                        },
+                      ] as const
+                    ).map(({ key, title, desc, Icon }) => {
+                      const selected = cardIssuanceTierRule === key;
+                      return (
+                        <label key={key} className="cursor-pointer">
+                          <input
+                            type="radio"
+                            name="card-issuance-core-rule"
+                            checked={selected}
+                            onChange={() => setCardIssuanceTierRule(key)}
+                            className="sr-only"
+                          />
+                          <div
+                            className={`flex h-full flex-col items-start gap-4 rounded-md border-2 p-5 transition-all ${
+                              selected
+                                ? 'border-[#1562f0] bg-white'
+                                : 'border-transparent bg-[#eef1f3] hover:border-[#1562f0]/25'
+                            }`}
+                          >
+                            <Icon
+                              className={`h-6 w-6 shrink-0 text-[#1562f0] transition-opacity ${selected ? 'opacity-100' : 'opacity-40'}`}
+                              strokeWidth={2}
+                              aria-hidden
+                            />
+                            <div className="space-y-1">
+                              <p className="text-xs font-black uppercase tracking-wider text-[#2c2f31]">{title}</p>
+                              <p className="text-[10px] font-medium leading-relaxed text-[#747779]">{desc}</p>
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                  </section>
 
                  <section className="flex min-h-0 min-w-0 flex-col rounded-lg bg-white p-6 shadow-sm sm:p-8">
@@ -13475,7 +15019,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                        type="button"
                        onClick={() =>
                          setCardIssuanceTiers((rows) =>
-                           reconcileLowestTierThresholdWithMinTopup(
+                          reconcileTierThresholdsWithMinTopup(
                              [
                                ...rows,
                                {
@@ -13537,7 +15081,6 @@ const marketBUnitRunwayDays = useMemo(() => {
                        <tbody className="text-sm [&>tr:first-child>td]:pt-3">
                          {cardIssuanceTiers.flatMap((row, tierIdx) => {
                            const isPreviewTier = cardIssuancePreviewTierId === row.id;
-                           const isLowestTierRow = row.id === cardIssuanceLowestTierId;
                            const cellBg = isPreviewTier ? 'bg-[#e8f1fd]' : 'bg-[#eef1f3]';
                            const rowRoundFirst = row.tierDescriptionOpen ? 'rounded-tl-md' : 'rounded-l-md';
                            const rowRoundLast = row.tierDescriptionOpen ? 'rounded-tr-md' : 'rounded-r-md';
@@ -13601,47 +15144,31 @@ const marketBUnitRunwayDays = useMemo(() => {
                                  type="text"
                                  inputMode="numeric"
                                  autoComplete="off"
-                                 value={isLowestTierRow ? cardIssuanceMinTopup : row.threshold}
-                                 disabled={isLowestTierRow}
-                                 title={
-                                   isLowestTierRow
-                                     ? 'Same as Minimum Top-up (Recharge Parameters).'
-                                     : undefined
-                                 }
+                                value={row.threshold}
                                  onChange={
-                                   isLowestTierRow
-                                     ? undefined
-                                     : (e) => {
-                                         const raw = e.target.value.replace(/,/g, '');
-                                         if (raw === '') {
-                                           setCardIssuanceTiers((tiers) =>
-                                             tiers.map((t) => (t.id === row.id ? { ...t, threshold: '' } : t))
-                                           );
-                                           return;
-                                         }
-                                         const beforeDot = raw.split('.')[0];
-                                         const digitsOnly = beforeDot.replace(/\D/g, '');
-                                         setCardIssuanceTiers((tiers) =>
-                                           tiers.map((t) => (t.id === row.id ? { ...t, threshold: digitsOnly } : t))
-                                         );
-                                       }
-                                 }
-                                 onBlur={
-                                   isLowestTierRow
-                                     ? undefined
-                                     : () => {
-                                         setCardIssuanceTiers((tiers) =>
-                                           reconcileLowestTierThresholdWithMinTopup(tiers, cardIssuanceMinTopup)
-                                         );
-                                       }
-                                 }
-                                 className={`w-full max-w-[4rem] box-border bg-white border border-slate-200 rounded-md text-center text-xs sm:text-sm font-semibold text-slate-900 py-1 shadow-sm disabled:cursor-not-allowed disabled:opacity-80 ${bizFocusRingClass}`}
-                                 aria-label={
-                                   isLowestTierRow
-                                     ? `Minimum spend threshold for ${row.name || row.id} (linked to Minimum Top-up)`
-                                     : `Threshold dollars for ${row.name || row.id}`
-                                 }
-                               />
+                                  (e) => {
+                                    const raw = e.target.value.replace(/,/g, '');
+                                    if (raw === '') {
+                                      setCardIssuanceTiers((tiers) =>
+                                        tiers.map((t) => (t.id === row.id ? { ...t, threshold: '' } : t))
+                                      );
+                                      return;
+                                    }
+                                    const beforeDot = raw.split('.')[0];
+                                    const digitsOnly = beforeDot.replace(/\D/g, '');
+                                    setCardIssuanceTiers((tiers) =>
+                                      tiers.map((t) => (t.id === row.id ? { ...t, threshold: digitsOnly } : t))
+                                    );
+                                  }
+                                }
+                                onBlur={() => {
+                                  setCardIssuanceTiers((tiers) =>
+                                    reconcileTierThresholdsWithMinTopup(tiers, cardIssuanceMinTopup)
+                                  );
+                                }}
+                                className={`w-full max-w-[4rem] box-border bg-white border border-slate-200 rounded-md text-center text-xs sm:text-sm font-semibold text-slate-900 py-1 shadow-sm ${bizFocusRingClass}`}
+                                aria-label={`Threshold dollars for ${row.name || row.id}`}
+                              />
                              </td>
                              <td className={`min-w-0 ${cellBg} px-2 py-4 align-top group-hover:bg-[#e5e9eb]`}>
                                <div className="flex min-w-0 items-center justify-start gap-0.5">
@@ -13697,7 +15224,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                                  disabled={cardIssuanceTiers.length <= 1}
                                  onClick={() =>
                                    setCardIssuanceTiers((tiers) =>
-                                     reconcileLowestTierThresholdWithMinTopup(
+                                    reconcileTierThresholdsWithMinTopup(
                                        tiers.length <= 1 ? tiers : tiers.filter((t) => t.id !== row.id),
                                        cardIssuanceMinTopup
                                      )
@@ -13972,8 +15499,15 @@ const marketBUnitRunwayDays = useMemo(() => {
                              <span className="text-xs font-black uppercase tracking-widest opacity-80">NFC</span>
                            </div>
                            <div>
-                             <p className="text-lg font-black tracking-tight">{cardIssuancePreviewProgram}</p>
-                             <p className="mt-2 font-mono text-sm tracking-[0.2em] opacity-90">•••• •••• •••• 8821</p>
+                            <p className="mb-1 text-[8px] font-black uppercase tracking-[0.3em] opacity-80">{cardIssuancePreviewProgram}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {cardIssuancePreviewSelectedTier ? (
+                                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold backdrop-blur-md">
+                                  {(cardIssuancePreviewSelectedTier.name || 'Tier').toUpperCase()}
+                                </span>
+                              ) : null}
+                              <p className="font-mono text-[10px] tracking-widest opacity-80">#100</p>
+                            </div>
                            </div>
                          </div>
                        </div>
@@ -14058,12 +15592,12 @@ const marketBUnitRunwayDays = useMemo(() => {
                      <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Total capital retained</p>
                      <div className="flex items-baseline gap-2">
                        <span className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
-                         {`C$${totalCTreeReceivedLifetime.toFixed(2)}`}
+                        {`C$${retainedCapitalLifetime.toFixed(2)}`}
                        </span>
                      </div>
                      <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-[#648eff]">
                        <TrendingUp className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                       <span>Lifetime sales + tips (merchant dashboard)</span>
+                      <span>Current stored value across customer cards</span>
                      </div>
                    </div>
                    <div className="group rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-xl">
@@ -14181,8 +15715,15 @@ const marketBUnitRunwayDays = useMemo(() => {
                            programsOverviewTiersSortedAscending.map((t, i) => {
                              const minRaw = t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
                              const minLabel = Number.isFinite(minRaw) ? (minRaw / 1e6).toLocaleString() : '—';
+                            const currencyLabel = cardIssuanceExistingCard.userCard.currency?.trim() || 'pts';
+                            const currencyPrefix =
+                              currencyLabel.toUpperCase() === 'CAD'
+                                ? 'C$'
+                                : currencyLabel.toUpperCase() === 'USD' || currencyLabel.toUpperCase() === 'USDC'
+                                  ? '$'
+                                  : `${currencyLabel} `;
                              const sub = (t.description?.trim() ||
-                               `From ${minLabel} (${cardIssuanceExistingCard.userCard.currency?.trim() || 'pts'})`) as string;
+                              `From ${minLabel} (${currencyLabel})`) as string;
                              const medal = ['🥉', '🥈', '🥇'][Math.min(i, 2)] as string;
                              const band = (['Entry level', 'Intermediate', 'High volume'] as const)[Math.min(i, 2)];
                              const isTop = i === programsOverviewTiersSortedAscending.length - 1;
@@ -14203,7 +15744,9 @@ const marketBUnitRunwayDays = useMemo(() => {
                                    </div>
                                  </div>
                                  <div className="shrink-0 text-right">
-                                   <p className="font-manrope font-bold text-[#2c2f31]">—</p>
+                                  <p className="font-manrope font-bold text-[#2c2f31]">
+                                    {Number.isFinite(minRaw) ? `${currencyPrefix}${minLabel}` : '—'}
+                                  </p>
                                    <p
                                      className={`text-[10px] font-bold uppercase tracking-wider ${
                                        isTop ? 'text-[#1562f0]' : 'text-slate-400'
@@ -15178,6 +16721,16 @@ const marketBUnitRunwayDays = useMemo(() => {
                   const next = [...cached.filter((t) => t.id.toLowerCase() !== adminEOA.toLowerCase()), newTerminal];
                   saveTrustedCache(linkedTerminalsCacheKey, next);
                   setTerminals(next);
+                  try {
+                    if (posPermissionPartitionAddressesList.length > 0) {
+                      removePosTerminalPermissionPendingByChildEoaFromPartitions(
+                        posPermissionPartitionAddressesList,
+                        adminEOA,
+                      );
+                    }
+                  } catch {
+                    /* ignore */
+                  }
                   closeAddTerminalModal();
                   invalidateFetchCache(`card:${cardAddress.toLowerCase()}`);
                   try {
@@ -15257,6 +16810,9 @@ const marketBUnitRunwayDays = useMemo(() => {
                    const userEOA = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
                    if (!userEOA || !ethers.isAddress(userEOA)) {
                      throw new Error('Wallet address not available.');
+                   }
+                   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+                     throw new Error('No issued program card.');
                    }
                    const userNorm = ethers.getAddress(userEOA);
                    const cardAddress = ethers.getAddress(staffProgramBeamioCardAddress);
@@ -15471,9 +17027,13 @@ const marketBUnitRunwayDays = useMemo(() => {
                    if (!userEOA || !ethers.isAddress(userEOA)) {
                      throw new Error('Wallet address not available.');
                    }
+                   if (!staffProgramBeamioCardAddress) {
+                     throw new Error('No issued program card.');
+                   }
+                   const programCardForReset = staffProgramBeamioCardAddress;
                    const chainSub = await resolveTerminalChainSubordinate(resetTerminalLimitModal.id);
                    const card = new ethers.Contract(
-                     staffProgramBeamioCardAddress,
+                     programCardForReset,
                      USER_CARD_ADMIN_READ_ABI,
                      baseRpcProviderDirect,
                    );
@@ -15492,13 +17052,13 @@ const marketBUnitRunwayDays = useMemo(() => {
                    const nonce = ethers.hexlify(ethers.randomBytes(32));
                    const adminSignature = await signClearAdminMintCounter(
                      pk,
-                     staffProgramBeamioCardAddress,
+                     programCardForReset,
                      chainSub,
                      deadline,
                      nonce,
                    );
                    const res = await postCardClearAdminMintCounter({
-                     cardAddress: staffProgramBeamioCardAddress,
+                     cardAddress: programCardForReset,
                      subordinate: chainSub,
                      deadline,
                      nonce,
@@ -15509,7 +17069,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                    }
                    setResetTerminalLimitModal(null);
                    setOverviewRefreshTrigger((t) => t + 1);
-                   invalidateFetchCache(`card:${staffProgramBeamioCardAddress.toLowerCase()}`);
+                   invalidateFetchCache(`card:${staffProgramCardCacheBucket}`);
                    try {
                      window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
                    } catch {
@@ -15541,7 +17101,7 @@ const marketBUnitRunwayDays = useMemo(() => {
      {/* --- ROUTING CONFIG MODAL --- */}
      {isConfigModalOpen && configAllianceId && (() => {
        const alliance = alliancesDb[configAllianceId];
-       const useOnChainTiers = configAllianceId === ALLIANCE_ID_FOR_FIXED_USER_CARD;
+       const useOnChainTiers = configAllianceId === MERCHANT_PROGRAM_ALLIANCE_ID;
        const chainList = routingModalChainTiers;
        const chainLoading = useOnChainTiers && routingModalTiersLoading;
        const chainErr = useOnChainTiers ? routingModalTiersError : null;
@@ -15604,11 +17164,11 @@ const marketBUnitRunwayDays = useMemo(() => {
                    ? 'Discounts are configured per on-chain membership tier from your program BeamioUserCard contract. Enforced by your Smart Terminal.'
                    : 'Configure automatic point-of-sale discounts for ecosystem VIP tiers. Enforced by your Smart Terminal.'}
                </p>
-               {useOnChainTiers && (
+               {useOnChainTiers && staffProgramBeamioCardAddress ? (
                  <p className="text-[11px] text-slate-400 font-mono mt-2 break-all">
                    {staffProgramBeamioCardAddress}
                  </p>
-               )}
+               ) : null}
              </div>
 
              <div className="p-6 sm:p-8 overflow-y-auto min-h-0">
@@ -16622,7 +18182,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                      type="button"
                      onClick={() => {
                        setIssueType('VIP_TIER');
-                       const first = alliancesDb[ALLIANCE_ID_FOR_FIXED_USER_CARD].tiers[0]?.name ?? 'Green Card';
+                       const first = alliancesDb[MERCHANT_PROGRAM_ALLIANCE_ID].tiers[0]?.name ?? 'Green Card';
                        setIssueValue(first);
                      }}
                      className={`flex-1 rounded-[12px] py-2.5 text-[13px] font-bold transition-colors ${
@@ -16683,7 +18243,7 @@ const marketBUnitRunwayDays = useMemo(() => {
                    </div>
                  ) : (
                    <div className="mb-4 flex max-h-[220px] w-full flex-col items-center space-y-4 overflow-y-auto pr-1 scrollbar-hide">
-                     {alliancesDb[ALLIANCE_ID_FOR_FIXED_USER_CARD].tiers.map((tier) => (
+                     {alliancesDb[MERCHANT_PROGRAM_ALLIANCE_ID].tiers.map((tier) => (
                        <div
                          key={tier.id}
                          onClick={() => setIssueValue(tier.name)}

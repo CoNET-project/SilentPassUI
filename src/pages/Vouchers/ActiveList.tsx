@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import { getLatest20UserActions_Lite } from '@/services/BeamioCard'
+import { getCardsOfOwnerWithDetailsForProfile, getLatest20UserActions_Lite } from '@/services/BeamioCard'
 import { Minus, Plus } from 'lucide-react'
 import { fiatPrefix, formatAmount } from '@/services/currency'
-import { ASSET_CARD_ADDRESSES, USDCContract_BASE,CCSA_Card_Address } from '@/utils/constants'
+import { USDCContract_BASE } from '@/utils/constants'
 
 /** action 枚举：1=mint(收入), 2=burn, 3=transfer(支出) */
 const TOKEN_MINT = 1
@@ -22,25 +22,11 @@ function formatTimestamp(ts: number): string {
   return `${month} ${day} • ${time}`
 }
 
-/** 是否为 CCSA 卡（按 cardAddress 匹配 constants 中的 CCSA_Card_Address） */
-function isCCSACard(cardAddress: string): boolean {
-  if (!cardAddress || !CCSA_Card_Address) return false
-  return cardAddress.toLowerCase() === CCSA_Card_Address.toLowerCase()
-}
-
-/** 根据 payMe 或 item 生成展示用金额字符串；CCSA 卡金额前固定显示 $CCSA，小数位仍用 payMe.currency 在 getDecimals 中的设定 */
+/** 根据 payMe 或 item 生成展示用金额字符串（用户发行的 BeamioUserCard 活动；无 CCSA / 基础设施卡特例）。 */
 function formatAmountText(item: BeamioActionResponse, isCredit: boolean): string {
   const pm = item.payMe
   const sign = isCredit ? '+' : '-'
-  const isCCSA = isCCSACard(item.cardAddress)
   const currency: ICurrency = pm?.currency || 'USDC'
-
-  if (isCCSA) {
-    const amount = pm?.currencyAmount != null && pm?.currencyAmount !== ''
-      ? formatAmount(pm.currencyAmount, currency)
-      : formatAmount(item.amount, 'USDC')
-    return `${sign}$CCSA ${amount}`
-  }
 
   if (pm?.currencyAmount != null && pm?.currencyAmount !== '') {
     const amount = formatAmount(pm.currencyAmount, currency)
@@ -48,7 +34,7 @@ function formatAmountText(item: BeamioActionResponse, isCredit: boolean): string
     return `${sign}${prefix} ${amount}`
   }
   const formatted = formatAmount(item.amount, 'USDC')
-  return `${sign}$CCSA ${formatted}`
+  return `${sign}$ ${formatted}`
 }
 
 type ActionItemProps = {
@@ -100,7 +86,7 @@ function ActionItem({ item, onItemClick }: ActionItemProps) {
       {/* 中间：标题 + 时间（优先使用 payMe 数据） */}
       <div className="flex-1 min-w-0">
         <div className="text-[15px] font-semibold text-slate-900 truncate">
-          {title || (isCredit ? 'CCSA Membership' : 'Purchase')}
+          {title || (isCredit ? 'Membership' : 'Purchase')}
         </div>
         <div className="text-[13px] text-slate-500 mt-0.5">
           {formatTimestamp(item.timestamp)}
@@ -131,23 +117,42 @@ const ActiveList = ({ onItemClick, MyCardAssets }: ActiveListProps) => {
 
   useEffect(() => {
     if (!profiles?.[0] || !MyCardAssets?.cardAddress) return
-    // 同时查询 USDC 和资产卡（CCSA + beamioUserCard）的活动记录
-    Promise.all([
-      getLatest20UserActions_Lite(profiles[0], USDCContract_BASE),
-      ...ASSET_CARD_ADDRESSES.map((cardAddr) =>
-        getLatest20UserActions_Lite(profiles![0], cardAddr, MyCardAssets!.cardAddress)
-      ),
-    ]).then(([usdcActions, ...assetActions]) => {
-      // 合并结果并按时间戳排序
-      const allActions = [...(usdcActions || []), ...assetActions.flat()]
-      allActions.sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
-      // 取最新的 20 条
-      const latest20 = allActions.slice(0, 20)
-      setActions(latest20)
-    }).catch((error) => {
-      console.warn('[ActiveList] Failed to load actions:', error)
-      setActions([])
-    })
+    let cancelled = false
+    void (async () => {
+      try {
+        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(profiles[0])
+        const seen = new Set<string>()
+        const programAddrs: string[] = []
+        if (trusted && cards.length > 0) {
+          for (const c of cards) {
+            const k = c.cardAddress.toLowerCase()
+            if (seen.has(k)) continue
+            seen.add(k)
+            programAddrs.push(c.cardAddress)
+          }
+        } else {
+          programAddrs.push(MyCardAssets.cardAddress)
+        }
+        const [usdcActions, ...assetActions] = await Promise.all([
+          getLatest20UserActions_Lite(profiles[0], USDCContract_BASE),
+          ...programAddrs.map((cardAddr) =>
+            getLatest20UserActions_Lite(profiles[0], cardAddr, MyCardAssets.cardAddress),
+          ),
+        ])
+        if (cancelled) return
+        const allActions = [...(usdcActions || []), ...assetActions.flat()]
+        allActions.sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+        setActions(allActions.slice(0, 20))
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[ActiveList] Failed to load actions:', error)
+          setActions([])
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [profiles, MyCardAssets?.cardAddress])
 
   return (

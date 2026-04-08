@@ -14,6 +14,7 @@ import {
 	BEAMIO_TAG_RULE_HINT,
 	normalizeBeamioTagInput,
 } from "@/utils/beamioTagRules"
+import type { VerraBusinessProfileDraft } from "@/utils/verraBusinessProfileLocal"
 
 export type BusinessIdentitySuccess = {
 	qrDataUrl: string
@@ -22,6 +23,9 @@ export type BusinessIdentitySuccess = {
 	temp: any
 	beamioTag: string
 }
+
+/** Let WorkspaceCreatingOverlay paint and start CSS animations before heavy createRecover work. */
+const WORKSPACE_CREATING_LEAD_MS = 300
 
 function passwordRuleChecks(password: string) {
 	const len8 = password.length >= 8
@@ -32,6 +36,7 @@ function passwordRuleChecks(password: string) {
 
 export type BusinessIdentityFormProps = {
 	onSuccess: (v: BusinessIdentitySuccess) => void
+	recoveryDraft?: Partial<VerraBusinessProfileDraft> | null
 	isRedeemFlow?: boolean
 	/** When false, omit Step 1 / title block (parent already shows it). */
 	showIntroHeader?: boolean
@@ -46,6 +51,7 @@ export type BusinessIdentityFormProps = {
 
 export default function BusinessIdentityForm({
 	onSuccess,
+	recoveryDraft,
 	isRedeemFlow: _isRedeemFlow = false,
 	showIntroHeader = true,
 	trailingAfterSubmit,
@@ -141,7 +147,10 @@ export default function BusinessIdentityForm({
 
 		onWorkspaceCreatingChange?.(true)
 		setLoading(true)
-		const kks = await createRecover(trimmedTag, password)
+		await new Promise<void>((resolve) => {
+			window.setTimeout(resolve, WORKSPACE_CREATING_LEAD_MS)
+		})
+		const kks = await createRecover(trimmedTag, password, recoveryDraft)
 		setLoading(false)
 
 		if (!kks) {

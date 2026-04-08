@@ -29,6 +29,7 @@ import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
 import { BASE_MAINNET_FACTORIES, BEAMIO_ORACLE_CONET } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
+import type { VerraBusinessProfileDraft } from '@/utils/verraBusinessProfileLocal'
 
 export type x402Response = {
 	timestamp: string
@@ -1499,6 +1500,105 @@ type IAccountRecover = {
 	encrypto: string
 }
 
+type RecoverBusinessDraft = Pick<
+	VerraBusinessProfileDraft,
+	'businessType' | 'onboardingTermsAccepted' | 'storeName' | 'category' | 'country' | 'city' | 'province'
+> & {
+	/** Full Lite onboarding snapshot JSON (stored in account recover payload / persistence layer). */
+	onboardingFormJson?: string
+}
+
+type RecoverStoragePayload = {
+	stored?: Argon2idHash
+	img?: string
+	recoverData?: RecoverBusinessDraft | null
+}
+
+const VERRA_LITE_FORM_JSON_MAX_LEN = 12_000
+
+const sanitizeRecoverBusinessDraft = (
+	input?: Partial<VerraBusinessProfileDraft> | null
+): RecoverBusinessDraft | null => {
+	if (!input || typeof input !== 'object') return null
+	const next: RecoverBusinessDraft = {}
+	if (input.businessType === 'solo' || input.businessType === 'chain' || input.businessType === 'ngo') {
+		next.businessType = input.businessType
+	}
+	if (typeof input.onboardingTermsAccepted === 'boolean') {
+		next.onboardingTermsAccepted = input.onboardingTermsAccepted
+	}
+	for (const key of ['storeName', 'category', 'country', 'city', 'province'] as const) {
+		const value = input[key]
+		if (typeof value === 'string') {
+			const trimmed = value.trim()
+			if (trimmed) next[key] = trimmed
+		}
+	}
+	const formSnapshot = {
+		schemaVersion: 'verra_lite_v1' as const,
+		businessType:
+			input.businessType === 'solo' || input.businessType === 'chain' || input.businessType === 'ngo'
+				? input.businessType
+				: null,
+		onboardingTermsAccepted: typeof input.onboardingTermsAccepted === 'boolean' ? input.onboardingTermsAccepted : null,
+		storeName: typeof input.storeName === 'string' ? input.storeName : '',
+		category: typeof input.category === 'string' ? input.category : '',
+		country: typeof input.country === 'string' ? input.country : '',
+		city: typeof input.city === 'string' ? input.city : '',
+		province: typeof input.province === 'string' ? input.province : '',
+	}
+	try {
+		const raw = JSON.stringify(formSnapshot)
+		if (raw.length <= VERRA_LITE_FORM_JSON_MAX_LEN) {
+			next.onboardingFormJson = raw
+		}
+	} catch {
+		/* ignore */
+	}
+	return Object.keys(next).length > 0 ? next : null
+}
+
+const encodeRecoverStoragePayload = (
+	stored: Argon2idHash,
+	img: string,
+	recoverData?: Partial<VerraBusinessProfileDraft> | null
+): string => {
+	const payload: RecoverStoragePayload = {
+		stored,
+		img,
+		recoverData: sanitizeRecoverBusinessDraft(recoverData),
+	}
+	return toBase64(JSON.stringify(payload))
+}
+
+const decodeRecoverStoragePayload = (encoded: string): RecoverStoragePayload | null => {
+	try {
+		const obj = JSON.parse(fromBase64(encoded)) as RecoverStoragePayload
+		if (!obj || typeof obj !== 'object') return null
+		return {
+			stored: obj.stored,
+			img: typeof obj.img === 'string' ? obj.img : undefined,
+			recoverData: sanitizeRecoverBusinessDraft(obj.recoverData),
+		}
+	} catch {
+		return null
+	}
+}
+
+const getRecoverPayloadByHash = async (hash: string): Promise<RecoverStoragePayload | null> => {
+	try {
+		const encoded: string = await beamioAccountSC.getBase64ByNameHash(hash)
+		return decodeRecoverStoragePayload(encoded)
+	} catch {
+		return null
+	}
+}
+
+export const recoverData = async (hash: string): Promise<RecoverBusinessDraft | null> => {
+	const payload = await getRecoverPayloadByHash(hash)
+	return payload?.recoverData ?? null
+}
+
 const newUser = async (BeamioName: string, recoverData:IAccountRecover[], privateKey: string) => {
 	
 	const signWallet = new ethers.Wallet(privateKey)
@@ -1628,7 +1728,11 @@ export function fromBase64(b64: string): string {
 }
 
 
-export const createRecover = async (BeamioName: string, pin: string) => {
+export const createRecover = async (
+	BeamioName: string,
+	pin: string,
+	recoverData?: Partial<VerraBusinessProfileDraft> | null
+) => {
 	const temp = await createOrGetWallet('')
 	if (!temp|| !temp?.mnemonicPhrase|| !temp?.profiles?.length) {
 		return null
@@ -1642,13 +1746,13 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	const img = await aesGcmEncryptWithStored (phraseBase64, recoverCode.code, stored)
 	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
 
-	const storageEncryptedImg = toBase64(JSON.stringify({stored, img}))
+	const storageEncryptedImg = encodeRecoverStoragePayload(stored, img, recoverData)
 	temp.encryptedString = recoverCode.code
 	const obj = { pin, recoverCode: recoverCode.code, qrCode: recoverCode.code, temp}
 	// const kkk = decodeStoredCBOR(qrCode)
 	// const ks = verifyPasswordBrowser(passcode, stored)
 	const hash = ethers.solidityPackedKeccak256(['string'], [BeamioName])
-	const storageEncryptedImg1 = toBase64(JSON.stringify({stored, img: img1}))
+	const storageEncryptedImg1 = encodeRecoverStoragePayload(stored, img1, recoverData)
 	// const dddd = fromBase64(storageEncryptedImg)
 	// const kkk = JSON.parse(dddd)
 	// const mnemonicPhraseBase64 = await aesGcmDecryptWithStored (kkk.img, pin + recoverCode.code, kkk.stored)
@@ -1664,9 +1768,7 @@ export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 	const hash = ethers.solidityPackedKeccak256(['string'], [recoveryCode])
 
 	try {
-		const hashedImg: string = await beamioAccountSC.getBase64ByNameHash(hash)
-		const objStr = fromBase64(hashedImg)
-		const obj = JSON.parse(objStr)
+		const obj = await getRecoverPayloadByHash(hash)
 
 		if (!obj?.img || !obj?.stored) {
 			return false
@@ -1682,6 +1784,9 @@ export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 		const beamio = await getUserInfo(profile.keyID)
 		if (beamio) {
 			temp.beamio = beamio
+		}
+		if (obj.recoverData) {
+			;(temp as any).recoveredBusinessDraft = obj.recoverData
 		}
 		
 		return temp
@@ -1728,8 +1833,7 @@ export const getUserInfo = async (keyID: string) => {
 export const restoreWithUserPin = async (username: string, pin: string, test = false) => {
 	try {
 		const hashedImg: string = await beamioAccountSC.getBase64ByAccountName(username)
-		const objStr = fromBase64(hashedImg)
-		const obj = JSON.parse(objStr)
+		const obj = decodeRecoverStoragePayload(hashedImg)
 
 		if (!obj?.img || !obj?.stored) {
 			return false
@@ -1756,6 +1860,9 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 		const beamio = await getUserInfo(profile.keyID)
 		if (beamio) {
 			temp.beamio = beamio
+		}
+		if (obj.recoverData) {
+			;(temp as any).recoveredBusinessDraft = obj.recoverData
 		}
 		
 		return temp
@@ -1879,7 +1986,7 @@ export const getMyFollowStatus = async (wallet: string) => {
 	}
 }
 
-const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], privateKey: string) => {
+export const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], privateKey: string) => {
 	
 	const signWallet = new ethers.Wallet(privateKey)
 	const signMessage = await signWallet.signMessage(signWallet.address)
@@ -1918,6 +2025,30 @@ const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], pri
 		console.error("newUser error:", err)
 	}
 	return false
+}
+
+/**
+ * Update recover payload for the account-name keyed blob only (PIN restore path), embedding new business draft.
+ * Re-wraps existing `stored` + `img` so the user keeps the same encryption; only `recoverData` changes.
+ */
+export const pushAccountRecoverBusinessDraft = async (
+	beamioAccount: beamio,
+	privateKey: string,
+	businessDraft: Partial<VerraBusinessProfileDraft>
+): Promise<{ ok: boolean; error?: string }> => {
+	try {
+		const userName = beamioAccount.accountName?.trim()
+		if (!userName) return { ok: false, error: 'Account name missing' }
+		const hashedImg: string = await beamioAccountSC.getBase64ByAccountName(userName)
+		const obj = decodeRecoverStoragePayload(hashedImg)
+		if (!obj?.stored || !obj.img) return { ok: false, error: 'Recover payload not found' }
+		const nextEnc = encodeRecoverStoragePayload(obj.stored, obj.img, businessDraft)
+		const nameHash = ethers.solidityPackedKeccak256(['string'], [userName])
+		const ok = await RegenerateUser(beamioAccount, [{ hash: nameHash, encrypto: nextEnc }], privateKey)
+		return ok ? { ok: true } : { ok: false, error: 'Server rejected recover update' }
+	} catch (e: any) {
+		return { ok: false, error: e?.shortMessage || e?.message || 'Unknown error' }
+	}
 }
 
 export const RegenerateRecover = async (mnemonicPhrase: string, beamio: beamio, pin: string, privateKey: string) => {

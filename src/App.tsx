@@ -20,6 +20,12 @@ import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
 import MyWallet from "@/pages/Settings/index"
 import { ethers } from "ethers"
+import {
+	appendPosTerminalPermissionPendingForMerchantPartitions,
+	merchantPosPermissionPartitionAddresses,
+	parsePosTerminalPermissionV1FromChatDisplayText,
+	notifyPosTerminalPermissionPendingUpdate,
+} from "@/utils/posTerminalPermissionPending"
 import beamioConetCoreABI from "@/services/ABI/beamioConetCoreABI.json"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import { createPortal } from "react-dom"
@@ -583,6 +589,18 @@ function AppShell() {
 			}
 
 			if (isNew && isMembershipActivatedWithHash(displayText)) chatsToAutoReply.push(nextChat)
+
+			if (isNew) {
+				const perm = parsePosTerminalPermissionV1FromChatDisplayText(displayText)
+				if (perm) {
+					const prof = profile as { keyID?: string; aaAccount?: string }
+					const parts = merchantPosPermissionPartitionAddresses(prof)
+					if (parts.length > 0) {
+						const added = appendPosTerminalPermissionPendingForMerchantPartitions(parts, perm)
+						if (added) notifyPosTerminalPermissionPendingUpdate()
+					}
+				}
+			}
 
 			// ✅ 放回 chats（不可变）
 			if (idx === 0 && chats[0].address.toLowerCase() === nextChat.address.toLowerCase()) {

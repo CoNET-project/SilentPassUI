@@ -130,3 +130,92 @@ export function mergeSessionOnboardingDraftIntoEoa(eoa: string): void {
   }
   clearSessionOnboardingBusinessDraft()
 }
+
+/** Default Business Category on mobile Lite onboarding (“Local business” → `local-services`). */
+export const VERRA_LITE_DEFAULT_CATEGORY_VALUE = 'local-services'
+
+const LITE_CHAIN_ACK_PREFIX = 'verra_lite_business_chain_ack_v1:'
+
+export function liteBusinessChainAckStorageKey(eoa: string): string {
+  return `${LITE_CHAIN_ACK_PREFIX}${eoa.trim().toLowerCase()}`
+}
+
+/** Mark that business fields are backed by on-chain recover (restore, create, or explicit push). */
+export function setLiteBusinessChainAck(eoa: string): void {
+  try {
+    localStorage.setItem(liteBusinessChainAckStorageKey(eoa), JSON.stringify({ at: Date.now() }))
+  } catch {
+    /* */
+  }
+}
+
+export function clearLiteBusinessChainAck(eoa: string): void {
+  try {
+    localStorage.removeItem(liteBusinessChainAckStorageKey(eoa))
+  } catch {
+    /* */
+  }
+}
+
+export function hasLiteBusinessChainAck(eoa: string): boolean {
+  if (!eoa.trim()) return false
+  try {
+    return Boolean(localStorage.getItem(liteBusinessChainAckStorageKey(eoa)))
+  } catch {
+    return false
+  }
+}
+
+/** Lite / recover parity: must all be non-empty (trimmed) to skip Business OS mobile gate. */
+export function hasVerraLiteBusinessRequiredFields(d: VerraBusinessProfileDraft | null | undefined): boolean {
+  if (!d || typeof d !== 'object') return false
+  for (const key of ['storeName', 'category', 'country', 'city', 'province'] as const) {
+    const v = d[key]
+    if (typeof v !== 'string' || !v.trim()) return false
+  }
+  return true
+}
+
+/**
+ * Flatten on-chain / restore `recoverData` (and optional `onboardingFormJson` snapshot) into profile draft fields.
+ */
+export function pickVerraBusinessFieldsFromRecover(recovered: unknown): Partial<VerraBusinessProfileDraft> {
+  if (!recovered || typeof recovered !== 'object') return {}
+  const r = recovered as Record<string, unknown>
+  const next: Partial<VerraBusinessProfileDraft> = {}
+
+  if (r.businessType === 'solo' || r.businessType === 'chain' || r.businessType === 'ngo') {
+    next.businessType = r.businessType
+  }
+  if (typeof r.onboardingTermsAccepted === 'boolean') {
+    next.onboardingTermsAccepted = r.onboardingTermsAccepted
+  }
+  const pull = (key: keyof VerraBusinessProfileDraft) => {
+    const v = r[key as string]
+    if (typeof v === 'string' && v.trim()) (next as any)[key] = v.trim()
+  }
+  for (const k of ['storeName', 'category', 'country', 'city', 'province'] as const) {
+    pull(k)
+  }
+
+  const formJson = r.onboardingFormJson
+  if (typeof formJson === 'string' && formJson.trim()) {
+    try {
+      const j = JSON.parse(formJson) as Record<string, unknown>
+      const fillMissing = (key: keyof VerraBusinessProfileDraft) => {
+        if ((next as any)[key]) return
+        const v = j[key as string]
+        if (typeof v === 'string' && v.trim()) (next as any)[key] = v.trim()
+      }
+      for (const k of ['storeName', 'category', 'country', 'city', 'province'] as const) {
+        fillMissing(k)
+      }
+      if (!next.businessType && (j.businessType === 'solo' || j.businessType === 'chain' || j.businessType === 'ngo')) {
+        next.businessType = j.businessType
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return next
+}

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Verra Identity | Business Workspace Setup</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-fixed": "#000000",
+              "inverse-surface": "#0b0f10",
+              "tertiary-fixed-dim": "#e88ae1",
+              "secondary-container": "#d8e3fb",
+              "on-primary-container": "#001e59",
+              "tertiary": "#8d3a8b",
+              "background": "#ffffff",
+              "on-tertiary-fixed": "#400041",
+              "tertiary-fixed": "#f797ef",
+              "primary-fixed": "#7a9dff",
+              "on-secondary-container": "#475266",
+              "secondary": "#515c70",
+              "outline": "#747779",
+              "on-primary": "#f1f2ff",
+              "inverse-primary": "#5f8bff",
+              "surface-container": "#f1f4f9",
+              "on-secondary": "#eff2ff",
+              "primary-dim": "#0047b8",
+              "on-tertiary": "#ffeef8",
+              "surface-container-highest": "#d9dde0",
+              "on-secondary-fixed": "#354053",
+              "primary": "#0051d1",
+              "on-secondary-fixed-variant": "#515c70",
+              "secondary-dim": "#455064",
+              "surface-container-high": "#dfe3e6",
+              "secondary-fixed-dim": "#cad5ed",
+              "primary-container": "#7a9dff",
+              "on-error": "#ffefee",
+              "secondary-fixed": "#d8e3fb",
+              "on-error-container": "#570008",
+              "on-surface": "#1a1c1e",
+              "error-dim": "#9f0519",
+              "surface-bright": "#ffffff",
+              "surface": "#ffffff",
+              "tertiary-dim": "#7f2d7e",
+              "error": "#b31b25",
+              "surface-container-low": "#f8fafd",
+              "outline-variant": "#abadaf",
+              "on-tertiary-fixed-variant": "#6c1a6c",
+              "on-surface-variant": "#44474e",
+              "tertiary-container": "#f797ef",
+              "primary-fixed-dim": "#648eff",
+              "on-primary-fixed-variant": "#00276d",
+              "surface-dim": "#d0d5d8",
+              "on-tertiary-container": "#610e62",
+              "on-background": "#1a1c1e",
+              "surface-tint": "#0051d1",
+              "inverse-on-surface": "#9a9d9f",
+              "surface-variant": "#dfe2eb",
+              "surface-container-lowest": "#ffffff",
+              "error-container": "#fb5151"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "1.5rem", "xl": "2rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .fluid-bg {
+            background: radial-gradient(circle at 50% 50%, #f1f4f9 0%, #ffffff 100%);
+        }
+        @keyframes soft-pulse {
+            0%, 100% { opacity: 0.1; transform: scale(0.95); }
+            50% { opacity: 0.2; transform: scale(1.05); }
+        }
+        @keyframes draw-ring {
+            0% { stroke-dashoffset: 283; transform: rotate(0deg); }
+            50% { stroke-dashoffset: 70; transform: rotate(180deg); }
+            100% { stroke-dashoffset: 283; transform: rotate(360deg); }
+        }
+        .animate-soft-pulse {
+            animation: soft-pulse 4s ease-in-out infinite;
+        }
+        .ring-loader {
+            stroke-dasharray: 283;
+            animation: draw-ring 3s ease-in-out infinite;
+            transform-origin: center;
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-on-surface min-h-screen flex flex-col items-center selection:bg-primary-container selection:text-on-primary-container relative flex flex-col">
+<!-- TopAppBar -->
+<header class="px-8 pt-8 lg:px-12 flex items-center justify-center lg:justify-start gap-2 relative z-10 bg-transparent">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined text-xl" style='font-variation-settings: "FILL" 1;'>corporate_fare</span>
+</div>
+<span class="text-primary font-headline font-extrabold tracking-tighter text-xl">Verra Business Lite</span>
+</header>
+<!-- Main Canvas -->
+<main class="flex-grow flex flex-col items-center justify-center w-full max-w-lg mx-auto px-8 fluid-bg">
+<!-- Central Loading Visual -->
+<div class="relative w-48 h-48 mb-16 flex items-center justify-center">
+<!-- Subtle Background Pulse -->
+<div class="absolute inset-0 bg-primary/5 rounded-full animate-soft-pulse"></div>
+<!-- Premium Minimal Ring Loader -->
+<svg class="w-full h-full relative" viewbox="0 0 100 100">
+<!-- Track -->
+<circle class="text-surface-container-highest/30" cx="50" cy="50" fill="none" r="45" stroke="currentColor" stroke-width="1.5"></circle>
+<!-- Active Segment -->
+<circle class="text-primary ring-loader" cx="50" cy="50" fill="none" r="45" stroke="currentColor" stroke-linecap="round" stroke-width="2"></circle>
+</svg>
+<!-- Centered Calm Icon -->
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary/40 text-4xl" data-icon="business_center">business_center</span>
+</div>
+</div>
+<!-- Content Section -->
+<div class="text-center space-y-4 max-w-sm">
+<h2 class="font-headline text-2xl md:text-3xl font-extrabold tracking-tight text-on-surface">
+            Creating your business lite workspace...
+        </h2>
+<p class="font-body text-on-surface-variant text-base leading-relaxed">
+            We’re preparing your business identity and getting your Verra workspace ready.
+        </p>
+<div class="pt-2">
+<p class="text-sm font-medium text-on-surface-variant/40">
+                This usually takes a few seconds.
+            </p>
+</div>
+</div>
+</main>
+<!-- Footer Status -->
+<footer class="fixed bottom-12 w-full text-center">
+<div class="inline-flex items-center gap-2.5 px-6 py-3 bg-white border border-surface-variant/20 rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
+<div class="w-1.5 h-1.5 rounded-full bg-primary/30 animate-pulse"></div>
+<span class="font-headline font-bold text-[10px] tracking-[0.15em] text-on-surface-variant/70 uppercase">
+            Business setup in progress
+        </span>
+</div>
+</footer>
+<!-- Decorative Background Elements -->
+<div class="fixed top-1/4 -left-32 w-96 h-96 bg-primary/[0.03] rounded-full blur-[120px] pointer-events-none -z-10"></div>
+<div class="fixed bottom-1/4 -right-32 w-80 h-80 bg-primary/[0.03] rounded-full blur-[100px] pointer-events-none -z-10"></div>
+</body></html>

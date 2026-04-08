@@ -53,7 +53,7 @@ export function OnboardingBusinessDetailsScreen({
 	setDetailProvince,
 	onContinue,
 }: OnboardingBusinessDetailsScreenProps): React.ReactElement {
-	const canContinue = detailBusinessName.trim().length > 0
+	const canContinue = detailBusinessName.trim().length > 0 && detailCategory.trim().length > 0
 
 	return (
 		<div
@@ -163,11 +163,15 @@ export function OnboardingBusinessDetailsScreen({
 											${bizBrandFocusRingClass}
 										`}
 									>
-										<option value="">Select category (e.g., Cafe, Retail, Bakery)</option>
-										<option value="cafe">Cafe</option>
-										<option value="retail">Retail</option>
-										<option value="bakery">Bakery</option>
-										<option value="tech">Tech Services</option>
+										<option value="">Select category</option>
+										<option value="food-beverage">Food &amp; Beverage</option>
+										<option value="grocery-convenience">Grocery &amp; Convenience</option>
+										<option value="retail-shopping">Retail &amp; Shopping</option>
+										<option value="education-training">Education &amp; Training</option>
+										<option value="health-beauty">Health &amp; Beauty</option>
+										<option value="fitness-wellness">Fitness &amp; Wellness</option>
+										<option value="entertainment-leisure">Entertainment &amp; Leisure</option>
+										<option value="local-services">Local Services</option>
 									</select>
 									<OnboardingDetailsSelectChevron />
 								</div>

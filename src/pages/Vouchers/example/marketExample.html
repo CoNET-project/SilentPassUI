@@ -3,75 +3,80 @@
 <html class="light" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Verra Studio | Card Configurator</title>
+<title>Terminal Setup - Beamio</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;400;500;600;700;800;900&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
         tailwind.config = {
             darkMode: "class",
             theme: {
                 extend: {
-                    colors: {
-                        "on-error": "#ffefee",
+                    "colors": {
+                        "surface-container-high": "#dfe3e6",
+                        "inverse-primary": "#5f8bff",
+                        "error-dim": "#9f0519",
+                        "on-primary-container": "#001e59",
+                        "background": "#f5f7f9",
                         "tertiary-fixed-dim": "#e88ae1",
+                        "surface-dim": "#d0d5d8",
+                        "secondary-dim": "#455064",
+                        "on-primary": "#f1f2ff",
+                        "primary": "#0051d1",
+                        "on-primary-fixed-variant": "#00276d",
+                        "on-surface-variant": "#595c5e",
+                        "surface": "#f5f7f9",
+                        "primary-fixed": "#7a9dff",
+                        "on-surface": "#2c2f31",
+                        "on-error-container": "#570008",
+                        "error-container": "#fb5151",
+                        "tertiary-fixed": "#f797ef",
+                        "on-secondary-container": "#475266",
+                        "on-secondary-fixed": "#354053",
+                        "on-primary-fixed": "#000000",
                         "surface-bright": "#f5f7f9",
                         "surface-variant": "#d9dde0",
-                        "surface-container-low": "#eef1f3",
-                        "on-primary-fixed": "#000000",
                         "inverse-on-surface": "#9a9d9f",
-                        "background": "#f5f7f9",
-                        "secondary": "#515c70",
-                        "primary-dim": "#0047b8",
-                        "outline": "#747779",
-                        "on-secondary-container": "#475266",
-                        "inverse-primary": "#5f8bff",
-                        "surface-container-high": "#dfe3e6",
-                        "surface-container": "#e5e9eb",
-                        "tertiary-container": "#f797ef",
-                        "on-secondary-fixed-variant": "#515c70",
-                        "secondary-fixed-dim": "#cad5ed",
-                        "primary-container": "#7a9dff",
-                        "primary-fixed": "#7a9dff",
-                        "on-tertiary-fixed": "#400041",
-                        "tertiary-dim": "#7f2d7e",
-                        "surface-tint": "#0051d1",
-                        "surface-container-lowest": "#ffffff",
-                        "surface": "#f5f7f9",
-                        "inverse-surface": "#0b0f10",
-                        "on-tertiary": "#ffeef8",
-                        "on-surface-variant": "#595c5e",
-                        "on-error-container": "#570008",
-                        "primary": "#0051d1",
-                        "outline-variant": "#abadaf",
-                        "on-secondary": "#eff2ff",
-                        "error-dim": "#9f0519",
-                        "on-secondary-fixed": "#354053",
-                        "secondary-container": "#d8e3fb",
-                        "on-primary": "#f1f2ff",
-                        "error-container": "#fb5151",
-                        "on-primary-container": "#001e59",
-                        "tertiary-fixed": "#f797ef",
-                        "secondary-dim": "#455064",
-                        "tertiary": "#8d3a8b",
                         "secondary-fixed": "#d8e3fb",
+                        "outline-variant": "#abadaf",
                         "primary-fixed-dim": "#648eff",
-                        "on-primary-fixed-variant": "#00276d",
+                        "tertiary-dim": "#7f2d7e",
+                        "surface-container-low": "#eef1f3",
+                        "surface-container": "#e5e9eb",
+                        "secondary": "#515c70",
+                        "tertiary": "#8d3a8b",
+                        "surface-tint": "#0051d1",
+                        "on-tertiary": "#ffeef8",
+                        "secondary-container": "#d8e3fb",
+                        "secondary-fixed-dim": "#cad5ed",
                         "error": "#b31b25",
                         "on-tertiary-fixed-variant": "#6c1a6c",
-                        "surface-dim": "#d0d5d8",
-                        "on-tertiary-container": "#610e62",
-                        "on-background": "#2c2f31",
+                        "on-secondary": "#eff2ff",
                         "surface-container-highest": "#d9dde0",
-                        "on-surface": "#2c2f31"
+                        "outline": "#747779",
+                        "on-secondary-fixed-variant": "#515c70",
+                        "on-tertiary-container": "#610e62",
+                        "tertiary-container": "#f797ef",
+                        "inverse-surface": "#0b0f10",
+                        "on-tertiary-fixed": "#400041",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-dim": "#0047b8",
+                        "on-error": "#ffefee",
+                        "primary-container": "#7a9dff",
+                        "on-background": "#2c2f31"
                     },
-                    fontFamily: {
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
                         "headline": ["Manrope"],
                         "body": ["Inter"],
                         "label": ["Inter"]
-                    },
-                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                    }
                 },
             },
         }
@@ -80,342 +85,95 @@
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.7);
+        .glass-nav {
+            background: rgba(245, 247, 249, 0.7);
             backdrop-filter: blur(20px);
         }
-        .mesh-gradient {
-            background: linear-gradient(135deg, #0051d1 0%, #7a9dff 100%);
-        }
-        .sidebar-active {
-            box-shadow: 0 4px 12px rgba(21, 98, 240, 0.08);
+        .mesh-gradient-bg {
+            background: radial-gradient(at 0% 0%, #0051d1 0%, transparent 50%),
+                        radial-gradient(at 100% 0%, #7a9dff 0%, transparent 50%),
+                        radial-gradient(at 50% 100%, #eef1f3 0%, transparent 50%);
         }
     </style>
-</head>
-<body class="bg-surface font-body text-on-surface antialiased">
-<!-- SideNavBar Anchor -->
-<aside class="fixed left-0 top-0 h-full w-72 z-50 bg-[#f5f7f9] dark:bg-[#0f172a] shadow-[20px_0_40px_rgba(21,98,240,0.06)] flex flex-col h-full p-6 border-r border-transparent">
-<div class="mb-10 px-4">
-<h1 class="text-2xl font-black text-[#1562f0] dark:text-[#3b82f6] font-headline tracking-tight">Verra Studio</h1>
-<p class="text-[10px] uppercase tracking-[0.2em] text-outline opacity-70 font-bold mt-1">Loyalty Engine</p>
-</div>
-<nav class="flex-1 space-y-2">
-<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
-<span class="material-symbols-outlined group-hover:text-primary transition-colors">dashboard</span>
-<span class="font-['Manrope'] font-semibold tracking-tight">Dashboard</span>
-</div>
-<div class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 text-[#1562f0] dark:text-blue-400 rounded-full shadow-sm">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">palette</span>
-<span class="font-['Manrope'] font-semibold tracking-tight">Card Editor</span>
-</div>
-<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
-<span class="material-symbols-outlined group-hover:text-primary transition-colors">rule</span>
-<span class="font-['Manrope'] font-semibold tracking-tight">Reward Logic</span>
-</div>
-<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
-<span class="material-symbols-outlined group-hover:text-primary transition-colors">campaign</span>
-<span class="font-['Manrope'] font-semibold tracking-tight">Campaigns</span>
-</div>
-<div class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-[#eef1f3] dark:hover:bg-slate-800 transition-all duration-300 rounded-full cursor-pointer group">
-<span class="material-symbols-outlined group-hover:text-primary transition-colors">hub</span>
-<span class="font-['Manrope'] font-semibold tracking-tight">Integration</span>
-</div>
-</nav>
-<div class="mt-auto pt-6 border-t border-outline-variant/10">
-<button class="w-full py-4 px-6 bg-primary text-on-primary rounded-full font-headline font-bold text-sm tracking-wide shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
-                Go Live
-            </button>
-<div class="mt-6 flex items-center gap-3 px-4">
-<img alt="Admin Workspace" class="w-10 h-10 rounded-full bg-surface-container-high border-2 border-white shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOT7mMikX5zpr5O_NYq7zv-Y71hURWAYIu2Ff8v3PJTrOVLy0bElZjQfy5_ERPD6wji1VtFcw4cqf1wl77fEJCxbhNmYhNmsMiR4oOQcJpfZCVcQqSzVaCfeg7BWuJAEnSGqjsz3UHOzsrdMTXuVbM2iVohtkmoBvedIIAy769ptDYiFgm3Z4Tlqxj3uUmsWpl0GVlIiEYjk800-66bC-Z5eeBJyTKm0AGyRNYXqXsOFSlwa6Xn1nlkjOTpaXHY5ZsrdSB_gMtjek"/>
-<div>
-<p class="text-xs font-bold text-on-surface">Admin Workspace</p>
-<p class="text-[10px] text-outline">Pro Plan</p>
-</div>
-</div>
-</div>
-</aside>
-<!-- TopAppBar Anchor -->
-<header class="fixed top-0 right-0 left-72 h-20 z-40 bg-[#f5f7f9]/70 dark:bg-slate-900/70 backdrop-blur-xl flex justify-between items-center px-10 w-full">
-<div class="flex items-center gap-8">
-<h2 class="font-['Manrope'] font-black text-2xl text-[#1562f0] dark:text-blue-400 tracking-tight">Card Configurator</h2>
-<nav class="hidden lg:flex items-center gap-6">
-<a class="text-slate-500 dark:text-slate-400 hover:text-[#1562f0] transition-colors font-semibold text-sm" href="#">Drafts</a>
-<a class="text-[#1562f0] dark:text-blue-400 border-b-2 border-[#1562f0] pb-1 font-semibold text-sm" href="#">Templates</a>
-<a class="text-slate-500 dark:text-slate-400 hover:text-[#1562f0] transition-colors font-semibold text-sm" href="#">History</a>
-</nav>
-</div>
-<div class="flex items-center gap-6">
-<div class="flex items-center gap-4 border-r border-outline-variant/20 pr-6">
-<span class="material-symbols-outlined text-outline cursor-pointer hover:text-primary transition-colors">notifications</span>
-<span class="material-symbols-outlined text-outline cursor-pointer hover:text-primary transition-colors">help</span>
-</div>
-<div class="flex items-center gap-3">
-<button class="px-5 py-2 text-primary font-bold text-sm hover:bg-primary/5 rounded-full transition-colors">Preview</button>
-<button class="px-6 py-2 bg-primary text-on-primary font-bold text-sm rounded-full shadow-md shadow-primary/10 hover:opacity-90 active:scale-95 transition-all">Publish Changes</button>
-</div>
-</div>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background font-body text-on-surface antialiased selection:bg-primary/20">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<!-- Minimal Task Header (Excluded Shared Nav per Logic 2 & 3) -->
+<header class="sticky top-0 z-50 glass-nav flex items-center justify-between px-6 py-4">
+<button class="flex h-12 w-12 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-sm transition-transform active:scale-95">
+<span class="material-symbols-outlined">arrow_left</span>
+</button>
+<span class="text-label-sm font-bold uppercase tracking-widest text-on-surface-variant">Setup Phase 01</span>
+<div class="w-12"></div> <!-- Spacer for symmetry -->
 </header>
-<!-- Main Content Grid -->
-<main class="ml-72 pt-28 px-10 pb-16 min-h-screen">
-<div class="grid grid-cols-12 gap-10">
-<!-- Left Panel: Form Configuration (60%) -->
-<div class="col-span-12 lg:col-span-7 space-y-10">
-<!-- Module 1: Brand & Content -->
-<section class="bg-surface-container-lowest rounded-lg p-10 shadow-sm">
-<div class="flex items-center gap-3 mb-8">
-<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">branding_watermark</span>
+<main class="flex flex-1 flex-col px-6 pb-24 pt-8 max-w-xl mx-auto w-full">
+<!-- Hero Illustration / Visual Interest -->
+<div class="relative mb-12 h-64 overflow-hidden rounded-xl shadow-2xl">
+<div class="absolute inset-0 mesh-gradient-bg opacity-20"></div>
+<img class="h-full w-full object-cover mix-blend-overlay" data-alt="Modern sleek point of sale terminal on a minimalist marble counter with soft cinematic lighting and bokeh background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC81jazJ6aagCDIf-YFpCeIgCrQ6ESZEbBv5Wlhpz-yY0JbCRJOXX5EILx6F4d2awTUwfnt3HKK36PRL2-GizaBHdbdkdBmcA0J_5PahS-Wrn3tsths3Vew2IgALnwxo2V2EalIIlIAD1IEyJnKUzntUt7dL2FNyxnUOaa4r2ANMFEWFWf0Mc3lg8C16tIZQMn7naGD0XpVDdT_IXlsL_svhLL1VnmWPAnO7Y2c54AnYUCUvDpbujAbOYd_lgCgp5g0Q1Ea9nLjb8I"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
+<!-- Floating Glass Card for Visual Depth -->
+<div class="absolute bottom-6 left-6 right-6 p-4 rounded-lg bg-surface-container-lowest/40 backdrop-blur-md border border-white/20 flex items-center gap-4">
+<div class="flex size-12 items-center justify-center rounded-full bg-primary text-white">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">terminal</span>
 </div>
-<h3 class="font-headline text-xl font-bold tracking-tight text-on-surface">Brand &amp; Content</h3>
-</div>
-<div class="grid grid-cols-2 gap-8">
-<div class="col-span-2 md:col-span-1 space-y-2">
-<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Card Unit Name</label>
-<input class="w-full bg-surface-container-low border-none rounded-md px-5 py-4 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all outline-none font-medium" placeholder="e.g. Verra Platinum" type="text"/>
-</div>
-<div class="col-span-2 md:col-span-1 space-y-2">
-<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Currency Symbol</label>
-<input class="w-full bg-surface-container-low border-none rounded-md px-5 py-4 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all outline-none font-medium" type="text" value="C$"/>
-</div>
-<div class="col-span-2 space-y-2">
-<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Program Description (Max 150 chars)</label>
-<textarea class="w-full bg-surface-container-low border-none rounded-md px-5 py-4 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all outline-none font-medium resize-none" placeholder="Join our exclusive coffee club and earn points on every purchase..." rows="3"></textarea>
-</div>
-<div class="col-span-2 md:col-span-1 space-y-2">
-<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Merchant Logo</label>
-<div class="w-full aspect-video bg-surface-container-low rounded-md border-2 border-dashed border-outline-variant/30 flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container-high transition-colors group">
-<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">cloud_upload</span>
-<span class="text-[11px] font-bold text-outline mt-2">Upload SVG or PNG</span>
-</div>
-</div>
-<div class="col-span-2 md:col-span-1 space-y-2">
-<label class="block text-[10px] font-black uppercase tracking-widest text-outline ml-1">Card Background</label>
-<div class="grid grid-cols-4 gap-3">
-<button class="aspect-square rounded-full bg-[#1562f0] border-4 border-white shadow-md ring-2 ring-[#1562f0]"></button>
-<button class="aspect-square rounded-full bg-[#0b0f10] border-4 border-white shadow-sm"></button>
-<button class="aspect-square rounded-full bg-tertiary border-4 border-white shadow-sm"></button>
-<button class="aspect-square rounded-full bg-gradient-to-br from-[#1562f0] to-[#7a9dff] border-4 border-white shadow-sm"></button>
-</div>
-<div class="mt-4 flex items-center gap-2">
-<div class="w-8 h-8 rounded-sm bg-surface-container-high border border-outline-variant/20"></div>
-<span class="text-xs font-mono text-outline">#1562F0</span>
-</div>
-</div>
-</div>
-</section>
-<!-- Module 2: Smart Tier Logic -->
-<section class="bg-surface-container-lowest rounded-lg p-10 shadow-sm">
-<div class="flex items-center gap-3 mb-8">
-<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">insights</span>
-</div>
-<h3 class="font-headline text-xl font-bold tracking-tight text-on-surface">Smart Tier Logic</h3>
-</div>
-<div class="grid grid-cols-3 gap-4">
-<label class="cursor-pointer group">
-<input checked="" class="hidden peer" name="logic" type="radio"/>
-<div class="h-full p-5 rounded-md bg-surface-container-low border-2 border-transparent peer-checked:border-primary peer-checked:bg-white transition-all flex flex-col items-start gap-4">
-<span class="material-symbols-outlined text-primary opacity-40 peer-checked:opacity-100">keyboard_double_arrow_up</span>
-<div class="space-y-1">
-<p class="text-xs font-black uppercase tracking-wider text-on-surface">Single Top-up</p>
-<p class="text-[10px] text-outline leading-relaxed">Permanent upgrades on one-time high value reloads.</p>
-</div>
-</div>
-</label>
-<label class="cursor-pointer group">
-<input class="hidden peer" name="logic" type="radio"/>
-<div class="h-full p-5 rounded-md bg-surface-container-low border-2 border-transparent peer-checked:border-primary peer-checked:bg-white transition-all flex flex-col items-start gap-4">
-<span class="material-symbols-outlined text-primary opacity-40 peer-checked:opacity-100">payments</span>
-<div class="space-y-1">
-<p class="text-xs font-black uppercase tracking-wider text-on-surface">Cumulative Spend</p>
-<p class="text-[10px] text-outline leading-relaxed">Upgrade based on total history. Lifetime loyalty rewards.</p>
-</div>
-</div>
-</label>
-<label class="cursor-pointer group">
-<input class="hidden peer" name="logic" type="radio"/>
-<div class="h-full p-5 rounded-md bg-surface-container-low border-2 border-transparent peer-checked:border-primary peer-checked:bg-white transition-all flex flex-col items-start gap-4">
-<span class="material-symbols-outlined text-primary opacity-40 peer-checked:opacity-100">swap_vert</span>
-<div class="space-y-1">
-<p class="text-xs font-black uppercase tracking-wider text-on-surface">Current Balance</p>
-<p class="text-[10px] text-outline leading-relaxed">Auto-adjust tiers as users spend and reload funds.</p>
-</div>
-</div>
-</label>
-</div>
-</section>
-<!-- Module 3: Tier Configuration Table -->
-<section class="bg-surface-container-lowest rounded-lg p-10 shadow-sm">
-<div class="flex justify-between items-center mb-8">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">layers</span>
-</div>
-<h3 class="font-headline text-xl font-bold tracking-tight text-on-surface">Tier Configuration</h3>
-</div>
-<button class="flex items-center gap-2 text-primary font-bold text-xs hover:bg-primary/5 px-4 py-2 rounded-full transition-all">
-<span class="material-symbols-outlined text-sm">add_circle</span>
-                            Add New Tier
-                        </button>
-</div>
-<div class="overflow-hidden">
-<table class="w-full text-left border-separate border-spacing-y-3">
-<thead>
-<tr>
-<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline">Tier Name</th>
-<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline">Threshold (C$)</th>
-<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline">Discount (% OFF)</th>
-<th class="px-6 pb-2 text-[10px] font-black uppercase tracking-widest text-outline text-right">Actions</th>
-</tr>
-</thead>
-<tbody>
-<tr class="bg-surface-container-low rounded-md">
-<td class="px-6 py-4 rounded-l-md font-bold text-sm">Standard</td>
-<td class="px-6 py-4 text-sm font-mono">0.00</td>
-<td class="px-6 py-4 text-sm font-mono">0%</td>
-<td class="px-6 py-4 rounded-r-md text-right">
-<span class="material-symbols-outlined text-outline/50 cursor-not-allowed">lock</span>
-</td>
-</tr>
-<tr class="bg-surface-container-low rounded-md">
-<td class="px-6 py-4 rounded-l-md font-bold text-sm text-primary">Gold Elite</td>
-<td class="px-6 py-4">
-<input class="w-20 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="500"/>
-</td>
-<td class="px-6 py-4">
-<input class="w-16 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="10"/>
-</td>
-<td class="px-6 py-4 rounded-r-md text-right">
-<button class="text-error hover:opacity-70 transition-opacity">
-<span class="material-symbols-outlined text-lg">delete</span>
-</button>
-</td>
-</tr>
-<tr class="bg-surface-container-low rounded-md">
-<td class="px-6 py-4 rounded-l-md font-bold text-sm text-tertiary">Diamond</td>
-<td class="px-6 py-4">
-<input class="w-20 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="1500"/>
-</td>
-<td class="px-6 py-4">
-<input class="w-16 bg-white border-none rounded-sm px-2 py-1 text-sm font-mono focus:ring-1 focus:ring-primary outline-none" type="number" value="25"/>
-</td>
-<td class="px-6 py-4 rounded-r-md text-right">
-<button class="text-error hover:opacity-70 transition-opacity">
-<span class="material-symbols-outlined text-lg">delete</span>
-</button>
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-</section>
-</div>
-<!-- Right Panel: Live Preview (40%) -->
-<div class="col-span-12 lg:col-span-5 relative">
-<div class="sticky top-28 space-y-8">
-<div class="flex justify-between items-center mb-6 px-4">
-<h4 class="font-headline font-black text-xs uppercase tracking-[0.2em] text-outline">Realtime Preview</h4>
-<div class="flex bg-surface-container-high p-1 rounded-full">
-<button class="px-4 py-1.5 rounded-full text-[11px] font-bold bg-white shadow-sm text-primary">App View</button>
-<button class="px-4 py-1.5 rounded-full text-[11px] font-bold text-outline hover:text-on-surface transition-colors">Physical Card</button>
-</div>
-</div>
-<!-- App View Mockup Container -->
-<div class="w-full max-w-[360px] mx-auto aspect-[9/19] bg-white rounded-[3rem] border-[8px] border-on-surface shadow-[0_40px_100px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative group">
-<!-- Status Bar -->
-<div class="h-10 w-full flex justify-between items-center px-8 pt-4">
-<span class="text-[11px] font-bold">9:41</span>
-<div class="flex items-center gap-1.5">
-<span class="material-symbols-outlined text-sm">signal_cellular_4_bar</span>
-<span class="material-symbols-outlined text-sm">wifi</span>
-<span class="material-symbols-outlined text-sm">battery_full</span>
-</div>
-</div>
-<!-- App Content Scroll Area -->
-<div class="flex-1 overflow-y-auto px-6 py-6 space-y-8">
-<!-- Header Info -->
-<div class="flex justify-between items-start">
 <div>
-<p class="text-[10px] font-black uppercase tracking-widest text-outline">Hello, Alex</p>
-<h5 class="text-xl font-black font-headline">Your Rewards</h5>
-</div>
-<div class="w-10 h-10 rounded-full bg-surface-container overflow-hidden">
-<img alt="User Profile Avatar" class="w-full h-full object-cover" data-alt="clean minimal portrait of a young professional with soft studio lighting and neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCN5NwC1leChEwHS25BxfvZpNj1NxiZ6b4QVqeqPsu0-I6VCDa9C6arA-3qJ3KSOIwgMJNrGUOjZ1Xc3MvE4XQE_4eby33xjJwkndF7Yw9rkOxrxIvsTn-AYF5QFNDjUSot2xFmDkbaujOT-A_3JJQPttjmd9ryWeBFrXoXDQKhNdjYttR-HR_5BAnmtHlxdFJy1hJ9alGq4WUBSRB9CoLRz_t-07MT0ZRYA9XJwCZbmWbr9ZzFjb41dF1kaNwWUT-yKH5eAY4E6Sc"/>
-</div>
-</div>
-<!-- Branded Loyalty Card -->
-<div class="w-full aspect-[1.58/1] mesh-gradient rounded-lg p-6 flex flex-col justify-between text-on-primary shadow-xl shadow-primary/30 relative overflow-hidden">
-<!-- Abstract Background Accents -->
-<div class="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
-<div class="absolute -left-10 -bottom-10 w-40 h-40 bg-on-primary-container/20 rounded-full blur-2xl"></div>
-<div class="flex justify-between items-start z-10">
-<div class="w-10 h-10 bg-white rounded-md flex items-center justify-center p-2 shadow-sm">
-<img alt="Card Unit Logo" class="w-full h-full object-contain" data-alt="minimal geometric logo design with bold typography and abstract brand mark" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEfhBZmQTkjLLE3cZkgq7MOaeKIAOchtXj6FIvwS6z0DiwGugDbegBvvg6vxnz7KcJ9CxYBF6QOd5JZ1WJpOdGcjSVssXkaLiC-0rU24CEAAJfjOXRbGYcvNMprYp_nIw5fm7A5qTfiS8eSgUm0eYNMkXPXmkCrmlF6EsJGlkdY6YBKCi9AVh-Ty5CT0U6LqcOJkk-2bSriPEC-2E0UArFxe2llOfYnsy7m9r_6PT12qvoHlc9Wch_a3Wc33GdfkA6EbLM31iK4GU"/>
-</div>
-<div class="text-right">
-<p class="text-[8px] uppercase font-black tracking-widest opacity-60">Balance</p>
-<p class="text-xl font-black font-headline tracking-tight">C$ 1,248.50</p>
-</div>
-</div>
-<div class="z-10">
-<p class="text-[8px] uppercase font-black tracking-[0.3em] opacity-80 mb-1">Verra Platinum</p>
-<div class="flex items-center gap-2">
-<span class="px-2 py-0.5 bg-white/20 backdrop-blur-md rounded-full text-[9px] font-bold">GOLD ELITE</span>
-<p class="text-[10px] font-mono tracking-widest opacity-80">**** 8821</p>
+<p class="text-sm font-bold text-on-surface">SoftPOS Native</p>
+<p class="text-xs text-on-surface-variant">v4.2.0 Build Stable</p>
 </div>
 </div>
 </div>
-<!-- Description Text -->
+<!-- Content Section -->
+<div class="space-y-6">
 <div class="space-y-2">
-<h6 class="text-[10px] font-black uppercase tracking-widest text-outline">Program Detail</h6>
-<p class="text-sm font-medium leading-relaxed text-on-surface">Join our exclusive coffee club and earn points on every purchase. Unlock premium tiers for higher discounts and special event access.</p>
+<h1 class="font-headline text-4xl font-extrabold tracking-tight text-on-surface">
+                        Link Terminal to <span class="text-primary">Workspace</span>
+</h1>
+<p class="text-body-md leading-relaxed text-on-surface-variant">
+                        Enter your business <span class="font-semibold text-on-surface">@BeamioTag</span> to authorize this device. This secures your transactions and syncs your inventory.
+                    </p>
 </div>
-<!-- Benefit Table Mock -->
-<div class="space-y-4">
-<h6 class="text-[10px] font-black uppercase tracking-widest text-outline">Your Tier Benefits</h6>
-<div class="space-y-2">
-<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-md">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-primary text-lg">percent</span>
-<p class="text-xs font-bold">Standard Discount</p>
-</div>
-<p class="text-xs font-black text-primary">10% OFF</p>
-</div>
-<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-md">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-primary text-lg">local_shipping</span>
-<p class="text-xs font-bold">Free Local Delivery</p>
-</div>
-<span class="material-symbols-outlined text-sm text-primary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
-</div>
-<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-md opacity-50 grayscale">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-lg">workspace_premium</span>
-<p class="text-xs font-bold">Diamond Concierge</p>
-</div>
-<span class="material-symbols-outlined text-sm">lock</span>
+<!-- Input Component -->
+<div class="group flex flex-col gap-2">
+<label class="text-sm font-bold text-on-surface-variant ml-1">@BeamioTag</label>
+<div class="relative flex items-center transition-all">
+<input class="h-16 w-full rounded-lg border-none bg-surface-container-low px-6 font-headline text-lg font-medium text-on-surface placeholder:text-outline-variant focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20" placeholder="e.g. coffee_house_ny" type="text"/>
+<button class="absolute right-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-white shadow-lg transition-transform active:scale-95">
+<span class="material-symbols-outlined">magnification_large</span>
+</button>
 </div>
 </div>
+<!-- Verification Status (Simulated State) -->
+<div class="flex items-center gap-4 rounded-lg bg-surface-container-low/50 p-4 border border-outline-variant/10">
+<div class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
-<!-- Bottom Action -->
-<div class="pt-4 pb-10">
-<button class="w-full py-4 bg-on-surface text-white rounded-full font-bold text-xs shadow-lg">Manage Membership</button>
+<div class="flex-1">
+<p class="font-bold text-on-surface">Verified Workspace</p>
+<p class="text-xs text-on-surface-variant">Auth tokens generated for "Coffee House NY"</p>
 </div>
-</div>
-<!-- Home Indicator -->
-<div class="h-1.5 w-32 bg-outline-variant/30 rounded-full absolute bottom-2 left-1/2 -translate-x-1/2"></div>
-</div>
-<!-- Guidance Tip -->
-<div class="bg-primary/5 rounded-md p-6 border border-primary/10 flex items-start gap-4">
-<span class="material-symbols-outlined text-primary">lightbulb</span>
-<div class="space-y-1">
-<p class="text-xs font-bold text-on-surface">Pro Designer Tip</p>
-<p class="text-[11px] text-outline leading-relaxed">Changes to tier thresholds are automatically synced with the mobile application's progress trackers and reward visualizers.</p>
-</div>
-</div>
+<div class="flex size-6 items-center justify-center rounded-full bg-primary-fixed">
+<div class="size-2 animate-pulse rounded-full bg-primary"></div>
 </div>
 </div>
 </div>
 </main>
-<!-- FAB Suppression Rule: Not rendered as this is a configuration/task-focused detail screen -->
+<!-- Footer Action (Sticky) -->
+<footer class="fixed bottom-0 left-0 right-0 p-6 glass-nav">
+<div class="mx-auto max-w-xl">
+<button class="flex h-16 w-full items-center justify-between rounded-full bg-primary px-8 text-lg font-bold text-white shadow-2xl shadow-primary/30 transition-all hover:bg-primary-dim active:scale-[0.98]">
+<span>Next Phase</span>
+<div class="flex items-center gap-2">
+<span class="text-sm font-normal opacity-70">Authorize</span>
+<span class="material-symbols-outlined">arrow_forward</span>
+</div>
+</button>
+</div>
+</footer>
+</div>
 </body></html>

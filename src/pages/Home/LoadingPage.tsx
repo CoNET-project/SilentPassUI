@@ -447,7 +447,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								</div>
 
 								<p className="mx-auto mt-16 max-w-sm text-center text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e]/80">
-									Securely hosted by Beamio Infrastructure © 2026
+									By Beamio © 2026
 								</p>
 							</div>
 						</>
@@ -913,7 +913,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		</div>
 	)
 
-	const InitialEntryScreen = () => (
+	/** Identity（Create handle + password）：必须是 JSX 片段，不能写内部 `const X = () => …`；否则父级每次 setState 都会换组件类型，BusinessIdentityForm 重挂载、输入被清空（手机键盘/视口常触发重渲染）。 */
+	const initialEntryScreen = (
 		<div
 			className="
 				relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-white font-[Inter,ui-sans-serif,system-ui,sans-serif] text-[#121212]
@@ -1064,7 +1065,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	}
 
 	if (isInitialEntry && !settingsOpen) {
-		return wrapWithWorkspaceCreatingOverlay(<InitialEntryScreen />)
+		return wrapWithWorkspaceCreatingOverlay(initialEntryScreen)
 	}
 
 	return wrapWithWorkspaceCreatingOverlay((

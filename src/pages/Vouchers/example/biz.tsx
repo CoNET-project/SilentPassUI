@@ -53,7 +53,7 @@ import {
   type UserCardInfo,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
-import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect, CONET_MAINNET_WSS } from '@/utils/constants';
+import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect } from '@/utils/constants';
 import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
@@ -77,6 +77,16 @@ import {
   type VerraBusinessProfileDraft,
 } from '@/utils/verraBusinessProfileLocal';
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions';
+import {
+  beamioTagFromRecord,
+  loadAddressProfileMap,
+  mergeProfileMap,
+  normalizeAddressKey,
+  pickPeerFromSearchUsernameResponse,
+  recordFromSearchPeer,
+  saveAddressProfileMap,
+  type BeamioAddressProfileRecord,
+} from '@/utils/beamioAddressProfileRegistry';
 import {
   CHARGE_BUINT_LEDGER_MAX_ENTRIES,
   loadChargeBUnitLedgerMap,
@@ -856,10 +866,13 @@ function memberDirectoryUserTypeCacheKey(eoaLower: string, viewerNormLower: stri
   return `eoa:${eoaLower}:biz:member-user-type-db:v1:${viewerNormLower}`
 }
 
+/** Ledger Customer & Source + Members directory: NFC when payer/member handle matches `verra_<digits>…`. */
+const LEDGER_NFC_BEAMIO_TAG_RE = /^verra_\d+/
+
 function inferMemberDirectoryUserTypeFromBeamioTag(beamioTag: string | null | undefined): MemberDirectoryUserType {
   const handle = (beamioTag ?? '').replace(/^@/, '').trim()
   if (!handle) return 'unknown'
-  if (handle.startsWith('CashTreeDamo_')) return 'nfc'
+  if (LEDGER_NFC_BEAMIO_TAG_RE.test(handle)) return 'nfc'
   return 'app'
 }
 
@@ -3022,15 +3035,19 @@ const INDEXER_ACTION_ABI = [
   `function getAccountTransactionsByCurrentPeriodOffsetPaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
 
-/** BeamioIndexerDiamond BeamioUserCardStatsFacet: getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged (asset=card, account=0 for all) */
+/** BeamioIndexerDiamond BeamioUserCardStatsFacet (+ legacy period/topAdmin/subordinate views for other call sites) */
 const INDEXER_ASSET_STATS_ABI = [
+  `function getAssetActionCount(address asset) view returns (uint256)`,
+  `function getAssetTransactionsPaged(address asset, uint256 offset, uint256 limit) view returns (${TX_PAGE_TUPLE}[] page)`,
   `function getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(address asset, address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
   `function getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(address asset, address topAdmin, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
   `function getAssetTransactionsBySubordinateAndCurrentPeriodOffsetAndAccountModePaged(address asset, address subordinate, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode, uint256 chainIdFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
 
-/** BeamioIndexerDiamond ActionFacet: account + topAdmin ledger (topAdmin 列表含 route 仅为 USDC 的 TX_TIP，不经由卡 asset 索引) */
+/** BeamioIndexerDiamond ActionFacet: paged account + topAdmin supplement (TX_TIP 等可能仅进 topAdminActionIds) */
 const INDEXER_ACCOUNT_ABI = [
+  `function getAccountActionCount(address account) view returns (uint256)`,
+  `function getAccountTransactionsPaged(address account, uint256 offset, uint256 limit) view returns (${TX_PAGE_TUPLE}[] page)`,
   `function getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
   `function getTopAdminTransactionsByCurrentPeriodOffsetAndAccountModePaged(address topAdmin, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
 ] as const
@@ -3237,12 +3254,7 @@ function dashboardActivityTypeFromIndexerRow(tx: { txCategory: string; payee: st
   return 'Charge'
 }
 
-const INDEXER_READ_FULL_AND_EVENT_ABI = [
-  `function getTransactionFullByTxId(bytes32 txId) view returns (tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, address topAdmin, address subordinate, tuple(address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta) full_)`,
-  'event TransactionRecordSynced(uint256 indexed actionId, bytes32 indexed txId, bytes32 indexed txCategory, address payer, address payee)',
-] as const
-
-/** localStorage: EOA-scoped inbound tx from WSS (beamio-chain-fetch EOA 隔离) */
+/** localStorage: EOA-scoped inbound tx from HTTPS indexer refresh (beamio-chain-fetch EOA 隔离) */
 const INDEXER_INBOUND_TX_CACHE_KEY = (eoaLower: string) => `indexer:inboundTx:v1:${eoaLower}`
 
 type FixedUserCardMetadata = {
@@ -3518,6 +3530,69 @@ async function aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
     usdc: amountE6ToDisplayNumber(periodUSDCMint),
     vouchers: amountE6ToDisplayNumber(periodMint),
     localDayKey: formatLocalYmd(new Date()),
+  }
+}
+
+type TodayTopupHourlyRollup = {
+  localDayKey: string
+  currentHourStartSec: number
+  completedHoursVouchers: number
+  currentHourVouchers: number
+  totalVouchers: number
+}
+
+async function computeTodayTopupHourlyRollup(
+  cardAddress: string,
+  provider: ethers.Provider,
+  previous: TodayTopupHourlyRollup | null
+): Promise<TodayTopupHourlyRollup | null> {
+  const now = new Date()
+  const nowSec = Math.floor(now.getTime() / 1000)
+  const localDayKey = formatLocalYmd(now)
+  const startSec = getLocalCalendarDayStartUnixSec(now)
+  if (nowSec < startSec) return null
+  const currentHourStartSec = Math.floor(nowSec / 3600) * 3600
+
+  const readHourMint = async (hourStartSec: number): Promise<number> => {
+    const parsed = await callGetGlobalStatsFullParsed(
+      cardAddress,
+      PERIOD_HOUR,
+      provider,
+      BigInt(hourStartSec + 1800),
+      0n
+    )
+    return parsed ? amountE6ToDisplayNumber(parsed.periodMint) : 0
+  }
+
+  if (
+    previous &&
+    previous.localDayKey === localDayKey &&
+    previous.currentHourStartSec === currentHourStartSec
+  ) {
+    const currentHourVouchers = await readHourMint(currentHourStartSec)
+    return {
+      ...previous,
+      currentHourVouchers,
+      totalVouchers: previous.completedHoursVouchers + currentHourVouchers,
+    }
+  }
+
+  const startHour = Math.floor(startSec / 3600)
+  const endHour = Math.floor(nowSec / 3600)
+  let completedHoursVouchers = 0
+  let currentHourVouchers = 0
+  for (let h = startHour; h <= endHour; h += 1) {
+    const hourStart = h * 3600
+    const val = await readHourMint(hourStart)
+    if (hourStart < currentHourStartSec) completedHoursVouchers += val
+    else currentHourVouchers += val
+  }
+  return {
+    localDayKey,
+    currentHourStartSec,
+    completedHoursVouchers,
+    currentHourVouchers,
+    totalVouchers: completedHoursVouchers + currentHourVouchers,
   }
 }
 
@@ -3858,10 +3933,14 @@ function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFi
     tx.hash.toLowerCase().includes(q) ||
     (tx.beamioTag && tx.beamioTag.toLowerCase().includes(q))
   const matchType = ctx.txFilterType === 'All' || tx.type === ctx.txFilterType
+  /** App / android NFC top-ups often have no `displayJson.terminal` → row.terminal is "—"; must not vanish when a Staff POS is selected. */
+  const terminalTrim = (tx.terminal ?? '').trim()
+  const topUpTerminalUnbound = tx.type === 'In-Store Top-Up' && (terminalTrim === '' || terminalTrim === '—')
   const matchTerminal =
     ctx.txFilterTerminal === 'All' ||
     tx.terminal === ctx.txFilterTerminal ||
-    (ctx.txFilterTerminal === 'The Vault' && Boolean(tx.terminal?.toLowerCase().includes('vault')))
+    (ctx.txFilterTerminal === 'The Vault' && Boolean(tx.terminal?.toLowerCase().includes('vault'))) ||
+    (topUpTerminalUnbound && ctx.txFilterTerminal !== 'The Vault')
   return Boolean(matchLedger && matchSearch && matchType && matchTerminal)
 }
 
@@ -4108,71 +4187,6 @@ function indexerPageTupleToTransactionJson(tx: {
     meta,
     exists: Boolean(tx.exists),
   }
-}
-
-function transactionFullToFetchedRow(full: unknown): IndexerFetchedTxRow | null {
-  if (full == null || typeof full !== 'object') return null
-  const f = full as Record<string, unknown>
-  const idHex = indexerBytes32ToHex(f.id)
-  if (!idHex || idHex === ethers.ZeroHash) return null
-  const feesRec =
-    f.fees && typeof f.fees === 'object' ? (f.fees as Record<string, unknown>) : {}
-  const bServiceUnits6 = indexerUintToDecimalString(feesRec.bServiceUnits6 ?? 0)
-  const txTop = f.topAdmin
-  const txSub = f.subordinate
-  const topAdmin =
-    typeof txTop === 'string' && ethers.isAddress(txTop) && txTop !== ethers.ZeroAddress
-      ? ethers.getAddress(txTop)
-      : undefined
-  const subordinate =
-    typeof txSub === 'string' && ethers.isAddress(txSub) && txSub !== ethers.ZeroAddress
-      ? ethers.getAddress(txSub)
-      : undefined
-  const txLike = {
-    id: f.id,
-    originalPaymentHash: f.originalPaymentHash,
-    chainId: f.chainId,
-    txCategory: f.txCategory,
-    displayJson: f.displayJson,
-    timestamp: f.timestamp,
-    payer: f.payer,
-    payee: f.payee,
-    finalRequestAmountFiat6: f.finalRequestAmountFiat6,
-    finalRequestAmountUSDC6: f.finalRequestAmountUSDC6,
-    isAAAccount: f.isAAAccount,
-    fees: f.fees,
-    meta: f.meta,
-    exists: true,
-    topAdmin: f.topAdmin,
-    subordinate: f.subordinate,
-  }
-  const raw = indexerPageTupleToTransactionJson(txLike as Parameters<typeof indexerPageTupleToTransactionJson>[0])
-  return {
-    id: idHex,
-    originalPaymentHash: indexerBytes32ToHex(f.originalPaymentHash),
-    txCategory: indexerBytes32ToHex(f.txCategory),
-    displayJson: typeof f.displayJson === 'string' ? f.displayJson : '',
-    timestamp: indexerUintToDecimalString(f.timestamp),
-    payer: indexerAddrToJson(f.payer),
-    payee: indexerAddrToJson(f.payee),
-    finalRequestAmountFiat6: indexerUintToDecimalString(f.finalRequestAmountFiat6),
-    finalRequestAmountUSDC6: indexerUintToDecimalString(f.finalRequestAmountUSDC6),
-    meta: f.meta as IndexerFetchedTxRow['meta'],
-    topAdmin,
-    subordinate,
-    bServiceUnits6,
-    raw,
-  }
-}
-
-function transactionFullMatchesUserWatch(full: Record<string, unknown>, watchLower: Set<string>): boolean {
-  for (const c of [full.payer, full.payee, full.topAdmin, full.subordinate]) {
-    if (c == null) continue
-    const a = typeof c === 'string' ? c : String(c)
-    if (!ethers.isAddress(a) || a === ethers.ZeroAddress) continue
-    if (watchLower.has(ethers.getAddress(a).toLowerCase())) return true
-  }
-  return false
 }
 
 /**
@@ -4705,6 +4719,26 @@ function mergeRenumberTxDisplays(fetched: TxDisplayRow[], cachedInbound: TxDispl
   return capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }))
 }
 
+/** Local-first ledger base: union localStorage + in-memory rows (state wins on same indexerTxId) before merging indexer diff. */
+function mergeLocalLedgerBaseForIndexerMerge(
+  storageRows: TxDisplayRow[],
+  stateRows: TxDisplayRow[],
+  currencyType: number | null
+): TxDisplayRow[] {
+  const ns = normalizeTxDisplayRowsForCardCurrency(storageRows, currencyType)
+  const nt = normalizeTxDisplayRowsForCardCurrency(stateRows, currencyType)
+  const byId = new Map<string, TxDisplayRow>()
+  for (const r of ns) {
+    const k = String(r.indexerTxId || r.id).toLowerCase()
+    if (k) byId.set(k, r)
+  }
+  for (const r of nt) {
+    const k = String(r.indexerTxId || r.id).toLowerCase()
+    if (k) byId.set(k, r)
+  }
+  return [...byId.values()]
+}
+
 function loadInboundTxDisplayCache(eoaLower: string): TxDisplayRow[] {
   if (typeof window === 'undefined') return []
   try {
@@ -4995,26 +5029,28 @@ function tipsLedgerEntryNonUsdcCadOnly(e: TipsCollectedLedgerEntry, cadOracle: n
   return tipsLedgerEntryApproxCad(e, cadOracle)
 }
 
-function chargeTxDisplayRowApproxCad(tx: TxDisplayRow, cadOracle: number): number {
+/** Charge tip leg in CAD base (TX_TIP child, embedded `chargeBreakdown`, or `tx.tip` USDC6). */
+function chargeTxDisplayRowMergedTipCad(tx: TxDisplayRow, cadOracle: number): number {
   if (tx.type !== 'Charge') return 0
-  let tipCadExtra = 0
   if (tx.tipRaw) {
     const tr = tx.tipRaw.raw as Record<string, unknown>
     const tipFiat = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
     const tipMeta = parseIndexerMetaTuple(tr.meta)
     if (tipFiat > 0) {
       const tipCur = beamioFiatCurrencyLabel(Number(tipMeta.currencyFiat))
-      tipCadExtra = approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
-    } else if (tx.tipRaw.usdcAmount > 0) {
-      tipCadExtra = tx.tipRaw.usdcAmount / cadOracle
+      return approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
     }
-  } else {
-    const emb = parseChargeBreakdownEmbeddedTip(tx.raw as Record<string, unknown>)
-    if (emb) {
-      tipCadExtra += chargeBreakdownTipHumanToCad(emb.tipHuman, emb.requestCurrencyUpper, cadOracle)
-    }
+    if (tx.tipRaw.usdcAmount > 0) return tx.tipRaw.usdcAmount / cadOracle
   }
+  const emb = parseChargeBreakdownEmbeddedTip(tx.raw as Record<string, unknown>)
+  if (emb) return chargeBreakdownTipHumanToCad(emb.tipHuman, emb.requestCurrencyUpper, cadOracle)
+  if (tx.tip > 0) return tx.tip / cadOracle
+  return 0
+}
 
+function chargeTxDisplayRowApproxCad(tx: TxDisplayRow, cadOracle: number): number {
+  if (tx.type !== 'Charge') return 0
+  const tipCadExtra = chargeTxDisplayRowMergedTipCad(tx, cadOracle)
   const raw = tx.raw as Record<string, unknown>
   const meta = parseIndexerMetaTuple(raw.meta)
   const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
@@ -5037,6 +5073,125 @@ function chargeTxDisplayRowNetCad(tx: TxDisplayRow, cadOracle: number): number {
   return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0)
 }
 
+function topupTxDisplayRowIssuedAmount(tx: TxDisplayRow): number {
+  if (tx.type !== 'In-Store Top-Up') return 0
+  const raw = tx.raw as Record<string, unknown>
+  const meta = parseIndexerMetaTuple(raw.meta)
+  const metaIssued = parseIndexerUintE6Field(meta.requestAmountFiat6)
+  if (metaIssued > 0) return metaIssued
+  const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
+  if (finalFiat > 0) return finalFiat
+  if (Number.isFinite(tx.ctreeAmount) && tx.ctreeAmount > 0) return tx.ctreeAmount
+  if (Number.isFinite(tx.total) && tx.total > 0) return tx.total
+  const finalUsdc = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6)
+  if (finalUsdc > 0) return finalUsdc
+  return 0
+}
+
+function summarizeTodayTopupsFromRows(rows: readonly TxDisplayRow[]): { count: number; total: number } {
+  const todayKey = formatLocalYmd(new Date())
+  let count = 0
+  let total = 0
+  for (const tx of rows) {
+    if (tx.type !== 'In-Store Top-Up') continue
+    if (txDisplayRowIsIndexerBunitLedger(tx)) continue
+    const ts = txDisplayRowTimestampSec(tx)
+    if (ts <= 0) continue
+    const dayKey = formatLocalYmd(new Date(ts * 1000))
+    if (dayKey !== todayKey) continue
+    count += 1
+    total += topupTxDisplayRowIssuedAmount(tx)
+  }
+  return { count, total }
+}
+
+function summarizeTopupsFromIndexerPage(page: readonly {
+  txCategory?: unknown
+  finalRequestAmountFiat6?: unknown
+  finalRequestAmountUSDC6?: unknown
+  meta?: unknown
+}[]): { count: number; total: number } {
+  let count = 0
+  let total = 0
+  for (const tx of page) {
+    const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
+    if (!INDEXER_TX_TOPUP_CATEGORIES.has(cat as `0x${string}`)) continue
+    const metaIssued = parseIndexerUintE6Field(parseIndexerMetaTuple(tx.meta).requestAmountFiat6)
+    const finalFiat = parseIndexerUintE6Field(tx.finalRequestAmountFiat6)
+    const finalUsdc = parseIndexerUintE6Field(tx.finalRequestAmountUSDC6)
+    count += 1
+    total += metaIssued > 0 ? metaIssued : finalFiat > 0 ? finalFiat : finalUsdc
+  }
+  return { count, total }
+}
+
+async function fetchTodayTopupSnapshotDirect(
+  cardAddress: string,
+  queryAccount: string,
+  provider: ethers.Provider
+): Promise<{ count: number; total: number }> {
+  const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, provider)
+  const account = ethers.getAddress(queryAccount)
+  const queryByAccount = async (): Promise<{ count: number; total: number }> => {
+    let pageOffset = 0
+    let totalCount = 0
+    let totalAmount = 0
+    while (pageOffset < 1000) {
+      const [total, , , page] = await indexerAsset.getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(
+        cardAddress,
+        account,
+        PERIOD_DAY,
+        0,
+        pageOffset,
+        100,
+        TX_CATEGORY_ZERO,
+        0,
+        CHAIN_ID_FILTER_ALL
+      ) as [bigint, bigint, bigint, Array<{ txCategory?: unknown; finalRequestAmountFiat6?: unknown; finalRequestAmountUSDC6?: unknown; meta?: unknown }>]
+      const part = summarizeTopupsFromIndexerPage(page)
+      totalCount += part.count
+      totalAmount += part.total
+      pageOffset += page.length
+      if (page.length === 0 || pageOffset >= Number(total)) break
+    }
+    return { count: totalCount, total: totalAmount }
+  }
+  const queryByTopAdmin = async (): Promise<{ count: number; total: number }> => {
+    let pageOffset = 0
+    let totalCount = 0
+    let totalAmount = 0
+    while (pageOffset < 1000) {
+      const [total, , , page] = await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(
+        cardAddress,
+        account,
+        PERIOD_DAY,
+        0,
+        pageOffset,
+        100,
+        TX_CATEGORY_ZERO,
+        0,
+        CHAIN_ID_FILTER_ALL
+      ) as [bigint, bigint, bigint, Array<{ txCategory?: unknown; finalRequestAmountFiat6?: unknown; finalRequestAmountUSDC6?: unknown; meta?: unknown }>]
+      const part = summarizeTopupsFromIndexerPage(page)
+      totalCount += part.count
+      totalAmount += part.total
+      pageOffset += page.length
+      if (page.length === 0 || pageOffset >= Number(total)) break
+    }
+    return { count: totalCount, total: totalAmount }
+  }
+  const [byAccount, byTopAdmin] = await Promise.allSettled([queryByAccount(), queryByTopAdmin()])
+  const vals = [byAccount, byTopAdmin]
+    .filter((r): r is PromiseFulfilledResult<{ count: number; total: number }> => r.status === 'fulfilled')
+    .map((r) => r.value)
+  if (vals.length === 0) return { count: 0, total: 0 }
+  return vals.reduce((best, cur) => {
+    if (cur.count > best.count) return cur
+    if (cur.count === best.count && cur.total > best.total) return cur
+    return best
+  })
+}
+
 /** Append " Card" when the display name does not already end with "Card" (case-insensitive). */
 function tierDisplayNameWithCardSuffix(rawName: string): string {
   const t = rawName.trim()
@@ -5057,16 +5212,40 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
  * 节拍由 **DaemonProvider** 统一 `conetDepinProvider.on('block')` 触发（与 Members 串行，见 `registerMerchantOsOverviewBackgroundWork`），**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
  */
 
-/** In-memory fetch cache: 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
+/** In-memory fetch cache: default 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
 const FETCH_TTL_MS = 30_000;
+/** Ledger indexer in-memory TTL: keep low so new Charges are re-fetched soon (global queue may still serialize behind other tabs). */
+const LEDGER_INDEXER_MEM_CACHE_TTL_MS = 3_500;
+/** TopAdmin 周期补充：仅用于可能未写入 `assetActionIds[card]` 的 TX_TIP（与 ActionFacet 注释一致）。 */
+const LEDGER_INDEXER_DAY_OFFSETS: readonly number[] = [0, 1, 2, 3, 4];
+/**
+ * 原子账本：`LEDGER_ATOMIC_PAGE_SIZE` 分页从新到旧扫链上索引。
+ * - **账户** `getAccountTransactionsPaged`（ActionFacet）：`revIndex = total-1-(offset+i)` → **offset=0 为最新**，offset 递增向更旧翻页。
+ * - **卡资产** `getAssetTransactionsPaged`（BeamioUserCardStatsFacet）：`ids[offset+i]` 为追加序 → **offset = total-lim 才先拿到最新一页**，再令 `nextExclusiveEnd` 递减向更旧翻页（与账户相反，勿混用）。
+ * 合并后再按 `timestamp` 降序。
+ * 本地条数 < `LEDGER_LOCAL_ROW_THRESHOLD`：即使命中本地已有 id 也继续向后拉，直到扫完或 `LEDGER_MAX_BACK_PAGES_PER_INDEX`。
+ * 本地条数 ≥ 阈值：累计「与本地相同的记账 id」次数，&gt; `LEDGER_DUPLICATE_STOP_THRESHOLD` 时终止该索引本轮向后拉取（阈值与页大小对齐，避免单页全重复误触发）。
+ * 「本地条数」**仅**用持久化 inbound 缓存 `cachedLocal.length`（不用内存 mirror），避免 state 条数更大时误判为已满而提前停拉。
+ */
+const LEDGER_ATOMIC_PAGE_SIZE = 30;
+const LEDGER_LOCAL_ROW_THRESHOLD = 30;
+const LEDGER_DUPLICATE_STOP_THRESHOLD = 30;
+const LEDGER_MAX_BACK_PAGES_PER_INDEX = 120;
+/** Avoid hung CoNET / queue RPC leaving Ledger strip stuck on "Updating…" (inner return still runs outer `finally`). */
+const LEDGER_INDEXER_FETCH_TIMEOUT_MS = 55_000;
+function rejectLedgerIndexerFetchAfter(ms: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('ledger-indexer-fetch-timeout')), ms);
+  });
+}
 const fetchCache = new Map<string, { value: unknown; fetchedAt: number }>();
 const fetchInProgress = new Map<string, Promise<unknown>>();
 let globalFetchQueue: Promise<void> = Promise.resolve();
 
-async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMs: number = FETCH_TTL_MS): Promise<T> {
   const now = Date.now();
   const cached = fetchCache.get(key) as { value: T; fetchedAt: number } | undefined;
-  if (cached && (now - cached.fetchedAt) < FETCH_TTL_MS) {
+  if (cached && (now - cached.fetchedAt) < ttlMs) {
     return cached.value;
   }
 
@@ -5692,6 +5871,7 @@ export default function MerchantOS() {
    setVoucherPayFromScan,
    registerMembersLoyaltyBackgroundWork,
    registerMerchantOsOverviewBackgroundWork,
+   registerAddressMetadataMinuteWork,
  } = useDaemonContext();
  const [walletSendUsdcOpen, setWalletSendUsdcOpen] = useState(false);
  const [activeTab, setActiveTab] = useState('Overview');
@@ -6461,7 +6641,8 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
 
  const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('Today');
  const [oracleCadUsdc, setOracleCadUsdc] = useState<number | null>(null);
- const [activeLedger, setActiveLedger] = useState<'All' | 'AA' | 'EOA'>('All');
+ /** Ledger scope toggle removed from Transactions UI; table always uses combined ledger (was `All`). */
+ const activeLedger = 'All' as const;
  const [txSearchTerm, setTxSearchTerm] = useState('');
  const [txFilterTerminal, setTxFilterTerminal] = useState('All');
  const [txFilterType, setTxFilterType] = useState('All');
@@ -6518,11 +6699,32 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    () => businessProfileForm.storeName ?? displayName(beamio ?? undefined) ?? '',
    [businessProfileForm.storeName, beamio],
  );
+ /** Verra onboard / Settings `storeName` for sidebar capsule (read local draft when form state not hydrated yet). */
+ const sidebarOnboardBusinessName = useMemo(() => {
+   const e = businessProfileEoaResolved;
+   if (!e) return '';
+   const fromForm = (businessProfileForm.storeName ?? '').trim();
+   if (fromForm) return fromForm;
+   return (loadBusinessProfileDraftForEoa(e)?.storeName ?? '').trim();
+ }, [businessProfileEoaResolved, businessProfileForm.storeName, liteBusinessFormRevision]);
  /** Wallet-scoped localStorage partition (bizSite: different EOA login → different `eoa:…:` storage prefix). */
  const walletStoragePartitionLower = useMemo(
    () => bizWalletStoragePartitionLower(profiles?.[0]?.keyID, myAddress),
    [profiles?.[0]?.keyID, myAddress],
  );
+ /** EOA/AA → Beamio profile（本地 LS 优先；远程由 Daemon 约 1 分钟 searchUsername 补全） */
+ const [addressProfileByLower, setAddressProfileByLower] = useState<Record<string, BeamioAddressProfileRecord>>({});
+ useEffect(() => {
+   if (!walletStoragePartitionLower) {
+     setAddressProfileByLower({});
+     return;
+   }
+   setAddressProfileByLower(loadAddressProfileMap(walletStoragePartitionLower));
+ }, [walletStoragePartitionLower]);
+ const addressProfileByLowerRef = useRef(addressProfileByLower);
+ useEffect(() => {
+   addressProfileByLowerRef.current = addressProfileByLower;
+ }, [addressProfileByLower]);
  /** Staff / POS / Overview: user-issued program BeamioUserCard only (no CCSA / infrastructure fallback). */
  const staffProgramBeamioCardAddress = useMemo((): string | null => {
    if (merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)) {
@@ -6609,8 +6811,6 @@ useEffect(() => {
  const [adminMintCounterFromClear, setAdminMintCounterFromClear] = useState<number | null>(null);
  const [protocolFuelReserveBalance, setProtocolFuelReserveBalance] = useState<number | null>(null);
 const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
- /** Refetch CoNET indexer tx list when entering Transactions or on a 30s tick there (Overview feeder uses Base card stats, not this list). */
- const [txListPollTick, setTxListPollTick] = useState(0);
  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
  const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
  const [adminRetryCount, setAdminRetryCount] = useState(0);
@@ -6743,13 +6943,12 @@ useEffect(() => {
    chargeBUnitLedgerEpoch,
    timeFilter,
    overviewLocalCalendarDayKey,
-   activeLedger,
    txSearchTerm,
    txFilterType,
    txFilterTerminal,
    profiles,
    overviewRefreshTrigger,
- ])
+])
  const tipsCollectedLedgerRef = useRef<Map<string, TipsCollectedLedgerEntry>>(new Map())
  const [tipsCollectedLedgerEpoch, setTipsCollectedLedgerEpoch] = useState(0)
  const tipsCollectedOverviewSums = useMemo(() => {
@@ -6801,7 +7000,6 @@ useEffect(() => {
    tipsCollectedLedgerEpoch,
    timeFilter,
    overviewLocalCalendarDayKey,
-   activeLedger,
    txSearchTerm,
    txFilterType,
    txFilterTerminal,
@@ -6815,10 +7013,21 @@ useEffect(() => {
  const [indexerTransactionsRefreshing, setIndexerTransactionsRefreshing] = useState(false);
  /** Row keys (indexerTxId) that should play slide-in-from-right on this paint; cleared after animation. */
  const [txSlideInKeys, setTxSlideInKeys] = useState<string[]>([]);
+const [todayTopupSnapshot, setTodayTopupSnapshot] = useState<{ count: number; total: number }>({ count: 0, total: 0 });
+const [todayTopupDirectSnapshot, setTodayTopupDirectSnapshot] = useState<{ count: number; total: number }>({ count: 0, total: 0 });
+const [todayTopupHourlyRollup, setTodayTopupHourlyRollup] = useState<TodayTopupHourlyRollup | null>(null);
+const [lastHttpsIndexerRefreshAt, setLastHttpsIndexerRefreshAt] = useState<number | null>(null);
  const indexerTxListCountRef = useRef(0);
+ /** Mirrors `indexerTransactions` for merge inside `refreshIndexerTransactions` (storage ∪ state before indexer overlay). */
+ const indexerTransactionsMirrorRef = useRef<TxDisplayRow[]>([]);
+const indexerRefreshInFlightRef = useRef<Promise<void> | null>(null);
+const todayTopupHourlyRollupRef = useRef<TodayTopupHourlyRollup | null>(null);
  useEffect(() => {
    indexerTxListCountRef.current = indexerTransactions.length;
  }, [indexerTransactions.length]);
+ useEffect(() => {
+   indexerTransactionsMirrorRef.current = indexerTransactions;
+ }, [indexerTransactions]);
 
  /** Semi-persistent Charge B-Unit ledger: load from localStorage + merge inbound tx cache on EOA (immutable chain facts). */
  useEffect(() => {
@@ -6897,19 +7106,56 @@ useEffect(() => {
    window.addEventListener('keydown', onKey);
    return () => window.removeEventListener('keydown', onKey);
  }, [smartReceiptTx]);
- /** Transactions table: payer/payee address (lowercase) → @beamioTag from searchUsername (Top-Up / Charge / Tip) */
+ /** Transactions table: payer/payee address (lowercase) → @beamioTag（由 addressProfile registry 同步 + 历史兼容） */
  const [txReportingBeamioTagByAddress, setTxReportingBeamioTagByAddress] = useState<Record<string, string>>({});
+ const txReportingWalletPartitionSeenRef = useRef<string | null>(null);
+ useEffect(() => {
+   const k = walletStoragePartitionLower || '';
+   if (txReportingWalletPartitionSeenRef.current === k) return;
+   txReportingWalletPartitionSeenRef.current = k;
+   setTxReportingBeamioTagByAddress({});
+ }, [walletStoragePartitionLower]);
+ useEffect(() => {
+   setTxReportingBeamioTagByAddress((p) => {
+     let changed = false;
+     const next = { ...p };
+     for (const [k, r] of Object.entries(addressProfileByLower)) {
+       const t = beamioTagFromRecord(r);
+       if (t && next[k] !== t) {
+         next[k] = t;
+         changed = true;
+       }
+     }
+     return changed ? next : p;
+   });
+ }, [addressProfileByLower]);
+ /** Ledger / Members / Transactions：按地址取 @tag（registry 优先） */
+ const resolveReportingBeamioTagLower = useCallback(
+   (lower: string) => {
+     if (!lower) return '';
+     const fromReg = beamioTagFromRecord(addressProfileByLower[lower]);
+     if (fromReg) return fromReg;
+     return txReportingBeamioTagByAddress[lower] ?? '';
+   },
+   [addressProfileByLower, txReportingBeamioTagByAddress],
+ );
+ /** Beamio 胶囊 item：`import { toBeamioCapsuleItem } from '@/utils/beamioAddressProfileRegistry'` + `addressProfileByLower[lower]` */
+
  /** Charge payer → program/staff BeamioUserCard tier capsule (metadata.name + background_color from per-NFT JSON) */
  const [chargePayerInfraTierCapsuleByPayer, setChargePayerInfraTierCapsuleByPayer] = useState<
    Record<string, { name: string; backgroundColor?: string } | null>
  >({});
  /** Chain-verified admin status (EOA-scoped): local cache first, chain fetch as backup (beamio-ai-onchain-fetch) */
  const isAdminTrustedCacheKey = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:is-admin`;
+const statsAdminTrustedCacheKey = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:stats-admin`;
  const [isCurrentUserCardAdmin, setIsCurrentUserCardAdmin] = useState<boolean | null>(() =>
    currentEoa && ethers.isAddress(currentEoa) ? (loadTrustedCache<boolean>(isAdminTrustedCacheKey) ?? null) : null
  );
  /** First chain address in EOA-first order (keyID → myAddress → aaAccount) with `isAdmin` true — dashboard / indexer stats align with EOA owner–admin model. */
- const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useState<string | null>(null);
+const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useState<string | null>(() => {
+  const cached = currentEoa && ethers.isAddress(currentEoa) ? loadTrustedCache<string | null>(statsAdminTrustedCacheKey) : null;
+  return cached && ethers.isAddress(cached) ? ethers.getAddress(cached) : null;
+});
 
  // Store Wallets, Market, Messages, Partner Alliances
  const [joinedAlliances, setJoinedAlliances] = useState<AllianceId[]>([]);
@@ -7487,6 +7733,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
        merchantActivationStatsCacheKey,
        linkedTerminalsCacheKey,
        isAdminTrustedCacheKey,
+      statsAdminTrustedCacheKey,
       retainedCapitalTrustedCacheKey,
      ];
      keys.forEach((k) => window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${k}`));
@@ -7494,6 +7741,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setFixedCardAdmins([]);
      setLinkedMerchantAdmins([]);
      setIsCurrentUserCardAdmin(null);
+    setChainResolvedStatsAdminAddress(null);
      setTerminals([]);
      setLinkedMerchantLookupDone(false);
      setAdminNetworkSummaryToday(null);
@@ -7523,6 +7771,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    merchantActivationStatsCacheKey,
    linkedTerminalsCacheKey,
    isAdminTrustedCacheKey,
+  statsAdminTrustedCacheKey,
   retainedCapitalTrustedCacheKey,
    currentEoa,
    staffProgramBeamioCardAddress,
@@ -7698,6 +7947,97 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
  const [terminalStats, setTerminalStats] = useState<Record<string, BizTerminalChainStats | null>>({});
  const terminalsRef = useRef(terminals);
  terminalsRef.current = terminals;
+ /** Daemon `registerAddressMetadataMinuteWork`：每轮读取最新候选地址，避免闭包过期 */
+ const addressMetadataMinuteBundleRef = useRef({
+   partition: '' as string,
+   txs: [] as TxDisplayRow[],
+   profiles0: null as (typeof profiles)[0] | null | undefined,
+   myAddress: '' as string,
+   cardOwner: '' as string | undefined,
+   linkedMerchantAdmins: [] as string[],
+   fixedCardAdmins: [] as string[],
+   membersLoyaltyTopupRows: [] as BizTopupMemberTableRow[],
+   terminals: [] as TerminalRecord[],
+ });
+ addressMetadataMinuteBundleRef.current = {
+   partition: walletStoragePartitionLower || '',
+   txs: indexerTransactions,
+   profiles0: profiles?.[0],
+   myAddress: myAddress || '',
+   cardOwner: fixedCardMetadata?.cardOwner,
+   linkedMerchantAdmins,
+   fixedCardAdmins,
+   membersLoyaltyTopupRows,
+   terminals,
+ };
+ useEffect(() => {
+   const ADDRESS_METADATA_MAX_PER_TICK = 28;
+   const run = async (): Promise<void> => {
+     const b = addressMetadataMinuteBundleRef.current;
+     const partition = b.partition.trim();
+     if (!partition) return;
+     const disk = loadAddressProfileMap(partition);
+     const mem = addressProfileByLowerRef.current;
+     const lookup = (lower: string) => mem[lower] ?? disk[lower];
+     const candidates = new Set<string>();
+     for (const tx of b.txs) {
+       const raw = tx.raw as Record<string, unknown>;
+       const payer = typeof raw.payer === 'string' ? raw.payer : '';
+       const payee = typeof raw.payee === 'string' ? raw.payee : '';
+       for (const a of [payer, payee]) {
+         const k = normalizeAddressKey(a);
+         if (k) candidates.add(k);
+       }
+     }
+     const p0 = b.profiles0;
+     if (p0?.keyID && ethers.isAddress(p0.keyID)) candidates.add(ethers.getAddress(p0.keyID).toLowerCase());
+     if (p0?.aaAccount && ethers.isAddress(p0.aaAccount)) candidates.add(ethers.getAddress(p0.aaAccount).toLowerCase());
+     if (b.myAddress && ethers.isAddress(b.myAddress)) candidates.add(ethers.getAddress(b.myAddress).toLowerCase());
+     if (b.cardOwner && ethers.isAddress(b.cardOwner)) candidates.add(ethers.getAddress(b.cardOwner).toLowerCase());
+     for (const a of b.linkedMerchantAdmins) {
+       const k = normalizeAddressKey(a);
+       if (k) candidates.add(k);
+     }
+     for (const a of b.fixedCardAdmins) {
+       const k = normalizeAddressKey(a);
+       if (k) candidates.add(k);
+     }
+     for (const row of b.membersLoyaltyTopupRows) {
+       if (row.memberAddress && ethers.isAddress(row.memberAddress)) {
+         candidates.add(ethers.getAddress(row.memberAddress).toLowerCase());
+       }
+       if (row.aaAddress && ethers.isAddress(row.aaAddress)) {
+         candidates.add(ethers.getAddress(row.aaAddress).toLowerCase());
+       }
+     }
+     for (const t of b.terminals) {
+       if (t.eoa && ethers.isAddress(t.eoa)) candidates.add(ethers.getAddress(t.eoa).toLowerCase());
+     }
+     const need: string[] = [];
+     for (const lower of candidates) {
+       const r = lookup(lower);
+       if (!r || !beamioTagFromRecord(r)) need.push(lower);
+     }
+     const chunk = need.slice(0, ADDRESS_METADATA_MAX_PER_TICK);
+     const incoming: Record<string, BeamioAddressProfileRecord | null | undefined> = {};
+     for (const lower of chunk) {
+       try {
+         const res = await searchUsername(ethers.getAddress(lower));
+         const peer = pickPeerFromSearchUsernameResponse(res, lower);
+         const rec = recordFromSearchPeer(lower, peer);
+         if (rec) incoming[lower] = rec;
+       } catch {
+         /* untrusted: do not clear local */
+       }
+     }
+     if (Object.keys(incoming).length === 0) return;
+     const nextDisk = mergeProfileMap(disk, incoming);
+     saveAddressProfileMap(partition, nextDisk);
+     setAddressProfileByLower((prev) => mergeProfileMap(prev, incoming));
+   };
+   registerAddressMetadataMinuteWork(() => run());
+   return () => registerAddressMetadataMinuteWork(null);
+ }, [registerAddressMetadataMinuteWork]);
  const [isAddTerminalOpen, setIsAddTerminalOpen] = useState(false);
  const [newTerminalTag, setNewTerminalTag] = useState('');
  const [linkTerminalLoading, setLinkTerminalLoading] = useState(false);
@@ -7873,6 +8213,12 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    if (controlsOwner) return programCardOwnerAddress;
    return chainResolvedStatsAdminAddress;
  }, [programCardOwnerAddress, walletIdentityAddresses, chainResolvedStatsAdminAddress]);
+const txQueryRootAddress = useMemo(() => {
+  if (effectiveAdminAddress && ethers.isAddress(effectiveAdminAddress)) return ethers.getAddress(effectiveAdminAddress)
+  if (programCardOwnerAddress && ethers.isAddress(programCardOwnerAddress)) return ethers.getAddress(programCardOwnerAddress)
+  const firstWallet = walletIdentityAddresses.find((a) => !!a && ethers.isAddress(a))
+  return firstWallet ? ethers.getAddress(firstWallet) : null
+}, [effectiveAdminAddress, programCardOwnerAddress, walletIdentityAddresses]);
 
  const transactionsFilteredForTable = useMemo(() => {
    const ctx: BizTxTableFilterCtx = {
@@ -7889,7 +8235,6 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    return indexerTransactions.filter((tx) => bizTxMatchesTransactionTableFilters(tx, ctx))
  }, [
              indexerTransactions,
-             activeLedger,
              txSearchTerm,
              txFilterType,
              txFilterTerminal,
@@ -7939,35 +8284,184 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    overviewRefreshTrigger,
  ])
 
+ /** Ledger rows in local-calendar **This Year** (same filter ctx as Activity row; independent of header `timeFilter`). */
+ const overviewYearActivityTxs = useMemo(() => {
+   const endSec = Math.floor(Date.now() / 1000)
+   const startSec = overviewPeriodStartUnixSec('This Year', endSec)
+   return indexerTransactions.filter((tx) => {
+     if (!bizTxMatchesTransactionTableFilters(tx, overviewDashboardActivityFilterCtx)) return false
+     const ts = txDisplayRowTimestampSec(tx)
+     if (ts <= 0) return false
+     return ts >= startSec && ts <= endSec
+   })
+ }, [indexerTransactions, overviewDashboardActivityFilterCtx, overviewRefreshTrigger])
+
+ /** Total Capital Retained panel: This Year top-ups (issued face) − This Year charges (+tip), same formulas as Activity cards. */
+ const totalCapitalRetainedDisplay = useMemo(() => {
+   const yearTopups = overviewYearActivityTxs
+     .filter((t) => t.type === 'In-Store Top-Up')
+     .reduce((sum, t) => sum + topupTxDisplayRowIssuedAmount(t), 0)
+   const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
+   let sumChargesCad = 0
+   for (const t of overviewYearActivityTxs) {
+     if (t.type !== 'Charge') continue
+     sumChargesCad += chargeTxDisplayRowApproxCad(t, cadOracle)
+   }
+   const yearCharges =
+     programCardBeamioCurrencyType != null &&
+     programCardBeamioCurrencyType === BEAMIO_CURRENCY_TYPE_USDC &&
+     Number.isFinite(cadOracle) &&
+     cadOracle > 0
+       ? sumChargesCad / cadOracle
+       : sumChargesCad
+   return yearTopups - yearCharges
+ }, [overviewYearActivityTxs, oracleCadUsdc, programCardBeamioCurrencyType])
+
+ const overviewYearHasTopupOrCharge = useMemo(
+   () =>
+     overviewYearActivityTxs.some(
+       (t) => t.type === 'In-Store Top-Up' || t.type === 'Charge'
+     ),
+   [overviewYearActivityTxs]
+ )
+
  const overviewActivityTopupCount = useMemo(
    () => overviewDashboardActivityTxs.filter((t) => t.type === 'In-Store Top-Up').length,
    [overviewDashboardActivityTxs]
  )
+const overviewActivityTopupTotal = useMemo(
+  () =>
+    overviewDashboardActivityTxs
+      .filter((t) => t.type === 'In-Store Top-Up')
+      .reduce((sum, t) => sum + topupTxDisplayRowIssuedAmount(t), 0),
+  [overviewDashboardActivityTxs]
+)
+/** Overview activity cards: ledger-only (`overviewDashboardActivityTxs` ≡ Transactions/Ledger History window + filters). */
+const overviewActivityTopupDisplayTotal = overviewActivityTopupTotal
+const overviewActivityTopupDisplayCount = overviewActivityTopupCount
  const overviewActivityChargeCount = useMemo(
    () => overviewDashboardActivityTxs.filter((t) => t.type === 'Charge').length,
    [overviewDashboardActivityTxs]
  )
-/** Sum Charge CAD net totals (excluding tips) from indexer; fallback uses chain summary minus Tips Collected for the same window. */
- const overviewActivityChargeCadTotal = useMemo(
-  () => {
-    const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
-    return overviewDashboardActivityTxs
-      .filter((t) => t.type === 'Charge')
-      .reduce((sum, t) => sum + chargeTxDisplayRowNetCad(t, cadOracle), 0)
-  },
-  [overviewDashboardActivityTxs, oracleCadUsdc]
- )
-/** Period Activity Charges: prefer indexer-derived merchant ledger rows, but fall back to chain summary when indexer rows are not yet present. */
-const overviewActivityChargeDisplayTotal =
-  overviewActivityChargeCadTotal > 0
-    ? overviewActivityChargeCadTotal
-    : Math.max(0, (adminNetworkSummaryToday?.cadVol ?? 0) - tipsCollectedOverviewSums.cadTotal)
-const overviewActivityChargeDisplayCount =
-  overviewActivityChargeCount > 0 ? overviewActivityChargeCount : (adminNetworkSummaryToday?.txCount ?? 0)
- const overviewActivityTipCount = useMemo(
-   () => overviewDashboardActivityTxs.filter((t) => t.type === 'Tip').length,
+/**
+ * Charge + tip in CAD base per row (`chargeTxDisplayRowApproxCad`: fiat leg when `finalRequestAmountFiat6` > 0, else USDC fallback).
+ * USDC `currency()` program card: scale sum by oracle for display consistency with `formatMerchantChargeOverviewHuman`.
+ */
+const overviewActivityChargeDisplayTotal = useMemo(() => {
+  const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
+  let sumCad = 0
+  for (const t of overviewDashboardActivityTxs) {
+    if (t.type !== 'Charge') continue
+    sumCad += chargeTxDisplayRowApproxCad(t, cadOracle)
+  }
+  if (
+    programCardBeamioCurrencyType != null &&
+    programCardBeamioCurrencyType === BEAMIO_CURRENCY_TYPE_USDC &&
+    Number.isFinite(cadOracle) &&
+    cadOracle > 0
+  ) {
+    return sumCad / cadOracle
+  }
+  return sumCad
+}, [overviewDashboardActivityTxs, oracleCadUsdc, programCardBeamioCurrencyType])
+ const overviewActivityChargeDisplayCount = overviewActivityChargeCount
+ const overviewActivityTipsLedgerEntries = useMemo(
+   () => buildTipsCollectedLedgerEntriesFromMerged(overviewDashboardActivityTxs),
    [overviewDashboardActivityTxs]
  )
+ const overviewActivityTipsLedgerCadTotal = useMemo(() => {
+   const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
+   return overviewActivityTipsLedgerEntries.reduce((sum, e) => sum + tipsLedgerEntryApproxCad(e, cadOracle), 0)
+ }, [overviewActivityTipsLedgerEntries, oracleCadUsdc])
+ const overviewActivityTipsLedgerCount = overviewActivityTipsLedgerEntries.length
+
+ /** Rolling 24h Top-Up velocity from global ledger (`indexerTransactions` + same Overview filter ctx). */
+ const RELOAD_VELOCITY_WINDOW_SEC = 86_400
+ const RELOAD_VELOCITY_BAR_SLOTS = 8
+ const overviewReloadVelocity24h = useMemo(() => {
+   const ctx = overviewDashboardActivityFilterCtx
+   const nowSec = Math.floor(Date.now() / 1000)
+   const startSec = nowSec - RELOAD_VELOCITY_WINDOW_SEC
+   const topups: TxDisplayRow[] = []
+   for (const tx of indexerTransactions) {
+     if (tx.type !== 'In-Store Top-Up') continue
+     if (!bizTxMatchesTransactionTableFilters(tx, ctx)) continue
+     const ts = txDisplayRowTimestampSec(tx)
+     if (ts <= 0 || ts < startSec || ts > nowSec) continue
+     topups.push(tx)
+   }
+   topups.sort((a, b) => txDisplayRowTimestampSec(a) - txDisplayRowTimestampSec(b))
+   const hourly = new Array(24).fill(0)
+   for (const tx of topups) {
+     const ts = txDisplayRowTimestampSec(tx)
+     const idx = Math.min(23, Math.max(0, Math.floor((ts - startSec) / 3600)))
+     hourly[idx] += 1
+   }
+   const barCounts: number[] = []
+   for (let b = 0; b < RELOAD_VELOCITY_BAR_SLOTS; b++) {
+     let s = 0
+     for (let h = 0; h < 3; h++) {
+       const hi = b * 3 + h
+       if (hi < 24) s += hourly[hi]
+     }
+     barCounts.push(s)
+   }
+   const maxBar = Math.max(1, ...barCounts)
+   let peakHourIdx = 0
+   let peakVal = -1
+   for (let i = 0; i < 24; i++) {
+     if (hourly[i] > peakVal) {
+       peakVal = hourly[i]
+       peakHourIdx = i
+     }
+   }
+   const topupCount = topups.length
+   const hasData = topupCount > 0
+   const peakStartSec = startSec + peakHourIdx * 3600
+   const peakFmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true })
+   const peakHourLabel =
+     !hasData || peakVal <= 0
+       ? '—'
+       : `${peakFmt.format(new Date(peakStartSec * 1000))}–${peakFmt.format(new Date((peakStartSec + 3600) * 1000))}`
+   let avgGapLabel = '—'
+   if (topups.length >= 2) {
+     let gapSum = 0
+     for (let i = 1; i < topups.length; i++) {
+       gapSum += txDisplayRowTimestampSec(topups[i]) - txDisplayRowTimestampSec(topups[i - 1])
+     }
+     const avgSec = gapSum / (topups.length - 1)
+     if (avgSec < 60) avgGapLabel = '<1 min'
+     else if (avgSec < 3600) avgGapLabel = `${Math.max(1, Math.round(avgSec / 60))} min`
+     else if (avgSec < 172_800) avgGapLabel = `${(avgSec / 3600).toFixed(1)} h`
+     else avgGapLabel = `${Math.round(avgSec / 86_400)} d`
+   }
+   let statusLabel: 'Quiet' | 'Active' | 'Accelerating' = 'Quiet'
+   if (topupCount >= 1) {
+     statusLabel = 'Active'
+     const midSec = startSec + RELOAD_VELOCITY_WINDOW_SEC / 2
+     let firstHalf = 0
+     let secondHalf = 0
+     for (const tx of topups) {
+       const ts = txDisplayRowTimestampSec(tx)
+       if (ts < midSec) firstHalf++
+       else secondHalf++
+     }
+     if (topupCount >= 2 && secondHalf > firstHalf) statusLabel = 'Accelerating'
+   }
+   const solidBarIndex = RELOAD_VELOCITY_BAR_SLOTS - 1
+   const barHeightsPct = barCounts.map((c) => (c <= 0 ? 5 : Math.max(14, Math.round((c / maxBar) * 100))))
+   return {
+     topupCount,
+     hasData,
+     barCounts,
+     barHeightsPct,
+     solidBarIndex,
+     avgGapLabel,
+     peakHourLabel,
+     statusLabel,
+   }
+ }, [indexerTransactions, overviewDashboardActivityFilterCtx, overviewRefreshTrigger])
+
  /** All-time（API DB）：无会员 NFT 用户经 NFC / App 首笔成功 top-up 次数；与 `timeFilter` 无关。 */
  const overviewMemberActivationsFromApi = useMemo(() => {
    const nfc = merchantActivationStats?.nfc ?? 0;
@@ -8833,8 +9327,11 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const programCardAddr = staffProgramBeamioCardAddress;
    let cancelled = false;
    const cached = loadTrustedCache<boolean>(isAdminTrustedCacheKey);
+  const cachedWinnerRaw = loadTrustedCache<string | null>(statsAdminTrustedCacheKey);
+  const cachedWinner =
+    cachedWinnerRaw && ethers.isAddress(cachedWinnerRaw) ? ethers.getAddress(cachedWinnerRaw) : null;
    if (cached !== null) setIsCurrentUserCardAdmin(cached);
-   setChainResolvedStatsAdminAddress(null);
+  setChainResolvedStatsAdminAddress(cachedWinner);
    const fetchKey = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:is-admin:v2`;
    void fetchWithCache(fetchKey, async () => {
      const card = new ethers.Contract(programCardAddr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
@@ -8852,15 +9349,16 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        setIsCurrentUserCardAdmin(result.ok);
        setChainResolvedStatsAdminAddress(result.winner);
        saveTrustedCache(isAdminTrustedCacheKey, result.ok);
+      saveTrustedCache(statsAdminTrustedCacheKey, result.winner);
      }
    }).catch(() => {
      if (!cancelled && cached === null) {
        setIsCurrentUserCardAdmin(false);
-       setChainResolvedStatsAdminAddress(null);
+      setChainResolvedStatsAdminAddress(cachedWinner);
      }
    });
    return () => { cancelled = true; };
- }, [currentEoa, isAdminTrustedCacheKey, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID, myAddress, overviewRefreshTrigger, adminRetryCount, staffProgramBeamioCardAddress]);
+}, [currentEoa, isAdminTrustedCacheKey, statsAdminTrustedCacheKey, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID, myAddress, overviewRefreshTrigger, adminRetryCount, staffProgramBeamioCardAddress]);
 
  useEffect(() => {
    const owner = fixedCardMetadata?.cardOwner;
@@ -8889,6 +9387,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    const menuEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
    const resolved = menuEoa && ethers.isAddress(menuEoa) ? ethers.getAddress(menuEoa) : (fixedCardMetadata?.cardOwner && ethers.isAddress(fixedCardMetadata.cardOwner) ? ethers.getAddress(fixedCardMetadata.cardOwner) : null);
    if (resolved) setFeederEoa(resolved);
+   else setFeederEoa(null);
  }, [profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
 
  /** Members loyalty：由 DaemonProvider 在 CoNET `block` 上调度后台刷新（非 Members tab 也可更新）；禁止与 feeder 重复拉取。 */
@@ -9218,8 +9717,6 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  const tipsLifetimeScanNonceRef = useRef(0);
  const tipsLifetimeAppliedNonceRef = useRef(0);
  const tipsLifetimeLastFullFetchMsRef = useRef(0);
- /** Session dedup for BeamioIndexerDiamond WSS `TransactionRecordSynced` (by txId hex) */
- const indexerInboundWssSeenRef = useRef<Set<string>>(new Set());
  /** Detect transition into Transactions tab to invalidate indexer cache (same render cycle as tx fetch effect). */
  const prevActiveTabForTxRef = useRef<string>(activeTab);
  feederAccountRef.current = feederEoa ?? '';
@@ -9243,17 +9740,27 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        : '';
    /** Use account (current EOA) for quota cache key so we fetch even when fixedCardAdmins not yet loaded */
    const quotaCacheKey = `card:${staffProgramCardCacheBucket}:admin:${accountResolved ? accountResolved.toLowerCase() : ''}:quota-and-mint-counter`;
-  const buintBalanceCacheKey = accountResolved ? `eoa:${accountResolved.toLowerCase()}:buint:balance:v2` : '';
-   const aa = profiles?.[0]?.aaAccount?.trim();
-   /** EOA + AA addresses for BUint reserve read (same closure as cache key — do not use stale empty `account` inside async feederWork). */
+   /**
+    * B-Units: sum CoNET `balanceOf` for every distinct wallet the session may use.
+    * When `keyID` is the AA (common), the old logic only queried AA — B-Units often sit on EOA (`myAddress`), so System quota stayed 0 while indexer/activity stayed correct.
+    */
+   const buintBalanceCacheKey = walletStoragePartitionLower
+     ? `eoa:${walletStoragePartitionLower}:buint:balance:v2`
+     : '';
    const buintReserveTargets: string[] = [];
-   if (accountResolved) {
-     const mainAc = ethers.getAddress(accountResolved);
-     buintReserveTargets.push(mainAc);
-     if (aa && ethers.isAddress(aa) && ethers.getAddress(aa).toLowerCase() !== mainAc.toLowerCase()) {
-       buintReserveTargets.push(ethers.getAddress(aa));
-     }
-   }
+   const buintTargetSeen = new Set<string>();
+   const pushBuintTarget = (raw: string | undefined) => {
+     const t = (raw ?? '').trim();
+     if (!t || !ethers.isAddress(t)) return;
+     const a = ethers.getAddress(t);
+     const k = a.toLowerCase();
+     if (buintTargetSeen.has(k)) return;
+     buintTargetSeen.add(k);
+     buintReserveTargets.push(a);
+   };
+   pushBuintTarget(profiles?.[0]?.keyID);
+   pushBuintTarget(myAddress);
+   pushBuintTarget(profiles?.[0]?.aaAccount);
    const cachedNetworkSummaryRaw = loadTrustedCache<BizNetworkSummaryRow>(networkSummaryCacheKey);
    const todayYmdForCache = formatLocalYmd(new Date());
    const cachedNetworkSummary =
@@ -9279,7 +9786,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      setAdminMintLimitQuota(cachedQuota.quota);
      setAdminMintCounterFromClear(cachedQuota.mintCounterFromClear);
    }
-   if (cachedBuintBalance != null && accountResolved) setProtocolFuelReserveBalance(cachedBuintBalance);
+   if (cachedBuintBalance != null && walletStoragePartitionLower) setProtocolFuelReserveBalance(cachedBuintBalance);
    if (effectiveAdmin && ethers.isAddress(effectiveAdmin)) {
      if (cachedTipsLifetime !== null) setAdminTipsLifetimeUSDC(cachedTipsLifetime);
      else setAdminTipsLifetimeUSDC(null);
@@ -9585,7 +10092,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
        // 3. Protocol Fuel Reserve: CoNET BUint.balanceOf sum for user EOA + AA (same CoNET block tick as indexer reads below).
        // Trusted-cache protocol: only overwrite on full successful read; partial RPC failure → keep last trusted (persisted + in-memory).
-       if (accountResolved && buintReserveTargets.length > 0 && !feederCancelledRef.current) {
+       // Sums EOA + AA (+ keyID if distinct); matches on-chain fuel held across the user's identities.
+       if (buintReserveTargets.length > 0 && !feederCancelledRef.current) {
          const stepBuintKey = buintBalanceCacheKey;
          try {
            let sumRaw = 0n;
@@ -9613,7 +10121,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              if (fb != null) setProtocolFuelReserveBalance(fb);
            }
          }
-       } else if (!accountResolved) {
+       } else if (buintReserveTargets.length === 0) {
          setProtocolFuelReserveBalance(null);
        }
 
@@ -9720,13 +10228,18 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    linkedTerminalsCacheKey,
    merchantOwnCardAddress,
    retainedCapitalTrustedCacheKey,
+   walletStoragePartitionLower,
  ]);
 
-/** Transactions local-first hydrate: render last trusted/inbound ledger cache immediately, then let background fetch / WSS update it. */
+/**
+ * Ledger History local-first: hydrate `indexerTransactions` from localStorage (global atomic feed for dashboards). Remote refresh merges indexer
+ * records via paged `getAssetTransactionsPaged` (tail-first) / `getAccountTransactionsPaged` (offset 0 = newest per ActionFacet) + duplicate stop + topAdmin tip supplement; deduped by `id`.
+ */
 useEffect(() => {
   const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
   if (!eoaKey) {
     setIndexerTransactions([]);
+    setTodayTopupSnapshot({ count: 0, total: 0 });
     setIndexerTransactionsLoading(false);
     setIndexerTransactionsRefreshing(false);
     return;
@@ -9735,464 +10248,542 @@ useEffect(() => {
   if (cached.length > 0) {
     const normalized = normalizeTxDisplayRowsForCardCurrency(cached, programCardBeamioCurrencyType);
     setIndexerTransactions(normalized);
+    setTodayTopupSnapshot(summarizeTodayTopupsFromRows(normalized));
     saveInboundTxDisplayCache(eoaKey, normalized);
     setIndexerTransactionsLoading(false);
   }
 }, [currentEoa, programCardBeamioCurrencyType]);
 
 // Fetch BeamioIndexerDiamond transactions: local cache first, background fetch second; admin UI shows only this admin's accounting (account-based, excludes subordinates).
- useEffect(() => {
-  const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
-  const cachedLocal = eoaKey ? loadInboundTxDisplayCache(eoaKey) : [];
-   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
-    if (cachedLocal.length === 0) setIndexerTransactions([]);
-     setIndexerTransactionsLoading(false);
-     setIndexerTransactionsRefreshing(false);
-     return;
-   }
-   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) {
-    if (cachedLocal.length === 0) setIndexerTransactions([]);
-     setIndexerTransactionsLoading(false);
-     setIndexerTransactionsRefreshing(false);
-     return;
-   }
-   let cancelled = false;
-  if (cachedLocal.length > 0 && indexerTxListCountRef.current === 0) {
-    setIndexerTransactions(normalizeTxDisplayRowsForCardCurrency(cachedLocal, programCardBeamioCurrencyType));
-  }
-  const hadLocalList = indexerTxListCountRef.current > 0 || cachedLocal.length > 0;
-   if (hadLocalList) {
-     setIndexerTransactionsRefreshing(true);
-    setIndexerTransactionsLoading(false);
-   } else {
-     setIndexerTransactionsLoading(true);
-   }
-   const userAA = profiles?.[0]?.aaAccount?.trim();
-   const userAAAddr = userAA && ethers.isAddress(userAA) ? ethers.getAddress(userAA) : '';
-   const txKey = `eoa:${currentEoa}:indexer:tx:card:${staffProgramCardCacheBucket}:admin:${effectiveAdminAddress.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
-   void fetchWithCache(txKey, async () => {
-     const ACCOUNT_MODE_ALL = 0;
-     const indexerAccount = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ACCOUNT_ABI, conetDepinProvider);
-     const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
-     type TxRow = {
-       id: string
-       originalPaymentHash?: string
-       chainId: bigint
-       txCategory: string
-       displayJson: string
-       timestamp: bigint
-       payer: string
-       payee: string
-       finalRequestAmountFiat6: bigint
-       finalRequestAmountUSDC6: bigint
-       isAAAccount: boolean
-       meta?: {
-         afterNotePayer?: string
-         afterNotePayee?: string
-         requestAmountFiat6?: bigint
-         requestAmountUSDC6?: bigint
-         currencyFiat?: number
-       }
-       exists?: boolean
-       topAdmin?: string
-       subordinate?: string
-       fees?: {
-         gasChainType?: number | bigint
-         gasWei?: bigint
-         gasUSDC6?: bigint
-         serviceUSDC6?: bigint
-         bServiceUSDC6?: bigint
-         bServiceUnits6?: bigint
-         feePayer?: string
-       }
-     };
-     const seen = new Set<string>();
-     const all: Array<{
-       id: string
-       originalPaymentHash: string
-       txCategory: string
-       displayJson: string
-       timestamp: string
-       payer: string
-       payee: string
-       finalRequestAmountFiat6: string
-       finalRequestAmountUSDC6: string
-       meta?: {
-         afterNotePayer?: string
-         afterNotePayee?: string
-         requestAmountFiat6?: bigint
-         requestAmountUSDC6?: bigint
-         currencyFiat?: number
-       }
-       topAdmin?: string
-       subordinate?: string
-       bServiceUnits6: string
-       raw: Record<string, unknown>
-     }> = [];
-     const addPage = (page: TxRow[] | undefined) => {
-       for (const tx of page ?? []) {
-         if (!tx?.exists || !tx?.id) continue;
-         if (shouldSkipIndexerRowForMerchantTxTable({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' })) continue;
-         const id = String(tx.id);
-         if (seen.has(id)) continue;
-         seen.add(id);
-         const topAdmin = tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined;
-         const subordinate = tx.subordinate && tx.subordinate !== ethers.ZeroAddress ? tx.subordinate : undefined;
-         const oph = tx.originalPaymentHash;
-         const originalPaymentHash =
-           typeof oph === 'string' && oph.startsWith('0x')
-             ? oph
-             : oph != null
-               ? ethers.hexlify(oph as ethers.BytesLike)
-               : ethers.ZeroHash;
-         all.push({
-           id: String(tx.id),
-           originalPaymentHash,
-           txCategory: String(tx.txCategory),
-           displayJson: tx.displayJson ?? '',
-           timestamp: String(tx.timestamp),
-           payer: tx.payer,
-           payee: tx.payee,
-           finalRequestAmountFiat6: String(tx.finalRequestAmountFiat6 ?? 0n),
-           finalRequestAmountUSDC6: String(tx.finalRequestAmountUSDC6 ?? 0n),
-           meta: tx.meta,
-           topAdmin,
-           subordinate,
-           bServiceUnits6: String(tx.fees?.bServiceUnits6 ?? 0n),
-           raw: indexerPageTupleToTransactionJson(tx),
-         });
-       }
-     };
-     const queryAccount = async (account: string) => {
-       for (const periodOffset of [0, 1, 2]) {
-         try {
-           const [total, , , page] = await indexerAccount.getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged(account, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL) as [bigint, bigint, bigint, TxRow[]];
-           addPage(page);
-           if (Number(total) <= 100) return;
-         } catch { return; }
-       }
-     };
-     await queryAccount(effectiveAdminAddress);
-     if (userAAAddr && userAAAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase()) await queryAccount(userAAAddr);
-     const myAddr = (typeof myAddress === 'string' && ethers.isAddress(myAddress)) ? ethers.getAddress(myAddress) : '';
-     if (myAddr && myAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase() && myAddr.toLowerCase() !== userAAAddr.toLowerCase()) await queryAccount(myAddr);
-     const queryAssetByAccount = async (account: string) => {
-       for (const periodOffset of [0, 1, 2]) {
-         try {
-           const [total, , , page] = await indexerAsset.getAssetTransactionsByCurrentPeriodOffsetAndAccountModePaged(staffProgramBeamioCardAddress, account, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
-           addPage(page);
-           if (Number(total) <= 100) return;
-         } catch { return; }
-       }
-     };
-    await queryAssetByAccount(effectiveAdminAddress);
-    if (userAAAddr && userAAAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase()) await queryAssetByAccount(userAAAddr);
-    if (myAddr && myAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase() && myAddr.toLowerCase() !== userAAAddr.toLowerCase()) await queryAssetByAccount(myAddr);
-    const queryAssetByTopAdmin = async (topAdmin: string) => {
-      for (const periodOffset of [0, 1, 2]) {
-        try {
-          const [total, , , page] = await indexerAsset.getAssetTransactionsByTopAdminAndCurrentPeriodOffsetAndAccountModePaged(staffProgramBeamioCardAddress, topAdmin, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
-          addPage(page);
-          if (Number(total) <= 100) return;
-        } catch { return; }
-      }
-    };
-    const queryAssetBySubordinate = async (subordinate: string) => {
-      for (const periodOffset of [0, 1, 2]) {
-        try {
-          const [total, , , page] = await indexerAsset.getAssetTransactionsBySubordinateAndCurrentPeriodOffsetAndAccountModePaged(staffProgramBeamioCardAddress, subordinate, PERIOD_DAY, periodOffset, 0, 100, TX_CATEGORY_ZERO, ACCOUNT_MODE_ALL, CHAIN_ID_FILTER_ALL) as [bigint, bigint, bigint, TxRow[]];
-          addPage(page);
-          if (Number(total) <= 100) return;
-        } catch { return; }
-      }
-    };
-    await queryAssetByTopAdmin(effectiveAdminAddress);
-    await queryAssetBySubordinate(effectiveAdminAddress);
-    if (userAAAddr && userAAAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase()) {
-      await queryAssetByTopAdmin(userAAAddr);
-      await queryAssetBySubordinate(userAAAddr);
+const refreshIndexerTransactions = useCallback(
+  async ({
+    background = false,
+    forceInvalidate = false,
+    /** When true, still refresh in background but do not show the Ledger "Updating transactions…" banner (used by the 6s global poll). */
+    suppressRefreshingBanner = false,
+  }: {
+    background?: boolean
+    forceInvalidate?: boolean
+    suppressRefreshingBanner?: boolean
+  } = {}): Promise<void> => {
+    /**
+     * Single-flight for one full ledger merge (`run()`): never two concurrent `run()`.
+     * - **Invoke/execute separated** (`void refreshIndexerTransactions`, e.g. `overviewRefreshTrigger` effect): if a fetch is
+     *   already in flight, skip starting another `run()`, `console.debug`, return (no await — caller does not block).
+     * - **Chained tick** (`await refreshIndexerTransactions` → wait 6s → `await` again, global ledger `useEffect` below):
+     *   the previous await has finished before the next call, so this guard usually does not fire for that path alone.
+     */
+    if (indexerRefreshInFlightRef.current) {
+      console.debug(
+        '[MerchantOS] refreshIndexerTransactions: skipped — previous ledger indexer fetch still in flight',
+      );
+      return;
     }
-    if (myAddr && myAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase() && myAddr.toLowerCase() !== userAAAddr.toLowerCase()) {
-      await queryAssetByTopAdmin(myAddr);
-      await queryAssetBySubordinate(myAddr);
-    }
-    /** TX_TIP 等仅把 USDC 记入 assetActionIds[USDC]，不会出现在 getAssetTransactions*(asset=卡)。topAdminActionIds 含全量。 */
-    const queryTopAdminLedger = async (topAdmin: string) => {
-      for (const periodOffset of [0, 1, 2]) {
-        try {
-          const [total, , , page] = await indexerAccount.getTopAdminTransactionsByCurrentPeriodOffsetAndAccountModePaged(
-            topAdmin,
-            PERIOD_DAY,
-            periodOffset,
-            0,
-            100,
-            TX_CATEGORY_ZERO,
-            ACCOUNT_MODE_ALL
-          ) as [bigint, bigint, bigint, TxRow[]]
-          addPage(page)
-          if (Number(total) <= 100) return
-        } catch {
-          return
+
+    const run = async (): Promise<void> => {
+      const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
+      const cachedLocal = eoaKey ? loadInboundTxDisplayCache(eoaKey) : [];
+      const txQueryRoot = txQueryRootAddress && ethers.isAddress(txQueryRootAddress) ? ethers.getAddress(txQueryRootAddress) : '';
+      if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+        if (cachedLocal.length === 0) setIndexerTransactions([]);
+        if (cachedLocal.length === 0) setTodayTopupSnapshot({ count: 0, total: 0 });
+        setIndexerTransactionsLoading(false);
+        setIndexerTransactionsRefreshing(false);
+        return;
+      }
+      if (!txQueryRoot) {
+        if (cachedLocal.length === 0) setIndexerTransactions([]);
+        if (cachedLocal.length === 0) setTodayTopupSnapshot({ count: 0, total: 0 });
+        setIndexerTransactionsLoading(false);
+        setIndexerTransactionsRefreshing(false);
+        return;
+      }
+
+      if (cachedLocal.length > 0 && indexerTxListCountRef.current === 0) {
+        setIndexerTransactions(normalizeTxDisplayRowsForCardCurrency(cachedLocal, programCardBeamioCurrencyType));
+      }
+
+      try {
+        const hadLocalList = indexerTxListCountRef.current > 0 || cachedLocal.length > 0;
+        if (background || hadLocalList) {
+          setIndexerTransactionsLoading(false);
+          if (!suppressRefreshingBanner) {
+            setIndexerTransactionsRefreshing(true);
+          }
+        } else {
+          setIndexerTransactionsLoading(true);
         }
+
+        const userAA = profiles?.[0]?.aaAccount?.trim();
+        const userAAAddr = userAA && ethers.isAddress(userAA) ? ethers.getAddress(userAA) : '';
+        const txKey = `eoa:${currentEoa}:indexer:tx:card:${staffProgramCardCacheBucket}:admin:${txQueryRoot.toLowerCase()}${userAAAddr ? `:aa:${userAAAddr.toLowerCase()}` : ''}`;
+        if (forceInvalidate && currentEoa) {
+          invalidateFetchCache(`eoa:${currentEoa}:indexer:tx:`);
+        }
+
+        let rows: IndexerFetchedTxRow[];
+        try {
+          const runLedgerIndexerFetch = async (): Promise<IndexerFetchedTxRow[]> => {
+          /**
+           * Ledger = atomic `TransactionRecord` set: paged pull per index; stop rule when local ≥30 rows and duplicate id hits >10.
+           * 1) `assetActionIds[programCard]` 2) `accountActionIds[identity]` 3) `topAdminActionIds` + day offsets（TX_TIP 补充）
+           */
+          const ACCOUNT_MODE_ALL = 0;
+          const indexerAccount = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ACCOUNT_ABI, conetDepinProvider);
+          const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
+          type TxRow = {
+            id: string
+            originalPaymentHash?: string
+            chainId: bigint
+            txCategory: string
+            displayJson: string
+            timestamp: bigint
+            payer: string
+            payee: string
+            finalRequestAmountFiat6: bigint
+            finalRequestAmountUSDC6: bigint
+            isAAAccount: boolean
+            meta?: {
+              afterNotePayer?: string
+              afterNotePayee?: string
+              requestAmountFiat6?: bigint
+              requestAmountUSDC6?: bigint
+              currencyFiat?: number
+            }
+            exists?: boolean
+            topAdmin?: string
+            subordinate?: string
+            fees?: {
+              gasChainType?: number | bigint
+              gasWei?: bigint
+              gasUSDC6?: bigint
+              serviceUSDC6?: bigint
+              bServiceUSDC6?: bigint
+              bServiceUnits6?: bigint
+              feePayer?: string
+            }
+          };
+          const seen = new Set<string>();
+          const all: Array<{
+            id: string
+            originalPaymentHash: string
+            txCategory: string
+            displayJson: string
+            timestamp: string
+            payer: string
+            payee: string
+            finalRequestAmountFiat6: string
+            finalRequestAmountUSDC6: string
+            meta?: {
+              afterNotePayer?: string
+              afterNotePayee?: string
+              requestAmountFiat6?: bigint
+              requestAmountUSDC6?: bigint
+              currencyFiat?: number
+            }
+            topAdmin?: string
+            subordinate?: string
+            bServiceUnits6: string
+            raw: Record<string, unknown>
+          }> = [];
+          const addPage = (page: TxRow[] | undefined) => {
+            for (const tx of page ?? []) {
+              if (!tx?.exists || !tx?.id) continue;
+              if (shouldSkipIndexerRowForMerchantTxTable({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' })) continue;
+              const id = String(tx.id);
+              if (seen.has(id)) continue;
+              seen.add(id);
+              const topAdmin = tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined;
+              const subordinate = tx.subordinate && tx.subordinate !== ethers.ZeroAddress ? tx.subordinate : undefined;
+              const oph = tx.originalPaymentHash;
+              const originalPaymentHash =
+                typeof oph === 'string' && oph.startsWith('0x')
+                  ? oph
+                  : oph != null
+                    ? ethers.hexlify(oph as ethers.BytesLike)
+                    : ethers.ZeroHash;
+              all.push({
+                id: String(tx.id),
+                originalPaymentHash,
+                txCategory: String(tx.txCategory),
+                displayJson: tx.displayJson ?? '',
+                timestamp: String(tx.timestamp),
+                payer: tx.payer,
+                payee: tx.payee,
+                finalRequestAmountFiat6: String(tx.finalRequestAmountFiat6 ?? 0n),
+                finalRequestAmountUSDC6: String(tx.finalRequestAmountUSDC6 ?? 0n),
+                meta: tx.meta,
+                topAdmin,
+                subordinate,
+                bServiceUnits6: String(tx.fees?.bServiceUnits6 ?? 0n),
+                raw: indexerPageTupleToTransactionJson(tx),
+              });
+            }
+          };
+          const knownLedgerIndexerIds = new Set<string>();
+          if (eoaKey) {
+            for (const r of loadInboundTxDisplayCache(eoaKey)) {
+              const lid = String(r.indexerTxId ?? '').trim().toLowerCase();
+              if (lid) knownLedgerIndexerIds.add(lid);
+            }
+          }
+          for (const r of indexerTransactionsMirrorRef.current) {
+            const lid = String(r.indexerTxId ?? '').trim().toLowerCase();
+            if (lid) knownLedgerIndexerIds.add(lid);
+          }
+          const localLedgerRowCountForPagingStop = cachedLocal.length;
+          const collectNonSkippedIndexerIds = (page: TxRow[] | undefined): string[] => {
+            const out: string[] = [];
+            for (const tx of page ?? []) {
+              if (!tx?.exists || !tx?.id) continue;
+              if (shouldSkipIndexerRowForMerchantTxTable({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' })) continue;
+              out.push(String(tx.id).toLowerCase());
+            }
+            return out;
+          };
+          /** `accountActionIds`：商户 EOA 与 AA 同时拉取 RAW（indexer 两路索引）；再并入报表根 / 卡主（去重）。 */
+          const identityAccounts: string[] = [];
+          const pushIdentityAccount = (a: string | undefined | null) => {
+            if (!a || !ethers.isAddress(a)) return;
+            const norm = ethers.getAddress(a);
+            const k = norm.toLowerCase();
+            if (identityAccounts.some((x) => x.toLowerCase() === k)) return;
+            identityAccounts.push(norm);
+          };
+          const p0 = profiles?.[0];
+          const ledgerMerchantEoa =
+            p0?.keyID && ethers.isAddress(p0.keyID)
+              ? ethers.getAddress(p0.keyID)
+              : typeof myAddress === 'string' && ethers.isAddress(myAddress)
+                ? ethers.getAddress(myAddress)
+                : currentEoa && ethers.isAddress(currentEoa)
+                  ? ethers.getAddress(currentEoa)
+                  : '';
+          pushIdentityAccount(ledgerMerchantEoa);
+          pushIdentityAccount(userAAAddr || undefined);
+          pushIdentityAccount(txQueryRoot);
+          pushIdentityAccount(programCardOwnerAddress);
+
+          const pullAssetPagedWithLocalStopRule = async () => {
+            let duplicateHits = 0;
+            let n = 0n;
+            try {
+              n = await indexerAsset.getAssetActionCount(staffProgramBeamioCardAddress);
+            } catch {
+              return;
+            }
+            const total = Number(n);
+            if (!Number.isFinite(total) || total <= 0) return;
+            let nextExclusiveEnd = total;
+            for (let pages = 0; pages < LEDGER_MAX_BACK_PAGES_PER_INDEX; pages++) {
+              const lim = Math.min(LEDGER_ATOMIC_PAGE_SIZE, nextExclusiveEnd);
+              if (lim <= 0) break;
+              const off = nextExclusiveEnd - lim;
+              nextExclusiveEnd = off;
+              let page: TxRow[] | undefined;
+              try {
+                page = (await indexerAsset.getAssetTransactionsPaged(staffProgramBeamioCardAddress, off, lim)) as TxRow[];
+              } catch {
+                break;
+              }
+              for (const id of collectNonSkippedIndexerIds(page)) {
+                if (knownLedgerIndexerIds.has(id)) duplicateHits++;
+              }
+              addPage(page);
+              if (
+                localLedgerRowCountForPagingStop >= LEDGER_LOCAL_ROW_THRESHOLD &&
+                duplicateHits > LEDGER_DUPLICATE_STOP_THRESHOLD
+              ) {
+                break;
+              }
+              if (off === 0) break;
+            }
+          };
+
+          const pullAccountPagedWithLocalStopRule = async (account: string) => {
+            let duplicateHits = 0;
+            let n = 0n;
+            try {
+              n = await indexerAccount.getAccountActionCount(account);
+            } catch {
+              return;
+            }
+            const total = Number(n);
+            if (!Number.isFinite(total) || total <= 0) return;
+            /** ActionFacet: offset 0 = newest; must not reuse asset-style (total-lim) paging. */
+            let nextAccountOffset = 0;
+            for (let pages = 0; pages < LEDGER_MAX_BACK_PAGES_PER_INDEX; pages++) {
+              const remaining = total - nextAccountOffset;
+              const lim = Math.min(LEDGER_ATOMIC_PAGE_SIZE, remaining);
+              if (lim <= 0) break;
+              const off = nextAccountOffset;
+              nextAccountOffset += lim;
+              let page: TxRow[] | undefined;
+              try {
+                page = (await indexerAccount.getAccountTransactionsPaged(account, off, lim)) as TxRow[];
+              } catch {
+                break;
+              }
+              for (const id of collectNonSkippedIndexerIds(page)) {
+                if (knownLedgerIndexerIds.has(id)) duplicateHits++;
+              }
+              addPage(page);
+              if (
+                localLedgerRowCountForPagingStop >= LEDGER_LOCAL_ROW_THRESHOLD &&
+                duplicateHits > LEDGER_DUPLICATE_STOP_THRESHOLD
+              ) {
+                break;
+              }
+              if (nextAccountOffset >= total) break;
+            }
+          };
+
+          await pullAssetPagedWithLocalStopRule();
+          await Promise.all(identityAccounts.map((a) => pullAccountPagedWithLocalStopRule(a)));
+
+          const topAdminsForTipSupplement: string[] = [];
+          const pushTopAdmin = (a: string | undefined | null) => {
+            if (!a || !ethers.isAddress(a)) return;
+            const norm = ethers.getAddress(a);
+            const k = norm.toLowerCase();
+            if (topAdminsForTipSupplement.some((x) => x.toLowerCase() === k)) return;
+            topAdminsForTipSupplement.push(norm);
+          };
+          pushTopAdmin(ledgerMerchantEoa);
+          pushTopAdmin(userAAAddr);
+          pushTopAdmin(txQueryRoot);
+          await Promise.all(
+            topAdminsForTipSupplement.flatMap((admin) =>
+              LEDGER_INDEXER_DAY_OFFSETS.map(async (periodOffset) => {
+                try {
+                  const [, , , page] = await indexerAccount.getTopAdminTransactionsByCurrentPeriodOffsetAndAccountModePaged(
+                    admin,
+                    PERIOD_DAY,
+                    periodOffset,
+                    0,
+                    100,
+                    TX_CATEGORY_ZERO,
+                    ACCOUNT_MODE_ALL
+                  ) as [bigint, bigint, bigint, TxRow[]];
+                  addPage(page);
+                } catch {
+                  /* ignore */
+                }
+              })
+            )
+          );
+
+          /** Cap before map: must cover newest ids after merge; keep above `mergeRenumberTxDisplays` (80) + local union headroom. */
+          return all.sort((a, b) => Number(BigInt(b.timestamp) - BigInt(a.timestamp))).slice(0, 250);
+          };
+
+          rows = await Promise.race([
+            forceInvalidate
+              ? runLedgerIndexerFetch()
+              : fetchWithCache(txKey, runLedgerIndexerFetch, LEDGER_INDEXER_MEM_CACHE_TTL_MS),
+            rejectLedgerIndexerFetchAfter(LEDGER_INDEXER_FETCH_TIMEOUT_MS),
+          ]);
+        } catch (raceErr) {
+          if (raceErr instanceof Error && raceErr.message === 'ledger-indexer-fetch-timeout') {
+            return;
+          }
+          throw raceErr;
+        }
+
+        const mapped = mergeTopupBunitFeeRowsIntoTopups(
+          normalizeTxDisplayRowsForCardCurrency(
+            mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
+            programCardBeamioCurrencyType
+          )
+        );
+        const localBase = eoaKey
+          ? mergeLocalLedgerBaseForIndexerMerge(
+              loadInboundTxDisplayCache(eoaKey),
+              indexerTransactionsMirrorRef.current,
+              programCardBeamioCurrencyType
+            )
+          : [];
+        const deduped = mergeRenumberTxDisplays(mapped, localBase);
+        const absorbedTips = mergeTipRowsIntoParentCharges(deduped);
+        const capped = absorbedTips.slice(0, 80);
+        const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
+        if (eoaKey) {
+          const preTip = buildTipsCollectedLedgerEntriesFromPremergeTips(deduped)
+          if (preTip.length > 0) {
+            const tm = tipsCollectedLedgerRef.current
+            if (mergeTipsCollectedLedgerEntries(tm, preTip)) {
+              trimTipsCollectedLedgerMap(tm, TIPS_COLLECTED_LEDGER_MAX_ENTRIES)
+              saveTipsCollectedLedgerMapImmediate(eoaKey, tm)
+              setTipsCollectedLedgerEpoch((n) => n + 1)
+            }
+          }
+        }
+        let slideKeysForAnim: string[] = [];
+        setIndexerTransactions((prev) => {
+          const prevIds = new Set(prev.map((t) => String(t.indexerTxId || t.id)));
+          const firstOldIdx = merged.findIndex((m) => prevIds.has(String(m.indexerTxId || m.id)));
+          let newAtTop: TxDisplayRow[] = [];
+          if (prev.length > 0) {
+            if (firstOldIdx < 0) {
+              newAtTop = merged.filter((m) => !prevIds.has(String(m.indexerTxId || m.id)));
+            } else if (firstOldIdx > 0) {
+              newAtTop = merged.slice(0, firstOldIdx);
+            }
+          }
+          slideKeysForAnim = newAtTop.map((t) => String(t.indexerTxId || t.id));
+          return merged;
+        });
+        if (slideKeysForAnim.length > 0) {
+          setTxSlideInKeys(slideKeysForAnim);
+          window.setTimeout(() => setTxSlideInKeys([]), 880);
+        }
+        setTodayTopupSnapshot(summarizeTodayTopupsFromRows(merged));
+        setLastHttpsIndexerRefreshAt(Date.now());
+        if (eoaKey) saveInboundTxDisplayCache(eoaKey, merged);
+      } catch {
+        setIndexerTransactions((p) => (p.length > 0 ? p : []));
+      } finally {
+        setIndexerTransactionsLoading(false);
+        setIndexerTransactionsRefreshing(false);
       }
-    }
-    await queryTopAdminLedger(effectiveAdminAddress)
-    if (userAAAddr && userAAAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase()) {
-      await queryTopAdminLedger(userAAAddr)
-    }
-    if (myAddr && myAddr.toLowerCase() !== effectiveAdminAddress.toLowerCase() && myAddr.toLowerCase() !== userAAAddr.toLowerCase()) {
-      await queryTopAdminLedger(myAddr)
-    }
-    return all.sort((a, b) => Number(BigInt(b.timestamp) - BigInt(a.timestamp))).slice(0, 50);
-   }).then((rows) => {
-     if (cancelled) return;
-    const mapped = mergeTopupBunitFeeRowsIntoTopups(
-      normalizeTxDisplayRowsForCardCurrency(
-        mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
-        programCardBeamioCurrencyType
-      )
-    );
-    const deduped = mergeRenumberTxDisplays(mapped, eoaKey ? loadInboundTxDisplayCache(eoaKey) : []);
-     if (eoaKey) {
-       const preTip = buildTipsCollectedLedgerEntriesFromPremergeTips(deduped)
-       if (preTip.length > 0) {
-         const tm = tipsCollectedLedgerRef.current
-         if (mergeTipsCollectedLedgerEntries(tm, preTip)) {
-           trimTipsCollectedLedgerMap(tm, TIPS_COLLECTED_LEDGER_MAX_ENTRIES)
-           saveTipsCollectedLedgerMapImmediate(eoaKey, tm)
-           setTipsCollectedLedgerEpoch((n) => n + 1)
-         }
-       }
-     }
-     const absorbedTips = mergeTipRowsIntoParentCharges(deduped);
-     const capped = absorbedTips.slice(0, 80);
-     const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
-     let slideKeysForAnim: string[] = [];
-     setIndexerTransactions((prev) => {
-       const prevIds = new Set(prev.map((t) => String(t.indexerTxId || t.id)));
-       const firstOldIdx = merged.findIndex((m) => prevIds.has(String(m.indexerTxId || m.id)));
-       let newAtTop: TxDisplayRow[] = [];
-       if (prev.length > 0) {
-         if (firstOldIdx < 0) {
-           newAtTop = merged.filter((m) => !prevIds.has(String(m.indexerTxId || m.id)));
-         } else if (firstOldIdx > 0) {
-           newAtTop = merged.slice(0, firstOldIdx);
-         }
-       }
-       slideKeysForAnim = newAtTop.map((t) => String(t.indexerTxId || t.id));
-       return merged;
-     });
-     if (slideKeysForAnim.length > 0) {
-       setTxSlideInKeys(slideKeysForAnim);
-       window.setTimeout(() => setTxSlideInKeys([]), 880);
-     }
-     if (eoaKey) saveInboundTxDisplayCache(eoaKey, merged);
-   }).catch(() => {
-     if (!cancelled) {
-       setIndexerTransactions((p) => (p.length > 0 ? p : []));
-     }
-   }).finally(() => {
-     if (!cancelled) {
-       setIndexerTransactionsLoading(false);
-       setIndexerTransactionsRefreshing(false);
-     }
-   });
-   return () => { cancelled = true; };
- }, [
-   effectiveAdminAddress,
-   profiles?.[0]?.aaAccount,
-   myAddress,
-   currentEoa,
-   overviewRefreshTrigger,
-   txListPollTick,
-   staffProgramBeamioCardAddress,
-   programCardBeamioCurrencyType,
- ]);
+    };
+
+    const promise = run().finally(() => {
+      indexerRefreshInFlightRef.current = null;
+    });
+    indexerRefreshInFlightRef.current = promise;
+    await promise;
+  },
+  [
+    currentEoa,
+    myAddress,
+    profiles?.[0]?.aaAccount,
+    profiles?.[0]?.keyID,
+    programCardBeamioCurrencyType,
+    programCardOwnerAddress,
+    staffProgramBeamioCardAddress,
+    staffProgramCardCacheBucket,
+    txQueryRootAddress,
+  ]
+);
+
+/** Bumps `overviewRefreshTrigger` often (e.g. Market refuel polling); must not toggle Ledger "Updating…" strip — use silent refresh. */
+useEffect(() => {
+  void refreshIndexerTransactions({
+    background: false,
+    suppressRefreshingBanner: true,
+    /** Always bypass ledger `fetchWithCache` TTL: Overview KPIs (`overviewDashboardActivityTxs`, velocity, etc.) read the same `indexerTransactions` as Transactions; tab must not gate freshness. */
+    forceInvalidate: true,
+  });
+}, [refreshIndexerTransactions, overviewRefreshTrigger, activeTab]);
 
  /** Entering Transactions: Overview may already reflect new Base stats while indexer list was cached or never polled on this tab. */
  useEffect(() => {
    const enteredTx = activeTab === 'Transactions' && prevActiveTabForTxRef.current !== 'Transactions';
    prevActiveTabForTxRef.current = activeTab;
    if (!enteredTx) return;
-   if (currentEoa && ethers.isAddress(currentEoa)) {
-     invalidateFetchCache(`eoa:${currentEoa}:indexer:tx:`);
-   }
-   setTxListPollTick((n) => n + 1);
- }, [activeTab, currentEoa]);
+  void refreshIndexerTransactions({
+    background: false,
+    forceInvalidate: true,
+    suppressRefreshingBanner: true,
+  });
+}, [activeTab, refreshIndexerTransactions]);
 
-/** Global ledger feed: keep Transactions cache warm in the background with a non-overlapping timeout chain, not tab-local `setInterval`. */
+/**
+ * Global ledger feed: merges indexer on top of local cache; short in-memory TTL + paged RPC per index (duplicate-aware stop when local ≥30 rows).
+ * Wall time is still bounded by `globalFetchQueue` if other Merchant OS fetches are ahead.
+ *
+ * **Serial tick (no overlap from this loop):** each iteration `await`s `refreshIndexerTransactions` to completion, then waits
+ * 6s, then schedules the next iteration — same pattern as `beamio-interval-daemon-no-overlap`. Overlap with a *second* in-flight
+ * fetch can still happen if another effect does `void refreshIndexerTransactions` mid-await; that path is dropped + debug inside the callback.
+ *
+ * Effect deps omit `activeTab`: ledger polling must run on Overview too; restarting this effect on every tab change reset the 6s `setTimeout` chain.
+ */
  useEffect(() => {
   if (!currentEoa || !ethers.isAddress(currentEoa)) return;
   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) return;
-  if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) return;
+  if (!txQueryRootAddress || !ethers.isAddress(txQueryRootAddress)) return;
   let cancelled = false;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const scheduleNext = (delayMs: number) => {
+  const loop = async () => {
+    if (cancelled) return;
+    try {
+      await refreshIndexerTransactions({
+        background: false,
+        forceInvalidate: true,
+        suppressRefreshingBanner: true,
+      });
+    } catch {
+      /* keep trusted cache on failure */
+    }
+    if (cancelled) return;
     timeoutId = setTimeout(() => {
-      if (cancelled) return;
-      invalidateFetchCache(`eoa:${currentEoa}:indexer:tx:`);
-      setTxListPollTick((n) => n + 1);
-      scheduleNext(30_000);
-    }, delayMs) as ReturnType<typeof setTimeout>;
+      void loop();
+    }, 6_000) as ReturnType<typeof setTimeout>;
   };
 
-  scheduleNext(30_000);
+  void loop();
   return () => {
     cancelled = true;
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   };
-}, [currentEoa, effectiveAdminAddress, staffProgramBeamioCardAddress]);
+}, [currentEoa, refreshIndexerTransactions, staffProgramBeamioCardAddress, txQueryRootAddress]);
 
- /** WSS: CoNET BeamioIndexerDiamond `TransactionRecordSynced` → inbound rows for user EOA/AA (payer|payee|topAdmin|subordinate) */
- useEffect(() => {
-   if (typeof window === 'undefined') return;
-   if (!CONET_MAINNET_WSS?.startsWith('wss://')) return;
-   if (!effectiveAdminAddress || !ethers.isAddress(effectiveAdminAddress)) return;
-   const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
-   if (!eoaKey) return;
+/** Today's Activity top-up amount: local-calendar-day hourly rollup, with current hour refreshed every 6s. */
+useEffect(() => {
+  if (timeFilter !== 'Today') return;
+  if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+    todayTopupHourlyRollupRef.current = null;
+    setTodayTopupHourlyRollup(null);
+    setTodayTopupDirectSnapshot({ count: 0, total: 0 });
+    return;
+  }
+  const topupSnapshotQueryAccount =
+    programCardOwnerAddress && ethers.isAddress(programCardOwnerAddress)
+      ? ethers.getAddress(programCardOwnerAddress)
+      : txQueryRootAddress && ethers.isAddress(txQueryRootAddress)
+        ? ethers.getAddress(txQueryRootAddress)
+        : '';
+  let cancelled = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const loop = async () => {
+    if (cancelled) return;
+    try {
+      const [next, snapshot] = await Promise.all([
+        computeTodayTopupHourlyRollup(
+          staffProgramBeamioCardAddress,
+          baseRpcProviderDirect,
+          todayTopupHourlyRollupRef.current
+        ),
+        topupSnapshotQueryAccount
+          ? fetchTodayTopupSnapshotDirect(
+              staffProgramBeamioCardAddress,
+              topupSnapshotQueryAccount,
+              conetDepinProvider
+            )
+          : Promise.resolve({ count: 0, total: 0 }),
+      ]);
+      if (!cancelled) {
+        todayTopupHourlyRollupRef.current = next;
+        setTodayTopupHourlyRollup(next);
+        setTodayTopupDirectSnapshot(snapshot);
+      }
+    } catch {
+      /* keep last trusted hourly snapshot */
+    }
+    if (cancelled) return;
+    timeoutId = setTimeout(() => {
+      void loop();
+    }, 6_000) as ReturnType<typeof setTimeout>;
+  };
+  void loop();
+  return () => {
+    cancelled = true;
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  };
+}, [programCardOwnerAddress, staffProgramBeamioCardAddress, timeFilter, txQueryRootAddress]);
 
-   indexerInboundWssSeenRef.current = new Set();
-
-   const userAA = profiles?.[0]?.aaAccount?.trim();
-   const userAAAddr = userAA && ethers.isAddress(userAA) ? ethers.getAddress(userAA) : '';
-   const myAddr =
-     typeof myAddress === 'string' && ethers.isAddress(myAddress) ? ethers.getAddress(myAddress) : '';
-
-   const watchLower = new Set<string>();
-   watchLower.add(ethers.getAddress(effectiveAdminAddress).toLowerCase());
-   if (userAAAddr) watchLower.add(userAAAddr.toLowerCase());
-   if (myAddr) watchLower.add(myAddr.toLowerCase());
-
-   let ws: ethers.WebSocketProvider | null = null;
-   let stopped = false;
-
-   const httpReader = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_READ_FULL_AND_EVENT_ABI, conetDepinProvider);
-
-   const onSynced = async (actionId: bigint, txId: unknown, _cat: unknown, payer: string, payee: string) => {
-     if (stopped) return;
-     void actionId;
-     void payer;
-     void payee;
-     const tidHex =
-       typeof txId === 'string'
-         ? txId
-         : txId != null
-           ? ethers.hexlify(txId as ethers.BytesLike)
-           : '';
-     if (!tidHex || tidHex === ethers.ZeroHash) return;
-     const tid = tidHex.toLowerCase();
-     if (indexerInboundWssSeenRef.current.has(tid)) return;
-     indexerInboundWssSeenRef.current.add(tid);
-     try {
-       const full = await httpReader.getTransactionFullByTxId(tidHex);
-       const fr = full as unknown as Record<string, unknown>;
-       if (!transactionFullMatchesUserWatch(fr, watchLower)) {
-         indexerInboundWssSeenRef.current.delete(tid);
-         return;
-       }
-       const row = transactionFullToFetchedRow(full);
-       if (!row) {
-         indexerInboundWssSeenRef.current.delete(tid);
-         return;
-       }
-       if (shouldSkipIndexerRowForMerchantTxTable({ txCategory: row.txCategory, payee: row.payee ?? '' })) {
-         indexerInboundWssSeenRef.current.delete(tid);
-         return;
-       }
-      const mappedInbound = normalizeTxDisplayRowsForCardCurrency(
-        mapIndexerFetchedRowsToDisplay([row], programCardBeamioCurrencyType),
-        programCardBeamioCurrencyType
-      );
-       setIndexerTransactions((prev) => {
-         const deduped = mergeRenumberTxDisplays(mappedInbound, prev);
-         const withTopupBuint = mergeTopupBunitFeeRowsIntoTopups(deduped);
-         const absorbedTips = mergeTipRowsIntoParentCharges(withTopupBuint);
-         const capped = absorbedTips.slice(0, 80);
-         const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
-         saveInboundTxDisplayCache(eoaKey, merged);
-         return merged;
-       });
-       invalidateFetchCache(`eoa:${eoaKey}:indexer:tx:`);
-     } catch {
-       indexerInboundWssSeenRef.current.delete(tid);
-     }
-   };
-
-   try {
-     ws = new ethers.WebSocketProvider(CONET_MAINNET_WSS);
-   } catch {
-     return;
-   }
-
-   const sub = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_READ_FULL_AND_EVENT_ABI, ws);
-   sub.on('TransactionRecordSynced', onSynced);
-
-   return () => {
-     stopped = true;
-     try {
-       sub.removeAllListeners('TransactionRecordSynced');
-     } catch {
-       /* ignore */
-     }
-     const w = ws;
-     /** Defer destroy: avoid ethers v6 race where `eth_subscribe` is still starting (React Strict Mode / rapid effect re-run). */
-     window.setTimeout(() => {
-       try {
-         void w?.destroy();
-       } catch {
-         /* ignore */
-       }
-     }, 150);
-   };
- }, [effectiveAdminAddress, profiles?.[0]?.aaAccount, myAddress, currentEoa, programCardBeamioCurrencyType]);
-
- /** Resolve payer / payee beamioTag for Customer & Source (searchUsername + fetchWithCache). Includes Charge/Tip, not only Top-Up — AA payer may differ from profile accounts.address. */
- useEffect(() => {
-   if (activeTab !== 'Transactions') return;
-   const tagSourceTxs = indexerTransactions.filter(
-     (t) => t.type.includes('Top-Up') || t.type === 'Charge' || t.type === 'Tip'
-   );
-   const addrs = new Set<string>();
-   for (const tx of tagSourceTxs) {
-     const raw = tx.raw as Record<string, unknown>;
-     const payer = typeof raw.payer === 'string' ? raw.payer : '';
-     const payee = typeof raw.payee === 'string' ? raw.payee : '';
-     if (payer && ethers.isAddress(payer)) addrs.add(ethers.getAddress(payer).toLowerCase());
-     if (payee && ethers.isAddress(payee)) addrs.add(ethers.getAddress(payee).toLowerCase());
-   }
-   if (addrs.size === 0) return;
-   let cancelled = false;
-   void (async () => {
-     const updates: Record<string, string> = {};
-     await Promise.all(
-       [...addrs].map(async (lower) => {
-         try {
-           const tag = await fetchWithCache(`beamio:searchTag:${lower}`, async () => {
-             const ck = ethers.getAddress(lower);
-             const res = await searchUsername(ck);
-             const results = (res?.results ?? []) as Array<{ address?: string; username?: string; accountName?: string }>;
-             const exact = results.find((r) => (r?.address ?? '').toLowerCase() === lower);
-             const withName = results.find((r) => !!(r?.username ?? r?.accountName));
-             const peer = exact ?? withName ?? results[0];
-             const u = peer?.username ?? peer?.accountName;
-             if (!u) return '';
-             return u.startsWith('@') ? u : `@${u}`;
-           });
-           if (tag) updates[lower] = tag;
-         } catch {
-           /* ignore */
-         }
-       })
-     );
-     if (!cancelled && Object.keys(updates).length > 0) {
-       setTxReportingBeamioTagByAddress((p) => ({ ...p, ...updates }));
-     }
-   })();
-   return () => {
-     cancelled = true;
-   };
- }, [activeTab, indexerTransactions]);
+ /** Payer/payee @beamioTag：由本地 addressProfile registry + Daemon 分钟刷新（见 `registerAddressMetadataMinuteWork`），不再在 Transactions Tab 内 searchUsername。 */
 
  /** Charge rows: resolve payer tier on the user-issued program BeamioUserCard for Customer & Source capsule */
  useEffect(() => {
@@ -10245,7 +10836,7 @@ useEffect(() => {
       const raw = tx.raw as Record<string, unknown>;
       const payer = typeof raw.payer === 'string' && ethers.isAddress(raw.payer) ? ethers.getAddress(raw.payer).toLowerCase() : '';
       if (!payer) continue;
-      const payerTag = txReportingBeamioTagByAddress[payer] ?? '';
+      const payerTag = resolveReportingBeamioTagLower(payer);
       const observed = inferMemberDirectoryUserTypeFromBeamioTag(payerTag);
       if (observed === 'unknown') continue;
       const merged = mergeMemberDirectoryUserTypes(next[payer] ?? 'unknown', observed);
@@ -10260,7 +10851,7 @@ useEffect(() => {
 }, [
   walletStoragePartitionLower,
   indexerTransactions,
-  txReportingBeamioTagByAddress,
+  resolveReportingBeamioTagLower,
   profiles?.[0]?.keyID,
   myAddress,
   fixedCardMetadata?.cardOwner,
@@ -10417,63 +11008,27 @@ useEffect(() => {
   );
 }, [membersTopupDirectorySorted, membersDirectorySegment, memberDirectoryUserTypeDb]);
 
+/** Members 表 beamioTag：由全局 addressProfile registry 填充；远程拉取仅 Daemon 分钟任务 */
 useEffect(() => {
-  if (activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') return;
-  const unresolved = new Set<string>();
-  for (const row of membersLoyaltyTopupRows) {
-    if (row.beamioTag && row.beamioTag.replace(/^@/, '').trim()) continue;
-    if (row.memberAddress && ethers.isAddress(row.memberAddress)) {
-      unresolved.add(ethers.getAddress(row.memberAddress).toLowerCase());
-    }
-    if (row.aaAddress && ethers.isAddress(row.aaAddress)) {
-      unresolved.add(ethers.getAddress(row.aaAddress).toLowerCase());
-    }
-  }
-  if (unresolved.size === 0) return;
-  let cancelled = false;
-  void (async () => {
-    const updates: Record<string, string> = {};
-    await Promise.all(
-      [...unresolved].map(async (lower) => {
-        try {
-          const tag = await fetchWithCache(`beamio:memberTag:${lower}`, async () => {
-            const ck = ethers.getAddress(lower);
-            const res = await searchUsername(ck);
-            const results = (res?.results ?? []) as Array<{ address?: string; username?: string; accountName?: string }>;
-            const exact = results.find((r) => (r?.address ?? '').toLowerCase() === lower);
-            const withName = results.find((r) => !!(r?.username ?? r?.accountName));
-            const peer = exact ?? withName ?? results[0];
-            const u = peer?.username ?? peer?.accountName;
-            if (!u) return '';
-            return u.startsWith('@') ? u : `@${u}`;
-          });
-          if (tag) updates[lower] = tag;
-        } catch {
-          /* ignore */
-        }
-      })
-    );
-    if (cancelled || Object.keys(updates).length === 0) return;
-    setMembersLoyaltyTopupRows((prev) => {
-      let changed = false;
-      const next = prev.map((row) => {
-        if (row.beamioTag && row.beamioTag.replace(/^@/, '').trim()) return row;
-        const memberLower =
-          row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress).toLowerCase() : '';
-        const aaLower =
-          row.aaAddress && ethers.isAddress(row.aaAddress) ? ethers.getAddress(row.aaAddress).toLowerCase() : '';
-        const tag = (memberLower && updates[memberLower]) || (aaLower && updates[aaLower]) || '';
-        if (!tag) return row;
-        changed = true;
-        return { ...row, beamioTag: tag };
-      });
-      return changed ? next : prev;
+  setMembersLoyaltyTopupRows((prev) => {
+    let changed = false;
+    const next = prev.map((row) => {
+      if ((row.beamioTag ?? '').replace(/^@/, '').trim()) return row;
+      const memberLower =
+        row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress).toLowerCase() : '';
+      const aaLower =
+        row.aaAddress && ethers.isAddress(row.aaAddress) ? ethers.getAddress(row.aaAddress).toLowerCase() : '';
+      const tag =
+        (memberLower && beamioTagFromRecord(addressProfileByLower[memberLower])) ||
+        (aaLower && beamioTagFromRecord(addressProfileByLower[aaLower])) ||
+        '';
+      if (!tag) return row;
+      changed = true;
+      return { ...row, beamioTag: tag };
     });
-  })();
-  return () => {
-    cancelled = true;
-  };
-}, [activeTab, membersLoyaltyTopupRows]);
+    return changed ? next : prev;
+  });
+}, [addressProfileByLower, membersLoyaltyTopupRows]);
 
 useEffect(() => {
   if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
@@ -10618,6 +11173,7 @@ useEffect(() => {
        .filter((k) =>
          k.startsWith(`${BIZ_CACHE_PREFIX}${adminSummaryPrefix}`) ||
          k.startsWith(`${BIZ_CACHE_PREFIX}${globalSummaryPrefix}`) ||
+        k === `${BIZ_CACHE_PREFIX}${statsAdminTrustedCacheKey}` ||
           (retainedCapitalTrustedCacheKey && k === `${BIZ_CACHE_PREFIX}${retainedCapitalTrustedCacheKey}`) ||
          (k.startsWith(`${BIZ_CACHE_PREFIX}card:`) && (k.includes('quota-and-mint-counter') || k.includes('mint-limit-quota'))) ||
          (k.startsWith(BIZ_CACHE_PREFIX) && k.includes('buint:balance'))
@@ -10627,7 +11183,7 @@ useEffect(() => {
    setOverviewRefreshing(true);
    setOverviewRefreshTrigger((t) => t + 1);
    setTimeout(() => setOverviewRefreshing(false), 2500);
-}, [currentEoa, retainedCapitalTrustedCacheKey, staffProgramBeamioCardAddress]);
+}, [currentEoa, retainedCapitalTrustedCacheKey, staffProgramBeamioCardAddress, statsAdminTrustedCacheKey]);
 
  useEffect(() => {
    if (hideTransactionsPanel && activeTab === 'Transactions') {
@@ -10674,7 +11230,6 @@ const marketBUnitRunwayDays = useMemo(() => {
   protocolFuelReserveBalance,
   chargeBUnitLedgerEpoch,
   overviewLocalCalendarDayKey,
-  activeLedger,
   txSearchTerm,
   txFilterType,
   txFilterTerminal,
@@ -10939,10 +11494,14 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                    <h2 className="truncate text-lg font-extrabold leading-tight tracking-tight text-[#0051d1]">
                      Business OS
                    </h2>
-                   <div className="mt-0.5 flex items-center gap-1">
-                     <ShieldCheck className="size-3 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
-                     <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-500">Merchant OS</span>
-                   </div>
+                   {sidebarOnboardBusinessName ? (
+                     <div className="mt-0.5 flex min-w-0 items-center gap-1">
+                       <ShieldCheck className="size-3 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
+                       <span className="min-w-0 truncate text-[11px] font-semibold leading-snug text-slate-600">
+                         {sidebarOnboardBusinessName}
+                       </span>
+                     </div>
+                   ) : null}
                    {(() => {
                      const rawTag = (beamio?.accountName ?? (beamio as { username?: string } | null)?.username ?? '')
                        .trim()
@@ -10950,14 +11509,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      const tagLine = rawTag ? `@${rawTag}` : ''
                      const nameLine = displayName(beamio)
                      if (tagLine) {
-                       return (
-                         <>
-                           <p className="mt-1 truncate text-xs font-semibold text-[#0051d1]">{tagLine}</p>
-                           {nameLine ? (
-                             <p className="mt-0.5 truncate text-[11px] font-medium text-slate-600">{nameLine}</p>
-                           ) : null}
-                         </>
-                       )
+                       return <p className="mt-1 truncate text-xs font-semibold text-[#0051d1]">{tagLine}</p>
                      }
                      return nameLine ? (
                        <p className="mt-1 truncate text-xs font-medium text-slate-600">{nameLine}</p>
@@ -11074,9 +11626,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              }`}
            >
              {activeTab === 'Overview' && !hasAaAccount
-               ? 'Business OS'
+              ? 'Business OS'
                : activeTab === 'Overview'
-                 ? 'Verra Merchant'
+                ? 'Verra Merchant'
                  : activeTab === 'Wallets'
                    ? 'Wallet'
                    : activeTab === 'MembersLoyalty'
@@ -11390,13 +11942,15 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                       <div className="space-y-1">
                         <h3
                           className={`text-4xl font-extrabold tracking-tight ${
-                            totalCTreeReceived <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
+                            overviewYearHasTopupOrCharge ? 'text-[#2c2f31]' : 'text-[#2c2f31]/40'
                           }`}
                         >
-                          C${totalCTreeReceived.toFixed(2)}
+                          C${totalCapitalRetainedDisplay.toFixed(2)}
                         </h3>
                         <p className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400">
-                          {totalCTreeReceived <= 0 ? 'Awaiting transactions' : 'Live balance'}
+                          {overviewYearHasTopupOrCharge
+                            ? 'This year (top-ups - charges)'
+                            : 'Awaiting transactions'}
                         </p>
                       </div>
                     </div>
@@ -11451,7 +12005,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-2 rounded-full bg-[#1562f0]/20" aria-hidden />
-                        <h2 className="text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`Today's Activity`}</h2>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <h2 className="text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`Today's Activity`}</h2>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 rounded-full border border-[#1562f0]/10 bg-white/50 px-3 py-1">
                         <span className="h-2 w-2 animate-pulse rounded-full bg-slate-300" aria-hidden />
@@ -11461,9 +12017,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     {(() => {
                       const muted =
                         /* member activations：API 全量累计，参与 empty-state 变灰 */
-                        topUpsIssued <= 0 &&
-                        totalSales <= 0 &&
-                        totalTips <= 0 &&
+                        overviewActivityTopupDisplayTotal <= 0 &&
+                        overviewActivityChargeDisplayTotal <= 0 &&
+                        overviewActivityTipsLedgerCadTotal <= 0 &&
                         overviewMemberActivationTotal <= 0;
                       const rowClass = muted ? 'opacity-50' : '';
                       return (
@@ -11474,11 +12030,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             </div>
                             <div>
                               <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
-                              <h3 className={`text-xl font-extrabold ${topUpsIssued <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
-                                C${topUpsIssued.toFixed(2)}
+                              <h3 className={`text-xl font-extrabold ${overviewActivityTopupDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                                C${overviewActivityTopupDisplayTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {topUpsIssued <= 0 ? 'No activity' : 'Today'}
+                                {overviewActivityTopupDisplayTotal <= 0 ? 'No activity' : 'Today'}
                               </p>
                             </div>
                           </div>
@@ -11488,11 +12044,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             </div>
                             <div>
                               <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
-                              <h3 className={`text-xl font-extrabold ${totalSales <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
-                                {formatMerchantChargeOverviewHuman(totalSales, programCardBeamioCurrencyType)}
+                              <h3 className={`text-xl font-extrabold ${overviewActivityChargeDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                                {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {totalSales <= 0 ? 'No activity' : 'Today'}
+                                {overviewActivityChargeDisplayTotal <= 0 ? 'No activity' : 'Today'}
                               </p>
                             </div>
                           </div>
@@ -11502,11 +12058,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             </div>
                             <div>
                               <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
-                              <h3 className={`text-xl font-extrabold ${totalTips <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
-                                C${totalTips.toFixed(2)}
+                              <h3 className={`text-xl font-extrabold ${overviewActivityTipsLedgerCadTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                                C${overviewActivityTipsLedgerCadTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {totalTips <= 0 ? 'No activity' : 'Today'}
+                                {overviewActivityTipsLedgerCadTotal <= 0 ? 'No activity' : 'Today'}
                               </p>
                             </div>
                           </div>
@@ -11542,28 +12098,60 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                       <div>
                         <h3 className="mb-2 text-xl font-extrabold tracking-tight text-[#2c2f31]">Reload Velocity</h3>
                         <p className="mb-8 max-w-xs text-sm text-slate-500">
-                          Tracking the momentum of recurring top-ups over the last 24 hours.
+                          Tracking the momentum of recurring top-ups over the last 24 hours (ledger, same reporting scope as Overview).
                         </p>
                       </div>
-                      <div className="flex flex-1 flex-col items-center justify-center space-y-4 text-center">
-                        <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef1f3]">
-                          <BarChart3 className="size-8 text-slate-300" strokeWidth={1.5} aria-hidden />
+                      {overviewReloadVelocity24h.hasData ? (
+                        <div className="relative flex h-32 w-full items-end gap-1.5 overflow-hidden sm:gap-2">
+                          {overviewReloadVelocity24h.barHeightsPct.map((hPct, bi) => {
+                            const solid = bi === overviewReloadVelocity24h.solidBarIndex
+                            return (
+                              <div
+                                key={bi}
+                                className={`flex-1 rounded-t-lg ${solid ? 'bg-[#1562f0]' : 'bg-[#1562f0]/10'}`}
+                                style={
+                                  solid
+                                    ? { height: `${hPct}%` }
+                                    : {
+                                        height: `${hPct}%`,
+                                        background: 'linear-gradient(0deg, #1562f022 0%, #1562f0 100%)',
+                                        opacity: 0.35 + (hPct / 100) * 0.55,
+                                      }
+                                }
+                                title={`${overviewReloadVelocity24h.barCounts[bi]} top-up(s) · 3h slot ${bi + 1}/${RELOAD_VELOCITY_BAR_SLOTS} (last 24h)`}
+                              />
+                            )
+                          })}
                         </div>
-                        <p className="text-sm font-bold text-[#595c5e]">Data will appear after your first transaction</p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Awaiting telemetry</p>
-                      </div>
-                      <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-6 opacity-40">
+                      ) : (
+                        <div className="flex flex-1 flex-col items-center justify-center space-y-4 text-center">
+                          <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef1f3]">
+                            <BarChart3 className="size-8 text-slate-300" strokeWidth={1.5} aria-hidden />
+                          </div>
+                          <p className="text-sm font-bold text-[#595c5e]">Data will appear after your first top-up</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">No ledger top-ups (24h)</p>
+                        </div>
+                      )}
+                      <div
+                        className={`mt-6 flex items-center justify-between border-t border-slate-100 pt-6 ${overviewReloadVelocity24h.hasData ? '' : 'opacity-40'}`}
+                      >
                         <div className="text-center">
-                          <p className="text-[10px] font-bold uppercase text-slate-400">Avg. Time</p>
-                          <p className="text-lg font-bold">—</p>
+                          <p className="text-[10px] font-bold uppercase text-slate-400">Avg. gap</p>
+                          <p className="text-lg font-bold">{overviewReloadVelocity24h.avgGapLabel}</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-[10px] font-bold uppercase text-slate-400">Peak Hour</p>
-                          <p className="text-lg font-bold">—</p>
+                          <p className="text-[10px] font-bold uppercase text-slate-400">Peak window</p>
+                          <p className="text-lg font-bold leading-tight">{overviewReloadVelocity24h.peakHourLabel}</p>
                         </div>
                         <div className="text-center">
                           <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
-                          <p className="text-sm font-bold uppercase tracking-tighter text-slate-400">Inactive</p>
+                          <p
+                            className={`text-sm font-bold uppercase tracking-tighter ${
+                              overviewReloadVelocity24h.statusLabel === 'Quiet' ? 'text-slate-400' : 'text-[#1562f0]'
+                            }`}
+                          >
+                            {overviewReloadVelocity24h.statusLabel}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -11702,9 +12290,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </div>
                   <div>
                     <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
-                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${topUpsIssued.toFixed(2)}`}</h3>
+                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${overviewActivityTopupDisplayTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                      {overviewActivityTopupCount.toLocaleString()} transactions
+                      {overviewActivityTopupDisplayCount.toLocaleString()} transactions
                     </p>
                   </div>
                 </div>
@@ -11728,9 +12316,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </div>
                   <div>
                     <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
-                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${totalTips.toFixed(2)}`}</h3>
+                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${overviewActivityTipsLedgerCadTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                      {overviewActivityTipCount.toLocaleString()} micro-tips
+                      {overviewActivityTipsLedgerCount.toLocaleString()} micro-tips
                     </p>
                   </div>
                 </div>
@@ -11759,49 +12347,57 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                 <div>
                   <h3 className="mb-2 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31]">Reload velocity</h3>
                   <p className="mb-8 max-w-xs text-sm text-slate-500">
-                    Tracking the momentum of recurring top-ups over the last 24 hours.
+                    Tracking the momentum of recurring top-ups over the last 24 hours (global ledger, same reporting scope as Overview).
                   </p>
                 </div>
-                <div className="relative flex h-32 w-full items-end gap-2 overflow-hidden">
-                  {[
-                    { h: 40, o: 0.3 },
-                    { h: 60, o: 0.4 },
-                    { h: 30, o: 0.2 },
-                    { h: 80, o: 0.6 },
-                    { h: 55, o: 0.45 },
-                    { h: 95, o: 0.8 },
-                    { h: 70, o: 1, solid: true },
-                  ].map((bar, bi) => (
-                    <div
-                      key={bi}
-                      className={`flex-1 rounded-t-lg ${bar.solid ? 'bg-[#1562f0]' : 'bg-[#1562f0]/10'}`}
-                      style={
-                        bar.solid
-                          ? { height: `${bar.h}%` }
-                          : {
-                              height: `${bar.h}%`,
-                              background: 'linear-gradient(0deg, #1562f022 0%, #1562f0 100%)',
-                              opacity: bar.o,
-                            }
-                      }
-                    />
-                  ))}
-                </div>
+                {overviewReloadVelocity24h.hasData ? (
+                  <div className="relative flex h-32 w-full items-end gap-1.5 overflow-hidden sm:gap-2">
+                    {overviewReloadVelocity24h.barHeightsPct.map((hPct, bi) => {
+                      const solid = bi === overviewReloadVelocity24h.solidBarIndex
+                      return (
+                        <div
+                          key={bi}
+                          className={`flex-1 rounded-t-lg ${solid ? 'bg-[#1562f0]' : 'bg-[#1562f0]/10'}`}
+                          style={
+                            solid
+                              ? { height: `${hPct}%` }
+                              : {
+                                  height: `${hPct}%`,
+                                  background: 'linear-gradient(0deg, #1562f022 0%, #1562f0 100%)',
+                                  opacity: 0.35 + (hPct / 100) * 0.55,
+                                }
+                          }
+                          title={`${overviewReloadVelocity24h.barCounts[bi]} top-up(s) · 3h slot ${bi + 1}/${RELOAD_VELOCITY_BAR_SLOTS} (last 24h)`}
+                        />
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center py-6 text-center">
+                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#eef1f3]">
+                      <BarChart3 className="size-7 text-slate-300" strokeWidth={1.5} aria-hidden />
+                    </div>
+                    <p className="text-sm font-bold text-[#595c5e]">No top-ups in the last 24 hours</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Ledger will populate this chart</p>
+                  </div>
+                )}
                 <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-6">
                   <div className="text-center">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">Avg. time</p>
-                    <p className="font-manrope text-lg font-bold text-[#2c2f31]">—</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Avg. gap</p>
+                    <p className="font-manrope text-lg font-bold text-[#2c2f31]">{overviewReloadVelocity24h.avgGapLabel}</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">Peak hour</p>
-                    <p className="font-manrope text-lg font-bold text-[#2c2f31]">—</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Peak window</p>
+                    <p className="font-manrope text-lg font-bold leading-tight text-[#2c2f31]">{overviewReloadVelocity24h.peakHourLabel}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
                     <p
-                      className={`text-sm font-bold ${overviewActivityTopupCount + overviewActivityChargeCount > 0 ? 'text-[#1562f0]' : 'text-slate-400'}`}
+                      className={`text-sm font-bold ${
+                        overviewReloadVelocity24h.statusLabel === 'Quiet' ? 'text-slate-400' : 'text-[#1562f0]'
+                      }`}
                     >
-                      {overviewActivityTopupCount + overviewActivityChargeCount > 0 ? 'Accelerating' : 'Quiet'}
+                      {overviewReloadVelocity24h.statusLabel}
                     </p>
                   </div>
                 </div>
@@ -11889,58 +12485,26 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0);
            };
            /** Tip portion in CAD (merged TX_TIP child and/or embedded `chargeBreakdown.tipCurrencyAmount`). */
-           const mergedChargeTipCad = (tx: TxDisplayRow): number => {
+           const mergedChargeTipCad = (tx: TxDisplayRow): number => chargeTxDisplayRowMergedTipCad(tx, cadOracle)
+           /** `meta.requestAmountFiat6` → CAD base (same currency/oracle as Payment Routing). */
+           const chargeMetaRequestAmountApproxCad = (tx: TxDisplayRow): number => {
              if (tx.type !== 'Charge') return 0
-             if (tx.tipRaw) {
-               const tr = tx.tipRaw.raw as Record<string, unknown>
-               const tipFiat = parseIndexerUintE6Field(tr.finalRequestAmountFiat6)
-               const tipMeta = parseIndexerMetaTuple(tr.meta)
-               if (tipFiat > 0) {
-                 const tipCur = beamioFiatCurrencyLabel(Number(tipMeta.currencyFiat))
-                 return approximateCadFromFinalRequestFiat6(tipFiat, tipCur, cadOracle)
-               }
-               if (tx.tipRaw.usdcAmount > 0) return tx.tipRaw.usdcAmount / cadOracle
-             }
              const raw = tx.raw as Record<string, unknown>
-             const emb = parseChargeBreakdownEmbeddedTip(raw)
-             if (emb) return chargeBreakdownTipHumanToCad(emb.tipHuman, emb.requestCurrencyUpper, cadOracle)
-             if (tx.tip > 0) return tx.tip / cadOracle
-             return 0
-           };
-           /**
-            * Pre–tier-discount “sticker” total in CAD (subtotal + tax + tip from NFC displayJson),
-            * so strikethrough can sit above final net when tier discount applies.
-            */
-           const chargeBreakdownStrikeCad = (tx: TxDisplayRow): number | null => {
-             if (tx.type !== 'Charge') return null
-             try {
-               const raw = tx.raw as Record<string, unknown>
-               const dj = raw.displayJson
-               if (typeof dj !== 'string' || !dj.trim()) return null
-               const o = JSON.parse(dj) as {
-                 chargeBreakdown?: {
-                   requestCurrency?: string
-                   subtotalCurrencyAmount?: string
-                   taxAmountCurrencyAmount?: string
-                   tipCurrencyAmount?: string
-                 }
-               }
-               const b = o.chargeBreakdown
-               if (!b) return null
-               const sub = parseFloat(String(b.subtotalCurrencyAmount ?? '').replace(/,/g, ''))
-               const tax = parseFloat(String(b.taxAmountCurrencyAmount ?? '').replace(/,/g, ''))
-               const tip = parseFloat(String(b.tipCurrencyAmount ?? '').replace(/,/g, ''))
-               if (!Number.isFinite(sub) || !Number.isFinite(tax) || !Number.isFinite(tip)) return null
-               const sum = sub + tax + tip
-               if (!(sum > 0)) return null
-               const cur = String(b.requestCurrency ?? 'CAD').toUpperCase()
-               if (cur === 'CAD') return sum
-               if (cur === 'USD' || cur === 'USDC') return sum / cadOracle
-               return null
-             } catch {
-               return null
-             }
-           };
+             const meta = parseIndexerMetaTuple(raw.meta)
+             const req = parseIndexerUintE6Field(meta.requestAmountFiat6)
+             if (!(req > 0)) return 0
+             const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat))
+             return approximateCadFromFinalRequestFiat6(req, curLabel, cadOracle)
+           }
+           /** Detail row: tip and/or pre-discount request vs final fiat (tip shown separately below). */
+           const chargeTxNetValueColumnShowBreakdown = (tx: TxDisplayRow): boolean => {
+             if (tx.type !== 'Charge') return false
+             const tipCadCol = mergedChargeTipCad(tx)
+             if (tx.tipRaw || tipCadCol > 0.001) return true
+             const requestCad = chargeMetaRequestAmountApproxCad(tx)
+             const finalNetCad = chargeTxDisplayRowNetCad(tx, cadOracle)
+             return requestCad > finalNetCad + 0.0005
+           }
 
            const smartReceiptRouteLines = (tx: TxDisplayRow): { title: string; sub: string; amountCad: number }[] => {
              if (tx.type !== 'Charge') return [];
@@ -11963,13 +12527,16 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                return [...lines, { title: 'Tip', sub, amountCad: tipCad }]
              }
              if (!Array.isArray(route) || route.length === 0) {
+               const discE6 = parseIndexerUintE6Field(meta.discountAmountFiat6);
+               const pctOff = discountRateBpsToPercentOffLabel(meta.discountRateBps);
+               const hasDiscount = discE6 > 0 || pctOff !== null;
                const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6);
                const usdc = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6);
                if (finalFiat > 0) {
                  return appendEmbeddedTipLine([
                    {
-                     title: 'Amount settled',
-                     sub: `${cur} invoice`,
+                     title: hasDiscount ? 'Original price − discount' : 'Amount settled',
+                     sub: hasDiscount ? `${cur} net after discount` : `${cur} invoice`,
                      amountCad: approximateCadFromFinalRequestFiat6(finalFiat, cur, cadOracle),
                    },
                  ]);
@@ -11977,8 +12544,10 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                if (usdc > 0) {
                  return appendEmbeddedTipLine([
                    {
-                     title: 'USDC settlement',
-                     sub: `${usdc.toFixed(2)} USDC`,
+                     title: hasDiscount ? 'Original price − discount' : 'USDC settlement',
+                     sub: hasDiscount
+                       ? `${usdc.toFixed(2)} USDC (net after discount)`
+                       : `${usdc.toFixed(2)} USDC`,
                      amountCad: usdc / cadOracle,
                    },
                  ]);
@@ -12011,25 +12580,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              indexerTransactions.length === 0 &&
              !txSearchTerm.trim() &&
              txFilterTerminal === 'All' &&
-             txFilterType === 'All' &&
-             activeLedger === 'All';
+             txFilterType === 'All';
 
            return (
            <>
            <div className="mx-auto max-w-screen-xl space-y-4 sm:space-y-5 animate-in fade-in duration-300 font-sans text-[#2c2f31]">
-              <div className="flex w-max flex-wrap rounded-[20px] border border-slate-200/50 bg-white/60 p-1.5 shadow-sm backdrop-blur-xl">
-                <button type="button" onClick={() => setActiveLedger('All')} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${activeLedger === 'All' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}>
-                  All Ledgers
-                </button>
-                <button type="button" onClick={() => setActiveLedger('AA')} disabled={!profiles?.[0]?.aaAccount} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all flex items-center gap-1.5 ${activeLedger === 'AA' ? 'bg-white text-emerald-800 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-50 disabled:cursor-not-allowed`}>
-                  <Zap size={16} className={!profiles?.[0]?.aaAccount ? 'opacity-50' : ''} /> Smart Terminal (AA)
-                  {!profiles?.[0]?.aaAccount && <Lock size={12} className="ml-1 opacity-50" />}
-                </button>
-                <button type="button" onClick={() => setActiveLedger('EOA')} className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all flex items-center gap-1.5 ${activeLedger === 'EOA' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}>
-                  <Shield size={16} className={activeLedger === 'EOA' ? 'text-emerald-500' : ''} /> The Vault (EOA)
-                </button>
-              </div>
-
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div className="relative w-full sm:max-w-md">
                   <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
@@ -12084,7 +12639,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </div>
                 </div>
 
-              <div className="relative overflow-x-auto px-4 pb-8 sm:px-8">
+              <div className="relative px-4 pb-8 sm:px-8">
                 {indexerTransactionsRefreshing ? (
                   <div
                     className="flex items-center justify-center gap-2 border-b border-slate-100/90 bg-slate-50/50 px-4 py-2.5 text-[12px] font-medium text-slate-600"
@@ -12096,51 +12651,35 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </div>
                 ) : null}
                 <div className="relative min-h-[min(420px,55vh)]">
-                <table className="w-full min-w-[1000px]">
-                   <thead>
-                     <tr className="bg-slate-50/50 text-left border-b border-slate-100/80">
-                       <th className="px-8 py-5 text-[13px] font-medium text-slate-500">Recent Transaction</th>
-                       <th className="px-6 py-5 text-[13px] font-medium text-slate-500">Customer &amp; Source</th>
-                       <th className="px-6 py-5 text-[13px] font-medium text-slate-500">Payment Routing</th>
-                       <th className="px-6 py-5 text-[13px] font-medium text-slate-500">Network &amp; Fuel</th>
-                       <th className="px-8 py-5 text-[13px] font-medium text-slate-500 text-right">Net Value (CAD Base)</th>
-                     </tr>
-                   </thead>
-                   <LayoutGroup id="merchant-os-tx-table">
-                   <tbody className="divide-y divide-slate-100/80">
+                <LayoutGroup id="merchant-os-tx-table">
+                <div className="space-y-4">
                       {indexerTransactionsLoading && indexerTransactions.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="px-8 py-16 text-center text-slate-500">
+                        <div className="rounded-xl border border-slate-100/80 bg-white px-8 py-16 text-center text-slate-500 shadow-sm">
                             <span className="inline-flex items-center gap-2">
                               <span className="w-4 h-4 border-2 border-slate-300 border-t-[#1562f0] rounded-full animate-spin" />
                               Loading transactions...
                             </span>
-                          </td>
-                        </tr>
+                        </div>
                       ) : filteredTx.length === 0 ? (
                         txEditorialEmpty ? (
-                          <tr>
-                            <td colSpan={5} className="h-[min(360px,50vh)] min-h-[280px] border-0 p-0" aria-hidden />
-                          </tr>
+                          <div className="h-[min(360px,50vh)] min-h-[280px]" aria-hidden />
                         ) : (
-                          <tr>
-                            <td colSpan={5} className="px-8 py-16 text-center text-slate-500">
+                          <div className="rounded-xl border border-slate-100/80 bg-white px-8 py-16 text-center text-slate-500 shadow-sm">
                               <div className="space-y-2">
                                 <Search size={32} className="mx-auto text-slate-300" />
                                 <p className="text-[15px] font-medium">
-                                  {txSearchTerm || txFilterTerminal !== 'All' || txFilterType !== 'All' || activeLedger !== 'All'
+                                  {txSearchTerm || txFilterTerminal !== 'All' || txFilterType !== 'All'
                                     ? 'No transactions found for the current filters.'
                                     : 'No transactions yet.'}
                                 </p>
-                                {!txSearchTerm && txFilterTerminal === 'All' && txFilterType === 'All' && activeLedger === 'All' && (
+                                {!txSearchTerm && txFilterTerminal === 'All' && txFilterType === 'All' && (
                                   <p className="mx-auto max-w-md text-[12px] text-slate-400">
                                     Transactions will appear here when you process Charges at your terminal. Ensure the POS sends payee as your
                                     AA address.
                                   </p>
                                 )}
                               </div>
-                            </td>
-                          </tr>
+                          </div>
                         )
                       ) : (
                       filteredTx.map((tx, idx) => {
@@ -12148,17 +12687,32 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         const txTotalCAD = calculateTxNetValueCAD(tx);
                         const rowKey = String(tx.indexerTxId || tx.id || `idx-${idx}`);
                         const slideIn = txSlideInKeys.includes(rowKey);
+                        const ledgerCardStatus =
+                          tx.status === 'Pending'
+                            ? { label: 'Pending', cls: 'bg-amber-50 text-amber-700' as const }
+                            : tx.type.includes('Top-Up')
+                              ? { label: 'Confirmed', cls: 'bg-emerald-50 text-emerald-600' as const }
+                              : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const }
+                        let ledgerTypeTitle = tx.type
+                        if (tx.type === 'Charge') {
+                          const rawLt = tx.raw as Record<string, unknown>
+                          const rteLt = rawLt.route
+                          const metaLt = parseIndexerMetaTuple(rawLt.meta)
+                          const pctLt = discountRateBpsToPercentOffLabel(metaLt.discountRateBps)
+                          if ((Array.isArray(rteLt) && rteLt.length > 0) || pctLt != null) {
+                            ledgerTypeTitle = 'Charge (Auto)'
+                          }
+                        }
                         return (
-                        <motion.tr
+                        <motion.div
                           key={rowKey}
                           layout="position"
                           initial={slideIn ? { x: 120, opacity: 0.65 } : false}
                           animate={{ x: 0, opacity: 1 }}
                           transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.88 }}
-                          style={{ display: 'table-row' }}
                           role="button"
                           tabIndex={0}
-                          className="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                          className="group cursor-pointer rounded-xl border border-slate-100/80 bg-white p-5 shadow-sm transition-all hover:shadow-md outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/25"
                           onClick={() => setSmartReceiptTx(tx)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
@@ -12167,74 +12721,70 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             }
                           }}
                         >
-                           <td className="px-8 py-5 align-middle">
-                             <div className="flex items-center gap-4">
-                               <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
-                                 tx.type.includes('Top-Up') ? 'bg-emerald-50 border-emerald-100/50 text-emerald-600' :
-                                 isVaultTerminal ? 'bg-blue-50 border-blue-100 text-emerald-800' :
-                                 tx.type === 'Tip' ? 'bg-rose-50 border-rose-100 text-rose-600' :
-                                 'bg-slate-50 border-slate-200/50 text-slate-600'
-                               }`}>
-                                 {tx.type === 'Tip' ? <Heart size={18} className="fill-rose-100" /> :
-                                  tx.type.includes('Top-Up') ? <ArrowUpFromLine size={18}/> :
-                                  <ArrowDownToLine size={18}/>}
+                          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                          <div className="flex min-w-0 flex-1 items-start gap-4">
+                               <div
+                                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
+                                   tx.type.includes('Top-Up')
+                                     ? 'bg-emerald-50 text-emerald-600'
+                                     : tx.type === 'Tip'
+                                       ? 'bg-rose-50 text-rose-600'
+                                       : isVaultTerminal
+                                         ? 'bg-blue-50 text-blue-600'
+                                         : 'bg-[#1562f0]/10 text-[#1562f0]'
+                                 }`}
+                               >
+                                 {tx.type === 'Tip' ? (
+                                   <Heart size={20} className="fill-rose-100" strokeWidth={2} aria-hidden />
+                                 ) : tx.type.includes('Top-Up') ? (
+                                   <ArrowUpFromLine size={20} strokeWidth={2} aria-hidden />
+                                 ) : isVaultTerminal ? (
+                                   <Shield size={20} strokeWidth={2} aria-hidden />
+                                 ) : (
+                                   <Zap size={20} strokeWidth={2.25} aria-hidden />
+                                 )}
                                </div>
-                               <div>
-                                 <div className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.type}</div>
-                                 {tx.type.includes('Top-Up') || tx.type === 'Charge' || tx.type === 'Tip' ? (
-                                   <div className="text-[13px] text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-                                     <span className="whitespace-nowrap">
-                                       TX-{indexerTxIdBodyPrefix6(tx.indexerTxId)} • {tx.time}
-                                     </span>
+                               <div className="min-w-0 flex-1 space-y-1">
+                                 <div className="flex flex-wrap items-center gap-2">
+                                   <span
+                                     className="text-base font-extrabold tracking-tight text-slate-900"
+                                     style={{ fontFamily: 'Manrope, ui-sans-serif, system-ui, sans-serif' }}
+                                   >
+                                     {ledgerTypeTitle}
+                                   </span>
+                                   <span
+                                     className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${ledgerCardStatus.cls}`}
+                                   >
+                                     {ledgerCardStatus.label}
+                                   </span>
+                                   {tx.type.includes('Top-Up') || tx.type === 'Charge' || tx.type === 'Tip' ? (
                                      <button
                                        type="button"
                                        onClick={(ev) => {
                                          ev.stopPropagation();
                                          setRawTxJsonModal(tx);
                                        }}
-                                       className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-[#1562f0] transition-colors shrink-0"
+                                       className="inline-flex shrink-0 items-center justify-center rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#1562f0]"
                                        title="View TxDisplayRow JSON (includes raw Transaction)"
                                        aria-label="View TxDisplayRow JSON"
                                      >
                                        <Code size={14} />
                                      </button>
-                                   </div>
-                                 ) : (
-                                   <>
-                                     <div className="text-[13px] text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-                                       <span className="whitespace-nowrap">{tx.id} • {tx.time}</span>
-                                       <button
-                                         type="button"
-                                         onClick={(ev) => {
-                                           ev.stopPropagation();
-                                           setRawTxJsonModal(tx);
-                                         }}
-                                         className="inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-[#1562f0] transition-colors shrink-0"
-                                         title="View TxDisplayRow JSON (includes raw Transaction)"
-                                         aria-label="View TxDisplayRow JSON"
-                                       >
-                                         <Code size={14} />
-                                       </button>
-                                     </div>
-                                     <div className="text-[12px] text-slate-400 font-medium mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                                       <span>{tx.dateStr || dateString}</span>
-                                       <span className="flex items-center gap-1 text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded" title="Processed by terminal">
-                                         <MonitorSmartphone size={10}/> {tx.terminal}
-                                       </span>
-                                       {tx.topAdmin && (
-                                         <span className="flex items-center gap-1 min-w-0" title="Top Admin (reporting)">
-                                           <span className="text-slate-500 shrink-0">Top Admin</span>
-                                           <AddressCapsule address={tx.topAdmin} className="bg-slate-100 border-slate-200 text-slate-700 max-w-[200px]" />
-                                         </span>
-                                       )}
-                                     </div>
-                                   </>
-                                 )}
-                               </div>
-                             </div>
-                           </td>
-
-                           <td className="px-6 py-5 align-middle">
+                                   ) : (
+                                     <button
+                                       type="button"
+                                       onClick={(ev) => {
+                                         ev.stopPropagation();
+                                         setRawTxJsonModal(tx);
+                                       }}
+                                       className="inline-flex shrink-0 items-center justify-center rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#1562f0]"
+                                       title="View TxDisplayRow JSON (includes raw Transaction)"
+                                       aria-label="View TxDisplayRow JSON"
+                                     >
+                                       <Code size={14} />
+                                     </button>
+                                   )}
+                                 </div>
                              <div className="flex flex-col gap-1.5">
                                {tx.type.includes('Top-Up') || ((tx.type === 'Charge' || tx.type === 'Tip') && !isVaultTerminal) ? (
                                  (() => {
@@ -12249,8 +12799,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                        : '';
                                    const payerLower = payerAddr.toLowerCase();
                                    const payeeLower = payeeAddr.toLowerCase();
-                                   const payerTag = payerLower ? txReportingBeamioTagByAddress[payerLower] : '';
-                                   const payeeTag = payeeLower ? txReportingBeamioTagByAddress[payeeLower] : '';
+                                   const payerTag = payerLower ? resolveReportingBeamioTagLower(payerLower) : '';
+                                   const payeeTag = payeeLower ? resolveReportingBeamioTagLower(payeeLower) : '';
                                    const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
                                    const tierCap =
                                      tx.type === 'Charge' && payerLower
@@ -12258,8 +12808,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                        : undefined;
                                    const tierPres =
                                      tierCap != null && tierCap.name ? infraTierCapsulePresentation(tierCap.backgroundColor) : null;
-                                   /** Same as In-Store Top-Up: NFC only when payer tag is CashTreeDamo_* (Android POS / NFC path). */
-                                   const useNfcSubtitle = payerHandle.startsWith('CashTreeDamo_')
+                                   /** Charge / Top-Up / Tip: NFC when payer tag matches `LEDGER_NFC_BEAMIO_TAG_RE` (`/^verra_\\d+/`). */
+                                   const useNfcSubtitle = LEDGER_NFC_BEAMIO_TAG_RE.test(payerHandle)
                                    return (
                                      <>
                                        <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -12571,12 +13121,12 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                            </td>
 
                            <td className="px-8 py-5 align-middle text-right">
-                             {tx.type === 'Charge' &&
-                             (tx.tipRaw || mergedChargeTipCad(tx) > 0.001 || chargeBreakdownStrikeCad(tx) != null) ? (() => {
+                             {tx.type === 'Charge' && chargeTxNetValueColumnShowBreakdown(tx) ? (() => {
                                const tipCadCol = mergedChargeTipCad(tx)
-                               const strikeCad = chargeBreakdownStrikeCad(tx)
-                               const showStrike =
-                                 strikeCad != null && strikeCad > txTotalCAD + 0.015
+                               /** Title row: pre-discount request + tip vs settled final + tip (CAD); subtitle still itemizes tip. */
+                               const strikeCad = chargeMetaRequestAmountApproxCad(tx) + tipCadCol
+                               const mainCad = chargeTxDisplayRowApproxCad(tx, cadOracle)
+                               const showStrike = strikeCad > mainCad + 0.0005
                                const mainCls =
                                  tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
                                return (
@@ -12588,7 +13138,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                        </span>
                                      ) : null}
                                      <span className={`font-semibold text-[18px] tracking-tight whitespace-nowrap tabular-nums ${mainCls}`}>
-                                       ${txTotalCAD.toFixed(2)}
+                                       ${mainCad.toFixed(2)}
                                      </span>
                                    </div>
                                    <div className={`text-[12px] font-medium whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
@@ -12609,9 +13159,26 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                  }`}>
                                    {tx.type.includes('Top-Up') ? '+' : ''}${txTotalCAD.toFixed(2)}
                                  </div>
-                                 <div className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
-                                   {tx.status === 'Pending' ? 'Pending Settlement' : tx.tip > 0 ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip` : isVaultTerminal ? 'Treasury TX' : 'No Tip'}
-                                 </div>
+                                 {(() => {
+                                   const sub =
+                                     tx.status === 'Pending'
+                                       ? 'Pending Settlement'
+                                       : tx.tip > 0
+                                         ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip`
+                                         : isVaultTerminal
+                                           ? 'Treasury TX'
+                                           : tx.type.includes('Top-Up')
+                                             ? null
+                                             : 'No Tip'
+                                   if (sub == null) return null
+                                   return (
+                                     <div
+                                       className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}
+                                     >
+                                       {sub}
+                                     </div>
+                                   )
+                                 })()}
                                </>
                              )}
                            </td>
@@ -12675,7 +13242,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  ? ethers.getAddress(rawP.payer)
                  : '';
              const payerLower = payerAddr.toLowerCase();
-             const payerTag = payerLower ? txReportingBeamioTagByAddress[payerLower] : '';
+             const payerTag = payerLower ? resolveReportingBeamioTagLower(payerLower) : '';
              const tierCap =
                tx.type === 'Charge' && payerLower ? chargePayerInfraTierCapsuleByPayer[payerLower] : undefined;
              const routeRaw = rawP.route;

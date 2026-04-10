@@ -1,189 +1,392 @@
 <!DOCTYPE html>
 
-<html lang="en"><head>
+<html class="light" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Restore Access | Verra Business OS</title>
+<title>Transactions - Verra Business OS</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            "colors": {
-                    "secondary-container": "#d8e3fb",
-                    "secondary-fixed-dim": "#cad5ed",
-                    "tertiary-fixed-dim": "#e88ae1",
-                    "error-container": "#fb5151",
-                    "primary-fixed-dim": "#648eff",
-                    "on-error-container": "#570008",
-                    "error-dim": "#9f0519",
-                    "on-tertiary-fixed": "#400041",
-                    "tertiary-container": "#f797ef",
-                    "background": "#f5f7f9",
-                    "secondary-dim": "#455064",
-                    "on-primary-container": "#001e59",
-                    "inverse-primary": "#5f8bff",
-                    "inverse-on-surface": "#9a9d9f",
-                    "surface-bright": "#f5f7f9",
-                    "on-secondary-fixed": "#354053",
-                    "surface-container-low": "#eef1f3",
-                    "surface-container-high": "#dfe3e6",
-                    "surface-container-highest": "#d9dde0",
-                    "on-secondary-fixed-variant": "#515c70",
-                    "tertiary-fixed": "#f797ef",
-                    "secondary": "#515c70",
-                    "surface-tint": "#0051d1",
-                    "on-tertiary-container": "#610e62",
-                    "on-tertiary": "#ffeef8",
-                    "on-primary-fixed-variant": "#00276d",
-                    "on-surface": "#2c2f31",
-                    "surface-container": "#e5e9eb",
-                    "surface": "#f5f7f9",
-                    "on-error": "#ffefee",
-                    "outline-variant": "#abadaf",
-                    "primary-fixed": "#7a9dff",
-                    "outline": "#747779",
-                    "on-secondary-container": "#475266",
-                    "surface-dim": "#d0d5d8",
-                    "primary-dim": "#0047b8",
-                    "secondary-fixed": "#d8e3fb",
-                    "primary-container": "#7a9dff",
-                    "tertiary": "#8d3a8b",
-                    "surface-variant": "#d9dde0",
-                    "error": "#b31b25",
-                    "surface-container-lowest": "#ffffff",
-                    "on-tertiary-fixed-variant": "#6c1a6c",
-                    "on-primary-fixed": "#000000",
-                    "on-surface-variant": "#595c5e",
-                    "on-primary": "#f1f2ff",
-                    "inverse-surface": "#0b0f10",
-                    "primary": "#0051d1",
-                    "on-background": "#2c2f31",
-                    "on-secondary": "#eff2ff",
-                    "tertiary-dim": "#7f2d7e"
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-surface": "#0b0f10",
+                        "on-primary-container": "#001e59",
+                        "on-primary": "#f1f2ff",
+                        "on-primary-fixed": "#000000",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-variant": "#d9dde0",
+                        "tertiary-container": "#f797ef",
+                        "primary-container": "#7a9dff",
+                        "tertiary-fixed-dim": "#e88ae1",
+                        "on-error-container": "#570008",
+                        "surface-container-highest": "#d9dde0",
+                        "error": "#b31b25",
+                        "primary-dim": "#0047b8",
+                        "on-error": "#ffefee",
+                        "secondary-fixed-dim": "#cad5ed",
+                        "primary": "#0051d1",
+                        "surface-container": "#e5e9eb",
+                        "on-secondary-fixed-variant": "#515c70",
+                        "on-tertiary-container": "#610e62",
+                        "on-tertiary": "#ffeef8",
+                        "on-background": "#2c2f31",
+                        "error-dim": "#9f0519",
+                        "on-tertiary-fixed-variant": "#6c1a6c",
+                        "surface-container-high": "#dfe3e6",
+                        "secondary-fixed": "#d8e3fb",
+                        "primary-fixed": "#7a9dff",
+                        "on-secondary": "#eff2ff",
+                        "tertiary-fixed": "#f797ef",
+                        "secondary-dim": "#455064",
+                        "surface-dim": "#d0d5d8",
+                        "inverse-on-surface": "#9a9d9f",
+                        "on-tertiary-fixed": "#400041",
+                        "on-surface-variant": "#595c5e",
+                        "tertiary-dim": "#7f2d7e",
+                        "error-container": "#fb5151",
+                        "surface-tint": "#0051d1",
+                        "surface-bright": "#f5f7f9",
+                        "inverse-primary": "#5f8bff",
+                        "tertiary": "#8d3a8b",
+                        "outline": "#747779",
+                        "secondary-container": "#d8e3fb",
+                        "on-secondary-container": "#475266",
+                        "surface-container-low": "#eef1f3",
+                        "surface": "#f5f7f9",
+                        "on-surface": "#2c2f31",
+                        "background": "#f5f7f9",
+                        "secondary": "#515c70",
+                        "outline-variant": "#abadaf",
+                        "on-secondary-fixed": "#354053",
+                        "on-primary-fixed-variant": "#00276d",
+                        "primary-fixed-dim": "#648eff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
             },
-            "borderRadius": {
-                    "DEFAULT": "1rem",
-                    "lg": "2rem",
-                    "xl": "3rem",
-                    "full": "9999px"
-            },
-            "fontFamily": {
-                    "headline": [
-                            "Manrope"
-                    ],
-                    "body": [
-                            "Inter"
-                    ],
-                    "label": [
-                            "Inter"
-                    ]
-            }
-          },
-        },
-      }
+        }
     </script>
 <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            -webkit-font-smoothing: antialiased;
-        }
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
-        .glass-card {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.05); border-radius: 10px; }
+        
+        @media (min-width: 1024px) {
+            .mobile-nav { display: none; }
+            .desktop-sidebar { display: flex; }
+            .main-content { margin-left: 280px; }
         }
-        .mesh-bg {
-            background-color: #f5f7f9;
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(21, 98, 240, 0.05) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(122, 157, 255, 0.08) 0px, transparent 50%);
+        @media (max-width: 1023px) {
+            .desktop-sidebar { display: none; }
+            .main-content { margin-left: 0; }
+        }
+        .tonal-transition {
+            transition: background-color 0.3s ease;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #abadaf33;
+            border-radius: 10px;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
     </style>
-<style>
-    body {
-      min-height: max(884px, 100dvh);
-    }
-  </style>
-  </head>
-<body class="bg-surface text-on-surface min-h-screen flex flex-col mesh-bg">
-<header class="fixed top-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
-<div class="flex items-center px-6 h-16 w-full max-w-7xl mx-auto justify-between">
-<div class="flex items-center gap-4">
-<span class="material-symbols-outlined text-blue-600 cursor-pointer active:scale-95 duration-150" data-icon="arrow_back">arrow_back</span>
-<h1 class="font-manrope font-bold text-lg tracking-tight">Recovery</h1>
+</head>
+<body class="bg-surface font-body text-on-surface antialiased min-h-screen">
+<!-- Desktop Sidebar -->
+<aside class="desktop-sidebar fixed left-0 top-0 h-screen w-[280px] bg-surface-container-lowest border-r border-outline-variant/30 flex-col z-[60] overflow-hidden">
+<div class="p-6 border-bottom border-outline-variant/20">
+<div class="flex items-center gap-3 mb-6">
+<div class="w-12 h-12 rounded-xl overflow-hidden bg-primary/10 flex items-center justify-center ring-4 ring-primary/5">
+<img alt="Merchant Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCgVMJS831UbXaq9ziSSa_mx7Ty1LyuhWRzh13BQhrzhDZf16yret-KUvbQKfbsKh-UiP0BRfB5xkIfMpmDgS8TBY3FSSXEN3IchbCCRgPoVa97Jp16raHe3I5EQhxMNWN1Dg7x4iIxzgLz2khhM1IlniUAB2jv7Q-wYH3fiCNTyU3px8ux2EgstUjkhWK4cdFB--7WKdkgyoJzte4Bc2TJLsowZR0u6le8-DHH87sHXLuNqDScdMD6KKwdRZHL0GU3sAnXvwOu2ig"/>
 </div>
-<div class="text-blue-600 font-black tracking-tighter text-xl">
-                Verra
-            </div>
+<div>
+<h1 class="text-lg font-extrabold text-primary font-headline leading-tight">Business OS</h1>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px] text-green-600 font-bold" style="font-variation-settings: 'FILL' 1;">verified</span>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-tighter">Merchant OS</span>
+</div>
+</div>
+</div>
+</div>
+<nav class="flex-1 overflow-y-auto px-4 py-2 sidebar-scroll space-y-6">
+<div class="space-y-1">
+<h3 class="px-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-[0.15em] mb-2">Overview</h3>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">dashboard</span>
+<span class="text-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">insights</span>
+<span class="text-sm">Insights</span>
+</a>
+</div>
+<div class="space-y-1">
+<h3 class="px-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-[0.15em] mb-2">Assets</h3>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">loyalty</span>
+<span class="text-sm">Programs</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">storefront</span>
+<span class="text-sm">Market</span>
+</a>
+</div>
+<div class="space-y-1">
+<h3 class="px-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-[0.15em] mb-2">Operations</h3>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 text-primary font-semibold transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]" style="font-variation-settings: 'FILL' 1;">receipt_long</span>
+<span class="text-sm">Transactions</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">group</span>
+<span class="text-sm">Members</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">chat</span>
+<span class="text-sm">Messages</span>
+</a>
+</div>
+<div class="space-y-1">
+<h3 class="px-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-[0.15em] mb-2">Financials</h3>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">account_balance_wallet</span>
+<span class="text-sm">Wallet</span>
+</a>
+</div>
+<div class="space-y-1">
+<h3 class="px-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-[0.15em] mb-2">System</h3>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">terminal</span>
+<span class="text-sm">Terminals</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[22px]">settings</span>
+<span class="text-sm">Settings</span>
+</a>
+</div>
+</nav>
+<div class="p-4 border-t border-outline-variant/20">
+<button class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-on-surface text-surface-container-lowest font-bold text-sm hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'wght' 600;">lock</span>
+<span>Lock Wallet</span>
+</button>
+</div>
+</aside>
+<div class="main-content min-h-screen">
+<!-- TopAppBar -->
+<header class="bg-surface/70 backdrop-blur-xl fixed top-0 w-full lg:w-[calc(100%-280px)] z-50 flex justify-between items-center px-6 h-16 border-b border-outline-variant/10">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high ring-2 ring-primary/10 lg:hidden">
+<img alt="Merchant Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCgVMJS831UbXaq9ziSSa_mx7Ty1LyuhWRzh13BQhrzhDZf16yret-KUvbQKfbsKh-UiP0BRfB5xkIfMpmDgS8TBY3FSSXEN3IchbCCRgPoVa97Jp16raHe3I5EQhxMNWN1Dg7x4iIxzgLz2khhM1IlniUAB2jv7Q-wYH3fiCNTyU3px8ux2EgstUjkhWK4cdFB--7WKdkgyoJzte4Bc2TJLsowZR0u6le8-DHH87sHXLuNqDScdMD6KKwdRZHL0GU3sAnXvwOu2ig"/>
+</div>
+<h1 class="text-xl font-extrabold tracking-tight text-primary font-headline">Transactions</h1>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-500 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">search</span>
+</button>
+<button class="text-slate-500 hover:opacity-80 transition-opacity relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+</button>
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center overflow-hidden border border-white shadow-sm">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCeXqEwZhBtjIVB-0V7GSvZZlaubkEV8WkAULPKppPDDD556YBTzx1rbhFY_34Vn0b_q31fCwnBthjKbDN_C82Sa9iIwOXcGfAPq6FC795d9QwH16D98pHYQFlNOJgDhwt0dIraJgkJtx7fQch8waSMds4t28tyFpqF8P9oXRi3pwFSoJjHVfS5AribR1yOHeNoTDCneElLUE4mmsyWN5PTHBnY5OdsdwdwvrF7dF-XDAu6ON3cVXtz26ys8eYsQtilhCGckFa21WU"/>
+</div>
 </div>
 </header>
-<main class="flex-grow flex items-center justify-center px-6 pt-24 pb-12">
-<div class="w-full max-w-lg">
-<div class="text-center mb-12">
-<h2 class="font-headline font-extrabold text-4xl lg:text-5xl text-on-surface tracking-tight mb-4 leading-tight">
-                    Restore Access
-                </h2>
-<p class="font-body text-on-surface-variant text-lg max-w-sm mx-auto leading-relaxed">
-                    Use your Recovery QR code to regain access to your workspace without a password.
-                </p>
+<!-- Main Content Canvas -->
+<main class="pt-24 pb-28 px-4 max-w-screen-xl mx-auto min-h-screen">
+<!-- Filter Bar -->
+<section class="mb-8 overflow-x-auto no-scrollbar flex items-center gap-2 py-2">
+<button class="px-6 py-2.5 rounded-full bg-primary text-white font-headline text-sm font-bold shadow-lg shadow-primary/20">All</button>
+<button class="px-6 py-2.5 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors font-headline text-sm font-medium">Charge</button>
+<button class="px-6 py-2.5 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors font-headline text-sm font-medium">Top-up</button>
+<button class="px-6 py-2.5 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors font-headline text-sm font-medium">Link</button>
+</section>
+<!-- Smart Ledger Section -->
+<section class="space-y-4"><!-- New Transaction: Charge (Settled) -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">bolt</span>
 </div>
-<div class="bg-surface-container-lowest rounded-xl shadow-[0_20px_40px_rgba(21,98,240,0.06)] p-2 relative overflow-hidden group">
-<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
-<div class="border-2 border-dashed border-surface-container-high rounded-lg p-10 flex flex-col items-center justify-center transition-all duration-300 hover:border-primary/30 bg-surface-container-low/30">
-<div class="w-20 h-20 mb-6 bg-primary-container/20 rounded-full flex items-center justify-center text-primary relative">
-<span class="material-symbols-outlined text-4xl" data-icon="qr_code_scanner">qr_code_scanner</span>
-<div class="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full animate-pulse"></div>
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-headline font-bold text-base">Charge</span>
+<span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider">Settled</span>
 </div>
-<p class="font-body font-semibold text-on-surface text-center mb-2">
-                        Upload or scan your Recovery QR code image
-                    </p>
-<p class="font-label text-xs text-on-surface-variant uppercase tracking-[0.05em]">
-                        Supports PNG, JPG or PDF
-                    </p>
-<button class="mt-8 px-6 py-2.5 rounded-full bg-surface-container-high text-on-surface font-medium text-sm transition-all hover:bg-surface-container-highest active:scale-95">
-                        Select File
-                    </button>
+<p class="text-sm font-medium text-on-surface">@mike_vancity</p>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span>10:42 AM</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">smartphone</span> Consumer APP</span>
 </div>
 </div>
-<div class="mt-10 flex flex-col gap-6 items-center">
-<button class="w-full h-14 rounded-full bg-primary text-white font-headline font-bold text-lg flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/40 active:scale-[0.98] transition-all relative overflow-hidden">
-<span class="relative z-10">Validate &amp; Restore</span>
-<span class="material-symbols-outlined relative z-10" data-icon="auto_awesome">auto_awesome</span>
-<div class="absolute inset-0 bg-gradient-to-r from-primary to-primary-container opacity-50"></div>
-<div class="absolute top-0 left-0 w-full h-[1px] bg-white/20"></div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="font-mono text-primary font-bold text-lg">-C$15.50</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-low text-on-surface-variant text-[10px] font-bold">incl. $2.00 Tip</span>
+</div>
+</div>
+<!-- Row 1: Mixed Payment (Auto-Routing) -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-headline font-bold text-base">Charge (Auto)</span>
+<span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider">Settled</span>
+</div>
+<p class="text-sm font-medium text-on-surface">@mike_vancity</p>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span>10:42 AM</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">smartphone</span> Store SoftPOS</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="font-mono text-primary font-bold text-lg">-C$15.00</span>
+<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold">Split: SVC + USDC</span>
+</div>
+</div>
+<!-- Row 2: Top-up (Cash) -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">payments</span>
+</div>
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-headline font-bold text-base">Top-up</span>
+<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">Confirmed</span>
+</div>
+<p class="text-sm font-medium text-on-surface">@NFC-8821</p>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span>09:15 AM</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">storefront</span> Store SoftPOS</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1 font-bold text-on-surface"><span class="material-symbols-outlined text-[14px]">money</span> Cash</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="font-mono text-emerald-600 font-bold text-lg">+C$50.00</span>
+<span class="text-[10px] text-on-surface-variant font-medium">Digital Balance Issued</span>
+</div>
+</div>
+<!-- Row 3: Top-up (USDC) -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">currency_exchange</span>
+</div>
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-headline font-bold text-base">Top-up</span>
+<span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider">Settled</span>
+</div>
+<p class="text-sm font-medium text-on-surface">@sarah_doe</p>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span>08:30 AM</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">smartphone</span> Consumer App</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1 font-bold text-blue-600"><span class="material-symbols-outlined text-[14px]">token</span> USDC</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="font-mono text-emerald-600 font-bold text-lg">+C$100.00</span>
+<span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold tracking-tight">On-chain Settlement</span>
+</div>
+</div>
+<!-- Row 4: Top-up (Bank Card) -->
+<div class="group bg-surface-container-lowest rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">credit_card</span>
+</div>
+<div class="space-y-0.5">
+<div class="flex items-center gap-2">
+<span class="font-headline font-bold text-base">Top-up</span>
+<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider">Settled</span>
+</div>
+<p class="text-sm font-medium text-on-surface">@james_park</p>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span>07:45 AM</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">storefront</span> Store SoftPOS</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="flex items-center gap-1 font-bold text-on-surface"><span class="material-symbols-outlined text-[14px]">credit_card</span> Bank Card</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="font-mono text-emerald-600 font-bold text-lg">+C$25.00</span>
+<span class="text-[10px] text-on-surface-variant font-medium">Offline Card Capture</span>
+</div>
+</div>
+</section>
+<!-- Ledger Load More -->
+<div class="mt-8 flex justify-center">
+<button class="group flex items-center gap-2 px-8 py-3 rounded-full bg-surface-container text-on-surface-variant font-headline text-sm font-bold hover:bg-surface-container-high transition-all">
+                Load History
+                <span class="material-symbols-outlined text-lg group-hover:translate-y-0.5 transition-transform">keyboard_double_arrow_down</span>
 </button>
-<a class="inline-flex items-center gap-2 text-primary font-body font-medium hover:underline transition-all" href="#">
-<span class="material-symbols-outlined text-lg" data-icon="help">help</span>
-                    Where can I find my Recovery QR code?
-                </a>
 </div>
-<div class="mt-16 grid grid-cols-2 gap-4">
-<div class="p-6 bg-surface-container-low/50 rounded-lg backdrop-blur-md border border-white/40">
-<span class="material-symbols-outlined text-primary-fixed-dim mb-3 block" data-icon="lock_open">lock_open</span>
-<h3 class="font-headline font-bold text-sm mb-1">Encrypted Recovery</h3>
-<p class="text-[11px] text-on-surface-variant leading-normal">Your recovery data is decrypted locally using your device's secure enclave.</p>
-</div>
-<div class="p-6 bg-surface-container-low/50 rounded-lg backdrop-blur-md border border-white/40">
-<span class="material-symbols-outlined text-primary-fixed-dim mb-3 block" data-icon="verified_user">verified_user</span>
-<h3 class="font-headline font-bold text-sm mb-1">Workspace Safety</h3>
-<p class="text-[11px] text-on-surface-variant leading-normal">Restoring access will log out all other active sessions for security.</p>
-</div>
-</div>
-</div>
+<!-- Simulated Detail Overlay (Smart Receipt - Mixed Scenario) -->
 </main>
-<footer class="mt-auto py-8 text-center">
-<p class="text-[10px] font-label uppercase tracking-widest text-on-surface-variant/60">
-            Powered by Verra Cryptographic Infrastructure
-        </p>
-</footer>
-<div class="fixed top-1/4 -left-20 w-64 h-64 bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
-<div class="fixed bottom-1/4 -right-20 w-96 h-96 bg-primary-container/10 rounded-full blur-[120px] pointer-events-none"></div>
+</div>
+<!-- Mobile Bottom Navigation Bar -->
+<nav class="lg:hidden fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-2 bg-white/70 backdrop-blur-xl rounded-t-[2rem] z-50 shadow-[0_-20px_40px_rgba(21,98,240,0.06)] border-t border-outline-variant/10">
+<a class="flex flex-col items-center justify-center text-slate-400 px-5 py-2 active:scale-90 duration-200 hover:text-blue-500 transition-colors" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-headline text-[10px] font-semibold tracking-widest uppercase mt-1">Wallet</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-blue-50 text-blue-600 rounded-full px-5 py-2 active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">receipt_long</span>
+<span class="font-headline text-[10px] font-semibold tracking-widest uppercase mt-1">History</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 px-5 py-2 active:scale-90 duration-200 hover:text-blue-500 transition-colors" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="font-headline text-[10px] font-semibold tracking-widest uppercase mt-1">Members</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 px-5 py-2 active:scale-90 duration-200 hover:text-blue-500 transition-colors" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-headline text-[10px] font-semibold tracking-widest uppercase mt-1">Account</span>
+</a>
+</nav>
 </body></html>

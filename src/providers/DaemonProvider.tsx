@@ -190,6 +190,8 @@ type DaemonContext = {
 	registerMembersLoyaltyBackgroundWork: (fn: (() => Promise<void>) | null) => void
 	/** Merchant OS `/native-pos`：Overview/Staff 链上与 metadata feeder（与 Members 同一 CoNET `block` 守护进程串行触发）。 */
 	registerMerchantOsOverviewBackgroundWork: (fn: (() => Promise<void>) | null) => void
+	/** Merchant OS：EOA/AA Beamio 胶囊 metadata 远程刷新（setTimeout 链，首帧约 3s，之后每 60s；本地 LS 由业务侧 hydrate）。 */
+	registerAddressMetadataMinuteWork: (fn: (() => Promise<void>) | null) => void
 };
 
 type DaemonProps = {
@@ -274,6 +276,7 @@ const defaultContextValue: DaemonContext = {
 	setVoucherPayFromScan: () => {},
 	registerMembersLoyaltyBackgroundWork: () => {},
 	registerMerchantOsOverviewBackgroundWork: () => {},
+	registerAddressMetadataMinuteWork: () => {},
 	setSecureCode: (val: string) => {},
 	secureCode: '',
 	  setBeamioAppInstalled: () => {},
@@ -396,6 +399,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const merchantOsOverviewBgWorkRef = useRef<(() => Promise<void>) | null>(null)
 	const registerMerchantOsOverviewBackgroundWork = useCallback((fn: (() => Promise<void>) | null) => {
 		merchantOsOverviewBgWorkRef.current = fn
+	}, [])
+	const addressMetadataMinuteWorkRef = useRef<(() => Promise<void>) | null>(null)
+	const registerAddressMetadataMinuteWork = useCallback((fn: (() => Promise<void>) | null) => {
+		addressMetadataMinuteWorkRef.current = fn
 	}, [])
 
 	const [historyPayData, setHistoryPayData] = useState<searchResult | null>(null)
@@ -731,6 +738,37 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [])
 
+  /**
+   * Merchant OS：Beamio 地址 profile 远程补全（searchUsername）。setTimeout 链，禁止 setInterval。
+   * 首帧 3s 后跑一次，之后每 60s；未注册时空转。
+   */
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    const schedule = (delayMs: number) => {
+      if (cancelled) return
+      timeoutId = setTimeout(() => {
+        void (async () => {
+          if (cancelled) return
+          const fn = addressMetadataMinuteWorkRef.current
+          if (fn) {
+            try {
+              await fn()
+            } catch {
+              /* non-fatal */
+            }
+          }
+          if (!cancelled) schedule(60_000)
+        })()
+      }, delayMs)
+    }
+    schedule(3_000)
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+    }
+  }, [])
+
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
@@ -743,7 +781,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData, registerMembersLoyaltyBackgroundWork, registerMerchantOsOverviewBackgroundWork,
+				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData, registerMembersLoyaltyBackgroundWork, registerMerchantOsOverviewBackgroundWork, registerAddressMetadataMinuteWork,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 			{/* ✅ 常驻隐藏扫码组件：不占布局，但随时可 start */}

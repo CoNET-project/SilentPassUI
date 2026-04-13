@@ -14,6 +14,7 @@ import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { BEAMIO_TAG_ALLOWED_RE, BEAMIO_TAG_RULE_HINT, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 import RestoreAccessPage from '@/pages/Home/RestoreAccessPage'
+import { setWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -106,6 +107,7 @@ const assembleEncryptKeysObject = async (
 	if (eoa && ethers.isAddress(eoa)) {
 		setMyAddress(eoa)
 	}
+	setWorkspaceScreenLocked(false)
 }
 
 /** Post-login signing-in screen — `marketExample.html` (Verra Business OS - Signing In) */

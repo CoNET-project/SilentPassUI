@@ -4,6 +4,7 @@ import BeamioOnboardingModal from './LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { checkStorage, isStandalone } from '@/services/beamio'
 import SplashScreen from "@/components/SplashScreen"
+import { isWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
 
 const HomePage = ({}) => {
 	const { isInitialLoading, setIsInitialLoading, setBeamio, setProfiles, beamio } = useDaemonContext()
@@ -11,6 +12,11 @@ const HomePage = ({}) => {
 	const [splashVisible, setSplashVisible] = useState(true)
 	const [showInstallSheet, setShowInstallSheet] = useState(false)
 	const init = async () => {
+		if (isWorkspaceScreenLocked()) {
+			setSplashVisible(false)
+			setShowBeamioOnboardingModal(false)
+			return
+		}
 		const CoNETData: encrypt_keys_object = await checkStorage(false)
 		if (CoNETData && CoNETData?.beamio?.initialLoading) {
 			setSplashVisible(false)

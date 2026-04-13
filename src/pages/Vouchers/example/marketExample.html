@@ -3,96 +3,90 @@
 <html class="light" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Terminal Setup - Beamio</title>
+<title>Verra Business Lite - Customer Directory</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    "colors": {
-                        "surface-container-high": "#dfe3e6",
-                        "inverse-primary": "#5f8bff",
-                        "error-dim": "#9f0519",
-                        "on-primary-container": "#001e59",
-                        "background": "#f5f7f9",
-                        "tertiary-fixed-dim": "#e88ae1",
-                        "surface-dim": "#d0d5d8",
-                        "secondary-dim": "#455064",
-                        "on-primary": "#f1f2ff",
-                        "primary": "#0051d1",
-                        "on-primary-fixed-variant": "#00276d",
-                        "on-surface-variant": "#595c5e",
-                        "surface": "#f5f7f9",
-                        "primary-fixed": "#7a9dff",
-                        "on-surface": "#2c2f31",
-                        "on-error-container": "#570008",
-                        "error-container": "#fb5151",
-                        "tertiary-fixed": "#f797ef",
-                        "on-secondary-container": "#475266",
-                        "on-secondary-fixed": "#354053",
-                        "on-primary-fixed": "#000000",
-                        "surface-bright": "#f5f7f9",
-                        "surface-variant": "#d9dde0",
-                        "inverse-on-surface": "#9a9d9f",
-                        "secondary-fixed": "#d8e3fb",
-                        "outline-variant": "#abadaf",
-                        "primary-fixed-dim": "#648eff",
-                        "tertiary-dim": "#7f2d7e",
-                        "surface-container-low": "#eef1f3",
-                        "surface-container": "#e5e9eb",
-                        "secondary": "#515c70",
-                        "tertiary": "#8d3a8b",
-                        "surface-tint": "#0051d1",
-                        "on-tertiary": "#ffeef8",
-                        "secondary-container": "#d8e3fb",
-                        "secondary-fixed-dim": "#cad5ed",
-                        "error": "#b31b25",
-                        "on-tertiary-fixed-variant": "#6c1a6c",
-                        "on-secondary": "#eff2ff",
-                        "surface-container-highest": "#d9dde0",
-                        "outline": "#747779",
-                        "on-secondary-fixed-variant": "#515c70",
-                        "on-tertiary-container": "#610e62",
-                        "tertiary-container": "#f797ef",
-                        "inverse-surface": "#0b0f10",
-                        "on-tertiary-fixed": "#400041",
-                        "surface-container-lowest": "#ffffff",
-                        "primary-dim": "#0047b8",
-                        "on-error": "#ffefee",
-                        "primary-container": "#7a9dff",
-                        "on-background": "#2c2f31"
-                    },
-                    "borderRadius": {
-                        "DEFAULT": "1rem",
-                        "lg": "2rem",
-                        "xl": "3rem",
-                        "full": "9999px"
-                    },
-                    "fontFamily": {
-                        "headline": ["Manrope"],
-                        "body": ["Inter"],
-                        "label": ["Inter"]
-                    }
-                },
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-on-surface": "#9a9d9f",
+                    "on-tertiary-fixed": "#400041",
+                    "on-primary-container": "#001e59",
+                    "on-surface-variant": "#595c5e",
+                    "inverse-primary": "#5f8bff",
+                    "surface-variant": "#d9dde0",
+                    "inverse-surface": "#0b0f10",
+                    "tertiary-container": "#f797ef",
+                    "on-surface": "#2c2f31",
+                    "on-secondary-container": "#475266",
+                    "secondary-fixed": "#d8e3fb",
+                    "on-error-container": "#570008",
+                    "secondary-container": "#d8e3fb",
+                    "on-primary-fixed": "#000000",
+                    "on-error": "#ffefee",
+                    "surface-container-lowest": "#ffffff",
+                    "on-background": "#2c2f31",
+                    "primary-dim": "#0047b8",
+                    "on-secondary-fixed": "#354053",
+                    "on-secondary-fixed-variant": "#515c70",
+                    "tertiary-fixed-dim": "#e88ae1",
+                    "surface-container-low": "#eef1f3",
+                    "primary-fixed": "#7a9dff",
+                    "tertiary": "#8d3a8b",
+                    "surface": "#f5f7f9",
+                    "tertiary-fixed": "#f797ef",
+                    "error-container": "#fb5151",
+                    "secondary-dim": "#455064",
+                    "error": "#b31b25",
+                    "surface-dim": "#d0d5d8",
+                    "outline-variant": "#abadaf",
+                    "background": "#f5f7f9",
+                    "secondary-fixed-dim": "#cad5ed",
+                    "on-tertiary-container": "#610e62",
+                    "surface-container-highest": "#d9dde0",
+                    "surface-container": "#e5e9eb",
+                    "secondary": "#515c70",
+                    "on-tertiary": "#ffeef8",
+                    "primary-container": "#7a9dff",
+                    "primary-fixed-dim": "#648eff",
+                    "on-primary": "#f1f2ff",
+                    "error-dim": "#9f0519",
+                    "outline": "#747779",
+                    "primary": "#0051d1",
+                    "on-secondary": "#eff2ff",
+                    "surface-bright": "#f5f7f9",
+                    "tertiary-dim": "#7f2d7e",
+                    "surface-tint": "#0051d1",
+                    "surface-container-high": "#dfe3e6",
+                    "on-tertiary-fixed-variant": "#6c1a6c",
+                    "on-primary-fixed-variant": "#00276d"
             },
-        }
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
     </script>
 <style>
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
         .glass-nav {
-            background: rgba(245, 247, 249, 0.7);
             backdrop-filter: blur(20px);
-        }
-        .mesh-gradient-bg {
-            background: radial-gradient(at 0% 0%, #0051d1 0%, transparent 50%),
-                        radial-gradient(at 100% 0%, #7a9dff 0%, transparent 50%),
-                        radial-gradient(at 50% 100%, #eef1f3 0%, transparent 50%);
+            -webkit-backdrop-filter: blur(20px);
         }
     </style>
 <style>
@@ -100,80 +94,157 @@
       min-height: max(884px, 100dvh);
     }
   </style>
-  </head>
-<body class="bg-background font-body text-on-surface antialiased selection:bg-primary/20">
-<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
-<!-- Minimal Task Header (Excluded Shared Nav per Logic 2 & 3) -->
-<header class="sticky top-0 z-50 glass-nav flex items-center justify-between px-6 py-4">
-<button class="flex h-12 w-12 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-sm transition-transform active:scale-95">
-<span class="material-symbols-outlined">arrow_left</span>
+</head>
+<body class="bg-surface font-body text-on-surface antialiased min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 right-0 z-50 px-4 pt-4">
+<div class="max-w-2xl mx-auto bg-white dark:bg-slate-800 shadow-lg rounded-full flex items-center px-4 h-14 gap-3">
+<button class="p-2 hover:bg-surface-container rounded-full transition-colors flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">menu</span>
 </button>
-<span class="text-label-sm font-bold uppercase tracking-widest text-on-surface-variant">Setup Phase 01</span>
-<div class="w-12"></div> <!-- Spacer for symmetry -->
+<div class="flex-1 flex items-center gap-3">
+<input class="w-full bg-transparent border-none focus:ring-0 font-body text-on-surface placeholder:text-outline p-0" placeholder="Search BeamioTag or name..." type="text"/>
+</div>
+<div class="flex items-center gap-3 border-l border-outline-variant/30 pl-3 ml-1">
+<span class="hidden sm:inline font-label text-sm font-semibold text-secondary">@TheArtisanBakery</span>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-container shrink-0">
+<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuACH0qPjWcjzRjx3znFCqHsLTds2KeZW93MLu9eCL0OGP-UDaicX1umcQQlcSCC34v0Vsl-WPHDIKo3lvk8jpqhDeVJ36P5ZDe3k1Pondur3DEDvJ5OlRhahZq0EJVHyrTLtNQWQq_10Q4mXka_CmTse5yeVSR0k_4xO4SZHoQpp3Pc7nZ2BO5oQTNaLBjkGsZ4pYJpitim1JCq8RzVfd1VeCn8kvrqx8CefyGfF2GJzISLArRgOdTfpQazy7BB01NX76NA7tJ-Uc0"/>
+</div>
+</div>
+</div>
 </header>
-<main class="flex flex-1 flex-col px-6 pb-24 pt-8 max-w-xl mx-auto w-full">
-<!-- Hero Illustration / Visual Interest -->
-<div class="relative mb-12 h-64 overflow-hidden rounded-xl shadow-2xl">
-<div class="absolute inset-0 mesh-gradient-bg opacity-20"></div>
-<img class="h-full w-full object-cover mix-blend-overlay" data-alt="Modern sleek point of sale terminal on a minimalist marble counter with soft cinematic lighting and bokeh background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC81jazJ6aagCDIf-YFpCeIgCrQ6ESZEbBv5Wlhpz-yY0JbCRJOXX5EILx6F4d2awTUwfnt3HKK36PRL2-GizaBHdbdkdBmcA0J_5PahS-Wrn3tsths3Vew2IgALnwxo2V2EalIIlIAD1IEyJnKUzntUt7dL2FNyxnUOaa4r2ANMFEWFWf0Mc3lg8C16tIZQMn7naGD0XpVDdT_IXlsL_svhLL1VnmWPAnO7Y2c54AnYUCUvDpbujAbOYd_lgCgp5g0Q1Ea9nLjb8I"/>
-<div class="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
-<!-- Floating Glass Card for Visual Depth -->
-<div class="absolute bottom-6 left-6 right-6 p-4 rounded-lg bg-surface-container-lowest/40 backdrop-blur-md border border-white/20 flex items-center gap-4">
-<div class="flex size-12 items-center justify-center rounded-full bg-primary text-white">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">terminal</span>
+<main class="pt-24 px-6 max-w-2xl mx-auto">
+<!-- Header & Search -->
+<section class="mt-4 mb-8">
+<div class="flex flex-col gap-1 mb-6">
+<h1 class="font-headline font-extrabold text-3xl tracking-tight text-on-surface">Members</h1>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<p class="font-label text-sm font-semibold tracking-wide text-secondary uppercase opacity-70">Active Members: 84</p>
+</div>
+</div>
+</section>
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
+<span class="font-label text-xs font-bold text-secondary uppercase tracking-widest">Sort by:</span>
+<span class="font-body text-sm font-semibold text-on-surface flex items-center gap-1">
+      Recent Activity
+      <span class="material-symbols-outlined text-[18px]">expand_more</span>
+</span>
+</div>
+</div>
+<!-- Bento-inspired Customer List -->
+<div class="grid gap-4">
+<!-- Customer Item 1 -->
+<div class="bg-surface-container-lowest p-5 rounded-lg flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:scale-[1.01] transition-transform cursor-pointer group">
+<div class="flex items-center gap-4">
+<div class="relative">
+<div class="w-14 h-14 rounded-full overflow-hidden bg-primary-container/20">
+<img alt="Customer" class="w-full h-full object-cover" data-alt="Portrait of a stylish young woman with a warm expression, vibrant urban background, high-end editorial feel" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8OPoBWZHaNXIt97W_paA_Fi_j4k7zYn43ka9lGs4jN6J2sb69JcxtmkgLbRJOdgkIqL-NhR3XScZG_XOY01xtpgsG9pBlAON1LVUi2zdgKF7v5fMHW221Z4WGd7kzmdh_TxYiQJiQcxF1tdt7xTy6XEntHOyZuJaoAlkbRkawSOX1eWFY8YrZlxQD5fOAzINgVlOkvuEigBLD-XTXdo5yiPRtpxG1Oeqz6tvS72nCpMPBCbRJ432b_VS-F6sNvvVt_tTQ6WdHnlM"/>
+</div>
+<div class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-[14px] text-yellow-500" data-icon="stars" style="font-variation-settings: 'FILL' 1;">stars</span>
+</div>
+</div>
+<div><h3 class="font-headline font-bold text-lg text-on-surface">Elena Rodriguez</h3>
+<div class="flex items-center gap-1.5">
+<p class="font-body text-sm font-medium text-primary">@ElenaBeam</p>
+<span class="material-symbols-outlined text-[14px] text-secondary opacity-60" title="App User">smartphone</span>
+</div></div>
+</div>
+<div class="text-right flex flex-col items-end gap-2">
+<p class="font-headline font-bold text-lg text-on-surface">C$45.00</p>
+<span class="px-3 py-1.5 rounded-full bg-yellow-100 text-yellow-700 font-label text-[10px] font-bold uppercase tracking-widest border border-yellow-200">Gold Tier</span>
+</div>
+</div>
+<!-- Customer Item 2 -->
+<div class="bg-surface-container-lowest p-5 rounded-lg flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:scale-[1.01] transition-transform cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="relative">
+<div class="w-14 h-14 rounded-full overflow-hidden bg-primary-container/20">
+<img alt="Customer" class="w-full h-full object-cover" data-alt="Clean studio portrait of a man in his late 20s, neutral background, professional lighting, soft shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBuMf8EvEgKh5stWGlWGtftqPWY8Y3lZ-M13bIfp5HmYHfInlHV97ZdjAoQxUDAMyb4SByS3UOvEMOdUjcL5OojmuK1TFAINW57TE88Ds9Po2C4FTCclB43rIuyfARJC8CLJ63bLn23LdV6944UHkwtKeugxOb2smJrWBi_p8mVMXm26McYsKSDMUYGWQRTgLM9TyUBv3KjzJEsjeFZRVdbca1548kyhT5dxC7A2L5f3CEVOQI5qp9s6xtUctg7DnQ_iFXLk2E2Ybs"/>
+</div>
+</div>
+<div><h3 class="font-headline font-bold text-lg text-on-surface">Marcus Chen</h3>
+<div class="flex items-center gap-1.5">
+<p class="font-body text-sm font-medium text-primary">@M_Chen88</p>
+<span class="material-symbols-outlined text-[14px] text-secondary opacity-60" title="NFC User">credit_card</span>
+</div></div>
+</div>
+<div class="text-right flex flex-col items-end gap-2">
+<p class="font-headline font-bold text-lg text-on-surface">C$12.50</p>
+<span class="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 font-label text-[10px] font-bold uppercase tracking-widest border border-slate-200">Silver Tier</span>
+</div>
+</div>
+<!-- Featured Customer Card (Editorial Style) -->
+<div class="bg-primary bg-[linear-gradient(135deg,#0051d1_0%,#7a9dff_100%)] p-6 rounded-lg text-on-primary shadow-xl shadow-primary/20 flex flex-col gap-4 relative overflow-hidden">
+<div class="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-full border-2 border-white/30 overflow-hidden">
+<img alt="Top Customer" class="w-full h-full object-cover" data-alt="Editorial close-up of a young woman with neon lighting accents, high fashion photography style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMxn9pka1aim9Ivqg2H3w50pVl45IfjYMtmX3qK6AqBUUEpzoMTg4iZGCxs7fV7s5HVUnVF2QCOU_WKgS-EqTLkQWDjhgHe0OTjmA7TT3lJCqvaQzxHEeYSiIzGQlJWypWWiyRaKECV7elj7UaXC6s9w5sY85KZ3Tqycw_EgcmfbwWkdDUeLiUarnHdnyShDQ2v-Tq0lRTnjPs6dLsDiisbzAqATccPmZRawhrSPckr3UMTB4gmwXf4Z6HvS1iNYRMgota54zNryQ"/>
 </div>
 <div>
-<p class="text-sm font-bold text-on-surface">SoftPOS Native</p>
-<p class="text-xs text-on-surface-variant">v4.2.0 Build Stable</p>
+<span class="font-label text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">Top Spender</span>
+<h3 class="font-headline font-bold text-xl text-white">Sarah Jenkins</h3>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="material-symbols-outlined text-white" data-icon="auto_awesome">auto_awesome</span>
+<p class="font-headline font-extrabold text-xl text-white">C$1,240.50</p>
+</div>
+</div>
+<div class="flex justify-between items-end mt-4">
+<div><p class="text-white/60 font-body text-xs">BeamioTag</p>
+<div class="flex items-center gap-1.5">
+<p class="font-headline font-bold text-lg text-white">@SJenkins_Pro</p>
+<span class="material-symbols-outlined text-[16px] text-white/70" title="App User">smartphone</span>
+</div></div>
+<div class="bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/20">
+<span class="font-label text-xs font-bold text-white uppercase tracking-wider">Platinum Elite</span>
 </div>
 </div>
 </div>
-<!-- Content Section -->
-<div class="space-y-6">
-<div class="space-y-2">
-<h1 class="font-headline text-4xl font-extrabold tracking-tight text-on-surface">
-                        Link Terminal to <span class="text-primary">Workspace</span>
-</h1>
-<p class="text-body-md leading-relaxed text-on-surface-variant">
-                        Enter your business <span class="font-semibold text-on-surface">@BeamioTag</span> to authorize this device. This secures your transactions and syncs your inventory.
-                    </p>
-</div>
-<!-- Input Component -->
-<div class="group flex flex-col gap-2">
-<label class="text-sm font-bold text-on-surface-variant ml-1">@BeamioTag</label>
-<div class="relative flex items-center transition-all">
-<input class="h-16 w-full rounded-lg border-none bg-surface-container-low px-6 font-headline text-lg font-medium text-on-surface placeholder:text-outline-variant focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20" placeholder="e.g. coffee_house_ny" type="text"/>
-<button class="absolute right-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-white shadow-lg transition-transform active:scale-95">
-<span class="material-symbols-outlined">magnification_large</span>
-</button>
+<!-- Customer Item 3 -->
+<div class="bg-surface-container-lowest p-5 rounded-lg flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:scale-[1.01] transition-transform cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="relative">
+<div class="w-14 h-14 rounded-full overflow-hidden bg-primary-container/20">
+<img alt="Customer" class="w-full h-full object-cover" data-alt="Outdoor lifestyle photo of a man smiling, soft morning light, green trees in background, high quality dslr photo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDrQEtj1HaUJre-Ca3UzAjv5c6P5g78tOrI2Tph9P8IHZuSGmm1oAAfYnv5bJpusHdalz-khieA5pCYhZdfW1fhlxHBBgP_aaF03sYV4ll6AAVCKBfYAFASa6xaFWXNlMn4WTNfi2_XyYoRIBgyjGSDXp9iVZT6oLKWb1cPyzOGACchcwYqevyvKI-ROTA-AX3Jrl23LF9qawEjghzk0jwi_jD9ECbWanUFh3HgsmU0zZeH_TDrHR4WMdyVSQhFjXGe1N1Sf7quuys"/>
 </div>
 </div>
-<!-- Verification Status (Simulated State) -->
-<div class="flex items-center gap-4 rounded-lg bg-surface-container-low/50 p-4 border border-outline-variant/10">
-<div class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<div><h3 class="font-headline font-bold text-lg text-on-surface">David Wilson</h3>
+<div class="flex items-center gap-1.5">
+<p class="font-body text-sm font-medium text-primary">@DW_Design</p>
+<span class="material-symbols-outlined text-[14px] text-secondary opacity-60" title="NFC User">credit_card</span>
+</div></div>
 </div>
-<div class="flex-1">
-<p class="font-bold text-on-surface">Verified Workspace</p>
-<p class="text-xs text-on-surface-variant">Auth tokens generated for "Coffee House NY"</p>
-</div>
-<div class="flex size-6 items-center justify-center rounded-full bg-primary-fixed">
-<div class="size-2 animate-pulse rounded-full bg-primary"></div>
+<div class="text-right flex flex-col items-end gap-2">
+<p class="font-headline font-bold text-lg text-on-surface">C$250.00</p>
+<span class="px-3 py-1.5 rounded-full bg-yellow-100 text-yellow-700 font-label text-[10px] font-bold uppercase tracking-widest border border-yellow-200">Gold Tier</span>
 </div>
 </div>
+<!-- Customer Item 4 -->
+<div class="bg-surface-container-lowest p-5 rounded-lg flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.02)] hover:scale-[1.01] transition-transform cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="relative">
+<div class="w-14 h-14 rounded-full overflow-hidden bg-primary-container/20">
+<img alt="Customer" class="w-full h-full object-cover" data-alt="Portrait of a young creative professional woman in a bright studio space, soft lighting, modern aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDE4o_NIC7yyx6Hn6mmfcmBFFyijzWdL1VVKjqWF-kG-GcAvEGXpJkSy7tuSQsnqTLLIVVolvtkyQCbNbXjkOVE9iQVdobL748Fu8KxQVAXtuxAQ0wmg_Z0Xo_cKzv48ZJhtvda3aHipHQSDYY8wp96CLQPjxQXT_tmlpqoTNIp47s3nl5mA2Fmh-FCeQMq9OYFR0o73YpVpwA72ZMTZXOaD4GG7Kml5bjEBFby1ckaRvdflZMxmirbLqxhFw_81Q-SiqfZYbtp2bs"/>
 </div>
-</main>
-<!-- Footer Action (Sticky) -->
-<footer class="fixed bottom-0 left-0 right-0 p-6 glass-nav">
-<div class="mx-auto max-w-xl">
-<button class="flex h-16 w-full items-center justify-between rounded-full bg-primary px-8 text-lg font-bold text-white shadow-2xl shadow-primary/30 transition-all hover:bg-primary-dim active:scale-[0.98]">
-<span>Next Phase</span>
-<div class="flex items-center gap-2">
-<span class="text-sm font-normal opacity-70">Authorize</span>
-<span class="material-symbols-outlined">arrow_forward</span>
 </div>
-</button>
+<div><h3 class="font-headline font-bold text-lg text-on-surface">Amara Okafor</h3>
+<div class="flex items-center gap-1.5">
+<p class="font-body text-sm font-medium text-primary">@Amara_Beam</p>
+<span class="material-symbols-outlined text-[14px] text-secondary opacity-60" title="NFC User">credit_card</span>
+</div></div>
 </div>
-</footer>
+<div class="text-right flex flex-col items-end gap-2">
+<p class="font-headline font-bold text-lg text-on-surface">C$0.00</p>
+<span class="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 font-label text-[10px] font-bold uppercase tracking-widest border border-slate-200">Silver Tier</span>
 </div>
+</div>
+</div>
+<div class="mt-8 flex justify-center">
+<button class="px-8 py-3 rounded-full border border-outline-variant text-on-surface font-label text-sm font-bold uppercase tracking-widest hover:bg-surface-container-low transition-colors flex items-center gap-2">Load More Members <span class="material-symbols-outlined text-[18px]">expand_more</span></button>
+</div></main>
 </body></html>

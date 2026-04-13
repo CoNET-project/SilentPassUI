@@ -14,6 +14,10 @@ export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 export const BEAMIO_INDEXER_DIAMOND = '0xd990719B2f05ccab4Acdd5D7A3f7aDfd2Fc584Fe'
 /** BuintRedeemAirdrop（CoNET）；与 x402sdk chainAddresses / 部署记录同步 */
 export const CONET_BUINT_REDEEM_AIRDROP = '0x9A02EfE5DFC45E9236552BfE8FAB6643Efefc84A'
+/** BusinessStartKet ERC1155（CoNET）；用户持有的 Ket 在此合约 `balanceOf`；须与 Redeem 构造参数 `ket` / deployments 同步 */
+export const CONET_BUSINESS_START_KET = '0x2FF032d57eCF466624911692AF44D0B4A32a8E1f'
+/** BusinessStartKetRedeem（CoNET）；Ket + B-Unit 兑换码 */
+export const CONET_BUSINESS_START_KET_REDEEM = '0x44A68B182BaB5d5Ed45C9F027b42a8Bbb6564b2E'
 /** BeamioOracle on CoNET mainnet (getRate returns 1 currency = X USD, E18) */
 export const BEAMIO_ORACLE_CONET = '0x373639E4004f43C508b227644139F7b0c29f3cfF'
 
@@ -38,5 +42,7 @@ export const CONTRACT_ADDRESSES = {
     chainId: 224400,
     beamioIndexerDiamond: BEAMIO_INDEXER_DIAMOND,
     buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
+    businessStartKet: CONET_BUSINESS_START_KET,
+    businessStartKetRedeem: CONET_BUSINESS_START_KET_REDEEM,
   },
 } as const

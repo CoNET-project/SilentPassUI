@@ -20,6 +20,7 @@ import {
 	CreditCard,
 	Gift,
 	Ticket,
+	TicketPercent,
 	Globe,
 	ArrowUpRight,
 	ArrowDownLeft,
@@ -884,7 +885,7 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [historyPayData, setHistoryPayData, setShowFooter])
 
-	// CoNET BuintRedeemAirdrop：当前 profile EOA 是否为 redeem admin（仅 true 时显示顶部管理入口）
+	// CoNET BusinessStartKetRedeem：当前 profile EOA 是否为 redeemAdmins（仅 true 时显示顶部制作兑换码入口）
 	useEffect(() => {
 		const p = profiles?.[0]
 		let cancelled = false
@@ -2148,7 +2149,7 @@ export default function MyWalletDashboardNew() {
 
 	const filteredPasses = visiblePasses
 
-	/** CoNET BuintRedeem 管理：必须与链上 redeemAdmins 校验的 EOA 一致 */
+	/** BusinessStartKetRedeem 管理：须与链上 redeemAdmins 及签名 EOA 一致 */
 	const conetRedeemAdminEoa = useMemo(() => {
 		const p = profiles?.[0]
 		if (!p) return ''
@@ -2240,10 +2241,10 @@ export default function MyWalletDashboardNew() {
 										setShowFooter(false)
 									}}
 									className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
-									title="B-Unit redeem admin"
-									aria-label="B-Unit redeem admin"
+									title="Create Ket + B-Unit redeem codes"
+									aria-label="Create Ket and B-Unit redeem codes"
 								>
-									<Ticket className="w-5 h-5" strokeWidth={2.4} />
+									<TicketPercent className="w-5 h-5" strokeWidth={2.4} />
 								</button>
 							) : null}
 							<button

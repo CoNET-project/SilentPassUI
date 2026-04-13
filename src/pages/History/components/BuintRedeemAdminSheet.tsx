@@ -1,15 +1,113 @@
 /**
- * B-Unit redeem admin: create / cancel on CoNET BuintRedeemAirdrop (EOA must be redeemAdmins on-chain).
+ * BusinessStartKetRedeem admin: EIP-712 authorize create/cancel; beamio.app Cluster → Master relays gas on CoNET.
+ * Each create mints Start Ket #0 ×1 plus the specified B-Unit (6 decimals) on redeem.
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { ethers } from 'ethers'
 import { X, Loader2, Check, AlertTriangle, RefreshCw, Copy, ExternalLink } from 'lucide-react'
 import { conetDepinProvider } from '@/utils/constants'
-import { CONET_BUINT_REDEEM_AIRDROP } from '@/config/chainAddresses'
-import BUINT_REDEEM_ADMIN_ABI from '@/services/ABI/BuintRedeemAirdrop_admin.json'
+import { CONET_BUSINESS_START_KET_REDEEM, CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
+import KET_REDEEM_ADMIN_ABI from '@/services/ABI/BusinessStartKetRedeem_admin.json'
 import { generateCODE } from '@/services/beamio'
 
-const STORAGE_KEY = (eoa: string) => `beamio:buint-redeem-tracked:v1:${eoa.toLowerCase()}`
+const BEAMIO_API_ORIGIN = 'https://beamio.app'
+
+/** CoNET Blockscout：用 /tx/路径展示 32-byte 十六进制（与交易哈希同形，便于在浏览器中查看该值） */
+const CONET_EXPLORER_TX_BASE = 'https://mainnet.conet.network/tx'
+
+const STORAGE_KEY = (eoa: string) => `beamio:business-start-ket-redeem-tracked:v1:${eoa.toLowerCase()}`
+
+function shortenHash32(hex: string): string {
+	const h = hex.trim()
+	if (h.length < 12) return h
+	return `${h.slice(0, 6)}…${h.slice(-4)}`
+}
+
+function conetExplorerUrlForHash(hex: string): string {
+	return `${CONET_EXPLORER_TX_BASE}/${encodeURIComponent(hex)}`
+}
+
+/** 与地址胶囊一致：短缩 + 内联复制；点击短缩打开 CoNET 浏览器查看该 hash */
+function HashCapsule({
+	fullHash,
+	copyKey,
+	copiedKey,
+	setCopiedKey,
+	className = '',
+}: {
+	fullHash: string
+	copyKey: string
+	copiedKey: string | null
+	setCopiedKey: (key: string | null) => void
+	className?: string
+}) {
+	const explorerHref = conetExplorerUrlForHash(fullHash)
+	const short = shortenHash32(fullHash)
+	const copied = copiedKey === copyKey
+	return (
+		<div
+			className={`inline-flex max-w-full items-center rounded-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 ${className}`}
+		>
+			<a
+				href={explorerHref}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="min-w-0 shrink pl-3 pr-1 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-200 hover:opacity-90"
+				title={fullHash}
+			>
+				{short}
+			</a>
+			<button
+				type="button"
+				onClick={(e) => {
+					e.preventDefault()
+					e.stopPropagation()
+					navigator.clipboard?.writeText(fullHash)
+					setCopiedKey(copyKey)
+				}}
+				className="shrink-0 p-1.5 mr-0.5 rounded-full hover:bg-slate-200/80 dark:hover:bg-slate-700"
+				aria-label="Copy full hash"
+			>
+				{copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />}
+			</button>
+		</div>
+	)
+}
+
+const KET_REDEEM_CREATE_TOKEN_ID = 0n
+const KET_REDEEM_CREATE_KET_AMOUNT = 1n
+
+const CREATE_TYPED_TYPES: Record<string, { name: string; type: string }[]> = {
+	CreateRedeem: [
+		{ name: 'admin', type: 'address' },
+		{ name: 'codeHash', type: 'bytes32' },
+		{ name: 'tokenId', type: 'uint256' },
+		{ name: 'amount', type: 'uint256' },
+		{ name: 'buintAmount', type: 'uint256' },
+		{ name: 'validAfter', type: 'uint256' },
+		{ name: 'validBefore', type: 'uint256' },
+		{ name: 'nonce', type: 'uint256' },
+		{ name: 'deadline', type: 'uint256' },
+	],
+}
+
+const CANCEL_TYPED_TYPES: Record<string, { name: string; type: string }[]> = {
+	CancelRedeem: [
+		{ name: 'admin', type: 'address' },
+		{ name: 'codeHash', type: 'bytes32' },
+		{ name: 'nonce', type: 'uint256' },
+		{ name: 'deadline', type: 'uint256' },
+	],
+}
+
+function ketRedeemEip712Domain() {
+	return {
+		name: 'BusinessStartKetRedeem',
+		version: '1',
+		chainId: CONET_MAINNET_CHAIN_ID,
+		verifyingContract: ethers.getAddress(CONET_BUSINESS_START_KET_REDEEM),
+	}
+}
 
 export type BuintRedeemTracked = {
 	codeHash: string
@@ -40,7 +138,7 @@ function saveTracked(eoa: string, rows: BuintRedeemTracked[]) {
 
 export async function checkBuintRedeemAdmin(eoaAddress: string): Promise<boolean> {
 	if (!eoaAddress || !ethers.isAddress(eoaAddress)) return false
-	const c = new ethers.Contract(CONET_BUINT_REDEEM_AIRDROP, BUINT_REDEEM_ADMIN_ABI, conetDepinProvider)
+	const c = new ethers.Contract(CONET_BUSINESS_START_KET_REDEEM, KET_REDEEM_ADMIN_ABI, conetDepinProvider)
 	try {
 		return await c.redeemAdmins!(ethers.getAddress(eoaAddress))
 	} catch {
@@ -49,7 +147,9 @@ export async function checkBuintRedeemAdmin(eoaAddress: string): Promise<boolean
 }
 
 type ChainRow = BuintRedeemTracked & {
-	amount: string
+	tokenId: string
+	ketAmount: string
+	buintAmount: string
 	validAfter: number
 	validBefore: number
 	active: boolean
@@ -73,13 +173,14 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 	const [amountBuint, setAmountBuint] = useState('10')
 	const [submitting, setSubmitting] = useState(false)
 	const [lastCreatedPlainCode, setLastCreatedPlainCode] = useState<string | null>(null)
+	const [lastCreatedCodeHash, setLastCreatedCodeHash] = useState<string | null>(null)
 	const [cancelHash, setCancelHash] = useState<string | null>(null)
 	const [formError, setFormError] = useState('')
 	const [actionMsg, setActionMsg] = useState('')
 	const [copiedHash, setCopiedHash] = useState<string | null>(null)
 
 	const readContract = useCallback(
-		() => new ethers.Contract(CONET_BUINT_REDEEM_AIRDROP, BUINT_REDEEM_ADMIN_ABI, conetDepinProvider),
+		() => new ethers.Contract(CONET_BUSINESS_START_KET_REDEEM, KET_REDEEM_ADMIN_ABI, conetDepinProvider),
 		[]
 	)
 
@@ -97,19 +198,23 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 				rows.map(async (t) => {
 					try {
 						const r = await rc.getRedeem!(t.codeHash)
-						const tup = r as unknown as [bigint, bigint, bigint, boolean, boolean]
+						const tup = r as unknown as [bigint, bigint, bigint, bigint, bigint, boolean, boolean]
 						return {
 							...t,
-							amount: String(tup[0] ?? 0n),
-							validAfter: Number(tup[1] ?? 0n),
-							validBefore: Number(tup[2] ?? 0n),
-							active: Boolean(tup[3]),
-							consumed: Boolean(tup[4]),
+							tokenId: String(tup[0] ?? 0n),
+							ketAmount: String(tup[1] ?? 0n),
+							buintAmount: String(tup[2] ?? 0n),
+							validAfter: Number(tup[3] ?? 0n),
+							validBefore: Number(tup[4] ?? 0n),
+							active: Boolean(tup[5]),
+							consumed: Boolean(tup[6]),
 						} as ChainRow
 					} catch {
 						return {
 							...t,
-							amount: '0',
+							tokenId: '0',
+							ketAmount: '0',
+							buintAmount: '0',
 							validAfter: 0,
 							validBefore: 0,
 							active: false,
@@ -153,6 +258,7 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 		setFormError('')
 		setActionMsg('')
 		setLastCreatedPlainCode(null)
+		setLastCreatedCodeHash(null)
 		const amountNum = parseFloat(amountBuint)
 		if (!Number.isFinite(amountNum) || amountNum <= 0) {
 			setFormError('Amount must be a positive number')
@@ -169,16 +275,50 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 		setSubmitting(true)
 		try {
 			const wallet = new ethers.Wallet(privateKeyArmor, conetDepinProvider)
-			if (ethers.getAddress(wallet.address) !== ethers.getAddress(eoaAddress)) {
+			const admin = ethers.getAddress(wallet.address)
+			if (admin !== ethers.getAddress(eoaAddress)) {
 				setFormError('Wallet does not match your account')
 				return
 			}
-			const wc = new ethers.Contract(CONET_BUINT_REDEEM_AIRDROP, BUINT_REDEEM_ADMIN_ABI, wallet)
-			const tx = await wc.createRedeem!(codeHash, amountWei, 0n, 0n)
-			setActionMsg(`Submitted: ${tx.hash.slice(0, 10)}…`)
-			await tx.wait()
-			setActionMsg('Create confirmed on-chain.')
+			const rc = readContract()
+			const nonce = await rc.redeemAdminNonces!(admin)
+			const deadline = Math.floor(Date.now() / 1000) + 600
+			const domain = ketRedeemEip712Domain()
+			const message = {
+				admin,
+				codeHash,
+				tokenId: KET_REDEEM_CREATE_TOKEN_ID,
+				amount: KET_REDEEM_CREATE_KET_AMOUNT,
+				buintAmount: amountWei,
+				validAfter: 0n,
+				validBefore: 0n,
+				nonce,
+				deadline: BigInt(deadline),
+			}
+			const signature = await wallet.signTypedData(domain, CREATE_TYPED_TYPES, message)
+
+			setActionMsg('Submitting to beamio.app…')
+			const resp = await fetch(`${BEAMIO_API_ORIGIN}/api/businessStartKetRedeemAdminCreate`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					admin,
+					codeHash,
+					buintAmount: amountWei.toString(),
+					validAfter: '0',
+					validBefore: '0',
+					nonce: nonce.toString(),
+					deadline: String(deadline),
+					signature,
+				}),
+			})
+			const j = (await resp.json().catch(() => ({}))) as { success?: boolean; error?: string; txHash?: string }
+			if (!resp.ok || !j.success) {
+				throw new Error(j.error || `Create failed (${resp.status})`)
+			}
+			setActionMsg(j.txHash ? `Create confirmed. Tx: ${j.txHash.slice(0, 10)}…` : 'Create confirmed.')
 			setLastCreatedPlainCode(plainCode)
+			setLastCreatedCodeHash(codeHash)
 			const next: BuintRedeemTracked[] = [
 				...loadTracked(eoaAddress).filter((x) => x.codeHash.toLowerCase() !== codeHash.toLowerCase()),
 				{ codeHash, plainCode, createdAt: Date.now() },
@@ -199,11 +339,40 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 		setCancelHash(codeHash)
 		try {
 			const wallet = new ethers.Wallet(privateKeyArmor, conetDepinProvider)
-			const wc = new ethers.Contract(CONET_BUINT_REDEEM_AIRDROP, BUINT_REDEEM_ADMIN_ABI, wallet)
-			const tx = await wc.cancelRedeem!(codeHash)
-			setActionMsg(`Cancel submitted: ${tx.hash.slice(0, 10)}…`)
-			await tx.wait()
-			setActionMsg('Cancel confirmed.')
+			const admin = ethers.getAddress(wallet.address)
+			if (admin !== ethers.getAddress(eoaAddress)) {
+				setFormError('Wallet does not match your account')
+				return
+			}
+			const rc = readContract()
+			const nonce = await rc.redeemAdminNonces!(admin)
+			const deadline = Math.floor(Date.now() / 1000) + 600
+			const domain = ketRedeemEip712Domain()
+			const message = {
+				admin,
+				codeHash,
+				nonce,
+				deadline: BigInt(deadline),
+			}
+			const signature = await wallet.signTypedData(domain, CANCEL_TYPED_TYPES, message)
+
+			setActionMsg('Canceling via beamio.app…')
+			const resp = await fetch(`${BEAMIO_API_ORIGIN}/api/businessStartKetRedeemAdminCancel`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					admin,
+					codeHash,
+					nonce: nonce.toString(),
+					deadline: String(deadline),
+					signature,
+				}),
+			})
+			const j = (await resp.json().catch(() => ({}))) as { success?: boolean; error?: string; txHash?: string }
+			if (!resp.ok || !j.success) {
+				throw new Error(j.error || `Cancel failed (${resp.status})`)
+			}
+			setActionMsg(j.txHash ? `Cancel confirmed. Tx: ${j.txHash.slice(0, 10)}…` : 'Cancel confirmed.')
 			await refreshChainRows()
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err)
@@ -223,7 +392,7 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 					<div className="h-1 w-10 rounded-full bg-slate-500/70" />
 				</div>
 				<div className="px-5 pt-2 pb-3 flex items-center justify-between border-b border-slate-200 dark:border-slate-700 shrink-0">
-					<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">B-Unit Redeem Admin</h2>
+					<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Ket + B-Unit Redeem Admin</h2>
 					<div className="flex items-center gap-1">
 						<button
 							type="button"
@@ -254,13 +423,14 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 				</div>
 				<div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-6">
 					<p className="text-xs text-slate-500 dark:text-slate-400">
-						B-Unit (6 decimals) redeem codes on CoNET. Each create uses <code className="mx-1 font-mono text-[10px]">generateCODE</code>
-						(hash + code). You pay CoNET gas; the holder redeems with <code className="mx-1 font-mono text-[10px]">redeemWithCode(code)</code>.
+						CoNET redeem codes via <code className="mx-1 font-mono text-[10px]">BusinessStartKetRedeem</code>: each create locks Start Ket #0 × 1
+						plus your B-Unit amount (6 decimals). You sign EIP-712; gas is paid by the relay. Holders redeem with{' '}
+						<code className="mx-1 font-mono text-[10px]">redeemWithCode(code)</code>.
 					</p>
 					{actionMsg ? <p className="text-sm text-emerald-600 dark:text-emerald-400">{actionMsg}</p> : null}
 					{formError ? <p className="text-sm text-rose-600 dark:text-rose-400">{formError}</p> : null}
 					{lastCreatedPlainCode ? (
-						<div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/30 p-4 space-y-2">
+						<div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/30 p-4 space-y-3">
 							<p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">Redeem code (share this; local copy below)</p>
 							<div className="flex items-center gap-2 min-w-0">
 								<code className="flex-1 min-w-0 text-xs font-mono text-slate-900 dark:text-slate-100 break-all">{lastCreatedPlainCode}</code>
@@ -280,13 +450,25 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 									)}
 								</button>
 							</div>
+							{lastCreatedCodeHash ? (
+								<div className="space-y-1">
+									<p className="text-[11px] font-medium text-emerald-800/90 dark:text-emerald-200/90">Code hash (on-chain)</p>
+									<HashCapsule
+										fullHash={lastCreatedCodeHash}
+										copyKey="__last_created_hash__"
+										copiedKey={copiedHash}
+										setCopiedKey={setCopiedHash}
+										className="border-emerald-200/80 dark:border-emerald-800/80 bg-white/50 dark:bg-slate-900/40"
+									/>
+								</div>
+							) : null}
 						</div>
 					) : null}
 
 					<form onSubmit={handleCreate} className="space-y-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
 						<h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Create redeem</h3>
 						<div>
-							<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">B-Unit amount</label>
+							<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">B-Unit amount (Start Ket #0 × 1 included)</label>
 							<input
 								type="number"
 								inputMode="decimal"
@@ -305,7 +487,7 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 							className="w-full py-3 rounded-xl bg-[#1562f0] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
 						>
 							{submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-							{submitting ? 'Sending…' : 'Create on-chain'}
+							{submitting ? 'Sending…' : 'Sign & create (relay gas)'}
 						</button>
 					</form>
 
@@ -320,9 +502,9 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 						) : (
 							<ul className="space-y-3">
 								{chainRows.map((row) => {
-									const amt = Number(row.amount) / 1e6
-									const short = `${row.codeHash.slice(0, 10)}…${row.codeHash.slice(-6)}`
-									const explorer = `https://mainnet.conet.network/address/${CONET_BUINT_REDEEM_AIRDROP}`
+									const buintDisp = Number(row.buintAmount) / 1e6
+									const ketN = Number(row.ketAmount)
+									const contractExplorer = `https://mainnet.conet.network/address/${CONET_BUSINESS_START_KET_REDEEM}`
 									const plain = row.plainCode?.trim()
 									return (
 										<li
@@ -353,12 +535,18 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 															</button>
 														</div>
 													) : null}
-													<p className="text-xs font-mono text-slate-600 dark:text-slate-400 truncate" title={row.codeHash}>
-														{short}
-													</p>
+													<div className="mt-1">
+														<HashCapsule
+															fullHash={row.codeHash}
+															copyKey={`hash:${row.codeHash}`}
+															copiedKey={copiedHash}
+															setCopiedKey={setCopiedHash}
+														/>
+													</div>
 													{row.note ? <p className="text-xs text-slate-500 mt-0.5">{row.note}</p> : null}
 													<p className="text-sm font-semibold text-slate-900 dark:text-slate-100 mt-1">
-														{amt.toFixed(2)} B-Unit
+														Start Ket #{row.tokenId} × {ketN}{' '}
+														<span className="text-slate-500 font-normal">·</span> {buintDisp.toFixed(2)} B-Unit
 													</p>
 													<p className="text-[11px] text-slate-500">
 														{row.active ? <span className="text-emerald-600 font-medium">Active</span> : null}
@@ -367,27 +555,12 @@ export default function BuintRedeemAdminSheet({ open, onClose, eoaAddress, priva
 													</p>
 												</div>
 												<div className="flex flex-col gap-1 shrink-0">
-													<button
-														type="button"
-														onClick={() => {
-															navigator.clipboard?.writeText(row.codeHash)
-															setCopiedHash(row.codeHash)
-														}}
-														className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-														aria-label="Copy code hash"
-													>
-														{copiedHash === row.codeHash ? (
-															<Check className="w-4 h-4 text-emerald-500" />
-														) : (
-															<Copy className="w-4 h-4 text-slate-500" />
-														)}
-													</button>
 													<a
-														href={explorer}
+														href={contractExplorer}
 														target="_blank"
 														rel="noopener noreferrer"
 														className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 inline-flex"
-														aria-label="Open contract on explorer"
+														aria-label="Open BusinessStartKetRedeem on explorer"
 													>
 														<ExternalLink className="w-4 h-4 text-slate-500" />
 													</a>

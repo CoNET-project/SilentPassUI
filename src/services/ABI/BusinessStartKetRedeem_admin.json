@@ -1,0 +1,5 @@
+[
+  "function redeemAdmins(address account) view returns (bool)",
+  "function redeemAdminNonces(address account) view returns (uint256)",
+  "function getRedeem(bytes32 codeHash) view returns (uint256 tokenId, uint256 ketAmount, uint256 buintAmount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)"
+]

@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { ethers } from 'ethers'
 import { X, Loader2, Check, AlertTriangle, RefreshCw, Copy, ExternalLink } from 'lucide-react'
 import { conetDepinProvider } from '@/utils/constants'
-import { CONET_BUSINESS_START_KET_REDEEM, CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
+import { CONET_BUSINESS_START_KET_REDEEM, CONET_BUINT_REDEEM_AIRDROP, CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
 import KET_REDEEM_ADMIN_ABI from '@/services/ABI/BusinessStartKetRedeem_admin.json'
 import { generateCODE } from '@/services/beamio'
 
@@ -136,14 +136,25 @@ function saveTracked(eoa: string, rows: BuintRedeemTracked[]) {
 	} catch {}
 }
 
+/** 与 BuintRedeemAirdrop / BusinessStartKetRedeem 的 `mapping(address => bool) public redeemAdmins` 对齐 */
+const REDEEM_ADMIN_BOOL_ABI = ['function redeemAdmins(address) view returns (bool)'] as const
+
+/**
+ * History 顶部 Ticket 入口：任一合约上为 redeem admin 即显示。
+ * （Sheet 内创建/取消仍仅针对 BusinessStartKetRedeem + beamio.app Master API；纯 BuintRedeemAirdrop admin 若需链上制码需另行接入。）
+ */
 export async function checkBuintRedeemAdmin(eoaAddress: string): Promise<boolean> {
 	if (!eoaAddress || !ethers.isAddress(eoaAddress)) return false
-	const c = new ethers.Contract(CONET_BUSINESS_START_KET_REDEEM, KET_REDEEM_ADMIN_ABI, conetDepinProvider)
-	try {
-		return await c.redeemAdmins!(ethers.getAddress(eoaAddress))
-	} catch {
-		return false
+	const addr = ethers.getAddress(eoaAddress)
+	for (const contractAddress of [CONET_BUSINESS_START_KET_REDEEM, CONET_BUINT_REDEEM_AIRDROP]) {
+		try {
+			const c = new ethers.Contract(contractAddress, REDEEM_ADMIN_BOOL_ABI, conetDepinProvider)
+			if (await c.redeemAdmins!(addr)) return true
+		} catch {
+			/* 错误地址 / RPC 失败则尝试下一合约 */
+		}
 	}
+	return false
 }
 
 type ChainRow = BuintRedeemTracked & {

@@ -885,7 +885,7 @@ export default function MyWalletDashboardNew() {
 		}
 	}, [historyPayData, setHistoryPayData, setShowFooter])
 
-	// CoNET BusinessStartKetRedeem：当前 profile EOA 是否为 redeemAdmins（仅 true 时显示顶部制作兑换码入口）
+	// CoNET：当前 profile EOA 是否在 BuintRedeemAirdrop 或 BusinessStartKetRedeem 上为 redeemAdmins（true 时显示顶部 Ticket 入口）
 	useEffect(() => {
 		const p = profiles?.[0]
 		let cancelled = false

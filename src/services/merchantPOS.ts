@@ -7,7 +7,7 @@ import { ethers } from 'ethers'
 import { beamioApiBase } from '@/services/AAaccount'
 
 /** CoNET chainId */
-const CONET_CHAIN_ID = 224400
+const CONET_CHAIN_ID = 224422
 
 /** MerchantPOSManagement 合约地址（CoNET 主网） */
 export const MERCHANT_POS_MANAGEMENT_ADDRESS = '0x3Eb57035d3237Fce4b1cB273662E875EdfA0D54f'
@@ -87,7 +87,7 @@ export function generateRegisterPOSNonce(): string {
 }
 
 /** CoNET 主网 RPC */
-const CONET_RPC = 'https://mainnet-rpc.conet.network'
+const CONET_RPC = 'https://rpc1.conet.network'
 
 const MERCHANT_POS_ABI = [
 	'function getMerchantPOSList(address merchant) view returns (address[])',

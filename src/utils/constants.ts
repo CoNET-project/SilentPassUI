@@ -7,15 +7,15 @@ const apiv3_endpoint = `https://apiv3.conet.network/api/`;
 const apiv4_endpoint = `https://apiv4.conet.network/api/`;
 const payment_endpoint = `https://hooks.conet.network/api/`;
 const XMLHttpRequestTimeout = 90 * 1000;
-const mainChain_rpc = "https://mainnet-rpc.conet.network";
+const mainChain_rpc = "https://rpc1.conet.network";
 /** CoNET mainnet WebSocket for real-time event subscription (e.g. BeamioIndexerDiamond TransactionRecordSynced) */
-export const CONET_WSS = "wss://mainnet-rpc.conet.network/ws";
+export const CONET_WSS = "wss://rpc1.conet.network/ws";
 
 /** Singleton CoNET WebSocket provider. Do not destroy on unmount to avoid "provider destroyed; cancelled request" race. */
 let _conetWsProvider: ethers.WebSocketProvider | null = null;
 export const getConetWsProvider = (): ethers.WebSocketProvider => {
 	if (!_conetWsProvider) {
-		_conetWsProvider = new ethers.WebSocketProvider(CONET_WSS, { name: 'conet', chainId: 224400 });
+		_conetWsProvider = new ethers.WebSocketProvider(CONET_WSS, { name: 'conet', chainId: 224422 });
 	}
 	return _conetWsProvider;
 };

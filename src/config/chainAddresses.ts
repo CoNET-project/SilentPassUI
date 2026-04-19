@@ -31,7 +31,7 @@ export const CONTRACT_ADDRESSES = {
     usdc: USDC_BASE,
   },
   conet: {
-    chainId: 224400,
+    chainId: 224422,
     beamioIndexerDiamond: BEAMIO_INDEXER_DIAMOND,
   },
 } as const

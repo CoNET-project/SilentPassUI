@@ -131,7 +131,7 @@ const myFollowStatusUrl = `${beamioApi}/api/getMyFollowStatus`
 const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 
 /** CoNET 主网 chainId（BUnitAirdrop 部署链） */
-const CONET_CHAIN_ID = 224400
+const CONET_CHAIN_ID = 224422
 
 /** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
 const CONET_BUNIT_AIRDROP_ADDRESS = '0xa7410a532544aB7d1bA70701D9D0E389e4f4Cc1F'
@@ -1437,10 +1437,10 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x3E15607BCf98B01e6C7dF834a2CEc7B8B6aFb1BC',
+	address: '0x46cBFC3f77b320Db545D1DC21138fa1ED2Fa3df3',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 	
 }
 
@@ -2031,7 +2031,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 	
 }
 

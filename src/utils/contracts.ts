@@ -59,7 +59,7 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
 	  network: "CONET DePIN",
 	},
 	ConetDepin: {
-	  address: "0xC6edDb4Bc6161259325cf56AEf8b0D4fb289898A",
+	  address: "0x28022d17064367F7246F5800af905DA3E53C01A4",
 	  abi: ConetDepinAbi,
 	  network: "CONET DePIN",
 	},

@@ -18,7 +18,7 @@ export const CONET_BUINT = '0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879'
 export const CONET_BUINT_REDEEM_AIRDROP = '0x9A02EfE5DFC45E9236552BfE8FAB6643Efefc84A'
 /** BusinessStartKet + B-Unit 联合兑换（CoNET）；redeemAdmins 经 EIP-712 + 后端代付 gas 创建/取消 */
 export const CONET_BUSINESS_START_KET_REDEEM = '0x44A68B182BaB5d5Ed45C9F027b42a8Bbb6564b2E'
-export const CONET_MAINNET_CHAIN_ID = 224400
+export const CONET_MAINNET_CHAIN_ID = 224422
 export const BEAMIO_INDEXER_DIAMOND = '0xd990719B2f05ccab4Acdd5D7A3f7aDfd2Fc584Fe'
 
 export const BASE_MAINNET_FACTORIES = {
@@ -39,7 +39,7 @@ export const CONTRACT_ADDRESSES = {
     usdc: USDC_BASE,
   },
   conet: {
-    chainId: 224400,
+    chainId: 224422,
     buint: CONET_BUINT,
     buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
     businessStartKetRedeem: CONET_BUSINESS_START_KET_REDEEM,

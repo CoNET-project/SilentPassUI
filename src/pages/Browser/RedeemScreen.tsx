@@ -22,7 +22,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 	
 }
 

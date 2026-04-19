@@ -29,7 +29,7 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
   import ActionFacetAbi from '@/services/ABI/ActionFacetAbi.json'
   const contracts = {
 	GuardianNodesInfoV6: {
-	  address: "0xCd68C3FFFE403f9F26081807c77aB29a4DF6940D",
+	  address: "0xdE51f1daaCa6eae9BDeEe33E324c3e6e96837e94",
 	  abi: GuardianNodesInfoV6Abi,
 	  network: "CONET DePIN",
 	},

@@ -69,10 +69,10 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 		let account = beamioUsers.find(n => n?.address === address)
 		if (!account) {
 			const _account = await searchUsername(address)
-			if (_account) {
-				const acc = _account.results
-				setbBeamioUsers([...beamioUsers, acc[0]])
-				setfromBeamio({...acc[0]})
+			const first = _account?.results?.[0]
+			if (first) {
+				setbBeamioUsers([...beamioUsers, first])
+				setfromBeamio({ ...first })
 			}
 			return
 		}

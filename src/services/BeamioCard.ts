@@ -4,6 +4,10 @@ import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetD
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
 import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
+import {
+	peekCardBasicMetadata,
+	rememberCardBasicMetadataTrusted,
+} from "@/utils/cardBasicMetadataGlobalCache";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
@@ -536,7 +540,12 @@ async function fetchMyCardsFromApi(owners: string[]): Promise<UserCardInfo[]> {
 	return items as UserCardInfo[]
 }
 
-export type GetCardsResult = { cards: UserCardInfo[]; trusted: boolean }
+export type GetCardsResult = {
+	cards: UserCardInfo[]
+	ownerCards: UserCardInfo[]
+	holderCards: UserCardInfo[]
+	trusted: boolean
+}
 
 type LatestCardApiItem = {
 	cardAddress?: string
@@ -549,14 +558,44 @@ type LatestCardApiItem = {
 	}
 }
 
+/** latestCards 大 limit 易触发网关 504 / 长时间挂起，拖住整个 My Brands 首屏 */
+const LATEST_CARDS_HOLDER_SCAN_LIMIT = 48
+const LATEST_CARDS_FETCH_TIMEOUT_MS = 14_000
+/** 避免对 Base RPC 同时发起数百次 getOwnershipByEOA */
+const HOLDER_SCAN_RPC_CONCURRENCY = 8
+
+async function mapPool<T, R>(items: T[], poolSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+	if (!items.length) return []
+	const results: R[] = new Array(items.length)
+	let next = 0
+	const worker = async () => {
+		for (;;) {
+			const i = next++
+			if (i >= items.length) return
+			results[i] = await fn(items[i]!)
+		}
+	}
+	const n = Math.max(1, Math.min(poolSize, items.length))
+	await Promise.all(Array.from({ length: n }, () => worker()))
+	return results
+}
+
 async function fetchHeldCardsFromLatestForEOA(
 	eoa: string,
 	existingCardAddresses: Set<string>,
 	aa?: string | null
 ): Promise<UserCardInfo[]> {
 	if (!eoa || !ethers.isAddress(eoa)) return []
+	const ac = new AbortController()
+	const to =
+		typeof window !== 'undefined'
+			? window.setTimeout(() => ac.abort(), LATEST_CARDS_FETCH_TIMEOUT_MS)
+			: setTimeout(() => ac.abort(), LATEST_CARDS_FETCH_TIMEOUT_MS)
 	try {
-		const res = await fetch(`${beamioApi}/api/latestCards?limit=300`)
+		const res = await fetch(
+			`${beamioApi}/api/latestCards?limit=${LATEST_CARDS_HOLDER_SCAN_LIMIT}`,
+			{ signal: ac.signal }
+		)
 		if (!res.ok) return []
 		const data = await res.json().catch(() => ({}))
 		const items = (Array.isArray(data?.items) ? data.items : []) as LatestCardApiItem[]
@@ -568,45 +607,45 @@ async function fetchHeldCardsFromLatestForEOA(
 
 		const accountsToCheck = [eoa]
 		if (aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa.toLowerCase()) accountsToCheck.push(aa)
-		const checks = await Promise.all(
-			items.map(async (it) => {
-				const rawAddr = String(it?.cardAddress ?? '').trim()
-				if (!rawAddr || !ethers.isAddress(rawAddr)) return null
-				const addr = ethers.getAddress(rawAddr)
-				const key = addr.toLowerCase()
-				if (existingCardAddresses.has(key)) return null
-				try {
-					const card = new ethers.Contract(addr, ownershipAbi, baseEndpoint)
-					let hasPoints = false
-					let hasNft = false
-					for (const acct of accountsToCheck) {
-						const [pt, nftsRaw] = await card.getOwnershipByEOA(acct) as [bigint, Array<{ tokenId: bigint }>]
-						hasPoints = hasPoints || (pt ?? 0n) > 0n
-						hasNft = hasNft || (Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0))
-						if (hasPoints || hasNft) break
-					}
-					if (!hasPoints && !hasNft) return null
-
-					const currency = String(it?.currency ?? 'CAD').toUpperCase()
-					const priceNum = Number(it?.priceInCurrencyE6 ?? 0)
-					const priceE6 = Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0
-					const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
-					const cardName = String(it?.metadata?.shareTokenMetadata?.name ?? 'User Card').trim() || 'User Card'
-					return {
-						cardAddress: addr,
-						name: cardName,
-						currency,
-						priceE6: String(priceE6),
-						ptsPer1Currency: String(ptsPer1Currency),
-					} as UserCardInfo
-				} catch {
-					return null
+		const checks = await mapPool(items, HOLDER_SCAN_RPC_CONCURRENCY, async (it) => {
+			const rawAddr = String(it?.cardAddress ?? '').trim()
+			if (!rawAddr || !ethers.isAddress(rawAddr)) return null
+			const addr = ethers.getAddress(rawAddr)
+			const key = addr.toLowerCase()
+			if (existingCardAddresses.has(key)) return null
+			try {
+				const card = new ethers.Contract(addr, ownershipAbi, baseEndpoint)
+				let hasPoints = false
+				let hasNft = false
+				for (const acct of accountsToCheck) {
+					const [pt, nftsRaw] = await card.getOwnershipByEOA(acct) as [bigint, Array<{ tokenId: bigint }>]
+					hasPoints = hasPoints || (pt ?? 0n) > 0n
+					hasNft = hasNft || (Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0))
+					if (hasPoints || hasNft) break
 				}
-			})
-		)
+				if (!hasPoints && !hasNft) return null
+
+				const currency = String(it?.currency ?? 'CAD').toUpperCase()
+				const priceNum = Number(it?.priceInCurrencyE6 ?? 0)
+				const priceE6 = Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0
+				const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+				const cardName = String(it?.metadata?.shareTokenMetadata?.name ?? 'User Card').trim() || 'User Card'
+				return {
+					cardAddress: addr,
+					name: cardName,
+					currency,
+					priceE6: String(priceE6),
+					ptsPer1Currency: String(ptsPer1Currency),
+				} as UserCardInfo
+			} catch {
+				return null
+			}
+		})
 		return checks.filter((v): v is UserCardInfo => Boolean(v))
 	} catch {
 		return []
+	} finally {
+		clearTimeout(to)
 	}
 }
 
@@ -642,7 +681,7 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		if (typeof console !== 'undefined' && console.warn) {
 			console.warn('[getCardsOfOwnerWithDetailsForProfile] 无有效 owner（keyID/aaAccount 均空）')
 		}
-		return { cards: [], trusted: false }
+		return { cards: [], ownerCards: [], holderCards: [], trusted: false }
 	}
 
 	const cached = profile?.issuedCards ?? []
@@ -721,16 +760,24 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 			console.warn('[getCardsOfOwnerWithDetailsForProfile] 0 cards for owners:', uniqueOwners, '(EOA/keyID 须与创建卡时的 cardOwner 一致)')
 		}
 		// 补充：持有者视角（购买/领取）卡片。cardsOfOwner 仅覆盖 cardOwner，不覆盖持卡用户。
+		const ownerCards = filterExcludedUserCards([...merged])
+		const holderCards: UserCardInfo[] = []
 		if (eoa && ethers.isAddress(eoa)) {
-			const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), seen, aa)
-			for (const c of holderCards) {
+			const discoveredHolderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), seen, aa)
+			for (const c of discoveredHolderCards) {
 				const key = c.cardAddress.toLowerCase()
 				if (seen.has(key)) continue
 				seen.add(key)
+				holderCards.push(c)
 				merged.push(c)
 			}
 		}
-		return { cards: filterExcludedUserCards(merged), trusted: true }
+		return {
+			cards: filterExcludedUserCards(merged),
+			ownerCards,
+			holderCards: filterExcludedUserCards(holderCards),
+			trusted: true,
+		}
 	} catch (e) {
 		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
 		if (typeof console !== 'undefined' && console.warn) {
@@ -740,25 +787,32 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		try {
 			const apiItems = await fetchMyCardsFromApi(uniqueOwners)
 			const apiSeen = new Set(apiItems.map((c) => c.cardAddress.toLowerCase()))
+			const holderCards: UserCardInfo[] = []
 			if (eoa && ethers.isAddress(eoa)) {
-				const holderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), apiSeen, aa)
-				for (const c of holderCards) {
+				const discoveredHolderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), apiSeen, aa)
+				for (const c of discoveredHolderCards) {
 					const key = c.cardAddress.toLowerCase()
 					if (apiSeen.has(key)) continue
 					apiSeen.add(key)
+					holderCards.push(c)
 					apiItems.push(c)
 				}
 			}
 			if (apiItems.length === 0 && typeof console !== 'undefined' && console.warn) {
 				console.warn('[getCardsOfOwnerWithDetailsForProfile] API 返回 0 张卡。owners:', uniqueOwners)
 			}
-			return { cards: filterExcludedUserCards(apiItems), trusted: true }
+			return {
+				cards: filterExcludedUserCards(apiItems),
+				ownerCards: filterExcludedUserCards(apiItems.filter((c) => !holderCards.some((h) => h.cardAddress.toLowerCase() === c.cardAddress.toLowerCase()))),
+				holderCards: filterExcludedUserCards(holderCards),
+				trusted: true,
+			}
 		} catch (apiErr) {
 			if (typeof console !== 'undefined' && console.warn) {
 				console.warn('[getCardsOfOwnerWithDetailsForProfile] RPC+API 均失败，返回缓存。owners:', uniqueOwners, 'cached:', cached.length, (apiErr as Error)?.message ?? apiErr)
 			}
 			// 3. RPC 与 API 均失败，返回 profile 缓存的卡，不信任空 []
-			return { cards: filterExcludedUserCards(cached), trusted: false }
+			return { cards: filterExcludedUserCards(cached), ownerCards: [], holderCards: [], trusted: false }
 		}
 	}
 }
@@ -1669,22 +1723,11 @@ export const postExecuteForOwner = async (payload: {
 
 const GET_MY_ASSETS_CACHE_TTL_MS = 15 * 1000
 const getMyAssetsCache = new Map<string, { result: MyCardAssets; timestamp: number }>()
-let getMyAssetsMutex = Promise.resolve<void>(undefined)
+/** 同 key 并发合并；不同 cardAddress 可并行（避免旧版全局 mutex 把 N 张卡串成 N 倍耗时） */
+const getMyAssetsInflight = new Map<string, Promise<MyCardAssets | null>>()
 
 const getMyAssetsCacheKey = (profile: profile, cardAddress: string) =>
-	`${profile.keyID ?? ''}-${cardAddress}`
-
-async function withGetMyAssetsMutex<T>(fn: () => Promise<T>): Promise<T> {
-	const prev = getMyAssetsMutex
-	let resolveMutex: () => void
-	getMyAssetsMutex = new Promise<void>((r) => { resolveMutex = r })
-	await prev
-	try {
-		return await fn()
-	} finally {
-		resolveMutex!()
-	}
-}
+	`${profile.keyID ?? ''}-${cardAddress.toLowerCase()}`
 
 export const getEOAUSDCBalance = async (profile: profile): Promise<string> => {
 	const eoa = profile?.keyID?.trim()
@@ -1696,21 +1739,31 @@ export const getEOAUSDCBalance = async (profile: profile): Promise<string> => {
 	return ethers.formatUnits(usdcBalanceRaw, 6)
 }
 
-export const getMyAssets = async (profile: profile, cardAddress: string): Promise<MyCardAssets | null> => {
+export type GetMyAssetsOptions = { bypassCache?: boolean }
+
+export const getMyAssets = async (
+	profile: profile,
+	cardAddress: string,
+	opts?: GetMyAssetsOptions
+): Promise<MyCardAssets | null> => {
 	const key = getMyAssetsCacheKey(profile, cardAddress)
-	const cached = getMyAssetsCache.get(key)
-	if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
-		return cached.result
-	}
-	// 限流时跳过 RPC，使用 API
-
-	return withGetMyAssetsMutex(async () => {
-		const cachedAgain = getMyAssetsCache.get(key)
-		if (cachedAgain && Date.now() - cachedAgain.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
-			return cachedAgain.result
+	if (!opts?.bypassCache) {
+		const cached = getMyAssetsCache.get(key)
+		if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
+			return cached.result
 		}
+	}
 
+	const inflight = getMyAssetsInflight.get(key)
+	if (inflight) return inflight
+
+	const p = (async (): Promise<MyCardAssets | null> => {
 		try {
+			const cachedAgain = getMyAssetsCache.get(key)
+			if (!opts?.bypassCache && cachedAgain && Date.now() - cachedAgain.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
+				return cachedAgain.result
+			}
+
 			if (!profile.aaAccount) {
 				const aa = await getAAAccount(profile)
 				if (!aa) {
@@ -1775,12 +1828,16 @@ export const getMyAssets = async (profile: profile, cardAddress: string): Promis
 		} catch (error: unknown) {
 			if (isRpcQuotaOrNetworkError(error)) reportRpcFailure()
 			throw error
+		} finally {
+			getMyAssetsInflight.delete(key)
 		}
-	})
+	})()
+
+	getMyAssetsInflight.set(key, p)
+	return p
 }
 
-/** 聚合查询 CCSA + beamioUserCard（基础设施卡）的资产，与 CCSA 同等对待。
- * 注意：不使用 withGetMyAssetsMutex，因 getMyAssets 内部已用 mutex；若此处再用会死锁（持有 mutex 时调用 getMyAssets，getMyAssets 等待同一 mutex）。 */
+/** 聚合查询 CCSA + beamioUserCard（基础设施卡）的资产，与 CCSA 同等对待。 */
 export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAssets | null> => {
 	const key = `aggregated-${profile.keyID ?? ''}`
 	const cached = getMyAssetsCache.get(key)
@@ -1805,8 +1862,87 @@ export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAss
 	return result
 }
 
+/** 卡 metadata 中的充值奖励规则（与 bizSite program metadata 对齐） */
+export type CardBonusRuleMetadata = {
+	paymentAmount: number
+	bonusValue: number
+	bonusProportional?: boolean
+}
+
 /** 卡 metadata 中的 tier 项（创建卡时由 cardManager 提交，存于 0x{owner}.json） */
 export type CardTierMetadata = { index: number; minUsdc6?: string; attr?: number; name?: string; description?: string; image?: string; backgroundColor?: string }
+
+function parsePositiveMetadataNumber(raw: unknown): number | null {
+	if (typeof raw === 'number') {
+		return Number.isFinite(raw) && raw > 0 ? raw : null
+	}
+	if (typeof raw === 'string') {
+		const n = Number(raw.trim())
+		return Number.isFinite(n) && n > 0 ? n : null
+	}
+	return null
+}
+
+function normalizeCardBonusRuleMetadata(raw: unknown): CardBonusRuleMetadata | null {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+	const rec = raw as Record<string, unknown>
+	const paymentAmount = parsePositiveMetadataNumber(rec.paymentAmount)
+	const bonusValue = parsePositiveMetadataNumber(rec.bonusValue)
+	if (paymentAmount == null || bonusValue == null) return null
+	return {
+		paymentAmount,
+		bonusValue,
+		...(typeof rec.bonusProportional === 'boolean'
+			? { bonusProportional: rec.bonusProportional }
+			: {}),
+	}
+}
+
+function normalizeCardBonusRulesMetadata(raw: unknown): CardBonusRuleMetadata[] | undefined {
+	if (!Array.isArray(raw)) return undefined
+	const rules = raw
+		.map((row) => normalizeCardBonusRuleMetadata(row))
+		.filter((row): row is CardBonusRuleMetadata => row != null)
+	return rules.length > 0 ? rules : undefined
+}
+
+function recordFromUnknown(raw: unknown): Record<string, unknown> | null {
+	if (!raw) return null
+	if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>
+	if (typeof raw === 'string') {
+		try {
+			const parsed = JSON.parse(raw) as unknown
+			return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+				? (parsed as Record<string, unknown>)
+				: null
+		} catch {
+			return null
+		}
+	}
+	return null
+}
+
+function bonusFieldsFromMetadataRoot(raw: unknown): {
+	bonusRule?: CardBonusRuleMetadata
+	bonusRules?: CardBonusRuleMetadata[]
+} {
+	const direct = recordFromUnknown(raw)
+	const share = recordFromUnknown(direct?.shareTokenMetadata)
+	const directRules = normalizeCardBonusRulesMetadata(direct?.bonusRules)
+	const directRule = normalizeCardBonusRuleMetadata(direct?.bonusRule) ?? directRules?.[0]
+	if (directRule || directRules) {
+		return {
+			...(directRule && { bonusRule: directRule }),
+			...(directRules && { bonusRules: directRules }),
+		}
+	}
+	const shareRules = normalizeCardBonusRulesMetadata(share?.bonusRules)
+	const shareRule = normalizeCardBonusRuleMetadata(share?.bonusRule) ?? shareRules?.[0]
+	return {
+		...(shareRule && { bonusRule: shareRule }),
+		...(shareRules && { bonusRules: shareRules }),
+	}
+}
 
 /** 从 BeamioUserCard 合约读取 tiers（getTiersCount + getTierAt），用于根据 redeem 金额确定 tier */
 export const getCardTiersFromContract = async (cardAddress: string): Promise<{ minUsdc6: string; attr: number }[]> => {
@@ -1864,13 +2000,20 @@ export const getTierIndexForRedeemAmount = (
 }
 
 /** 卡级 metadata（getCardMetadataFromApi / getCardMetadataFromUri）；cardOwner 用于请求 per-NFT metadata */
-export type CardMetadataFromUri = { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string }
+export type CardMetadataFromUri = {
+	name?: string
+	image?: string
+	tiers?: CardTierMetadata[]
+	cardOwner?: string
+	bonusRule?: CardBonusRuleMetadata
+	bonusRules?: CardBonusRuleMetadata[]
+}
 
 /** 单张成员 NFT 的 tier metadata（GET /metadata/0x{owner}{NFT#}.json） */
 export type NftTierMetadata = { name?: string; description?: string; image?: string; tierIndex?: number; minUsdc6?: string; backgroundColor?: string }
 
-/** ERC1155 metadata 缓存：cardAddress -> { name?, image?, tiers?, cardOwner?, timestamp }，TTL 5 分钟 */
-const cardMetadataCache = new Map<string, { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string; timestamp: number }>()
+/** ERC1155 metadata 缓存：cardAddress -> metadata + timestamp，TTL 5 分钟 */
+const cardMetadataCache = new Map<string, CardMetadataFromUri & { timestamp: number }>()
 const CARD_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
 
 /** per-NFT metadata 缓存：cardOwner_tokenId -> { name?, description?, image?, timestamp }，TTL 5 分钟 */
@@ -1898,12 +2041,16 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			shareTokenMetadata?: { name?: string; image?: string; description?: string }
 			tiers?: CardTierMetadata[]
 			properties?: Record<string, unknown>
+			bonusRule?: unknown
+			bonusRules?: unknown
 		}
+		const bonusFields = bonusFieldsFromMetadataRoot(json)
 		const share = json?.shareTokenMetadata
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
 			image: (share?.image ?? json?.image) as string | undefined,
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
+			...bonusFields,
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -1912,14 +2059,21 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 	}
 }
 
+export type GetCardMetadataOptions = { bypassMemoryCache?: boolean }
+
 /** 从 beamioApi 拉取 card_owner + metadata_json，转为 CardMetadataFromUri。优先用此接口，不依赖链上 uri 与 RPC。 */
-export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
+export const getCardMetadataFromApi = async (
+	cardAddress: string,
+	opts?: GetCardMetadataOptions
+): Promise<CardMetadataFromUri | null> => {
 	const key = cardAddress.toLowerCase()
 	const cacheKey = `api:${key}`
-	const cached = cardMetadataCache.get(cacheKey)
-	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
-		const { timestamp, ...meta } = cached
-		return meta
+	if (!opts?.bypassMemoryCache) {
+		const cached = cardMetadataCache.get(cacheKey)
+		if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
+			const { timestamp, ...meta } = cached
+			return meta
+		}
 	}
 	try {
 		const res = await fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardAddress)}`)
@@ -1927,13 +2081,15 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const data = (await res.json()) as { cardOwner?: string; metadata?: Record<string, unknown> | null }
 		const metaJson = data?.metadata
 		if (!metaJson || typeof metaJson !== 'object') return null
-		const share = metaJson.shareTokenMetadata as Record<string, unknown> | undefined
+		const share = recordFromUnknown(metaJson.shareTokenMetadata)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
+		const bonusFields = bonusFieldsFromMetadataRoot(metaJson)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
 			image: (share?.image ?? metaJson.image) as string | undefined,
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
+			...bonusFields,
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -1994,13 +2150,18 @@ function parseNftTierMetadataJson(json: {
 }
 
 /** 从 BeamioUserCard 的 uri 获取 metadata（name、image、tiers）。创建卡时传入的 uri 如 https://api.beamio.io/metadata/{id}.json；tiers 含创建卡时配置的 name/description */
-export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
+export const getCardMetadataFromUri = async (
+	cardAddress: string,
+	opts?: GetCardMetadataOptions
+): Promise<CardMetadataFromUri | null> => {
 	const key = cardAddress.toLowerCase()
 	const cacheKey = `uri:${key}`
-	const cached = cardMetadataCache.get(cacheKey)
-	if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
-		const { timestamp, ...meta } = cached
-		return meta
+	if (!opts?.bypassMemoryCache) {
+		const cached = cardMetadataCache.get(cacheKey)
+		if (cached && Date.now() - cached.timestamp < CARD_METADATA_CACHE_TTL_MS) {
+			const { timestamp, ...meta } = cached
+			return meta
+		}
 	}
 	try {
 		const card = new ethers.Contract(
@@ -2021,12 +2182,16 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string }
 			tiers?: CardTierMetadata[]
+			bonusRule?: unknown
+			bonusRules?: unknown
 		}
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
+		const bonusFields = bonusFieldsFromMetadataRoot(json)
 		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
 			image: json?.image ?? json?.shareTokenMetadata?.image,
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
+			...bonusFields,
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -2034,6 +2199,50 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		return null
 	}
 }
+
+/**
+ * 卡级基础 metadata：全局 localStorage 表优先（一次可信写入后长期复用），并后台 API→URI 刷新落盘。
+ * 与 5 分钟内存 TTL 并存；页面应优先用此接口以跨会话、跨页面共享「卡基本设定」。
+ */
+export async function getCardBasicMetadataStaleWhileRevalidate(
+	cardAddress: string
+): Promise<CardMetadataFromUri | null> {
+	const raw = (cardAddress || '').trim()
+	if (!raw || !ethers.isAddress(raw)) return null
+
+	const local = peekCardBasicMetadata(raw)
+	if (local) {
+		void (async () => {
+			try {
+				const fresh =
+					(await getCardMetadataFromApi(raw, { bypassMemoryCache: true })) ??
+					(await getCardMetadataFromUri(raw, { bypassMemoryCache: true }))
+				if (fresh) {
+					rememberCardBasicMetadataTrusted(raw, fresh)
+					const k = raw.toLowerCase()
+					cardMetadataCache.set(`api:${k}`, { ...fresh, timestamp: Date.now() })
+					cardMetadataCache.set(`uri:${k}`, { ...fresh, timestamp: Date.now() })
+				}
+			} catch {
+				/* ignore */
+			}
+		})()
+		return local
+	}
+
+	const fresh =
+		(await getCardMetadataFromApi(raw, { bypassMemoryCache: true })) ??
+		(await getCardMetadataFromUri(raw, { bypassMemoryCache: true }))
+	if (fresh) {
+		rememberCardBasicMetadataTrusted(raw, fresh)
+		const k = raw.toLowerCase()
+		cardMetadataCache.set(`api:${k}`, { ...fresh, timestamp: Date.now() })
+		cardMetadataCache.set(`uri:${k}`, { ...fresh, timestamp: Date.now() })
+	}
+	return fresh
+}
+
+export { peekCardBasicMetadata, rememberCardBasicMetadataTrusted } from '@/utils/cardBasicMetadataGlobalCache'
 
 const getICurrency = (currency: bigint | number): ICurrency => {
 	const n = typeof currency === 'number' ? BigInt(currency) : currency

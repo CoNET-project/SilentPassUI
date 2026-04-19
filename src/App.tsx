@@ -53,7 +53,7 @@ const beamioConetContract = {
   address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
   network: "CONET DePIN",
   abi: beamioConetCoreABI,
-  provider: new ethers.JsonRpcProvider("https://mainnet-rpc.conet.network"),
+  provider: new ethers.JsonRpcProvider("https://rpc1.conet.network"),
 }
 
 type message = {
@@ -988,8 +988,8 @@ function AppShell() {
 			setPreferredPayeeWallet({ beamioAccount: _beamio.trim(), wallet: walletAddr })
 		}
 		const user = await searchUsername(_beamio)
-		const results: searchResult[] = user?.results
-		if (!results?.length) return
+		const results: searchResult[] = user?.results ?? []
+		if (!results.length) return
 
 		const filtered = results.filter(n => n.username === _beamio)
 		if (!filtered.length) return

@@ -29,6 +29,11 @@ import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
 import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
+import {
+	peekBeamioTagBasicMetadataForQuery,
+	rememberBeamioTagBasicMetadata,
+	type BeamioTagBasicMetadata,
+} from '@/utils/beamioTagBasicMetadataGlobalCache'
 
 export type x402Response = {
 	timestamp: string
@@ -131,10 +136,10 @@ const myFollowStatusUrl = `${beamioApi}/api/getMyFollowStatus`
 const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 
 /** CoNET 主网 chainId（BUnitAirdrop 部署链） */
-const CONET_CHAIN_ID = 224400
+const CONET_CHAIN_ID = 224422
 
 /** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xa7410a532544aB7d1bA70701D9D0E389e4f4Cc1F'
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264'
 
 /** 检查是否可领取 BeamioBUnits */
 export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
@@ -1481,10 +1486,10 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x3E15607BCf98B01e6C7dF834a2CEc7B8B6aFb1BC',
+	address: '0x46cBFC3f77b320Db545D1DC21138fa1ED2Fa3df3',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 	
 }
 
@@ -1863,24 +1868,90 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 	}
 }
 
-export const searchUsername = async (keyward: string) => {
-	const params = new URLSearchParams({keyward}).toString()
+function searchResultToBeamioTagBasicMetadata(r: searchResult): BeamioTagBasicMetadata {
+	return {
+		username: String(r.username ?? ''),
+		address: String(r.address ?? ''),
+		image: String(r.image ?? ''),
+		first_name: String(r.first_name ?? ''),
+		last_name: String(r.last_name ?? ''),
+		created_at: typeof r.created_at === 'number' ? r.created_at : Number(r.created_at) || 0,
+		follow_count: String(r.follow_count ?? ''),
+		follower_count: String(r.follower_count ?? ''),
+	}
+}
+
+function beamioTagBasicMetadataToSearchResult(m: BeamioTagBasicMetadata): searchResult {
+	return {
+		username: m.username,
+		address: m.address,
+		image: m.image,
+		first_name: m.first_name,
+		last_name: m.last_name,
+		created_at: m.created_at,
+		follow_count: m.follow_count,
+		follower_count: m.follower_count,
+	} as searchResult
+}
+
+function rememberSearchUsersIfTrustworthy(keyword: string, live: { results?: searchResult[] } | null) {
+	const q = keyword.trim()
+	if (!q || !live?.results?.length) return
+	const first = live.results[0]
+	if (!first?.address) return
+	const qAddrNorm = ethers.isAddress(q) ? ethers.getAddress(q).toLowerCase() : null
+	const qTag = q.replace(/^@+/, '').toLowerCase()
+	const u = (first.username || '').trim().toLowerCase()
+	const a = first.address.toLowerCase()
+	const exactAddr = qAddrNorm !== null && a === qAddrNorm
+	const exactTag = u !== '' && u !== 'unknow' && qTag === u
+	if (exactAddr || exactTag) {
+		rememberBeamioTagBasicMetadata(searchResultToBeamioTagBasicMetadata(first))
+	}
+}
+
+async function searchUsernameNetworkOnly(keyward: string) {
+	const params = new URLSearchParams({ keyward }).toString()
 	const requestUrl = `${searchUrl}?${params}`
 	try {
-		const res = await fetch(requestUrl, {method: 'GET'})
-
-		
+		const res = await fetch(requestUrl, { method: 'GET' })
 		if (res.status !== 200) {
 			return null
 		}
 		return await res.json()
-		
-
-	} catch (ex) {
-		
+	} catch {
+		/* ignore */
 	}
 	return null
 }
+
+/**
+ * search-users：全局 localStorage 命中则立即返回档案，并后台再请求刷新缓存。
+ * 仅当查询与结果可信一致时才写入（整地址匹配、tag 精确匹配、或单条且 tag 一致）。
+ */
+export async function searchUsernameStaleWhileRevalidate(
+	keyward: string,
+	opts?: { forceNetwork?: boolean }
+): Promise<{ results?: searchResult[] } | null> {
+	const raw = (keyward ?? '').trim()
+	if (!opts?.forceNetwork && raw) {
+		const cached = peekBeamioTagBasicMetadataForQuery(raw)
+		if (cached) {
+			void searchUsernameNetworkOnly(keyward).then((live) => {
+				rememberSearchUsersIfTrustworthy(raw, live)
+			})
+			return { results: [beamioTagBasicMetadataToSearchResult(cached)] }
+		}
+	}
+	const live = await searchUsernameNetworkOnly(keyward)
+	if (raw) rememberSearchUsersIfTrustworthy(raw, live)
+	return live
+}
+
+export const searchUsername = (keyward: string) => searchUsernameStaleWhileRevalidate(keyward)
+
+export { peekBeamioTagBasicMetadataForQuery, rememberBeamioTagBasicMetadata }
+export type { BeamioTagBasicMetadata }
 
 export const getFollowStatus = async (wallet: string, followAddress: string) => {
 	//		isFollowingAddress
@@ -2123,7 +2194,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 	
 }
 

@@ -2316,19 +2316,25 @@ const Home = ({}) => {
 												const subtitleFallback = `${uc.currency} merchant card`
 												const subtitle = tierPres.tierName.trim() || subtitleFallback
 												const imgUrl = resolveCardImageUrl(detail?.meta?.image)
-												const ptsRaw = detail?.assets?.points
-												const ptsNum = Number(ptsRaw ?? '')
+												const assets = detail?.assets ?? null
+												const ptsRaw = assets?.points
+												const ptsNum =
+													ptsRaw != null && String(ptsRaw).trim() !== ''
+														? Number(ptsRaw)
+														: NaN
 												const cardGlobalCurrency = (
-													detail?.assets?.cardCurrency ?? uc.currency ?? 'CAD'
+													assets?.cardCurrency ?? uc.currency ?? 'CAD'
 												).toUpperCase()
 												const pointsLine =
 													detail === undefined
 														? '…'
-														: Number.isFinite(ptsNum)
-															? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
-															: '—'
+														: assets == null
+															? '—'
+															: Number.isFinite(ptsNum)
+																? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
+																: '—'
 												const activePasses =
-													detail?.assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired)
+													assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired)
 														.length ?? 0
 												const passLine =
 													detail === undefined
@@ -2370,17 +2376,28 @@ const Home = ({}) => {
 															>
 																{subtitle}
 															</p>
-															{tierPres.discountLabel ? (
-																<p
-																	className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1562f0] dark:text-[#6ba3ff]"
-																	style={
-																		tierPres.accentColor
-																			? { color: tierPres.accentColor }
-																			: undefined
-																	}
-																>
-																	{tierPres.discountLabel}
-																</p>
+															{tierPres.bonusPill || tierPres.discountLabel ? (
+																<div className="mt-1 flex flex-wrap items-center gap-1.5">
+																	{tierPres.bonusPill ? (
+																		<span
+																			className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
+																			style={
+																				tierPres.accentColor
+																					? { color: tierPres.accentColor, borderColor: tierPres.accentColor }
+																					: undefined
+																			}
+																		>
+																			{tierPres.bonusPill}
+																		</span>
+																	) : null}
+																	{tierPres.discountLabel ? (
+																		<span
+																			className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
+																		>
+																			{tierPres.discountLabel}
+																		</span>
+																	) : null}
+																</div>
 															) : null}
 														</div>
 														<div className="shrink-0 text-right">

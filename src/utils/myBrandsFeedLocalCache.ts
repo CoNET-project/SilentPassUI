@@ -13,10 +13,11 @@ export type MyBrandsFeedDetailsSnapshot = Record<
 >
 
 type StoredPayload = {
-	v: 1
+	v: 2
 	eoa: string
 	savedAt: number
-	cards: UserCardInfo[]
+	ownerCards: UserCardInfo[]
+	holderUnionCards: UserCardInfo[]
 	details: MyBrandsFeedDetailsSnapshot
 }
 
@@ -27,15 +28,44 @@ function key(eoaLower: string): string {
 	return `${PREFIX}${eoaLower}`
 }
 
-export function loadMyBrandsFeedLocalCache(eoaLower: string): { cards: UserCardInfo[]; details: MyBrandsFeedDetailsSnapshot } | null {
+function mergeUniqueCards(ownerCards: UserCardInfo[], holderUnionCards: UserCardInfo[]): UserCardInfo[] {
+	const out: UserCardInfo[] = []
+	const seen = new Set<string>()
+	for (const card of [...ownerCards, ...holderUnionCards]) {
+		const k = (card?.cardAddress || '').toLowerCase()
+		if (!k || seen.has(k)) continue
+		seen.add(k)
+		out.push(card)
+	}
+	return out
+}
+
+export function loadMyBrandsFeedLocalCache(
+	eoaLower: string
+): { cards: UserCardInfo[]; ownerCards: UserCardInfo[]; holderUnionCards: UserCardInfo[]; details: MyBrandsFeedDetailsSnapshot } | null {
 	if (typeof window === 'undefined' || !eoaLower) return null
 	try {
 		const raw = localStorage.getItem(key(eoaLower))
 		if (!raw || raw.length > MAX_STORE_CHARS) return null
-		const p = JSON.parse(raw) as StoredPayload
-		if (p?.v !== 1 || typeof p.eoa !== 'string' || p.eoa.toLowerCase() !== eoaLower) return null
-		if (!Array.isArray(p.cards) || typeof p.details !== 'object' || p.details === null) return null
-		return { cards: p.cards as UserCardInfo[], details: p.details as MyBrandsFeedDetailsSnapshot }
+		const p = JSON.parse(raw) as StoredPayload | { v: 1; eoa: string; savedAt: number; cards: UserCardInfo[]; details: MyBrandsFeedDetailsSnapshot }
+		if (typeof p?.eoa !== 'string' || p.eoa.toLowerCase() !== eoaLower) return null
+		if (typeof p.details !== 'object' || p.details === null) return null
+		if (p.v === 1) {
+			const cards = Array.isArray(p.cards) ? (p.cards as UserCardInfo[]) : []
+			return {
+				cards,
+				ownerCards: cards,
+				holderUnionCards: [],
+				details: p.details as MyBrandsFeedDetailsSnapshot,
+			}
+		}
+		if (!Array.isArray(p.ownerCards) || !Array.isArray(p.holderUnionCards)) return null
+		return {
+			cards: mergeUniqueCards(p.ownerCards as UserCardInfo[], p.holderUnionCards as UserCardInfo[]),
+			ownerCards: p.ownerCards as UserCardInfo[],
+			holderUnionCards: p.holderUnionCards as UserCardInfo[],
+			details: p.details as MyBrandsFeedDetailsSnapshot,
+		}
 	} catch {
 		return null
 	}
@@ -43,16 +73,18 @@ export function loadMyBrandsFeedLocalCache(eoaLower: string): { cards: UserCardI
 
 export function saveMyBrandsFeedLocalCache(
 	eoaLower: string,
-	cards: UserCardInfo[],
+	ownerCards: UserCardInfo[],
+	holderUnionCards: UserCardInfo[],
 	details: MyBrandsFeedDetailsSnapshot
 ): void {
 	if (typeof window === 'undefined' || !eoaLower || !ethers.isAddress(eoaLower)) return
 	try {
 		const payload: StoredPayload = {
-			v: 1,
+			v: 2,
 			eoa: eoaLower,
 			savedAt: Date.now(),
-			cards,
+			ownerCards,
+			holderUnionCards,
 			details,
 		}
 		const raw = JSON.stringify(payload)

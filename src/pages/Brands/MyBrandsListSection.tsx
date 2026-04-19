@@ -37,12 +37,20 @@ export type MyBrandCardDetailLike = {
 		name?: string
 		image?: string
 		tiers?: MyBrandTierMetaRow[]
+		bonusRule?: MyBrandBonusRuleRow | null
+		bonusRules?: MyBrandBonusRuleRow[] | null
 	} | null
 	assets?: {
 		points?: string
 		cardCurrency?: string
 		nfts?: Array<{ tokenId: string; tier?: string; isExpired?: boolean }>
 	} | null
+}
+
+export type MyBrandBonusRuleRow = {
+	paymentAmount?: string | number
+	bonusValue?: string | number
+	bonusProportional?: boolean
 }
 
 function normalizeTierCssColor(raw: unknown): string | undefined {
@@ -172,6 +180,105 @@ function resolveTierRowByIndex(tiers: MyBrandTierMetaRow[], idx: number): MyBran
 	return undefined
 }
 
+function parsePositiveBonusRuleAmount(raw: unknown): number | null {
+	if (typeof raw === 'number') {
+		return Number.isFinite(raw) && raw > 0 ? raw : null
+	}
+	if (typeof raw === 'string') {
+		const n = Number(raw.trim())
+		return Number.isFinite(n) && n > 0 ? n : null
+	}
+	return null
+}
+
+function normalizeBonusRule(
+	raw: MyBrandBonusRuleRow | null | undefined
+): { paymentAmount: number; bonusValue: number; bonusProportional?: boolean } | null {
+	if (!raw) return null
+	const paymentAmount = parsePositiveBonusRuleAmount(raw.paymentAmount)
+	const bonusValue = parsePositiveBonusRuleAmount(raw.bonusValue)
+	if (paymentAmount == null || bonusValue == null) return null
+	return {
+		paymentAmount,
+		bonusValue,
+		...(typeof raw.bonusProportional === 'boolean' ? { bonusProportional: raw.bonusProportional } : {}),
+	}
+}
+
+function formatBonusRuleAmount(value: number): string {
+	if (!Number.isFinite(value)) return '0'
+	return Number.isInteger(value)
+		? value.toLocaleString()
+		: value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function formatBonusRuleMoneyPrefixGlue(currencyPrefix: string): string {
+	const t = currencyPrefix.trim()
+	if (!t) return ' '
+	if (/[$€¥]$/.test(t)) return ''
+	return ' '
+}
+
+function currencyPrefixForCard(currencyRaw: string | undefined): string {
+	switch ((currencyRaw ?? '').trim().toUpperCase()) {
+		case 'CAD':
+			return 'C$'
+		case 'USD':
+			return '$'
+		case 'USDC':
+			return 'USDC'
+		case 'EUR':
+			return '€'
+		case 'JPY':
+			return '¥'
+		case 'CNY':
+			return 'CN¥'
+		case 'HKD':
+			return 'HK$'
+		case 'SGD':
+			return 'S$'
+		case 'TWD':
+			return 'NT$'
+		default:
+			return (currencyRaw ?? 'C$').trim() || 'C$'
+	}
+}
+
+function formatBonusRuleStartAmount(
+	rule: { paymentAmount: number; bonusValue: number; bonusProportional?: boolean },
+	currencyPrefix = 'C$'
+): string {
+	const g = formatBonusRuleMoneyPrefixGlue(currencyPrefix)
+	return `Start ${currencyPrefix}${g}${formatBonusRuleAmount(rule.paymentAmount)}`
+}
+
+function bonusRuleSidePillText(
+	rule: { paymentAmount: number; bonusValue: number; bonusProportional?: boolean },
+	moneyPrefix: string
+): string {
+	const start = formatBonusRuleStartAmount(rule, moneyPrefix)
+	if (!rule.bonusProportional) {
+		const g = formatBonusRuleMoneyPrefixGlue(moneyPrefix)
+		return `${start} · +${moneyPrefix}${g}${formatBonusRuleAmount(rule.bonusValue)} Bonus`
+	}
+	const pct = (rule.bonusValue / rule.paymentAmount) * 100
+	return `${start} · ${formatBonusRuleAmount(pct)}% Bonus`
+}
+
+function resolvePrimaryBonusRule(
+	meta: MyBrandCardDetailLike['meta'],
+	cardCurrency: string | undefined
+): { pill: string } | null {
+	if (!meta) return null
+	const primary =
+		normalizeBonusRule(meta.bonusRules?.[0] ?? null) ?? normalizeBonusRule(meta.bonusRule ?? null)
+	if (!primary) return null
+	const moneyPrefix = currencyPrefixForCard(cardCurrency)
+	return {
+		pill: bonusRuleSidePillText(primary, moneyPrefix),
+	}
+}
+
 /**
  * 根据当前持有的未过期 Pass，选取链上语义一致的 tier（minUsdc6 最大可解析档），取该档 metadata 的 backgroundColor 与 discount 类字段。
  * 无 Pass 或无 tiers 时回退到首个命名 tier / 首档，便于展示卡默认档位样式。
@@ -180,12 +287,19 @@ export function resolveHeldTierPresentation(detail: unknown): {
 	tierName: string
 	accentColor: string | undefined
 	discountLabel: string | null
+	bonusPill: string | null
 } {
 	const meta = (detail as MyBrandCardDetailLike | null | undefined)?.meta
 	const assets = (detail as MyBrandCardDetailLike | null | undefined)?.assets
 	const tiers = (meta?.tiers ?? []) as MyBrandTierMetaRow[]
+	const bonusPresentation = resolvePrimaryBonusRule(meta, assets?.cardCurrency)
 	if (!tiers.length) {
-		return { tierName: '', accentColor: undefined, discountLabel: null }
+		return {
+			tierName: '',
+			accentColor: undefined,
+			discountLabel: null,
+			bonusPill: bonusPresentation?.pill ?? null,
+		}
 	}
 
 	const passes = assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired) ?? []
@@ -242,6 +356,7 @@ export function resolveHeldTierPresentation(detail: unknown): {
 		tierName,
 		accentColor,
 		discountLabel: discountLabel ?? discountFromNft,
+		bonusPill: bonusPresentation?.pill ?? null,
 	}
 }
 
@@ -298,19 +413,25 @@ export function MyBrandsListSection() {
 							const subtitleFallback = `${uc.currency} merchant card`
 							const subtitle = tierPres.tierName.trim() || subtitleFallback
 							const imgUrl = resolveCardImageUrl(detail?.meta?.image)
-							const ptsRaw = detail?.assets?.points
-							const ptsNum = Number(ptsRaw ?? '')
+							const assets = detail?.assets ?? null
+							const ptsRaw = assets?.points
+							const ptsNum =
+								ptsRaw != null && String(ptsRaw).trim() !== ''
+									? Number(ptsRaw)
+									: NaN
 							const cardGlobalCurrency = (
-								detail?.assets?.cardCurrency ?? uc.currency ?? 'CAD'
+								assets?.cardCurrency ?? uc.currency ?? 'CAD'
 							).toUpperCase()
 							const pointsLine =
 								detail === undefined
 									? '…'
-									: Number.isFinite(ptsNum)
-										? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
-										: '—'
+									: assets == null
+										? '—'
+										: Number.isFinite(ptsNum)
+											? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
+											: '—'
 							const activePasses =
-								detail?.assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired).length ?? 0
+								assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired).length ?? 0
 							const passLine =
 								detail === undefined
 									? '…'
@@ -351,17 +472,28 @@ export function MyBrandsListSection() {
 										>
 											{subtitle}
 										</p>
-										{tierPres.discountLabel ? (
-											<p
-												className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1562f0] dark:text-[#6ba3ff]"
-												style={
-													tierPres.accentColor
-														? { color: tierPres.accentColor }
-														: undefined
-												}
-											>
-												{tierPres.discountLabel}
-											</p>
+										{tierPres.bonusPill || tierPres.discountLabel ? (
+											<div className="mt-1 flex flex-wrap items-center gap-1.5">
+												{tierPres.bonusPill ? (
+													<span
+														className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
+														style={
+															tierPres.accentColor
+																? { color: tierPres.accentColor, borderColor: tierPres.accentColor }
+																: undefined
+														}
+													>
+														{tierPres.bonusPill}
+													</span>
+												) : null}
+												{tierPres.discountLabel ? (
+													<span
+														className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
+													>
+														{tierPres.discountLabel}
+													</span>
+												) : null}
+											</div>
 										) : null}
 									</div>
 									<div className="shrink-0 text-right">

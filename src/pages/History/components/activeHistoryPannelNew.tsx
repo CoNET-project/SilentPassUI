@@ -294,7 +294,7 @@ function useCounterpartyProfile(address: string | undefined) {
 				const res = await searchUsername(addr)
 				// 地址已切换则不再更新，避免竞态导致显示错误 beamioTag
 				if (lastAddrRef.current !== addr) return
-				const peer: searchResult | null = res?.results?.[0]
+				const peer: searchResult | null = res?.results?.[0] ?? null
 				if (!peer) return
 				const { fullName: fn, beamioTag: bt } = parsePeerToDisplay(peer)
 				dataForAddrRef.current = addr

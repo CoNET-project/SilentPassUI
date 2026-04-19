@@ -14,10 +14,11 @@ import { detectDeviceNfcCapability } from '@/utils/cashTreesNativeNfc'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
-import { resolveCardImageUrl } from '@/pages/Brands/MyBrandsListSection'
+import { resolveCardImageUrl, resolveHeldTierPresentation } from '@/pages/Brands/MyBrandsListSection'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import type { RampMode } from '@/components/addUSDC/StepAmount'
+import { cardTierGradientCss, cardTierGradientTheme } from '@/utils/cardTierGradient'
 
 function formatAaUsdcDisplay(raw: string): string {
 	const n = Number(raw)
@@ -32,17 +33,6 @@ function cadPartsFromNumber(n: number): { whole: string; frac: string } {
 
 const STACK_CARD_OVERLAP_PX = 130
 const STACK_CARD_H = 200
-
-const BRAND_STACK_BACKGROUNDS = ['#006241', '#111827', '#00674b', '#0f172a', '#9a3412'] as const
-
-function pickStackCardBg(cardAddress: string): string {
-	let h = 0
-	for (let i = 0; i < cardAddress.length; i++) {
-		h = (h * 31 + cardAddress.charCodeAt(i)) | 0
-	}
-	const idx = Math.abs(h) % BRAND_STACK_BACKGROUNDS.length
-	return BRAND_STACK_BACKGROUNDS[idx] ?? '#006241'
-}
 
 /** 与 Home 顶栏左侧胶囊 `homeAccent` 一致 */
 const WALLET_CAPSULE_ACCENT = '#1562f0'
@@ -335,10 +325,8 @@ export default function WalletOverview() {
 										const detail = myBrandCardDetails[addrKey]
 										const title =
 											(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
-										const tierLbl =
-											detail?.meta?.tiers?.find((t) => t.name)?.name ??
-											detail?.meta?.tiers?.[0]?.name ??
-											'Loyalty Member'
+										const tierPres = resolveHeldTierPresentation(detail)
+										const tierLbl = tierPres.tierName.trim() || 'Loyalty Member'
 										const imgUrl = resolveCardImageUrl(detail?.meta?.image)
 										const ptsRaw = detail?.assets?.points
 										const ptsNum = Number(ptsRaw ?? '')
@@ -355,7 +343,8 @@ export default function WalletOverview() {
 										const isLast = stackIdx === stackPreviewCards.length - 1
 										const footerIcons = [Info, QrCode, ShoppingBasket] as const
 										const FooterIcon = footerIcons[stackIdx % footerIcons.length]
-										const bg = pickStackCardBg(uc.cardAddress)
+										const tierGradient = cardTierGradientCss(tierPres.accentColor)
+										const tierTheme = cardTierGradientTheme(tierPres.accentColor)
 										return (
 											<div
 												key={uc.cardAddress}
@@ -364,17 +353,25 @@ export default function WalletOverview() {
 													zIndex: z,
 													marginBottom: isLast ? 0 : -STACK_CARD_OVERLAP_PX,
 													height: STACK_CARD_H,
+													borderColor: tierTheme.cardBorder,
+													color: tierTheme.primary,
 												}}
 											>
 												<div
 													className="absolute inset-0 rounded-[1.5rem]"
-													style={{ backgroundColor: bg }}
+													style={{ background: tierGradient }}
 													aria-hidden
 												/>
 												<div className="relative z-10 flex w-full flex-1 flex-col">
 													<div className="flex w-full items-start justify-between gap-2">
 														<div className="flex min-w-0 items-center gap-3">
-															<div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-white p-1 shadow-sm">
+															<div
+																className="h-9 w-9 shrink-0 overflow-hidden rounded-full border p-1 shadow-sm"
+																style={{
+																	backgroundColor: tierTheme.iconOrbitBg,
+																	borderColor: tierTheme.iconOrbitBorder,
+																}}
+															>
 																{imgUrl ? (
 																	<img
 																		src={imgUrl}
@@ -384,21 +381,33 @@ export default function WalletOverview() {
 																	/>
 																) : (
 																	<div className="flex h-full w-full items-center justify-center">
-																		<Store className="h-4 w-4 text-slate-600" aria-hidden />
+																		<Store
+																			className="h-4 w-4"
+																			style={{ color: tierTheme.defaultBadgeFg }}
+																			aria-hidden
+																		/>
 																	</div>
 																)}
 															</div>
 															<div className="min-w-0">
-																<p className="text-sm font-bold tracking-tight truncate">{title}</p>
-																<p className="text-[10px] font-medium text-white/70 truncate">{tierLbl}</p>
+																<p className="text-sm font-bold tracking-tight truncate" style={{ color: tierTheme.primary }}>
+																	{title}
+																</p>
+																<p className="truncate text-[10px] font-medium" style={{ color: tierTheme.secondary }}>
+																	{tierLbl}
+																</p>
 															</div>
 														</div>
 														<div className="shrink-0 text-right">
-															<p className="text-[10px] font-bold tracking-widest text-white/60">BALANCE</p>
-															<p className="text-lg font-bold tabular-nums">{balanceLine}</p>
+															<p className="text-[10px] font-bold tracking-widest" style={{ color: tierTheme.tertiary }}>
+																BALANCE
+															</p>
+															<p className="text-lg font-bold tabular-nums" style={{ color: tierTheme.primary }}>
+																{balanceLine}
+															</p>
 														</div>
 													</div>
-													<div className="mt-auto flex items-end justify-between opacity-40">
+													<div className="mt-auto flex items-end justify-between" style={{ color: tierTheme.accent }}>
 														<p className="text-[10px] font-bold uppercase">Pass</p>
 														<FooterIcon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
 													</div>

@@ -6,9 +6,9 @@ import { ethers } from 'ethers'
 import {
 	getCardsOfOwnerWithDetailsForProfile,
 	getMyAssets,
-	getCardMetadataFromApi,
-	getCardMetadataFromUri,
+	getCardBasicMetadataStaleWhileRevalidate,
 	getAAAccount,
+	rememberCardBasicMetadataTrusted,
 	type UserCardInfo,
 	type CardMetadataFromUri,
 } from '@/services/BeamioCard'
@@ -22,7 +22,7 @@ import { fetchMergedRecentActivityFromIndexer, type TxView } from '@/pages/Histo
 import { loadMyBrandsFeedLocalCache, saveMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
 
 /** CoNET mainnet RPC（与 App CoreContract 一致） */
-const CONET_MAINNET_RPC_HTTP = 'https://mainnet-rpc.conet.network'
+const CONET_MAINNET_RPC_HTTP = 'https://rpc1.conet.network'
 
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
@@ -524,8 +524,13 @@ export function DaemonProvider({ children }: DaemonProps) {
   const conetBlockRef = useRef(0)
 
   const [myBrandCards, setMyBrandCards] = useState<UserCardInfo[]>([])
+  const myBrandCardsRef = useRef<UserCardInfo[]>([])
+  const myBrandHolderUnionCardsRef = useRef<UserCardInfo[]>([])
   const [myBrandCardDetails, setMyBrandCardDetails] = useState<MyBrandCardFeedDetailsMap>({})
   const myBrandCardDetailsRef = useRef<MyBrandCardFeedDetailsMap>({})
+  useEffect(() => {
+    myBrandCardsRef.current = myBrandCards
+  }, [myBrandCards])
   useEffect(() => {
     myBrandCardDetailsRef.current = myBrandCardDetails
   }, [myBrandCardDetails])
@@ -540,15 +545,22 @@ export function DaemonProvider({ children }: DaemonProps) {
     const raw = profiles?.[0]?.keyID?.trim() ?? ''
     const eoaLower = raw.toLowerCase()
     if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      myBrandHolderUnionCardsRef.current = []
       setMyBrandCards([])
       setMyBrandCardDetails({})
       return
     }
     const hit = loadMyBrandsFeedLocalCache(eoaLower)
     if (hit) {
+      myBrandHolderUnionCardsRef.current = hit.holderUnionCards
       setMyBrandCards(hit.cards)
       setMyBrandCardDetails(hit.details)
+      for (const c of hit.cards) {
+        const row = hit.details[c.cardAddress.toLowerCase()]
+        if (row?.meta) rememberCardBasicMetadataTrusted(c.cardAddress, row.meta)
+      }
     } else {
+      myBrandHolderUnionCardsRef.current = []
       setMyBrandCards([])
       setMyBrandCardDetails({})
     }
@@ -558,43 +570,84 @@ export function DaemonProvider({ children }: DaemonProps) {
     if (myBrandsFeedInFlight.current) return null
     const profile = profilesRef.current?.[0]
     if (!profile || (!profile.keyID && !profile.privateKeyArmor && !profile.aaAccount)) {
+      myBrandHolderUnionCardsRef.current = []
       setMyBrandCards([])
       setMyBrandCardDetails({})
       setMyBrandsFeedLoading(false)
       return {}
     }
     myBrandsFeedInFlight.current = true
-    setMyBrandsFeedLoading(true)
+    /** 本地优先：已有列表或详情时不打「全空白 loading」，仅后台刷新（Stale-while-revalidate） */
+    const hasRenderable =
+      myBrandCardsRef.current.length > 0 || Object.keys(myBrandCardDetailsRef.current).length > 0
+    if (!hasRenderable) {
+      setMyBrandsFeedLoading(true)
+    }
     try {
-      const { cards } = await getCardsOfOwnerWithDetailsForProfile(profile)
-      setMyBrandCards(cards)
+      const { ownerCards, holderCards, trusted } = await getCardsOfOwnerWithDetailsForProfile(profile)
+      if (!trusted) {
+        return null
+      }
       setMyBrandsFeedLastConetBlock(conetBlockRef.current)
       const eoaSave = profile.keyID?.trim().toLowerCase() ?? ''
+      const nextHolderUnionMap = new Map<string, UserCardInfo>()
+      for (const c of myBrandHolderUnionCardsRef.current) {
+        nextHolderUnionMap.set(c.cardAddress.toLowerCase(), c)
+      }
+      for (const c of holderCards) {
+        nextHolderUnionMap.set(c.cardAddress.toLowerCase(), c)
+      }
+      for (const c of ownerCards) {
+        nextHolderUnionMap.delete(c.cardAddress.toLowerCase())
+      }
+      const holderUnionCards = [...nextHolderUnionMap.values()]
+      myBrandHolderUnionCardsRef.current = holderUnionCards
+      const cards = [...ownerCards]
+      const seenCards = new Set(cards.map((c) => c.cardAddress.toLowerCase()))
+      for (const c of holderUnionCards) {
+        const key = c.cardAddress.toLowerCase()
+        if (seenCards.has(key)) continue
+        seenCards.add(key)
+        cards.push(c)
+      }
+      setMyBrandCards(cards)
       if (cards.length === 0) {
         setMyBrandCardDetails({})
         if (eoaSave && ethers.isAddress(eoaSave)) {
-          saveMyBrandsFeedLocalCache(eoaSave, [], {})
+          saveMyBrandsFeedLocalCache(eoaSave, [], [], {})
         }
         return {}
       }
+      const allowed = new Set(cards.map((c) => c.cardAddress.toLowerCase()))
+      setMyBrandCardDetails((prev) => {
+        const pruned: MyBrandCardFeedDetailsMap = {}
+        for (const k of allowed) {
+          if (prev[k]) pruned[k] = prev[k]!
+        }
+        return pruned
+      })
       const next: MyBrandCardFeedDetailsMap = {}
       await Promise.all(
         cards.map(async (uc) => {
           const key = uc.cardAddress.toLowerCase()
           try {
             const [assets, meta] = await Promise.all([
-              getMyAssets(profile, uc.cardAddress),
-              getCardMetadataFromApi(uc.cardAddress).then((m) => m ?? getCardMetadataFromUri(uc.cardAddress)),
+              getMyAssets(profile, uc.cardAddress, { bypassCache: true }),
+              getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress),
             ])
-            next[key] = { meta: meta ?? null, assets: assets ?? null }
+            const row = { meta: meta ?? null, assets: assets ?? null }
+            next[key] = row
+            setMyBrandCardDetails((prev) => ({ ...prev, [key]: row }))
           } catch {
-            next[key] = { meta: null, assets: null }
+            const row = { meta: null, assets: null }
+            next[key] = row
+            setMyBrandCardDetails((prev) => ({ ...prev, [key]: row }))
           }
         })
       )
       setMyBrandCardDetails(next)
       if (eoaSave && ethers.isAddress(eoaSave)) {
-        saveMyBrandsFeedLocalCache(eoaSave, cards, next)
+        saveMyBrandsFeedLocalCache(eoaSave, ownerCards, holderUnionCards, next)
       }
       return next
     } catch {

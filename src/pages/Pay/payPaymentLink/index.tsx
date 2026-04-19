@@ -20,7 +20,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 	
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
@@ -275,7 +275,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 				searchUsername(address)
 			])
 
-			const bo = item?.results[0]
+			const bo = item?.results?.[0]
 			if (!bo) return 
 			setItem(bo)
 			const _nodeArrayString: string = fx?.node||''

@@ -19,7 +19,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://mainnet-rpc.conet.network'),
+	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 
@@ -53,7 +53,7 @@ const Pay = ({}) => {
 		const _beamio = searchParams.get('beamio') || ''
 		if (_beamio) {
 			const user = await searchUsername(_beamio)
-			const results: searchResult[] = user?.results
+			const results: searchResult[] = user?.results ?? []
 			if (!results.length) {
 				return
 			}

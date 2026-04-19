@@ -1,4 +1,5 @@
-
+/** Chain / card `currency` string form (Beamio `BeamioCurrency` enum). */
+export type ICurrency = 'USD' | 'CAD' | 'EUR' | 'JPY' | 'CNY' | 'HKD' | 'TWD' | 'SGD' | 'USDC'
 
 export const CURRENCY_META: Record<
   ICurrency,
@@ -15,20 +16,37 @@ export const CURRENCY_META: Record<
   USDC: {flag:"", symbol: "", label: ""}
 };
 
+/**
+ * Human-facing **prefix** for fiat / card unit display (never suffix the symbol after the amount).
+ * Single source of truth for biz, POS-style copy, and card issuance previews.
+ */
 export const fiatPrefix = (ccy: ICurrency) => {
 	if (typeof ccy !== 'string') return ''
-	if (ccy === "CAD") return "CA$"
-	if (ccy === "USD") return "$"
-	if (ccy === "EUR") return "€"
-	if (ccy === "JPY") return "JP¥"
-	if (ccy==='TWD') return "NT$"
-	if (ccy==='CNY') return 'CN¥'
-	if (ccy==='HKD') return 'HK$'
-	if (ccy==='SGD') return 'SG$'
+	if (ccy === 'CAD') return 'CA$'
+	if (ccy === 'USD') return '$'
+	if (ccy === 'USDC') return '$'
+	if (ccy === 'EUR') return '€'
+	if (ccy === 'JPY') return 'JP¥'
+	if (ccy === 'TWD') return 'NT$'
+	if (ccy === 'CNY') return 'CN¥'
+	if (ccy === 'HKD') return 'HK$'
+	if (ccy === 'SGD') return 'SG$'
 
-	
 	return ''
-  	// return CURRENCY_META[ccy].symbol
+}
+
+/**
+ * Map arbitrary API/chain currency string to `fiatPrefix`; invalid/empty → `fallback` (default CAD).
+ */
+export function displayFiatPrefixFromCode(
+	raw: string | undefined | null,
+	fallback: ICurrency = 'CAD'
+): string {
+	const u = (raw ?? '').trim().toUpperCase() as ICurrency
+	const tryCode = (u || fallback) as ICurrency
+	let p = fiatPrefix(tryCode)
+	if (!p && tryCode !== fallback) p = fiatPrefix(fallback)
+	return p || fiatPrefix('CAD')
 }
 
 export const getDecimals = (c: ICurrency) => {
@@ -69,7 +87,11 @@ export const formatAmount = (
   })
 }
 
-/** Beamio 右对齐金额 protocol：非 USDC 时 "CURRENCY amount"，USDC 时 "amount USDC"，小数位沿用 getDecimals */
+/**
+ * Legacy ledger layout: non-USDC uses code-before-amount; USDC uses amount + suffix code.
+ * Prefer prefix symbols via `fiatPrefix` / `displayFiatPrefixFromCode` for new UI; touch this only when
+ * editing history/statement rows that still rely on this shape.
+ */
 export const formatAmountWithCurrencyProtocol = (
   v: number | string,
   c: ICurrency

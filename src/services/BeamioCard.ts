@@ -16,6 +16,10 @@ import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
 import { Theater } from "lucide-react";
+import {
+	normalizeCardPreviewLogoDisplayTier,
+	type CardPreviewLogoDisplayTier,
+} from "@/utils/cardPreviewLogoDisplayTier";
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
@@ -363,6 +367,7 @@ export const quotePointsForUSDC = async (
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
+const updateCardShareMetadataEndpoint = `${beamioApi}/api/updateCardShareMetadata`
 const cardsByCategoryEndpoint = `${beamioApi}/api/cardsByCategory`
 
 /** 与 x402sdk getLatestCards / cardsByCategory 返回的单卡结构一致（Cluster JSON） */
@@ -815,6 +820,11 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 export type ShareTokenMetadataBonusRule = {
 	paymentAmount?: number
 	bonusValue?: number
+	/**
+	 * When true, bonus scales with actual top-up: `bonusPaid = topupAmount * (bonusValue / paymentAmount)`.
+	 * When false/omitted, `bonusPaid` is the fixed `bonusValue` when the rule applies (POS reads from metadata).
+	 */
+	bonusProportional?: boolean
 }
 
 export type ShareTokenMetadata = {
@@ -837,6 +847,8 @@ export type ShareTokenMetadata = {
 	bonusRule?: ShareTokenMetadataBonusRule
 	/** Multiple recharge bonus rules previewed in configurator; optional */
 	bonusRules?: ShareTokenMetadataBonusRule[]
+	/** Hero program logo scale on card surfaces (0–3). Optional; clients default to 0. */
+	logoDisplayTier?: number
 }
 
 /** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。升级模式由卡级 upgradeType（链上）决定。 */
@@ -867,6 +879,49 @@ export type CreateBeamioCardParams = {
 	shareTokenMetadata?: ShareTokenMetadata
 	/** Tier 类型 metadata（如 Gold Card 说明），存于 0x{owner}.json，回送 NFT metadata 时包含 */
 	tiers?: TierMetadata[]
+}
+
+export type UpdateBeamioCardShareMetadataParams = {
+	cardAddress: string
+	shareTokenMetadata: ShareTokenMetadata
+	tiers?: TierMetadata[]
+	upgradeType?: 0 | 1 | 2
+	transferWhitelistEnabled?: boolean
+}
+
+/**
+ * 已发卡仅更新链下 metadata（`/api/updateCardShareMetadata`）：写入 0x{card}0.json 并同步 beamio_cards.metadata_json。
+ * Recharge bonus 的增删改需在商户端确认后点此接口（或等价 Publish），POS/应用从 metadata 读取规则。
+ */
+export const updateBeamioCardShareMetadata = async (
+	params: UpdateBeamioCardShareMetadataParams
+): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
+	try {
+		const body = JSON.stringify({
+			cardAddress: params.cardAddress,
+			shareTokenMetadata: params.shareTokenMetadata,
+			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
+			...(params.upgradeType === 0 || params.upgradeType === 1 || params.upgradeType === 2
+				? { upgradeType: params.upgradeType }
+				: {}),
+			...(typeof params.transferWhitelistEnabled === 'boolean' && {
+				transferWhitelistEnabled: params.transferWhitelistEnabled,
+			}),
+		})
+		const response = await fetch(updateCardShareMetadataEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body,
+		})
+		const data = await response.json()
+		if (response.ok && data.success) {
+			return { success: true, cardAddress: data.cardAddress as string | undefined }
+		}
+		return { success: false, error: data.error ?? 'Update metadata failed' }
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg }
+	}
 }
 
 /** 创建 BeamioUserCard，调用后端 /api/createCard。Cluster 预检后转发 master 排队，daemon 上链后回传 cardAddress 和 hash。 */
@@ -1865,6 +1920,8 @@ export type CardMetadataFromUri = {
 	minimumTopupCad?: number
 	/** Parsed from shareTokenMetadata.maximumTopup (whole currency units) */
 	maximumTopupCad?: number
+	/** 0–3 from shareTokenMetadata.logoDisplayTier — hero logo size on card previews */
+	logoDisplayTier?: CardPreviewLogoDisplayTier
 }
 
 /** 单张成员 NFT 的 tier metadata（GET /metadata/0x{owner}{NFT#}.json） */
@@ -1884,6 +1941,7 @@ const cardMetadataCache = new Map<
 		bonusRules?: ShareTokenMetadataBonusRule[]
 		minimumTopupCad?: number
 		maximumTopupCad?: number
+		logoDisplayTier?: CardPreviewLogoDisplayTier
 		timestamp: number
 	}
 >()
@@ -1938,6 +1996,14 @@ function shareTokenDisplayNameFromUnknown(share: Record<string, unknown> | undef
 	return t || undefined
 }
 
+function shareTokenLogoDisplayTierFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): CardPreviewLogoDisplayTier | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.logoDisplayTier ?? share.logoSizeTier
+	return normalizeCardPreviewLogoDisplayTier(raw)
+}
+
 function shareTokenBonusRuleNumber(raw: unknown): number | undefined {
 	if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
 		return Math.round(raw * 100) / 100
@@ -1949,6 +2015,13 @@ function shareTokenBonusRuleNumber(raw: unknown): number | undefined {
 		if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100
 	}
 	return undefined
+}
+
+function shareTokenBonusProportionalFromUnknown(obj: Record<string, unknown>): boolean {
+	const v =
+		obj.bonusProportional ?? obj.bonusIsProportional ?? obj.percentBased ?? obj.proportionalBonus
+	if (v === true || v === 'true' || v === 1 || v === '1') return true
+	return false
 }
 
 function shareTokenBonusRuleFromUnknown(
@@ -1965,7 +2038,8 @@ function shareTokenBonusRuleFromUnknown(
 		obj.bonusValue ?? obj.bonus ?? obj.bonusAmount
 	)
 	if (paymentAmount == null || bonusValue == null) return undefined
-	return { paymentAmount, bonusValue }
+	const bonusProportional = shareTokenBonusProportionalFromUnknown(obj)
+	return { paymentAmount, bonusValue, ...(bonusProportional ? { bonusProportional: true } : {}) }
 }
 
 function shareTokenBonusRulesFromUnknown(
@@ -1974,7 +2048,7 @@ function shareTokenBonusRulesFromUnknown(
 	if (!share || typeof share !== 'object') return undefined
 	const raw = share.bonusRules
 	if (Array.isArray(raw)) {
-		const out: ShareTokenMetadataBonusRule[] = raw
+		const out = raw
 			.map((entry) => {
 				if (!entry || typeof entry !== 'object') return undefined
 				const obj = entry as Record<string, unknown>
@@ -1985,9 +2059,10 @@ function shareTokenBonusRulesFromUnknown(
 					obj.bonusValue ?? obj.bonus ?? obj.bonusAmount
 				)
 				if (paymentAmount == null || bonusValue == null) return undefined
-				return { paymentAmount, bonusValue }
+				const bonusProportional = shareTokenBonusProportionalFromUnknown(obj)
+				return { paymentAmount, bonusValue, ...(bonusProportional ? { bonusProportional: true } : {}) }
 			})
-			.filter((entry): entry is { paymentAmount: number; bonusValue: number } => entry != null)
+			.filter((entry): entry is NonNullable<typeof entry> => entry != null) as ShareTokenMetadataBonusRule[]
 		if (out.length > 0) return out
 	}
 	const single = shareTokenBonusRuleFromUnknown(share)
@@ -2026,6 +2101,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
 			image: (share?.image ?? json?.image) as string | undefined,
@@ -2035,6 +2111,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,
+			...(logoDisplayTier !== undefined && { logoDisplayTier }),
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -2063,6 +2140,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
@@ -2074,6 +2152,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(cardOwner && { cardOwner }),
 			...(categories && { categories }),
 			...limits,
+			...(logoDisplayTier !== undefined && { logoDisplayTier }),
 		}
 		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
 		return meta
@@ -2168,6 +2247,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const displayName = shareTokenDisplayNameFromUnknown(shareObj)
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
+		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(shareObj)
 		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
 			image: json?.image ?? json?.shareTokenMetadata?.image,
@@ -2177,6 +2257,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,
+			...(logoDisplayTier !== undefined && { logoDisplayTier }),
 		}
 		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
 		return meta

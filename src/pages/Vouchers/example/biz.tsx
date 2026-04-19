@@ -1,4 +1,13 @@
-import React, { Fragment, useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import React, {
+  Fragment,
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useMemo,
+  type SetStateAction,
+} from 'react';
 import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
@@ -21,7 +30,7 @@ import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
 import BeamioMeMainScreen from '@/components/Setting';
 import { searchUsername, getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
-import { formatAmount } from '@/services/currency';
+import { formatAmount, displayFiatPrefixFromCode, type ICurrency } from '@/services/currency';
 import contracts from '@/utils/contracts';
 import {
   checkRedeemAdminCodeValid,
@@ -44,6 +53,7 @@ import {
   getCardsOfOwnerWithDetailsForProfile,
   signBUnitRefuel3009,
   createBeamioCard,
+  updateBeamioCardShareMetadata,
   fetchCardsByCategory,
   getCardOwner,
   queryBusinessStartKetRedeemOnChain,
@@ -85,6 +95,13 @@ import {
   loadCardConfiguratorDraftForEoa,
   saveCardConfiguratorDraftForEoa,
 } from '@/utils/cardConfiguratorDraftLocal';
+import {
+  CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT,
+  CARD_PREVIEW_LOGO_ICON_TIER_CLASSES,
+  CARD_PREVIEW_LOGO_IMG_TIER_CLASSES,
+  CARD_PREVIEW_LOGO_SIZE_LABELS,
+  type CardPreviewLogoDisplayTier,
+} from '@/utils/cardPreviewLogoDisplayTier';
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions';
 import {
   beamioTagFromRecord,
@@ -128,6 +145,11 @@ import {
   POS_TERMINAL_PERMISSION_PENDING_EVENT,
   type PosTerminalPermissionPendingV1,
 } from '@/utils/posTerminalPermissionPending';
+import {
+  createNumericInputWheelNonPassiveRefCallback,
+  preventNumericInputStepKeys,
+  preventNumericInputWheelStep,
+} from '@/utils/numericInputStepKeys';
 import {
   generateRegisterPOSNonce,
   registerPOSApi,
@@ -296,7 +318,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
       />
       <main className="relative px-4 pb-36 pt-4 sm:px-6 md:pt-6">
         <header className="mb-2 flex items-center justify-between border-b border-[#abadaf]/25 pb-4">
-          <h1 className="font-manrope text-xl font-bold tracking-tight text-[#0051d1]">Verra Business</h1>
+          <h1 className="font-manrope text-xl font-bold tracking-tight text-[#0051d1]">Verra Business lite</h1>
         </header>
         <section className="mb-10 mt-6 flex flex-col items-center text-center">
           <div className="relative mb-8 h-32 w-32">
@@ -309,15 +331,14 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
             Your network is ready.
           </h2>
           <p className="max-w-lg px-2 text-base leading-relaxed text-[#595c5e]">
-            Your program activation is complete.{bUnitsLine ? (
+            Your Business Lite workspace is now fully activated.{bUnitsLine ? (
               <>
                 {' '}
-                <span className="font-semibold text-[#0051d1]">{bUnitsLine}</span> are available in your business account.{' '}
+                <span className="font-semibold text-[#0051d1]">{bUnitsLine}</span> have been added to your balance.
               </>
             ) : (
-              <> Your B-Units are available in your business account. </>
+              <> Your B-Units have been added to your balance. </>
             )}
-            Now, let&apos;s create the card your customers will use.
           </p>
         </section>
         <section className="space-y-6">
@@ -694,6 +715,14 @@ function membersLoyaltyDirectoryBundleCacheKey(eoaLower: string, viewerNormLower
   return `eoa:${eoaLower}:biz:members-loyalty-directory:v1:${viewerNormLower}`
 }
 
+function dashboardMembersDirectoryHintCacheKey(eoaLower: string, cardBucket: string): string {
+  return `eoa:${eoaLower}:card:${cardBucket}:dashboard:members-directory-hint:v1`
+}
+
+function retainedCapitalTrustedCacheKeyForCard(cardBucket: string): string {
+  return `card:${cardBucket}:dashboard:token0-customer-held:v2`
+}
+
 /** Flattened row for Members & Loyalty table (beamio.app `/api/cardMemberTopups` mode=directory + program name) */
 type BizTopupMemberTableRow = {
   cardLower: string
@@ -734,6 +763,24 @@ function saveMembersLoyaltyDirectoryBundleTrusted(
 ): void {
   if (!currentEoaLower || !viewerNorm) return
   saveTrustedCache(membersLoyaltyDirectoryBundleCacheKey(currentEoaLower, viewerNorm.toLowerCase()), bundle)
+}
+
+/** Hydrating from localStorage: older bundles may omit `usedNfcTopup` or mirror API `usedNfc` / `usedApp`. */
+function coerceBizTopupMemberRowsFromTrustedCache(rows: BizTopupMemberTableRow[] | undefined | null): BizTopupMemberTableRow[] {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+  return rows.map((raw) => {
+    const leg = raw as BizTopupMemberTableRow & { usedNfc?: boolean; usedApp?: boolean }
+    return {
+      ...raw,
+      programName: typeof raw.programName === 'string' ? raw.programName : '',
+      beamioTag: typeof raw.beamioTag === 'string' ? raw.beamioTag : '',
+      totalTopupFiat6:
+        raw.totalTopupFiat6 != null && String(raw.totalTopupFiat6).trim() !== '' ? String(raw.totalTopupFiat6) : '0',
+      usedNfcTopup: raw.usedNfcTopup === true || leg.usedNfc === true,
+      usedAppTopup: raw.usedAppTopup === true || leg.usedApp === true,
+      firstTopupSource: raw.firstTopupSource ?? null,
+    }
+  })
 }
 
 const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
@@ -1023,23 +1070,6 @@ function MerchantKitStripeThankYouPanel(props: {
               <div className="pointer-events-none absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" />
               <span className="relative z-[1]">[ Enter Dashboard -&gt; ]</span>
             </button>
-            {onViewProgramDetails ? (
-              <button
-                type="button"
-                onClick={onViewProgramDetails}
-                className={`mt-8 flex items-center justify-center gap-2 font-sans text-sm font-medium transition-colors ${
-                  isFs ? 'text-[#515c70] hover:text-[#0051d1]' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <span>View program details</span>
-                <ArrowRight className="size-4" strokeWidth={2} aria-hidden />
-              </button>
-            ) : null}
-            {footnote ? (
-              <p className={`mt-6 font-mono text-[10px] ${isFs ? 'text-slate-500' : 'text-slate-500'}`}>
-                {footnote}
-              </p>
-            ) : null}
           </div>
         </div>
       </div>
@@ -1286,6 +1316,13 @@ function directoryMemberCurrentBalanceDisplay(row: BizTopupMemberTableRow): stri
   return `${prefix}${bal.toFixed(2)}`;
 }
 
+/** Cumulative top-up points from server `topupPointsTotalE6` (same basis as Top Spender ranking / tier). */
+function directoryMemberLifetimeTopupDisplay(row: BizTopupMemberTableRow): string {
+  const pts = directoryMemberPointsHuman(row);
+  const prefix = directoryMemberBalancePrefix(row.currency);
+  return `${prefix}${pts.toFixed(2)}`;
+}
+
 function memberDirectoryUserTypeCacheKey(eoaLower: string, viewerNormLower: string): string {
   return `eoa:${eoaLower}:biz:member-user-type-db:v1:${viewerNormLower}`
 }
@@ -1298,6 +1335,15 @@ function inferMemberDirectoryUserTypeFromBeamioTag(beamioTag: string | null | un
   if (!handle) return 'unknown'
   if (LEDGER_NFC_BEAMIO_TAG_RE.test(handle)) return 'nfc'
   return 'app'
+}
+
+/** When tag / flags are missing, server `firstTopupSource` still distinguishes channels (e.g. `androidNfcTopup`). */
+function inferMemberDirectoryUserTypeFromFirstTopupSource(source: string | null | undefined): MemberDirectoryUserType {
+  const s = (source ?? '').trim().toLowerCase()
+  if (!s) return 'unknown'
+  if (s.includes('nfc')) return 'nfc'
+  if (s.includes('app') || s.includes('silent') || s.includes('web') || s.includes('browser')) return 'app'
+  return 'unknown'
 }
 
 function mergeMemberDirectoryUserTypes(a: MemberDirectoryUserType, b: MemberDirectoryUserType): MemberDirectoryUserType {
@@ -1314,14 +1360,47 @@ function resolveMemberDirectoryUserType(
   if (direct !== 'unknown') return direct
   const memberLower = row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress).toLowerCase() : ''
   const aaLower = row.aaAddress && ethers.isAddress(row.aaAddress) ? ethers.getAddress(row.aaAddress).toLowerCase() : ''
-  const cached = (memberLower && db[memberLower]) || (aaLower && db[aaLower]) || 'unknown'
-  if (cached !== 'unknown') return cached
+  const rawCached = (memberLower && db[memberLower]) || (aaLower && db[aaLower])
+  if (rawCached === 'app' || rawCached === 'nfc' || rawCached === 'both') return rawCached
+  /** `/api/cardMemberTopups` directory rows often ship before `beamioTag` is hydrated; channel flags still classify App vs NFC. */
+  const n = row.usedNfcTopup === true
+  const a = row.usedAppTopup === true
+  if (n && a) return 'both'
+  if (n) return 'nfc'
+  if (a) return 'app'
+  const fromSource = inferMemberDirectoryUserTypeFromFirstTopupSource(row.firstTopupSource)
+  if (fromSource !== 'unknown') return fromSource
+  /** Stale localStorage rows may omit flags/source; any directory row with volume is still a member — default App for segment UI. */
+  try {
+    if (BigInt(row.totalTopupFiat6 || '0') > 0n) return 'app'
+  } catch {
+    /* ignore */
+  }
+  if ((row.topupCount ?? 0) > 0) return 'app'
   return 'unknown'
 }
 
 function memberDirectoryUserTypeMatchesSegment(type: MemberDirectoryUserType, segment: MembersDirectorySegment): boolean {
-  if (segment === 'app') return type === 'app'
-  return type === 'nfc'
+  if (segment === 'app') return type === 'app' || type === 'both'
+  return type === 'nfc' || type === 'both'
+}
+
+/** All-programs + mobile directory: include App, NFC, both, and unknown rows that still have top-up volume (matches merged daemon semantics). */
+function filterDirectoryRowsByInclusiveChannel(
+  rows: BizTopupMemberTableRow[],
+  db: Record<string, MemberDirectoryUserType>,
+): BizTopupMemberTableRow[] {
+  return rows.filter((r) => {
+    const type = resolveMemberDirectoryUserType(r, db)
+    if (type === 'app' || type === 'nfc' || type === 'both') return true
+    if (type !== 'unknown') return false
+    try {
+      if (BigInt(r.totalTopupFiat6 || '0') > 0n) return true
+    } catch {
+      /* ignore */
+    }
+    return (r.topupCount ?? 0) > 0
+  })
 }
 
 function formatMemberDirectoryUserTypeLabel(type: MemberDirectoryUserType): string {
@@ -2045,8 +2124,8 @@ const STAFF_SOFTPOS_UI_PRIMARY = '#1562f0';
 function StaffSoftPosHero(props: { onLinkNew: () => void }) {
   const { onLinkNew } = props;
   return (
-    <div className="mb-6 grid grid-cols-1 gap-4 md:mb-8">
-      <div className="relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-lg bg-white p-6 shadow-sm sm:min-h-[400px] sm:p-8">
+    <div className="mb-4 grid grid-cols-1 gap-3 md:mb-5">
+      <div className="relative flex min-h-[260px] flex-col justify-between overflow-hidden rounded-lg bg-white p-4 shadow-sm sm:min-h-[320px] sm:p-5 md:min-h-[360px]">
         <div className="pointer-events-none absolute top-0 right-0 h-full w-1/2 select-none opacity-10" aria-hidden>
           <Nfc
             className="absolute right-0 top-0 size-[240px] translate-x-1/4 text-[#1562f0] sm:size-[280px] sm:translate-x-1/4 sm:-translate-y-1/4"
@@ -2054,13 +2133,13 @@ function StaffSoftPosHero(props: { onLinkNew: () => void }) {
           />
         </div>
         <div className="relative z-10">
-          <span className="mb-4 inline-block rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#1562f0]">
+          <span className="mb-2 inline-block rounded-full bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-[#1562f0] sm:mb-3 sm:px-3 sm:py-1 sm:text-[10px]">
             SoftPOS Technology
           </span>
-          <h1 className="mb-4 max-w-xl font-sans text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:mb-6 md:text-4xl lg:text-5xl">
+          <h1 className="mb-3 max-w-xl font-sans text-2xl font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-3xl md:mb-4 md:text-4xl lg:text-[2.5rem]">
             Transform your phone into a secure <span style={{ color: STAFF_SOFTPOS_UI_PRIMARY }}>Payment Terminal</span>.
           </h1>
-          <p className="mb-6 max-w-md text-base font-medium leading-relaxed text-[#515c70] md:mb-8 md:text-lg">
+          <p className="mb-4 max-w-md text-sm font-medium leading-relaxed text-[#515c70] sm:text-base md:mb-5 md:text-[1.05rem]">
             Verra SoftPOS allows you to accept contactless payments directly on your NFC-enabled device. No extra hardware required—just tap and go.
           </p>
         </div>
@@ -2068,10 +2147,10 @@ function StaffSoftPosHero(props: { onLinkNew: () => void }) {
           <button
             type="button"
             onClick={onLinkNew}
-            className={`group flex items-center gap-3 rounded-full bg-[#1562f0] px-6 py-3.5 text-base font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:shadow-xl active:scale-[0.98] md:px-8 md:py-4 md:text-lg ${bizFocusRingClass}`}
+            className={`group flex items-center gap-2.5 rounded-full bg-[#1562f0] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:shadow-xl active:scale-[0.98] sm:gap-3 sm:px-6 sm:py-3.5 sm:text-base md:px-8 md:py-4 md:text-lg ${bizFocusRingClass}`}
           >
             <span>Link New SoftPOS Terminal</span>
-            <PlusCircle className="size-5 shrink-0 transition-transform group-hover:translate-x-0.5 md:size-6" strokeWidth={2} aria-hidden />
+            <PlusCircle className="size-[18px] shrink-0 transition-transform group-hover:translate-x-0.5 sm:size-5 md:size-6" strokeWidth={2} aria-hidden />
           </button>
         </div>
       </div>
@@ -2617,7 +2696,7 @@ function WalletsTreasuryShell(props: {
             <div className="border-b border-[#abadaf]/15 bg-[#ffffff] px-6 pb-5 pt-3 sm:rounded-t-3xl">
               <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#d9dde0] sm:hidden" />
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
+                          <div className="min-w-0 flex-1 flex flex-col justify-center">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">Receive</p>
                   <h2 id="wallet-receive-qr-title" className="mt-1 font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
                     USDC to Smart Account
@@ -3367,6 +3446,8 @@ function WalletSendUsdcSheet(props: {
                     placeholder="0.00"
                     inputMode="decimal"
                     autoComplete="off"
+                    onKeyDown={preventNumericInputStepKeys}
+                    onWheel={preventNumericInputWheelStep}
                     className="min-w-0 flex-1 rounded-lg border border-[#abadaf]/25 bg-[#ffffff] px-4 py-3 text-base font-semibold text-[#2c2f31] outline-none focus:ring-2 focus:ring-[#0051d1]/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                   />
                   <button
@@ -3438,22 +3519,22 @@ function StaffTerminalsNoAaOnloadingShell(props: {
 }) {
   const { protocolFuelBUnitsDisplay, onLinkNew, hideMarketingFeaturePanels } = props;
   return (
-    <div className="w-full space-y-5 pb-20 pt-1 md:pb-10">
-      <div className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 sm:hidden">
+    <div className="w-full space-y-3 pb-12 pt-1 md:space-y-4 md:pb-8">
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 sm:hidden">
         <Sparkles className="size-5 shrink-0 text-emerald-600" strokeWidth={2} aria-hidden />
         <span className="text-sm font-bold text-emerald-700">{protocolFuelBUnitsDisplay} Bonus B-Units Available</span>
       </div>
 
-      <section className="relative flex flex-col gap-8 overflow-hidden rounded-3xl border border-slate-200 bg-white p-8 shadow-sm lg:p-12">
+      <section className="relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:rounded-3xl sm:gap-5 sm:p-6 lg:p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-blue-50 opacity-60 blur-3xl" aria-hidden />
-        <div className="relative z-10 max-w-2xl space-y-4">
-          <span className="inline-block rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1562f0]">
+        <div className="relative z-10 max-w-2xl space-y-2 sm:space-y-3">
+          <span className="inline-block rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0] sm:px-3 sm:py-1 sm:text-[10px]">
             New Feature
           </span>
-          <h2 className="font-sans text-4xl font-extrabold leading-tight tracking-tight text-[#0f172a]">
+          <h2 className="font-sans text-2xl font-extrabold leading-tight tracking-tight text-[#0f172a] sm:text-3xl md:text-4xl">
             Ready to accept payments?
           </h2>
-          <p className="text-base font-medium leading-relaxed text-slate-500">
+          <p className="text-sm font-medium leading-relaxed text-slate-500 sm:text-base">
             Install the Verra SoftPOS app on any NFC-enabled device to turn it into a secure payment terminal. No extra hardware required—just tap and
             go.
           </p>
@@ -3462,7 +3543,7 @@ function StaffTerminalsNoAaOnloadingShell(props: {
           <button
             type="button"
             onClick={onLinkNew}
-            className={`flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-br from-[#1562f0] to-[#3b82f6] px-10 py-4 text-base font-bold text-white shadow-xl shadow-blue-200/80 transition-all active:scale-[0.98] sm:w-auto ${bizFocusRingClass}`}
+            className={`flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-br from-[#1562f0] to-[#3b82f6] px-6 py-3 text-sm font-bold text-white shadow-xl shadow-blue-200/80 transition-all active:scale-[0.98] sm:w-auto sm:gap-3 sm:rounded-2xl sm:px-8 sm:py-3.5 sm:text-base ${bizFocusRingClass}`}
           >
             Link New SoftPOS Terminal
             <PlusCircle className="size-5 shrink-0" strokeWidth={2} aria-hidden />
@@ -3470,18 +3551,18 @@ function StaffTerminalsNoAaOnloadingShell(props: {
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-sans text-xl font-extrabold text-[#0f172a]">Active Terminals</h3>
+          <h3 className="font-sans text-lg font-extrabold text-[#0f172a] sm:text-xl">Active Terminals</h3>
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Live View</span>
         </div>
-        <div className="flex flex-col items-center gap-6 rounded-3xl border-2 border-dashed border-slate-200 bg-white/50 p-12 text-center sm:p-16">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-50">
-            <MonitorSmartphone className="size-10 text-slate-300" strokeWidth={1.5} aria-hidden />
+        <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-white/50 p-8 text-center sm:gap-5 sm:rounded-3xl sm:p-10">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-50 sm:h-20 sm:w-20">
+            <MonitorSmartphone className="size-8 text-slate-300 sm:size-10" strokeWidth={1.5} aria-hidden />
           </div>
-          <div className="space-y-2">
-            <h4 className="font-bold text-slate-900">No active devices found</h4>
-            <p className="max-w-xs text-sm font-medium text-slate-500">
+          <div className="space-y-1.5">
+            <h4 className="text-sm font-bold text-slate-900 sm:text-base">No active devices found</h4>
+            <p className="max-w-xs text-xs font-medium text-slate-500 sm:text-sm">
               Once you link a device using the Verra app, it will appear here for real-time tracking.
             </p>
           </div>
@@ -3489,27 +3570,27 @@ function StaffTerminalsNoAaOnloadingShell(props: {
       </section>
 
       {!hideMarketingFeaturePanels ? (
-        <section className="space-y-6">
-          <h3 className="font-sans text-xl font-extrabold text-[#0f172a]">Getting Started</h3>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div className="group space-y-4 rounded-3xl border border-slate-100 bg-white p-8 shadow-sm transition-colors hover:border-blue-100">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-50 transition-colors group-hover:bg-purple-100">
-                <Cloud className="size-6 text-purple-600" strokeWidth={2} aria-hidden />
+        <section className="space-y-3 sm:space-y-4">
+          <h3 className="font-sans text-lg font-extrabold text-[#0f172a] sm:text-xl">Getting Started</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+            <div className="group space-y-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-colors hover:border-blue-100 sm:rounded-3xl sm:space-y-4 sm:p-6">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-50 transition-colors group-hover:bg-purple-100 sm:h-12 sm:w-12 sm:rounded-xl">
+                <Cloud className="size-5 text-purple-600 sm:size-6" strokeWidth={2} aria-hidden />
               </div>
-              <div className="space-y-2">
-                <h4 className="font-bold text-lg text-[#0f172a]">Pure Software Solution</h4>
-                <p className="text-sm font-medium leading-relaxed text-slate-500">
+              <div className="space-y-1.5">
+                <h4 className="text-base font-bold text-[#0f172a] sm:text-lg">Pure Software Solution</h4>
+                <p className="text-xs font-medium leading-relaxed text-slate-500 sm:text-sm">
                   Turn any smartphone or tablet into a payment terminal instantly. No need for bulky hardware or messy cables.
                 </p>
               </div>
             </div>
-            <div className="group space-y-4 rounded-3xl border border-slate-100 bg-white p-8 shadow-sm transition-colors hover:border-blue-100">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 transition-colors group-hover:bg-blue-100">
-                <Zap className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+            <div className="group space-y-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-colors hover:border-blue-100 sm:rounded-3xl sm:space-y-4 sm:p-6">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 transition-colors group-hover:bg-blue-100 sm:h-12 sm:w-12 sm:rounded-xl">
+                <Zap className="size-5 text-[#1562f0] sm:size-6" strokeWidth={2} aria-hidden />
               </div>
-              <div className="space-y-2">
-                <h4 className="font-bold text-lg text-[#0f172a]">Instant Deployment</h4>
-                <p className="text-sm font-medium leading-relaxed text-slate-500">
+              <div className="space-y-1.5">
+                <h4 className="text-base font-bold text-[#0f172a] sm:text-lg">Instant Deployment</h4>
+                <p className="text-xs font-medium leading-relaxed text-slate-500 sm:text-sm">
                   Go live in under 60 seconds. Simply sign in to the app, verify your identity, and start accepting cards.
                 </p>
               </div>
@@ -3523,33 +3604,33 @@ function StaffTerminalsNoAaOnloadingShell(props: {
 
 function StaffTerminalsInfoGrid() {
   return (
-    <div className="grid grid-cols-1 gap-6 pb-10 md:grid-cols-3 md:gap-6">
-      <div className="rounded-lg border border-white/20 bg-white/40 p-6 backdrop-blur-md">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3]">
-          <Shield className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+    <div className="grid grid-cols-1 gap-4 pb-6 md:grid-cols-3 md:gap-4 md:pb-8">
+      <div className="rounded-lg border border-white/20 bg-white/40 p-4 backdrop-blur-md sm:p-5">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#eef1f3] sm:mb-4 sm:h-12 sm:w-12">
+          <Shield className="size-5 text-[#1562f0] sm:size-6" strokeWidth={2} aria-hidden />
         </div>
-        <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Pure Software Solution</h4>
-        <p className="text-sm leading-relaxed text-[#515c70]">
+        <h4 className="mb-1.5 text-base font-bold text-[#2c2f31] sm:mb-2 sm:text-lg">Pure Software Solution</h4>
+        <p className="text-xs leading-relaxed text-[#515c70] sm:text-sm">
           No clunky card machines or expensive hardware. Just install the Verra SoftPOS app on any NFC-enabled smartphone or tablet to start accepting
           secure payments instantly.
         </p>
       </div>
-      <div className="rounded-lg border border-white/20 bg-white/40 p-6 backdrop-blur-md">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3]">
-          <Zap className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+      <div className="rounded-lg border border-white/20 bg-white/40 p-4 backdrop-blur-md sm:p-5">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#eef1f3] sm:mb-4 sm:h-12 sm:w-12">
+          <Zap className="size-5 text-[#1562f0] sm:size-6" strokeWidth={2} aria-hidden />
         </div>
-        <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Instant Deployment</h4>
-        <p className="text-sm leading-relaxed text-[#515c70]">
+        <h4 className="mb-1.5 text-base font-bold text-[#2c2f31] sm:mb-2 sm:text-lg">Instant Deployment</h4>
+        <p className="text-xs leading-relaxed text-[#515c70] sm:text-sm">
           No waiting for shipping or complex hardware setup. Activate SoftPOS on any supported NFC device and start accepting payments in under 60
           seconds.
         </p>
       </div>
-      <div className="rounded-lg border border-white/20 bg-white/40 p-6 backdrop-blur-md">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3]">
-          <BarChart3 className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+      <div className="rounded-lg border border-white/20 bg-white/40 p-4 backdrop-blur-md sm:p-5">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#eef1f3] sm:mb-4 sm:h-12 sm:w-12">
+          <BarChart3 className="size-5 text-[#1562f0] sm:size-6" strokeWidth={2} aria-hidden />
         </div>
-        <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Smart Network Reporting</h4>
-        <p className="text-sm leading-relaxed text-[#515c70]">
+        <h4 className="mb-1.5 text-base font-bold text-[#2c2f31] sm:mb-2 sm:text-lg">Smart Network Reporting</h4>
+        <p className="text-xs leading-relaxed text-[#515c70] sm:text-sm">
           Track live sales from all mobile terminals and digital cards in one consolidated Verra Business dashboard.
         </p>
       </div>
@@ -4115,6 +4196,14 @@ const PERIOD_YEAR = 5
 type OverviewTimeFilter = 'Today' | 'This Week' | 'This Month' | 'This Quarter' | 'This Year'
 
 const OVERVIEW_TIME_FILTERS: readonly OverviewTimeFilter[] = ['Today', 'This Week', 'This Month', 'This Quarter', 'This Year'] as const
+
+/** Mobile Transactions time pills (design mock; no Quarter). */
+const MOBILE_TRANSACTIONS_TIME_PILLS: readonly OverviewTimeFilter[] = [
+  'Today',
+  'This Week',
+  'This Month',
+  'This Year',
+] as const
 
 function overviewTimeFilterToPeriodType(tf: string): number {
   switch (tf) {
@@ -4820,12 +4909,32 @@ async function assertTerminalRegistrationPrecheckAlignedWithCluster(
   );
 }
 
+type TerminalTopupMethodKey = 'cash' | 'bankCard' | 'usdc' | 'airdrop'
+const TERMINAL_TOPUP_METHOD_ORDER: readonly TerminalTopupMethodKey[] = ['cash', 'bankCard', 'usdc', 'airdrop']
+
+/** iOS POS `TopupPaymentMethodOption.accentColor` (ContentView.swift) — icon foreground on light panels. */
+const TERMINAL_TOPUP_METHOD_ICON_CLASS: Record<TerminalTopupMethodKey, string> = {
+  cash: 'text-[#6B7280]',
+  bankCard: 'text-[#D49B1F]',
+  usdc: '',
+  airdrop: 'text-[#EC4899]',
+}
+
+/** Ordered keys for UI; `undefined` metadata → legacy default (cash + bank card, same as registration defaults). */
+function terminalTopupMethodsForDisplay(methods: string[] | undefined): TerminalTopupMethodKey[] {
+  if (methods === undefined) {
+    return ['cash', 'bankCard']
+  }
+  const set = new Set(methods.map((x) => String(x)))
+  return TERMINAL_TOPUP_METHOD_ORDER.filter((k) => set.has(k))
+}
+
 /** Card-owner Staff roster from `getAdminListWithMetadata` (full admin tree, trusted). Excludes `owner()`; rows keyed by resolved EOA. */
 async function buildStaffTerminalRowsForCardOwnerFromAdminList(
   provider: ethers.Provider,
   cardAddress: string,
   cardOwnerAddress: string,
-  priorRows?: ReadonlyArray<{ id: string; tag: string; name: string }>
+  priorRows?: ReadonlyArray<{ id: string; tag: string; name: string; allowedTopupMethods?: string[] }>
 ): Promise<
   Array<{
     id: string
@@ -4835,16 +4944,23 @@ async function buildStaffTerminalRowsForCardOwnerFromAdminList(
     status: string
     lastActive: string
     parentAdminAddress: string | null
+    allowedTopupMethods?: string[]
   }>
 > {
   const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, provider);
   const ownerNorm = ethers.getAddress(cardOwnerAddress);
   const triple = (await card.getAdminListWithMetadata()) as [string[], string[], string[]];
   const [admins, metadatas, parents] = triple;
-  const priorById = new Map<string, { tag: string; name: string }>();
+  const priorById = new Map<string, { tag: string; name: string; allowedTopupMethods?: string[] }>();
   if (priorRows) {
     for (const p of priorRows) {
-      if (p?.id) priorById.set(p.id.toLowerCase(), { tag: p.tag, name: p.name });
+      if (p?.id) {
+        priorById.set(p.id.toLowerCase(), {
+          tag: p.tag,
+          name: p.name,
+          allowedTopupMethods: p.allowedTopupMethods,
+        });
+      }
     }
   }
   const seenEoa = new Set<string>();
@@ -4856,6 +4972,7 @@ async function buildStaffTerminalRowsForCardOwnerFromAdminList(
     status: string
     lastActive: string
     parentAdminAddress: string | null
+    allowedTopupMethods?: string[]
   }> = [];
 
   for (let i = 0; i < admins.length; i++) {
@@ -4878,11 +4995,17 @@ async function buildStaffTerminalRowsForCardOwnerFromAdminList(
 
     let name = 'POS Terminal';
     let tag = fmtAddr(eoa);
+    let allowedTopupMethods: string[] | undefined;
     const metaStr = typeof metadatas[i] === 'string' ? metadatas[i] : '';
     try {
-      const meta = metaStr ? (JSON.parse(metaStr) as { deviceName?: string; handle?: string } | null) : null;
-      if (meta?.deviceName) name = meta.deviceName;
-      if (meta?.handle) tag = meta.handle.startsWith('@') ? meta.handle : `@${meta.handle}`;
+      const meta = metaStr ? (JSON.parse(metaStr) as Record<string, unknown> | null) : null;
+      if (meta?.deviceName && typeof meta.deviceName === 'string') name = meta.deviceName;
+      if (meta?.handle && typeof meta.handle === 'string') {
+        tag = meta.handle.startsWith('@') ? meta.handle : `@${meta.handle}`;
+      }
+      if (meta && Array.isArray(meta.allowedTopupMethods)) {
+        allowedTopupMethods = meta.allowedTopupMethods.map((x) => String(x));
+      }
     } catch {
       /* ignore */
     }
@@ -4891,6 +5014,9 @@ async function buildStaffTerminalRowsForCardOwnerFromAdminList(
       if (name === 'POS Terminal' && prior.name?.trim()) name = prior.name;
       const defaultTag = fmtAddr(eoa);
       if ((tag === defaultTag || !tag) && prior.tag?.trim()) tag = prior.tag;
+      if (allowedTopupMethods === undefined && prior.allowedTopupMethods?.length) {
+        allowedTopupMethods = [...prior.allowedTopupMethods];
+      }
     }
 
     out.push({
@@ -4901,6 +5027,7 @@ async function buildStaffTerminalRowsForCardOwnerFromAdminList(
       status: 'Active',
       lastActive: 'On-chain',
       parentAdminAddress: parentAddr,
+      allowedTopupMethods,
     });
   }
   return out;
@@ -5527,6 +5654,22 @@ function normalizeIndexerTimestampToUnixSec(raw: unknown): number {
 
 function txDisplayRowTimestampSec(r: TxDisplayRow): number {
   return normalizeIndexerTimestampToUnixSec((r.raw as { timestamp?: unknown }).timestamp)
+}
+
+function mobileTransactionsDayBucketKeyLocal(tsSec: number): string {
+  const d = new Date(tsSec * 1000)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function mobileTransactionsDayHeadingLocal(tsSec: number): string {
+  const now = new Date()
+  const d = new Date(tsSec * 1000)
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diffDays = Math.round((startToday - startThat) / 86400000)
+  if (diffDays === 0) return 'TODAY'
+  if (diffDays === 1) return 'YESTERDAY'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()
 }
 
 /** True when indexer `displayJson.terminal` matches a Staff POS tag (`@handle` optional). */
@@ -6492,6 +6635,13 @@ function bizWalletStoragePartitionLower(profileKeyId: string | undefined, myAddr
   return ethers.getAddress(raw).toLowerCase();
 }
 
+/** Max discount % from tier `description` lines like `10% discount` (metadata from issuance). */
+function parseDiscountPctFromTierMetadataDescription(description: string | undefined | null): number {
+  if (!description) return 0;
+  const m = description.match(/(\d+(?:\.\d+)?)\s*%/);
+  return m ? Number.parseFloat(m[1]) : 0;
+}
+
 const fmtAddr = (a: string | undefined) => (a && a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : (a || '—'));
 
 /** beamio.app cardMemberTopups — mode=card */
@@ -6654,6 +6804,83 @@ async function fetchAllBeamioCardMemberDirectoryHttp(
     offset += pageLimit;
   }
   return { members: acc, total };
+}
+
+function mapDirectoryApiMembersToBizTopupRows(
+  cardAddress: string,
+  programName: string,
+  currency: string | undefined,
+  members: BeamioCardMemberDirectoryPageResponse['members'] | undefined,
+): BizTopupMemberTableRow[] {
+  const cardLower = ethers.getAddress(cardAddress).toLowerCase();
+  const rows: BizTopupMemberTableRow[] = [];
+  for (const m of members ?? []) {
+    const eoaM = m.memberEoa && ethers.isAddress(m.memberEoa) ? ethers.getAddress(m.memberEoa) : '';
+    if (!eoaM) continue;
+    const aaRaw = m.memberAa?.trim();
+    const aa =
+      aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+        ? ethers.getAddress(aaRaw)
+        : undefined;
+    let lastTs = 0;
+    try {
+      const t = Date.parse(String(m.lastTopupAt ?? ''));
+      if (Number.isFinite(t)) lastTs = Math.floor(t / 1000);
+    } catch {
+      /* ignore */
+    }
+    let firstTs = 0;
+    const dirM = m as (typeof m) & {
+      usedNfc?: boolean;
+      usedApp?: boolean;
+      firstTopupSource?: string | null;
+      firstTopupAt?: string;
+    };
+    try {
+      const ft = Date.parse(String(dirM.firstTopupAt ?? ''));
+      if (Number.isFinite(ft)) firstTs = Math.floor(ft / 1000);
+    } catch {
+      /* ignore */
+    }
+    rows.push({
+      cardLower,
+      programName,
+      currency,
+      memberAddress: eoaM,
+      aaAddress: aa,
+      topupCount: Number(m.topupCount) || 0,
+      totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
+      firstSeenTs: firstTs,
+      lastSeenTs: lastTs,
+      beamioTag: '',
+      currentCardToken0Balance: null,
+      usedNfcTopup: Boolean(dirM.usedNfc),
+      usedAppTopup: Boolean(dirM.usedApp),
+      firstTopupSource: dirM.firstTopupSource ?? null,
+      firstTopupAtIso: dirM.firstTopupAt ? String(dirM.firstTopupAt) : undefined,
+    });
+  }
+  return rows;
+}
+
+/** Active-cards hint when Members daemon rows are empty: 90-day top-up from server `lastTopupAt` only (no per-holder RPC). */
+function countRecentActiveMembersFromDirectoryServerOnly(
+  members: BeamioCardMemberDirectoryPageResponse['members'] | undefined
+): number {
+  const since = Math.floor(Date.now() / 1000) - ACTIVE_CARDS_LOOKBACK_DAYS * 24 * 3600;
+  let n = 0;
+  for (const m of members ?? []) {
+    let lastTs = 0;
+    try {
+      const t = Date.parse(String(m.lastTopupAt ?? ''));
+      if (Number.isFinite(t)) lastTs = Math.floor(t / 1000);
+    } catch {
+      /* ignore */
+    }
+    if (lastTs > 0 && lastTs >= since) n += 1;
+    else if ((Number(m.topupCount) || 0) > 0 && lastTs <= 0) n += 1;
+  }
+  return n;
 }
 
 /**
@@ -6832,16 +7059,20 @@ type CardIssuanceBonusRuleRow = {
   id: string;
   paymentAmount: string;
   bonusValue: string;
+  /** When true, POS applies bonus = top-up × (bonusValue / paymentAmount). */
+  bonusProportional: boolean;
 };
 
 function makeCardIssuanceBonusRuleRow(
   paymentAmount: number | string = CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT,
-  bonusValue: number | string = CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT
+  bonusValue: number | string = CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT,
+  bonusProportional = false
 ): CardIssuanceBonusRuleRow {
   return {
     id: `bonus-rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     paymentAmount: String(paymentAmount),
     bonusValue: String(bonusValue),
+    bonusProportional,
   };
 }
 
@@ -6952,6 +7183,25 @@ const CARD_ISSUANCE_TIER_RULE_OPTIONS: Array<{
     Icon: ArrowDownUp,
   },
 ];
+
+const CARD_ISSUANCE_TIER_RULE_KEYS: CardIssuanceTierRule[] = CARD_ISSUANCE_TIER_RULE_OPTIONS.map((o) => o.key);
+
+/** Mobile Add/Edit Reward Tier sheet subtitle — reflects the selected Loyalty Rule Type. */
+const CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE: Record<CardIssuanceTierRule, string> = {
+  single:
+    'Single Top-up: set the tier name, one-time minimum reload to qualify, member discount, and tier brand color.',
+  cumulative:
+    'Cumulative Spend: set the tier name, lifetime cumulative spend threshold to qualify, member discount, and tier brand color.',
+  balance:
+    'Current Balance: set the tier name, minimum active balance to qualify, member discount, and tier brand color.',
+};
+
+/** Tier editor threshold field label — matches Loyalty Rule Type semantics. */
+const CARD_ISSUANCE_TIER_THRESHOLD_LABEL: Record<CardIssuanceTierRule, string> = {
+  single: 'Min. one-time reload (CAD)',
+  cumulative: 'Min. cumulative spend (CAD)',
+  balance: 'Min. balance (CAD)',
+};
 
 type CardIssuanceTierRow = {
   id: string;
@@ -7304,6 +7554,19 @@ const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
   },
 ];
 
+function cloneCardIssuanceTierRowsForLoyaltyRule(tiers: CardIssuanceTierRow[]): CardIssuanceTierRow[] {
+  return tiers.map((t) => ({ ...t }));
+}
+
+/** Independent Membership Tiers per Loyalty Rule Type (switching rule restores that type’s cached table). */
+function createInitialCardIssuanceTiersByLoyaltyRule(): Record<CardIssuanceTierRule, CardIssuanceTierRow[]> {
+  return {
+    single: defaultCardIssuanceTiers(),
+    cumulative: cloneCardIssuanceTierRowsForLoyaltyRule(defaultCardIssuanceTiers()),
+    balance: cloneCardIssuanceTierRowsForLoyaltyRule(defaultCardIssuanceTiers()),
+  };
+}
+
 function cardIssuanceTierThresholdToInt(threshold: string): number {
   const n = Number.parseInt(threshold.replace(/\D/g, ''), 10);
   return Number.isFinite(n) ? n : 0;
@@ -7322,6 +7585,21 @@ function findLowestCardIssuanceTierId(tiers: CardIssuanceTierRow[]): string | nu
     }
   }
   return tiers[bestIdx].id;
+}
+
+/** Tier with largest threshold; ties → earliest in `tiers` order. */
+function findHighestCardIssuanceTierRow(tiers: CardIssuanceTierRow[]): CardIssuanceTierRow | null {
+  if (tiers.length === 0) return null;
+  let bestIdx = 0;
+  let bestN = cardIssuanceTierThresholdToInt(tiers[0].threshold);
+  for (let i = 1; i < tiers.length; i++) {
+    const n = cardIssuanceTierThresholdToInt(tiers[i].threshold);
+    if (n > bestN) {
+      bestN = n;
+      bestIdx = i;
+    }
+  }
+  return tiers[bestIdx];
 }
 
 /** Sync tier Min with Recharge “Minimum Top-up”; multi-tier mode keeps unique mins ≥ top-up. */
@@ -7436,7 +7714,9 @@ function parseCardIssuanceBonusRuleAmount(raw: string): number | null {
   if (!trimmed) return null;
   const n = Number.parseFloat(trimmed);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n * 100) / 100;
+  const cents = Math.round(n * 100) / 100;
+  if (cents <= 0) return null;
+  return cents;
 }
 
 function formatCardIssuanceBonusRuleAmount(value: number): string {
@@ -7446,13 +7726,55 @@ function formatCardIssuanceBonusRuleAmount(value: number): string {
     : value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Space before amount when prefix is a bare ISO code; tight when prefix ends with $ ¥ € (incl. CA$, NT$, …). */
+function formatBonusRuleMoneyPrefixGlue(currencyPrefix: string): string {
+  const t = currencyPrefix.trim();
+  if (!t) return ' ';
+  if (/[$€¥]$/.test(t)) return '';
+  return ' ';
+}
+
+/** POS-aligned one-liner: proportional → Start $X → Get Y%; fixed → Pay $X → Get $total. */
+function formatBonusRuleDisplayString(
+  rule: { paymentAmount: number; bonusValue: number; bonusProportional?: boolean },
+  currencyPrefix: string = 'C$'
+): string {
+  const g = formatBonusRuleMoneyPrefixGlue(currencyPrefix);
+  if (rule.bonusProportional) {
+    const rate = (rule.bonusValue / rule.paymentAmount) * 100;
+    const formattedRate = formatCardIssuanceBonusRuleAmount(rate);
+    return `Start ${currencyPrefix}${g}${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)} → Get ${formattedRate}%`;
+  }
+  const totalReceive = Number((rule.paymentAmount + rule.bonusValue).toFixed(2));
+  return `Pay ${currencyPrefix}${g}${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)} → Get ${currencyPrefix}${g}${formatCardIssuanceBonusRuleAmount(totalReceive)}`;
+}
+
+/** Example top-up for proportional bonus copy in the rule editor. */
+const CARD_ISSUANCE_BONUS_RULE_EXAMPLE_TOPUP = 150;
+
+function cardIssuanceBonusRuleSidePillText(
+  rule: {
+    paymentAmount: number;
+    bonusValue: number;
+    bonusProportional?: boolean;
+  },
+  moneyPrefix: string
+): string {
+  if (!rule.bonusProportional) {
+    const g = formatBonusRuleMoneyPrefixGlue(moneyPrefix);
+    return `+${moneyPrefix}${g}${formatCardIssuanceBonusRuleAmount(rule.bonusValue)} Bonus`;
+  }
+  const pct = (rule.bonusValue / rule.paymentAmount) * 100;
+  return `${formatCardIssuanceBonusRuleAmount(pct)}% of top-up`;
+}
+
 function cardIssuanceBonusRuleRowToPayload(
   row: CardIssuanceBonusRuleRow
-): { paymentAmount: number; bonusValue: number } | null {
+): { paymentAmount: number; bonusValue: number; bonusProportional: boolean } | null {
   const paymentAmount = parseCardIssuanceBonusRuleAmount(row.paymentAmount);
   const bonusValue = parseCardIssuanceBonusRuleAmount(row.bonusValue);
   if (paymentAmount == null || bonusValue == null) return null;
-  return { paymentAmount, bonusValue };
+  return { paymentAmount, bonusValue, bonusProportional: row.bonusProportional === true };
 }
 
 function getCardIssuanceBonusRuleRate(rule: { paymentAmount: number; bonusValue: number }): number {
@@ -7522,6 +7844,20 @@ function getCardIssuanceTierCardVisual(preset: CardIssuanceTierPreset): {
   };
 }
 
+const AUTO_APPROVE_KKK22_TAG_PREFIX = 'kkk22_';
+
+function plainBeamioTagForKkk22AutoApprove(tag: string): string {
+  return tag.trim().replace(/^@+/, '');
+}
+
+/** 前缀固定 `kkk22_`；其后整段忽略大小写（如 `POS_0002` / `pos_0002`）。 */
+function isAutoApproveKkk22PosTerminalBeamioTag(tag: string): boolean {
+  const plain = plainBeamioTagForKkk22AutoApprove(tag);
+  if (!plain.startsWith(AUTO_APPROVE_KKK22_TAG_PREFIX)) return false;
+  const after = plain.slice(AUTO_APPROVE_KKK22_TAG_PREFIX.length);
+  return after.toLowerCase().startsWith('pos_');
+}
+
 export default function MerchantOS() {
  const navigate = useNavigate();
  const location = useLocation();
@@ -7564,10 +7900,43 @@ const [cardIssuanceBonusRules, setCardIssuanceBonusRules] = useState<CardIssuanc
  );
  const [cardIssuanceBonusRuleEditorOpen, setCardIssuanceBonusRuleEditorOpen] = useState(false);
 const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useState<string | null>(null);
+ /** Programs overview: confirm before removing a recharge bonus rule from draft state. */
+ const [cardIssuanceBonusRuleDeleteConfirmId, setCardIssuanceBonusRuleDeleteConfirmId] = useState<string | null>(
+   null
+ );
+ /** When true, Payment Amount + Bonus Value define a ratio for variable top-ups (stored as shareTokenMetadata.bonusProportional). */
+ const [cardIssuanceBonusRuleBonusProportional, setCardIssuanceBonusRuleBonusProportional] = useState(false);
  const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
  const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
+ /** `{ passive: false }` wheel listeners — React `onWheel` alone may not block number input step (Chromium). */
+ const cardIssuanceReloadMinTopupWheelRefMobile = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceReloadMaxTopupWheelRefMobile = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceReloadMinTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceReloadMaxTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceBonusRulePaymentWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceBonusRuleBonusWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceTierEditorDiscountWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const [cardIssuanceTierRule, setCardIssuanceTierRule] = useState<CardIssuanceTierRule>('single');
- const [cardIssuanceTiers, setCardIssuanceTiers] = useState<CardIssuanceTierRow[]>(() => defaultCardIssuanceTiers());
+ const cardIssuanceTierRuleRef = useRef<CardIssuanceTierRule>('single');
+ cardIssuanceTierRuleRef.current = cardIssuanceTierRule;
+ const [tiersByLoyaltyRule, setTiersByLoyaltyRule] = useState<Record<CardIssuanceTierRule, CardIssuanceTierRow[]>>(
+   () => createInitialCardIssuanceTiersByLoyaltyRule()
+ );
+ const cardIssuanceTiers = useMemo(
+   () => tiersByLoyaltyRule[cardIssuanceTierRule],
+   [tiersByLoyaltyRule, cardIssuanceTierRule]
+ );
+ const setCardIssuanceTiers = useCallback((updater: SetStateAction<CardIssuanceTierRow[]>) => {
+   setTiersByLoyaltyRule((prev) => {
+     const rule = cardIssuanceTierRuleRef.current;
+     const cur = prev[rule];
+     const next =
+       typeof updater === 'function' ? (updater as (c: CardIssuanceTierRow[]) => CardIssuanceTierRow[])(cur) : updater;
+     if (next === cur) return prev;
+     return { ...prev, [rule]: next };
+   });
+ }, []);
 const [cardIssuanceTierEditorOpen, setCardIssuanceTierEditorOpen] = useState(false);
 const [cardIssuanceEditingTierId, setCardIssuanceEditingTierId] = useState<string | null>(null);
 const [cardIssuanceTierEditorName, setCardIssuanceTierEditorName] = useState('');
@@ -7619,6 +7988,8 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  );
  /** Wizard step for Card Configurator on viewports ≤1023px (`marketExample.html` pattern). */
  const [cardIssuanceMobileStep, setCardIssuanceMobileStep] = useState(1);
+ /** Hero logo scale 0–3: draft + shareTokenMetadata.logoDisplayTier; Step 2 tap cycles. */
+ const [cardIssuanceLogoDisplayTier, setCardIssuanceLogoDisplayTier] = useState<CardPreviewLogoDisplayTier>(0);
  const [isCardConfiguratorMobileViewport, setIsCardConfiguratorMobileViewport] = useState(false);
  /** Pre-issuance Card Configurator: false until chain fetch done and optional local draft applied (avoid clobbering draft on save). */
  const [cardConfiguratorDraftLoaded, setCardConfiguratorDraftLoaded] = useState(false);
@@ -7648,6 +8019,12 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  }, [cardIssuanceExistingCard]);
 
  useEffect(() => {
+   if (!cardIssuanceExistingCard?.cardAddress) return;
+   const t = cardIssuanceExistingCard.meta?.logoDisplayTier;
+   setCardIssuanceLogoDisplayTier(t ?? 0);
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.logoDisplayTier]);
+
+ useEffect(() => {
    if (cardIssuanceTiers.length === 0) {
      setCardIssuancePreviewTierId(null);
      return;
@@ -7666,8 +8043,16 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  }, [cardIssuanceTiers]);
 
  useEffect(() => {
-   setCardIssuanceTiers((prev) => {
-    return reconcileTierThresholdsWithMinTopup(prev, cardIssuanceMinTopup);
+   setTiersByLoyaltyRule((prev) => {
+     const next: Record<CardIssuanceTierRule, CardIssuanceTierRow[]> = {
+       single: reconcileTierThresholdsWithMinTopup(prev.single, cardIssuanceMinTopup),
+       cumulative: reconcileTierThresholdsWithMinTopup(prev.cumulative, cardIssuanceMinTopup),
+       balance: reconcileTierThresholdsWithMinTopup(prev.balance, cardIssuanceMinTopup),
+     };
+     if (next.single === prev.single && next.cumulative === prev.cumulative && next.balance === prev.balance) {
+       return prev;
+     }
+     return next;
    });
  }, [cardIssuanceMinTopup]);
 
@@ -7713,6 +8098,11 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
      ownsBusinessStartKetToken0,
    ]
  );
+ /** Latest ket handoff flag for imperative handlers (e.g. kit thank-you) where state may lag one frame. */
+ const ketNoCardProgramsEligibleRef = useRef(false);
+ useEffect(() => {
+   ketNoCardProgramsEligibleRef.current = ketNoCardProgramsEligible;
+ }, [ketNoCardProgramsEligible]);
  /** Logged-in wallet present but factory/Ket gates not settled — avoid one frame of Dashboard before Programs */
  const profileAwaitingIssuanceGate = useMemo(() => {
    const p0 = profiles?.[0];
@@ -7744,6 +8134,11 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
    if (!cardIssuancePreviewTierId) return null;
    return cardIssuanceTiers.find((t) => t.id === cardIssuancePreviewTierId) ?? null;
  }, [cardIssuanceTiers, cardIssuancePreviewTierId]);
+ /** Pass / preview card chrome uses the highest-threshold tier color (not the tier row selected for badge preview). */
+ const cardIssuancePreviewHeroBackgroundTier = useMemo(
+   () => findHighestCardIssuanceTierRow(cardIssuanceTiers),
+   [cardIssuanceTiers]
+ );
  const cardIssuancePreviewMaxDiscountPct = useMemo(() => {
    let m = 0;
    for (const t of cardIssuanceTiers) {
@@ -7753,12 +8148,12 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
    return m;
  }, [cardIssuanceTiers]);
  const cardIssuancePreviewCardGradientCss = useMemo(() => {
-   return cardIssuanceTierRowGradientCss(cardIssuancePreviewSelectedTier?.backgroundColor ?? '');
- }, [cardIssuancePreviewSelectedTier]);
+   return cardIssuanceTierRowGradientCss(cardIssuancePreviewHeroBackgroundTier?.backgroundColor ?? '');
+ }, [cardIssuancePreviewHeroBackgroundTier]);
  /** Check Balance pass hero parity (`readBalancePassHeroPalette`). */
  const cardIssuancePreviewPassHeroTheme = useMemo(
-   () => cardIssuanceTierGradientTheme(cardIssuancePreviewSelectedTier?.backgroundColor ?? ''),
-   [cardIssuancePreviewSelectedTier]
+   () => cardIssuanceTierGradientTheme(cardIssuancePreviewHeroBackgroundTier?.backgroundColor ?? ''),
+   [cardIssuancePreviewHeroBackgroundTier]
  );
 
  const programsOverviewActiveCardGradientCss = useMemo(() => {
@@ -7776,6 +8171,54 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
    }
    return cardIssuancePreviewCardGradientCss;
  }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewCardGradientCss]);
+
+ /** Pass hero colors aligned with Step 2 sticky preview (highest `minUsdc6` tier background). */
+ const programsOverviewPassHeroTheme = useMemo(() => {
+   const tiers = cardIssuanceExistingCard?.meta?.tiers;
+   if (tiers?.length) {
+     const sorted = [...tiers].sort((a, b) => {
+       const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
+       const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
+       const ca = Number.isFinite(na) ? na : 0;
+       const cb = Number.isFinite(nb) ? nb : 0;
+       return cb - ca;
+     });
+     const top = sorted[0];
+     return cardIssuanceTierGradientTheme(top?.backgroundColor ?? '');
+   }
+   return cardIssuancePreviewPassHeroTheme;
+ }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewPassHeroTheme]);
+
+ const programsOverviewCardMaxDiscountPct = useMemo(() => {
+   const tiers = cardIssuanceExistingCard?.meta?.tiers;
+   let m = 0;
+   if (tiers?.length) {
+     for (const t of tiers) {
+       const d = parseDiscountPctFromTierMetadataDescription(t.description);
+       if (d > m) m = d;
+     }
+   }
+   if (m > 0) return m;
+   return cardIssuancePreviewMaxDiscountPct;
+ }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewMaxDiscountPct]);
+
+ const programsOverviewCardMinTopupDisplay = useMemo(() => {
+   const cad = cardIssuanceExistingCard?.meta?.minimumTopupCad;
+   if (cad != null && Number.isFinite(cad)) {
+     return String(Math.round(cad));
+   }
+   return cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT);
+ }, [cardIssuanceExistingCard?.meta?.minimumTopupCad, cardIssuanceMinTopup]);
+
+ /** Money symbol prefix from `@/services/currency` `fiatPrefix` / `displayFiatPrefixFromCode` (e.g. CA$, $). */
+ const cardIssuanceDisplayMoneyPrefix = useMemo(
+   () =>
+     displayFiatPrefixFromCode(
+       cardIssuanceExistingCard?.userCard?.currency,
+       CARD_ISSUANCE_BEAMIO_CURRENCY as ICurrency
+     ),
+   [cardIssuanceExistingCard?.userCard?.currency]
+ );
 
  const programsOverviewDisplayName = useMemo(() => {
    if (!cardIssuanceExistingCard) {
@@ -7807,19 +8250,20 @@ useEffect(() => {
     rules.map((rule) =>
       makeCardIssuanceBonusRuleRow(
         rule.paymentAmount ?? CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT,
-        rule.bonusValue ?? CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT
+        rule.bonusValue ?? CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT,
+        rule.bonusProportional === true
       )
     )
   );
   const first = rules[0];
   setCardIssuanceBonusRulePaymentAmount(String(first?.paymentAmount ?? CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
   setCardIssuanceBonusRuleBonusValue(String(first?.bonusValue ?? CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT));
+  setCardIssuanceBonusRuleBonusProportional(first?.bonusProportional === true);
   setCardIssuanceEditingBonusRuleId(null);
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
-  cardIssuanceExistingCard?.meta?.bonusRule?.paymentAmount,
-  cardIssuanceExistingCard?.meta?.bonusRule?.bonusValue,
+  cardIssuanceExistingCard?.meta?.bonusRule,
 ]);
 
  const programsOverviewShareImage = useMemo(() => {
@@ -7837,21 +8281,6 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
   return (beamio?.image ?? '').trim();
 }, [cardIssuanceShareImageUrl, cardIssuanceExistingCard?.meta?.image, beamio?.image]);
 
- const programsOverviewHeroTierLabel = useMemo(() => {
-   const tiers = cardIssuanceExistingCard?.meta?.tiers;
-   if (!tiers?.length) {
-     return (cardIssuancePreviewSelectedTier?.name ?? 'Member').trim() || 'Member';
-   }
-   const sorted = [...tiers].sort((a, b) => {
-     const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
-     const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
-     const ca = Number.isFinite(na) ? na : 0;
-     const cb = Number.isFinite(nb) ? nb : 0;
-     return cb - ca;
-   });
-   return sorted[0]?.name?.trim() || 'Member';
- }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewSelectedTier?.name]);
-
  const programsOverviewTiersSortedAscending = useMemo(() => {
    const tiers = cardIssuanceExistingCard?.meta?.tiers;
    if (!tiers?.length) {
@@ -7866,11 +8295,81 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    });
  }, [cardIssuanceExistingCard?.meta?.tiers]);
 
+ const programsOverviewProgramFullName = useMemo(() => {
+   if (!cardIssuanceExistingCard) {
+     return cardIssuanceProgramName.trim() || cardIssuancePreviewProgram;
+   }
+   return (
+     cardIssuanceExistingCard.meta?.name?.trim() ||
+     cardIssuanceProgramName.trim() ||
+     programsOverviewDisplayName
+   );
+ }, [
+   cardIssuanceExistingCard,
+   cardIssuanceProgramName,
+   cardIssuancePreviewProgram,
+   programsOverviewDisplayName,
+ ]);
+
+ const programsOverviewSymbolDisplay = useMemo(() => {
+   const sym = cardIssuanceCurrencySymbol.trim();
+   if (sym) return sym;
+   return (cardIssuanceExistingCard?.userCard?.currency ?? '').trim() || '—';
+ }, [cardIssuanceCurrencySymbol, cardIssuanceExistingCard?.userCard?.currency]);
+
+ const programsOverviewTierRuleOption = useMemo(
+   () => CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === cardIssuanceTierRule),
+   [cardIssuanceTierRule]
+ );
+
+ /** Programs overview: min/max reload amounts for dashboard cards (metadata overrides form when present). */
+ const programsOverviewReloadLimitsDisplay = useMemo(() => {
+   const prefix = displayFiatPrefixFromCode(
+     cardIssuanceExistingCard?.userCard?.currency,
+     CARD_ISSUANCE_BEAMIO_CURRENCY as ICurrency
+   );
+
+   const formatAmount = (n: number | null): string => {
+     if (n == null || !Number.isFinite(n)) return '—';
+     const withSep = Math.round(n).toLocaleString('en-US');
+     return `${prefix}${withSep}`;
+   };
+
+   const metaMin = cardIssuanceExistingCard?.meta?.minimumTopupCad;
+   let minVal: number | null = null;
+   if (metaMin != null && Number.isFinite(metaMin)) {
+     minVal = Math.round(Number(metaMin));
+   } else {
+     const raw = cardIssuanceMinTopup.replace(/,/g, '').trim();
+     const n = raw === '' ? NaN : Number.parseInt(raw, 10);
+     if (Number.isFinite(n)) minVal = n;
+   }
+
+   const metaMax = cardIssuanceExistingCard?.meta?.maximumTopupCad;
+   let maxVal: number | null = null;
+   if (metaMax != null && Number.isFinite(metaMax)) {
+     maxVal = Math.round(Number(metaMax));
+   } else {
+     const raw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
+     const n = raw === '' ? NaN : Number.parseInt(raw, 10);
+     if (Number.isFinite(n)) maxVal = n;
+   }
+
+   return { minLine: formatAmount(minVal), maxLine: formatAmount(maxVal) };
+ }, [
+   cardIssuanceExistingCard?.meta?.minimumTopupCad,
+   cardIssuanceExistingCard?.meta?.maximumTopupCad,
+   cardIssuanceExistingCard?.userCard?.currency,
+   cardIssuanceMinTopup,
+   cardIssuanceMaxTopup,
+ ]);
+
  const bizNumericNoSpinnerClass =
    '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]';
 
  /** Inline validation: tier / min top-up must not exceed metadata maximum (existing program) or form maximum top-up. */
  const cardIssuanceRechargeLimitError = useMemo(() => {
+  const tierThresholdBoundedByMaxTopup = cardIssuanceTierRule !== 'cumulative';
    const metaCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
    const maxRaw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
    const minRaw = cardIssuanceMinTopup.replace(/,/g, '').trim();
@@ -7884,7 +8383,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
        return `Minimum top-up cannot exceed ${metaCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`;
      }
    }
-   if (Number.isFinite(formMaxN)) {
+  if (tierThresholdBoundedByMaxTopup && Number.isFinite(formMaxN)) {
      for (const row of cardIssuanceTiers) {
        const tierName = row.name.trim();
        if (!tierName) continue;
@@ -7906,6 +8405,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardIssuanceMaxTopup,
    cardIssuanceMinTopup,
+  cardIssuanceTierRule,
    cardIssuanceTiers,
  ]);
 
@@ -7923,7 +8423,9 @@ const cardIssuanceBonusRulesPayload = useMemo(
   () =>
     cardIssuanceBonusRules
       .map((row) => cardIssuanceBonusRuleRowToPayload(row))
-      .filter((row): row is { paymentAmount: number; bonusValue: number } => Boolean(row)),
+      .filter(
+        (row): row is { paymentAmount: number; bonusValue: number; bonusProportional: boolean } => Boolean(row)
+      ),
   [cardIssuanceBonusRules]
 );
 
@@ -7943,18 +8445,61 @@ const cardIssuanceBonusRuleEditorPreviewReceive = Number(
   (cardIssuanceBonusRuleEditorPreviewPay + cardIssuanceBonusRuleEditorPreviewBonus).toFixed(2)
 );
 
+const cardIssuanceBonusRuleEditorExampleBonus = useMemo(() => {
+  if (
+    !cardIssuanceBonusRuleBonusProportional ||
+    cardIssuanceBonusRulePaymentAmountN == null ||
+    cardIssuanceBonusRuleBonusValueN == null
+  ) {
+    return null;
+  }
+  if (cardIssuanceBonusRulePaymentAmountN <= 0) return null;
+  return Number(
+    (
+      (CARD_ISSUANCE_BONUS_RULE_EXAMPLE_TOPUP / cardIssuanceBonusRulePaymentAmountN) *
+      cardIssuanceBonusRuleBonusValueN
+    ).toFixed(2)
+  );
+}, [
+  cardIssuanceBonusRuleBonusProportional,
+  cardIssuanceBonusRulePaymentAmountN,
+  cardIssuanceBonusRuleBonusValueN,
+]);
+
 const cardIssuanceBonusRuleEditorValidationError = useMemo(() => {
+  const rawPay = cardIssuanceBonusRulePaymentAmount.replace(/,/g, '').trim();
+  const rawBonus = cardIssuanceBonusRuleBonusValue.replace(/,/g, '').trim();
+  if (rawPay !== '') {
+    const payN = Number.parseFloat(rawPay);
+    const payCents = Number.isFinite(payN) ? Math.round(payN * 100) / 100 : NaN;
+    if (!Number.isFinite(payN) || payN <= 0 || payCents <= 0) {
+      return 'Payment Amount must be greater than zero.';
+    }
+  }
+  if (rawBonus !== '') {
+    const bonusN = Number.parseFloat(rawBonus);
+    const bonusCents = Number.isFinite(bonusN) ? Math.round(bonusN * 100) / 100 : NaN;
+    if (!Number.isFinite(bonusN) || bonusN <= 0 || bonusCents <= 0) {
+      return 'Bonus Value must be greater than zero.';
+    }
+  }
+
   if (!cardIssuanceBonusRuleEditorPayload) return '';
   const otherRules = cardIssuanceBonusRules
     .filter((row) => row.id !== cardIssuanceEditingBonusRuleId)
     .map((row) => cardIssuanceBonusRuleRowToPayload(row))
-    .filter((row): row is { paymentAmount: number; bonusValue: number } => row != null);
+    .filter(
+      (row): row is { paymentAmount: number; bonusValue: number; bonusProportional: boolean } => row != null
+    );
 
   if (otherRules.some((row) => row.paymentAmount === cardIssuanceBonusRuleEditorPayload.paymentAmount)) {
     return 'Another rule already uses this Payment Amount.';
   }
 
-  if (otherRules.some((row) => row.bonusValue === cardIssuanceBonusRuleEditorPayload.bonusValue)) {
+  if (
+    !cardIssuanceBonusRuleBonusProportional &&
+    otherRules.some((row) => !row.bonusProportional && row.bonusValue === cardIssuanceBonusRuleEditorPayload.bonusValue)
+  ) {
     return 'Another rule already uses this Bonus Value.';
   }
 
@@ -7981,7 +8526,14 @@ const cardIssuanceBonusRuleEditorValidationError = useMemo(() => {
   }
 
   return '';
-}, [cardIssuanceBonusRuleEditorPayload, cardIssuanceBonusRules, cardIssuanceEditingBonusRuleId]);
+}, [
+  cardIssuanceBonusRuleBonusProportional,
+  cardIssuanceBonusRuleBonusValue,
+  cardIssuanceBonusRuleEditorPayload,
+  cardIssuanceBonusRulePaymentAmount,
+  cardIssuanceBonusRules,
+  cardIssuanceEditingBonusRuleId,
+]);
 
 const cardIssuancePrimaryBonusRule = cardIssuanceBonusRulesPayload[0];
 
@@ -8128,6 +8680,7 @@ const openCardIssuanceBonusRuleCreate = useCallback(() => {
   setCardIssuanceEditingBonusRuleId(null);
   setCardIssuanceBonusRulePaymentAmount(String(CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
   setCardIssuanceBonusRuleBonusValue(String(CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT));
+  setCardIssuanceBonusRuleBonusProportional(false);
   setCardIssuanceBonusRuleEditorOpen(true);
 }, []);
 
@@ -8137,6 +8690,7 @@ const openCardIssuanceBonusRuleEdit = useCallback((ruleId: string) => {
   setCardIssuanceEditingBonusRuleId(ruleId);
   setCardIssuanceBonusRulePaymentAmount(row.paymentAmount);
   setCardIssuanceBonusRuleBonusValue(row.bonusValue);
+  setCardIssuanceBonusRuleBonusProportional(row.bonusProportional === true);
   setCardIssuanceBonusRuleEditorOpen(true);
 }, [cardIssuanceBonusRules]);
 
@@ -8151,6 +8705,7 @@ const applyCardIssuanceBonusRuleEditor = useCallback(() => {
               ...row,
               paymentAmount: String(cardIssuanceBonusRuleEditorPayload.paymentAmount),
               bonusValue: String(cardIssuanceBonusRuleEditorPayload.bonusValue),
+              bonusProportional: cardIssuanceBonusRuleBonusProportional,
             }
           : row
       )
@@ -8160,13 +8715,19 @@ const applyCardIssuanceBonusRuleEditor = useCallback(() => {
       ...prev,
       makeCardIssuanceBonusRuleRow(
         cardIssuanceBonusRuleEditorPayload.paymentAmount,
-        cardIssuanceBonusRuleEditorPayload.bonusValue
+        cardIssuanceBonusRuleEditorPayload.bonusValue,
+        cardIssuanceBonusRuleBonusProportional
       ),
     ]);
   }
   setCardIssuanceBonusRuleEditorOpen(false);
   setCardIssuanceEditingBonusRuleId(null);
-}, [cardIssuanceBonusRuleEditorPayload, cardIssuanceBonusRuleEditorValidationError, cardIssuanceEditingBonusRuleId]);
+}, [
+  cardIssuanceBonusRuleBonusProportional,
+  cardIssuanceBonusRuleEditorPayload,
+  cardIssuanceBonusRuleEditorValidationError,
+  cardIssuanceEditingBonusRuleId,
+]);
 
 const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
   setCardIssuanceBonusRules((prev) => prev.filter((row) => row.id !== ruleId));
@@ -8461,6 +9022,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      return;
    }
    const metadataMaxTopupCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
+  const tierThresholdBoundedByMaxTopup = cardIssuanceTierRule !== 'cumulative';
    if (metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap)) {
      if (maxTopupN > metadataMaxTopupCap) {
        setCardIssuanceCreateError(
@@ -8483,13 +9045,18 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      const tInt = Number.parseInt(tr, 10);
      const tFloat = parseFloat(tr);
      if (!Number.isFinite(tFloat) || !Number.isFinite(tInt) || tFloat !== tInt) continue;
-     if (tInt > maxTopupN) {
+    if (tierThresholdBoundedByMaxTopup && tInt > maxTopupN) {
        setCardIssuanceCreateError(
          `Tier "${tierName}": threshold cannot exceed maximum top-up (${maxTopupN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}).`
        );
        return;
      }
-     if (metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap) && tInt > metadataMaxTopupCap) {
+    if (
+      tierThresholdBoundedByMaxTopup &&
+      metadataMaxTopupCap != null &&
+      Number.isFinite(metadataMaxTopupCap) &&
+      tInt > metadataMaxTopupCap
+    ) {
        setCardIssuanceCreateError(
          `Tier "${tierName}": threshold cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (maximum top-up from card metadata).`
        );
@@ -8499,46 +9066,72 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    const shouldClearCardConfiguratorDraft = !cardIssuanceExistingCard;
    setCardIssuanceCreateLoading(true);
    try {
-     const res = await createBeamioCard({
-       cardOwner: owner,
-       currency: CARD_ISSUANCE_BEAMIO_CURRENCY,
-       unitPriceHuman: '1',
-       ...(cardIssuanceTierRule === 'balance'
-         ? { upgradeType: 1 }
-         : cardIssuanceTierRule === 'cumulative'
-           ? { upgradeType: 2 }
-           : {}),
-       shareTokenMetadata: {
-         name: metaName,
-         minimumTopup: minTopupN,
-         maximumTopup: maxTopupN,
-         ...(cardIssuanceStoreDisplayName.trim()
-           ? {
-               displayName: cardIssuanceStoreDisplayName.trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
-             }
-           : {}),
-        ...(cardIssuanceBonusRulesPayload.length > 0
-          ? {
-              bonusRule: cardIssuanceBonusRulesPayload[0],
-              bonusRules: cardIssuanceBonusRulesPayload,
-            }
-          : {}),
-         ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
-         ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
-         ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
-         ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
-       },
-       ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
-     });
+     const shareTokenMetadataForPublish = {
+       name: metaName,
+       minimumTopup: minTopupN,
+       maximumTopup: maxTopupN,
+       ...(cardIssuanceStoreDisplayName.trim()
+         ? {
+             displayName: cardIssuanceStoreDisplayName.trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
+           }
+         : {}),
+       ...(cardIssuanceBonusRulesPayload.length > 0
+         ? {
+             bonusRule: cardIssuanceBonusRulesPayload[0],
+             bonusRules: cardIssuanceBonusRulesPayload,
+           }
+         : {}),
+       ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
+       ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
+       logoDisplayTier: cardIssuanceLogoDisplayTier,
+       ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
+       ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
+     };
+     const tierRuleUpgradeForPublish =
+       cardIssuanceTierRule === 'balance' ? (1 as const) : cardIssuanceTierRule === 'cumulative' ? (2 as const) : undefined;
+
+     const res = cardIssuanceExistingCard?.cardAddress
+       ? await updateBeamioCardShareMetadata({
+           cardAddress: cardIssuanceExistingCard.cardAddress,
+           shareTokenMetadata: shareTokenMetadataForPublish,
+           ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
+           ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
+         })
+       : await createBeamioCard({
+           cardOwner: owner,
+           currency: CARD_ISSUANCE_BEAMIO_CURRENCY,
+           unitPriceHuman: '1',
+           ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
+           shareTokenMetadata: shareTokenMetadataForPublish,
+           ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
+         });
+
      if (res.success && res.cardAddress) {
-       setCardIssuanceCreateResult({ cardAddress: res.cardAddress, hash: res.hash });
-       if (shouldClearCardConfiguratorDraft && cardConfiguratorDraftEoaKey) {
-         clearCardConfiguratorDraftForEoa(cardConfiguratorDraftEoaKey);
-       }
        setCardIssuanceOnChainRefreshNonce((n) => n + 1);
-       setProfileOwnsIssuedBeamioCard(true);
-       setProfileOwnsIssuedBeamioCardFetched(true);
-       setCardIssuancePublishCelebration({ cardAddress: res.cardAddress, hash: res.hash });
+       const metadataOnlyPublish = Boolean(cardIssuanceExistingCard);
+       const txHashFromRes =
+         !metadataOnlyPublish && 'hash' in res
+           ? (res as { hash?: string }).hash
+           : undefined;
+
+       if (metadataOnlyPublish) {
+         setCardIssuanceOwnerAdminNotice({
+           kind: 'ok',
+           text: 'Program metadata published. Recharge bonus and related settings will be used by POS and apps after a short cache refresh.',
+         });
+       } else {
+         setCardIssuanceCreateResult({ cardAddress: res.cardAddress, hash: txHashFromRes });
+         if (shouldClearCardConfiguratorDraft && cardConfiguratorDraftEoaKey) {
+           clearCardConfiguratorDraftForEoa(cardConfiguratorDraftEoaKey);
+         }
+         setProfileOwnsIssuedBeamioCard(true);
+         setProfileOwnsIssuedBeamioCardFetched(true);
+         setCardIssuancePublishCelebration({
+           cardAddress: res.cardAddress,
+           hash: typeof txHashFromRes === 'string' ? txHashFromRes : '',
+         });
+       }
+
        const categoryIdForIndex = cardIssuanceCategoryId.trim();
        const profileForPost = profiles?.[0];
        void (async () => {
@@ -8547,14 +9140,15 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
            return;
          }
          const cardAddrNorm = ethers.getAddress(createdAddr);
-         try {
-           const pk = profileForPost?.privateKeyArmor;
-           if (!pk) {
-             setCardIssuanceOwnerAdminNotice({
-               kind: 'warn',
-               text: 'Wallet key not available; owner admin registration was skipped. Add your owner EOA as admin manually if needed.',
-             });
-           } else {
+         if (!metadataOnlyPublish) {
+           try {
+             const pk = profileForPost?.privateKeyArmor;
+             if (!pk) {
+               setCardIssuanceOwnerAdminNotice({
+                 kind: 'warn',
+                 text: 'Wallet key not available; owner admin registration was skipped. Add your owner EOA as admin manually if needed.',
+               });
+             } else {
                const chainOwner = await getCardOwner(cardAddrNorm);
                const signerAddr = new ethers.Wallet(pk).address;
                if (ethers.getAddress(signerAddr) !== ethers.getAddress(chainOwner)) {
@@ -8590,11 +9184,12 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
                  }
                }
              }
-         } catch (e: unknown) {
-           setCardIssuanceOwnerAdminNotice({
-             kind: 'warn',
-             text: e instanceof Error ? e.message : 'Owner admin registration failed.',
-           });
+           } catch (e: unknown) {
+             setCardIssuanceOwnerAdminNotice({
+               kind: 'warn',
+               text: e instanceof Error ? e.message : 'Owner admin registration failed.',
+             });
+           }
          }
          if (categoryIdForIndex) {
            try {
@@ -8611,7 +9206,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
          }
        })();
      } else {
-       setCardIssuanceCreateError(res.error ?? 'Create card failed.');
+       setCardIssuanceCreateError(res.error ?? 'Publish failed.');
      }
    } catch (e: any) {
      setCardIssuanceCreateError(e?.message ?? String(e));
@@ -8627,10 +9222,12 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    cardIssuanceTiers,
    cardIssuanceTierRule,
    cardIssuanceShareImageUrl,
+   cardIssuanceLogoDisplayTier,
    cardIssuanceCategoryId,
    cardIssuanceDescription,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
+   cardIssuanceExistingCard,
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardConfiguratorDraftEoaKey,
    buildCardIssuanceTiersPayload,
@@ -8731,6 +9328,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
            id: r.id,
            paymentAmount: r.paymentAmount,
            bonusValue: r.bonusValue,
+           bonusProportional: r.bonusProportional === true,
          }))
        );
      }
@@ -8749,22 +9347,46 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      if (draft.tierRule) {
        setCardIssuanceTierRule(draft.tierRule);
      }
-     if (draft.tiers?.length) {
-       setCardIssuanceTiers(
-         draft.tiers.map((t) => ({
-           id: t.id,
-           name: t.name,
-           preset: t.preset,
-           threshold: t.threshold,
-           discountPercent: t.discountPercent,
-           tierDescription: t.tierDescription,
-           tierDescriptionOpen: t.tierDescriptionOpen,
-           backgroundColor: t.backgroundColor,
-         }))
-       );
+     const mapDraftTier = (t: {
+       id: string
+       name: string
+       preset: CardIssuanceTierPreset
+       threshold: string
+       discountPercent: string
+       tierDescription: string
+       tierDescriptionOpen: boolean
+       backgroundColor: string
+     }): CardIssuanceTierRow => ({
+       id: t.id,
+       name: t.name,
+       preset: t.preset,
+       threshold: t.threshold,
+       discountPercent: t.discountPercent,
+       tierDescription: t.tierDescription,
+       tierDescriptionOpen: t.tierDescriptionOpen,
+       backgroundColor: t.backgroundColor,
+     });
+     if (draft.tiersByLoyaltyRule && Object.keys(draft.tiersByLoyaltyRule).length > 0) {
+       setTiersByLoyaltyRule((prev) => {
+         const merged = { ...prev };
+         for (const key of CARD_ISSUANCE_TIER_RULE_KEYS) {
+           const rows = draft.tiersByLoyaltyRule?.[key];
+           if (rows?.length) merged[key] = rows.map(mapDraftTier);
+         }
+         return merged;
+       });
+     } else if (draft.tiers?.length) {
+       const rule = draft.tierRule ?? 'single';
+       setTiersByLoyaltyRule((prev) => ({
+         ...prev,
+         [rule]: draft.tiers!.map(mapDraftTier),
+       }));
      }
      if (typeof draft.shareImageUrl === 'string') {
        setCardIssuanceShareImageUrl(draft.shareImageUrl);
+     }
+     if (draft.logoDisplayTier != null) {
+       setCardIssuanceLogoDisplayTier(draft.logoDisplayTier);
      }
      if (typeof draft.categoryId === 'string' && draft.categoryId.trim()) {
        setCardIssuanceCategoryId(draft.categoryId.trim());
@@ -8805,12 +9427,45 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        id: r.id,
        paymentAmount: r.paymentAmount,
        bonusValue: r.bonusValue,
+       ...(r.bonusProportional ? { bonusProportional: true } : {}),
      })),
      bonusRulePaymentAmount: cardIssuanceBonusRulePaymentAmount,
      bonusRuleBonusValue: cardIssuanceBonusRuleBonusValue,
      minTopup: cardIssuanceMinTopup,
      maxTopup: cardIssuanceMaxTopup,
      tierRule: cardIssuanceTierRule,
+     tiersByLoyaltyRule: {
+       single: tiersByLoyaltyRule.single.map((t) => ({
+         id: t.id,
+         name: t.name,
+         preset: t.preset,
+         threshold: t.threshold,
+         discountPercent: t.discountPercent,
+         tierDescription: t.tierDescription,
+         tierDescriptionOpen: t.tierDescriptionOpen,
+         backgroundColor: t.backgroundColor,
+       })),
+       cumulative: tiersByLoyaltyRule.cumulative.map((t) => ({
+         id: t.id,
+         name: t.name,
+         preset: t.preset,
+         threshold: t.threshold,
+         discountPercent: t.discountPercent,
+         tierDescription: t.tierDescription,
+         tierDescriptionOpen: t.tierDescriptionOpen,
+         backgroundColor: t.backgroundColor,
+       })),
+       balance: tiersByLoyaltyRule.balance.map((t) => ({
+         id: t.id,
+         name: t.name,
+         preset: t.preset,
+         threshold: t.threshold,
+         discountPercent: t.discountPercent,
+         tierDescription: t.tierDescription,
+         tierDescriptionOpen: t.tierDescriptionOpen,
+         backgroundColor: t.backgroundColor,
+       })),
+     },
      tiers: cardIssuanceTiers.map((t) => ({
        id: t.id,
        name: t.name,
@@ -8822,6 +9477,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        backgroundColor: t.backgroundColor,
      })),
      shareImageUrl: cardIssuanceShareImageUrl,
+     logoDisplayTier: cardIssuanceLogoDisplayTier,
      categoryId: cardIssuanceCategoryId,
      description: cardIssuanceDescription,
      mobileStep: cardIssuanceMobileStep,
@@ -8840,8 +9496,9 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
    cardIssuanceTierRule,
-   cardIssuanceTiers,
+   tiersByLoyaltyRule,
    cardIssuanceShareImageUrl,
+   cardIssuanceLogoDisplayTier,
    cardIssuanceCategoryId,
    cardIssuanceDescription,
    cardIssuanceMobileStep,
@@ -8872,10 +9529,11 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        if (cancelled) return;
        setProfileOwnsIssuedBeamioCard(cards.length > 0);
        setProfileOwnsIssuedBeamioCardFetched(true);
-       if (!trusted || cards.length === 0) {
+       if (cards.length === 0) {
          setMerchantOwnCardAddress(null);
          return;
        }
+       /** Still pick primary when `trusted === false` (RPC/API degraded but profile or cache returned cards); otherwise Overview `staffProgram` stays null and Total Members hint never runs. */
        const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards, baseRpcProviderDirect);
        if (cancelled) return;
        setMerchantOwnCardAddress(primary ? ethers.getAddress(primary) : null);
@@ -8946,7 +9604,10 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
  const activeLedger = 'All' as const;
  const [txSearchTerm, setTxSearchTerm] = useState('');
  const [txFilterTerminal, setTxFilterTerminal] = useState('All');
- const [txFilterType, setTxFilterType] = useState('All');
+ const [txFilterType] = useState('All');
+ /** Mobile Transactions ledger: kind + period pills (independent of desktop search/terminal filters). */
+ const [mobileTransactionsKind, setMobileTransactionsKind] = useState<'all' | 'topup' | 'charge'>('all');
+ const [mobileTransactionsPeriod, setMobileTransactionsPeriod] = useState<OverviewTimeFilter>('Today');
  const [buintRedeemCodeInput, setBuintRedeemCodeInput] = useState('');
  const [buintRedeemPrecheck, setBuintRedeemPrecheck] = useState<Awaited<ReturnType<typeof queryBusinessStartKetRedeemOnChain>> | null>(null);
  const [buintRedeemPrecheckLoading, setBuintRedeemPrecheckLoading] = useState(false);
@@ -9067,7 +9728,15 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
  const merchantActivationStatsCacheKey = `card-activation-stats:${staffProgramCardCacheBucket}`;
 const retainedCapitalTrustedCacheKey =
   staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)
-    ? `card:${staffProgramBeamioCardAddress.toLowerCase()}:dashboard:token0-customer-held:v2`
+    ? retainedCapitalTrustedCacheKeyForCard(staffProgramBeamioCardAddress.toLowerCase())
+    : '';
+const lastResolvedStaffProgramCacheKey =
+  currentEoa && ethers.isAddress(currentEoa)
+    ? `eoa:${currentEoa}:biz:last-staff-program-card:v1`
+    : '';
+const dashboardMembersDirectoryHintTrustedCacheKey =
+  currentEoa && ethers.isAddress(currentEoa)
+    ? dashboardMembersDirectoryHintCacheKey(currentEoa, staffProgramCardCacheBucket)
     : '';
 const activeCardsTrustedCacheKey =
   currentEoa && ethers.isAddress(currentEoa)
@@ -9099,6 +9768,12 @@ const [retainedCapitalDisplay, setRetainedCapitalDisplay] = useState<number | nu
 const [activeCardsCount, setActiveCardsCount] = useState<number | null>(() =>
   activeCardsTrustedCacheKey ? (loadTrustedCache<number>(activeCardsTrustedCacheKey) ?? null) : null
 );
+ /** When Members loyalty rows are still empty, server directory–based active count (Overview feeder); cleared once rows hydrate. */
+const [dashboardActiveCardsDirectoryHint, setDashboardActiveCardsDirectoryHint] = useState<number | null>(() =>
+  dashboardMembersDirectoryHintTrustedCacheKey
+    ? (loadTrustedCache<number>(dashboardMembersDirectoryHintTrustedCacheKey) ?? null)
+    : null
+);
  /** Points / voucher token label on Daily Dashboard (metadata `Symbol` or issuance form fallback for own card). */
  const dashboardPointsCurrencySymbol = useMemo(() => {
    const fromMeta = fixedCardMetadata?.currencySymbol?.trim();
@@ -9120,8 +9795,34 @@ useEffect(() => {
   setRetainedCapitalDisplay(loadTrustedCache<number>(retainedCapitalTrustedCacheKey) ?? null);
 }, [retainedCapitalTrustedCacheKey]);
 useEffect(() => {
+  setDashboardActiveCardsDirectoryHint(
+    dashboardMembersDirectoryHintTrustedCacheKey
+      ? (loadTrustedCache<number>(dashboardMembersDirectoryHintTrustedCacheKey) ?? null)
+      : null
+  );
+}, [dashboardMembersDirectoryHintTrustedCacheKey]);
+useEffect(() => {
   setActiveCardsCount(activeCardsTrustedCacheKey ? (loadTrustedCache<number>(activeCardsTrustedCacheKey) ?? null) : null);
 }, [activeCardsTrustedCacheKey]);
+useEffect(() => {
+  if (!lastResolvedStaffProgramCacheKey || !merchantOwnCardAddress || !ethers.isAddress(merchantOwnCardAddress)) return;
+  saveTrustedCache(lastResolvedStaffProgramCacheKey, ethers.getAddress(merchantOwnCardAddress));
+}, [lastResolvedStaffProgramCacheKey, merchantOwnCardAddress]);
+useEffect(() => {
+  if (!currentEoa || !ethers.isAddress(currentEoa)) return;
+  if (staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)) return;
+  const lastProgram = lastResolvedStaffProgramCacheKey ? loadTrustedCache<string>(lastResolvedStaffProgramCacheKey) : null;
+  if (!lastProgram || !ethers.isAddress(lastProgram)) return;
+  const lastCardLower = ethers.getAddress(lastProgram).toLowerCase();
+  const cachedRetained = loadTrustedCache<number>(retainedCapitalTrustedCacheKeyForCard(lastCardLower));
+  if (cachedRetained != null) {
+    setRetainedCapitalDisplay((prev) => (prev == null ? cachedRetained : prev));
+  }
+  const cachedMembersHint = loadTrustedCache<number>(dashboardMembersDirectoryHintCacheKey(currentEoa, lastCardLower));
+  if (cachedMembersHint != null) {
+    setDashboardActiveCardsDirectoryHint((prev) => (prev == null ? cachedMembersHint : prev));
+  }
+}, [currentEoa, lastResolvedStaffProgramCacheKey, staffProgramBeamioCardAddress]);
  const [merchantOwnerProfile, setMerchantOwnerProfile] = useState<BeamioProfile>(null);
  const [adminNetworkSummaryToday, setAdminNetworkSummaryToday] = useState<{ cadVol: number; txCount: number; usdc: number; vouchers: number } | null>(null);
  /** Chain cumulative admin subtree stats (not tied to Overview date filter) — same shape as period summary */
@@ -9564,6 +10265,50 @@ const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useS
  }, [membersOwnedPrograms]);
  /** Members & Loyalty: rows from `beamio.app/api/cardMemberTopups` (mode=directory), refreshed by feeder; cache keys include EOA */
  const [membersLoyaltyTopupRows, setMembersLoyaltyTopupRows] = useState<BizTopupMemberTableRow[]>([]);
+ const membersLoyaltyTopupRowsRef = useRef<BizTopupMemberTableRow[]>([]);
+ useEffect(() => {
+   membersLoyaltyTopupRowsRef.current = membersLoyaltyTopupRows;
+ }, [membersLoyaltyTopupRows]);
+ useEffect(() => {
+   if (membersLoyaltyTopupRows.length > 0) setDashboardActiveCardsDirectoryHint(null);
+ }, [membersLoyaltyTopupRows.length]);
+useEffect(() => {
+  const hintCard =
+    staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)
+      ? ethers.getAddress(staffProgramBeamioCardAddress)
+      : (() => {
+          const a = membersOwnedPrograms?.[0]?.cardAddress;
+          return a && ethers.isAddress(a) ? ethers.getAddress(a) : null;
+        })();
+  if (!hintCard) return;
+  if (membersLoyaltyTopupRows.length > 0) return;
+  let cancelled = false;
+  void (async () => {
+    try {
+      const normCard = hintCard.toLowerCase();
+      const hintKey = `card:${normCard}:dashboard:active-cards-hint:v2`;
+      const hintCount = await fetchWithCache(
+        hintKey,
+        async () => {
+          const { members } = await fetchAllBeamioCardMemberDirectoryHttp(hintCard);
+          return countRecentActiveMembersFromDirectoryServerOnly(members);
+        },
+        60_000
+      );
+      if (!cancelled) {
+        setDashboardActiveCardsDirectoryHint(hintCount);
+        if (currentEoa && ethers.isAddress(currentEoa)) {
+          saveTrustedCache(dashboardMembersDirectoryHintCacheKey(currentEoa, normCard), hintCount);
+        }
+      }
+    } catch {
+      /* non-fatal */
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
+}, [currentEoa, staffProgramBeamioCardAddress, membersOwnedPrograms, membersLoyaltyTopupRows.length]);
 const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Record<string, MemberDirectoryUserType>>({});
  /** Per-card rollup sums from `mode=card` (total / repeat top-up event counts on server) */
  const [membersLoyaltyServerRollup, setMembersLoyaltyServerRollup] = useState<{
@@ -9585,9 +10330,6 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
  useEffect(() => {
    setMemberRegistryPage(1);
  }, [membersLoyaltyProgramKey]);
- useEffect(() => {
-   setMembersMobileListCap(8);
- }, [membersLoyaltySearch, membersDirectorySegment, membersLoyaltyProgramKey]);
  useEffect(() => {
    if (activeTab !== 'MembersLoyalty') return;
    if (membersLoyaltyProgramKey === 'all') {
@@ -10212,12 +10954,15 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
  }, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, staffProgramBeamioCardAddress]);
 
  const handleTabChange = useCallback((tab: string, opts?: { transactionsSidebar?: 'transactions' | 'insights' }) => {
+  if (isTerminalsMarketRoute && tab !== 'Staff') {
+    navigate('/native-pos');
+  }
    setActiveTab(tab);
    setIsMobileMenuOpen(false);
    if (tab === 'Transactions') {
      setTransactionsSidebarAccent(opts?.transactionsSidebar ?? 'transactions');
    }
- }, []);
+}, [isTerminalsMarketRoute, navigate]);
 
  const mobileHeaderBeamioTag = useMemo(() => {
    const raw =
@@ -10274,6 +11019,21 @@ const setMobileScrollContainerNode = useCallback((node: HTMLDivElement | null) =
      if (el instanceof HTMLInputElement) el.focus();
    }, 320);
  }, [activeTab, handleTabChange]);
+
+ /** After kit Stripe / redeem thank-you: avoid Overview shell hidden (ket+no card) without Programs tab yet — go straight to Programs when eligible. */
+ const finishMerchantKitThankYouAndEnterDashboard = useCallback((closeOverlay: () => void) => {
+   closeOverlay();
+   setCardIssuanceMobileStep(1);
+   if (ketNoCardProgramsEligibleRef.current) {
+     handleTabChange('Card Issuance Setup');
+   } else {
+     handleTabChange('Overview');
+   }
+   requestAnimationFrame(() => {
+     mobileScrollContainerRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+   });
+ }, [handleTabChange]);
 
 useEffect(() => {
   if (!mobileScrollContainerRef.current) return;
@@ -10369,12 +11129,41 @@ useEffect(() => {
    eoa: string;
    status: string;
    lastActive: string;
+   /** From on-chain admin metadata JSON (`allowedTopupMethods`). Omitted on old cache until next sync. */
+   allowedTopupMethods?: string[];
    /**
     * On-chain direct parent from `getAdminSubordinatesWithMetadata(...,).parents[idx]`.
     * `null` = top-level under card owner (`address(0)`). `undefined` = stale cache / not loaded.
     */
    parentAdminAddress?: string | null;
  };
+
+ type LinkTerminalRegistrationOverrides = {
+   deviceHandleResolved: {
+     username: string;
+     address: string;
+     image?: string;
+     first_name?: string;
+     last_name?: string;
+     firstName?: string;
+     lastName?: string;
+     accountName?: string;
+     addressOnly?: boolean;
+   };
+   newTerminalTag: string;
+   newDeviceName: string;
+   newTerminalMintLimit?: string;
+   terminalOnboardingReloadUnlimited?: boolean;
+   terminalOnboardingTopupMethods?: {
+     cash: boolean;
+     bankCard: boolean;
+     usdc: boolean;
+     airdrop: boolean;
+   };
+   /** `null` = 新终端链路（与未打开「编辑终端」时一致）。 */
+   terminalOnboardingEditing?: TerminalRecord | null;
+ };
+
  // 新增：终端管理状态（链上 + 本地存储）
  const [terminals, setTerminals] = useState<TerminalRecord[]>(() => loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? []);
  const [terminalsLoading, setTerminalsLoading] = useState(false);
@@ -10502,7 +11291,29 @@ useEffect(() => {
  );
  const staffPendingPosPermissions = useMemo(() => {
    const terminalIds = new Set(terminals.map((t) => t.id.toLowerCase()));
-   return posTerminalPermissionPending.filter((p) => !terminalIds.has(p.childEoa.toLowerCase()));
+   const open = posTerminalPermissionPending.filter((p) => !terminalIds.has(p.childEoa.toLowerCase()));
+   /** 同一 POS（childEoa）多次申请：只展示时间最新的一条（createdAt 为主，相同则比 receivedAt）。 */
+   const bySender = new Map<string, PosTerminalPermissionPendingV1>();
+   for (const p of open) {
+     const key = p.childEoa.toLowerCase();
+     const prev = bySender.get(key);
+     if (!prev) {
+       bySender.set(key, p);
+       continue;
+     }
+     const pC = Number(p.createdAt) || 0;
+     const prevC = Number(prev.createdAt) || 0;
+     if (pC > prevC) {
+       bySender.set(key, p);
+     } else if (pC === prevC && (Number(p.receivedAt) || 0) >= (Number(prev.receivedAt) || 0)) {
+       bySender.set(key, p);
+     }
+   }
+   return [...bySender.values()].sort(
+     (a, b) =>
+       (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0) ||
+       (Number(b.receivedAt) || 0) - (Number(a.receivedAt) || 0),
+   );
  }, [posTerminalPermissionPending, terminals]);
 
  useEffect(() => {
@@ -10560,6 +11371,10 @@ useEffect(() => {
  const [deviceHandleError, setDeviceHandleError] = useState<string | null>(null);
  const [deviceHandleChecking, setDeviceHandleChecking] = useState(false);
  const deviceValidateAbortRef = useRef<boolean>(false);
+ /** Pending POS 授权：`beamioTag` 以 `kkk22_` 开头且其后（忽略大小写）以 `pos_` 开头时自动按 Link New Terminal 默认项注册（每 `sendId` 仅尝试一次）。 */
+ const autoKkk22PosTerminalRegStartedRef = useRef<Set<string>>(new Set());
+ /** 自动注册失败后重新展示 Pending 面板，便于手动 Approve。 */
+ const [autoKkk22PosRegFailedBySendId, setAutoKkk22PosRegFailedBySendId] = useState<Record<string, true>>({});
 
  const validateDeviceHandle = useCallback(async (raw: string) => {
    const trimmed = raw.trim().replace(/^@/, '');
@@ -10852,6 +11667,56 @@ const txQueryRootAddress = useMemo(() => {
              profiles,
              effectiveAdminAddress,
              ])
+
+ const transactionsMobileFiltered = useMemo(() => {
+   const ctx: BizTxTableFilterCtx = {
+     activeLedger,
+     txSearchTerm: '',
+     txFilterType: 'All',
+     txFilterTerminal: 'All',
+     hasAaAccount: Boolean(profiles?.[0]?.aaAccount?.trim()),
+     merchantAdminLower:
+       effectiveAdminAddress && ethers.isAddress(effectiveAdminAddress)
+         ? effectiveAdminAddress.toLowerCase()
+         : null,
+   }
+   let rows = indexerTransactions.filter((tx) => bizTxMatchesTransactionTableFilters(tx, ctx))
+   if (mobileTransactionsKind === 'topup') {
+     rows = rows.filter((tx) => tx.type === 'In-Store Top-Up')
+   } else if (mobileTransactionsKind === 'charge') {
+     rows = rows.filter((tx) => tx.type === 'Charge' || tx.type === 'Tip')
+   }
+   const endSec = Math.floor(Date.now() / 1000)
+   const startSec = overviewPeriodStartUnixSec(mobileTransactionsPeriod, endSec)
+   rows = rows.filter((tx) => {
+     const ts = txDisplayRowTimestampSec(tx)
+     if (ts <= 0) return false
+     return ts >= startSec && ts <= endSec
+   })
+   rows.sort((a, b) => txDisplayRowTimestampSec(b) - txDisplayRowTimestampSec(a))
+   return rows
+ }, [indexerTransactions, mobileTransactionsKind, mobileTransactionsPeriod, profiles, effectiveAdminAddress])
+
+ const transactionsMobileDayGroups = useMemo(() => {
+   const buckets = new Map<string, TxDisplayRow[]>()
+   for (const tx of transactionsMobileFiltered) {
+     const ts = txDisplayRowTimestampSec(tx)
+     const key = ts > 0 ? mobileTransactionsDayBucketKeyLocal(ts) : 'unknown'
+     if (!buckets.has(key)) buckets.set(key, [])
+     buckets.get(key)!.push(tx)
+   }
+   const groups = Array.from(buckets.entries()).map(([bucketKey, items]) => {
+     const firstTs = txDisplayRowTimestampSec(items[0])
+     return {
+       bucketKey,
+       label: bucketKey === 'unknown' ? 'UNKNOWN' : mobileTransactionsDayHeadingLocal(firstTs),
+       items,
+       sortTs: Math.max(...items.map((t) => txDisplayRowTimestampSec(t))),
+     }
+   })
+   groups.sort((a, b) => b.sortTs - a.sortTs)
+   return groups
+ }, [transactionsMobileFiltered])
 
  const walletIssuerProgramCardsLower = useMemo(() => {
    const s = new Set<string>()
@@ -11485,10 +12350,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
         seenEoa.add(id);
         let name = 'POS Terminal';
         let tag = fmtAddr(eoa);
+        let allowedTopupMethods: string[] | undefined;
         try {
           const meta = typeof row.metaStr === 'string' && row.metaStr ? JSON.parse(row.metaStr) : null;
           if (meta?.deviceName) name = meta.deviceName;
           if (meta?.handle) tag = meta.handle.startsWith('@') ? meta.handle : `@${meta.handle}`;
+          if (meta && Array.isArray(meta.allowedTopupMethods)) {
+            allowedTopupMethods = meta.allowedTopupMethods.map((x: unknown) => String(x));
+          }
         } catch {
           /* ignore */
         }
@@ -11500,10 +12369,17 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
           status: 'Active',
           lastActive: 'On-chain',
           parentAdminAddress: row.parentAddr,
+          allowedTopupMethods,
         });
       }
       const chainIds = new Set(fromChain.map((t) => t.id.toLowerCase()));
-      merged = [...fromChain];
+      merged = fromChain.map((row) => {
+        const cachedRow = cached.find((x) => x?.id && x.id.toLowerCase() === row.id.toLowerCase());
+        if (cachedRow?.allowedTopupMethods?.length && row.allowedTopupMethods === undefined) {
+          return { ...row, allowedTopupMethods: cachedRow.allowedTopupMethods };
+        }
+        return row;
+      });
       for (const c of cached) {
         if (c?.id && ethers.isAddress(c.id) && !chainIds.has(c.id.toLowerCase())) {
           merged.push(c);
@@ -12032,12 +12908,15 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
  /** Members loyalty：由 DaemonProvider 在 CoNET `block` 上调度后台刷新（非 Members tab 也可更新）；禁止与 feeder 重复拉取。 */
  const membersLoyaltyBgActiveRef = useRef(true);
+ /** Latest directory merge tick — used to re-run fetch when opening Members (avoid stale empty bundle wiping rows). */
+ const membersLoyaltyDirectoryTickRef = useRef<(() => Promise<void>) | null>(null);
  useEffect(() => {
    membersLoyaltyBgActiveRef.current = true;
    const tick = async () => {
      if (!membersLoyaltyBgActiveRef.current || !profiles?.[0]) return;
      const account =
-       feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : '';
+       membersBizViewerResolvedForCache(profiles[0].keyID, myAddress, fixedCardMetadata?.cardOwner) ??
+       (feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : null);
      if (!account) return;
      const walletPartition = bizWalletStoragePartitionLower(profiles[0].keyID, myAddress);
      const membersOwnedProgramsCacheKey =
@@ -12334,20 +13213,35 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      }
    };
 
+   membersLoyaltyDirectoryTickRef.current = tick;
    registerMembersLoyaltyBackgroundWork(tick);
   void tick();
-   return () => {
+     return () => {
      membersLoyaltyBgActiveRef.current = false;
+     membersLoyaltyDirectoryTickRef.current = null;
      registerMembersLoyaltyBackgroundWork(null);
    };
  }, [
    registerMembersLoyaltyBackgroundWork,
-   profiles,
+   /** Do not depend on `profiles` array identity — Daemon `setProfiles` often allocates a new array each update, which would tear down this effect mid-tick and leave `membersLoyaltyTopupRows` empty on mobile until a later block/tick completes. */
+   profiles?.[0]?.keyID,
+   profiles?.[0]?.aaAccount,
+   profiles?.[0]?.privateKeyArmor,
    myAddress,
    feederEoa,
    walletStoragePartitionLower,
   activeCardsTrustedCacheKey,
+  fixedCardMetadata?.cardOwner,
  ]);
+
+ /** Opening Members: bust per-card directory cache (stale empty snapshot), then merge from API. */
+ useEffect(() => {
+   if (activeTab !== 'MembersLoyalty') return;
+   if (walletStoragePartitionLower) {
+     invalidateFetchCache(`eoa:${walletStoragePartitionLower}:beamio:cardMemberTopups:directoryAll:v1:`);
+   }
+   void membersLoyaltyDirectoryTickRef.current?.();
+ }, [activeTab, walletStoragePartitionLower]);
 
  /** Unified Base overview feeder: one batch per **CoNET L1 new block**（Daemon 全局守护，全 Merchant OS 生命周期内持续刷新，不限当前 Tab）。 */
  const feederInProgressRef = useRef(false);
@@ -12359,11 +13253,14 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  const tipsLifetimeLastFullFetchMsRef = useRef(0);
  /** Detect transition into Transactions tab to invalidate indexer cache (same render cycle as tx fetch effect). */
  const prevActiveTabForTxRef = useRef<string>(activeTab);
- feederAccountRef.current = feederEoa ?? '';
+ feederAccountRef.current =
+   membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner) ?? feederEoa ?? '';
  useEffect(() => {
    feederCancelledRef.current = false;
    /** Resolved wallet for quota / BUint / consumption; null when not logged in (still fetch global stats + metadata). */
-   const accountResolved = feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : null;
+   const accountResolved =
+     membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner) ??
+     (feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : null);
    const effectiveAdmin = effectiveAdminAddress ?? '';
 
    // Load trusted cache for immediate display
@@ -12503,6 +13400,41 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
            }
          } catch {
            if (!feederCancelledRef.current && cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
+         }
+       }
+
+       // 0b. Active Cards KPI: server directory hint when Members daemon has not merged rows yet (same90d rule on `lastTopupAt`; no holder balance RPC).
+       const activeCardsHintProgramAddr =
+         programAddr && ethers.isAddress(programAddr)
+           ? ethers.getAddress(programAddr)
+           : (() => {
+               const first = membersOwnedProgramsRef.current?.[0]?.cardAddress;
+               return first && ethers.isAddress(first) ? ethers.getAddress(first) : null;
+             })();
+       if (
+         !feederCancelledRef.current &&
+         activeCardsHintProgramAddr &&
+         membersLoyaltyTopupRowsRef.current.length === 0
+       ) {
+         try {
+           const normCard = activeCardsHintProgramAddr.toLowerCase();
+          const hintKey = `card:${normCard}:dashboard:active-cards-hint:v2`;
+           const hintCount = await fetchWithCache(
+             hintKey,
+             async () => {
+               const { members } = await fetchAllBeamioCardMemberDirectoryHttp(activeCardsHintProgramAddr);
+               return countRecentActiveMembersFromDirectoryServerOnly(members);
+             },
+             60_000
+           );
+          if (!feederCancelledRef.current) {
+            setDashboardActiveCardsDirectoryHint(hintCount);
+            if (currentEoa && ethers.isAddress(currentEoa)) {
+              saveTrustedCache(dashboardMembersDirectoryHintCacheKey(currentEoa, normCard), hintCount);
+            }
+          }
+         } catch {
+           /* non-fatal */
          }
        }
 
@@ -13544,6 +14476,33 @@ useEffect(() => {
  const showStaffTerminalsManagement =
    isAdminForUI || (profileOwnsIssuedBeamioCardFetched && profileOwnsIssuedBeamioCard);
 
+ const autoKkk22PosTerminalEligibleNow =
+   showStaffTerminalsManagement && Boolean(profiles?.[0]?.privateKeyArmor);
+ /** 满足自动授权条件时从 UI 隐藏对应 pending（自动失败则重新显示）。 */
+ const staffPendingPosPermissionsForUi = useMemo(() => {
+   if (!autoKkk22PosTerminalEligibleNow) return staffPendingPosPermissions;
+   return staffPendingPosPermissions.filter((row) => {
+     if (!isAutoApproveKkk22PosTerminalBeamioTag(row.childBeamioTag)) return true;
+     if (autoKkk22PosRegFailedBySendId[row.sendId]) return true;
+     return false;
+   });
+ }, [staffPendingPosPermissions, autoKkk22PosTerminalEligibleNow, autoKkk22PosRegFailedBySendId]);
+
+ useEffect(() => {
+   setAutoKkk22PosRegFailedBySendId((prev) => {
+     if (Object.keys(prev).length === 0) return prev;
+     const alive = new Set(staffPendingPosPermissions.map((r) => r.sendId));
+     let next: Record<string, true> | null = null;
+     for (const id of Object.keys(prev)) {
+       if (!alive.has(id)) {
+         if (!next) next = { ...prev };
+         delete next[id];
+       }
+     }
+     return next ?? prev;
+   });
+ }, [staffPendingPosPermissions]);
+
  /** User EOA is on the program card admin list → treat as joined to `MERCHANT_PROGRAM_ALLIANCE_ID` for UI */
  const merchantWalletEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
  const eoaOnFixedCardAdminList =
@@ -13694,7 +14653,9 @@ const isCardConfiguratorMobileShell = useMemo(
  const useTerminalsMarketLayout =
    isTerminalsMarketRoute || (isCardConfiguratorMobileViewport && activeTab === 'Staff');
  const hideMobileFloatingBar =
-   !showMobileMerchantFloatingBar || (useTerminalsMarketLayout && activeTab === 'Staff');
+  !showMobileMerchantFloatingBar ||
+  showBizFirstMembershipOnboarding ||
+  (useTerminalsMarketLayout && activeTab === 'Staff');
  /** Wallet tab: Vault EOA USDC → CAD headline (oracle). */
  const walletTreasuryCadPrimary = useMemo(() => {
    if (eoaUsdcBalance == null || eoaUsdcBalance === '') return '—';
@@ -13738,8 +14699,8 @@ const isCardConfiguratorMobileShell = useMemo(
      return (
        row.memberAddress.toLowerCase().includes(q) ||
        (row.aaAddress && row.aaAddress.toLowerCase().includes(q)) ||
-       row.programName.toLowerCase().includes(q) ||
-       row.beamioTag.toLowerCase().includes(q)
+       (row.programName ?? '').toLowerCase().includes(q) ||
+       (row.beamioTag ?? '').toLowerCase().includes(q)
      );
    });
  }, [topupMemberTableRowsAll, membersLoyaltySearch, membersLoyaltyProgramKey]);
@@ -13748,9 +14709,57 @@ const isCardConfiguratorMobileShell = useMemo(
    return [...membersTopupDirectoryFiltered].sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
  }, [membersTopupDirectoryFiltered]);
 
+ /** Mobile Members (`lg:hidden`): all programs + searchable; no program / segment controls on small screens. */
+ const membersMobileDirectoryFiltered = useMemo(() => {
+   const q = membersLoyaltySearch.trim().toLowerCase();
+   return topupMemberTableRowsAll.filter((row) => {
+     if (!q) return true;
+     return (
+       row.memberAddress.toLowerCase().includes(q) ||
+       (row.aaAddress && row.aaAddress.toLowerCase().includes(q)) ||
+       (row.programName ?? '').toLowerCase().includes(q) ||
+       (row.beamioTag ?? '').toLowerCase().includes(q)
+     );
+   });
+ }, [topupMemberTableRowsAll, membersLoyaltySearch]);
+
+ const membersMobileDirectorySorted = useMemo(() => {
+   return [...membersMobileDirectoryFiltered].sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
+ }, [membersMobileDirectoryFiltered]);
+
+ const membersMobileDirectorySegmentRows = useMemo(() => {
+   return filterDirectoryRowsByInclusiveChannel(membersMobileDirectorySorted, memberDirectoryUserTypeDb);
+ }, [membersMobileDirectorySorted, memberDirectoryUserTypeDb]);
+
+ /** Mirrors daemon `activeCardScopedKeys` (stored value OR lookback top-up); used when `activeCardsCount` is stale `0` from cache / `??` bug. */
+ const dashboardActiveCardsRowDerivedCount = useMemo(() => {
+   const since = Math.floor(Date.now() / 1000) - ACTIVE_CARDS_LOOKBACK_DAYS * 24 * 3600;
+   const keys = new Set<string>();
+   for (const r of topupMemberTableRowsAll) {
+     const aaRaw = r.aaAddress?.trim();
+     const aa =
+       aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+         ? ethers.getAddress(aaRaw)
+         : undefined;
+     const eoaM = r.memberAddress && ethers.isAddress(r.memberAddress) ? ethers.getAddress(r.memberAddress) : null;
+     if (!eoaM) continue;
+     const balanceAccount = aa ?? eoaM;
+     const scopedKey = `${r.cardLower}:${balanceAccount.toLowerCase()}`;
+     const bal = r.currentCardToken0Balance;
+     const hasBal = bal != null && Number.isFinite(bal) && bal > 0;
+     const ls = r.lastSeenTs ?? 0;
+     const hasRecent = ls > 0 && ls >= since;
+     if (hasBal || hasRecent) keys.add(scopedKey);
+   }
+   return keys.size;
+ }, [topupMemberTableRowsAll]);
+
  const membersTopupKpisAll = useMemo(() => {
+   /** `activeCardsCount === 0` is a valid number: `?? topupMemberTableRowsAll.length` wrongly kept 0 instead of falling back. Prefer max with row-derived active (indexer-only actives may still exceed rows). */
+   const directoryHint = topupMemberTableRowsAll.length === 0 ? (dashboardActiveCardsDirectoryHint ?? 0) : 0;
+   const count = Math.max(activeCardsCount ?? 0, dashboardActiveCardsRowDerivedCount, directoryHint);
    return {
-    count: activeCardsCount ?? topupMemberTableRowsAll.length,
+    count,
      /** `getGlobalStatsFull.cumulativeMint` summed across owned programs (÷1e6); see BeamioUserCard readme */
      volumePointsChain: membersLoyaltyChainCumulativeMintDisplay,
      /** Server `beamio_card_topup_rollups.total_repeat_topup_count` summed across owned programs */
@@ -13758,16 +14767,14 @@ const isCardConfiguratorMobileShell = useMemo(
      /** Server total successful top-up events (all categories), summed across programs */
      totalTopupEvents: membersLoyaltyServerRollup.totalTopupEvents,
    };
-}, [activeCardsCount, topupMemberTableRowsAll, membersLoyaltyServerRollup, membersLoyaltyChainCumulativeMintDisplay]);
-
- const programsOverviewAvgMemberCad = useMemo(() => {
-   const n = membersTopupKpisAll.count;
-   const vol = membersTopupKpisAll.volumePointsChain;
-   if (n <= 0 || vol == null || !Number.isFinite(vol)) {
-     return null;
-   }
-   return vol / n;
- }, [membersTopupKpisAll.count, membersTopupKpisAll.volumePointsChain]);
+}, [
+  activeCardsCount,
+  dashboardActiveCardsRowDerivedCount,
+  dashboardActiveCardsDirectoryHint,
+  topupMemberTableRowsAll.length,
+  membersLoyaltyServerRollup,
+  membersLoyaltyChainCumulativeMintDisplay,
+]);
 
  /** Linked SoftPOS terminals ≈ Active NFC touchpoints for Directory bento */
  const membersDirectoryActiveNfcCount = useMemo(() => terminals.length, [terminals]);
@@ -13789,119 +14796,211 @@ const isCardConfiguratorMobileShell = useMemo(
   );
 }, [membersTopupDirectorySorted, membersDirectorySegment, memberDirectoryUserTypeDb]);
 
+ /** Desktop: “All programs” must not hide NFC-only members behind the default App segment. */
+ const membersDesktopDirectoryCardRows = useMemo(() => {
+   if (membersLoyaltyProgramKey === 'all') {
+     return filterDirectoryRowsByInclusiveChannel(membersTopupDirectorySorted, memberDirectoryUserTypeDb);
+   }
+   return membersDirectorySegmentRows;
+ }, [membersLoyaltyProgramKey, membersTopupDirectorySorted, membersDirectorySegmentRows, memberDirectoryUserTypeDb]);
+
+ const membersDirectoryDrawerSegment = useMemo((): MembersDirectorySegment => {
+   if (!membersDirectoryDetailRow) return membersDirectorySegment;
+   if (membersLoyaltyProgramKey !== 'all') return membersDirectorySegment;
+   const t = resolveMemberDirectoryUserType(membersDirectoryDetailRow, memberDirectoryUserTypeDb);
+   if (t === 'nfc') return 'anon_nfc';
+   return 'app';
+ }, [membersDirectoryDetailRow, membersLoyaltyProgramKey, membersDirectorySegment, memberDirectoryUserTypeDb]);
+
  const membersMobileTopSpenderRow = useMemo(() => {
-   const rows = membersDirectorySegmentRows;
+   const rows = membersMobileDirectorySegmentRows;
    if (!rows.length) return null;
    let best = rows[0];
-   let bestPts = directoryMemberPointsHuman(best);
+  let bestTier = directoryMemberTierFromPoints(directoryMemberPointsHuman(best));
+  let bestPts = directoryMemberPointsHuman(best);
+  let bestLastSeen = best.lastSeenTs || 0;
    for (let i = 1; i < rows.length; i++) {
      const r = rows[i];
+    const tier = directoryMemberTierFromPoints(directoryMemberPointsHuman(r));
      const p = directoryMemberPointsHuman(r);
-     if (p > bestPts) {
+    const lastSeen = r.lastSeenTs || 0;
+    if (
+      Number(tier.gold) > Number(bestTier.gold) ||
+      (tier.gold === bestTier.gold && (p > bestPts || (p === bestPts && lastSeen > bestLastSeen)))
+    ) {
        best = r;
+      bestTier = tier;
        bestPts = p;
+      bestLastSeen = lastSeen;
      }
    }
    if (bestPts <= 0) return null;
    return best;
- }, [membersDirectorySegmentRows]);
+ }, [membersMobileDirectorySegmentRows]);
 
  const membersMobileListExcludingFeatured = useMemo(() => {
    const ts = membersMobileTopSpenderRow;
-   if (!ts) return membersDirectorySegmentRows;
+   if (!ts) return membersMobileDirectorySegmentRows;
    const key = (r: BizTopupMemberTableRow) => `${r.cardLower}-${r.memberAddress.toLowerCase()}`;
    const tsKey = key(ts);
-   return membersDirectorySegmentRows.filter((r) => key(r) !== tsKey);
- }, [membersDirectorySegmentRows, membersMobileTopSpenderRow]);
+   return membersMobileDirectorySegmentRows.filter((r) => key(r) !== tsKey);
+ }, [membersMobileDirectorySegmentRows, membersMobileTopSpenderRow]);
 
-/** Members 表 beamioTag：由全局 addressProfile registry 填充；远程拉取仅 Daemon 分钟任务 */
+ useEffect(() => {
+   setMembersMobileListCap(8);
+ }, [membersLoyaltySearch, membersDirectorySegment, membersLoyaltyProgramKey, membersMobileDirectoryFiltered.length]);
+
+ /** Members 表 beamioTag：由全局 addressProfile registry 填充；远程拉取仅 Daemon 分钟任务 */
+ useEffect(() => {
+   setMembersLoyaltyTopupRows((prev) => {
+     let changed = false;
+     const next = prev.map((row) => {
+       if ((row.beamioTag ?? '').replace(/^@/, '').trim()) return row;
+       const memberLower =
+         row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress).toLowerCase() : '';
+       const aaLower =
+         row.aaAddress && ethers.isAddress(row.aaAddress) ? ethers.getAddress(row.aaAddress).toLowerCase() : '';
+       const tag =
+         (memberLower && beamioTagFromRecord(addressProfileByLower[memberLower])) ||
+         (aaLower && beamioTagFromRecord(addressProfileByLower[aaLower])) ||
+         '';
+       if (!tag) return row;
+       changed = true;
+       return { ...row, beamioTag: tag };
+     });
+     return changed ? next : prev;
+   });
+ }, [addressProfileByLower, membersLoyaltyTopupRows]);
+
+ useEffect(() => {
+   if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
+   const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
+   if (!viewer) return;
+   const viewerLower = viewer.toLowerCase();
+   const k = `eoa:${walletStoragePartitionLower}:biz:members-owned-programs:v1:${viewerLower}`;
+   const c = loadTrustedCache<MembersOwnedProgramOverviewRow[]>(k);
+   if (c != null) {
+     setMembersOwnedPrograms((prev) => {
+       const prevLen = prev?.length ?? 0;
+       const next = c.length === 0 && prevLen > 0 ? prev! : c;
+       membersOwnedProgramsRef.current = next;
+       return next;
+     });
+   }
+   const bundle = loadTrustedCache<MembersLoyaltyDirectoryTrustedBundleV1>(
+     membersLoyaltyDirectoryBundleCacheKey(walletStoragePartitionLower, viewerLower),
+   );
+   if (bundle) {
+     setMembersLoyaltyTopupRows((prev) => {
+       const coerced = coerceBizTopupMemberRowsFromTrustedCache(bundle.topupRows);
+       if (coerced.length === 0 && prev.length > 0) return prev;
+       return coerced;
+     });
+     setMembersLoyaltyServerRollup(
+       bundle.serverRollup ?? { totalTopupEvents: 0, totalRepeatTopupEvents: 0 },
+     );
+     if (bundle.chainCumulativeMintDisplay !== undefined) {
+       setMembersLoyaltyChainCumulativeMintDisplay(bundle.chainCumulativeMintDisplay);
+     }
+     if (bundle.activeCardsCount !== undefined) {
+       setActiveCardsCount(bundle.activeCardsCount);
+     }
+   }
+   const userTypeDb = loadTrustedCache<Record<string, MemberDirectoryUserType>>(
+     memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewerLower),
+   );
+   if (userTypeDb) {
+     setMemberDirectoryUserTypeDb(userTypeDb);
+   }
+ }, [activeTab, walletStoragePartitionLower, profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
+
+/** Mobile-first fallback: if the heavy merged daemon has not populated rows yet, seed Members from direct directory API pages. */
 useEffect(() => {
-  setMembersLoyaltyTopupRows((prev) => {
-    let changed = false;
-    const next = prev.map((row) => {
-      if ((row.beamioTag ?? '').replace(/^@/, '').trim()) return row;
-      const memberLower =
-        row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress).toLowerCase() : '';
-      const aaLower =
-        row.aaAddress && ethers.isAddress(row.aaAddress) ? ethers.getAddress(row.aaAddress).toLowerCase() : '';
-      const tag =
-        (memberLower && beamioTagFromRecord(addressProfileByLower[memberLower])) ||
-        (aaLower && beamioTagFromRecord(addressProfileByLower[aaLower])) ||
-        '';
-      if (!tag) return row;
-      changed = true;
-      return { ...row, beamioTag: tag };
+  if (activeTab !== 'MembersLoyalty') return;
+  if (membersLoyaltyTopupRows.length > 0) return;
+  const fallbackPrograms: Array<{ cardAddress: string; programName: string; currency?: string }> =
+    (membersOwnedPrograms ?? [])
+      .filter((p) => p.cardAddress && ethers.isAddress(p.cardAddress))
+      .map((p) => ({
+        cardAddress: ethers.getAddress(p.cardAddress),
+        programName: p.programName,
+        currency: p.currency,
+      })) ??
+    [];
+  if (fallbackPrograms.length === 0 && staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)) {
+    fallbackPrograms.push({
+      cardAddress: ethers.getAddress(staffProgramBeamioCardAddress),
+      programName: fixedCardMetadata?.name || 'Current Program',
+      currency: undefined,
     });
-    return changed ? next : prev;
-  });
-}, [addressProfileByLower, membersLoyaltyTopupRows]);
-
-useEffect(() => {
-  if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
-  const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
-  if (!viewer) return;
-  const viewerLower = viewer.toLowerCase();
-  const k = `eoa:${walletStoragePartitionLower}:biz:members-owned-programs:v1:${viewerLower}`;
-  const c = loadTrustedCache<MembersOwnedProgramOverviewRow[]>(k);
-  if (c != null) {
-    membersOwnedProgramsRef.current = c;
-    setMembersOwnedPrograms(c);
   }
-  const bundle = loadTrustedCache<MembersLoyaltyDirectoryTrustedBundleV1>(
-    membersLoyaltyDirectoryBundleCacheKey(walletStoragePartitionLower, viewerLower),
-  );
-  if (bundle) {
-    setMembersLoyaltyTopupRows(bundle.topupRows);
-    setMembersLoyaltyServerRollup(
-      bundle.serverRollup ?? { totalTopupEvents: 0, totalRepeatTopupEvents: 0 },
-    );
-    if (bundle.chainCumulativeMintDisplay !== undefined) {
-      setMembersLoyaltyChainCumulativeMintDisplay(bundle.chainCumulativeMintDisplay);
-    }
-    if (bundle.activeCardsCount !== undefined) {
-      setActiveCardsCount(bundle.activeCardsCount);
-    }
-  }
-  const userTypeDb = loadTrustedCache<Record<string, MemberDirectoryUserType>>(
-    memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewerLower),
-  );
-  if (userTypeDb) {
-    setMemberDirectoryUserTypeDb(userTypeDb);
-  }
-}, [activeTab, walletStoragePartitionLower, profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner]);
-
-useEffect(() => {
-  if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
-  const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
-  if (!viewer || membersLoyaltyTopupRows.length === 0) return;
-  const cacheKey = memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewer.toLowerCase());
-  setMemberDirectoryUserTypeDb((prev) => {
-    let changed = false;
-    const next = { ...prev };
-    for (const row of membersLoyaltyTopupRows) {
-      const inferred = inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag);
-      if (inferred === 'unknown') continue;
-      const keys = [row.memberAddress, row.aaAddress].filter((v): v is string => !!v && ethers.isAddress(v));
-      for (const key of keys) {
-        const lower = ethers.getAddress(key).toLowerCase();
-        const merged = mergeMemberDirectoryUserTypes(next[lower] ?? 'unknown', inferred);
-        if (merged !== (next[lower] ?? 'unknown')) {
-          next[lower] = merged;
-          changed = true;
-        }
+  if (fallbackPrograms.length === 0) return;
+  let cancelled = false;
+  void (async () => {
+    try {
+      const merged: BizTopupMemberTableRow[] = [];
+      for (const program of fallbackPrograms) {
+        const { members } = await fetchAllBeamioCardMemberDirectoryHttp(program.cardAddress);
+        if (cancelled) return;
+        merged.push(
+          ...mapDirectoryApiMembersToBizTopupRows(
+            program.cardAddress,
+            program.programName,
+            program.currency,
+            members,
+          ),
+        );
       }
+      merged.sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
+      if (cancelled || merged.length === 0) return;
+      setMembersLoyaltyTopupRows((prev) => (prev.length > 0 ? prev : merged));
+    } catch {
+      /* keep existing trusted state on failure */
     }
-    if (changed) saveTrustedCache(cacheKey, next);
-    return changed ? next : prev;
-  });
+  })();
+  return () => {
+    cancelled = true;
+  };
 }, [
   activeTab,
-  walletStoragePartitionLower,
-  profiles?.[0]?.keyID,
-  myAddress,
-  fixedCardMetadata?.cardOwner,
-  membersLoyaltyTopupRows,
+  membersLoyaltyTopupRows.length,
+  membersOwnedPrograms,
+  staffProgramBeamioCardAddress,
+  fixedCardMetadata?.name,
 ]);
+
+ useEffect(() => {
+   if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
+   const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
+   if (!viewer || membersLoyaltyTopupRows.length === 0) return;
+   const cacheKey = memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewer.toLowerCase());
+   setMemberDirectoryUserTypeDb((prev) => {
+     let changed = false;
+     const next = { ...prev };
+     for (const row of membersLoyaltyTopupRows) {
+       const inferred = inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag);
+       if (inferred === 'unknown') continue;
+       const keys = [row.memberAddress, row.aaAddress].filter((v): v is string => !!v && ethers.isAddress(v));
+       for (const key of keys) {
+         const lower = ethers.getAddress(key).toLowerCase();
+         const merged = mergeMemberDirectoryUserTypes(next[lower] ?? 'unknown', inferred);
+         if (merged !== (next[lower] ?? 'unknown')) {
+           next[lower] = merged;
+           changed = true;
+         }
+       }
+     }
+     if (changed) saveTrustedCache(cacheKey, next);
+     return changed ? next : prev;
+   });
+ }, [
+   activeTab,
+   walletStoragePartitionLower,
+   profiles?.[0]?.keyID,
+   myAddress,
+   fixedCardMetadata?.cardOwner,
+   membersLoyaltyTopupRows,
+ ]);
 
  const closeIssueCardModal = useCallback(() => {
    setIsIssueCardModalOpen(false);
@@ -14276,24 +15375,25 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
    })();
 
    const linkNewTerminal = () => {
-     if (!hasAaAccount) {
-       setActiveTab('Market');
-       setSelectedProduct('starter');
-       return;
-     }
      if (showStaffTerminalsManagement) {
        setIsAddTerminalOpen(true);
        return;
      }
+    if (!hasAaAccount) {
+      setActiveTab('Market');
+      setSelectedProduct('starter');
+      return;
+    }
      setActiveTab('Market');
    };
 
    const terminalIcons = [Smartphone, Tablet, Zap] as const;
 
+   /** 勿再套一层 overflow-y-auto：父级 `main` 内已有唯一滚动容器；嵌套滚动在移动端常与 flex 高度、全局 touchmove 逻辑冲突导致无法滑动。 */
    return (
-     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f5f7f9]">
-       <header className="fixed top-0 left-0 right-0 z-30 bg-[#f5f7f9]/80 px-4 py-3 backdrop-blur-md">
-         <div className="mx-auto flex h-12 max-w-2xl items-center rounded-full border border-white/20 bg-[#d9dde0]/60 px-4 shadow-sm backdrop-blur-2xl">
+     <div className="relative bg-[#f5f7f9]">
+       <header className="fixed top-0 left-0 right-0 z-30 bg-[#f5f7f9]/80 px-3 py-2 backdrop-blur-md sm:px-4 sm:py-3">
+         <div className="mx-auto flex h-11 max-w-2xl items-center rounded-full border border-white/20 bg-[#d9dde0]/60 px-3 shadow-sm backdrop-blur-2xl sm:h-12 sm:px-4">
            <button
              type="button"
              onClick={() => setIsMobileMenuOpen(true)}
@@ -14320,8 +15420,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          </div>
        </header>
 
-       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-         <div className="mx-auto max-w-2xl px-6 pb-12 pt-20">
+       <div className="mx-auto max-w-2xl px-4 pb-8 pt-[4.25rem] sm:px-5 sm:pb-10 sm:pt-20">
            {showBizFirstMembershipOnboarding ? (
              <StaffTerminalsNoAaOnloadingShell
                hideMarketingFeaturePanels
@@ -14340,59 +15439,60 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              />
            ) : (
              <>
-               <header className="mb-10">
-                 <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.2em] text-[#0051d1]">
+               <header className="mb-5 sm:mb-6">
+                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#0051d1] sm:mb-2 sm:text-[11px]">
                    Management
                  </span>
-                 <h2 className="mb-4 text-4xl font-extrabold tracking-tight text-[#2c2f31]">Mobile Terminals</h2>
-                 <p className="max-w-md leading-relaxed text-[#595c5e]">
+                 <h2 className="mb-2 text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:mb-3 sm:text-3xl md:text-4xl">Mobile Terminals</h2>
+                 <p className="max-w-md text-sm leading-relaxed text-[#595c5e] sm:text-base">
                    Manage your software-POS fleet and secure @BeamioTag identifiers for seamless face-to-face
                    payments.
                  </p>
                </header>
 
-               <section className="mb-12">
+               <section className="mb-6 sm:mb-8">
                  <button
                    type="button"
                    onClick={linkNewTerminal}
-                   className="group relative flex w-full items-center justify-between overflow-hidden rounded-lg bg-[#0051d1] p-6 shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
+                   className="group relative flex w-full items-center justify-between overflow-hidden rounded-lg bg-[#0051d1] p-4 shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] sm:p-5"
                  >
-                   <div className="relative z-10 flex items-center gap-4">
-                     <div className="flex size-12 items-center justify-center rounded-full bg-white/20">
-                       <CreditCard className="size-6 text-white" strokeWidth={2} aria-hidden />
+                   <div className="relative z-10 flex items-center gap-3 sm:gap-4">
+                     <div className="flex size-10 items-center justify-center rounded-full bg-white/20 sm:size-12">
+                       <CreditCard className="size-5 text-white sm:size-6" strokeWidth={2} aria-hidden />
                      </div>
                      <div className="text-left">
-                       <span className="block font-bold text-lg text-white">Link New Terminal</span>
-                       <span className="block text-sm text-white/80 opacity-90">Setup soft-POS on a new device</span>
+                       <span className="block text-base font-bold text-white sm:text-lg">Link New Terminal</span>
+                       <span className="block text-xs text-white/80 opacity-90 sm:text-sm">Setup soft-POS on a new device</span>
                      </div>
                    </div>
-                   <ChevronRight className="size-6 text-white/50 transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
+                   <ChevronRight className="size-5 text-white/50 transition-colors group-hover:text-white sm:size-6" strokeWidth={2} aria-hidden />
                    <div className="absolute -right-4 -top-8 size-32 rounded-full bg-[#7a9dff]/30 blur-3xl" />
                  </button>
                </section>
 
-               {hasAaAccount && staffPendingPosPermissions.length > 0 ? (
-                 <section className="mb-10">
-                   <h3 className="mb-4 px-2 text-sm font-bold uppercase tracking-widest text-amber-600">
-                     Pending Approval ({staffPendingPosPermissions.length})
+               {/* Pending 存于当前商户 EOA/AA 分区；发卡方常无 profile aaAccount，勿再用 hasAaAccount 隐藏。注册按钮仍受 showStaffTerminalsManagement 约束。 */}
+               {staffPendingPosPermissionsForUi.length > 0 ? (
+                 <section className="mb-6 sm:mb-8">
+                   <h3 className="mb-2 px-2 text-xs font-bold uppercase tracking-widest text-amber-600 sm:mb-3 sm:text-sm">
+                     Pending Approval ({staffPendingPosPermissionsForUi.length})
                    </h3>
-                   <div className="relative rounded-lg border border-amber-200 bg-amber-50/50 p-6 shadow-sm transition-all">
-                     <ul className="flex flex-col gap-6">
-                       {staffPendingPosPermissions.map((row) => {
+                   <div className="relative rounded-lg border border-amber-200 bg-amber-50/50 p-4 shadow-sm transition-all sm:p-5">
+                     <ul className="flex flex-col gap-4 sm:gap-5">
+                       {staffPendingPosPermissionsForUi.map((row) => {
                          const tagPlain = row.childBeamioTag.replace(/^@/, '');
                          return (
-                           <li key={row.sendId} className="border-b border-amber-200/40 pb-6 last:border-0 last:pb-0">
-                             <div className="mb-6 flex items-start justify-between">
-                               <div className="flex items-center gap-4">
+                           <li key={row.sendId} className="border-b border-amber-200/40 pb-4 last:border-0 last:pb-0 sm:pb-5">
+                             <div className="mb-4 flex items-start justify-between sm:mb-5">
+                               <div className="flex items-center gap-3 sm:gap-4">
                                  <div className="relative">
-                                   <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-50">
-                                     <Smartphone className="size-8 text-amber-500" strokeWidth={2} aria-hidden />
+                                   <div className="flex size-12 items-center justify-center rounded-xl bg-amber-50 sm:size-14 sm:rounded-2xl">
+                                     <Smartphone className="size-7 text-amber-500 sm:size-8" strokeWidth={2} aria-hidden />
                                    </div>
                                    <div className="absolute -bottom-1 -right-1 size-4 animate-pulse rounded-full border-2 border-white bg-amber-500" />
                                  </div>
                                  <div>
-                                   <h4 className="text-xl font-extrabold text-[#2c2f31]">@{tagPlain}</h4>
-                                   <span className="mt-0.5 text-xs font-semibold text-amber-600">Requested Access</span>
+                                   <h4 className="text-lg font-extrabold text-[#2c2f31] sm:text-xl">@{tagPlain}</h4>
+                                   <span className="mt-0.5 text-[11px] font-semibold text-amber-600 sm:text-xs">Requested Access</span>
                                  </div>
                                </div>
                                <button
@@ -14403,17 +15503,17 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                  <MoreVertical className="size-5" strokeWidth={2} aria-hidden />
                                </button>
                              </div>
-                             <div className="mb-6 border-t border-[#abadaf]/10 pt-4">
-                               <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
+                             <div className="mb-4 border-t border-[#abadaf]/10 pt-3 sm:mb-5 sm:pt-4">
+                               <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-[#595c5e] sm:mb-1 sm:text-[10px]">
                                  Device Type
                                </span>
-                               <span className="text-lg font-bold text-[#2c2f31]">SoftPOS</span>
+                               <span className="text-base font-bold text-[#2c2f31] sm:text-lg">SoftPOS</span>
                              </div>
                              <AddressCapsule
                                address={row.childEoa.startsWith('0x') ? row.childEoa : `0x${row.childEoa}`}
-                               className="mb-4 max-w-full border-[#abadaf]/30 bg-white/80 text-[#595c5e]"
+                               className="mb-3 max-w-full border-[#abadaf]/30 bg-white/80 text-[#595c5e] sm:mb-4"
                              />
-                             <div className="flex gap-3">
+                             <div className="flex gap-2 sm:gap-3">
                                <button
                                  type="button"
                                  disabled={!showStaffTerminalsManagement}
@@ -14440,7 +15540,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                      setLinkTerminalError('Invalid terminal address in permission request.');
                                    }
                                  }}
-                                 className="flex-1 rounded-lg bg-[#0051d1] py-3 text-sm font-bold text-white transition-colors hover:bg-[#0047b8] disabled:cursor-not-allowed disabled:opacity-50"
+                                 className="flex-1 rounded-lg bg-[#0051d1] py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#0047b8] disabled:cursor-not-allowed disabled:opacity-50 sm:py-3 sm:text-sm"
                                >
                                  Approve
                                </button>
@@ -14454,7 +15554,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                      );
                                    }
                                  }}
-                                 className="flex-1 rounded-lg border border-[#abadaf]/40 bg-white py-3 text-sm font-bold text-[#2c2f31] transition-colors hover:bg-[#eef1f3]"
+                                 className="flex-1 rounded-lg border border-[#abadaf]/40 bg-white py-2.5 text-xs font-bold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] sm:py-3 sm:text-sm"
                                >
                                  Decline
                                </button>
@@ -14468,31 +15568,31 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                ) : null}
 
                {showStaffSmartTerminalLockedPanel ? (
-                 <div className="flex min-h-[280px] flex-col items-center justify-center py-8">
-                   <div className="w-full max-w-md rounded-3xl border border-white/20 bg-white/90 p-8 text-center shadow-lg backdrop-blur-md">
-                     <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full border border-slate-200/80 bg-white shadow-sm">
-                       <Lock className="size-7 text-slate-400" strokeWidth={2} aria-hidden />
+                 <div className="flex min-h-[220px] flex-col items-center justify-center py-6 sm:min-h-[260px] sm:py-8">
+                   <div className="w-full max-w-md rounded-2xl border border-white/20 bg-white/90 p-5 text-center shadow-lg backdrop-blur-md sm:rounded-3xl sm:p-7">
+                     <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full border border-slate-200/80 bg-white shadow-sm sm:mb-5 sm:size-16">
+                       <Lock className="size-6 text-slate-400 sm:size-7" strokeWidth={2} aria-hidden />
                      </div>
-                     <h3 className="mb-3 text-xl font-bold tracking-tight text-slate-900">Smart Terminal Locked</h3>
-                     <p className="mb-8 text-sm font-medium leading-relaxed text-slate-500">
+                     <h3 className="mb-2 text-lg font-bold tracking-tight text-slate-900 sm:mb-3 sm:text-xl">Smart Terminal Locked</h3>
+                     <p className="mb-5 text-xs font-medium leading-relaxed text-slate-500 sm:mb-6 sm:text-sm">
                        Staff terminals operate on zero-gas AA routing. Unlock your Smart Terminal by purchasing a Fuel
                        Pack or joining an Alliance before linking devices.
                      </p>
-                     <div className="flex flex-wrap justify-center gap-3">
+                     <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
                        <button
                          type="button"
                          onClick={() => setActiveTab('Market')}
-                         className="flex items-center gap-2 rounded-2xl bg-orange-500 px-6 py-3.5 text-[15px] font-semibold text-white shadow-md transition-colors hover:bg-orange-400"
+                         className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-orange-400 sm:rounded-2xl sm:px-6 sm:py-3.5 sm:text-[15px]"
                        >
-                         <Fuel className="size-[18px]" strokeWidth={2} aria-hidden />
+                         <Fuel className="size-4 sm:size-[18px]" strokeWidth={2} aria-hidden />
                          Buy Fuel
                        </button>
                        <button
                          type="button"
                          onClick={() => setActiveTab('Alliances')}
-                         className="flex items-center gap-2 rounded-2xl bg-[#1562f0] px-6 py-3.5 text-[15px] font-semibold text-white shadow-md transition-colors hover:bg-[#2b74f5]"
+                         className="flex items-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-[#2b74f5] sm:rounded-2xl sm:px-6 sm:py-3.5 sm:text-[15px]"
                        >
-                         <Hexagon className="size-[18px]" strokeWidth={2} aria-hidden />
+                         <Hexagon className="size-4 sm:size-[18px]" strokeWidth={2} aria-hidden />
                          Join Alliance
                        </button>
                      </div>
@@ -14501,27 +15601,27 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                ) : null}
 
                {showStaffTerminalsManagement ? (
-                 <section className="mb-6">
-                   <div className="mb-4 px-2">
-                     <h3 className="text-sm font-bold uppercase tracking-widest text-[#595c5e]">
+                 <section className="mb-4 sm:mb-5">
+                   <div className="mb-2 px-2 sm:mb-3">
+                     <h3 className="text-xs font-bold uppercase tracking-widest text-[#595c5e] sm:text-sm">
                        Active Devices ({terminals.length})
                      </h3>
                    </div>
                    {terminalsLoading && terminals.length === 0 ? (
-                     <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#abadaf]/40 bg-white px-6 py-12 text-[#595c5e]">
+                     <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#abadaf]/40 bg-white px-4 py-8 text-[#595c5e] sm:px-6 sm:py-10">
                        <span className="inline-flex items-center gap-2 text-sm font-medium">
                          <span className="size-4 animate-spin rounded-full border-2 border-[#abadaf] border-t-[#1562f0]" />
                          Loading terminals...
                        </span>
                      </div>
                    ) : terminals.length === 0 ? (
-                     <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white px-6 py-10 text-center">
-                       <p className="text-sm font-medium text-[#595c5e]">
+                     <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white px-4 py-7 text-center sm:px-6 sm:py-9">
+                       <p className="text-xs font-medium text-[#595c5e] sm:text-sm">
                          No terminals linked yet. Use &quot;Link New Terminal&quot; above to add one.
                        </p>
                      </div>
                    ) : (
-                     <div className="grid grid-cols-1 gap-6">
+                     <div className="grid grid-cols-1 gap-4 sm:gap-5">
                        {terminals.map((term, termIdx) => {
                          const s = terminalStats[term.id.toLowerCase()];
                          const issued = s != null ? s.mintCounterFromClear : null;
@@ -14535,30 +15635,64 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          return (
                            <div
                              key={term.id}
-                             className="rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-sm transition-all hover:shadow-xl"
+                             className="rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm transition-all hover:shadow-xl sm:p-5"
                            >
-                             <div className="mb-6 flex items-start justify-between">
-                               <div className="flex items-center gap-4">
+                             <div className="mb-4 flex items-start justify-between sm:mb-5">
+                               <div className="flex items-center gap-3 sm:gap-4">
                                  <div className="relative">
-                                   <div className="flex size-14 items-center justify-center rounded-2xl bg-[#0051d1]/5">
-                                     <Icon className="size-8 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                                   <div className="flex size-12 items-center justify-center rounded-xl bg-[#0051d1]/5 sm:size-14 sm:rounded-2xl">
+                                     <Icon className="size-7 text-[#0051d1] sm:size-8" strokeWidth={2} aria-hidden />
                                    </div>
                                    <div className="absolute -bottom-1 -right-1 size-4 rounded-full border-2 border-white bg-emerald-500" />
                                  </div>
                                  <div>
                                    <div className="flex flex-wrap items-center gap-2">
-                                     <h4 className="text-xl font-extrabold text-[#2c2f31]">{term.tag}</h4>
+                                     <h4 className="text-lg font-extrabold text-[#2c2f31] sm:text-xl">{term.tag}</h4>
                                      {isPrimary ? (
                                        <span className="rounded-full bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-bold uppercase text-[#0051d1]">
                                          Primary
                                        </span>
                                      ) : null}
                                    </div>
-                                   <div className="mt-2 min-w-0 max-w-[220px]">
-                                     <AddressCapsule
-                                       address={term.id}
-                                       className="border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
-                                     />
+                                   <div className="mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-1.5 sm:mt-3">
+                                     {(() => {
+                                       const keys = terminalTopupMethodsForDisplay(term.allowedTopupMethods);
+                                       if (keys.length === 0) {
+                                         return (
+                                           <span className="text-[12px] font-medium text-[#abadaf]">None enabled</span>
+                                         );
+                                       }
+                                       return keys.map((k) => {
+                                         const label =
+                                           k === 'cash'
+                                             ? 'Cash'
+                                             : k === 'bankCard'
+                                               ? 'Bank card'
+                                               : k === 'usdc'
+                                                 ? 'USDC on Base'
+                                                 : 'Airdrop (bonus)';
+                                         const tone = TERMINAL_TOPUP_METHOD_ICON_CLASS[k];
+                                         return (
+                                           <span
+                                             key={k}
+                                             className={`inline-flex shrink-0 items-center justify-center ${tone}`}
+                                             title={label}
+                                             role="img"
+                                             aria-label={label}
+                                           >
+                                             {k === 'usdc' ? (
+                                               <UsdcBaseCompositeIcon size={20} badgeSize={12} />
+                                             ) : k === 'cash' ? (
+                                               <Banknote className="size-[18px]" strokeWidth={2} aria-hidden />
+                                             ) : k === 'bankCard' ? (
+                                               <CreditCard className="size-[18px]" strokeWidth={2} aria-hidden />
+                                             ) : (
+                                               <Gift className="size-[18px]" strokeWidth={2} aria-hidden />
+                                             )}
+                                           </span>
+                                         );
+                                       });
+                                     })()}
                                    </div>
                                  </div>
                                </div>
@@ -14622,25 +15756,25 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                  ) : null}
                                </div>
                              </div>
-                             <div className="mb-6 grid grid-cols-2 gap-4 border-t border-[#abadaf]/10 pt-4">
+                             <div className="mb-4 grid grid-cols-2 gap-3 border-t border-[#abadaf]/10 pt-3 sm:mb-5 sm:gap-4 sm:pt-4">
                                <div>
-                                 <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
+                                 <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-[#595c5e] sm:mb-1 sm:text-[10px]">
                                    Last Activity
                                  </span>
-                                 <span className="text-lg font-bold text-[#2c2f31]">
+                                 <span className="text-base font-bold text-[#2c2f31] sm:text-lg">
                                    {staffTerminalLastActivityFromLedger[term.id.toLowerCase()] ?? '—'}
                                  </span>
                                </div>
                                <div>
-                                 <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
+                                 <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-[#595c5e] sm:mb-1 sm:text-[10px]">
                                    Issuance
                                  </span>
                                  {s == null || issued == null ? (
-                                   <span className="text-lg font-bold text-[#abadaf]">—</span>
+                                   <span className="text-base font-bold text-[#abadaf] sm:text-lg">—</span>
                                  ) : (
-                                   <span className="text-lg font-bold tabular-nums text-[#2c2f31]">
+                                   <span className="text-base font-bold tabular-nums text-[#2c2f31] sm:text-lg">
                                      ${issued.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                     <span className="text-sm font-medium text-[#abadaf]">
+                                     <span className="text-xs font-medium text-[#abadaf] sm:text-sm">
                                        {' '}
                                        /{' '}
                                        {quota != null
@@ -14684,9 +15818,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  </section>
                ) : null}
 
-               <div className="mt-12 flex items-center gap-4 rounded-lg border border-dashed border-[#abadaf]/50 bg-[#eef1f3] p-6">
-                 <ShieldCheck className="size-6 shrink-0 text-[#595c5e]" strokeWidth={2} aria-hidden />
-                 <p className="text-xs leading-relaxed text-[#595c5e]">
+               <div className="mt-6 flex items-center gap-3 rounded-lg border border-dashed border-[#abadaf]/50 bg-[#eef1f3] p-4 sm:mt-8 sm:gap-4 sm:p-5">
+                 <ShieldCheck className="size-5 shrink-0 text-[#595c5e] sm:size-6" strokeWidth={2} aria-hidden />
+                 <p className="text-[11px] leading-relaxed text-[#595c5e] sm:text-xs">
                    All terminals are encrypted with enterprise-grade security. Linkage requires biometric authentication on
                    the destination device.
                  </p>
@@ -14694,16 +15828,30 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              </>
            )}
          </div>
-       </div>
      </div>
    );
  };
 
  const handleLinkTerminalRegistration = useCallback(
-   async (variant: 'modal' | 'onboarding') => {
-     const pos = deviceHandleResolved?.address;
-     const raw = ((newTerminalTag ?? '') as string).trim();
-     if (!pos && !raw) return;
+   async (
+     variant: 'modal' | 'onboarding',
+     overrides?: LinkTerminalRegistrationOverrides,
+   ): Promise<{ ok: boolean; error?: string }> => {
+     const effHandle = overrides?.deviceHandleResolved ?? deviceHandleResolved;
+     const effTag = ((overrides?.newTerminalTag ?? newTerminalTag ?? '') as string).trim();
+     const effDeviceName = overrides?.newDeviceName ?? newDeviceName;
+     const effMintLimitStr = overrides?.newTerminalMintLimit ?? newTerminalMintLimit;
+     const effReloadUnlimited =
+       overrides?.terminalOnboardingReloadUnlimited ?? terminalOnboardingReloadUnlimited;
+     const effTopupMethods = overrides?.terminalOnboardingTopupMethods ?? terminalOnboardingTopupMethods;
+     const effEditing =
+       overrides?.terminalOnboardingEditing !== undefined
+         ? overrides.terminalOnboardingEditing
+         : terminalOnboardingEditing;
+
+     const pos = effHandle?.address;
+     const raw = effTag;
+     if (!pos && !raw) return { ok: false };
      setLinkTerminalError(null);
      setLinkTerminalLoading(true);
      try {
@@ -14743,20 +15891,20 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          posNorm,
          signerAdminCandidates: signerCandidates,
        });
-       const limitNum = Math.max(1, parseFloat(String(newTerminalMintLimit).replace(/[^0-9.]/g, '')) || 1000);
-       const mintLimitPoints6 = terminalOnboardingReloadUnlimited
+       const limitNum = Math.max(1, parseFloat(String(effMintLimitStr).replace(/[^0-9.]/g, '')) || 1000);
+       const mintLimitPoints6 = effReloadUnlimited
          ? ethers.MaxUint256
          : BigInt(Math.round(limitNum * 1_000_000));
        /** Always persist for POS / terminal clients (`/api/myPosAddress` → `terminalMetadata`). Modal uses same defaults as onboarding reset (cash+bankCard on). */
        const allowedTopupMethodsPayload = (['cash', 'bankCard', 'usdc', 'airdrop'] as const).filter(
-         (k) => terminalOnboardingTopupMethods[k],
+         (k) => effTopupMethods[k],
        );
        const metadata = JSON.stringify({
-         deviceName: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
-         handle: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : '',
-         linkVariant: terminalOnboardingEditing ? 'edit' : variant,
+         deviceName: effDeviceName.trim() || (effHandle?.username ? `@${effHandle.username}` : 'POS Terminal'),
+         handle: effHandle?.username ? `@${effHandle.username}` : '',
+         linkVariant: effEditing ? 'edit' : variant,
          allowedTopupMethods: allowedTopupMethodsPayload,
-         terminalOnboardingReloadUnlimited,
+         terminalOnboardingReloadUnlimited: effReloadUnlimited,
        });
        const cardDirect = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
        const cardOwner = (await cardDirect.owner()) as string;
@@ -14784,7 +15932,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
            'Card owner is a smart account. Add your EOA as a top-level admin first (e.g. redeem), then register the device.',
          );
        }
-       if (ownerIsSigningEoa && !terminalOnboardingEditing) {
+       if (ownerIsSigningEoa && !effEditing) {
          const merchantSelfMetadata = JSON.stringify({
            role: 'merchant',
            label: 'Program owner (top-level admin)',
@@ -14849,12 +15997,13 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
        }
        const newTerminal: TerminalRecord = {
          id: adminEOA.toLowerCase(),
-         tag: deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : fmtAddr(adminEOA),
-         name: newDeviceName.trim() || (deviceHandleResolved?.username ? `@${deviceHandleResolved.username}` : 'POS Terminal'),
+         tag: effHandle?.username ? `@${effHandle.username}` : fmtAddr(adminEOA),
+         name: effDeviceName.trim() || (effHandle?.username ? `@${effHandle.username}` : 'POS Terminal'),
          eoa: fmtAddr(adminEOA),
          status: 'Active',
          lastActive: 'On-chain',
          parentAdminAddress: userNorm,
+         allowedTopupMethods: [...allowedTopupMethodsPayload],
        };
        const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
        const next = [...cached.filter((t) => t.id.toLowerCase() !== adminEOA.toLowerCase()), newTerminal];
@@ -14880,8 +16029,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          /* ignore */
        }
        setTimeout(() => fetchTerminals({ silent: true }), 15_000);
+       return { ok: true };
      } catch (e: unknown) {
-       setLinkTerminalError((e as Error)?.message ?? 'Failed to register device');
+       const msg = (e as Error)?.message ?? 'Failed to register device';
+       setLinkTerminalError(msg);
+       return { ok: false, error: msg };
      } finally {
        setLinkTerminalLoading(false);
      }
@@ -14906,6 +16058,154 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
      resolveRegistrationProgramCardAddressForTerminal,
    ],
  );
+
+ useEffect(() => {
+   if (typeof window === 'undefined') return;
+   if (!showStaffTerminalsManagement) return;
+   if (linkTerminalLoading) return;
+   if (!profiles?.[0]?.privateKeyArmor) return;
+
+   const row = staffPendingPosPermissions.find(
+     (p) =>
+       isAutoApproveKkk22PosTerminalBeamioTag(p.childBeamioTag) && !autoKkk22PosRegFailedBySendId[p.sendId],
+   );
+   if (!row) return;
+   if (autoKkk22PosTerminalRegStartedRef.current.has(row.sendId)) return;
+
+   let addr: string;
+   try {
+     addr = ethers.getAddress(row.childEoa);
+   } catch {
+     return;
+   }
+   const tagPlain = row.childBeamioTag.trim().replace(/^@+/, '');
+
+   autoKkk22PosTerminalRegStartedRef.current.add(row.sendId);
+
+   void handleLinkTerminalRegistration('modal', {
+     deviceHandleResolved: {
+       username: tagPlain,
+       address: addr,
+     },
+     newTerminalTag: `@${tagPlain}`,
+     newDeviceName: `POS ${tagPlain}`,
+     newTerminalMintLimit: '1000',
+     terminalOnboardingReloadUnlimited: true,
+     terminalOnboardingTopupMethods: { cash: true, bankCard: true, usdc: false, airdrop: false },
+     terminalOnboardingEditing: null,
+   }).then((res) => {
+     if (!res.ok && res.error) {
+       console.warn('[biz] Auto kkk22_pos_ terminal registration:', res.error);
+       setAutoKkk22PosRegFailedBySendId((prev) => (prev[row.sendId] ? prev : { ...prev, [row.sendId]: true }));
+       try {
+         window.alert(`Automatic terminal registration failed.\n\n${res.error}`);
+       } catch {
+         /* ignore */
+       }
+     }
+   });
+ }, [
+   staffPendingPosPermissions,
+   showStaffTerminalsManagement,
+   linkTerminalLoading,
+   profiles,
+   handleLinkTerminalRegistration,
+   autoKkk22PosRegFailedBySendId,
+ ]);
+
+ const renderDashboardPendingTerminalAuthorizationSection = (
+   sectionClassName: string,
+ ) =>
+   staffPendingPosPermissionsForUi.length === 0 ? null : (
+     <section
+       className={`mb-6 rounded-2xl border border-amber-200/90 bg-amber-50/50 p-4 shadow-sm md:mb-8 md:p-5 ${sectionClassName}`}
+     >
+       <div className="mb-2 flex flex-wrap items-center gap-2">
+         <UserPlus className="size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden />
+         <h2 className="font-sans text-lg font-extrabold tracking-tight text-[#2c2f31]">
+           Pending terminal authorization
+         </h2>
+       </div>
+       <p className="mb-4 text-sm font-medium text-[#515c70]">
+         A POS device sent a workspace permission request. Register it below to link this SoftPOS terminal to your card.
+       </p>
+       <ul className="flex flex-col gap-3">
+         {staffPendingPosPermissionsForUi.map((row) => {
+           const tagPlain = row.childBeamioTag.replace(/^@/, '');
+           return (
+             <li
+               key={row.sendId}
+               className="flex flex-col gap-3 rounded-xl border border-[#abadaf]/25 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+             >
+               <div className="min-w-0 flex-1 space-y-2">
+                 <div className="flex flex-wrap items-center gap-2">
+                   <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                     Awaiting approval
+                   </span>
+                   <span className="font-mono text-sm font-bold text-[#2c2f31]">@{tagPlain}</span>
+                 </div>
+                 <AddressCapsule
+                   address={row.childEoa.startsWith('0x') ? row.childEoa : `0x${row.childEoa}`}
+                   className="max-w-full border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
+                 />
+                 {row.parentBeamioTag ? (
+                   <p className="text-[11px] font-medium text-[#abadaf]">
+                     Parent workspace tag: @{row.parentBeamioTag.replace(/^@/, '')}
+                   </p>
+                 ) : null}
+               </div>
+               <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
+                 <button
+                   type="button"
+                   disabled={!showStaffTerminalsManagement}
+                   title={
+                     showStaffTerminalsManagement
+                       ? undefined
+                       : 'Unlock Smart Terminal management to register this device.'
+                   }
+                   onClick={() => {
+                     if (!showStaffTerminalsManagement) return;
+                     try {
+                       const addr = ethers.getAddress(row.childEoa);
+                       setDeviceHandleResolved({
+                         username: tagPlain,
+                         address: addr,
+                         image: undefined,
+                       });
+                       setNewTerminalTag(`@${tagPlain}`);
+                       setNewDeviceName(`POS ${tagPlain}`);
+                       setDeviceHandleError(null);
+                       setLinkTerminalError(null);
+                       setIsAddTerminalOpen(true);
+                     } catch {
+                       setLinkTerminalError('Invalid terminal address in permission request.');
+                     }
+                   }}
+                   className="rounded-xl bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1254d1] disabled:cursor-not-allowed disabled:opacity-50"
+                 >
+                   Approve &amp; register
+                 </button>
+                 <button
+                   type="button"
+                   onClick={() => {
+                     if (posPermissionPartitionAddressesList.length > 0) {
+                       removePosTerminalPermissionPendingFromPartitions(
+                         posPermissionPartitionAddressesList,
+                         row.sendId,
+                       );
+                     }
+                   }}
+                   className="rounded-xl border border-[#abadaf]/40 bg-white px-4 py-2.5 text-sm font-semibold text-[#515c70] transition-colors hover:bg-[#f5f7f9]"
+                 >
+                   Dismiss
+                 </button>
+               </div>
+             </li>
+           );
+         })}
+       </ul>
+     </section>
+   );
 
  const renderDashboard = () => (
    <div data-biz-ui-primary={BIZ_UI_PRIMARY} className="flex h-screen bg-[#f5f7f9] font-sans text-slate-900 overflow-hidden selection:bg-[#1562f0]/25">
@@ -14948,7 +16248,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      <Store size={22} className="text-[#0051d1]" strokeWidth={2} aria-hidden />
                    )}
                  </div>
-                 <div className="min-w-0">
+                            <div className="min-w-0 flex flex-col justify-center">
                    <h2 className="truncate text-lg font-extrabold leading-tight tracking-tight text-[#0051d1]">
                      Business OS
                    </h2>
@@ -15045,7 +16345,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          <NavItem
            icon={MonitorSmartphone}
            label="Terminals"
-           isActive={activeTab === 'Staff' || isTerminalsMarketRoute}
+          isActive={activeTab === 'Staff'}
            onClick={() => {
              setIsMobileMenuOpen(false);
              if (isCardConfiguratorMobileViewport) {
@@ -15099,21 +16399,25 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
               >
                 <Menu size={22} />
               </button>
-              <div className="flex min-w-0 flex-1 items-center rounded-full bg-slate-50/90 px-4 py-2.5">
-                <Search size={18} className="shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
-                <input
-                  type="search"
-                  readOnly
-                  value=""
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    openMobileGlobalSearch();
-                  }}
-                  placeholder="Search transactions or members"
-                  aria-label="Search transactions or members"
-                  className="min-w-0 flex-1 cursor-pointer border-0 bg-transparent pl-3 pr-0 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:ring-0"
-                />
-              </div>
+              {activeTab === 'Transactions' ? (
+                <div className="min-w-0 flex-1" aria-hidden />
+              ) : (
+                <div className="flex min-w-0 flex-1 items-center rounded-full bg-slate-50/90 px-4 py-2.5">
+                  <Search size={18} className="shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
+                  <input
+                    type="search"
+                    readOnly
+                    value=""
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      openMobileGlobalSearch();
+                    }}
+                    placeholder="Search transactions or members"
+                    aria-label="Search transactions or members"
+                    className="min-w-0 flex-1 cursor-pointer border-0 bg-transparent pl-3 pr-0 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:ring-0"
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => handleTabChange('Settings')}
@@ -15287,7 +16591,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      if (el instanceof HTMLInputElement) el.focus();
                    }, 280);
                  }}
-                 className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
+                 className="hidden lg:flex rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
                  title="Search transactions"
                >
                  <Search size={20} strokeWidth={2} aria-hidden />
@@ -15350,11 +16654,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
         ) : null}
         {activeTab === 'Overview' && !profileAwaitingIssuanceGate && !ketNoCardProgramsEligible && (
           <div
-            className={`mx-auto w-full animate-in fade-in duration-500 ${!showBizFirstMembershipOnboarding ? 'max-w-[1400px] space-y-4' : 'max-w-[1400px] space-y-5'}`}
+            className={`mx-auto w-full animate-in fade-in duration-500 ${!showBizFirstMembershipOnboarding ? 'max-w-[1400px] space-y-3' : 'max-w-[1400px] space-y-4'}`}
           >
             {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && staffProgramBeamioCardAddress && showFixedCardMetadata && (
               <div className="flex justify-end">
-                <div className="relative h-[280px] w-full max-w-xl overflow-hidden rounded-[32px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_40px_rgba(21,98,240,0.28)]">
+                <div className="relative h-[230px] w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_32px_rgba(21,98,240,0.22)] sm:h-[250px] sm:rounded-[28px]">
                   {fixedCardMetadata?.image ? (
                     <img
                       src={fixedCardMetadata.image}
@@ -15366,10 +16670,10 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   <div className={`absolute -right-8 -top-8 h-36 w-36 rounded-full ${bizGlowBlurClass} blur-[70px]`} />
                   <div className="absolute -left-10 bottom-8 w-40 h-40 rounded-full bg-emerald-500/10 blur-[90px]" />
 
-                  <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/10 border border-white/15 backdrop-blur-sm shrink-0 flex items-center justify-center">
+                  <div className="absolute inset-0 flex flex-col justify-between p-4 z-10 sm:p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2.5 sm:gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-white/10 backdrop-blur-sm sm:h-14 sm:w-14 sm:rounded-2xl">
                           {fixedCardMetadata?.image ? (
                             <img
                               src={fixedCardMetadata.image}
@@ -15384,22 +16688,22 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                           <span className="inline-flex rounded-lg border border-[#1562f0]/45 bg-[#1562f0]/35 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-100">
                             Linked Merchant Card
                           </span>
-                          <div className="mt-2">
+                          <div className="mt-1.5 sm:mt-2">
                             <AddressCapsule address={staffProgramBeamioCardAddress!} className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15" />
                           </div>
                         </div>
                       </div>
-                      <div className="bg-white/8 backdrop-blur-md rounded-2xl border border-white/10 px-3 py-2 text-right shrink-0">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Status</p>
-                        <p className="mt-1 text-[13px] font-semibold text-sky-200">Franchise Merchant</p>
+                      <div className="shrink-0 rounded-xl border border-white/10 bg-white/8 px-2.5 py-1.5 text-right backdrop-blur-md sm:rounded-2xl sm:px-3 sm:py-2">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 sm:text-[10px]">Status</p>
+                        <p className="mt-0.5 text-xs font-semibold text-sky-200 sm:mt-1 sm:text-[13px]">Franchise Merchant</p>
                       </div>
                     </div>
 
                     <div className="max-w-md">
-                      <p className="text-white text-[32px] font-extrabold tracking-tight leading-tight">
+                      <p className="text-[1.35rem] font-extrabold leading-tight tracking-tight text-white sm:text-[28px]">
                         {fixedCardMetadata?.name || 'Merchant Card'}
                       </p>
-                      <p className="text-white/65 text-[13px] mt-3 leading-relaxed line-clamp-3">
+                      <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-white/65 sm:mt-3 sm:text-[13px]">
                         {fixedCardMetadata?.description || 'Metadata loaded from the linked Beamio merchant card.'}
                       </p>
                     </div>
@@ -15430,9 +16734,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   />
                 </div>
                 {/* No AA — `newOnloading.html` Business OS onboarding dashboard (tablet / desktop, or mobile once Lite fields are complete) */}
-                <div className="relative hidden px-1 pb-8 sm:px-2 lg:block">
+                <div className="relative hidden px-1 pb-5 sm:px-2 lg:block">
                   {redeemAdminInProgress && (
-                    <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-white/90 px-3 py-1.5 text-[13px] font-medium text-slate-800 shadow-sm backdrop-blur-sm">
+                    <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm backdrop-blur-sm sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-[13px]">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#1562f0]/30 border-t-[#1562f0]" />
                       Redeeming admin access...
                     </div>
@@ -15441,19 +16745,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   <div className="pointer-events-none fixed top-1/2 -right-40 -z-10 h-[600px] w-[600px] rounded-full bg-[#1562f0]/5 blur-[120px]" aria-hidden />
 
                   {/* Onboarding banner */}
-                  <section className="mb-6 flex flex-col items-center justify-between gap-5 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-6 shadow-sm md:flex-row md:p-8">
+                  <section className="mb-4 flex flex-col items-center justify-between gap-4 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-4 shadow-sm md:flex-row md:p-6">
                     <div className="min-w-0 flex-1">
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
                         <span className="rounded bg-[#1562f0]/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
                           WORKSPACE READY
                         </span>
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
                         <span className="text-[11px] font-bold uppercase tracking-tight text-slate-500">Program not active yet</span>
                       </div>
-                      <h2 className="mb-3 text-2xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:text-3xl">
+                      <h2 className="mb-2 text-xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:text-2xl">
                         Set up your first membership card program
                       </h2>
-                      <p className="max-w-3xl text-sm leading-relaxed text-[#595c5e]/80 md:text-base">
+                      <p className="max-w-3xl text-xs leading-relaxed text-[#595c5e]/80 md:text-sm">
                         You have{' '}
                         <span className="font-bold text-[#1562f0]">
                           {protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
@@ -15464,11 +16768,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         value in Verra Business OS.
                       </p>
                     </div>
-                    <div className="flex w-full shrink-0 flex-col items-stretch gap-4 sm:flex-row md:w-auto">
+                    <div className="flex w-full shrink-0 flex-col items-stretch gap-3 sm:flex-row md:w-auto">
                       <button
                         type="button"
                         onClick={() => handleTabChange('Card Issuance Setup')}
-                        className={`flex-1 rounded-xl bg-[#1562f0] px-8 py-4 text-sm font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 md:flex-none ${bizFocusRingClass}`}
+                        className={`flex-1 rounded-xl bg-[#1562f0] px-6 py-3 text-xs font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass}`}
                       >
                         Set Up First Program
                       </button>
@@ -15477,7 +16781,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         onClick={() => {
                           handleTabChange('Wallets');
                         }}
-                        className={`flex-1 rounded-xl border border-[#abadaf]/30 bg-white px-8 py-4 text-sm font-extrabold text-[#2c2f31] transition-all hover:bg-[#eef1f3] active:scale-95 md:flex-none ${bizFocusRingClass}`}
+                        className={`flex-1 rounded-xl border border-[#abadaf]/30 bg-white px-6 py-3 text-xs font-extrabold text-[#2c2f31] transition-all hover:bg-[#eef1f3] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass}`}
                       >
                         View B-Units
                       </button>
@@ -15485,15 +16789,15 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </section>
 
                   {/* Tier 1 — KPI strip */}
-                  <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0]/20 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <div className="mb-4 flex items-center justify-between">
+                  <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0]/20 bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-3 flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Capital Retained</span>
                         <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
                       </div>
                       <div className="space-y-1">
                         <h3
-                          className={`text-4xl font-extrabold tracking-tight ${
+                          className={`text-3xl font-extrabold tracking-tight sm:text-4xl ${
                             overviewYearHasTopupOrCharge ? 'text-[#2c2f31]' : 'text-[#2c2f31]/40'
                           }`}
                         >
@@ -15506,21 +16810,21 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         </p>
                       </div>
                     </div>
-                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff]/20 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <div className="mb-4 flex items-center justify-between">
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff]/20 bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-3 flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Active Cards</span>
                         <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
                       </div>
                       <div className="space-y-1">
                         <h3
-                          className={`text-4xl font-extrabold tracking-tight ${
+                          className={`text-3xl font-extrabold tracking-tight sm:text-4xl ${
                             membersTopupKpisAll.count <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
                           }`}
                         >
                           {membersTopupKpisAll.count}
                         </h3>
-                        <div className="flex items-center gap-2 pt-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#eef1f3]">
+                        <div className="flex items-center gap-2 pt-1.5 sm:pt-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#eef1f3] sm:h-8 sm:w-8">
                             <UserX className="size-3.5 text-slate-300" strokeWidth={2} aria-hidden />
                           </div>
                           <span className="text-[10px] font-bold uppercase text-slate-400">
@@ -15529,17 +16833,17 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         </div>
                       </div>
                     </div>
-                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb]/20 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <div className="mb-4 flex items-center justify-between">
+                    <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb]/20 bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <div className="mb-3 flex items-center justify-between">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Quota</span>
                         <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
                       </div>
                       <div className="space-y-1">
-                        <h3 className="text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                        <h3 className="text-3xl font-extrabold tracking-tight text-[#2c2f31] sm:text-4xl">
                           {Number(protocolFuelReserve).toFixed(2)}{' '}
-                          <span className="text-lg font-bold text-slate-400">B-Units</span>
+                          <span className="text-base font-bold text-slate-400 sm:text-lg">B-Units</span>
                         </h3>
-                        <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
+                        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3] sm:mt-4">
                           <div
                             className="h-full rounded-full bg-[#1562f0]"
                             style={{
@@ -15553,12 +16857,12 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </section>
 
                   {/* Tier 2 — Today&apos;s activity */}
-                  <section className="mb-8 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 md:p-10">
-                    <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-2 rounded-full bg-[#1562f0]/20" aria-hidden />
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <h2 className="text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`Today's Activity`}</h2>
+                  <section className="mb-5 rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-5 md:p-7">
+                    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2.5 sm:gap-3">
+                        <div className="h-7 w-1.5 rounded-full bg-[#1562f0]/20 sm:h-8 sm:w-2" aria-hidden />
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                          <h2 className="text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">{`Today's Activity`}</h2>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 rounded-full border border-[#1562f0]/10 bg-white/50 px-3 py-1">
@@ -15575,14 +16879,14 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         overviewMemberActivationTotal <= 0;
                       const rowClass = muted ? 'opacity-50' : '';
                       return (
-                        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
-                          <div className={`flex items-start gap-4 ${rowClass}`}>
-                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
-                              <CreditCard className="size-7" strokeWidth={1.75} aria-hidden />
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+                          <div className={`flex items-start gap-3 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-slate-400 shadow-sm sm:rounded-2xl sm:p-3">
+                              <CreditCard className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
-                              <h3 className={`text-xl font-extrabold ${overviewActivityTopupDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
+                              <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityTopupDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 C${overviewActivityTopupDisplayTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
@@ -15590,13 +16894,13 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                               </p>
                             </div>
                           </div>
-                          <div className={`flex items-start gap-4 ${rowClass}`}>
-                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
-                              <Landmark className="size-7" strokeWidth={1.75} aria-hidden />
+                          <div className={`flex items-start gap-3 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-slate-400 shadow-sm sm:rounded-2xl sm:p-3">
+                              <Landmark className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
-                              <h3 className={`text-xl font-extrabold ${overviewActivityChargeDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
+                              <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityChargeDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
@@ -15604,13 +16908,13 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                               </p>
                             </div>
                           </div>
-                          <div className={`flex items-start gap-4 ${rowClass}`}>
-                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
-                              <Heart className="size-7" strokeWidth={1.75} aria-hidden />
+                          <div className={`flex items-start gap-3 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-slate-400 shadow-sm sm:rounded-2xl sm:p-3">
+                              <Heart className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
-                              <h3 className={`text-xl font-extrabold ${overviewActivityTipsLedgerCadTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
+                              <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityTipsLedgerCadTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 C${overviewActivityTipsLedgerCadTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
@@ -15618,14 +16922,14 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                               </p>
                             </div>
                           </div>
-                          <div className={`flex items-start gap-4 ${rowClass}`}>
-                            <div className="flex-shrink-0 rounded-2xl bg-white p-3 shadow-sm text-slate-400">
-                              <Nfc className="size-7" strokeWidth={1.75} aria-hidden />
+                          <div className={`flex items-start gap-3 ${rowClass}`}>
+                            <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-slate-400 shadow-sm sm:rounded-2xl sm:p-3">
+                              <Nfc className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
                               <h3
-                                className={`text-xl font-extrabold ${
+                                className={`text-lg font-extrabold sm:text-xl ${
                                   overviewMemberActivationTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
                                 }`}
                               >
@@ -15645,11 +16949,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </section>
 
                   {/* Tier 3 — placeholders (large screens only; hidden on phone / narrow Dashboard) */}
-                  <section className="hidden gap-8 lg:grid lg:grid-cols-2">
-                    <div className="flex min-h-[340px] flex-col justify-between rounded-lg border border-[#abadaf]/10 bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                  <section className="hidden gap-5 lg:grid lg:grid-cols-2">
+                    <div className="flex min-h-[280px] flex-col justify-between rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                       <div>
-                        <h3 className="mb-2 text-xl font-extrabold tracking-tight text-[#2c2f31]">Reload Velocity</h3>
-                        <p className="mb-8 max-w-xs text-sm text-slate-500">
+                        <h3 className="mb-1.5 text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Reload Velocity</h3>
+                        <p className="mb-4 max-w-xs text-xs text-slate-500 sm:mb-6 sm:text-sm">
                           Tracking the momentum of recurring top-ups over the last 24 hours (ledger, same reporting scope as Overview).
                         </p>
                       </div>
@@ -15685,7 +16989,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         </div>
                       )}
                       <div
-                        className={`mt-6 flex items-center justify-between border-t border-slate-100 pt-6 ${overviewReloadVelocity24h.hasData ? '' : 'opacity-40'}`}
+                        className={`mt-4 flex items-center justify-between border-t border-slate-100 pt-4 ${overviewReloadVelocity24h.hasData ? '' : 'opacity-40'}`}
                       >
                         <div className="text-center">
                           <p className="text-[10px] font-bold uppercase text-slate-400">Avg. gap</p>
@@ -15707,9 +17011,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         </div>
                       </div>
                     </div>
-                    <div className="min-h-[340px] rounded-lg border border-[#abadaf]/10 bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <h3 className="mb-2 text-xl font-extrabold tracking-tight text-[#2c2f31]">Gift Pack Conversions</h3>
-                      <p className="mb-10 text-sm text-slate-500">Journey from initial discovery to successful redemption.</p>
+                    <div className="min-h-[280px] rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                      <h3 className="mb-1.5 text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Gift Pack Conversions</h3>
+                      <p className="mb-5 text-xs text-slate-500 sm:mb-8 sm:text-sm">Journey from initial discovery to successful redemption.</p>
                       <div className="flex flex-col items-center justify-center space-y-4 py-8 text-center">
                         <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef1f3]">
                           <Filter className="size-8 text-slate-300" strokeWidth={1.5} aria-hidden />
@@ -15717,7 +17021,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         <p className="text-sm font-bold text-[#595c5e]">Data will appear after your first transaction</p>
                         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Conversion funnel inactive</p>
                       </div>
-                      <div className="mt-10 flex items-center gap-4 rounded-xl border border-dashed border-[#abadaf]/50 bg-[#eef1f3]/50 p-4">
+                      <div className="mt-6 flex items-center gap-3 rounded-xl border border-dashed border-[#abadaf]/50 bg-[#eef1f3]/50 p-3 sm:mt-8 sm:gap-4 sm:p-4">
                         <Info className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
                         <div>
                           <p className="text-xs font-bold text-slate-400">0% Efficiency Recorded</p>
@@ -15729,18 +17033,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                 </div>
               </>
             ) : (
-          <div className="relative space-y-8 px-1 pb-6 sm:px-2">
+          <div className="relative space-y-4 px-1 pb-4 sm:px-2">
             <div
               className="pointer-events-none fixed top-1/2 -right-40 -z-10 h-[600px] w-[600px] rounded-full bg-[#1562f0]/5 blur-[120px]"
               aria-hidden
             />
 
-            {/* Phone Dashboard — layout aligned with `marketExample.html` (bento + SoftPOS hero) */}
+            {/* Phone Dashboard — layout aligned with `marketExample.html` (bento + SoftPOS hero).
+                Top inset matches Programs tab: scroll `p-2` + content `pt-2` (avoid extra `py-6` pushing date pill down). */}
             <div className="mx-auto w-full max-w-2xl md:hidden">
-              <div className="rounded-2xl bg-[#f5f7f9] px-3 py-6 sm:px-4">
-                <section className="mb-5 flex justify-start">
-                  <div className="relative inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#abadaf]/15 bg-white px-5 py-3 shadow-sm active:scale-[0.98]">
-                    <span className="font-manrope text-sm font-bold tracking-tight text-[#2c2f31]">{timeFilter}</span>
+              <div className="rounded-2xl bg-[#f5f7f9] px-3 pb-4 pt-2 sm:px-4">
+                <section className="mb-3 flex justify-start">
+                  <div className="relative inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#abadaf]/15 bg-white px-4 py-2 shadow-sm active:scale-[0.98] sm:px-5 sm:py-3">
+                    <span className="font-manrope text-xs font-bold tracking-tight text-[#2c2f31] sm:text-sm">{timeFilter}</span>
                     <ChevronDown className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                     <select
                       value={timeFilter}
@@ -15760,83 +17065,83 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </div>
                 </section>
 
-                <section className="grid grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1]">
-                          <Landmark className="size-5" strokeWidth={1.75} aria-hidden />
+                <section className="grid grid-cols-2 gap-3">
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
+                          <Landmark className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[#747779]">Customer Balance</p>
-                          <p className="mt-1 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Customer Balance</p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${retainedCapitalLifetime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1]">
-                          <Users className="size-5" strokeWidth={1.75} aria-hidden />
+                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
+                          <Users className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[#747779]">Total Members</p>
-                          <p className="mt-1 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Total Members</p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             {membersTopupKpisAll.count.toLocaleString()}
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1]">
-                          <Coins className="size-5" strokeWidth={1.75} aria-hidden />
+                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
+                          <Coins className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[#747779]">B-Units</p>
-                          <p className="mt-1 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">B-Units</p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             {protocolFuelReserve.toFixed(2)}
                           </p>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-4">
-                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1]">
-                          <PlusCircle className="size-5" strokeWidth={1.75} aria-hidden />
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
+                          <PlusCircle className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[#747779]">Top-ups</p>
-                          <p className="mt-1 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Top-ups</p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${overviewActivityTopupDisplayTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1]">
-                          <CreditCard className="size-5" strokeWidth={1.75} aria-hidden />
+                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
+                          <CreditCard className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[#747779]">Charges</p>
-                          <p className="mt-1 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Charges</p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1]">
-                          <Heart className="size-5" strokeWidth={1.75} aria-hidden />
+                    <div className="rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
+                          <Heart className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[#747779]">Tips</p>
-                          <p className="mt-1 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Tips</p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${overviewActivityTipsLedgerCadTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
@@ -15845,95 +17150,123 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   </div>
                 </section>
 
-                {/* SoftPOS / Native app — `marketExample.html` Launch SoftPOS card + design reference screenshot */}
-                <section className="group relative mt-6">
-                  <div
-                    className="pointer-events-none absolute inset-0 rounded-2xl bg-[#0051d1]/5 blur-2xl transition-colors duration-500 group-hover:bg-[#0051d1]/10"
-                    aria-hidden
-                  />
-                  <div className="relative overflow-hidden rounded-2xl border border-[#abadaf]/10 bg-white shadow-[0_12px_40px_rgba(15,23,42,0.08)] transition-transform duration-300">
-                    <div className="relative bg-gradient-to-b from-[#f5f7f9] via-[#fafbfc] to-white px-5 pb-2 pt-8 sm:px-6">
-                      <div
-                        className="pointer-events-none absolute bottom-10 left-4 top-10 w-px bg-[#0051d1]/30 sm:left-5"
-                        aria-hidden
-                      />
-                      <div
-                        className="pointer-events-none absolute bottom-10 right-4 top-10 w-px bg-[#0051d1]/30 sm:right-5"
-                        aria-hidden
-                      />
-                      <div className="relative mx-auto flex w-full max-w-[300px] justify-center pb-2">
-                        <div className="relative">
-                          <div
-                            className="flex size-[220px] flex-col items-center justify-center rounded-full bg-[#0051d1] px-6 text-center shadow-[inset_0_2px_12px_rgba(0,0,0,0.12)] sm:size-[236px]"
-                            aria-hidden
-                          >
-                            <div className="flex flex-col items-center gap-1.5">
-                              <Smartphone className="size-[52px] text-white" strokeWidth={1.5} aria-hidden />
-                              <Nfc className="size-9 text-white" strokeWidth={2} aria-hidden />
+                {renderDashboardPendingTerminalAuthorizationSection('')}
+
+                {terminals.length > 0 ? (
+                  <section className="mt-4" aria-label="Active terminals summary">
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('Staff')}
+                      className={`flex w-full items-center gap-3 rounded-2xl border border-[#abadaf]/10 bg-white p-4 text-left shadow-[0_12px_40px_rgba(15,23,42,0.06)] transition-colors hover:border-[#1562f0]/25 hover:bg-[#f8fafc] sm:gap-4 sm:p-5 ${bizFocusRingClass}`}
+                    >
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#0051d1]/10 text-[#0051d1] sm:size-12 sm:rounded-xl">
+                        <MonitorSmartphone className="size-5 sm:size-6" strokeWidth={2} aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Terminals</p>
+                        <p className="mt-0.5 font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-lg">Active Terminals</p>
+                        <p className="mt-0.5 text-xs font-medium text-[#595c5e] sm:text-sm">
+                          {terminals.length === 1
+                            ? '1 device linked · Open Staff to manage'
+                            : `${terminals.length} devices linked · Open Staff to manage`}
+                        </p>
+                      </div>
+                      <ChevronRight className="size-5 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
+                    </button>
+                  </section>
+                ) : (
+                  /* SoftPOS / Native app — `marketExample.html` Launch SoftPOS card (hidden once at least one terminal is linked) */
+                  <section className="group relative mt-4">
+                    <div
+                      className="pointer-events-none absolute inset-0 rounded-2xl bg-[#0051d1]/5 blur-2xl transition-colors duration-500 group-hover:bg-[#0051d1]/10"
+                      aria-hidden
+                    />
+                    <div className="relative overflow-hidden rounded-2xl border border-[#abadaf]/10 bg-white shadow-[0_12px_40px_rgba(15,23,42,0.08)] transition-transform duration-300">
+                      <div className="relative bg-gradient-to-b from-[#f5f7f9] via-[#fafbfc] to-white px-4 pb-2 pt-5 sm:px-6 sm:pt-8">
+                        <div
+                          className="pointer-events-none absolute bottom-10 left-4 top-10 w-px bg-[#0051d1]/30 sm:left-5"
+                          aria-hidden
+                        />
+                        <div
+                          className="pointer-events-none absolute bottom-10 right-4 top-10 w-px bg-[#0051d1]/30 sm:right-5"
+                          aria-hidden
+                        />
+                        <div className="relative mx-auto flex w-full max-w-[300px] justify-center pb-2">
+                          <div className="relative">
+                            <div
+                              className="flex size-[220px] flex-col items-center justify-center rounded-full bg-[#0051d1] px-6 text-center shadow-[inset_0_2px_12px_rgba(0,0,0,0.12)] sm:size-[236px]"
+                              aria-hidden
+                            >
+                              <div className="flex flex-col items-center gap-1.5">
+                                <Smartphone className="size-[52px] text-white" strokeWidth={1.5} aria-hidden />
+                                <Nfc className="size-9 text-white" strokeWidth={2} aria-hidden />
+                              </div>
+                              <p className="font-manrope mt-4 text-[13px] font-extrabold leading-snug tracking-tight text-white sm:text-sm">
+                                Launch SoftPOS App
+                              </p>
                             </div>
-                            <p className="font-manrope mt-4 text-[13px] font-extrabold leading-snug tracking-tight text-white sm:text-sm">
-                              Launch SoftPOS App
-                            </p>
-                          </div>
-                          <div className="absolute -right-0.5 -top-0.5 flex size-12 items-center justify-center rounded-2xl border border-[#e5e9eb] bg-white shadow-md">
-                            <Nfc className="size-7 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
+                            <div className="absolute -right-0.5 -top-0.5 flex size-12 items-center justify-center rounded-2xl border border-[#e5e9eb] bg-white shadow-md">
+                              <Nfc className="size-7 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
+                            </div>
                           </div>
                         </div>
                       </div>
+                      <div className="flex flex-col items-center px-4 pb-5 pt-3 text-center sm:px-6 sm:pb-8 sm:pt-4">
+                        <p className="max-w-[280px] text-xs font-medium leading-relaxed text-[#595c5e] sm:text-sm">
+                          Turn your phone into a secure payment terminal in one tap.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openVerraNdefNativeAppInstall();
+                          }}
+                          className={`mt-4 w-full max-w-[320px] rounded-full bg-[#0051d1] px-5 py-3 font-manrope text-[10px] font-bold uppercase tracking-[0.18em] text-white shadow-[0_10px_28px_rgba(0,81,209,0.35)] transition-colors hover:bg-[#0047b8] active:scale-[0.98] sm:mt-6 sm:px-6 sm:py-3.5 sm:text-xs sm:tracking-[0.2em] md:text-sm md:tracking-widest ${bizFocusRingClass}`}
+                        >
+                          Activate Native App
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-center px-6 pb-8 pt-4 text-center">
-                      <p className="max-w-[280px] text-sm font-medium leading-relaxed text-[#595c5e]">
-                        Turn your phone into a secure payment terminal in one tap.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          openVerraNdefNativeAppInstall();
-                        }}
-                        className={`mt-6 w-full max-w-[320px] rounded-full bg-[#0051d1] px-6 py-3.5 font-manrope text-xs font-bold uppercase tracking-[0.2em] text-white shadow-[0_10px_28px_rgba(0,81,209,0.35)] transition-colors hover:bg-[#0047b8] active:scale-[0.98] sm:text-sm sm:tracking-widest ${bizFocusRingClass}`}
-                      >
-                        Activate Native App
-                      </button>
-                    </div>
-                  </div>
-                </section>
+                  </section>
+                )}
               </div>
             </div>
 
+            {renderDashboardPendingTerminalAuthorizationSection('hidden md:block')}
+
             {/* Tier 1 — KPI strip (`newOnloading.html`) — tablet/desktop */}
-            <section className="mb-6 hidden gap-4 md:grid md:grid-cols-3">
-              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+            <section className="mb-4 hidden gap-3 md:grid md:grid-cols-3">
+              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0] bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                 <div
                   className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-[#1562f0]/5 blur-2xl transition-colors group-hover:bg-[#1562f0]/10"
                   aria-hidden
                 />
-                <div className="relative mb-4 flex items-center justify-between">
+                <div className="relative mb-3 flex items-center justify-between">
                   <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">
                     Total capital retained
                   </span>
                   <span className="rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold text-[#1562f0]">(Current)</span>
                 </div>
                 <div className="relative space-y-1">
-                  <h2 className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                  <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
                     {`C$${retainedCapitalLifetime.toFixed(2)}`}
                   </h2>
-                  <p className="flex items-center gap-1 text-xs font-bold text-[#1562f0]">
+                  <p className="flex items-center gap-1 text-[11px] font-bold text-[#1562f0] sm:text-xs">
                     <TrendingUp className="size-4 shrink-0" strokeWidth={2} aria-hidden />
                     Current stored value across customer cards
                   </p>
                 </div>
               </div>
 
-              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                <div className="mb-4 flex items-center justify-between">
+              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff] bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <div className="mb-3 flex items-center justify-between">
                   <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">Active cards</span>
                   <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
                 </div>
                 <div className="space-y-1">
-                  <h2 className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                  <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
                     {membersTopupKpisAll.count.toLocaleString()}
                   </h2>
-                  <div className="flex -space-x-3 pt-2">
+                  <div className="flex -space-x-3 pt-1.5 sm:pt-2">
                     {topupMemberTableRowsAll.slice(0, 3).map((row, avi) => (
                       <img
                         key={`${row.memberAddress}-${avi}`}
@@ -15955,17 +17288,17 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                 </div>
               </div>
 
-              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                <div className="mb-4 flex items-center justify-between">
+              <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb] bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <div className="mb-3 flex items-center justify-between">
                   <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">System quota</span>
                   <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
                 </div>
                 <div className="space-y-1">
-                  <h2 className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
+                  <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
                     {protocolFuelReserve.toFixed(2)}{' '}
-                    <span className="text-lg font-bold text-slate-400">B-Units</span>
+                    <span className="text-base font-bold text-slate-400 lg:text-lg">B-Units</span>
                   </h2>
-                  <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
+                  <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3] sm:mt-4">
                     <div
                       className="h-full rounded-full bg-[#1562f0]"
                       style={{
@@ -15985,11 +17318,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
             </section>
 
             {/* Tier 2 — period activity (title follows header timeFilter) — tablet/desktop (metrics on phone are in bento above) */}
-            <section className="mb-8 hidden rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-8 md:block md:p-10">
-              <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-2 rounded-full bg-[#1562f0]" aria-hidden />
-                  <h2 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">{`${timeFilter}'s Activity`}</h2>
+            <section className="mb-5 hidden rounded-xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-5 md:block md:p-7">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  <div className="h-7 w-1.5 rounded-full bg-[#1562f0] sm:h-8 sm:w-2" aria-hidden />
+                  <h2 className="font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">{`${timeFilter}'s Activity`}</h2>
                 </div>
                 <button
                   type="button"
@@ -16000,26 +17333,26 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                   <ArrowRight className="size-4 shrink-0" strokeWidth={2} aria-hidden />
                 </button>
               </div>
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-[#1562f0] shadow-sm">
-                    <PlusCircle className="size-7" strokeWidth={1.75} aria-hidden />
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-[#1562f0] shadow-sm sm:rounded-2xl sm:p-3">
+                    <PlusCircle className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
-                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${overviewActivityTopupDisplayTotal.toFixed(2)}`}</h3>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
+                    <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">{`C$${overviewActivityTopupDisplayTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
                       {overviewActivityTopupDisplayCount.toLocaleString()} transactions
                     </p>
                   </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-[#8d3a8b] shadow-sm">
-                    <Landmark className="size-7" strokeWidth={1.75} aria-hidden />
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-[#8d3a8b] shadow-sm sm:rounded-2xl sm:p-3">
+                    <Landmark className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
-                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
+                    <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">
                       {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                     </h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
@@ -16027,25 +17360,25 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     </p>
                   </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-emerald-600 shadow-sm">
-                    <Heart className="size-7" strokeWidth={1.75} aria-hidden />
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-emerald-600 shadow-sm sm:rounded-2xl sm:p-3">
+                    <Heart className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
-                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">{`C$${overviewActivityTipsLedgerCadTotal.toFixed(2)}`}</h3>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
+                    <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">{`C$${overviewActivityTipsLedgerCadTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
                       {overviewActivityTipsLedgerCount.toLocaleString()} micro-tips
                     </p>
                   </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 rounded-2xl bg-white p-3 text-[#7a9dff] shadow-sm">
-                    <Nfc className="size-7" strokeWidth={1.75} aria-hidden />
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-[#7a9dff] shadow-sm sm:rounded-2xl sm:p-3">
+                    <Nfc className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
-                    <h3 className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
+                    <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">
                       {overviewMemberActivationsFromApi.total.toLocaleString()}{' '}
                       {overviewMemberActivationsFromApi.total === 1 ? 'activation' : 'activations'}
                     </h3>
@@ -16059,11 +17392,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
             </section>
 
             {/* Tier 3 — Trends & conversions (large screens only; hidden on phone / narrow Dashboard) */}
-            <section className="hidden gap-8 lg:grid lg:grid-cols-2">
-              <div className="flex min-h-[340px] flex-col justify-between rounded-lg bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+            <section className="hidden gap-5 lg:grid lg:grid-cols-2">
+              <div className="flex min-h-[280px] flex-col justify-between rounded-lg bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                 <div>
-                  <h3 className="mb-2 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31]">Reload velocity</h3>
-                  <p className="mb-8 max-w-xs text-sm text-slate-500">
+                  <h3 className="mb-1.5 font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Reload velocity</h3>
+                  <p className="mb-4 max-w-xs text-xs text-slate-500 sm:mb-6 sm:text-sm">
                     Tracking the momentum of recurring top-ups over the last 24 hours (global ledger, same reporting scope as Overview).
                   </p>
                 </div>
@@ -16098,14 +17431,14 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Ledger will populate this chart</p>
                   </div>
                 )}
-                <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-6">
+                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
                   <div className="text-center">
                     <p className="text-[10px] font-bold uppercase text-slate-400">Avg. gap</p>
-                    <p className="font-manrope text-lg font-bold text-[#2c2f31]">{overviewReloadVelocity24h.avgGapLabel}</p>
+                    <p className="font-manrope text-base font-bold text-[#2c2f31] sm:text-lg">{overviewReloadVelocity24h.avgGapLabel}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] font-bold uppercase text-slate-400">Peak window</p>
-                    <p className="font-manrope text-lg font-bold leading-tight text-[#2c2f31]">{overviewReloadVelocity24h.peakHourLabel}</p>
+                    <p className="font-manrope text-base font-bold leading-tight text-[#2c2f31] sm:text-lg">{overviewReloadVelocity24h.peakHourLabel}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
@@ -16120,9 +17453,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                 </div>
               </div>
 
-              <div className="min-h-[340px] rounded-lg bg-white p-10 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                <h3 className="mb-2 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31]">Gift pack conversions</h3>
-                <p className="mb-10 text-sm text-slate-500">Journey from initial discovery to successful redemption.</p>
+              <div className="min-h-[280px] rounded-lg bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
+                <h3 className="mb-1.5 font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Gift pack conversions</h3>
+                <p className="mb-5 text-xs text-slate-500 sm:mb-8 sm:text-sm">Journey from initial discovery to successful redemption.</p>
                 {(() => {
                   const funnelBase = Math.max(
                     1,
@@ -16173,7 +17506,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                           </div>
                         </div>
                       </div>
-                      <div className="mt-10 flex items-center gap-4 rounded-xl bg-[#1562f0]/5 p-4">
+                      <div className="mt-6 flex items-center gap-3 rounded-xl bg-[#1562f0]/5 p-3 sm:mt-8 sm:gap-4 sm:p-4">
                         <Star className="size-5 shrink-0 fill-[#1562f0] text-[#1562f0]" strokeWidth={1.5} aria-hidden />
                         <div>
                           <p className="text-xs font-bold text-[#2c2f31]">{effPct}% total efficiency</p>
@@ -16302,8 +17635,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
            return (
            <>
            <div className="mx-auto max-w-screen-xl space-y-4 sm:space-y-5 animate-in fade-in duration-300 font-sans text-[#2c2f31]">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div className="relative w-full sm:max-w-md">
+              <div className="hidden lg:flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                <div className="relative w-full lg:max-w-md">
                   <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
                   <input
                     id="transactions-ledger-search"
@@ -16315,7 +17648,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     className={`w-full rounded-full border-0 bg-[#eef1f3] py-3 pl-12 pr-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#747779] focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 ${bizFocusRingClass}`}
                   />
                 </div>
-                <div className="flex w-full items-center gap-3 overflow-x-auto pb-1 scrollbar-hide sm:w-auto sm:pb-0">
+                <div className="flex w-full items-center gap-3 overflow-x-auto pb-1 scrollbar-hide lg:w-auto lg:pb-0">
                   <select value={txFilterTerminal} onChange={(e) => setTxFilterTerminal(e.target.value)} className={`cursor-pointer shrink-0 appearance-none rounded-full border-0 bg-[#eef1f3] px-4 py-3 text-[14px] font-semibold text-[#2c2f31] ${bizFocusRingClass} focus:ring-2 focus:ring-[#0051d1]/20`}>
                     <option value="All">All Terminals</option>
                     {terminals.map((t) => (
@@ -16323,29 +17656,176 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     ))}
                     <option value="The Vault">The Vault (EOA)</option>
                   </select>
-                  <select value={txFilterType} onChange={(e) => setTxFilterType(e.target.value)} className={`cursor-pointer shrink-0 appearance-none rounded-full border-0 bg-[#eef1f3] px-4 py-3 text-[14px] font-semibold text-[#2c2f31] ${bizFocusRingClass} focus:ring-2 focus:ring-[#0051d1]/20`}>
-                    <option value="All">All Actions</option>
-                    <option value="Charge">Charge</option>
-                    <option value="In-Store Top-Up">Top-Up</option>
-                    <option value="Tip">Tip</option>
-                  </select>
-                  <button type="button" className="flex shrink-0 items-center justify-center rounded-full bg-[#eef1f3] p-3 text-[#747779]" aria-label="Filter">
-                    <Filter className="size-[18px]" strokeWidth={2} aria-hidden />
-                  </button>
                 </div>
               </div>
 
-              <section className="relative overflow-hidden rounded-lg border border-slate-100/80 bg-white shadow-sm">
+              <div className="md:hidden space-y-4 rounded-xl bg-[#f2f4f6] p-3 pb-6">
+                {indexerTransactionsRefreshing ? (
+                  <div
+                    className="flex items-center justify-center gap-2 rounded-lg border border-slate-100/90 bg-white/90 px-3 py-2.5 text-[12px] font-medium text-slate-600 shadow-sm"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2 className={`h-3.5 w-3.5 shrink-0 animate-spin ${bizUiPrimaryLoader}`} aria-hidden />
+                    <span>Updating transactions…</span>
+                  </div>
+                ) : null}
+                <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {([
+                    { id: 'all' as const, label: 'All' },
+                    { id: 'topup' as const, label: 'Top-ups' },
+                    { id: 'charge' as const, label: 'Charges' },
+                  ]).map(({ id, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setMobileTransactionsKind(id)}
+                      className={`shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                        mobileTransactionsKind === id
+                          ? 'bg-[#1562f0] text-white shadow-sm'
+                          : 'border border-slate-200/90 bg-white text-slate-600'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {MOBILE_TRANSACTIONS_TIME_PILLS.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setMobileTransactionsPeriod(p)}
+                      className={`shrink-0 rounded-full px-3.5 py-2 text-[13px] font-semibold transition-colors ${bizFocusRingClass} ${
+                        mobileTransactionsPeriod === p
+                          ? 'bg-slate-300/80 text-slate-900'
+                          : 'border border-slate-200/90 bg-white text-slate-500'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <div className="min-h-[200px] space-y-2">
+                  {indexerTransactionsLoading && indexerTransactions.length === 0 ? (
+                    <div className="rounded-xl border border-slate-100/80 bg-white px-6 py-14 text-center text-slate-500 shadow-sm">
+                      <span className="inline-flex items-center gap-2 text-sm font-medium">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#1562f0]" />
+                        Loading transactions...
+                      </span>
+                    </div>
+                  ) : !indexerTransactionsLoading && indexerTransactions.length === 0 ? (
+                    <div className="rounded-xl border border-slate-100/80 bg-white px-6 py-14 text-center text-slate-500 shadow-sm">
+                      <p className="text-[15px] font-medium text-slate-700">Ready for Commerce</p>
+                      <p className="mt-2 text-[13px] leading-relaxed text-slate-500">
+                        Awaiting your first customer transaction. Top-ups and payments will appear here in real time.
+                      </p>
+                    </div>
+                  ) : transactionsMobileFiltered.length === 0 ? (
+                    <div className="rounded-xl border border-slate-100/80 bg-white px-6 py-14 text-center text-slate-500 shadow-sm">
+                      <p className="text-[15px] font-medium text-slate-700">No transactions for the current filters.</p>
+                    </div>
+                  ) : (
+                    transactionsMobileDayGroups.map((g) => (
+                      <div key={g.bucketKey} className="space-y-2">
+                        <div className="flex items-center gap-2 px-0.5 pt-1">
+                          <span className="shrink-0 text-[11px] font-bold tracking-[0.12em] text-slate-400">{g.label}</span>
+                          <div className="h-px min-w-0 flex-1 bg-slate-300/70" />
+                        </div>
+                        <div className="space-y-2">
+                          {g.items.map((tx, idx) => {
+                            const isTopup = tx.type === 'In-Store Top-Up';
+                            const isCharge = tx.type === 'Charge';
+                            const isTip = tx.type === 'Tip';
+                            const rawM = tx.raw as Record<string, unknown>;
+                            const payerAddrM =
+                              typeof rawM.payer === 'string' && ethers.isAddress(rawM.payer)
+                                ? ethers.getAddress(rawM.payer)
+                                : '';
+                            const payerLowerM = payerAddrM.toLowerCase();
+                            const payerTagM = payerLowerM ? resolveReportingBeamioTagLower(payerLowerM) : '';
+                            const payerHandleM = payerTagM ? payerTagM.replace(/^@/, '') : '';
+                            const useNfcM = isCharge && LEDGER_NFC_BEAMIO_TAG_RE.test(payerHandleM);
+                            const tsM = txDisplayRowTimestampSec(tx);
+                            const timeStrM =
+                              (tx.time && tx.time.trim()) ||
+                              (tsM > 0
+                                ? new Date(tsM * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                                : '');
+                            let titleM = 'Purchase (-)';
+                            if (isTopup) titleM = 'Top-up (+)';
+                            else if (isTip) titleM = 'Tip (-)';
+                            const cadAmtM = calculateTxNetValueCAD(tx);
+                            const tipCadM = isCharge ? mergedChargeTipCad(tx) : 0;
+                            let subtitleM: string;
+                            if (isTopup) {
+                              subtitleM = `via USDC • ${timeStrM || '—'}`;
+                            } else if (payerTagM) {
+                              subtitleM = `${payerTagM} • ${timeStrM || '—'}`;
+                            } else if (isTip) {
+                              subtitleM = `Member • ${timeStrM || '—'}`;
+                            } else {
+                              subtitleM = timeStrM || '—';
+                            }
+                            const rowKeyM = String(tx.indexerTxId || tx.id || `m-${g.bucketKey}-${idx}`);
+                            return (
+                              <button
+                                key={rowKeyM}
+                                type="button"
+                                onClick={() => setSmartReceiptTx(tx)}
+                                className={`flex w-full items-start gap-3 rounded-xl border border-slate-100/90 bg-white p-4 text-left shadow-sm transition-all active:scale-[0.99] ${bizFocusRingClass}`}
+                              >
+                                <div
+                                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+                                    isTopup
+                                      ? 'bg-sky-100 text-[#1562f0]'
+                                      : isTip
+                                        ? 'bg-rose-50 text-rose-500'
+                                        : useNfcM
+                                          ? 'bg-sky-100 text-sky-600'
+                                          : 'bg-sky-100 text-slate-700'
+                                  }`}
+                                >
+                                  {isTopup ? (
+                                    <Plus size={22} strokeWidth={2.25} aria-hidden />
+                                  ) : isTip ? (
+                                    <Heart size={20} className="fill-rose-100" strokeWidth={2} aria-hidden />
+                                  ) : useNfcM ? (
+                                    <Nfc size={20} strokeWidth={2} aria-hidden />
+                                  ) : (
+                                    <CreditCard size={20} strokeWidth={2} aria-hidden />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-[15px] font-bold text-slate-900">{titleM}</div>
+                                  <div className="mt-0.5 text-[13px] text-slate-500">{subtitleM}</div>
+                                </div>
+                                <div className="flex shrink-0 flex-col items-end text-right">
+                                  <span
+                                    className={`text-base font-bold tabular-nums ${isTopup ? 'text-[#1562f0]' : 'text-slate-900'}`}
+                                  >
+                                    {isTopup ? '+' : '-'}C${Math.abs(cadAmtM).toFixed(2)}
+                                  </span>
+                                  {isCharge && tipCadM > 0.005 ? (
+                                    <span className="mt-0.5 block max-w-[9rem] text-[11px] italic leading-snug text-slate-400">
+                                      incl. C${tipCadM.toFixed(2)} tip
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <section className="hidden md:block relative overflow-hidden rounded-lg border border-slate-100/80 bg-white shadow-sm">
                 <div className="flex flex-col justify-between gap-4 p-6 sm:flex-row sm:items-center sm:px-8 sm:py-8">
                   <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Ledger History</h3>
                   <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 rounded-full bg-[#eef1f3] px-4 py-2 text-sm font-medium text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]"
-                      title="Filter via table controls above"
-                    >
-                      <Filter className="size-[18px]" strokeWidth={2} aria-hidden /> Filter
-                    </button>
                     <button
                       type="button"
                       className="flex items-center gap-2 rounded-full bg-[#eef1f3] px-4 py-2 text-sm font-medium text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]"
@@ -17996,58 +19476,10 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                    <div className="flex items-center gap-2">
                      <span className="size-2 shrink-0 animate-pulse rounded-full bg-[#0051d1]" aria-hidden />
                      <p className="text-sm font-semibold uppercase tracking-wide text-[#515c70]/70">
-                       Active Members: {membersDirectorySegmentRows.length.toLocaleString()}
+                       Active members: {membersMobileDirectorySegmentRows.length.toLocaleString()}
                      </p>
                    </div>
                  </section>
-
-                 <div className="flex flex-wrap gap-2">
-                   <button
-                     type="button"
-                     onClick={() => setMembersDirectorySegment('app')}
-                     className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
-                       membersDirectorySegment === 'app'
-                         ? 'bg-[#0051d1] text-white shadow-sm'
-                         : 'bg-[#eef1f3] text-[#595c5e]'
-                     } ${bizFocusRingClass}`}
-                   >
-                     App Users
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => setMembersDirectorySegment('anon_nfc')}
-                     className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
-                       membersDirectorySegment === 'anon_nfc'
-                         ? 'bg-[#0051d1] text-white shadow-sm'
-                         : 'bg-[#eef1f3] text-[#595c5e]'
-                     } ${bizFocusRingClass}`}
-                   >
-                     NFC Users
-                   </button>
-                 </div>
-
-                 <select
-                   value={membersLoyaltyProgramKey}
-                   onChange={(e) => setMembersLoyaltyProgramKey(e.target.value)}
-                   className={`w-full cursor-pointer rounded-2xl border border-[#abadaf]/25 bg-white px-4 py-3 text-[13px] font-semibold text-[#2c2f31] ${bizFocusRingClass}`}
-                 >
-                   <option value="all">All programs</option>
-                   {(membersOwnedPrograms ?? []).map((p) => (
-                     <option key={p.cardAddress} value={p.cardAddress.toLowerCase()}>
-                       {p.programName}
-                     </option>
-                   ))}
-                 </select>
-
-                 <div className="flex items-center justify-between px-1">
-                   <div className="flex items-center gap-2">
-                     <span className="text-xs font-bold uppercase tracking-widest text-[#515c70]">Sort by:</span>
-                     <span className="flex items-center gap-1 text-sm font-semibold text-[#2c2f31]">
-                       Recent Activity
-                       <ChevronDown className="size-[18px] text-[#595c5e]" strokeWidth={2} aria-hidden />
-                     </span>
-                   </div>
-                 </div>
 
                  <div className="grid gap-4">
                    {membersMobileTopSpenderRow ? (() => {
@@ -18057,64 +19489,56 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      const tagRaw = row.beamioTag.replace(/^@/, '').trim();
                      const displayName = formatDirectoryMemberDisplayName(row.beamioTag);
                      const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
-                     const eliteLabel = tier.gold && pts >= 500 ? 'Platinum Elite' : tier.label;
+                     const eliteLabel = tier.gold && pts >= 500 ? 'Platinum Elite' : `${tier.label.toUpperCase()} TIER`;
                      return (
                        <button
                          type="button"
                          key={`featured-${row.cardLower}-${row.memberAddress.toLowerCase()}`}
                          onClick={() => setMembersDirectoryDetailRow(row)}
-                         className={`relative flex flex-col gap-4 overflow-hidden rounded-lg bg-gradient-to-br from-[#0051d1] to-[#7a9dff] p-6 text-left text-white shadow-xl shadow-[#0051d1]/20 ${bizFocusRingClass}`}
+                         className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0051d1] via-[#1562f0] to-[#7a9dff] p-5 text-left text-white shadow-[0_12px_40px_rgba(0,81,209,0.35)] ${bizFocusRingClass}`}
                        >
-                         <div className="pointer-events-none absolute -right-16 -top-16 size-32 rounded-full bg-white/10 blur-3xl" aria-hidden />
-                         <div className="relative z-10 flex items-start justify-between gap-3">
-                           <div className="flex min-w-0 items-center gap-3">
-                             <div className="size-12 shrink-0 overflow-hidden rounded-full border-2 border-white/30">
-                               <img
-                                 src={getImg(tagRaw || row.memberAddress)}
-                                 alt=""
-                                 className="size-full object-cover"
-                               />
-                             </div>
-                             <div className="min-w-0">
-                               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">Top Spender</span>
-                               <h3 className="truncate text-xl font-bold text-white">{displayName}</h3>
-                             </div>
+                         <div className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-white/15 blur-2xl" aria-hidden />
+                         <div className="pointer-events-none absolute -bottom-8 -left-8 size-36 rounded-full bg-[#7a9dff]/30 blur-2xl" aria-hidden />
+                        <div className="relative z-10 flex items-center gap-4">
+                           <div className="relative size-[3.75rem] shrink-0 overflow-hidden rounded-full border-2 border-white/35 bg-white/10">
+                             <img
+                               src={getImg(tagRaw || row.memberAddress)}
+                               alt=""
+                               className="size-full object-cover"
+                             />
                            </div>
-                           <div className="flex shrink-0 flex-col items-end gap-1">
-                             <Sparkles className="size-6 text-white" strokeWidth={2} aria-hidden />
-                             <p className="text-xl font-extrabold tabular-nums text-white">
-                               {directoryMemberCurrentBalanceDisplay(row)}
+                          <div className="min-w-0 flex-1 flex flex-col justify-center self-center">
+                            <h3 className="truncate font-manrope text-2xl font-extrabold leading-tight tracking-tight text-white">
+                              @{displayName}
+                             </h3>
+                            {inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag) === 'nfc' ? (
+                              <div className="mt-3 flex min-w-0 items-center gap-1.5">
+                                <Nfc className="size-4 shrink-0 text-white" strokeWidth={2} aria-hidden />
+                              </div>
+                            ) : null}
+                           </div>
+                           <div className="flex shrink-0 flex-col items-end text-right">
+                             <Sparkles className="size-5 text-white" strokeWidth={2} aria-hidden />
+                             <p className="mt-2 font-manrope text-2xl font-extrabold tabular-nums leading-none text-white">
+                               {directoryMemberLifetimeTopupDisplay(row)}
                              </p>
-                           </div>
-                         </div>
-                         <div className="relative z-10 mt-1 flex flex-wrap items-end justify-between gap-3">
-                           <div className="min-w-0">
-                             <p className="text-xs text-white/60">BeamioTag</p>
-                             <div className="flex items-center gap-1.5">
-                               <p className="truncate text-lg font-bold text-white">{tagRaw ? `@${tagRaw}` : '—'}</p>
-                               {userType === 'app' || userType === 'both' ? (
-                                 <Smartphone className="size-4 shrink-0 text-white/70" strokeWidth={2} aria-hidden />
-                               ) : (
-                                 <CreditCard className="size-4 shrink-0 text-white/70" strokeWidth={2} aria-hidden />
-                               )}
+                             <div className="mt-3 rounded-full border border-white/25 bg-white/20 px-3 py-1.5 backdrop-blur-md">
+                               <span className="text-[10px] font-bold uppercase tracking-wider text-white">{eliteLabel}</span>
                              </div>
-                           </div>
-                           <div className="rounded-full border border-white/20 bg-white/20 px-4 py-2 backdrop-blur-md">
-                             <span className="text-xs font-bold uppercase tracking-wider text-white">{eliteLabel}</span>
                            </div>
                          </div>
                        </button>
                      );
                    })() : null}
 
-                   {membersMobileListExcludingFeatured.length === 0 ? (
+                  {membersMobileListExcludingFeatured.length === 0 && !membersMobileTopSpenderRow ? (
                      <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white p-10 text-center shadow-sm">
                        <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
                        <p className="text-sm font-semibold text-[#2c2f31]">No members in this view</p>
                        <p className="mt-2 text-sm text-[#595c5e]">
                          {topupMemberTableRowsAll.length === 0
                            ? 'Members appear after top-ups are recorded for your programs.'
-                           : 'Try another segment, program, or search.'}
+                           : 'No App or NFC members in your directory yet.'}
                        </p>
                      </div>
                    ) : (
@@ -18122,25 +19546,26 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                        const pts = directoryMemberPointsHuman(row);
                        const tier = directoryMemberTierFromPoints(pts);
                        const tagRaw = row.beamioTag.replace(/^@/, '').trim();
+                       const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
                        const displayName =
-                         membersDirectorySegment === 'app'
+                         userType === 'app' || userType === 'both'
                            ? formatDirectoryMemberDisplayName(row.beamioTag)
                            : tagRaw
                              ? formatDirectoryMemberDisplayName(row.beamioTag)
                              : 'NFC user';
                        const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
-                       const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
                        const showStarBadge = tier.gold;
+                       const tierPillLabel = `${tier.label.toUpperCase()} TIER`;
                        return (
                          <button
                            type="button"
                            key={`m-${row.cardLower}-${row.memberAddress.toLowerCase()}`}
                            onClick={() => setMembersDirectoryDetailRow(row)}
-                           className={`flex w-full items-center justify-between rounded-lg bg-white p-5 text-left shadow-[0_4px_20px_rgba(0,0,0,0.02)] transition-transform hover:scale-[1.01] active:scale-[0.99] ${bizFocusRingClass}`}
+                           className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-[#e8eaed] bg-white p-5 text-left shadow-[0_4px_24px_rgba(15,23,42,0.06)] transition-transform hover:scale-[1.01] active:scale-[0.99] ${bizFocusRingClass}`}
                          >
-                           <div className="flex min-w-0 items-center gap-4">
+                           <div className="flex min-w-0 flex-1 items-center gap-4">
                              <div className="relative shrink-0">
-                               <div className="size-14 overflow-hidden rounded-full bg-[#7a9dff]/20">
+                               <div className="size-14 overflow-hidden rounded-full bg-[#eef1f3] ring-1 ring-black/[0.04]">
                                  <img
                                    src={getImg(tagRaw || row.memberAddress)}
                                    alt=""
@@ -18148,39 +19573,32 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                  />
                                </div>
                                {showStarBadge ? (
-                                 <div className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-white shadow-sm">
-                                   <Star className="size-3.5 fill-yellow-500 text-yellow-500" strokeWidth={0} aria-hidden />
+                                 <div className="absolute -bottom-0.5 -right-0.5 flex size-6 items-center justify-center rounded-full border border-white bg-white shadow-sm">
+                                   <Star className="size-3.5 fill-amber-400 text-amber-500" strokeWidth={0} aria-hidden />
                                  </div>
                                ) : null}
                              </div>
                              <div className="min-w-0">
-                               <h3 className="truncate text-lg font-bold text-[#2c2f31]">{displayName}</h3>
-                               <div className="mt-0.5 flex items-center gap-1.5">
-                                 <p
-                                   className={`truncate text-sm font-medium ${tagRaw ? 'text-[#0051d1]' : 'font-mono text-[#595c5e]'}`}
-                                 >
-                                   {tagRaw ? `@${tagRaw}` : shortAddr}
-                                 </p>
-                                 {userType === 'app' || userType === 'both' ? (
-                                   <Smartphone className="size-3.5 shrink-0 text-[#515c70]/60" strokeWidth={2} aria-hidden />
-                                 ) : (
-                                   <CreditCard className="size-3.5 shrink-0 text-[#515c70]/60" strokeWidth={2} aria-hidden />
-                                 )}
-                               </div>
+                              <h3 className="truncate font-manrope text-lg font-bold text-[#2c2f31]">@{displayName}</h3>
+                              {inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag) === 'nfc' ? (
+                                <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                                  <Nfc className="size-4 shrink-0 text-[#515c70]/70" strokeWidth={2} aria-hidden />
+                                </div>
+                              ) : null}
                              </div>
                            </div>
                            <div className="shrink-0 text-right">
-                             <p className="text-lg font-bold tabular-nums text-[#2c2f31]">
-                               {directoryMemberCurrentBalanceDisplay(row)}
+                             <p className="font-manrope text-lg font-extrabold tabular-nums text-[#2c2f31]">
+                               {directoryMemberLifetimeTopupDisplay(row)}
                              </p>
                              <span
-                               className={`mt-2 inline-block rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
+                               className={`mt-2 inline-block rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
                                  tier.gold
-                                   ? 'border-yellow-200 bg-yellow-100 text-yellow-700'
-                                   : 'border-slate-200 bg-slate-100 text-slate-600'
+                                   ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200/80'
+                                   : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200/80'
                                }`}
                              >
-                               {tier.label} Tier
+                               {tierPillLabel}
                              </span>
                            </div>
                          </button>
@@ -18237,26 +19655,32 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  </div>
                </section>
 
-               <div className="flex max-w-md gap-1 rounded-full bg-[#eef1f3] p-1">
-                 <button
-                   type="button"
-                   onClick={() => setMembersDirectorySegment('app')}
-                   className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
-                     membersDirectorySegment === 'app' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
-                   } ${bizFocusRingClass}`}
-                 >
-                   App Users
-                 </button>
-                 <button
-                   type="button"
-                   onClick={() => setMembersDirectorySegment('anon_nfc')}
-                   className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
-                     membersDirectorySegment === 'anon_nfc' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
-                   } ${bizFocusRingClass}`}
-                 >
-                  NFC Users
-                 </button>
-               </div>
+               {membersLoyaltyProgramKey !== 'all' ? (
+                 <div className="flex max-w-md gap-1 rounded-full bg-[#eef1f3] p-1">
+                   <button
+                     type="button"
+                     onClick={() => setMembersDirectorySegment('app')}
+                     className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
+                       membersDirectorySegment === 'app' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
+                     } ${bizFocusRingClass}`}
+                   >
+                     App Users
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => setMembersDirectorySegment('anon_nfc')}
+                     className={`flex-1 rounded-full py-3 px-4 text-sm font-bold transition-all ${
+                       membersDirectorySegment === 'anon_nfc' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:bg-white/40'
+                     } ${bizFocusRingClass}`}
+                   >
+                     NFC Users
+                   </button>
+                 </div>
+               ) : (
+                 <p className="max-w-xl text-xs font-medium text-[#595c5e]">
+                   Showing App and NFC members across all your programs. Use a single program to filter by channel.
+                 </p>
+               )}
 
                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
                  <div className="relative max-w-2xl flex-1">
@@ -18416,93 +19840,29 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                <section className="space-y-6">
                  <div className="flex items-center justify-between px-2">
                    <h3 className="text-lg font-bold text-[#2c2f31]">
-                    {membersDirectorySegment === 'app' ? 'App Users' : 'NFC Users'}
+                     {membersLoyaltyProgramKey === 'all'
+                       ? 'All members'
+                       : membersDirectorySegment === 'app'
+                         ? 'App Users'
+                         : 'NFC Users'}
                    </h3>
-                   <span className="text-xs font-bold uppercase tracking-tighter text-[#0051d1]">Sort by: Recent</span>
+                   <span className="text-xs font-bold uppercase tracking-tighter text-[#0051d1]">
+                     {membersLoyaltyProgramKey === 'all' ? 'App + NFC · Recent' : 'Sort by: Recent'}
+                   </span>
                  </div>
 
-                 {membersDirectorySegment === 'app' ? (
-                   membersDirectorySegmentRows.length > 0 ? (
-                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                       {membersDirectorySegmentRows.map((row) => {
-                         const pts = directoryMemberPointsHuman(row);
-                         const tier = directoryMemberTierFromPoints(pts);
-                         const tagRaw = row.beamioTag.replace(/^@/, '').trim();
-                         const displayName = formatDirectoryMemberDisplayName(row.beamioTag);
-                        const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
-                         return (
-                           <button
-                             type="button"
-                             key={`${row.cardLower}-${row.memberAddress.toLowerCase()}`}
-                             onClick={() => setMembersDirectoryDetailRow(row)}
-                             className={`group flex w-full items-center gap-4 rounded-lg border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10 ${bizFocusRingClass}`}
-                           >
-                             <div className="relative shrink-0">
-                               <img
-                                 src={getImg(tagRaw || row.memberAddress)}
-                                 alt=""
-                                 className="size-14 rounded-full object-cover"
-                               />
-                               <div
-                                 className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
-                                   tier.gold ? 'bg-yellow-400' : 'bg-slate-300'
-                                 }`}
-                               >
-                                 <Star className="size-2.5 fill-white text-white" strokeWidth={0} aria-hidden />
-                               </div>
-                             </div>
-                             <div className="min-w-0 flex-1">
-                               <p className="truncate font-bold text-[#2c2f31]">{displayName}</p>
-                               <p className="text-xs font-medium text-[#0051d1]">@{tagRaw}</p>
-                               <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
-                              <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
-                                {userType === 'both' ? (
-                                  <>
-                                    <Nfc size={12} className="shrink-0 text-slate-400" />
-                                    <Smartphone size={12} className="shrink-0 text-emerald-800" />
-                                  </>
-                                ) : userType === 'app' ? (
-                                  <Smartphone size={12} className="shrink-0 text-emerald-800" />
-                                ) : userType === 'nfc' ? (
-                                  <Nfc size={12} className="shrink-0 text-slate-400" />
-                                ) : null}
-                                <span>{formatMemberDirectoryUserTypeLabel(userType)}</span>
-                              </div>
-                             </div>
-                             <div className="shrink-0 text-right">
-                              <p className="font-extrabold tabular-nums text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
-                               <span
-                                 className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
-                                   tier.gold ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
-                                 }`}
-                               >
-                                 {tier.label}
-                               </span>
-                             </div>
-                           </button>
-                         );
-                       })}
-                     </div>
-                   ) : (
-                     <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white/60 p-10 text-center">
-                       <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
-                       <p className="text-sm font-semibold text-[#2c2f31]">No app users in this view</p>
-                       <p className="mt-2 text-sm text-[#595c5e]">
-                         {topupMemberTableRowsAll.length === 0
-                           ? 'No members returned from the API yet for your programs. After successful top-ups are recorded on the server, they appear here.'
-                          : 'No app-channel members match this search or program filter.'}
-                       </p>
-                     </div>
-                   )
-                 ) : membersDirectorySegmentRows.length > 0 ? (
+                 {membersDesktopDirectoryCardRows.length > 0 ? (
                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                     {membersDirectorySegmentRows.map((row) => {
+                     {membersDesktopDirectoryCardRows.map((row) => {
                        const pts = directoryMemberPointsHuman(row);
                        const tier = directoryMemberTierFromPoints(pts);
                        const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
-                      const tagRaw = row.beamioTag.replace(/^@/, '').trim();
-                      const displayTitle = tagRaw ? formatDirectoryMemberDisplayName(row.beamioTag) : 'NFC user';
-                      const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
+                       const tagRaw = row.beamioTag.replace(/^@/, '').trim();
+                       const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
+                       const displayTitle =
+                         tagRaw || userType === 'app' || userType === 'both'
+                           ? formatDirectoryMemberDisplayName(row.beamioTag)
+                           : 'NFC user';
                        return (
                          <button
                            type="button"
@@ -18511,7 +19871,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                            className={`group flex w-full items-center gap-4 rounded-lg border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10 ${bizFocusRingClass}`}
                          >
                            <div className="relative shrink-0">
-                             <img src={getImg(row.memberAddress)} alt="" className="size-14 rounded-full object-cover" />
+                             <img
+                               src={getImg(tagRaw || row.memberAddress)}
+                               alt=""
+                               className="size-14 rounded-full object-cover"
+                             />
                              <div
                                className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
                                  tier.gold ? 'bg-yellow-400' : 'bg-slate-300'
@@ -18521,27 +19885,29 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                              </div>
                            </div>
                            <div className="min-w-0 flex-1">
-                            <p className="truncate font-bold text-[#2c2f31]">{displayTitle}</p>
-                            <p className={`truncate text-xs font-medium ${tagRaw ? 'text-[#0051d1]' : 'font-mono text-[#595c5e]'}`}>
-                              {tagRaw ? `@${tagRaw}` : shortAddr}
-                            </p>
+                             <p className="truncate font-bold text-[#2c2f31]">{displayTitle}</p>
+                             <p
+                               className={`truncate text-xs font-medium ${tagRaw ? 'text-[#0051d1]' : 'font-mono text-[#595c5e]'}`}
+                             >
+                               {tagRaw ? `@${tagRaw}` : shortAddr}
+                             </p>
                              <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
-                            <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
-                              {userType === 'both' ? (
-                                <>
-                                  <Nfc size={12} className="shrink-0 text-slate-400" />
-                                  <Smartphone size={12} className="shrink-0 text-emerald-800" />
-                                </>
-                              ) : userType === 'app' ? (
-                                <Smartphone size={12} className="shrink-0 text-emerald-800" />
-                              ) : userType === 'nfc' ? (
-                                <Nfc size={12} className="shrink-0 text-slate-400" />
-                              ) : null}
-                              <span>{formatMemberDirectoryUserTypeLabel(userType)}</span>
-                            </div>
+                             <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
+                               {userType === 'both' ? (
+                                 <>
+                                   <Nfc size={12} className="shrink-0 text-slate-400" />
+                                   <Smartphone size={12} className="shrink-0 text-emerald-800" />
+                                 </>
+                               ) : userType === 'app' ? (
+                                 <Smartphone size={12} className="shrink-0 text-emerald-800" />
+                               ) : userType === 'nfc' ? (
+                                 <Nfc size={12} className="shrink-0 text-slate-400" />
+                               ) : null}
+                               <span>{formatMemberDirectoryUserTypeLabel(userType)}</span>
+                             </div>
                            </div>
                            <div className="shrink-0 text-right">
-                            <p className="font-extrabold tabular-nums text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
+                             <p className="font-extrabold tabular-nums text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
                              <span
                                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
                                  tier.gold ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
@@ -18556,10 +19922,16 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                    </div>
                  ) : (
                    <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white/60 p-10 text-center">
-                     <Nfc className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
-                    <p className="text-sm font-semibold text-[#2c2f31]">No NFC users in this view</p>
+                     <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
+                     <p className="text-sm font-semibold text-[#2c2f31]">No members in this view</p>
                      <p className="mt-2 text-sm text-[#595c5e]">
-                      No NFC-channel members match this search or program filter.
+                       {topupMemberTableRowsAll.length === 0
+                         ? 'No members returned from the API yet for your programs. After successful top-ups are recorded on the server, they appear here.'
+                         : membersLoyaltyProgramKey === 'all'
+                           ? 'No directory members match this search across your programs.'
+                           : membersDirectorySegment === 'app'
+                             ? 'No app-channel members match this search or program filter.'
+                             : 'No NFC-channel members match this search or program filter.'}
                      </p>
                    </div>
                  )}
@@ -18570,7 +19942,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  {membersDirectoryDetailRow
                    ? memberDirectoryProfileDrawerMotionLayers({
                        row: membersDirectoryDetailRow,
-                       segment: membersDirectorySegment,
+                       segment: membersDirectoryDrawerSegment,
                        cadPerUsdcOracle: oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK,
                        onClose: () => setMembersDirectoryDetailRow(null),
                        onSendGift: () => {
@@ -18580,17 +19952,6 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      })
                    : null}
                </AnimatePresence>
-
-               <div className="fixed bottom-28 right-6 z-40 lg:bottom-12">
-                 <button
-                   type="button"
-                   onClick={() => setIsIssueCardModalOpen(true)}
-                   className={`flex size-14 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-xl transition-transform active:scale-90 ${bizFocusRingClass}`}
-                   title="Issue card"
-                 >
-                   <UserPlus className="size-6" strokeWidth={2.25} aria-hidden />
-                 </button>
-               </div>
              </>
  )}
            </div>
@@ -18810,7 +20171,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
            useTerminalsMarketLayout ? (
              renderTerminalsMarketStaffTab()
            ) : (
-           <div className="relative mx-auto w-full max-w-5xl animate-in px-3 py-6 fade-in duration-300 sm:px-6 md:py-8">
+           <div className="relative mx-auto w-full max-w-5xl animate-in px-3 py-4 fade-in duration-300 sm:px-5 md:py-6">
              {showBizFirstMembershipOnboarding ? (
                <StaffTerminalsNoAaOnloadingShell
                  protocolFuelBUnitsDisplay={
@@ -18830,124 +20191,35 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                <>
              <StaffSoftPosHero
                onLinkNew={() => {
-                 if (!hasAaAccount) {
-                   setActiveTab('Market');
-                   setSelectedProduct('starter');
-                   return;
-                 }
                  if (showStaffTerminalsManagement) {
                    setIsAddTerminalOpen(true);
                    return;
                  }
+                if (!hasAaAccount) {
+                  setActiveTab('Market');
+                  setSelectedProduct('starter');
+                  return;
+                }
                  setActiveTab('Market');
                }}
              />
-             {hasAaAccount && staffPendingPosPermissions.length > 0 ? (
-               <section className="mb-6 md:mb-8 rounded-2xl border border-amber-200/90 bg-amber-50/50 p-4 shadow-sm md:p-5">
-                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                   <UserPlus className="size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden />
-                   <h2 className="font-sans text-lg font-extrabold tracking-tight text-[#2c2f31]">
-                     Pending terminal authorization
-                   </h2>
-                 </div>
-                 <p className="mb-4 text-sm font-medium text-[#515c70]">
-                   A POS device sent a workspace permission request. Register it below to link this SoftPOS terminal to your card.
-                 </p>
-                 <ul className="flex flex-col gap-3">
-                   {staffPendingPosPermissions.map((row) => {
-                     const tagPlain = row.childBeamioTag.replace(/^@/, '');
-                     return (
-                       <li
-                         key={row.sendId}
-                         className="flex flex-col gap-3 rounded-xl border border-[#abadaf]/25 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
-                       >
-                         <div className="min-w-0 flex-1 space-y-2">
-                           <div className="flex flex-wrap items-center gap-2">
-                             <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
-                               Awaiting approval
-                             </span>
-                             <span className="font-mono text-sm font-bold text-[#2c2f31]">
-                               @{tagPlain}
-                             </span>
-                           </div>
-                           <AddressCapsule
-                             address={row.childEoa.startsWith('0x') ? row.childEoa : `0x${row.childEoa}`}
-                             className="max-w-full border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
-                           />
-                           {row.parentBeamioTag ? (
-                             <p className="text-[11px] font-medium text-[#abadaf]">
-                               Parent workspace tag: @{row.parentBeamioTag.replace(/^@/, '')}
-                             </p>
-                           ) : null}
-                         </div>
-                         <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
-                           <button
-                             type="button"
-                             disabled={!showStaffTerminalsManagement}
-                             title={
-                               showStaffTerminalsManagement
-                                 ? undefined
-                                 : 'Unlock Smart Terminal management to register this device.'
-                             }
-                             onClick={() => {
-                               if (!showStaffTerminalsManagement) return;
-                               try {
-                                 const addr = ethers.getAddress(row.childEoa);
-                                 setDeviceHandleResolved({
-                                   username: tagPlain,
-                                   address: addr,
-                                   image: undefined,
-                                 });
-                                 setNewTerminalTag(`@${tagPlain}`);
-                                 setNewDeviceName(`POS ${tagPlain}`);
-                                 setDeviceHandleError(null);
-                                 setLinkTerminalError(null);
-                                 setIsAddTerminalOpen(true);
-                               } catch {
-                                 setLinkTerminalError('Invalid terminal address in permission request.');
-                               }
-                             }}
-                             className="rounded-xl bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1254d1] disabled:cursor-not-allowed disabled:opacity-50"
-                           >
-                             Approve &amp; register
-                           </button>
-                           <button
-                             type="button"
-                             onClick={() => {
-                               if (posPermissionPartitionAddressesList.length > 0) {
-                                 removePosTerminalPermissionPendingFromPartitions(
-                                   posPermissionPartitionAddressesList,
-                                   row.sendId,
-                                 );
-                               }
-                             }}
-                             className="rounded-xl border border-[#abadaf]/40 bg-white px-4 py-2.5 text-sm font-semibold text-[#515c70] transition-colors hover:bg-[#f5f7f9]"
-                           >
-                             Dismiss
-                           </button>
-                         </div>
-                       </li>
-                     );
-                   })}
-                 </ul>
-               </section>
-             ) : null}
+             {renderDashboardPendingTerminalAuthorizationSection('')}
              {showStaffSmartTerminalLockedPanel && (
-               <div className="flex min-h-[320px] flex-col items-center justify-center py-10 md:py-12">
-                 <div className="w-full max-w-md rounded-3xl border border-white/20 bg-white/70 p-10 text-center shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md backdrop-saturate-150">
-                   <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 shadow-sm">
-                     <Lock size={28} className="text-slate-400" />
+               <div className="flex min-h-[260px] flex-col items-center justify-center py-6 md:min-h-[280px] md:py-8">
+                 <div className="w-full max-w-md rounded-2xl border border-white/20 bg-white/70 p-6 text-center shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md backdrop-saturate-150 sm:rounded-3xl sm:p-8 md:p-9">
+                   <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 shadow-sm sm:mb-5 sm:size-16">
+                     <Lock className="size-6 text-slate-400 sm:size-7" strokeWidth={2} />
                    </div>
-                   <h3 className="text-[22px] font-bold text-slate-900 mb-3 tracking-tight">Smart Terminal Locked</h3>
-                   <p className="text-[14px] font-medium text-slate-500 max-w-[360px] leading-relaxed mb-8">
+                   <h3 className="mb-2 text-lg font-bold tracking-tight text-slate-900 sm:mb-3 sm:text-[22px]">Smart Terminal Locked</h3>
+                   <p className="mb-5 max-w-[360px] text-xs font-medium leading-relaxed text-slate-500 sm:mb-6 sm:text-[14px]">
                      Staff terminals operate on zero-gas AA routing. Unlock your Smart Terminal by purchasing a Fuel Pack or joining an Alliance before linking devices.
                    </p>
-                   <div className="flex flex-wrap justify-center gap-3">
-                     <button onClick={() => setActiveTab('Market')} className="bg-orange-500 text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-orange-400 transition-colors shadow-md flex items-center gap-2">
-                       <Fuel size={18} /> Buy Fuel
+                   <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+                     <button onClick={() => setActiveTab('Market')} className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-orange-400 sm:rounded-[14px] sm:px-6 sm:py-3.5 sm:text-[15px]">
+                       <Fuel className="size-4 sm:size-[18px]" strokeWidth={2} aria-hidden /> Buy Fuel
                      </button>
-                     <button onClick={() => setActiveTab('Alliances')} className="bg-[#1562f0] text-white px-6 py-3.5 rounded-[14px] font-semibold text-[15px] hover:bg-[#2b74f5] transition-colors shadow-md flex items-center gap-2">
-                       <Hexagon size={18} /> Join Alliance
+                     <button onClick={() => setActiveTab('Alliances')} className="flex items-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-[#2b74f5] sm:rounded-[14px] sm:px-6 sm:py-3.5 sm:text-[15px]">
+                       <Hexagon className="size-4 sm:size-[18px]" strokeWidth={2} aria-hidden /> Join Alliance
                      </button>
                    </div>
                  </div>
@@ -18957,31 +20229,31 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              {showStaffSmartTerminalLockedPanel && <StaffTerminalsInfoGrid />}
 
              {showStaffTerminalsManagement && (
-               <section className="mb-6 md:mb-8">
-                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                   <h2 className="font-sans text-2xl font-extrabold tracking-tight text-[#2c2f31]">Active Terminals</h2>
-                   <span className="w-fit rounded-full bg-[#eef1f3] px-4 py-2 text-sm font-bold text-[#1562f0]">
+               <section className="mb-4 md:mb-6">
+                 <div className="mb-2 flex flex-col gap-2 sm:mb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                   <h2 className="font-sans text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">Active Terminals</h2>
+                   <span className="w-fit rounded-full bg-[#eef1f3] px-3 py-1 text-xs font-bold text-[#1562f0] sm:px-4 sm:py-2 sm:text-sm">
                      {`${terminals.length} Connected`}
                    </span>
                  </div>
-                 <p className="mb-4 text-sm font-medium text-[#515c70]">
+                 <p className="mb-3 text-xs font-medium text-[#515c70] sm:mb-4 sm:text-sm">
                    Manage linked POS devices, EOA addresses, and issuance limits. Use the hero button to link a new SoftPOS terminal.
                  </p>
                  {terminalsLoading && terminals.length === 0 ? (
-                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-12 text-[#595c5e]">
+                   <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-4 py-8 text-[#595c5e] sm:px-6 sm:py-10">
                      <span className="inline-flex items-center gap-2 text-sm font-medium">
                        <span className="size-4 animate-spin rounded-full border-2 border-[#abadaf] border-t-[#1562f0]" />
                        Loading terminals...
                      </span>
                    </div>
                  ) : terminals.length === 0 ? (
-                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-6 py-10 text-center">
-                     <p className="text-sm font-medium text-[#595c5e]">
+                   <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#f5f7f9] px-4 py-7 text-center sm:px-6 sm:py-9">
+                     <p className="text-xs font-medium text-[#595c5e] sm:text-sm">
                        No terminals linked yet. Use &quot;Link New SoftPOS Terminal&quot; above to add one.
                      </p>
                    </div>
                  ) : (
-                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
                      {terminals.map((term, termIdx) => {
                        const s = terminalStats[term.id.toLowerCase()];
                        const issued = s != null ? s.mintCounterFromClear : null;
@@ -18994,16 +20266,16 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                        return (
                          <div
                            key={term.id}
-                           className="group rounded-lg bg-[#ffffff] p-1 shadow-sm transition-all hover:bg-[#eef1f3]"
+                           className="group rounded-lg bg-[#ffffff] p-0.5 shadow-sm transition-all hover:bg-[#eef1f3] sm:p-1"
                          >
-                           <div className="flex items-center gap-4 rounded-[1.9rem] border border-transparent p-5 transition-colors group-hover:border-[#1562f0]/10 sm:gap-6 sm:p-6">
-                             <div className="relative flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[#eef1f3]">
-                               <Smartphone className="size-9 text-[#515c70]/40" strokeWidth={1.5} aria-hidden />
+                           <div className="flex items-center gap-3 rounded-[1.5rem] border border-transparent p-4 transition-colors group-hover:border-[#1562f0]/10 sm:gap-5 sm:rounded-[1.9rem] sm:p-5 md:gap-6 md:p-6">
+                             <div className="relative flex h-[5.25rem] w-[4.25rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#eef1f3] sm:h-24 sm:w-20 sm:rounded-2xl">
+                               <Smartphone className="size-8 text-[#515c70]/40 sm:size-9" strokeWidth={1.5} aria-hidden />
                                <div className="absolute bottom-2 right-2 size-4 rounded-full border-2 border-white bg-emerald-500" />
                              </div>
                              <div className="min-w-0 flex-1">
-                               <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
-                                 <h3 className="font-sans text-lg font-bold text-[#2c2f31]">{term.tag}</h3>
+                               <div className="mb-0.5 flex flex-wrap items-start justify-between gap-2 sm:mb-1">
+                                 <h3 className="font-sans text-base font-bold text-[#2c2f31] sm:text-lg">{term.tag}</h3>
                                  <span
                                    className={
                                      isPrimary
@@ -19014,16 +20286,16 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                    {isPrimary ? 'Primary' : 'Secondary'}
                                  </span>
                                </div>
-                               <p className="mb-3 text-sm text-[#515c70]">
+                               <p className="mb-2 text-xs text-[#515c70] sm:mb-3 sm:text-sm">
                                  {term.name?.trim() ? `${term.name} • SoftPOS` : 'SoftPOS'}
                                </p>
-                               <div className="mb-3 min-w-0">
+                               <div className="mb-2 min-w-0 sm:mb-3">
                                  <AddressCapsule
                                    address={term.id}
                                    className="max-w-full border-[#abadaf]/30 bg-[#f5f7f9] text-[#595c5e]"
                                  />
                                </div>
-                               <div className="mb-2 flex flex-wrap gap-4">
+                               <div className="mb-1.5 flex flex-wrap gap-3 sm:mb-2 sm:gap-4">
                                  <div className="flex flex-col">
                                    <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Last activity</span>
                                    <span className="text-xs font-medium text-[#2c2f31]" title="From latest matching ledger row in Transactions">
@@ -19414,6 +20686,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              <header
                className={`mb-6 flex flex-col gap-3 border-b border-[#abadaf]/25 pb-4 sm:flex-row sm:items-center sm:justify-between ${
                  isCardConfiguratorMobileShell ? 'hidden' : ''
+               } ${
+                 cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview' ? 'hidden' : ''
                }`}
              >
                <div className="min-w-0">
@@ -19457,7 +20731,15 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                ) : null}
              </header>
 
-             <div className={`mb-6 ${isCardConfiguratorMobileShell ? 'hidden' : ''}`}>
+             <div
+               className={`mb-6 ${isCardConfiguratorMobileShell ? 'hidden' : ''} ${
+                 cardIssuanceExistingCard &&
+                 cardIssuanceActiveProgramView === 'overview' &&
+                 cardIssuanceOnchainFetch !== 'loading'
+                   ? 'hidden'
+                   : ''
+               }`}
+             >
                {cardIssuanceOnchainFetch === 'loading' ? (
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
                    Checking the User Card factory for cards owned by your wallet…
@@ -19466,11 +20748,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
                    Define the parameters and rewards logic for your new merchant card program.
                  </p>
-               ) : cardIssuanceActiveProgramView === 'overview' ? (
-                 <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
-                   Your active program at a glance: retained capital, members, card preview, tiers, and shortcuts to campaigns and terminals.
-                 </p>
-               ) : (
+               ) : cardIssuanceActiveProgramView === 'overview' ? null : (
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
                    Edit brand, tiers, and publishing options for your issued card.
                  </p>
@@ -19482,7 +20760,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
                  <p className="text-sm font-medium text-[#595c5e]">Loading your issued card from the factory…</p>
                </div>
-             ) : (!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') ? (
+             ) : (
+             <>
+             {(!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') ? (
              <div
                className={`grid min-w-0 grid-cols-1 gap-6 min-[1440px]:grid-cols-12 ${
                  isCardConfiguratorMobileShell
@@ -19717,18 +20997,16 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? (
                    <div className={`space-y-5 px-2 pb-4 pt-1 sm:px-3 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS}`}>
                      <div
-                       className={`sticky z-40 mx-auto w-full max-w-lg px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS} ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
+                       className={`sticky z-40 mx-auto w-full max-w-lg px-3 pb-4 sm:px-4 sm:pb-5 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS} ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
                        <section aria-label="Card preview">
                          <div className="px-1 pb-1 sm:px-2 sm:pb-2">
-                           <div className="relative">
+                           <div className="relative mx-auto w-full max-w-[440px] group/preview-review">
                              <div
-                               className="pointer-events-none absolute -inset-1 rounded-xl bg-[#0051d1]/20 blur-2xl transition duration-500"
+                               className="absolute -inset-1 rounded-xl bg-primary/20 blur-2xl transition duration-500 group-hover/preview-review:bg-primary/30"
                                aria-hidden
                              />
-                             <div
-                               className={`relative overflow-hidden rounded-2xl ${CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS}`}
-                             >
+                             <div className="relative rounded-2xl shadow-xl shadow-black/20">
                                <div
                                  className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-2xl border p-4"
                                  style={{
@@ -19737,60 +21015,77 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                    borderColor: cardIssuancePreviewPassHeroTheme.cardBorder,
                                  }}
                                >
-                               <div
-                                 className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
-                                 style={{
-                                   backgroundColor: cardIssuancePreviewPassHeroTheme.isDarkStart
-                                     ? 'rgba(255,255,255,0.05)'
-                                     : 'rgba(0,0,0,0.06)',
-                                 }}
-                                 aria-hidden
-                               />
-                               <div className="relative z-[1] flex items-start justify-between gap-2">
                                  <div
-                                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border backdrop-blur-md"
+                                   className="pointer-events-none absolute inset-0 bg-white/5 backdrop-blur-[1px]"
+                                   aria-hidden
+                                 />
+                                 <div
+                                   className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
                                    style={{
-                                     borderColor: cardIssuancePreviewPassHeroTheme.iconOrbitBorder,
-                                     backgroundColor: cardIssuancePreviewPassHeroTheme.iconOrbitBg,
+                                     backgroundColor: cardIssuancePreviewPassHeroTheme.isDarkStart
+                                       ? 'rgba(255,255,255,0.05)'
+                                       : 'rgba(0,0,0,0.06)',
                                    }}
-                                 >
+                                   aria-hidden
+                                 />
+                                 <div className="relative z-[1] flex items-start justify-between gap-2">
+                                 <div className="shrink-0">
                                    {cardIssuanceShareImageUrl ? (
-                                     <img src={cardIssuanceShareImageUrl} alt="" className="h-7 w-7 object-contain" />
+                                     <img
+                                       src={cardIssuanceShareImageUrl}
+                                       alt=""
+                                       className={`object-contain ${
+                                         CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]
+                                       }`}
+                                     />
                                    ) : (
                                      <Sparkles
-                                       className="h-5 w-5"
+                                       className={CARD_PREVIEW_LOGO_ICON_TIER_CLASSES[cardIssuanceLogoDisplayTier]}
                                        strokeWidth={2}
                                        aria-hidden
                                        style={{ color: cardIssuancePreviewPassHeroTheme.primary }}
                                      />
                                    )}
                                  </div>
-                                 <div className="text-right">
-                                   <p
-                                     className="text-[9px] font-bold uppercase tracking-widest"
-                                     style={{ color: cardIssuancePreviewPassHeroTheme.secondary }}
-                                   >
-                                     Up to
-                                   </p>
-                                   <p className="font-manrope text-base font-black">
-                                     {cardIssuancePreviewMaxDiscountPct > 0
-                                       ? `${Math.round(cardIssuancePreviewMaxDiscountPct)}% DISCOUNT`
-                                       : 'Member pricing'}
-                                   </p>
-                                 </div>
+                                 {cardIssuanceTiers.length > 0 ? (
+                                   <div className="text-right">
+                                     <p
+                                       className="text-[9px] font-bold uppercase tracking-widest"
+                                       style={{ color: cardIssuancePreviewPassHeroTheme.secondary }}
+                                     >
+                                       Up to
+                                     </p>
+                                     <p className="font-manrope text-base font-black">
+                                       {cardIssuancePreviewMaxDiscountPct > 0
+                                         ? `${Math.round(cardIssuancePreviewMaxDiscountPct)}% DISCOUNT`
+                                         : 'Member pricing'}
+                                     </p>
+                                   </div>
+                                 ) : null}
                                </div>
                                <div className="relative z-[1] flex items-end justify-between gap-2">
                                  <div className="min-w-0">
                                    <h3 className="font-manrope text-xl font-bold tracking-tight">
                                      {cardIssuancePreviewProgram}
                                    </h3>
+                                 </div>
+                                 <div className="shrink-0 text-right">
+                                   <p
+                                     className="text-[9px] font-bold uppercase leading-tight tracking-widest"
+                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
+                                   >
+                                     Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
+                                     {cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}
+                                   </p>
                                    {cardIssuancePrimaryBonusRule ? (
                                      <p
                                        className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
                                        style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                                      >
-                                       Pay C${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewPay)} · Get C$
-                                       {formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewReceive)}
+                                       {formatBonusRuleDisplayString(
+                                         cardIssuancePrimaryBonusRule,
+                                         cardIssuanceDisplayMoneyPrefix
+                                       )}
                                      </p>
                                    ) : (
                                      <p
@@ -19800,19 +21095,6 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                        Bonus rules can be added later
                                      </p>
                                    )}
-                                 </div>
-                                 <div className="shrink-0 text-right">
-                                   <p
-                                     className="text-[9px] font-bold uppercase leading-tight tracking-widest"
-                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                   >
-                                     Starting from C${' '}
-                                     {cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}
-                                   </p>
-                                   <p className="text-xs font-bold">
-                                     Cap C${' '}
-                                     {cardIssuanceMaxTopup.trim() || String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT)}
-                                   </p>
                                  </div>
                                </div>
                              </div>
@@ -19870,9 +21152,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          className={`rounded-lg bg-white p-5 sm:p-6 ${CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS}`}
                        >
                          <div className="mb-4 flex items-start justify-between gap-3">
-                           <span className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
-                             Membership tiers
-                           </span>
+                           <div className="min-w-0 pr-2">
+                             <span className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
+                               Membership tiers
+                             </span>
+                             <p className="mt-1 font-manrope text-xs font-bold leading-snug text-[#2c2f31]">
+                               {CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === cardIssuanceTierRule)?.title ??
+                                 'Loyalty rule'}
+                             </p>
+                             <p className="mt-0.5 font-manrope text-[11px] leading-snug text-[#595c5e]">
+                               {CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === cardIssuanceTierRule)?.mobileDesc ??
+                                 ''}
+                             </p>
+                           </div>
                            <button
                              type="button"
                              onClick={() => {
@@ -19891,7 +21183,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                            </button>
                          </div>
                          <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
-                           {cardIssuanceTiers.map((row) => {
+                           {tiersByLoyaltyRule[cardIssuanceTierRule].map((row) => {
                              const isBaseTier = row.id === CARD_ISSUANCE_SINGLE_TIER_ID;
                              const tierLabel = (isBaseTier ? 'Base' : row.name.trim() || 'Tier').toUpperCase();
                              const thresholdRaw = row.threshold.trim() || '0';
@@ -19922,6 +21214,89 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                              );
                            })}
                          </div>
+                       </div>
+
+                       <div
+                         className={`rounded-lg bg-white p-5 sm:p-6 ${CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS}`}
+                       >
+                         <div className="mb-4 flex items-start justify-between gap-3">
+                           <div className="min-w-0 pr-2">
+                             <span className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
+                               Reward Engine
+                             </span>
+                             <p className="mt-1 font-manrope text-xs font-bold leading-snug text-[#2c2f31]">
+                               Recharge Bonuses
+                             </p>
+                             <p className="mt-0.5 font-manrope text-[11px] leading-snug text-[#595c5e]">
+                               Customize how your customers earn bonuses and climb membership tiers.
+                             </p>
+                           </div>
+                           <button
+                             type="button"
+                             onClick={() => {
+                               setCardIssuanceMobileStep(2);
+                               requestAnimationFrame(() => {
+                                 requestAnimationFrame(() => {
+                                   mobileScrollContainerRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                                   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                                 });
+                               });
+                             }}
+                             className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
+                             aria-label="Edit reward engine"
+                           >
+                             Edit
+                           </button>
+                         </div>
+                         {cardIssuanceBonusRulesPayload.length > 0 ? (
+                           <div className="space-y-2">
+                             {cardIssuanceBonusRulesPayload.map((rule, idx) => {
+                               const total = Number((rule.paymentAmount + rule.bonusValue).toFixed(2));
+                               const sourceRow = cardIssuanceBonusRules[idx];
+                               return (
+                                 <div
+                                   key={sourceRow?.id ?? `mobile-step3-bonus-${idx}`}
+                                   className="rounded-xl border border-[#e8ecf0] bg-[#eef1f3] px-3 py-3"
+                                 >
+                                   <div className="flex items-center justify-between gap-2">
+                                     <div className="min-w-0">
+                                       {rule.bonusProportional ? (
+                                         <>
+                                           <p className="font-manrope text-[10px] font-semibold uppercase tracking-wide text-[#8c8c8c]">
+                                             Start C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
+                                           </p>
+                                           <p className="mt-1 font-manrope text-base font-bold leading-tight text-[#1a1a1a]">
+                                             Get{' '}
+                                             {formatCardIssuanceBonusRuleAmount(
+                                               (rule.bonusValue / rule.paymentAmount) * 100
+                                             )}
+                                             %
+                                           </p>
+                                         </>
+                                       ) : (
+                                         <>
+                                           <p className="font-manrope text-[10px] font-semibold uppercase tracking-wide text-[#8c8c8c]">
+                                             Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
+                                           </p>
+                                           <p className="mt-1 font-manrope text-base font-bold leading-tight text-[#1a1a1a]">
+                                             Get C${formatCardIssuanceBonusRuleAmount(total)}
+                                           </p>
+                                         </>
+                                       )}
+                                     </div>
+                                     <span className="shrink-0 rounded-full bg-[#f797ef]/20 px-2.5 py-1 text-center font-manrope text-[10px] font-bold leading-tight text-[#8d3a8b]">
+                                       {cardIssuanceBonusRuleSidePillText(rule, cardIssuanceDisplayMoneyPrefix)}
+                                     </span>
+                                   </div>
+                                 </div>
+                               );
+                             })}
+                           </div>
+                         ) : (
+                           <p className="font-manrope text-sm leading-relaxed text-[#595c5e]">
+                             No recharge bonuses configured. Tap Edit to add rules in Step 2.
+                           </p>
+                         )}
                        </div>
 
                        <div
@@ -20003,97 +21378,121 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                        >
                          <section>
                            <div className="px-1 pb-1 sm:px-2 sm:pb-2">
-                             <div className="rounded-2xl shadow-xl shadow-black/20">
+                             <div className="relative mx-auto w-full max-w-[440px] group/preview-review">
                                <div
-                                 className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-2xl border p-4"
-                                 style={{
-                                   background: cardIssuancePreviewCardGradientCss,
-                                   color: cardIssuancePreviewPassHeroTheme.primary,
-                                   borderColor: cardIssuancePreviewPassHeroTheme.cardBorder,
-                                 }}
-                               >
-                             <div
-                               className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
-                               style={{
-                                 backgroundColor: cardIssuancePreviewPassHeroTheme.isDarkStart
-                                   ? 'rgba(255,255,255,0.05)'
-                                   : 'rgba(0,0,0,0.06)',
-                               }}
-                               aria-hidden
-                             />
-                             <div className="relative z-[1] flex items-start justify-between gap-2">
-                               <div
-                                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border backdrop-blur-md"
-                                 style={{
-                                   borderColor: cardIssuancePreviewPassHeroTheme.iconOrbitBorder,
-                                   backgroundColor: cardIssuancePreviewPassHeroTheme.iconOrbitBg,
-                                 }}
+                                 className="absolute -inset-1 rounded-xl bg-primary/20 blur-2xl transition duration-500 group-hover/preview-review:bg-primary/30"
+                                 aria-hidden
+                               />
+                               <div className="relative rounded-2xl shadow-xl shadow-black/20">
+                                 <div
+                                   className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-2xl border p-4"
+                                   style={{
+                                     background: cardIssuancePreviewCardGradientCss,
+                                     color: cardIssuancePreviewPassHeroTheme.primary,
+                                     borderColor: cardIssuancePreviewPassHeroTheme.cardBorder,
+                                   }}
+                                 >
+                                   <div
+                                     className="pointer-events-none absolute inset-0 bg-white/5 backdrop-blur-[1px]"
+                                     aria-hidden
+                                   />
+                                   <div
+                                     className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
+                                     style={{
+                                       backgroundColor: cardIssuancePreviewPassHeroTheme.isDarkStart
+                                         ? 'rgba(255,255,255,0.05)'
+                                         : 'rgba(0,0,0,0.06)',
+                                     }}
+                                     aria-hidden
+                                   />
+                                   <div className="relative z-[1] flex items-start justify-between gap-2">
+                               <button
+                                 type="button"
+                                 onClick={() =>
+                                   setCardIssuanceLogoDisplayTier(
+                                     (t) =>
+                                       ((t + 1) % CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT) as CardPreviewLogoDisplayTier
+                                   )
+                                 }
+                                 aria-label={`Logo preview size: ${
+                                   CARD_PREVIEW_LOGO_SIZE_LABELS[cardIssuanceLogoDisplayTier]
+                                 } (${cardIssuanceLogoDisplayTier + 1} of ${CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT}). Activate to advance to the next size.`}
+                                 className={`shrink-0 rounded-md p-0.5 transition-opacity hover:opacity-90 active:scale-95 ${bizFocusRingClass}`}
                                >
                                  {cardIssuanceShareImageUrl ? (
-                                   <img src={cardIssuanceShareImageUrl} alt="" className="h-7 w-7 object-contain" />
+                                   <img
+                                     src={cardIssuanceShareImageUrl}
+                                     alt=""
+                                     className={`object-contain transition-[width,height] duration-200 ${
+                                       CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]
+                                     }`}
+                                   />
                                  ) : (
                                    <Sparkles
-                                     className="h-5 w-5"
+                                     className={`transition-[width,height] duration-200 ${
+                                       CARD_PREVIEW_LOGO_ICON_TIER_CLASSES[cardIssuanceLogoDisplayTier]
+                                     }`}
                                      strokeWidth={2}
                                      aria-hidden
                                      style={{ color: cardIssuancePreviewPassHeroTheme.primary }}
                                    />
                                  )}
-                               </div>
-                               <div className="text-right">
-                                 <p
-                                   className="text-[9px] font-bold uppercase tracking-widest"
-                                   style={{ color: cardIssuancePreviewPassHeroTheme.secondary }}
-                                 >
-                                   Up to
-                                 </p>
-                                 <p className="font-manrope text-base font-black">
-                                   {cardIssuancePreviewMaxDiscountPct > 0
-                                     ? `${Math.round(cardIssuancePreviewMaxDiscountPct)}% DISCOUNT`
-                                     : 'Member pricing'}
-                                 </p>
-                               </div>
+                               </button>
+                               {cardIssuanceTiers.length > 0 ? (
+                                 <div className="text-right">
+                                   <p
+                                     className="text-[9px] font-bold uppercase tracking-widest"
+                                     style={{ color: cardIssuancePreviewPassHeroTheme.secondary }}
+                                   >
+                                     Up to
+                                   </p>
+                                   <p className="font-manrope text-base font-black">
+                                     {cardIssuancePreviewMaxDiscountPct > 0
+                                       ? `${Math.round(cardIssuancePreviewMaxDiscountPct)}% DISCOUNT`
+                                       : 'Member pricing'}
+                                   </p>
+                                 </div>
+                               ) : null}
                              </div>
                              <div className="relative z-[1] flex items-end justify-between gap-2">
                                <div className="min-w-0">
-                                <h3 className="font-manrope text-xl font-bold tracking-tight">
-                                  {cardIssuancePreviewProgram}
-                                </h3>
-                                {cardIssuancePrimaryBonusRule ? (
-                                  <p
-                                    className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
-                                    style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                  >
-                                    Pay C${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewPay)} · Get C$
-                                    {formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewReceive)}
-                                  </p>
-                                ) : (
-                                  <p
-                                    className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
-                                    style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                  >
-                                    Bonus rules can be added later
-                                  </p>
-                                )}
+                                 <h3 className="font-manrope text-xl font-bold tracking-tight">
+                                   {cardIssuancePreviewProgram}
+                                 </h3>
                                </div>
                                <div className="shrink-0 text-right">
                                  <p
                                    className="text-[9px] font-bold uppercase leading-tight tracking-widest"
                                    style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                                  >
-                                   Starting from C${' '}
+                                   Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
                                    {cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}
                                  </p>
-                                 <p className="text-xs font-bold">
-                                   Cap C${' '}
-                                   {cardIssuanceMaxTopup.trim() || String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT)}
-                                 </p>
+                                 {cardIssuancePrimaryBonusRule ? (
+                                   <p
+                                     className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
+                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
+                                   >
+                                     {formatBonusRuleDisplayString(
+                                       cardIssuancePrimaryBonusRule,
+                                       cardIssuanceDisplayMoneyPrefix
+                                     )}
+                                   </p>
+                                 ) : (
+                                   <p
+                                     className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
+                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
+                                   >
+                                     Bonus rules can be added later
+                                   </p>
+                                 )}
                                </div>
                              </div>
+                                   </div>
+                                 </div>
                                </div>
-                     </div>
-                 </div>
-                 </section>
+                             </div>
+                         </section>
                        </div>
 
                        <section>
@@ -20122,6 +21521,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                </span>
                                <input
                                  id="card-issuance-min-topup"
+                                 ref={cardIssuanceReloadMinTopupWheelRefMobile}
                                  type="number"
                                  inputMode="numeric"
                                  autoComplete="off"
@@ -20129,6 +21529,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                  max={CARD_ISSUANCE_MAX_TOPUP_MAX}
                                  step={1}
                                  value={cardIssuanceMinTopup}
+                                 onKeyDown={preventNumericInputStepKeys}
+                                 onWheel={preventNumericInputWheelStep}
                                  onChange={(e) => {
                                    const raw = e.target.value.replace(/,/g, '');
                                    if (raw === '') {
@@ -20175,6 +21577,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                </span>
                                <input
                                  id="card-issuance-max-topup"
+                                 ref={cardIssuanceReloadMaxTopupWheelRefMobile}
                                  type="number"
                                  inputMode="numeric"
                                  autoComplete="off"
@@ -20182,6 +21585,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                  max={CARD_ISSUANCE_MAX_TOPUP_MAX}
                                  step={1}
                                  value={cardIssuanceMaxTopup}
+                                 onKeyDown={preventNumericInputStepKeys}
+                                 onWheel={preventNumericInputWheelStep}
                                  onChange={(e) => {
                                    const raw = e.target.value.replace(/,/g, '');
                                    if (raw === '') {
@@ -20239,27 +21644,56 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                           style={{ clipPath: 'inset(0 round 2.25rem)' }}
                         >
                           <div className="mb-3 rounded-[1.75rem] bg-white px-4 py-5 shadow-[0_14px_34px_rgba(0,0,0,0.05)] sm:px-5 sm:py-6">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#0051d1]">
-                                  Promotion
-                                </span>
-                                <h4 className="mt-2 font-manrope text-[1.65rem] font-bold leading-none tracking-tight text-[#2c2f31] sm:text-[1.75rem]">
-                                  Pay ${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewPay)}
-                                </h4>
+                            {cardIssuancePrimaryBonusRule?.bonusProportional ? (
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#0051d1]">
+                                    Start
+                                  </span>
+                                  <h4 className="mt-2 font-manrope text-[1.65rem] font-bold leading-none tracking-tight text-[#2c2f31] sm:text-[1.75rem]">
+                                    C${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewPay)}
+                                  </h4>
+                                </div>
+                                <div className="flex flex-1 items-center justify-center px-2" aria-hidden>
+                                  <div className="h-px w-full max-w-[6.5rem] bg-[#dfe3e6]" />
+                                </div>
+                                <div className="min-w-0 text-right">
+                                  <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#595c5e]">
+                                    Get
+                                  </span>
+                                  <h4 className="mt-2 font-manrope text-[1.65rem] font-bold leading-none tracking-tight text-[#0051d1] sm:text-[1.75rem]">
+                                    {formatCardIssuanceBonusRuleAmount(
+                                      (cardIssuancePrimaryBonusRule.bonusValue /
+                                        cardIssuancePrimaryBonusRule.paymentAmount) *
+                                        100
+                                    )}
+                                    %
+                                  </h4>
+                                </div>
                               </div>
-                              <div className="flex flex-1 items-center justify-center px-2" aria-hidden>
-                                <div className="h-px w-full max-w-[6.5rem] bg-[#dfe3e6]" />
+                            ) : (
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#0051d1]">
+                                    Promotion
+                                  </span>
+                                  <h4 className="mt-2 font-manrope text-[1.65rem] font-bold leading-none tracking-tight text-[#2c2f31] sm:text-[1.75rem]">
+                                    Pay C${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewPay)}
+                                  </h4>
+                                </div>
+                                <div className="flex flex-1 items-center justify-center px-2" aria-hidden>
+                                  <div className="h-px w-full max-w-[6.5rem] bg-[#dfe3e6]" />
+                                </div>
+                                <div className="min-w-0 text-right">
+                                  <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#595c5e]">
+                                    Customer receives
+                                  </span>
+                                  <h4 className="mt-2 font-manrope text-[1.65rem] font-bold leading-none tracking-tight text-[#0051d1] sm:text-[1.75rem]">
+                                    C${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewReceive)}
+                                  </h4>
+                                </div>
                               </div>
-                              <div className="min-w-0 text-right">
-                                <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#595c5e]">
-                                  Customer receives
-                                </span>
-                                <h4 className="mt-2 font-manrope text-[1.65rem] font-bold leading-none tracking-tight text-[#0051d1] sm:text-[1.75rem]">
-                                  ${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewReceive)}
-                                </h4>
-                              </div>
-                            </div>
+                            )}
                           </div>
                           <div className="mt-4 space-y-2">
                             <p className="px-2 text-center text-[9px] font-black uppercase tracking-[0.22em] text-[#595c5e]">
@@ -20289,15 +21723,32 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                           <CreditCard className="h-6 w-6 text-white" strokeWidth={2} aria-hidden />
                                         </div>
                                         <div className="relative z-[1] min-w-0 flex-1 text-left">
-                                          <p className="text-[9px] font-black uppercase tracking-[0.08em] text-[#0051d1]">
-                                            Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                          </p>
-                                          <h4 className="font-manrope text-[1.5rem] font-extrabold leading-none tracking-tight text-[#2c2f31] sm:text-[1.6rem]">
-                                            Get C${formatCardIssuanceBonusRuleAmount(total)}
-                                          </h4>
+                                          {rule.bonusProportional ? (
+                                            <>
+                                              <p className="text-[9px] font-black uppercase tracking-[0.08em] text-[#0051d1]">
+                                                Start C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
+                                              </p>
+                                              <h4 className="font-manrope text-[1.5rem] font-extrabold leading-none tracking-tight text-[#2c2f31] sm:text-[1.6rem]">
+                                                Get{' '}
+                                                {formatCardIssuanceBonusRuleAmount(
+                                                  (rule.bonusValue / rule.paymentAmount) * 100
+                                                )}
+                                                %
+                                              </h4>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <p className="text-[9px] font-black uppercase tracking-[0.08em] text-[#0051d1]">
+                                                Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
+                                              </p>
+                                              <h4 className="font-manrope text-[1.5rem] font-extrabold leading-none tracking-tight text-[#2c2f31] sm:text-[1.6rem]">
+                                                Get C${formatCardIssuanceBonusRuleAmount(total)}
+                                              </h4>
+                                            </>
+                                          )}
                                         </div>
                                         <span className="relative z-[1] shrink-0 text-right font-manrope text-xs font-bold leading-none text-[#8d3a8b]">
-                                          +C${formatCardIssuanceBonusRuleAmount(rule.bonusValue)} Bonus
+                                          {cardIssuanceBonusRuleSidePillText(rule, cardIssuanceDisplayMoneyPrefix)}
                                         </span>
                                       </button>
                                       {sourceRow?.id ? (
@@ -20345,7 +21796,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                      <div className="space-y-2">
                        <label
-                         htmlFor="card-issuance-min-topup"
+                         htmlFor="card-issuance-min-topup-desktop"
                          className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]"
                        >
                          Minimum Top-up
@@ -20355,7 +21806,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                $
                              </span>
                          <input
-                           id="card-issuance-min-topup"
+                           id="card-issuance-min-topup-desktop"
+                           ref={cardIssuanceReloadMinTopupWheelRefDesktop}
                            type="number"
                            inputMode="numeric"
                            autoComplete="off"
@@ -20363,6 +21815,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                            max={CARD_ISSUANCE_MAX_TOPUP_MAX}
                            step={1}
                            value={cardIssuanceMinTopup}
+                           onKeyDown={preventNumericInputStepKeys}
+                           onWheel={preventNumericInputWheelStep}
                           onChange={(e) => {
                             const raw = e.target.value.replace(/,/g, '');
                             if (raw === '') {
@@ -20393,7 +21847,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      </div>
                      <div className="space-y-2">
                        <label
-                         htmlFor="card-issuance-max-topup"
+                         htmlFor="card-issuance-max-topup-desktop"
                          className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]"
                        >
                          Maximum Top-up
@@ -20403,7 +21857,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                $
                              </span>
                          <input
-                           id="card-issuance-max-topup"
+                           id="card-issuance-max-topup-desktop"
+                           ref={cardIssuanceReloadMaxTopupWheelRefDesktop}
                            type="number"
                            inputMode="numeric"
                            autoComplete="off"
@@ -20411,6 +21866,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                            max={CARD_ISSUANCE_MAX_TOPUP_MAX}
                            step={1}
                            value={cardIssuanceMaxTopup}
+                           onKeyDown={preventNumericInputStepKeys}
+                           onWheel={preventNumericInputWheelStep}
                           onChange={(e) => {
                             const raw = e.target.value.replace(/,/g, '');
                             if (raw === '') {
@@ -21082,11 +22539,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                              aria-hidden
                            />
                            <div className="relative z-10 flex items-start justify-between gap-2">
-                             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white p-2 shadow-sm">
+                             <div className="shrink-0">
                                {cardIssuanceShareImageUrl ? (
-                                 <img src={cardIssuanceShareImageUrl} alt="" className="max-h-full max-w-full object-contain" />
+                                 <img
+                                   src={cardIssuanceShareImageUrl}
+                                   alt=""
+                                   className={`object-contain ${CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]}`}
+                                 />
                                ) : (
-                                 <Sparkles className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                                 <Sparkles
+                                   className={`${CARD_PREVIEW_LOGO_ICON_TIER_CLASSES[cardIssuanceLogoDisplayTier]} text-[#1562f0]`}
+                                   strokeWidth={2}
+                                   aria-hidden
+                                 />
                                )}
                              </div>
                              <div className="text-right">
@@ -21153,15 +22618,32 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                   >
                                     <div className="flex items-center justify-between gap-3">
                                       <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
-                                          Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                        </p>
-                                        <p className="mt-1 text-sm font-bold text-[#2c2f31]">
-                                          Get C${formatCardIssuanceBonusRuleAmount(total)}
-                                        </p>
+                                        {rule.bonusProportional ? (
+                                          <>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
+                                              Start C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
+                                            </p>
+                                            <p className="mt-1 text-sm font-bold text-[#2c2f31]">
+                                              Get{' '}
+                                              {formatCardIssuanceBonusRuleAmount(
+                                                (rule.bonusValue / rule.paymentAmount) * 100
+                                              )}
+                                              %
+                                            </p>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
+                                              Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
+                                            </p>
+                                            <p className="mt-1 text-sm font-bold text-[#2c2f31]">
+                                              Get C${formatCardIssuanceBonusRuleAmount(total)}
+                                            </p>
+                                          </>
+                                        )}
                                       </div>
                                       <div className="rounded-full bg-[#f797ef]/20 px-3 py-1 text-[10px] font-bold text-[#8d3a8b]">
-                                        +C${formatCardIssuanceBonusRuleAmount(rule.bonusValue)}
+                                        {cardIssuanceBonusRuleSidePillText(rule, cardIssuanceDisplayMoneyPrefix)}
                                       </div>
                                     </div>
                                   </div>
@@ -21239,11 +22721,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          />
                          <div className="relative z-10 flex h-full flex-col justify-between">
                            <div className="flex items-start justify-between">
-                             <div className="rounded-md bg-white/90 p-2 shadow-sm">
+                             <div className="shrink-0 rounded-md bg-white/90 p-2 shadow-sm">
                                {cardIssuanceShareImageUrl ? (
-                                 <img src={cardIssuanceShareImageUrl} alt="" className="h-10 w-10 object-contain" />
+                                 <img
+                                   src={cardIssuanceShareImageUrl}
+                                   alt=""
+                                   className={`object-contain ${CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]}`}
+                                 />
                                ) : (
-                                 <Nfc className="h-8 w-8 text-[#1562f0]" strokeWidth={1.5} aria-hidden />
+                                 <Nfc
+                                   className={`${CARD_PREVIEW_LOGO_ICON_TIER_CLASSES[cardIssuanceLogoDisplayTier]} text-[#1562f0]`}
+                                   strokeWidth={1.5}
+                                   aria-hidden
+                                 />
                                )}
                              </div>
                              <span
@@ -21286,8 +22776,10 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                 className="mt-3 text-[9px] font-bold uppercase tracking-[0.16em]"
                                 style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                               >
-                                Pay C${formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewPay)} · Get C$
-                                {formatCardIssuanceBonusRuleAmount(cardIssuanceRechargeBonusPreviewReceive)}
+                                {formatBonusRuleDisplayString(
+                                  cardIssuancePrimaryBonusRule,
+                                  cardIssuanceDisplayMoneyPrefix
+                                )}
                               </p>
                             ) : (
                               <p
@@ -21380,142 +22872,6 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  </div>
                </div>
               <AnimatePresence>
-                {cardIssuanceBonusRuleEditorOpen ? (
-                  <>
-                    <motion.button
-                      type="button"
-                      aria-label="Close bonus rule editor"
-                      className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      onClick={() => {
-                        setCardIssuanceBonusRuleEditorOpen(false);
-                        setCardIssuanceEditingBonusRuleId(null);
-                      }}
-                    />
-                    <motion.div
-                      className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
-                      initial={{ y: '100%' }}
-                      animate={{ y: 0 }}
-                      exit={{ y: '100%' }}
-                      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-                    >
-                      <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
-                      <div className="mb-8 flex items-start justify-between gap-4">
-                        <div>
-                          <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                            {cardIssuanceEditingBonusRuleId ? 'Edit Strategy' : 'New Strategy'}
-                          </span>
-                          <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
-                            {cardIssuanceEditingBonusRuleId ? 'Edit Bonus Rule' : 'Add Bonus Rule'}
-                          </h3>
-                          <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                            Define a new reward tier for your customers. Incentivize higher top-ups with custom
-                            bonus values.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCardIssuanceBonusRuleEditorOpen(false);
-                            setCardIssuanceEditingBonusRuleId(null);
-                          }}
-                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
-                        >
-                          <X className="h-5 w-5" strokeWidth={2} aria-hidden />
-                        </button>
-                      </div>
-
-                      <div className="space-y-8">
-                        <div className="space-y-3">
-                          <label
-                            className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                            htmlFor="card-issuance-bonus-rule-payment"
-                          >
-                            Payment Amount
-                          </label>
-                          <div className="relative">
-                            <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
-                              <span className="font-manrope text-lg font-extrabold text-[#0051d1]">C$</span>
-                            </div>
-                            <input
-                              id="card-issuance-bonus-rule-payment"
-                              type="number"
-                              inputMode="decimal"
-                              autoComplete="off"
-                              placeholder="100.00"
-                              value={cardIssuanceBonusRulePaymentAmount}
-                              onChange={(e) =>
-                                setCardIssuanceBonusRulePaymentAmount(
-                                  normalizeCardIssuanceBonusRuleInput(e.target.value)
-                                )
-                              }
-                              className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <label
-                            className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                            htmlFor="card-issuance-bonus-rule-value"
-                          >
-                            Bonus Value
-                          </label>
-                          <div className="relative">
-                            <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
-                              <span className="font-manrope text-lg font-extrabold text-[#8d3a8b]">+</span>
-                            </div>
-                            <input
-                              id="card-issuance-bonus-rule-value"
-                              type="number"
-                              inputMode="decimal"
-                              autoComplete="off"
-                              placeholder="10.00"
-                              value={cardIssuanceBonusRuleBonusValue}
-                              onChange={(e) =>
-                                setCardIssuanceBonusRuleBonusValue(
-                                  normalizeCardIssuanceBonusRuleInput(e.target.value)
-                                )
-                              }
-                              className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                            />
-                          </div>
-                          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[#0051d1]/5 bg-[#7a9dff]/10 p-4">
-                            <Bot className="h-5 w-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                            <p className="text-sm text-[#595c5e]">
-                              Customer receives total balance of{' '}
-                              <span className="font-bold text-[#0051d1]">
-                                C${formatCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleEditorPreviewReceive)}
-                              </span>
-                            </p>
-                          </div>
-                          {cardIssuanceBonusRuleEditorValidationError ? (
-                            <div className="mt-3 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                              <p>{cardIssuanceBonusRuleEditorValidationError}</p>
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="pt-2">
-                          <button
-                            type="button"
-                            onClick={applyCardIssuanceBonusRuleEditor}
-                            disabled={!cardIssuanceBonusRuleEditorPayload || Boolean(cardIssuanceBonusRuleEditorValidationError)}
-                            className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                          >
-                            <span>{cardIssuanceEditingBonusRuleId ? 'Update Rule' : 'Apply Rule'}</span>
-                            <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
-                          </button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  </>
-                ) : null}
-              </AnimatePresence>
-              <AnimatePresence>
                 {cardIssuanceTierEditorOpen ? (
                   <>
                     <motion.button
@@ -21544,7 +22900,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             {cardIssuanceEditingTierId ? 'Edit Reward Tier' : 'Add Reward Tier'}
                           </h3>
                           <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                            Configure a tier name, minimum spending requirement, discount benefit, and brand color.
+                            {CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE[cardIssuanceTierRule]}
                           </p>
                         </div>
                         <button
@@ -21581,7 +22937,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                               className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
                               htmlFor="card-issuance-tier-threshold"
                             >
-                              Min. Spending (CAD)
+                              {CARD_ISSUANCE_TIER_THRESHOLD_LABEL[cardIssuanceTierRule]}
                             </label>
                             <div className="relative">
                               <span className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
@@ -21589,10 +22945,14 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                               </span>
                               <input
                                 id="card-issuance-tier-threshold"
+                                ref={cardIssuanceTierEditorThresholdWheelRef}
                                 type="number"
                                 inputMode="numeric"
                                 autoComplete="off"
                                 value={cardIssuanceTierEditorThreshold}
+                                onKeyDown={preventNumericInputStepKeys}
+                                onKeyDownCapture={preventNumericInputStepKeys}
+                                onWheel={preventNumericInputWheelStep}
                                 onChange={(e) => {
                                   const raw = e.target.value.replace(/,/g, '');
                                   if (raw === '') {
@@ -21616,10 +22976,14 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             <div className="relative">
                               <input
                                 id="card-issuance-tier-discount"
+                                ref={cardIssuanceTierEditorDiscountWheelRef}
                                 type="number"
                                 inputMode="decimal"
                                 autoComplete="off"
                                 value={cardIssuanceTierEditorDiscountPercent}
+                                onKeyDown={preventNumericInputStepKeys}
+                                onKeyDownCapture={preventNumericInputStepKeys}
+                                onWheel={preventNumericInputWheelStep}
                                 onChange={(e) => setCardIssuanceTierEditorDiscountPercent(normalizeCardIssuanceBonusRuleInput(e.target.value))}
                                 placeholder="25"
                                 className={`w-full rounded-2xl border-none bg-[#eef1f3] px-6 py-4 pr-12 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
@@ -21737,131 +23101,341 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
               </AnimatePresence>
              </div>
              ) : cardIssuanceExistingCard ? (
-               <div className="max-w-7xl space-y-12 pb-8">
-                 <section className="grid grid-cols-1 gap-6 md:grid-cols-3" aria-label="Program KPIs">
-                   <div className="group rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-xl">
-                     <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Total capital retained</p>
-                     <div className="flex items-baseline gap-2">
-                       <span className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
-                        {`C$${retainedCapitalLifetime.toFixed(2)}`}
+               <div className="max-w-7xl space-y-5 pb-5">
+                 <section className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:gap-6">
+                   <div className="space-y-4 lg:col-span-5">
+                     <header className="min-w-0 space-y-0.5">
+                       <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
+                         Live Preview
                        </span>
-                     </div>
-                     <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-[#648eff]">
-                       <TrendingUp className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                      <span>Current stored value across customer cards</span>
-                     </div>
-                   </div>
-                   <div className="group rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-xl">
-                     <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Active holders</p>
-                     <div className="flex items-baseline gap-2">
-                       <span className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
-                         {membersTopupKpisAll.count.toLocaleString()}
-                       </span>
-                     </div>
-                     <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-[#648eff]">
-                       <UserPlus className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                       <span>
-                         {membersTopupKpisAll.totalTopupEvents.toLocaleString()} top-up events ·{' '}
-                         {membersTopupKpisAll.repeatMembers.toLocaleString()} repeat top-ups
-                       </span>
-                     </div>
-                   </div>
-                   <div className="group rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:shadow-xl">
-                     <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">Avg. wallet balance</p>
-                     <div className="flex items-baseline gap-2">
-                       <span className="font-manrope text-4xl font-extrabold tracking-tight text-[#2c2f31]">
-                         {programsOverviewAvgMemberCad != null
-                           ? `C$${programsOverviewAvgMemberCad.toFixed(2)}`
-                           : '—'}
-                       </span>
-                     </div>
-                     <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-500">
-                       <Landmark className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                       <span>
-                         {programsOverviewAvgMemberCad != null
-                           ? 'Avg. cumulative points per member (chain roll-up)'
-                           : 'Open Members to load top-up metrics'}
-                       </span>
-                     </div>
-                   </div>
-                 </section>
-
-                 <section className="grid grid-cols-1 gap-10 lg:grid-cols-12">
-                   <div className="space-y-6 lg:col-span-5">
-                     <div className="flex items-center justify-between gap-3">
-                       <h3 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">Active card</h3>
-                       <button
-                         type="button"
-                         onClick={() => {
-                           setCardIssuanceActiveProgramView('configure');
-                           window.scrollTo({ top: 0, behavior: 'smooth' });
-                         }}
-                         className={`text-sm font-bold text-[#1562f0] transition-colors hover:underline ${bizFocusRingClass} rounded-sm`}
-                       >
-                         Edit card design
-                       </button>
-                     </div>
-                     <div className="relative group/prev">
-                       <div
-                         className="relative flex aspect-[1.58/1] w-full flex-col justify-between overflow-hidden rounded-2xl p-8 text-white shadow-[0_30px_60px_-15px_rgba(21,98,240,0.3)]"
-                         style={{ background: programsOverviewActiveCardGradientCss }}
-                       >
-                         <div className="pointer-events-none absolute inset-0 z-[1] bg-white/10 backdrop-blur-[2px]" aria-hidden />
-                         <div className="relative z-10 flex items-start justify-between">
-                           <div className="flex items-center gap-3">
-                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 backdrop-blur-md">
-                               {programsOverviewShareImage ? (
-                                 <img src={programsOverviewShareImage} alt="" className="h-8 w-8 object-contain" />
-                               ) : (
-                                 <Sparkles className="h-7 w-7 text-white" strokeWidth={2} aria-hidden />
-                               )}
+                       <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">
+                         Issued Program Asset
+                       </h3>
+                     </header>
+                     <div
+                       className={`sticky z-40 w-full px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS} ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
+                     >
+                       <section aria-label="Issued program card preview">
+                         <div className="relative mx-auto w-full max-w-[380px] group/prev sm:max-w-[400px]">
+                           <div
+                             className="absolute -inset-1 rounded-xl bg-primary/20 blur-2xl transition duration-500 group-hover/prev:bg-primary/30"
+                             aria-hidden
+                           />
+                           <div className="relative rounded-xl shadow-lg shadow-black/15 sm:rounded-2xl sm:shadow-xl sm:shadow-black/20">
+                             <div
+                               className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-xl border p-4 sm:rounded-2xl sm:p-5"
+                               style={{
+                                 background: programsOverviewActiveCardGradientCss,
+                                 color: programsOverviewPassHeroTheme.primary,
+                                 borderColor: programsOverviewPassHeroTheme.cardBorder,
+                               }}
+                             >
+                               <div
+                                 className="pointer-events-none absolute inset-0 bg-white/5 backdrop-blur-[1px]"
+                                 aria-hidden
+                               />
+                               <div
+                                 className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
+                                 style={{
+                                   backgroundColor: programsOverviewPassHeroTheme.isDarkStart
+                                     ? 'rgba(255,255,255,0.05)'
+                                     : 'rgba(0,0,0,0.06)',
+                                 }}
+                                 aria-hidden
+                               />
+                               <div className="relative z-[1] flex items-start justify-between gap-3">
+                                 <div className="shrink-0">
+                                   {programsOverviewShareImage ? (
+                                     <img
+                                       src={programsOverviewShareImage}
+                                       alt=""
+                                       className={`object-contain ${CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]}`}
+                                     />
+                                   ) : (
+                                     <Store
+                                       className={CARD_PREVIEW_LOGO_ICON_TIER_CLASSES[cardIssuanceLogoDisplayTier]}
+                                       strokeWidth={2}
+                                       aria-hidden
+                                       style={{ color: programsOverviewPassHeroTheme.primary }}
+                                     />
+                                   )}
+                                 </div>
+                                 {programsOverviewTiersSortedAscending.length > 0 ? (
+                                   <div className="text-right">
+                                     <p
+                                       className="mb-1 text-[10px] font-bold uppercase tracking-widest opacity-80"
+                                       style={{ color: programsOverviewPassHeroTheme.secondary }}
+                                     >
+                                       Up to
+                                     </p>
+                                     <p className="font-manrope text-lg font-black leading-tight tracking-tight sm:text-xl">
+                                       {programsOverviewCardMaxDiscountPct > 0
+                                         ? `${Math.round(programsOverviewCardMaxDiscountPct)}% DISCOUNT`
+                                         : 'Member pricing'}
+                                     </p>
+                                   </div>
+                                 ) : null}
+                               </div>
+                               <div className="relative z-[1] flex items-end justify-between gap-3">
+                                 <div className="min-w-0">
+                                   <p className="font-manrope text-2xl font-extrabold leading-tight tracking-tight sm:text-[1.65rem]">
+                                     {programsOverviewDisplayName}
+                                   </p>
+                                 </div>
+                                 <div className="shrink-0 text-right">
+                                   <p
+                                     className="text-[10px] font-bold uppercase tracking-wider opacity-80"
+                                     style={{ color: programsOverviewPassHeroTheme.tertiary }}
+                                   >
+                                     Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
+                                     {programsOverviewCardMinTopupDisplay}
+                                   </p>
+                                   {cardIssuancePrimaryBonusRule ? (
+                                     <p
+                                       className="mt-0.5 font-manrope text-base font-bold leading-tight sm:text-lg"
+                                       style={{ color: programsOverviewPassHeroTheme.tertiary }}
+                                     >
+                                       {formatBonusRuleDisplayString(
+                                         cardIssuancePrimaryBonusRule,
+                                         cardIssuanceDisplayMoneyPrefix
+                                       )}
+                                     </p>
+                                   ) : (
+                                     <></>
+                                   )}
+                                 </div>
+                               </div>
                              </div>
-                             <span className="font-manrope text-xl font-bold uppercase italic tracking-tighter">
-                               {programsOverviewDisplayName}
+                           </div>
+                         </div>
+                       </section>
+                     </div>
+
+                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
+                       <div
+                         className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
+                         aria-hidden
+                       />
+                       <header className="mb-3 flex items-center justify-between gap-2">
+                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Program Overview</h3>
+                         <Info className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+                       </header>
+                       <div className="space-y-3 sm:space-y-4">
+                         <div>
+                           <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                             Name
+                           </span>
+                           <p className="font-manrope text-lg font-extrabold leading-snug text-[#2c2f31] sm:text-xl">
+                             {programsOverviewProgramFullName}
+                           </p>
+                         </div>
+                         <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:grid-rows-2 sm:gap-x-6 sm:gap-y-2">
+                           <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-1 sm:row-start-1">
+                             Symbol
+                           </span>
+                           <div className="flex min-w-0 items-center sm:col-start-1 sm:row-start-2">
+                             <p className="font-manrope font-bold text-[#1562f0]">{programsOverviewSymbolDisplay}</p>
+                           </div>
+                           <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-2 sm:row-start-1">
+                             Status
+                           </span>
+                           <div className="flex min-w-0 items-center sm:col-start-2 sm:row-start-2">
+                             <span className="inline-flex rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] sm:px-3 sm:py-1 sm:text-[10px]">
+                               LIVE
                              </span>
                            </div>
-                           <Nfc className="h-10 w-10 shrink-0 opacity-80" strokeWidth={1.5} aria-hidden />
-                         </div>
-                         <div className="relative z-10 flex justify-between gap-4">
-                           <div>
-                             <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">Premium tier</p>
-                             <p className="mt-1 font-manrope text-lg font-bold tracking-wide">
-                               {programsOverviewHeroTierLabel}
-                             </p>
-                             <p className="mt-2 font-mono text-xs tracking-[0.15em] opacity-90">
-                               {cardIssuanceExistingCard.userCard.currency?.trim() || 'Points'}
-                             </p>
+                           <span className="min-w-0 text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-3 sm:row-start-1">
+                             Contract Address
+                           </span>
+                           <div className="flex min-w-0 items-center sm:col-start-3 sm:row-start-2">
+                             <div className="flex min-w-0 flex-wrap items-center gap-2">
+                               <AddressCapsule
+                                 address={cardIssuanceExistingCard.cardAddress}
+                                 className="bg-[#eef1f3] border-[#abadaf]/30 text-[#2c2f31]"
+                               />
+                               <a
+                                 href={`https://basescan.org/address/${cardIssuanceExistingCard.cardAddress}`}
+                                 target="_blank"
+                                 rel="noopener noreferrer"
+                                 aria-label="View contract on Basescan (opens in new tab)"
+                                 className={`inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 ${bizFocusRingClass}`}
+                               >
+                                 <span className="h-1 w-1 shrink-0 rounded-full bg-blue-500" aria-hidden />
+                                 Base Mainnet
+                                 <ExternalLink className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+                               </a>
+                             </div>
                            </div>
+                         </div>
+                         <div>
+                           <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                             Description
+                           </span>
+                           <p className="text-xs leading-relaxed text-[#595c5e] sm:text-sm">
+                             {cardIssuanceDescription.trim()
+                               ? cardIssuanceDescription.trim()
+                               : 'No program description yet. Open Card Configurator to add copy for wallets and your team.'}
+                           </p>
                          </div>
                        </div>
                      </div>
-                     <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-500">
-                       <span className="font-bold uppercase tracking-widest text-slate-400">Contract</span>
-                       <AddressCapsule
-                         address={cardIssuanceExistingCard.cardAddress}
-                         className="bg-[#eef1f3] border-[#abadaf]/30 text-[#2c2f31]"
-                       />
-                       <a
-                         href={`https://basescan.org/address/${cardIssuanceExistingCard.cardAddress}`}
-                         target="_blank"
-                         rel="noopener noreferrer"
-                         className="inline-flex items-center gap-1 font-bold text-[#1562f0] hover:underline"
-                       >
-                         Basescan
-                         <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                       </a>
+
+                     <div className="rounded-xl bg-[#eef1f3] p-4 sm:rounded-2xl sm:p-5">
+                       <header className="mb-3 flex items-center justify-between gap-2">
+                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Loyalty Logic</h3>
+                         <Database className="h-4 w-4 shrink-0 text-slate-400 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+                       </header>
+                       <div className="space-y-2 sm:space-y-3">
+                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
+                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
+                               <Banknote className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]" strokeWidth={2} aria-hidden />
+                             </div>
+                             <div className="min-w-0">
+                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                 {programsOverviewTierRuleOption?.title ?? 'Loyalty rule'}
+                               </p>
+                               <p className="text-[10px] text-[#595c5e]">
+                                 {programsOverviewTierRuleOption?.mobileDesc ??
+                                   'Configure how members qualify for tiers.'}
+                               </p>
+                             </div>
+                           </div>
+                           {programsOverviewTiersSortedAscending.length > 0 ? (
+                             <span className="shrink-0 rounded bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-white">
+                               ACTIVE
+                             </span>
+                           ) : (
+                             <span className="shrink-0 rounded bg-slate-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-slate-600">
+                               SETUP
+                             </span>
+                           )}
+                         </div>
+                         {cardIssuanceBonusRules.length > 0 ? (
+                           <>
+                             {cardIssuanceBonusRules.map((row, idx) => {
+                               const payload = cardIssuanceBonusRuleRowToPayload(row);
+                               const displayDesc = payload
+                                 ? formatBonusRuleDisplayString(
+                                     payload,
+                                     cardIssuanceDisplayMoneyPrefix
+                                   )
+                                 : 'Incomplete rule — open editor to fix amounts.';
+                               const showIndexSuffix = cardIssuanceBonusRules.length > 1;
+                               return (
+                                 <div
+                                   key={row.id}
+                                   className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4"
+                                 >
+                                   <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
+                                       <CreditCard
+                                         className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                                         strokeWidth={2}
+                                         aria-hidden
+                                       />
+                                     </div>
+                                     <div className="min-w-0">
+                                       <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                         Recharge Bonus{showIndexSuffix ? ` ${idx + 1}` : ''}
+                                       </p>
+                                       <p className="text-[10px] text-[#595c5e]">{displayDesc}</p>
+                                     </div>
+                                   </div>
+                                   <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                                     <button
+                                       type="button"
+                                       onClick={() => openCardIssuanceBonusRuleEdit(row.id)}
+                                       className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                       aria-label={`Edit recharge bonus${showIndexSuffix ? ` ${idx + 1}` : ''}`}
+                                     >
+                                       <Pencil
+                                         className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                         strokeWidth={2}
+                                         aria-hidden
+                                       />
+                                     </button>
+                                     <button
+                                       type="button"
+                                       onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(row.id)}
+                                       className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] ${bizFocusRingClass}`}
+                                       aria-label={`Remove recharge bonus${showIndexSuffix ? ` ${idx + 1}` : ''}`}
+                                     >
+                                       <Trash2
+                                         className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                         strokeWidth={2}
+                                         aria-hidden
+                                       />
+                                     </button>
+                                     {payload ? (
+                                       <span className="shrink-0 rounded bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-white">
+                                         ACTIVE
+                                       </span>
+                                     ) : (
+                                       <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-amber-900">
+                                         FIX
+                                       </span>
+                                     )}
+                                   </div>
+                                 </div>
+                               );
+                             })}
+                             <button
+                               type="button"
+                               onClick={() => openCardIssuanceBonusRuleCreate()}
+                               className={`flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#1562f0]/30 bg-white py-2.5 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/5 sm:rounded-xl ${bizFocusRingClass}`}
+                             >
+                               <PlusCircle className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                               Add recharge bonus
+                             </button>
+                           </>
+                         ) : (
+                           <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
+                             <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
+                                 <CreditCard
+                                   className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                                   strokeWidth={2}
+                                   aria-hidden
+                                 />
+                               </div>
+                               <div className="min-w-0">
+                                 <p className="font-manrope text-sm font-bold text-[#2c2f31]">Recharge Bonus</p>
+                                 <p className="text-[10px] text-[#595c5e]">No recharge bonus configured</p>
+                               </div>
+                             </div>
+                             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                               <button
+                                 type="button"
+                                 onClick={() => openCardIssuanceBonusRuleCreate()}
+                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                 aria-label="Add recharge bonus"
+                               >
+                                 <Pencil
+                                   className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                   strokeWidth={2}
+                                   aria-hidden
+                                 />
+                               </button>
+                               <span className="shrink-0 rounded bg-slate-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-slate-600">
+                                 OFF
+                               </span>
+                             </div>
+                           </div>
+                         )}
+                       </div>
                      </div>
                    </div>
 
-                   <div className="flex flex-col justify-between gap-8 rounded-2xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-8 lg:col-span-7">
+                   <div className="flex flex-col gap-4 rounded-xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-4 sm:rounded-2xl sm:gap-5 sm:p-5 lg:col-span-7 lg:p-6">
                      <div>
-                       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-                         <h3 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">Tiers &amp; rules</h3>
-                         <span className="rounded-full border border-[#1562f0]/15 bg-white px-4 py-1 text-xs font-bold text-[#1562f0]">
+                       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
+                         <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Tiers &amp; rules</h3>
+                         <span className="rounded-full border border-[#1562f0]/15 bg-white px-3 py-0.5 text-[10px] font-bold text-[#1562f0] sm:px-4 sm:py-1 sm:text-xs">
                            {(programsOverviewTiersSortedAscending.length || cardIssuanceTiers.length).toLocaleString()} active tiers
                          </span>
                        </div>
-                       <div className="space-y-4">
+                       <div className="space-y-2 sm:space-y-3">
                          {programsOverviewTiersSortedAscending.length > 0 ? (
                            programsOverviewTiersSortedAscending.map((t, i) => {
                              const minRaw = t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
@@ -21873,108 +23447,259 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                 : currencyLabel.toUpperCase() === 'USD' || currencyLabel.toUpperCase() === 'USDC'
                                   ? '$'
                                   : `${currencyLabel} `;
-                             const sub = (t.description?.trim() ||
-                              `From ${minLabel} (${currencyLabel})`) as string;
+                             const discountPct = parseDiscountPctFromTierMetadataDescription(t.description);
                              const medal = ['🥉', '🥈', '🥇'][Math.min(i, 2)] as string;
-                             const band = (['Entry level', 'Intermediate', 'High volume'] as const)[Math.min(i, 2)];
                              const isTop = i === programsOverviewTiersSortedAscending.length - 1;
                              return (
                                <div
                                  key={`${t.index ?? 't'}-${i}`}
-                                 className={`flex items-center justify-between gap-4 rounded-xl border border-transparent bg-white p-5 transition-all hover:border-[#1562f0]/20 ${
+                                 className={`flex items-center justify-between gap-3 rounded-lg border border-transparent bg-white p-3 transition-all hover:border-[#1562f0]/20 sm:gap-4 sm:rounded-xl sm:p-4 ${
                                    isTop ? 'ring-1 ring-[#1562f0]/10' : ''
                                  }`}
                                >
-                                 <div className="flex min-w-0 items-center gap-4">
-                                   <div className="text-3xl" aria-hidden>
+                                 <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                                   <div className="text-2xl sm:text-[1.65rem]" aria-hidden>
                                      {medal}
                                    </div>
                                    <div className="min-w-0">
-                                     <h4 className="font-manrope font-bold text-[#2c2f31]">{t.name ?? 'Tier'}</h4>
-                                     <p className="text-sm text-slate-500 line-clamp-2">{sub}</p>
+                                     <h4 className="font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{t.name ?? 'Tier'}</h4>
+                                     <p className="font-manrope text-sm font-bold tracking-tight text-[#2c2f31] sm:text-base">
+                                       {Number.isFinite(minRaw) ? `${currencyPrefix}${minLabel}` : '—'}
+                                     </p>
                                    </div>
                                  </div>
                                  <div className="shrink-0 text-right">
-                                  <p className="font-manrope font-bold text-[#2c2f31]">
-                                    {Number.isFinite(minRaw) ? `${currencyPrefix}${minLabel}` : '—'}
-                                  </p>
                                    <p
-                                     className={`text-[10px] font-bold uppercase tracking-wider ${
-                                       isTop ? 'text-[#1562f0]' : 'text-slate-400'
+                                     className={`font-manrope text-sm font-bold sm:text-base ${
+                                       discountPct > 0
+                                         ? isTop
+                                           ? 'text-[#1562f0]'
+                                           : 'text-[#2c2f31]'
+                                         : 'text-slate-400'
                                      }`}
                                    >
-                                     {band}
+                                     {discountPct > 0
+                                       ? `${Math.round(discountPct)}% DISCOUNT`
+                                       : 'Member pricing'}
                                    </p>
                                  </div>
                                </div>
                              );
                            })
                          ) : (
-                           <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white p-6 text-sm font-medium text-slate-600">
+                           <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
                              No tier metadata on this card yet. Open the configurator to define tiers before publishing updates.
                            </div>
                          )}
                        </div>
                      </div>
-                     <button
-                       type="button"
-                       onClick={() => {
-                         setCardIssuanceActiveProgramView('configure');
-                         window.scrollTo({ top: 0, behavior: 'smooth' });
-                       }}
-                       className={`flex w-full items-center justify-center gap-3 rounded-full bg-[#1562f0] py-4 font-manrope text-base font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:bg-[#0047b8] active:scale-[0.98] ${bizFocusRingClass}`}
-                     >
-                       Manage rules &amp; tiers
-                       <SlidersHorizontal className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                     </button>
                    </div>
-                 </section>
-
-                 <section className="space-y-6" aria-label="Inventory hub">
-                   <h3 className="font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">Inventory hub</h3>
-                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-                     <div className="group flex items-center gap-8 rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1">
-                       <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-[#eef1f3]">
-                         <Package className="h-10 w-10 text-[#1562f0]" strokeWidth={1.75} aria-hidden />
-                       </div>
-                       <div className="min-w-0 flex-1">
-                         <h4 className="font-manrope text-xl font-bold text-[#2c2f31]">Gift packs</h4>
-                         <p className="mt-1 font-semibold text-[#1562f0]">
-                           {membersTopupKpisAll.totalTopupEvents.toLocaleString()} recorded top-up events
-                         </p>
-                         <button
-                           type="button"
-                           onClick={() => handleTabChange('MembersLoyalty')}
-                           className={`mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#2c2f31] transition-colors group-hover:text-[#1562f0] ${bizFocusRingClass} rounded-sm`}
-                         >
-                           Manage gift packs
-                           <ArrowRight className="h-5 w-5" strokeWidth={2} aria-hidden />
-                         </button>
-                       </div>
+                   <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:col-span-12">
+                     <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
+                       <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">MIN RELOAD</p>
+                       <p className="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]">
+                         {programsOverviewReloadLimitsDisplay.minLine}
+                       </p>
                      </div>
-                     <div className="group flex items-center gap-8 rounded-2xl border border-white/50 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1">
-                       <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-[#eef1f3]">
-                         <MonitorSmartphone className="h-10 w-10 text-[#1562f0]" strokeWidth={1.75} aria-hidden />
-                       </div>
-                       <div className="min-w-0 flex-1">
-                         <h4 className="font-manrope text-xl font-bold text-[#2c2f31]">NFC inventory</h4>
-                         <p className="mt-1 font-medium text-[#2c2f31]/70">
-                           {terminals.length.toLocaleString()} linked terminals
-                         </p>
-                         <button
-                           type="button"
-                           onClick={() => handleTabChange('Staff')}
-                           className={`mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#2c2f31] transition-colors group-hover:text-[#1562f0] ${bizFocusRingClass} rounded-sm`}
-                         >
-                           Order more cards
-                           <ShoppingCart className="h-5 w-5" strokeWidth={2} aria-hidden />
-                         </button>
-                       </div>
+                     <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
+                       <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">MAX RELOAD</p>
+                       <p className="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]">
+                         {programsOverviewReloadLimitsDisplay.maxLine}
+                       </p>
                      </div>
                    </div>
                  </section>
                </div>
              ) : null}
+             <AnimatePresence>
+               {cardIssuanceBonusRuleEditorOpen ? (
+                 <>
+                   <motion.button
+                     type="button"
+                     aria-label="Close bonus rule editor"
+                     className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                     exit={{ opacity: 0 }}
+                     onClick={() => {
+                       setCardIssuanceBonusRuleEditorOpen(false);
+                       setCardIssuanceEditingBonusRuleId(null);
+                     }}
+                   />
+                   <motion.div
+                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                     initial={{ y: '100%' }}
+                     animate={{ y: 0 }}
+                     exit={{ y: '100%' }}
+                     transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                   >
+                     <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                     <div className="mb-8 flex items-start justify-between gap-4">
+                       <div>
+                         <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                           {cardIssuanceEditingBonusRuleId ? 'Edit Strategy' : 'New Strategy'}
+                         </span>
+                         <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
+                           {cardIssuanceEditingBonusRuleId ? 'Edit Bonus Rule' : 'Add Bonus Rule'}
+                         </h3>
+                         <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                           Define a new reward tier for your customers. Incentivize higher top-ups with custom bonus
+                           values.
+                         </p>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => {
+                           setCardIssuanceBonusRuleEditorOpen(false);
+                           setCardIssuanceEditingBonusRuleId(null);
+                         }}
+                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                       >
+                         <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                       </button>
+                     </div>
+
+                     <div className="space-y-8">
+                       <div className="space-y-3">
+                         <label
+                           className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                           htmlFor="card-issuance-bonus-rule-payment"
+                         >
+                           Payment Amount
+                         </label>
+                         <div className="relative">
+                           <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
+                             <span className="font-manrope text-lg font-extrabold text-[#0051d1]">C$</span>
+                           </div>
+                           <input
+                             id="card-issuance-bonus-rule-payment"
+                             ref={cardIssuanceBonusRulePaymentWheelRef}
+                             type="number"
+                             inputMode="decimal"
+                             autoComplete="off"
+                             placeholder="100.00"
+                             value={cardIssuanceBonusRulePaymentAmount}
+                             onKeyDown={preventNumericInputStepKeys}
+                             onWheel={preventNumericInputWheelStep}
+                             onChange={(e) =>
+                               setCardIssuanceBonusRulePaymentAmount(
+                                 normalizeCardIssuanceBonusRuleInput(e.target.value)
+                               )
+                             }
+                             className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                           />
+                         </div>
+                       </div>
+
+                       <div className="space-y-3">
+                         <div className="ml-2 flex flex-wrap items-center justify-between gap-3">
+                           <label
+                             className="block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                             htmlFor="card-issuance-bonus-rule-value"
+                           >
+                             Bonus Value
+                           </label>
+                           <label className="flex cursor-pointer items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0051d1]">
+                             <input
+                               type="checkbox"
+                               checked={cardIssuanceBonusRuleBonusProportional}
+                               onChange={(e) => setCardIssuanceBonusRuleBonusProportional(e.target.checked)}
+                               className={`h-4 w-4 shrink-0 rounded border-[#abadaf] text-[#0051d1] ${bizFocusRingClass}`}
+                               aria-label="Percentage: bonus scales with top-up amount"
+                             />
+                             Percentage
+                           </label>
+                         </div>
+                         <div className="relative">
+                           <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
+                             <span className="font-manrope text-lg font-extrabold text-[#8d3a8b]">+</span>
+                           </div>
+                           <input
+                             id="card-issuance-bonus-rule-value"
+                             ref={cardIssuanceBonusRuleBonusWheelRef}
+                             type="number"
+                             inputMode="decimal"
+                             autoComplete="off"
+                             placeholder="10.00"
+                             value={cardIssuanceBonusRuleBonusValue}
+                             onKeyDown={preventNumericInputStepKeys}
+                             onWheel={preventNumericInputWheelStep}
+                             onChange={(e) =>
+                               setCardIssuanceBonusRuleBonusValue(
+                                 normalizeCardIssuanceBonusRuleInput(e.target.value)
+                               )
+                             }
+                             className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                           />
+                         </div>
+                         <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[#0051d1]/5 bg-[#7a9dff]/10 p-4">
+                           <Bot className="h-5 w-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                           <p className="text-sm text-[#595c5e]">
+                             {cardIssuanceBonusRuleBonusProportional &&
+                             cardIssuanceBonusRuleEditorPreviewPay > 0 ? (
+                               <>
+                                 Bonus rate is{' '}
+                                 <span className="font-bold text-[#0051d1]">
+                                   {formatCardIssuanceBonusRuleAmount(
+                                     (cardIssuanceBonusRuleEditorPreviewBonus /
+                                       cardIssuanceBonusRuleEditorPreviewPay) *
+                                       100
+                                   )}
+                                   %
+                                 </span>{' '}
+                                 of the customer&apos;s top-up. At the reference payment, total credit is{' '}
+                                 <span className="font-bold text-[#0051d1]">
+                                   C${formatCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleEditorPreviewReceive)}
+                                 </span>
+                                 .
+                                 {cardIssuanceBonusRuleEditorExampleBonus != null ? (
+                                   <>
+                                     {' '}
+                                     Example: a C${formatCardIssuanceBonusRuleAmount(CARD_ISSUANCE_BONUS_RULE_EXAMPLE_TOPUP)}{' '}
+                                     top-up adds C$
+                                     {formatCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleEditorExampleBonus)} bonus.
+                                   </>
+                                 ) : null}
+                               </>
+                             ) : cardIssuanceBonusRuleBonusProportional ? (
+                               <>Enter a positive Payment Amount to preview the percentage rate.</>
+                             ) : (
+                               <>
+                                 Customer receives total balance of{' '}
+                                 <span className="font-bold text-[#0051d1]">
+                                   C${formatCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleEditorPreviewReceive)}
+                                 </span>{' '}
+                                 at the reference payment; bonus stays fixed for other top-up amounts.
+                               </>
+                             )}
+                           </p>
+                         </div>
+                         {cardIssuanceBonusRuleEditorValidationError ? (
+                           <div className="mt-3 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                             <p>{cardIssuanceBonusRuleEditorValidationError}</p>
+                           </div>
+                         ) : null}
+                       </div>
+
+                       <div className="pt-2">
+                         <button
+                           type="button"
+                           onClick={applyCardIssuanceBonusRuleEditor}
+                           disabled={!cardIssuanceBonusRuleEditorPayload || Boolean(cardIssuanceBonusRuleEditorValidationError)}
+                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                         >
+                           <span>{cardIssuanceEditingBonusRuleId ? 'Update Rule' : 'Apply Rule'}</span>
+                           <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                         </button>
+                       </div>
+                     </div>
+                   </motion.div>
+                 </>
+               ) : null}
+             </AnimatePresence>
+             </>
+             )}
            </div>
            )
          )}
@@ -22605,38 +24330,38 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
 
      {/* --- ADD TERMINAL: mobile full-screen onboarding (marketExample) --- */}
          {isAddTerminalOpen && (useTerminalsMarketLayout || terminalOnboardingEditing) ? (
-       <div className="fixed inset-0 z-[60] flex min-h-[max(884px,100dvh)] flex-col bg-[#f5f7f9] font-sans text-[#2c2f31]">
+       <div className="fixed inset-0 z-[60] flex min-h-dvh flex-col bg-[#f5f7f9] font-sans text-[#2c2f31]">
          <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden>
            <div className="absolute -left-20 top-20 h-64 w-64 rounded-full bg-[#0051d1]/5 blur-[100px]" />
            <div className="absolute -right-20 bottom-20 h-64 w-64 rounded-full bg-[#8d3a8b]/10 blur-[100px]" />
          </div>
-         <header className="fixed top-0 z-10 flex w-full items-center justify-between border-b border-[#abadaf]/15 bg-[#f5f7f9]/70 px-6 py-4 backdrop-blur-[20px]">
+         <header className="fixed top-0 z-10 flex w-full items-center justify-between border-b border-[#abadaf]/15 bg-[#f5f7f9]/70 px-4 py-2.5 backdrop-blur-[20px] sm:px-5">
            <button
              type="button"
              onClick={closeAddTerminalModal}
-             className="flex h-10 w-10 items-center justify-center rounded-full text-[#2c2f31] transition-colors hover:bg-[#0051d1]/10 active:scale-95"
+             className="flex h-9 w-9 items-center justify-center rounded-full text-[#2c2f31] transition-colors hover:bg-[#0051d1]/10 active:scale-95"
              aria-label="Back"
            >
              <ArrowLeft className="h-5 w-5" strokeWidth={2} />
            </button>
-           <h1 className="font-manrope text-lg font-bold tracking-tight text-[#2c2f31]">
+           <h1 className="font-manrope text-base font-bold tracking-tight text-[#2c2f31] sm:text-lg">
              {terminalOnboardingEditing ? 'Edit Terminal' : 'Link New Terminal'}
            </h1>
-           <div className="w-10 shrink-0" />
+           <div className="w-9 shrink-0 sm:w-10" />
          </header>
-         <main className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 pb-36 pt-24">
-           <div className="mb-10">
-             <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]">Configuration</span>
-             <h2 className="font-manrope text-3xl font-extrabold leading-tight tracking-tight">Terminal Onboarding</h2>
-             <p className="mt-2 font-medium text-[#595c5e]">
+         <main className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-28 pt-[4.25rem] sm:px-5 sm:pb-32 sm:pt-[4.5rem]">
+           <div className="mb-5 sm:mb-6">
+             <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]">Configuration</span>
+             <h2 className="font-manrope text-2xl font-extrabold leading-tight tracking-tight sm:text-[1.65rem]">Terminal Onboarding</h2>
+             <p className="mt-1 text-sm font-medium leading-snug text-[#595c5e] sm:text-[15px]">
                {terminalOnboardingEditing
                  ? 'Update display name, reload cap, and allowed top-up methods for this device.'
                  : 'Link a new hardware or soft-POS instance to your Verra ecosystem.'}
              </p>
            </div>
-           <div className="space-y-10">
-             <div className="space-y-4">
-               <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+           <div className="space-y-5 sm:space-y-6">
+             <div className="space-y-2.5 sm:space-y-3">
+               <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#595c5e] sm:text-xs">
                  <Fingerprint className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
                  Soft-POS identity
                </label>
@@ -22668,7 +24393,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      !terminalOnboardingEditing && e.key === 'Enter' && validateDeviceHandle(newTerminalTag)
                    }
                    placeholder="terminal_id or 0x…"
-                   className={`w-full rounded-lg border-0 bg-[#eef1f3] py-4 font-semibold text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 ${newTerminalTag.startsWith('0x') ? 'pl-5 pr-14' : 'pl-12 pr-14'} ${deviceHandleError ? 'ring-2 ring-rose-500/40' : ''} ${terminalOnboardingEditing ? 'cursor-not-allowed opacity-80' : ''} ${bizFocusRingClass}`}
+                   className={`w-full rounded-lg border-0 bg-[#eef1f3] py-3 font-semibold text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 sm:py-3.5 ${newTerminalTag.startsWith('0x') ? 'pl-5 pr-14' : 'pl-12 pr-14'} ${deviceHandleError ? 'ring-2 ring-rose-500/40' : ''} ${terminalOnboardingEditing ? 'cursor-not-allowed opacity-80' : ''} ${bizFocusRingClass}`}
                  />
                  <div className="absolute right-4 top-1/2 flex -translate-y-1/2 items-center gap-1">
                    {deviceHandleChecking ? (
@@ -22693,7 +24418,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  <p className="text-xs font-medium text-[#595c5e]">Terminal identity cannot be changed here. Revoke and link again to use a different device.</p>
                ) : null}
                {deviceHandleResolved?.address && ethers.isAddress(deviceHandleResolved.address) ? (
-                 <div className="flex flex-col gap-3 rounded-lg border border-[#0051d1]/10 bg-[#0051d1]/5 px-4 py-3">
+                 <div className="flex flex-col gap-2 rounded-lg border border-[#0051d1]/10 bg-[#0051d1]/5 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
                    <span className="text-[10px] font-bold uppercase tracking-tighter text-[#0051d1]">Verified on Base</span>
                    {!deviceHandleResolved.addressOnly ? (
                      <BeamioCapsule
@@ -22728,8 +24453,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                ) : null}
              </div>
 
-             <div className="space-y-4">
-               <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+             <div className="space-y-2.5 sm:space-y-3">
+               <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#595c5e] sm:text-xs">
                  <MonitorSmartphone className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
                  Terminal name
                </label>
@@ -22738,15 +24463,15 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  value={newDeviceName}
                  onChange={(e) => setNewDeviceName(e.target.value)}
                  placeholder="e.g. Counter 02"
-                 className={`w-full rounded-lg border-0 bg-[#eef1f3] px-5 py-4 font-semibold text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 ${bizFocusRingClass}`}
+                 className={`w-full rounded-lg border-0 bg-[#eef1f3] px-4 py-3 font-semibold text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 sm:px-5 sm:py-3.5 ${bizFocusRingClass}`}
                />
              </div>
 
-             <div className="space-y-6 rounded-lg bg-[#eef1f3] p-6">
-               <div className="flex items-center justify-between gap-3">
-                 <div className="min-w-0 space-y-1">
-                   <label className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">Reload limits (CAD)</label>
-                   <p className="text-sm text-[#595c5e]">Set a maximum daily volume cap.</p>
+             <div className="space-y-3 rounded-lg bg-[#eef1f3] p-4 sm:space-y-4 sm:p-5">
+               <div className="flex items-center justify-between gap-2 sm:gap-3">
+                 <div className="min-w-0 space-y-0.5">
+                   <label className="text-[11px] font-bold uppercase tracking-widest text-[#595c5e] sm:text-xs">Reload limits (CAD)</label>
+                   <p className="text-xs text-[#595c5e] sm:text-sm">Set a maximum daily volume cap.</p>
                  </div>
                  <div className="flex shrink-0 items-center gap-3">
                    <span className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">Unlimited</span>
@@ -22763,29 +24488,32 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                    </button>
                  </div>
                </div>
-               <div className={`relative ${terminalOnboardingReloadUnlimited ? 'opacity-40' : ''}`}>
-                 <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 font-bold text-[#595c5e]">$</span>
-                 <input
-                   type="number"
-                   min="1"
-                   step="0.01"
-                   disabled={terminalOnboardingReloadUnlimited}
-                   value={newTerminalMintLimit}
-                   onChange={(e) => setNewTerminalMintLimit(e.target.value)}
-                   inputMode="decimal"
-                   autoComplete="off"
-                   placeholder="0.00"
-                   className={`w-full rounded-lg border-0 bg-[#d9dde0]/30 py-4 pl-10 pr-5 font-bold text-[#2c2f31] disabled:cursor-not-allowed [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
-                 />
-               </div>
+               {!terminalOnboardingReloadUnlimited ? (
+                 <div className="relative">
+                   <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 font-bold text-[#595c5e]">$</span>
+                   <input
+                     type="number"
+                     min="1"
+                     step="0.01"
+                     value={newTerminalMintLimit}
+                     onChange={(e) => setNewTerminalMintLimit(e.target.value)}
+                     inputMode="decimal"
+                     autoComplete="off"
+                     onKeyDown={preventNumericInputStepKeys}
+                     onWheel={preventNumericInputWheelStep}
+                     placeholder="0.00"
+                     className={`w-full rounded-lg border-0 bg-[#d9dde0]/30 py-3 pl-10 pr-4 font-bold text-[#2c2f31] sm:py-3.5 sm:pr-5 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
+                   />
+                 </div>
+               ) : null}
              </div>
 
-             <div className="space-y-4">
-               <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+             <div className="space-y-2.5 sm:space-y-3">
+               <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#595c5e] sm:text-xs">
                  <Wallet className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
                  Allowed top-up methods
                </label>
-               <div className="grid grid-cols-2 gap-4">
+               <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                  {(
                    [
                      { key: 'cash' as const, label: 'Cash', Icon: Banknote },
@@ -22803,22 +24531,26 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          setTerminalOnboardingTopupMethods((prev) => ({ ...prev, [row.key]: !prev[row.key] }))
                        }
                      />
-                     <div className="flex flex-col items-center gap-2 rounded-lg border-2 border-transparent bg-white p-4 text-center shadow-sm transition-all peer-checked:border-[#0051d1] peer-checked:bg-[#0051d1]/5 [&_svg]:text-[#595c5e] peer-checked:[&_svg]:text-[#0051d1]">
+                     <div className="flex flex-col items-center gap-1.5 rounded-lg border-2 border-transparent bg-white p-3 text-center shadow-sm transition-all peer-checked:border-[#0051d1] peer-checked:bg-[#0051d1]/5 sm:gap-2 sm:p-3.5">
                        {'composite' in row ? (
-                         <UsdcBaseCompositeIcon size={28} badgeSize={16} />
+                         <UsdcBaseCompositeIcon size={26} badgeSize={15} />
                        ) : (
-                         <row.Icon className="h-7 w-7" strokeWidth={2} aria-hidden />
+                         <row.Icon
+                           className={`h-6 w-6 sm:h-7 sm:w-7 ${TERMINAL_TOPUP_METHOD_ICON_CLASS[row.key]}`}
+                           strokeWidth={2}
+                           aria-hidden
+                         />
                        )}
-                       <span className="text-sm font-bold tracking-tight text-[#2c2f31]">{row.label}</span>
+                       <span className="text-xs font-bold tracking-tight text-[#2c2f31] sm:text-sm">{row.label}</span>
                      </div>
                    </label>
                  ))}
                </div>
              </div>
 
-             <div className="flex gap-4 rounded-lg border border-[#d8e3fb]/80 bg-[#d8e3fb]/30 p-6">
-               <Info className="h-5 w-5 shrink-0 text-[#515c70]" strokeWidth={2} aria-hidden />
-               <p className="text-sm font-medium text-[#475266]">
+             <div className="flex gap-3 rounded-lg border border-[#d8e3fb]/80 bg-[#d8e3fb]/30 p-3 sm:gap-4 sm:p-4">
+               <Info className="h-4 w-4 shrink-0 text-[#515c70] sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+               <p className="text-xs font-medium leading-snug text-[#475266] sm:text-sm">
                  Once linked, this terminal will sync with your main ledger. Ensure the device hardware ID matches your Soft-POS identity.
                </p>
              </div>
@@ -22837,7 +24569,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  !!deviceHandleError ||
                  (!deviceHandleResolved?.address && !newTerminalTag?.trim())
                }
-               className="flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/30 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+               className="flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-3.5 font-manrope text-[15px] font-bold text-white shadow-lg shadow-[#0051d1]/30 transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:py-4 sm:text-base"
              >
                {linkTerminalLoading ? (
                  <>
@@ -22846,7 +24578,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  </>
                ) : (
                  <>
-                   {terminalOnboardingEditing ? 'Save changes' : 'Link &amp; activate terminal'}
+                   {terminalOnboardingEditing ? 'Save changes' : 'Link activate terminal'}
                    <Zap className="h-5 w-5" strokeWidth={2} aria-hidden />
                  </>
                )}
@@ -22910,21 +24642,24 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     </button>
                   </div>
                 </div>
-                <div className={`relative ${terminalOnboardingReloadUnlimited ? 'opacity-40' : ''}`}>
-                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-500">$</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    disabled={terminalOnboardingReloadUnlimited}
-                    value={newTerminalMintLimit}
-                    onChange={(e) => setNewTerminalMintLimit(e.target.value)}
-                    inputMode="decimal"
-                    autoComplete="off"
-                    placeholder="0.00"
-                    className={`w-full rounded-2xl border border-slate-200 bg-white py-3.5 pl-9 pr-4 text-[15px] font-semibold text-slate-900 transition-all disabled:cursor-not-allowed [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass} focus:border-[#1562f0]`}
-                  />
-                </div>
+                {!terminalOnboardingReloadUnlimited ? (
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-500">$</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={newTerminalMintLimit}
+                      onChange={(e) => setNewTerminalMintLimit(e.target.value)}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      onKeyDown={preventNumericInputStepKeys}
+                      onWheel={preventNumericInputWheelStep}
+                      placeholder="0.00"
+                      className={`w-full rounded-2xl border border-slate-200 bg-white py-3.5 pl-9 pr-4 text-[15px] font-semibold text-slate-900 transition-all [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass} focus:border-[#1562f0]`}
+                    />
+                  </div>
+                ) : null}
               </div>
 
               <div>
@@ -22947,11 +24682,15 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                           setTerminalOnboardingTopupMethods((prev) => ({ ...prev, [row.key]: !prev[row.key] }))
                         }
                       />
-                      <div className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-transparent bg-white p-3 text-center shadow-sm transition-all peer-checked:border-[#1562f0] peer-checked:bg-[#1562f0]/5 [&_svg]:text-slate-500 peer-checked:[&_svg]:text-[#1562f0]">
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-transparent bg-white p-3 text-center shadow-sm transition-all peer-checked:border-[#1562f0] peer-checked:bg-[#1562f0]/5">
                         {'composite' in row ? (
                           <UsdcBaseCompositeIcon size={24} badgeSize={14} />
                         ) : (
-                          <row.Icon className="h-6 w-6" strokeWidth={2} aria-hidden />
+                          <row.Icon
+                            className={`h-6 w-6 ${TERMINAL_TOPUP_METHOD_ICON_CLASS[row.key]}`}
+                            strokeWidth={2}
+                            aria-hidden
+                          />
                         )}
                         <span className="text-xs font-bold text-slate-900">{row.label}</span>
                       </div>
@@ -23209,6 +24948,101 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          </div>
        </div>
      )}
+
+     {/* --- REMOVE RECHARGE BONUS (programs overview draft) --- */}
+     {cardIssuanceBonusRuleDeleteConfirmId
+       ? (() => {
+           const confirmId = cardIssuanceBonusRuleDeleteConfirmId;
+           const pendingRow = cardIssuanceBonusRules.find((r) => r.id === confirmId);
+           const payload = pendingRow ? cardIssuanceBonusRuleRowToPayload(pendingRow) : null;
+           const summaryLine = payload
+             ? formatBonusRuleDisplayString(payload, cardIssuanceDisplayMoneyPrefix)
+             : pendingRow
+               ? 'Incomplete rule — amounts need to be fixed in the editor.'
+               : null;
+           const ruleIdx = pendingRow
+             ? cardIssuanceBonusRules.findIndex((r) => r.id === pendingRow.id)
+             : -1;
+           const titleSuffix =
+             cardIssuanceBonusRules.length > 1 && ruleIdx >= 0 ? ` ${ruleIdx + 1}` : '';
+
+           return (
+             <div
+               className="fixed inset-0 z-[100] flex items-center justify-center p-6"
+               role="dialog"
+               aria-modal="true"
+               aria-labelledby="card-issuance-bonus-rule-delete-title"
+             >
+               <button
+                 type="button"
+                 className="absolute inset-0 cursor-default bg-slate-900/40 backdrop-blur-sm"
+                 aria-label="Close dialog"
+                 onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
+               />
+               <div className="relative w-full max-w-md animate-in zoom-in-95 rounded-[40px] bg-white p-8 shadow-2xl duration-200">
+                 <div className="mb-6 flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
+                       <Trash2 size={24} aria-hidden />
+                     </div>
+                     <h2
+                       id="card-issuance-bonus-rule-delete-title"
+                       className="text-xl font-bold tracking-tight text-black"
+                     >
+                       Remove recharge bonus{titleSuffix}
+                     </h2>
+                   </div>
+                   <button
+                     type="button"
+                     onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
+                     className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black"
+                     aria-label="Close"
+                   >
+                     <X size={20} aria-hidden />
+                   </button>
+                 </div>
+                 {pendingRow ? (
+                   <>
+                     <p className="mb-4 text-[15px] text-slate-600">
+                       Are you sure you want to remove this recharge bonus rule? It will be removed from your program
+                       draft until you publish changes.
+                     </p>
+                     {summaryLine ? (
+                       <div className="mb-6 rounded-2xl border border-slate-100 bg-slate-50/90 px-4 py-3 text-[14px] font-semibold text-slate-800">
+                         {summaryLine}
+                       </div>
+                     ) : null}
+                   </>
+                 ) : (
+                   <p className="mb-6 text-[15px] text-slate-600">
+                     This rule is no longer in your list. You can close this dialog.
+                   </p>
+                 )}
+                 <div className="flex gap-3">
+                   <button
+                     type="button"
+                     onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
+                     className="flex-1 rounded-2xl border border-slate-200 py-3.5 text-[15px] font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                   >
+                     Cancel
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => {
+                       if (confirmId) removeCardIssuanceBonusRule(confirmId);
+                       setCardIssuanceBonusRuleDeleteConfirmId(null);
+                     }}
+                     disabled={!pendingRow}
+                     className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-rose-500 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                   >
+                     Remove rule
+                   </button>
+                 </div>
+               </div>
+             </div>
+           );
+         })()
+       : null}
 
      {/* --- RESET TERMINAL ISSUANCE LIMIT (parent admin clear mint counter) --- */}
      {resetTerminalLimitModal && (
@@ -23508,6 +25342,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          step={0.01}
                          autoComplete="off"
                          enterKeyHint="done"
+                         onKeyDown={preventNumericInputStepKeys}
+                         onWheel={preventNumericInputWheelStep}
                          value={Number.isFinite(routingTaxRatePercent) ? routingTaxRatePercent : 0}
                          onChange={(e) => {
                            const raw = e.target.value;
@@ -23828,7 +25664,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full shrink-0 bg-white/70 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
            <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between px-6">
              <div className="w-10 shrink-0" aria-hidden />
-             <h1 className="text-center font-sans text-lg font-bold tracking-tight text-[#2c2f31]">Verra Business</h1>
+             <h1 className="text-center font-sans text-lg font-bold tracking-tight text-[#2c2f31]">Verra Business Lite</h1>
              <div className="w-10 shrink-0" aria-hidden />
            </div>
          </header>
@@ -23847,7 +25683,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              })()}
              onEnterDashboard={() => {
                setCardIssuancePublishCelebration(null);
-               navigate('/home');
+               finishMerchantKitThankYouAndEnterDashboard(() => {});
              }}
              onDownloadReceipt={() => window.print()}
              variant="fullscreen"
@@ -23877,7 +25713,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              </button>
              <h1 className="text-center font-sans text-lg font-bold tracking-tight text-[#2c2f31]">
                {merchantKitStripeUi === 'succeeded' && merchantKitProgramLiveSource
-                 ? 'Verra Business'
+                 ? 'Verra Business Lite'
                  : merchantKitStripeUi === 'succeeded'
                    ? 'Thank you'
                    : 'Checkout'}
@@ -23900,8 +25736,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  return eoa.length > 14 ? `${eoa.slice(0, 6)}…${eoa.slice(-4)}` : eoa || '—';
                })()}
                onEnterDashboard={() => {
-                 closeMerchantKitCheckout();
-                 setActiveTab('Overview');
+                 finishMerchantKitThankYouAndEnterDashboard(closeMerchantKitCheckout);
                }}
                onDownloadReceipt={() => window.print()}
                onViewProgramDetails={() => {
@@ -24241,8 +26076,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                     return eoa.length > 14 ? `${eoa.slice(0, 6)}…${eoa.slice(-4)}` : eoa || '—';
                   })()}
                   onEnterDashboard={() => {
-                    closeMarketProductModal();
-                    setActiveTab('Overview');
+                    finishMerchantKitThankYouAndEnterDashboard(closeMarketProductModal);
                   }}
                   onDownloadReceipt={() => window.print()}
                   onViewProgramDetails={() => {
@@ -24571,7 +26405,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          placeholder="0.00"
                          value={issueValue}
                          onChange={(e) => setIssueValue(e.target.value)}
-                         className="w-[180px] bg-transparent text-center text-[56px] font-semibold text-white placeholder:text-slate-600 focus:outline-none"
+                         inputMode="decimal"
+                         autoComplete="off"
+                         onKeyDown={preventNumericInputStepKeys}
+                         onWheel={preventNumericInputWheelStep}
+                         className="w-[180px] bg-transparent text-center text-[56px] font-semibold text-white placeholder:text-slate-600 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                        />
                      </div>
                    </div>
@@ -24641,7 +26479,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                              placeholder="Discount Percentage"
                              value={newTierDiscount}
                              onChange={(e) => setNewTierDiscount(e.target.value)}
-                             className="w-full rounded-lg border border-white/10 bg-black/40 py-3 pl-4 pr-10 text-[14px] text-white focus:border-[#1562f0] focus:outline-none"
+                             inputMode="decimal"
+                             autoComplete="off"
+                             onKeyDown={preventNumericInputStepKeys}
+                             onWheel={preventNumericInputWheelStep}
+                             className="w-full rounded-lg border border-white/10 bg-black/40 py-3 pl-4 pr-10 text-[14px] text-white focus:border-[#1562f0] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                            />
                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>
                          </div>
@@ -24834,4 +26676,3 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
 
  return renderDashboard();
 }
-

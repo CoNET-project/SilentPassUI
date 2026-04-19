@@ -56,7 +56,7 @@ const beamioConetContract = {
   address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
   network: "CONET DePIN",
   abi: beamioConetCoreABI,
-  provider: new ethers.JsonRpcProvider("https://mainnet-rpc.conet.network"),
+  provider: new ethers.JsonRpcProvider("https://rpc1.conet.network"),
 }
 
 type message = {
@@ -109,6 +109,7 @@ function AppShell() {
 	setRedeemFromUrl,
 	redeemResult,
 	setRedeemResult,
+	myAddress,
 	setMyAddress,
   } = useDaemonContext()
 
@@ -477,14 +478,54 @@ function AppShell() {
 		}
 	}
 
-	/** 进入的 message 是否为附带 Membership Activated 卡片且带 hash 字段（才触发自动回复） */
-	const isMembershipActivatedWithHash = (text: string): boolean => {
+	/**
+	 * 是否为附带 Membership Activated 且带 hash（才触发自动回复）。
+	 * POS / iOS `jsonChatOuterLine` 与 `resendTerminalParentPermissionRequest` 相同：`{ sendId, from, text: <inner JSON 字符串>, createdAt }`，
+	 * inner 为 `beamio_pos_terminal_permission_v1` — 必须排除，且若 membership 包在多层 `text` 内需沿链解析（与 `parsePosTerminalPermissionV1FromChatDisplayText` 对称）。
+	 */
+	const isMembershipActivatedWithHash = (text: string, depth = 0): boolean => {
+		if (depth > 8) return false
+		const s = (text ?? "").trim()
+		if (!s.startsWith("{")) return false
 		try {
-			const obj = JSON.parse(text) as { paymentCard?: { cardType?: string; hash?: string } }
-			return !!(obj?.paymentCard?.cardType === "membershipActivated" && obj?.paymentCard?.hash)
+			const obj = JSON.parse(s) as {
+				type?: string
+				paymentCard?: { cardType?: string; hash?: string }
+				text?: unknown
+			}
+			if (obj?.type === "beamio_pos_terminal_permission_v1") return false
+			const pc = obj?.paymentCard
+			if (pc?.cardType === "membershipActivated" && pc?.hash) return true
+			if (typeof obj?.text === "string") {
+				return isMembershipActivatedWithHash(obj.text, depth + 1)
+			}
+			return false
 		} catch {
 			return false
 		}
+	}
+
+	/**
+	 * Inbound gossip/chat envelopes may nest `{ text: "..." }` several deep; POS may EIP-191 sign the outer line,
+	 * an intermediate pending row, or the innermost `beamio_pos_terminal_permission_v1` JSON. Walk the chain like
+	 * `parsePosTerminalPermissionV1FromChatDisplayText` until `checkSign` succeeds.
+	 */
+	const resolveSignedInboundChatPayload = (msg: message): { displayText: string; signAddr: string } | null => {
+		let candidate = (msg.text ?? "").trim()
+		if (!candidate) return null
+		for (let hop = 0; hop < 8; hop++) {
+			const signAddr = checkSign(candidate, msg.signMessage, msg.from)
+			if (signAddr) return { displayText: candidate, signAddr }
+			if (!candidate.startsWith("{")) return null
+			try {
+				const o = JSON.parse(candidate) as { text?: unknown }
+				if (typeof o?.text !== "string") return null
+				candidate = o.text.trim()
+			} catch {
+				return null
+			}
+		}
+		return null
 	}
 
 	const addNewMessage = async (
@@ -515,20 +556,21 @@ function AppShell() {
 			const msg: message = JSON.parse(raw)
 			if (!msg?.from || !msg?.text || !msg?.signMessage) continue
 
-			// 验签：支持外层 text 或内层嵌套 { text } 的格式（部分客户端签 inner.text）
-			let sign = checkSign(msg.text, msg.signMessage, msg.from)
-			let displayText = msg.text
-			if (!sign && typeof msg.text === 'string') {
-				try {
-					const inner = JSON.parse(msg.text) as { text?: string }
-					if (typeof inner?.text === 'string') {
-						sign = checkSign(inner.text, msg.signMessage, msg.from)
-						if (sign) displayText = inner.text
-					}
-				} catch {}
+			const resolved = resolveSignedInboundChatPayload(msg)
+			if (!resolved) continue
+			const { displayText, signAddr } = resolved
+
+			// POS 终端权限申请：只进 MerchantOS pending（localStorage），不写入 Messages 会话列表
+			const posTerminalPerm = parsePosTerminalPermissionV1FromChatDisplayText(displayText)
+			if (posTerminalPerm) {
+				const prof = profile as { keyID?: string; aaAccount?: string }
+				const parts = merchantPosPermissionPartitionAddresses(prof, myAddress)
+				if (parts.length > 0) {
+					const added = appendPosTerminalPermissionPendingForMerchantPartitions(parts, posTerminalPerm)
+					if (added) notifyPosTerminalPermissionPendingUpdate()
+				}
+				continue
 			}
-			if (!sign) continue
-			const signAddr = sign
 
 			let idx = chats.findIndex(n => n?.address?.toLowerCase() === signAddr.toLowerCase())
 			let chat = idx >= 0 ? { ...chats[idx] } : null
@@ -589,18 +631,9 @@ function AppShell() {
 				unreadCount: unreadNext
 			}
 
-			if (isNew && isMembershipActivatedWithHash(displayText)) chatsToAutoReply.push(nextChat)
-
-			if (isNew) {
-				const perm = parsePosTerminalPermissionV1FromChatDisplayText(displayText)
-				if (perm) {
-					const prof = profile as { keyID?: string; aaAccount?: string }
-					const parts = merchantPosPermissionPartitionAddresses(prof)
-					if (parts.length > 0) {
-						const added = appendPosTerminalPermissionPendingForMerchantPartitions(parts, perm)
-						if (added) notifyPosTerminalPermissionPendingUpdate()
-					}
-				}
+			// Membership 自动回复：仅 `paymentCard.membershipActivated`+hash（非 POS 权限包）
+			if (isNew && isMembershipActivatedWithHash(displayText)) {
+				chatsToAutoReply.push(nextChat)
 			}
 
 			// ✅ 放回 chats（不可变）

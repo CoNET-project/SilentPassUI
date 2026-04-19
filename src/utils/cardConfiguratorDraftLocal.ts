@@ -3,6 +3,8 @@
  * Lets users leave via Cancel / tab switch and resume later.
  */
 
+import { normalizeCardPreviewLogoDisplayTier, type CardPreviewLogoDisplayTier } from '@/utils/cardPreviewLogoDisplayTier'
+
 const STORAGE_PREFIX = 'verra_card_configurator_draft_v1:'
 
 export type CardConfiguratorDraftTierRuleV1 = 'single' | 'cumulative' | 'balance'
@@ -13,6 +15,8 @@ export type CardConfiguratorDraftBonusRuleV1 = {
   id: string
   paymentAmount: string
   bonusValue: string
+  /** When true, bonus = top-up × (bonusValue / paymentAmount). */
+  bonusProportional?: boolean
 }
 
 export type CardConfiguratorDraftTierV1 = {
@@ -36,9 +40,13 @@ export type CardConfiguratorDraftV1 = {
   bonusRuleBonusValue?: string
   minTopup?: string
   maxTopup?: string
-  tierRule?: CardConfiguratorDraftTierRuleV1
+   tierRule?: CardConfiguratorDraftTierRuleV1
+  /** Per loyalty rule type; takes precedence over legacy `tiers` when present. */
+  tiersByLoyaltyRule?: Partial<Record<CardConfiguratorDraftTierRuleV1, CardConfiguratorDraftTierV1[]>>
   tiers?: CardConfiguratorDraftTierV1[]
   shareImageUrl?: string
+  /** 0–3 hero logo scale; persisted to shareTokenMetadata.logoDisplayTier on publish */
+  logoDisplayTier?: CardPreviewLogoDisplayTier
   categoryId?: string
   description?: string
   mobileStep?: number
@@ -75,9 +83,32 @@ function normalizeBonusRules(raw: unknown): CardConfiguratorDraftBonusRuleV1[] |
     const id = typeof r.id === 'string' && r.id.trim() ? r.id.trim() : `bonus-rule-${out.length}`
     const paymentAmount = typeof r.paymentAmount === 'string' ? r.paymentAmount : String(r.paymentAmount ?? '')
     const bonusValue = typeof r.bonusValue === 'string' ? r.bonusValue : String(r.bonusValue ?? '')
-    out.push({ id, paymentAmount, bonusValue })
+    const bonusProportional =
+      r.bonusProportional === true ||
+      r.bonusIsProportional === true ||
+      r.percentBased === true ||
+      r.bonusProportional === 1
+    out.push({
+      id,
+      paymentAmount,
+      bonusValue,
+      ...(bonusProportional ? { bonusProportional: true } : {}),
+    })
   }
   return out.length ? out : undefined
+}
+
+function normalizeTiersByLoyaltyRule(
+  raw: unknown
+): Partial<Record<CardConfiguratorDraftTierRuleV1, CardConfiguratorDraftTierV1[]>> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const src = raw as Record<string, unknown>
+  const out: Partial<Record<CardConfiguratorDraftTierRuleV1, CardConfiguratorDraftTierV1[]>> = {}
+  for (const key of TIER_RULES) {
+    const tiers = normalizeTiers(src[key])
+    if (tiers?.length) out[key] = tiers
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 function normalizeTiers(raw: unknown): CardConfiguratorDraftTierV1[] | undefined {
@@ -124,6 +155,8 @@ export function loadCardConfiguratorDraftForEoa(eoaLower: string): CardConfigura
     if (p.previewTierId === null) previewTierId = null
     else if (typeof p.previewTierId === 'string') previewTierId = p.previewTierId
 
+    const logoDisplayTier = normalizeCardPreviewLogoDisplayTier(p.logoDisplayTier)
+
     const draft: CardConfiguratorDraftV1 = {
       version: 1,
       programName: typeof p.programName === 'string' ? p.programName : undefined,
@@ -135,8 +168,10 @@ export function loadCardConfiguratorDraftForEoa(eoaLower: string): CardConfigura
       minTopup: typeof p.minTopup === 'string' ? p.minTopup : undefined,
       maxTopup: typeof p.maxTopup === 'string' ? p.maxTopup : undefined,
       tierRule: normalizeTierRule(p.tierRule),
+      tiersByLoyaltyRule: normalizeTiersByLoyaltyRule(p.tiersByLoyaltyRule),
       tiers: normalizeTiers(p.tiers),
       shareImageUrl: typeof p.shareImageUrl === 'string' ? p.shareImageUrl : undefined,
+      ...(logoDisplayTier !== undefined ? { logoDisplayTier } : {}),
       categoryId: typeof p.categoryId === 'string' ? p.categoryId : undefined,
       description: typeof p.description === 'string' ? p.description : undefined,
       mobileStep,

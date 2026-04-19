@@ -8,13 +8,13 @@ const apiv4_endpoint = `https://apiv4.conet.network/api/`;
 const payment_endpoint = `https://hooks.conet.network/api/`;
 const XMLHttpRequestTimeout = 90 * 1000;
 // const conetRpc = "https://cancun-rpc.conet.network";
-const mainChain_rpc = "https://mainnet-rpc.conet.network";
+const mainChain_rpc = "https://rpc1.conet.network";
 /** CoNET L1 WebSocket（BeamioIndexerDiamond 事件订阅）；须使用 `/ws` 路径（与 Base `wss://base-rpc.conet.network/ws` 同族），根路径 `wss://host/` 会握手失败。CRA: REACT_APP_CONET_RPC_WSS；兼容 VITE_CONET_RPC_WSS */
 const _envConetWss =
 	typeof process !== 'undefined'
 		? process.env.REACT_APP_CONET_RPC_WSS || process.env.VITE_CONET_RPC_WSS
 		: undefined
-export const CONET_MAINNET_WSS = _envConetWss || 'wss://mainnet-rpc.conet.network/ws';
+export const CONET_MAINNET_WSS = _envConetWss || 'wss://rpc1.conet.network/ws';
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 
 const beamioApi = 'https://beamio.app'

@@ -792,7 +792,7 @@ const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
 const ISSUE_CARD_MIN_BUINTS = 200
 
 const CONET_BUINT_ADDRESS = '0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879'
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xa7410a532544aB7d1bA70701D9D0E389e4f4Cc1F'
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264'
 const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
 const BUNIT_AIRDROP_BALANCE_ABI = ['function getBUnitBalance(address account) view returns (uint256)'] as const
 /** ERC-1155 `POINTS_ID` on BeamioUserCard is 0 — AA-held points balance for voucher display */

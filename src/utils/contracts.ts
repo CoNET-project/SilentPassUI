@@ -124,7 +124,7 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
 		abi: beamioConetCoreABI
 	},
 	constPgpManager: {
-		address: '0x13A96Bcd6aB010619d1004A1Cb4f5FE149e0F4c4',
+		address: '0x9C94238945295146F3F572D77ae492C13DF90bDd',
 		network: 'CONET DePIN',
 		abi: CoNETPGP
 	},

@@ -59,8 +59,31 @@ export default function WalletOverview() {
 	const aaUsdcNum = Math.max(0, Number(aaAccountUsdcBalance) || 0)
 
 	const myBrandCardsSorted = useMemo(
-		() => [...myBrandCards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en')),
-		[myBrandCards],
+		() => {
+			// 用 detail.assets.points 作为金额；未知（未加载完成 / assets 为 null / 解析失败）记为 NaN
+			const getPts = (cardAddress: string): number => {
+				const detail = myBrandCardDetails[cardAddress.toLowerCase()]
+				const ptsRaw = detail?.assets?.points
+				if (ptsRaw == null || String(ptsRaw).trim() === '') return NaN
+				const n = Number(ptsRaw)
+				return Number.isFinite(n) ? n : NaN
+			}
+			return [...myBrandCards]
+				// 仅当已知 amount 为 0 时隐藏；未加载完成 / 未知金额保留以避免 flicker
+				.filter((c) => {
+					const n = getPts(c.cardAddress)
+					return !(Number.isFinite(n) && n === 0)
+				})
+				.sort((a, b) => {
+					const na = getPts(a.cardAddress)
+					const nb = getPts(b.cardAddress)
+					const va = Number.isFinite(na) ? na : -Infinity
+					const vb = Number.isFinite(nb) ? nb : -Infinity
+					if (vb !== va) return vb - va
+					return (a.name || '').localeCompare(b.name || '', 'en')
+				})
+		},
+		[myBrandCards, myBrandCardDetails],
 	)
 
 	const homeHubWalletCad = useMemo(() => {
@@ -301,7 +324,7 @@ export default function WalletOverview() {
 									Your Merchant Passes
 								</h3>
 								<div className="flex items-center gap-2">
-									{myBrandCards.length > 0 ? (
+									{myBrandCardsSorted.length > 0 ? (
 										<button
 											type="button"
 											onClick={() => setShowMyBrandsDrawer(true)}
@@ -311,13 +334,13 @@ export default function WalletOverview() {
 										</button>
 									) : null}
 									<span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-										{myBrandCards.length} CARD{myBrandCards.length !== 1 ? 'S' : ''}
+										{myBrandCardsSorted.length} CARD{myBrandCardsSorted.length !== 1 ? 'S' : ''}
 									</span>
 								</div>
 							</div>
 
 							<div className="flex flex-col">
-								{myBrandsFeedLoading && myBrandCards.length === 0 ? (
+								{myBrandsFeedLoading && myBrandCardsSorted.length === 0 ? (
 									<div className="h-[200px] animate-pulse rounded-[1.5rem] bg-slate-200/80 dark:bg-slate-800" />
 								) : (
 									stackPreviewCards.map((uc, stackIdx) => {

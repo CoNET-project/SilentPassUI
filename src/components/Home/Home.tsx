@@ -482,8 +482,32 @@ const Home = ({}) => {
 	}, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
 
 	const myBrandCardsSorted = useMemo(
-		() => [...myBrandCards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en')),
-		[myBrandCards]
+		() => {
+			// 用 detail.assets.points 作为金额；未知（未加载完成 / assets 为 null / 解析失败）记为 NaN
+			const getPts = (cardAddress: string): number => {
+				const detail = myBrandCardDetails[cardAddress.toLowerCase()]
+				const ptsRaw = detail?.assets?.points
+				if (ptsRaw == null || String(ptsRaw).trim() === '') return NaN
+				const n = Number(ptsRaw)
+				return Number.isFinite(n) ? n : NaN
+			}
+			return [...myBrandCards]
+				// 仅当已知 amount 为 0 时隐藏；未加载完成 / 未知金额保留以避免 flicker
+				.filter((c) => {
+					const n = getPts(c.cardAddress)
+					return !(Number.isFinite(n) && n === 0)
+				})
+				.sort((a, b) => {
+					const na = getPts(a.cardAddress)
+					const nb = getPts(b.cardAddress)
+					const va = Number.isFinite(na) ? na : -Infinity
+					const vb = Number.isFinite(nb) ? nb : -Infinity
+					if (vb !== va) return vb - va
+					// 金额相等或都未知时按名称兜底，避免顺序抖动
+					return (a.name || '').localeCompare(b.name || '', 'en')
+				})
+		},
+		[myBrandCards, myBrandCardDetails]
 	)
 
 	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
@@ -2271,7 +2295,7 @@ const Home = ({}) => {
 								</section>
 							</div>
 
-							{(myBrandsFeedLoading || myBrandCards.length > 0) && (
+							{(myBrandsFeedLoading || myBrandCardsSorted.length > 0) && (
 								<section className="mb-10">
 									<div className="mb-4 flex items-end justify-between px-1">
 										<h2 className="text-xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
@@ -2287,7 +2311,7 @@ const Home = ({}) => {
 										</button>
 									</div>
 									<div className="flex flex-col rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
-										{myBrandsFeedLoading && myBrandCards.length === 0 ? (
+										{myBrandsFeedLoading && myBrandCardsSorted.length === 0 ? (
 											<>
 												<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
 													<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />

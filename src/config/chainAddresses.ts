@@ -13,7 +13,7 @@ export const BASE_TREASURY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
 export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xA756F2E27a332d6Be2d399dA543E3Ce4C8455F14'
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-export const CONET_BUINT = '0x4A3E59519eE72B9Dcf376f0617fF0a0a5a1ef879'
+export const CONET_BUINT = '0xC97CEbb4DF827cB2D1453A9Df7FEf6dADa1C16Ad'
 /** B-Unit 兑换码空投管理合约（CoNET）；redeemAdmins 可 create/cancel */
 export const CONET_BUINT_REDEEM_AIRDROP = '0x0DC615bAc14411CbDCd082fe59CBdDA8768615B0'
 /** BusinessStartKet + B-Unit 联合兑换（CoNET）；redeemAdmins 经 EIP-712 + 后端代付 gas 创建/取消；与 deployments/conet-addresses.json 同步 */

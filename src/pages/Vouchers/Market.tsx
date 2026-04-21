@@ -54,6 +54,11 @@ const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)"
 const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
 const DISCOVER_LATEST_CARDS_LIMIT = 20
+/** 进入 Market 页面立即展示已 cache 的 Trending Now，避免 API 504 / 超时时永远 loading */
+const TRENDING_CACHE_VERSION = 1
+const TRENDING_CACHE_KEY = `beamio:trending:latestCards:v${TRENDING_CACHE_VERSION}:limit${DISCOVER_LATEST_CARDS_LIMIT}`
+/** /api/latestCards 实测可能 504 / 60s+ 挂起，给出明确超时；超时按 untrusted 处理，不清空已显示的 trusted rows */
+const TRENDING_FETCH_TIMEOUT_MS = 12_000
 
 type DiscoverLatestCardRow = {
 	cardAddress: string
@@ -288,6 +293,46 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 		topTierMinDisplay,
 		categoryId,
 		symbol,
+	}
+}
+
+/**
+ * 本地 trusted cache for Trending Now。
+ * 仅在「请求 trusted 成功 + items 非空」才写；untrusted（超时 / abort / 非 2xx / 解析失败）一律不写、不清。
+ * 读时做 schema 兜底校验，避免 cache 文件被外部破坏导致渲染崩。
+ */
+function loadCachedTrendingRows(): DiscoverLatestCardRow[] | null {
+	if (typeof window === "undefined") return null
+	try {
+		const raw = window.localStorage.getItem(TRENDING_CACHE_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as { rows?: unknown }
+		if (!Array.isArray(parsed?.rows)) return null
+		const safe = (parsed.rows as unknown[]).filter((r): r is DiscoverLatestCardRow => {
+			if (r == null || typeof r !== "object") return false
+			const o = r as Record<string, unknown>
+			return (
+				typeof o.cardAddress === "string" &&
+				ethers.isAddress(o.cardAddress) &&
+				typeof o.name === "string"
+			)
+		})
+		return safe.length > 0 ? safe : null
+	} catch {
+		return null
+	}
+}
+
+function saveCachedTrendingRows(rows: DiscoverLatestCardRow[]): void {
+	if (typeof window === "undefined") return
+	if (!rows || rows.length === 0) return
+	try {
+		window.localStorage.setItem(
+			TRENDING_CACHE_KEY,
+			JSON.stringify({ rows, savedAt: Date.now() })
+		)
+	} catch {
+		/* localStorage 满 / 隐私模式：忽略，下一次请求成功还会再写 */
 	}
 }
 
@@ -1094,35 +1139,72 @@ export default function Market() {
 	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
 	const [qrPayload, setQrPayload] = useState<string>("")
 	const [discoverQuery, setDiscoverQuery] = useState("")
-	const [latestCardsRows, setLatestCardsRows] = useState<DiscoverLatestCardRow[]>([])
-	const [latestCardsLoading, setLatestCardsLoading] = useState(true)
+	/**
+	 * Trending Now：local-first
+	 *  - 进入页面立即从 localStorage 读取上一次 trusted rows 显示，loading 立即结束（stale-while-revalidate）。
+	 *  - 后台向 /api/latestCards 拉新；trusted 成功 + items 非空才更新 state + cache。
+	 *  - 超时 / 网络 / 非 2xx / 解析失败 → untrusted，按 `beamio-trusted-vs-untrusted-fetch.mdc`：
+	 *      不清空 rows、不删除 cache、不当作「无数据」。
+	 *  - 可信成功但 items 为空 → 按 `beamio-untrusted-empty-result-discard.mdc` 的 windowed-scan 例外，
+	 *      也不覆盖已显示的 trusted rows，仅在彻底无 cache + 无新数据时显示 empty。
+	 */
+	const [latestCardsRows, setLatestCardsRows] = useState<DiscoverLatestCardRow[]>(
+		() => loadCachedTrendingRows() ?? []
+	)
+	const [latestCardsLoading, setLatestCardsLoading] = useState<boolean>(
+		() => loadCachedTrendingRows() == null
+	)
 	const [latestCardsError, setLatestCardsError] = useState<string | null>(null)
 
 	useEffect(() => {
 		let cancelled = false
-		setLatestCardsLoading(true)
+		const controller = new AbortController()
+		const timeoutId = setTimeout(() => {
+			try { controller.abort("timeout") } catch { /* noop */ }
+		}, TRENDING_FETCH_TIMEOUT_MS)
 		setLatestCardsError(null)
-		fetch(`${beamioApi}/api/latestCards?limit=${DISCOVER_LATEST_CARDS_LIMIT}`)
-			.then((res) => {
+
+		fetch(`${beamioApi}/api/latestCards?limit=${DISCOVER_LATEST_CARDS_LIMIT}`, {
+			signal: controller.signal,
+		})
+			.then(async (res) => {
 				if (!res.ok) throw new Error(`HTTP ${res.status}`)
-				return res.json() as Promise<{ items?: unknown[] }>
+				return (await res.json()) as { items?: unknown[] }
 			})
 			.then((data) => {
 				if (cancelled) return
 				const items = Array.isArray(data?.items) ? data.items : []
-				const rows = items.map(parseDiscoverLatestCardItem).filter((x): x is DiscoverLatestCardRow => x != null)
-				setLatestCardsRows(rows)
+				const rows = items
+					.map(parseDiscoverLatestCardItem)
+					.filter((x): x is DiscoverLatestCardRow => x != null)
+				// Trusted success + 非空：更新内存与 trusted cache
+				if (rows.length > 0) {
+					setLatestCardsRows(rows)
+					saveCachedTrendingRows(rows)
+				}
+				// Trusted success + 空：windowed-scan 不可作为负向删除依据 → 保留旧 trusted rows
 			})
 			.catch((e: unknown) => {
 				if (cancelled) return
-				setLatestCardsRows([])
-				setLatestCardsError(e instanceof Error ? e.message : "Failed to load cards")
+				// Untrusted（abort / timeout / 网络 / 5xx / 4xx / 解析失败）：不得清空 rows、不得清 cache
+				const name = (e as { name?: string })?.name
+				const msg =
+					name === "AbortError"
+						? "Request timed out — showing cached results"
+						: e instanceof Error
+							? e.message
+							: "Failed to load cards"
+				setLatestCardsError(msg)
 			})
 			.finally(() => {
+				clearTimeout(timeoutId)
 				if (!cancelled) setLatestCardsLoading(false)
 			})
+
 		return () => {
 			cancelled = true
+			clearTimeout(timeoutId)
+			try { controller.abort("unmount") } catch { /* noop */ }
 		}
 	}, [])
 
@@ -1258,10 +1340,12 @@ export default function Market() {
 					</div>
 				</div>
 
-				{latestCardsError ? (
+				{/* untrusted 错误：仅在彻底无 cache rows 时提示，避免 cache 命中时干扰阅读 */}
+				{latestCardsError && latestCardsRows.length === 0 ? (
 					<p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{latestCardsError}</p>
 				) : null}
-				{latestCardsLoading ? (
+				{/* loading 文案：仅在没有任何 trusted rows 可显示时出现；有 cache 立即跳过 */}
+				{latestCardsLoading && latestCardsRows.length === 0 ? (
 					<p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Loading new cards…</p>
 				) : null}
 

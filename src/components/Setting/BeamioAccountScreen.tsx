@@ -8,7 +8,19 @@ import { ethers } from 'ethers'
 import { AppButton } from '@/components/button/AppButton'
 import GetPicture from '@/components/GetPicture/GetPicture'
 const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
-const defaultName = 'Beamio'
+/**
+ * 仅用作 DiceBear avatar 的视觉占位 seed，**严禁作为 server `/api/addUser`
+ * 提交的 accountName fallback**：链上 handle "Beamio" 已被 BeamioOfficial
+ * (`0xEaBF0A98aC208647247eAA25fDD4eB0e67793d61`) 占用，
+ * 其它 wallet 提交 accountName="Beamio" 会被 server `userOwnershipCheck`
+ * 拒绝并返回 400 "Wallet & accountName ownership Error!"。
+ */
+const AVATAR_SEED_FALLBACK = 'Beamio'
+/** Beamio handle 校验，必须与 server `/api/addUser` 端 `^[a-zA-Z0-9_\.]{3,20}$` 完全一致 */
+const BEAMIO_HANDLE_RE = /^[a-zA-Z0-9_\.]{3,20}$/
+/** BeamioOfficial 保留 handle 列表，只有 BeamioOfficial 自己才能在链上注册这些名字 */
+const RESERVED_HANDLES = new Set(['Beamio'])
+const BEAMIO_OFFICIAL_WALLET = '0xeabf0a98ac208647247eaa25fdd4eb0e67793d61'
 
 type prof = {
   colse: (bo: beamio) => void
@@ -45,16 +57,24 @@ const downscaleTo250 = (img: HTMLImageElement) => {
 
 export default function BeamioAccountScreen({ colse }: prof) {
   const { beamio, setBeamio, darkModle, profiles } = useDaemonContext()
-  const [avatarSeed, setAvatarSeed] = useState(beamio?.accountName || defaultName)
-  const [avatarName, setAvatarName] = useState(beamio?.accountName || defaultName)
+  const [avatarSeed, setAvatarSeed] = useState(beamio?.accountName || AVATAR_SEED_FALLBACK)
+  const [avatarName, setAvatarName] = useState(beamio?.accountName || AVATAR_SEED_FALLBACK)
   const [firstName, setFirstName] = useState(beamio?.firstName || '')
   const [lastName, setLastName] = useState('')
   const [avatarImageDataTemp, setAvatarImageDataTemp] = useState<string | null>(null)
   const [avatarFileUrl, setAvatarFileUrl] = useState<string | null>(null)
   const [avatarFileName, setAvatarFileName] = useState<string>('')
   const avatarInputRef = useRef<HTMLInputElement>(null)
-  /** 进入页面时锁定的 accountName，保存时强制使用此值，防止被 AVATAR TEXT 或其它逻辑覆盖 */
-  const accountNameLockRef = useRef<string>(beamio?.accountName || defaultName)
+  /** 进入页面时锁定的 accountName，保存时强制使用此值，防止被 AVATAR TEXT 或其它逻辑覆盖。
+   *  注意：如果用户尚未注册（beamio.accountName 为空），此处必须保留为空字符串，
+   *  让 `handleSaveAvatar` 走「补充注册」分支：从 `pendingHandle` 输入框取值，
+   *  避免误把视觉占位 'Beamio' 提交给 server（'Beamio' 已被 BeamioOfficial 占用）。 */
+  const accountNameLockRef = useRef<string>(beamio?.accountName || '')
+  /** 未注册分支：用户在 BEAMIO HANDLE 输入框里填写的新 handle，仅当未注册时启用 */
+  const [pendingHandle, setPendingHandle] = useState<string>('')
+  /** 是否处于「补充注册」UI 分支。必须用 useState（而非派生自 ref），以便 initData 异步
+   *  把 `beamio.accountName` 写入 lock 后能触发 BEAMIO HANDLE 区域从输入框切回 PERMANENT 只读。 */
+  const [isHandleEditable, setIsHandleEditable] = useState<boolean>(!beamio?.accountName)
   const [loading, setLoading] = useState(false)
   const [avatarUploadingIpfs, setAvatarUploadingIpfs] = useState(false)
   const [avatarSeedConfirmed, setAvatarSeedConfirmed] = useState(false)
@@ -90,10 +110,12 @@ export default function BeamioAccountScreen({ colse }: prof) {
 				}
 			}
 		}
-		// BEAMIO HANDLE (accountName) 不允许修改，进入时锁定
-		const locked = bo.accountName || defaultName
+		// 已注册用户：BEAMIO HANDLE (accountName) 不允许修改，进入时锁定。
+		// 未注册用户：lock 留空字符串，UI 切到补充注册分支（pendingHandle 输入框 + Save Changes 提交）。
+		const locked = bo.accountName || ''
 		accountNameLockRef.current = locked
-		setAvatarName(locked)
+		setAvatarName(locked || AVATAR_SEED_FALLBACK)
+		setIsHandleEditable(!locked)
 		setLastName(checkLastName(bo?.lastName))
 	}
 
@@ -160,11 +182,33 @@ export default function BeamioAccountScreen({ colse }: prof) {
   const handleSaveAvatar = async () => {
     if (!CoNET_Data || !profiles) return
     if (avatarUploadingIpfs) return
-    setLoading(true)
 
     const tmpData = CoNET_Data
-    // BEAMIO HANDLE 不允许修改，使用进入页面时锁定的值，避免被 avatarSeed 或其它逻辑覆盖
-    const accountNameToSave = accountNameLockRef.current || defaultName
+    // 已注册用户：BEAMIO HANDLE 不允许修改，使用进入页面时锁定的值，避免被 avatarSeed 或其它逻辑覆盖。
+    // 未注册用户：从 BEAMIO HANDLE 输入框（pendingHandle）取值，「Save Changes」即「补充注册」入口。
+    // **绝不 fallback 到 'Beamio'**：链上该 handle 已绑定 BeamioOfficial，普通 wallet 提交
+    // 会触发 server `userOwnershipCheck` 拒绝并返回 400 "Wallet & accountName ownership Error!"。
+    const accountNameToSave = (accountNameLockRef.current || pendingHandle || '').trim()
+    if (!accountNameToSave || !BEAMIO_HANDLE_RE.test(accountNameToSave)) {
+      window.alert(
+        isHandleEditable
+          ? 'Please enter a Beamio handle (3–20 chars: letters, digits, "_" or ".") to register your account.'
+          : 'Beamio handle is invalid. Please reopen the app and try again.'
+      )
+      return
+    }
+    let myWalletAddrLc = ''
+    try {
+      myWalletAddrLc = new ethers.Wallet(profiles?.[0]?.privateKeyArmor).address.toLowerCase()
+    } catch {
+      window.alert('Wallet not ready. Please reopen the app and try again.')
+      return
+    }
+    if (RESERVED_HANDLES.has(accountNameToSave) && myWalletAddrLc !== BEAMIO_OFFICIAL_WALLET) {
+      window.alert(`"${accountNameToSave}" is a reserved Beamio handle. Please choose another handle.`)
+      return
+    }
+    setLoading(true)
 
     // image 仅使用 IPFS URL；优先用当前展示的 avatarImageDataTemp（已是 IPFS 时），避免 setState 未提交导致 ipfsImageUrl 滞后
     let imageForSave = beamio?.image || ''
@@ -180,7 +224,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
       if (hash) imageForSave = `${ipfsEndpoint}${hash}&t=${Date.now()}`
     } else {
       // 使用 DiceBear 时，保存带当前 avatarSeed 的 URL，确保 AVATAR TEXT 生效
-      imageForSave = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || defaultName)}`
+      imageForSave = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || AVATAR_SEED_FALLBACK)}`
     }
 
     const profile: profile = tmpData.profiles[0]
@@ -368,22 +412,62 @@ export default function BeamioAccountScreen({ colse }: prof) {
             BEAMIO HANDLE
           </div>
 
-          <div
-            className="
-              mt-3
-              flex items-center justify-between
-              rounded-2xl bg-slate-100/70
-              px-5 py-4
-            "
-          >
-            <div className="text-[20px] font-semibold text-slate-700">
-              @{avatarName}
-            </div>
+          {isHandleEditable ? (
+            // 未注册分支：本输入框就是补充注册入口，「Save Changes」会把它提交给 /api/addUser。
+            // 一旦 server 注册成功，下次进入本页 accountNameLockRef 非空，自动切回只读 PERMANENT。
+            <>
+              <div
+                className="
+                  mt-3
+                  flex items-center
+                  rounded-2xl bg-white
+                  ring-1 ring-slate-200
+                  focus-within:ring-2 focus-within:ring-blue-200
+                  px-5 py-4
+                "
+              >
+                <span className="text-[20px] font-semibold text-slate-400 mr-1">@</span>
+                <input
+                  value={pendingHandle}
+                  onChange={(e) => {
+                    // 实时把非法字符过滤掉，避免提交时才报错
+                    const v = e.target.value.replace(/[^a-zA-Z0-9_.]/g, '').slice(0, 20)
+                    setPendingHandle(v)
+                  }}
+                  placeholder="your_handle"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  maxLength={20}
+                  className="
+                    w-full bg-transparent outline-none
+                    text-[20px] font-semibold text-slate-900
+                    placeholder:text-slate-300
+                  "
+                />
+              </div>
+              <p className="mt-2 text-[12px] text-slate-500">
+                3–20 chars: letters, digits, &quot;_&quot; or &quot;.&quot;. Cannot be changed after registration.
+              </p>
+            </>
+          ) : (
+            <div
+              className="
+                mt-3
+                flex items-center justify-between
+                rounded-2xl bg-slate-100/70
+                px-5 py-4
+              "
+            >
+              <div className="text-[20px] font-semibold text-slate-700">
+                @{avatarName}
+              </div>
 
-            <div className="rounded-xl bg-slate-200 px-4 py-2 text-[12px] font-semibold text-slate-500">
-              PERMANENT
+              <div className="rounded-xl bg-slate-200 px-4 py-2 text-[12px] font-semibold text-slate-500">
+                PERMANENT
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* FIRST / LAST */}

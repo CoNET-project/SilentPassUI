@@ -96,9 +96,7 @@ const Home = () => {
 						style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
 					/>
 					<ChatList
-						// 这里你传你维护的 chat list（通常是 profile.chat）
-						list={profiles?.[0]?.chat || []}
-						title="" // 你如果不要 “Messages” 大标题就留空
+						title="" // 你如果不要 "Messages" 大标题就留空
 						onOpen={item => {
 							setChatData(item)      // ✅ 打开某个会话
 							setShowFooter(false)

@@ -12,7 +12,7 @@ type Prof = {
 	viewClose: () => void
 }
 
-const BeamioBaseAddress = '0xdE51f1daaCa6eae9BDeEe33E324c3e6e96837e94'
+const BeamioBaseAddress = '0x6d7a526BFD03E90ea8D19eDB986577395a139872'
 
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
 

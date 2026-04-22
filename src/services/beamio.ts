@@ -1435,7 +1435,7 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x2dF9c4c51564FfF861965572CE11ebe27d3C1B35',
+	address: '0x4afaca09cf8307070a83836223Ae129073eC92e5',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
 	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
@@ -1484,15 +1484,17 @@ const hashPasswordBrowser = (
 }
 
 
-export const checkBeamioAccountAPI = async(preBeamio: string): Promise<boolean> => {
+export const checkBeamioAccountAPI = async (preBeamio: string): Promise<boolean> => {
 	try {
 		const isExits = await beamioAccountSC.isAccountNameAvailable(preBeamio)
 		return isExits
 	} catch (ex: any) {
-		console.log(`checkBeamioAccount error ${ex.message}`)
-		
+		// On-chain probe failed (RPC down, contract missing, ABI mismatch, decode error, ...).
+		// MUST NOT default to "available" — that lets the user finish onboarding on a broken
+		// chain and silently take an already-taken handle. Surface to caller's catch instead.
+		console.warn(`checkBeamioAccountAPI: on-chain probe failed for "${preBeamio}": ${ex?.shortMessage || ex?.message || ex}`)
+		throw new Error('UNABLE_TO_VERIFY_HANDLE_ONCHAIN')
 	}
-	return true
 }
 
 type IAccountRecover = {

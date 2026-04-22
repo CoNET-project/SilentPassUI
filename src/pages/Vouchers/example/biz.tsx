@@ -791,8 +791,11 @@ const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
 
 const ISSUE_CARD_MIN_BUINTS = 200
 
-const CONET_BUINT_ADDRESS = '0xC97CEbb4DF827cB2D1453A9Df7FEf6dADa1C16Ad'
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264'
+// CoNET 224422 重启后地址（来源 deployments/conet-addresses.json）。
+// 旧值：CONET_BUINT=0xC97CEbb4DF827cB2D1453A9Df7FEf6dADa1C16Ad、
+//       CONET_BUNIT_AIRDROP=0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264（链上均无代码）。
+const CONET_BUINT_ADDRESS = '0x1330297821814B06A6DafE3557Fa730F690D7007'
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xFd60936707cb4583c08D8AacBA19E4bfaEE446B8'
 const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
 const BUNIT_AIRDROP_BALANCE_ABI = ['function getBUnitBalance(address account) view returns (uint256)'] as const
 /** ERC-1155 `POINTS_ID` on BeamioUserCard is 0 — AA-held points balance for voucher display */

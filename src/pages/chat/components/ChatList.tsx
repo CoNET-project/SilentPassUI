@@ -241,21 +241,80 @@ export default function ChatList({
 	}, [allSortedThreads.length, onInboxTotalThreadCountChange])
 
 	// 每次进入时刷新每个 chat 的链上路由信息
+	// ⚠️ 数据竞态修复：refreshChatRoutes 是 N 条 chat × RPC 的长耗时异步操作，
+	// 期间 App.tsx::addNewMessage 可能 mutation 写入新 messages（参考用户 22 Apr 故障：
+	// storage 有 4 条 messages 但 chat 窗口空白）。绝不能用 refreshChatRoutes 拍照
+	// 出来的 updated.chats 整体覆盖 profile.chats —— 那会把 messages/unreadCount 回滚。
+	// 正确做法：只提取 per-address 的 chatData patch，再用函数式 setProfiles 合并到最新 state。
 	useEffect(() => {
 		const p0 = profiles?.[0]
 		if (!p0?.chats?.length || !p0.privateKeyArmor) return
 		;(async () => {
 			const updated = await refreshChatRoutes({ ...p0 })
-			if (updated.chats !== p0.chats) {
-				const next = Array.isArray(profiles) ? [...profiles] : []
-				if (next[0]) next[0] = updated
-				setProfiles(next)
-				const temp = CoNET_Data
-				if (temp?.profiles) {
-					temp.profiles = next
+			// changed=false（同引用）或 chats 异常缺失 → 直接退出
+			if (!updated?.chats || updated.chats === p0.chats) return
+
+			// 1) 收集 per-address 的 chatData patch
+			const patchByAddr = new Map<string, NonNullable<chatData["chatData"]>>()
+			for (const c of updated.chats) {
+				const addr = String(c?.address || "").toLowerCase()
+				if (!addr || !c?.chatData) continue
+				patchByAddr.set(addr, c.chatData)
+			}
+			if (patchByAddr.size === 0) return
+
+			// 2) 把 patch 应用到给定 chats 数组上（只改 chatData，保留 messages/unreadCount/tag/pin/...）
+			const applyPatch = (chats: chatData[]): { next: chatData[]; changed: boolean } => {
+				let changed = false
+				const next = chats.map(c => {
+					const addr = String(c?.address || "").toLowerCase()
+					const newCd = patchByAddr.get(addr)
+					if (!newCd) return c
+					const oldCd = c.chatData
+					if (
+						oldCd &&
+						oldCd.routersArmoreds === newCd.routersArmoreds &&
+						oldCd.routePgpKeyID === newCd.routePgpKeyID &&
+						oldCd.online === newCd.online &&
+						oldCd.publicArmored === newCd.publicArmored
+					) {
+						return c
+					}
+					changed = true
+					return { ...c, chatData: { ...(oldCd || {}), ...newCd } }
+				})
+				return { next, changed }
+			}
+
+			// 3) ✅ React state：函数式 setProfiles，基于最新 prev 应用 patch
+			let appliedToReact = false
+			setProfiles(prev => {
+				if (!prev?.length) return prev
+				const cur = prev[0]
+				const chats = Array.isArray(cur?.chats) ? cur.chats : []
+				const { next, changed } = applyPatch(chats)
+				if (!changed) return prev
+				appliedToReact = true
+				const nextProfiles = [...prev]
+				nextProfiles[0] = { ...cur, chats: next }
+				return nextProfiles
+			})
+
+			// 4) ✅ CoNET_Data 快照：同样基于最新 base 应用 patch（storeSystemData 读这个）
+			const temp = CoNET_Data
+			if (temp?.profiles?.length) {
+				const cur = temp.profiles[0]
+				const chats = Array.isArray(cur?.chats) ? cur.chats : []
+				const { next, changed } = applyPatch(chats)
+				if (changed) {
+					const nextProfiles = [...temp.profiles]
+					nextProfiles[0] = { ...cur, chats: next }
+					temp.profiles = nextProfiles
 					setCoNET_Data(temp)
 					await storeSystemData()
 				}
+			} else if (appliedToReact) {
+				await storeSystemData()
 			}
 		})()
 	}, [profiles, setProfiles])

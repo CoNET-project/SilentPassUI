@@ -29,7 +29,7 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
   import ActionFacetAbi from '@/services/ABI/ActionFacetAbi.json'
   const contracts = {
 	GuardianNodesInfoV6: {
-	  address: "0xdE51f1daaCa6eae9BDeEe33E324c3e6e96837e94",
+	  address: "0x6d7a526BFD03E90ea8D19eDB986577395a139872",
 	  abi: GuardianNodesInfoV6Abi,
 	  network: "CONET DePIN",
 	},
@@ -124,7 +124,7 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
 		abi: beamioConetCoreABI
 	},
 	constPgpManager: {
-		address: '0x9C94238945295146F3F572D77ae492C13DF90bDd',
+		address: '0xb2aABe52f476356AE638839A786EAE425A0c1b66',
 		network: 'CONET DePIN',
 		abi: CoNETPGP
 	},

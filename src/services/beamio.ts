@@ -133,8 +133,9 @@ const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 /** CoNET 主网 chainId（BUnitAirdrop 部署链） */
 const CONET_CHAIN_ID = 224422
 
-/** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264'
+/** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致；CoNET 224422 重启后地址）。
+ *  旧值 0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264 已废弃（链上无代码，会触发 BAD_DATA）。 */
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xFd60936707cb4583c08D8AacBA19E4bfaEE446B8'
 
 /** 检查是否可领取 BeamioBUnits */
 export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
@@ -1437,7 +1438,7 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x2dF9c4c51564FfF861965572CE11ebe27d3C1B35',
+	address: '0x4afaca09cf8307070a83836223Ae129073eC92e5',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
 	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
@@ -1486,15 +1487,17 @@ const hashPasswordBrowser = (
 }
 
 
-export const checkBeamioAccountAPI = async(preBeamio: string): Promise<boolean> => {
+export const checkBeamioAccountAPI = async (preBeamio: string): Promise<boolean> => {
 	try {
 		const isExits = await beamioAccountSC.isAccountNameAvailable(preBeamio)
 		return isExits
 	} catch (ex: any) {
-		console.log(`checkBeamioAccount error ${ex.message}`)
-		
+		// On-chain probe failed (RPC down, contract missing, ABI mismatch, decode error, ...).
+		// MUST NOT default to "available" — that lets the user finish onboarding on a broken
+		// chain and silently take an already-taken handle. Surface to caller's catch instead.
+		console.warn(`checkBeamioAccountAPI: on-chain probe failed for "${preBeamio}": ${ex?.shortMessage || ex?.message || ex}`)
+		throw new Error('UNABLE_TO_VERIFY_HANDLE_ONCHAIN')
 	}
-	return true
 }
 
 type IAccountRecover = {

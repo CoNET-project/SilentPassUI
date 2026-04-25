@@ -12,7 +12,7 @@ import { QrCode } from "lucide-react"
 import { emitWalletEvent } from "@/services/beamio"
 
 export type ScanButtonHandle = {
-  start: () => void
+  start: (options?: { hideModeSwitcher?: boolean }) => void
   stop: () => void
   isScanning: () => boolean
 }
@@ -20,11 +20,13 @@ export type ScanButtonHandle = {
 interface Props {
   iconSize?: number
   hidden?: boolean // ✅ 新增：让它可以“看不见但常驻”
+  hideModeSwitcher?: boolean
 }
 
-const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden }, ref) => {
+const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden, hideModeSwitcher = false }, ref) => {
   const [scanning, setScanning] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [runtimeHideModeSwitcher, setRuntimeHideModeSwitcher] = useState(false)
 
   const { setScanData } = useDaemonContext()
 
@@ -66,12 +68,16 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden 
 
   const stopScan = useCallback(() => {
     setScanning(false)
+    setRuntimeHideModeSwitcher(false)
   }, [])
 
   useImperativeHandle(ref, () => ({
-    start: () => {
+    start: (options) => {
       // 防抖：避免重复触发
-      if (!scanning && !loading) handleGoScan()
+      if (!scanning && !loading) {
+        setRuntimeHideModeSwitcher(Boolean(options?.hideModeSwitcher))
+        handleGoScan()
+      }
     },
     stop: () => stopScan(),
     isScanning: () => scanning
@@ -108,7 +114,8 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden 
         shouldStart={scanning}
         qrbox={250}
         onScanSuccess={handleScanSuccess}
-        onStop={() => setScanning(false)}
+      onStop={stopScan}
+      hideModeSwitcher={hideModeSwitcher || runtimeHideModeSwitcher}
       />
     </div>
   )

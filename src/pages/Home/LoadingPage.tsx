@@ -1,5 +1,4 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
-import beamio_icon from '@/components/assets/32x32.svg'
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
@@ -44,17 +43,18 @@ import CreateUsernamePinScreen, { type CreateUsernamePinScreenRef } from './Crea
 import RecoveryQRScreen from './RecoveryQRScreen'
 import RestoreWalletUnifiedScreen from './RestoreWalletUnifiedScreen'
 import WalletReadyScreen from './WalletReadyScreen'
+import RedeemVoucherScreen from './RedeemVoucherScreen'
 import { WALLET_READY_INTENT_KEY } from './walletReadyIntent'
 import OnboardingWelcomeScreen from './OnboardingWelcomeScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
-import { VerraBrandLockup } from '@/components/branding/VerraBrandLockup'
 import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 /** Initial entry hero — user-provided city sunset (onboard.html） */
 const ONBOARD_HERO_BG = `${process.env.PUBLIC_URL ?? ''}/onboard-hero-city.png`
+const ONBOARD_APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 const ONBOARD_HERO_MARQUEE_SEC_PER_LOOP = 160
 const ISSUED_NFT_START_ID = 100_000_000_000
 
@@ -225,10 +225,18 @@ function InitialEntrySplash({
 			) : null}
 
 			<nav
-				className="fixed top-0 z-50 flex w-full items-center justify-center border-b border-white/10 bg-black/10 px-6 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md"
-				aria-label="Verra"
+				className="fixed top-0 z-50 flex w-full items-center justify-center px-6 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+				aria-label="Beamio"
 			>
-				<VerraBrandLockup variant="onDark" size="standard" className="h-10" />
+				<div className="flex items-center gap-2.5 text-white">
+					<img
+						src={ONBOARD_APP_LOGO_SRC}
+						alt="Beamio"
+						className="h-9 w-9 shrink-0 rounded-[10px] object-contain"
+						draggable={false}
+					/>
+					<span className="text-lg font-semibold tracking-[0.02em]">Beamio</span>
+				</div>
 			</nav>
 
 			<main className="relative z-30 mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col items-center overflow-hidden px-4 pb-2 pt-[calc(env(safe-area-inset-top)+4.25rem)] text-center sm:px-6 [@media(max-height:720px)]:pb-1 [@media(max-height:720px)]:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
@@ -334,7 +342,7 @@ function InitialEntrySplash({
 							onClick={onRestoreWallet}
 							className="text-sm font-medium tracking-wide text-white/75 transition-colors hover:text-white focus:outline-none focus-visible:underline"
 						>
-							Already have a Verra ID?{' '}
+							Already have a Beamio ID?{' '}
 							<span className="underline underline-offset-4">Restore Wallet</span>
 						</button>
 					</div>
@@ -440,6 +448,29 @@ function parseRedeemFromUrl(): { cardAddress: string; redeemCode: string } | nul
 	}
 }
 
+function buildRedeemVoucherHistoryPath(input: string): string | null {
+	const raw = input.trim()
+	if (!raw) return null
+
+	let redeemCode = ''
+	let cardAddress = ''
+
+	try {
+		const u = new URL(raw)
+		redeemCode = u.searchParams.get('redeemcode') || u.searchParams.get('Redeemcode') || ''
+		cardAddress = (u.searchParams.get('beamiocard') || u.searchParams.get('Beamiocard') || '').trim()
+	} catch {
+		const query = raw.includes('?') ? raw.slice(raw.indexOf('?') + 1) : raw
+		const sp = new URLSearchParams(query)
+		redeemCode = sp.get('redeemcode') || sp.get('Redeemcode') || ''
+		cardAddress = (sp.get('beamiocard') || sp.get('Beamiocard') || '').trim()
+	}
+
+	const normalizedCode = decodeURIComponent((redeemCode || raw).trim())
+	const normalizedCard = cardAddress && ethers.isAddress(cardAddress) ? cardAddress : CCSA_Card_Address
+	return `/History?beamiocard=${encodeURIComponent(normalizedCard)}&redeemcode=${encodeURIComponent(normalizedCode)}`
+}
+
 export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, 
 		setAllNodes, setGossip, gossip,
@@ -450,7 +481,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const [loading, SetLoading] = useState(true)
 	const navigate = useNavigate()
 
-	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'OnboardingWelcomeScreen'|'WalletReadyScreen'|'RestoreWalletScreen'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'OnboardingWelcomeScreen'|'WalletReadyScreen'|'RestoreWalletScreen'|'RedeemVoucherScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(false)
 	const [qrDataUrl, setQrDataUrl] = useState('')
 	const [recoveryCode, setRecoveryCode]  = useState('')
@@ -1011,6 +1042,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							settingsOpen !== 'OnboardingWelcomeScreen' &&
 							settingsOpen !== 'WalletReadyScreen' &&
 							settingsOpen !== 'RestoreWalletScreen' &&
+							settingsOpen !== 'RedeemVoucherScreen' &&
 							settingsOpen !== 'CreateUsernamePinScreen' &&
 							(
 							<div className="relative shrink-0 z-[100]" style={{ minHeight: TOP_OFFSET }}>
@@ -1035,7 +1067,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								settingsOpen === 'OnboardingWelcomeScreen' ||
 								settingsOpen === 'WalletReadyScreen' ||
 								settingsOpen === 'CreateUsernamePinScreen' ||
-								settingsOpen === 'RestoreWalletScreen'
+								settingsOpen === 'RestoreWalletScreen' ||
+								settingsOpen === 'RedeemVoucherScreen'
 									? 'flex min-h-0 flex-1 flex-col overflow-hidden'
 									: 'min-h-0 flex-1 overflow-y-auto'
 							}
@@ -1101,10 +1134,26 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											home()
 											navigate('/')
 										}}
+										onRedeemGiftVoucher={() => {
+											setSettingsOpen('RedeemVoucherScreen')
+										}}
 										onFinishLater={() => home()}
 										address={eoaAddress || undefined}
 										balanceFiat={formatAmount(parseFloat(usdcBal || '0') || 0, 'CAD')}
 										beamioTag={beamioTag || undefined}
+									/>
+								)
+							}
+							{
+								settingsOpen === 'RedeemVoucherScreen' && (
+									<RedeemVoucherScreen
+										onBack={() => setSettingsOpen('WalletReadyScreen')}
+										onActivateVoucher={(voucherInput) => {
+											const path = buildRedeemVoucherHistoryPath(voucherInput)
+											if (!path) return
+											home()
+											navigate(path)
+										}}
 									/>
 								)
 							}
@@ -1116,10 +1165,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											setSettingsOpen('')
 											setRestoreFromUrlMasterKey('')
 										}}
-										onRestore={temp => {
-											setSettingsOpen('')
+										onRestore={({ temp, qrDataUrl, recoveryCode, beamioTag }) => {
 											setRestoreFromUrlMasterKey('')
-											void init(temp)
+											setTemp(temp)
+											setQrDataUrl(qrDataUrl)
+											setRecoveryCode(recoveryCode)
+											setBeamioTag(beamioTag || temp?.beamio?.accountName || '')
+											setSettingsOpen('RecoveryQRScreen')
 										}}
 									/>
 								)

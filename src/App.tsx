@@ -1190,7 +1190,10 @@ function AppShell() {
 	}, [charts, profiles])
 
   return (
-		<div className="overscroll-none h-full min-h-screen flex flex-col">
+		<div
+			className="overscroll-none h-full min-h-screen flex flex-col"
+			style={{ backgroundColor: '#000414' }}
+		>
 			<div ref={bodyRef} className="overscroll-none flex-1 min-h-0 flex flex-col">
 				<div className="flex-1 min-h-0 flex flex-col">
 				<Routes>

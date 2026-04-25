@@ -10,8 +10,8 @@
 	"start_url": "/app/",
 	"scope": "/app/",
 	"display": "standalone",
-	"theme_color": "#0d0d0d",
-	"background_color": "#0d0d0d",
+	"theme_color": "#000414",
+	"background_color": "#000414",
 	"shortcuts": [
 		{
 		"name": "Open Beamio",

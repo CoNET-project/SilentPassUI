@@ -1184,21 +1184,9 @@ export const checkStorage = async () => {
     setCoNET_Data(data);
     return data
   } catch {
-    // IndexedDB 为空时，尝试从 Cache Storage 恢复（解决 iOS PWA 与 Safari 存储隔离问题）
-    const cached = await cacheStorageRestore()
-    if (cached) {
-      try {
-        const data = JSON.parse(Buffer.from(cached, "base64").toString());
-        if (data && typeof data === 'object' && data.profiles && Array.isArray(data.profiles)) {
-          setCoNET_Data(data);
-          const database = PouchDB(localDatabaseName, { auto_compaction: true });
-          await database.post({ _id: "init", title: cached });
-          return data
-        }
-      } catch (e) {
-        console.warn('[checkStorage] cache restore parse failed:', e)
-      }
-    }
+    // IndexedDB（_pouch_conet）取不到 init 文档即视为未注册，直接进入 onboarding；
+    // 不再从 Cache Storage 回填：Cache 残留可能让用户以"空 EOA"或不完整账号
+    // 误入 App，且用户主动清空 _pouch_conet 时也会被 cache 兜底覆盖。
     return null
   }
 }
@@ -1217,20 +1205,6 @@ const cacheStorageBackup = async (data: string) => {
     const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
     await cache.put(req, new Response(data, { headers: { 'Content-Type': 'text/plain' } }))
   } catch (_) {}
-}
-
-/** 从 Cache Storage 恢复（IndexedDB 为空时） */
-const cacheStorageRestore = async (): Promise<string | null> => {
-  try {
-    if (typeof caches === 'undefined' || !CACHE_WALLET_URL) return null
-    const cache = await caches.open('beamio-wallet-v1')
-    const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
-    const res = await cache.match(req)
-    if (!res) return null
-    return await res.text()
-  } catch {
-    return null
-  }
 }
 
 const storageHashData = async (docId: string, data: string) => {

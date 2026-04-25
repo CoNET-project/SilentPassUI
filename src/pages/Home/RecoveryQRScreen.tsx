@@ -13,9 +13,10 @@ import {
   ArrowLeft,
   ArrowRight,
 } from 'lucide-react'
-import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from '@/ui/appContentSpacing'
-import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 import { VerraBrandLockup } from '@/components/branding/VerraBrandLockup'
+import { getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
+
+const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
 /** 与 LoadingPage / WalletReady / Home 主色一致（Tailwind 任意类请写死 #hex，勿拼进模板字符串） */
 export const CASHTREES_PRIMARY_BRAND = '#1562f0'
@@ -73,6 +74,7 @@ const RecoveryQRScreen = ({
   const [activatingStep, setActivatingStep] = useState(0)
   // 新增状态：是否已经执行过备份操作（保存或复制）
   const [hasBackedUp, setHasBackedUp] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -92,12 +94,61 @@ const RecoveryQRScreen = ({
     return () => timers.forEach((t) => clearTimeout(t))
   }, [isActivating])
 
-  const handleSaveImage = () => {
+  const saveImageWithIosBridge = (dataUrl: string, filename: string) => {
+    const native = getCashTreesNativeNfcBridge()
+    const saveRecoveryQrToPhotos = native?.saveRecoveryQrToPhotos
+    if (getCashTreesNativeNfcHost() !== 'ios' || typeof saveRecoveryQrToPhotos !== 'function') {
+      return Promise.resolve<'unhandled' | 'saved' | 'failed'>('unhandled')
+    }
+
+    const requestId = `recovery-qr-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    return new Promise<'saved' | 'failed'>((resolve) => {
+      let done = false
+      const cleanup = () => {
+        window.clearTimeout(timeout)
+        window.removeEventListener('cashtreesios', onResult as EventListener)
+      }
+      const finish = (result: 'saved' | 'failed') => {
+        if (done) return
+        done = true
+        cleanup()
+        resolve(result)
+      }
+      const onResult = (event: Event) => {
+        const detail = (event as CustomEvent<Record<string, unknown>>).detail
+        if (!detail || detail.action !== 'saveRecoveryQrToPhotos') return
+        if (detail.requestId !== requestId) return
+        finish(detail.ok === true ? 'saved' : 'failed')
+      }
+      const timeout = window.setTimeout(() => finish('failed'), 15000)
+      window.addEventListener('cashtreesios', onResult as EventListener)
+      try {
+        saveRecoveryQrToPhotos({ dataUrl, filename, requestId })
+      } catch {
+        finish('failed')
+      }
+    })
+  }
+
+  const handleSaveImage = async () => {
     if (!qrCanvasRef.current) return
+    setSaveError('')
     const dataUrl = qrCanvasRef.current.toDataURL('image/png')
+    const filename = `${toSafeFilename(beamioTag ?? '')}.png`
+
+    const nativeSaveResult = await saveImageWithIosBridge(dataUrl, filename)
+    if (nativeSaveResult === 'saved') {
+      setHasBackedUp(true)
+      return
+    }
+    if (nativeSaveResult === 'failed') {
+      setSaveError('Unable to save to Photos. Please allow Photos access and try again.')
+      return
+    }
+
     const link = document.createElement('a')
     link.href = dataUrl
-    link.download = `${toSafeFilename(beamioTag ?? '')}.png`
+    link.download = filename
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -216,144 +267,163 @@ const RecoveryQRScreen = ({
 
       <main
         className={[
-          'mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-5 pb-[max(0.5rem,env(safe-area-inset-bottom))]',
+          'mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden px-5 pb-[max(0.5rem,env(safe-area-inset-bottom))] [@media(max-height:640px)]:px-4 [@media(max-height:560px)]:pb-[max(0.25rem,env(safe-area-inset-bottom))]',
           showTopAppBar
-            ? 'pt-3 [@media(max-height:700px)]:pt-2'
-            : APP_FLOATING_CHROME_MAIN_TOP_PT,
+            ? 'pt-3 [@media(max-height:700px)]:pt-2 [@media(max-height:560px)]:pt-1'
+            : 'pt-[calc(env(safe-area-inset-top)+3.75rem)] [@media(max-height:760px)]:pt-[calc(env(safe-area-inset-top)+2.75rem)] [@media(max-height:700px)]:pt-[calc(env(safe-area-inset-top)+2rem)] [@media(max-height:640px)]:pt-[calc(env(safe-area-inset-top)+1.25rem)] [@media(max-height:560px)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]',
         ].join(' ')}
       >
-        <div className={['shrink-0 text-center md:text-left', APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB].join(' ')}>
-          <h1 className="mb-1 text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-[22px]">
-            Security Backup
-          </h1>
-          <div className="space-y-0.5 text-sm font-medium leading-snug text-[#424655] [@media(max-height:700px)]:text-[13px]">
-            <p>Your Recovery Code is your master key.</p>
-            <p>If you lose your phone,</p>
-            <p>this is the only way to get your funds back.</p>
-          </div>
-        </div>
-
-        <section className="shrink-0 py-2 [@media(max-height:700px)]:py-1">
-          <div className="relative mx-auto w-full max-w-[272px] shrink-0 [@media(max-height:700px)]:max-w-[240px]">
-            <div className="absolute inset-0 rounded-full bg-[#1562f0] opacity-[0.06] blur-2xl [@media(max-height:700px)]:blur-xl" />
-            <div className="relative flex flex-col items-center rounded-2xl border border-[#e8e8ed]/80 bg-white/95 p-4 shadow-sm backdrop-blur-sm [@media(max-height:700px)]:p-3">
-              <div className="mb-3 flex h-[208px] w-[208px] items-center justify-center rounded-lg bg-[#e2e2e7] p-2 [@media(max-height:700px)]:mb-2 [@media(max-height:700px)]:h-[min(30svh,180px)] [@media(max-height:700px)]:w-[min(30svh,180px)]">
-                {qrDataUrl ? (
-                  <QRCodeCanvas
-                    ref={qrCanvasRef}
-                    value={qrDataUrl}
-                    size={176}
-                    level="H"
-                    includeMargin
-                    bgColor="#ffffff"
-                    fgColor="#000000"
-                    imageSettings={{
-                      src: VERRA_BRAND_LOGO_SRC,
-                      height: 40,
-                      width: 40,
-                      excavate: true,
-                    }}
-                    className="max-h-full max-w-full rounded-md object-contain"
-                  />
-                ) : (
-                  <div className="h-full w-full min-h-[120px] animate-pulse rounded-md bg-slate-200/90" />
-                )}
-              </div>
-              <div className="flex min-w-0 w-full items-center justify-between gap-2 rounded-md bg-[#f3f3f8] px-3 py-2.5 [@media(max-height:700px)]:py-2">
-                <span className="select-all break-all font-mono text-xs font-medium tracking-widest text-[#1a1c1f] uppercase">
-                  {recoveryCode || '—'}
-                </span>
-                <Lock className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-              </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="mb-5 shrink-0 text-center md:text-left [@media(max-height:760px)]:mb-4 [@media(max-height:700px)]:mb-3 [@media(max-height:640px)]:mb-2 [@media(max-height:560px)]:mb-1.5">
+            <h1 className="mb-1 text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-[22px] [@media(max-height:640px)]:text-xl [@media(max-height:560px)]:text-lg">
+              Security Backup
+            </h1>
+            <div className="space-y-0.5 text-sm font-medium leading-snug text-[#424655] [@media(max-height:700px)]:text-[13px] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:hidden">
+              <p>Your Recovery Code is your master key.</p>
+              <p>If you lose your phone,</p>
+              <p>this is the only way to get your funds back.</p>
             </div>
           </div>
-        </section>
 
-        {!isConfirmed && (
-          <div className="flex shrink-0 flex-col gap-2 [@media(max-height:700px)]:gap-1.5">
+          <section className="min-h-0 shrink py-1 [@media(max-height:700px)]:py-0.5 [@media(max-height:560px)]:py-0">
+            <div className="relative mx-auto w-full max-w-[272px] shrink [@media(max-height:700px)]:max-w-[220px] [@media(max-height:640px)]:max-w-[180px] [@media(max-height:560px)]:max-w-[156px]">
+              <div className="absolute inset-0 rounded-full bg-[#1562f0] opacity-[0.06] blur-2xl [@media(max-height:700px)]:blur-xl" />
+              <div className="relative flex flex-col items-center rounded-2xl border border-[#e8e8ed]/80 bg-white/95 p-4 shadow-sm backdrop-blur-sm [@media(max-height:700px)]:p-3 [@media(max-height:640px)]:p-2 [@media(max-height:560px)]:rounded-xl [@media(max-height:560px)]:p-1.5">
+                <div className="relative mb-3 flex h-[208px] w-[208px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#e2e2e7] p-2 [@media(max-height:700px)]:mb-2 [@media(max-height:700px)]:h-[160px] [@media(max-height:700px)]:w-[160px] [@media(max-height:640px)]:mb-1.5 [@media(max-height:640px)]:h-[128px] [@media(max-height:640px)]:w-[128px] [@media(max-height:640px)]:p-1 [@media(max-height:560px)]:mb-1 [@media(max-height:560px)]:h-[108px] [@media(max-height:560px)]:w-[108px]">
+                  {qrDataUrl ? (
+                    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-md bg-white">
+                      <QRCodeCanvas
+                        ref={qrCanvasRef}
+                        value={qrDataUrl}
+                        size={176}
+                        level="H"
+                        includeMargin
+                        bgColor="#ffffff"
+                        fgColor="#000000"
+                        className="block h-full w-full rounded-md"
+                      />
+                      <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[14px] bg-white p-1 shadow-[0_4px_12px_rgba(0,0,0,0.12)] [@media(max-height:700px)]:h-10 [@media(max-height:700px)]:w-10 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-8 [@media(max-height:640px)]:w-8 [@media(max-height:640px)]:rounded-[10px]">
+                        <img
+                          src={APP_LOGO_SRC}
+                          alt="Beamio"
+                          className="h-full w-full rounded-[10px] object-contain [@media(max-height:700px)]:rounded-[9px] [@media(max-height:640px)]:rounded-[8px]"
+                          draggable={false}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full w-full min-h-[120px] animate-pulse rounded-md bg-slate-200/90" />
+                  )}
+                </div>
+                <div className="relative z-10 flex min-w-0 w-full items-center justify-between gap-2 rounded-md bg-[#f3f3f8] px-3 py-2.5 [@media(max-height:700px)]:py-2 [@media(max-height:640px)]:px-2 [@media(max-height:640px)]:py-1.5 [@media(max-height:560px)]:py-1">
+                  <span className="select-all break-all font-mono text-xs font-medium tracking-widest text-[#1a1c1f] uppercase [@media(max-height:640px)]:text-[11px] [@media(max-height:560px)]:text-[10px]">
+                    {recoveryCode || '—'}
+                  </span>
+                  <Lock className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Save / Copy 两个按钮：勾选 "I have securely saved..." 后保留可见但 disable，
+              只允许通过下方 Next/Continue 推进，避免确认后又被误触备份操作 */}
+          <div className="flex shrink-0 flex-col gap-2 pt-1 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:pt-0.5 [@media(max-height:560px)]:gap-1">
             <button
               type="button"
               onClick={handleSaveImage}
-              className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] px-6 py-3 text-base font-bold text-white shadow-md transition-transform hover:opacity-[0.96] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-white [@media(max-height:700px)]:py-2.5 [@media(max-height:700px)]:text-[15px]"
+              disabled={isConfirmed}
+              aria-disabled={isConfirmed}
+              className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] px-6 py-3 text-base font-bold text-white shadow-md transition-transform hover:opacity-[0.96] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:from-[#737687] disabled:to-[#737687] [@media(max-height:700px)]:py-2.5 [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:py-2 [@media(max-height:640px)]:text-sm [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-[13px]"
             >
-              <Download className="h-5 w-5" strokeWidth={2.5} />
+              <Download className="h-5 w-5 [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
               Save to Photos
             </button>
+
+            {saveError ? (
+              <p className="px-2 text-center text-[12px] font-semibold leading-snug text-[#ba1a1a]">
+                {saveError}
+              </p>
+            ) : null}
 
             <button
               type="button"
               onClick={handleCopyCode}
-              disabled={!recoveryCode}
-              className="flex items-center justify-center gap-2 rounded-full bg-[#e8e8ed] px-6 py-3 text-base font-bold text-[#1a1c1f] transition-colors hover:bg-[#e2e2e7] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:opacity-50 [@media(max-height:700px)]:py-2.5 [@media(max-height:700px)]:text-[15px]"
+              disabled={!recoveryCode || isConfirmed}
+              aria-disabled={!recoveryCode || isConfirmed}
+              className="flex items-center justify-center gap-2 rounded-full bg-[#e8e8ed] px-6 py-3 text-base font-bold text-[#1a1c1f] transition-colors hover:bg-[#e2e2e7] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 [@media(max-height:700px)]:py-2.5 [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:py-2 [@media(max-height:640px)]:text-sm [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-[13px]"
             >
               {copied ? (
                 <>
-                  <Check className="h-5 w-5 text-[#1562f0]" strokeWidth={2.5} />
+                  <Check className="h-5 w-5 text-[#1562f0] [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
                   Copied
                 </>
               ) : (
                 <>
-                  <Copy className="h-5 w-5" strokeWidth={2.5} />
+                  <Copy className="h-5 w-5 [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
                   Copy Recovery Code
                 </>
               )}
             </button>
           </div>
-        )}
-
-        <div
-          className={[
-            'mt-2 shrink-0 rounded-lg border border-[#e8e8ed] bg-[#fafafa] p-3 transition-opacity duration-300 [@media(max-height:700px)]:mt-1.5 [@media(max-height:700px)]:p-2.5',
-            hasBackedUp ? 'opacity-100' : 'cursor-not-allowed opacity-40',
-          ].join(' ')}
-        >
-          <label
-            className={`flex items-center gap-3 ${hasBackedUp ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-            onClick={(e) => {
-              e.preventDefault()
-              if (hasBackedUp) setIsConfirmed((v) => !v)
-            }}
-          >
-            <div className="pointer-events-none relative flex shrink-0 items-center justify-center">
-              <input type="checkbox" className="peer sr-only" checked={isConfirmed} readOnly disabled={!hasBackedUp} />
-              <div
-                className={[
-                  'flex h-5 w-5 items-center justify-center rounded-md transition-colors',
-                  isConfirmed ? 'bg-[#004bc3]' : 'bg-[#e2e2e7]',
-                ].join(' ')}
-              >
-                {isConfirmed && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
-              </div>
-            </div>
-            <span className="select-none text-sm font-medium text-[#1a1c1f] leading-snug [@media(max-height:700px)]:text-[13px]">
-              I have securely saved my recovery code
-            </span>
-          </label>
         </div>
 
-        {showButton && (
-          <div className="mt-2 shrink-0 pt-1 pb-4 [@media(max-height:700px)]:mt-1">
-            <AppButton
-              fullWidth
-              rightIcon={<ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" strokeWidth={2.5} />}
-              onClick={async () => {
-                setLoading(true)
-                await Promise.resolve(close?.())
+        {/* 固定底栏：confirm 复选框 + Next 按钮，永远可见，不进入滚动区。
+            shrink-0 + 主轴外，确保 iPhone SE 等小屏不会把它顶出可视区。 */}
+        <div className="shrink-0 pt-2 [@media(max-height:700px)]:pt-1.5 [@media(max-height:560px)]:pt-1">
+          <div
+            className={[
+              'rounded-lg border border-[#e8e8ed] bg-[#fafafa] p-3 transition-opacity duration-300 [@media(max-height:700px)]:p-2.5 [@media(max-height:640px)]:p-2 [@media(max-height:560px)]:p-1.5',
+              hasBackedUp ? 'opacity-100' : 'cursor-not-allowed opacity-40',
+            ].join(' ')}
+          >
+            <label
+              className={`flex items-center gap-3 ${hasBackedUp ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+              onClick={(e) => {
+                e.preventDefault()
+                if (hasBackedUp) setIsConfirmed((v) => !v)
               }}
-              loading={loading && !isRedeemFlow}
-              disabled={!isConfirmed}
-              className={`
-                group !h-auto min-h-[52px] rounded-full !py-3 !text-base !font-bold !shadow-none [@media(max-height:700px)]:!min-h-[48px] [@media(max-height:700px)]:!py-2.5 [@media(max-height:700px)]:!text-[15px]
-                transition-all duration-200
-                ${isConfirmed
-                  ? '!bg-[#004bc3] hover:!bg-[#003fa5] active:!scale-[0.98] !text-white !shadow-lg focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2 focus-visible:!ring-offset-white'
-                  : '!cursor-not-allowed !bg-[#d9dade] !text-[#737687]'}
-              `}
             >
-              {isRedeemFlow ? 'Continue' : 'Next'}
-            </AppButton>
+              <div className="pointer-events-none relative flex shrink-0 items-center justify-center">
+                <input type="checkbox" className="peer sr-only" checked={isConfirmed} readOnly disabled={!hasBackedUp} />
+                <div
+                  className={[
+                    'flex h-5 w-5 items-center justify-center rounded-md transition-colors',
+                    isConfirmed ? 'bg-[#004bc3]' : 'bg-[#e2e2e7]',
+                  ].join(' ')}
+                >
+                  {isConfirmed && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+                </div>
+              </div>
+              <span className="select-none text-sm font-medium text-[#1a1c1f] leading-snug [@media(max-height:700px)]:text-[13px] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:text-[11px]">
+                I have securely saved my recovery code
+              </span>
+            </label>
           </div>
-        )}
+
+          {showButton && (
+            <div className="mt-2 pt-1 pb-2 [@media(max-height:700px)]:mt-1.5 [@media(max-height:700px)]:pb-1 [@media(max-height:640px)]:mt-1 [@media(max-height:640px)]:pb-0 [@media(max-height:560px)]:mt-0.5 [@media(max-height:560px)]:pt-0">
+              <AppButton
+                fullWidth
+                rightIcon={<ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" strokeWidth={2.5} />}
+                onClick={async () => {
+                  setLoading(true)
+                  await Promise.resolve(close?.())
+                }}
+                loading={loading && !isRedeemFlow}
+                disabled={!isConfirmed}
+                className={`
+                  group !h-auto min-h-[52px] rounded-full !py-3 !text-base !font-bold !shadow-none [@media(max-height:700px)]:!min-h-[46px] [@media(max-height:700px)]:!py-2.5 [@media(max-height:700px)]:!text-[15px] [@media(max-height:640px)]:!min-h-[42px] [@media(max-height:640px)]:!py-2 [@media(max-height:640px)]:!text-sm [@media(max-height:560px)]:!min-h-[36px] [@media(max-height:560px)]:!py-1.5 [@media(max-height:560px)]:!text-[13px]
+                  transition-all duration-200
+                  ${isConfirmed
+                    ? '!bg-[#004bc3] hover:!bg-[#003fa5] active:!scale-[0.98] !text-white !shadow-lg focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2 focus-visible:!ring-offset-white'
+                    : '!cursor-not-allowed !bg-[#d9dade] !text-[#737687]'}
+                `}
+              >
+                {isRedeemFlow ? 'Continue' : 'Next'}
+              </AppButton>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   )

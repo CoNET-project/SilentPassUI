@@ -4,6 +4,8 @@ export type CashTreesNativeNfcBridge = {
 	getNfcStatus: () => string
 	startPhysicalCardBind: () => void
 	cancelPhysicalCardBind?: () => void
+	saveRecoveryQrToPhotos?: (payload: { dataUrl: string; filename?: string; requestId?: string }) => void
+	scanRecoveryQr?: (payload: { requestId?: string }) => void
 }
 
 /** 当前原生壳：由宿主注入的全局决定，优于 UA 猜测。 */

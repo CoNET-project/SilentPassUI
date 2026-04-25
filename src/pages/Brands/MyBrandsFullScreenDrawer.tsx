@@ -10,7 +10,15 @@ import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import { MyBrandsListSection } from './MyBrandsListSection'
 
-export function MyBrandsFullScreenDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function MyBrandsFullScreenDrawer({
+	open,
+	onClose,
+	onAddNewMerchantCard,
+}: {
+	open: boolean
+	onClose: () => void
+	onAddNewMerchantCard?: () => void
+}) {
 	const { opacity: backBtnOpacity, onScroll: onDrawerScroll, setRef: setDrawerScrollRef } =
 		useScrollCapsuleOpacity(open)
 
@@ -48,7 +56,7 @@ export function MyBrandsFullScreenDrawer({ open, onClose }: { open: boolean; onC
 							<h2 className="mb-4 text-base font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
 								My Brands
 							</h2>
-							<MyBrandsListSection />
+							<MyBrandsListSection onAddNewMerchantCard={onAddNewMerchantCard} />
 						</div>
 					</div>
 				</motion.div>

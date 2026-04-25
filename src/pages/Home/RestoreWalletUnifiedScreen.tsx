@@ -1,24 +1,81 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { AppButton } from '@/components/button/AppButton'
-import { onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
+import { RegenerateRecover, onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
 import {
 	AlertCircle,
+	Check,
 	Eye,
 	EyeOff,
-	Fingerprint,
+	KeyRound,
 	QrCode,
+	RefreshCw,
 	ShieldCheck,
 } from 'lucide-react'
 import { VerraFloatingNavChrome } from './VerraFloatingNavChrome'
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from '@/ui/appContentSpacing'
 
 type RestoreTab = 'login' | 'recovery'
+const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
+const RESTORE_LOADING_STEPS = [
+	{ id: 0, title: 'Restoring Wallet', desc: 'Decrypting your secure vault', icon: KeyRound },
+	{ id: 1, title: 'Preparing Security Backup', desc: 'Creating your local recovery package', icon: RefreshCw },
+] as const
+
+function scanRecoveryQrWithIosBridge() {
+	const native = getCashTreesNativeNfcBridge()
+	const scanRecoveryQr = native?.scanRecoveryQr
+	if (getCashTreesNativeNfcHost() !== 'ios' || typeof scanRecoveryQr !== 'function') {
+		return Promise.resolve<{ status: 'unhandled' } | { status: 'scanned'; code: string } | { status: 'failed'; error?: string }>({
+			status: 'unhandled',
+		})
+	}
+
+	const requestId = `recovery-scan-${Date.now()}-${Math.random().toString(36).slice(2)}`
+	return new Promise<{ status: 'scanned'; code: string } | { status: 'failed'; error?: string }>((resolve) => {
+		let done = false
+		const cleanup = () => {
+			window.clearTimeout(timeout)
+			window.removeEventListener('cashtreesios', onResult as EventListener)
+		}
+		const finish = (result: { status: 'scanned'; code: string } | { status: 'failed'; error?: string }) => {
+			if (done) return
+			done = true
+			cleanup()
+			resolve(result)
+		}
+		const onResult = (event: Event) => {
+			const detail = (event as CustomEvent<Record<string, unknown>>).detail
+			if (!detail || detail.action !== 'scanRecoveryQr') return
+			if (detail.requestId !== requestId) return
+			if (detail.ok === true && typeof detail.recoveryCode === 'string' && detail.recoveryCode.trim()) {
+				finish({ status: 'scanned', code: detail.recoveryCode.trim() })
+				return
+			}
+			finish({ status: 'failed', error: typeof detail.error === 'string' ? detail.error : undefined })
+		}
+		const timeout = window.setTimeout(() => finish({ status: 'failed', error: 'timeout' }), 60000)
+		window.addEventListener('cashtreesios', onResult as EventListener)
+		try {
+			scanRecoveryQr({ requestId })
+		} catch {
+			finish({ status: 'failed' })
+		}
+	})
+}
+
+export type RestoreWalletFlowPayload = {
+	temp: encrypt_keys_object
+	qrDataUrl: string
+	recoveryCode: string
+	beamioTag: string
+}
 
 export type RestoreWalletUnifiedScreenProps = {
 	onClose: () => void
-	onRestore: (temp: encrypt_keys_object) => void | Promise<void>
+	onRestore: (payload: RestoreWalletFlowPayload) => void | Promise<void>
 	initialRecoveryCode?: string
 }
 
@@ -115,13 +172,36 @@ export default function RestoreWalletUnifiedScreen({
 			return
 		}
 		setLoginLoading(true)
-		const canRestore = await restoreWithUserPin(trimmed, password)
-		setLoginLoading(false)
-		if (!canRestore || typeof canRestore === 'boolean') {
-			setLoginError('Something went wrong while restoring your wallet.')
-			return
+		try {
+			const canRestore = await restoreWithUserPin(trimmed, password)
+			if (!canRestore || typeof canRestore === 'boolean') {
+				setLoginError('Something went wrong while restoring your wallet.')
+				return
+			}
+
+			const mnemonicPhrase = canRestore?.mnemonicPhrase
+			const beamioProfile = canRestore?.beamio
+			const privateKey = canRestore?.profiles?.[0]?.privateKeyArmor
+			if (!mnemonicPhrase || !beamioProfile || !privateKey) {
+				setLoginError('Restored wallet is incomplete. Please try again.')
+				return
+			}
+
+			const regenerated = await RegenerateRecover(mnemonicPhrase, beamioProfile, password, privateKey)
+			if (!regenerated?.recoverCode || !regenerated?.qrCode) {
+				setLoginError('Failed to prepare Security Backup. Please try again.')
+				return
+			}
+
+			await onRestore({
+				temp: canRestore,
+				qrDataUrl: regenerated.qrCode,
+				recoveryCode: regenerated.recoverCode,
+				beamioTag: beamioProfile.accountName || trimmed,
+			})
+		} finally {
+			setLoginLoading(false)
 		}
-		onRestore(canRestore)
 	}
 
 	const handleRecoverySubmit = async (e: FormEvent) => {
@@ -132,17 +212,134 @@ export default function RestoreWalletUnifiedScreen({
 			return
 		}
 		setRecoveryLoading(true)
-		const canRestore = await restoreWithRedeem(recoveryCode, '')
-		setRecoveryLoading(false)
-		if (!canRestore) {
-			setRecoveryError('Invalid recovery code')
-			return
+		try {
+			const canRestore = await restoreWithRedeem(recoveryCode, '')
+			if (!canRestore || typeof canRestore === 'boolean') {
+				setRecoveryError('Invalid recovery code')
+				return
+			}
+			await onRestore({
+				temp: canRestore,
+				qrDataUrl: recoveryCode.trim(),
+				recoveryCode: recoveryCode.trim(),
+				beamioTag: canRestore?.beamio?.accountName || '',
+			})
+		} finally {
+			setRecoveryLoading(false)
 		}
-		onRestore(canRestore)
 	}
 
-	const onOpenScanner = () => {
-		scanRef.current?.start()
+	const onOpenScanner = async () => {
+		setRecoveryError('')
+		const nativeResult = await scanRecoveryQrWithIosBridge()
+		if (nativeResult.status === 'scanned') {
+			setRecoveryCode(nativeResult.code)
+			return
+		}
+		if (nativeResult.status === 'failed') {
+			if (nativeResult.error && nativeResult.error !== 'cancelled') {
+				setRecoveryError('Unable to scan Recovery QR. Please try again.')
+			}
+			return
+		}
+		scanRef.current?.start({ hideModeSwitcher: true })
+	}
+
+	if (loginLoading) {
+		return (
+			<div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f9f9fe]">
+				<div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+					<div className="absolute -left-[10%] -top-[10%] h-[60%] w-[60%] rounded-full bg-[#004bc3]/5 blur-[120px]" />
+					<div className="absolute -bottom-[5%] -right-[5%] h-[50%] w-[50%] rounded-full bg-[#a7bcff]/10 blur-[100px]" />
+					<div className="absolute right-[10%] top-[20%] h-[30%] w-[30%] rounded-full bg-[#b3c5ff]/10 blur-[80px]" />
+				</div>
+
+				<main className="flex min-h-0 w-full max-w-lg flex-1 flex-col items-center justify-center self-center overflow-hidden px-6 pt-[max(1rem,env(safe-area-inset-top))] text-center">
+					<div className="relative mb-10 flex h-72 w-72 shrink-0 items-center justify-center [@media(max-height:700px)]:mb-6 [@media(max-height:700px)]:h-56 [@media(max-height:700px)]:w-56 [@media(max-height:640px)]:mb-4 [@media(max-height:640px)]:h-44 [@media(max-height:640px)]:w-44">
+						<div
+							className="absolute h-48 w-48 rounded-full bg-[#004bc3]/10 blur-3xl [@media(max-height:700px)]:h-36 [@media(max-height:700px)]:w-36 [@media(max-height:640px)]:h-28 [@media(max-height:640px)]:w-28"
+							style={{ animation: 'verra-breath 4s ease-in-out infinite' }}
+							aria-hidden
+						/>
+						<div
+							className="absolute inset-0 rounded-full border-[1.5px] border-[#c3c6d8]/30"
+							style={{ animation: 'verra-spin-slow 12s linear infinite' }}
+							aria-hidden
+						/>
+						<div
+							className="absolute inset-4 rounded-full border-[1px] border-[#004bc3]/20 [@media(max-height:640px)]:inset-3"
+							style={{ animation: 'verra-spin-slow 8s linear infinite reverse' }}
+							aria-hidden
+						/>
+						<div
+							className="absolute inset-10 rounded-full border-[2px] border-[#1562f0]/10 [@media(max-height:700px)]:inset-8 [@media(max-height:640px)]:inset-6"
+							style={{ animation: 'verra-spin-slow 15s linear infinite' }}
+							aria-hidden
+						/>
+						<div
+							className="relative z-10 flex h-32 w-32 items-center justify-center rounded-full border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.06)] [@media(max-height:700px)]:h-24 [@media(max-height:700px)]:w-24 [@media(max-height:640px)]:h-20 [@media(max-height:640px)]:w-20"
+							style={{ backdropFilter: 'blur(20px)', background: 'rgba(255, 255, 255, 0.7)' }}
+						>
+							<img
+								src={APP_LOGO_SRC}
+								alt="Beamio"
+								className="h-14 w-14 rounded-[14px] object-contain [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-9 [@media(max-height:640px)]:w-9 [@media(max-height:640px)]:rounded-[10px]"
+								style={{ animation: 'verra-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
+								draggable={false}
+							/>
+						</div>
+						<div
+							className="absolute inset-0"
+							style={{ animation: 'verra-spin-slow 12s linear infinite' }}
+							aria-hidden
+						>
+							<div className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1562f0] shadow-[0_0_12px_rgba(21,98,240,0.6)] [@media(max-height:640px)]:h-2.5 [@media(max-height:640px)]:w-2.5" />
+						</div>
+					</div>
+
+					<div className="w-full space-y-8 [@media(max-height:700px)]:space-y-5 [@media(max-height:640px)]:space-y-3">
+						<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-2xl [@media(max-height:640px)]:text-xl">
+							Securing your identity...
+						</h1>
+						<div className="mx-auto max-w-sm space-y-5 text-left [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
+							{RESTORE_LOADING_STEPS.map((step, idx) => {
+								const isCompleted = idx === 0
+								const isActive = idx === 1
+								const Icon = step.icon
+								return (
+									<div key={step.id} className="flex items-center space-x-4 transition-opacity">
+										<div className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#004bc3]/10 [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:w-7">
+											{isCompleted ? (
+												<Check className="h-4 w-4 text-emerald-600" strokeWidth={3} aria-hidden />
+											) : isActive ? (
+												<>
+													<div className="absolute inset-0 animate-spin rounded-full border-2 border-[#004bc3] border-t-transparent" aria-hidden />
+													<Icon className="h-4 w-4 text-[#004bc3]" strokeWidth={2.5} aria-hidden />
+												</>
+											) : null}
+										</div>
+										<div className="min-w-0 flex-grow">
+											<p className="text-base font-semibold leading-none text-[#1a1c1f] [@media(max-height:640px)]:text-sm">
+												{step.title}
+											</p>
+											<p className="mt-1 text-xs text-[#424655] [@media(max-height:640px)]:mt-0.5 [@media(max-height:640px)]:text-[11px]">
+												{step.desc}
+											</p>
+										</div>
+									</div>
+								)
+							})}
+						</div>
+					</div>
+				</main>
+
+				<style>{`
+					@keyframes verra-spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+					@keyframes verra-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.95); } }
+					@keyframes verra-breath { 0%, 100% { box-shadow: 0 0 20px rgba(21, 98, 240, 0.1); } 50% { box-shadow: 0 0 60px rgba(21, 98, 240, 0.3); } }
+				`}</style>
+			</div>
+		)
 	}
 
 	return (
@@ -202,7 +399,7 @@ export default function RestoreWalletUnifiedScreen({
 							<div className="flex flex-col gap-2">
 								<div>
 									<label className="mb-1 ml-0.5 block text-[10px] font-bold uppercase tracking-widest text-[#424655]">
-										Verra ID
+										Beamio ID
 									</label>
 									<div className="relative">
 										<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-[#424655]">
@@ -272,15 +469,6 @@ export default function RestoreWalletUnifiedScreen({
 										<span className="text-[11px] font-semibold leading-snug">{loginError}</span>
 									</div>
 								)}
-								<div className="flex shrink-0 items-center justify-center gap-2 py-1">
-									<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f3f3f8]">
-										<Fingerprint className="h-5 w-5 text-[#1562f0]" strokeWidth={2} />
-									</div>
-									<div className="max-w-[200px] space-y-0.5 text-[10px] leading-snug text-[#424655]">
-										<p>Biometric login will be enabled</p>
-										<p>after first access.</p>
-									</div>
-								</div>
 								<div className="shrink-0 pt-2">
 									<AppButton
 										type="submit"
@@ -289,7 +477,7 @@ export default function RestoreWalletUnifiedScreen({
 										loading={loginLoading}
 										className="h-12 rounded-full text-base font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75"
 									>
-										Log In
+										Unlock
 									</AppButton>
 								</div>
 							</div>

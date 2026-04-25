@@ -1332,8 +1332,7 @@ export default function CashTreesApp() {
           <div className="absolute inset-0 z-50 flex flex-col">
             <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-md" onClick={() => setShowNFCScanner(false)}></div>
             <div className="mt-auto bg-white/95 backdrop-blur-3xl rounded-t-[3rem] p-8 pb-12 relative z-10 flex flex-col items-center shadow-[0_-10px_50px_rgba(0,0,0,0.1)] border-t border-gray-100 animate-in slide-in-from-bottom-full duration-300 ease-out">
-              <div className="w-12 h-1.5 bg-gray-200 rounded-full mb-10"></div>
-              <div className="relative w-32 h-32 flex items-center justify-center mb-8">
+              <div className="relative w-32 h-32 flex items-center justify-center">
                 <div className="absolute inset-0 border-2 border-[#96EB3C] rounded-full animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
                 <div className="absolute inset-2 border-2 border-[#96EB3C]/60 rounded-full animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite_0.5s]"></div>
                 <div className="relative z-10 w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-xl border border-gray-100">
@@ -1341,29 +1340,6 @@ export default function CashTreesApp() {
                   <Radio size={48} className="text-[#96EB3C] absolute scale-150 animate-pulse opacity-60" />
                 </div>
               </div>
-              
-              <h3 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">
-                {!hasAAWallet ? "Sync existing card" : "Bind physical card"}
-              </h3>
-              <p className="text-base text-gray-500 mb-8 text-center max-w-[280px]">
-                {!hasAAWallet 
-                  ? "Hold your CashTrees card near your phone to sync your account." 
-                  : <>Hold your new blank card near your phone to bind it to <span className="text-gray-900 font-bold bg-gray-100 px-2 py-0.5 rounded-md">{userBeamioTag}</span>.</>
-                }
-              </p>
-              
-              <div className="flex items-center bg-gray-50 px-4 py-2 rounded-full border border-gray-200 mb-8 shadow-sm">
-                <ShieldCheck size={14} className="text-gray-400 mr-2" />
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
-                  Secured by Beamio Protocol
-                </span>
-              </div>
-              <button 
-                onClick={() => setShowNFCScanner(false)}
-                className="w-full max-w-xs py-4 bg-gray-100 hover:bg-gray-200 active:scale-95 text-gray-900 rounded-full font-bold transition-all border border-gray-200"
-              >
-                Cancel
-              </button>
             </div>
           </div>
         )}

@@ -588,7 +588,7 @@ export default function BeamioMeMainScreen() {
 		)
 
 		return (
-			<div className="w-full min-h-screen">
+			<div className="w-full min-h-screen bg-white text-slate-900 dark:bg-white dark:text-slate-900">
 			{
 				!settingsOpen && (
 					<>

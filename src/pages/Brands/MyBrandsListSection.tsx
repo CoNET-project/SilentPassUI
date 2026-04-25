@@ -360,9 +360,16 @@ export function resolveHeldTierPresentation(detail: unknown): {
 	}
 }
 
-export function MyBrandsListSection() {
+export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchantCard?: () => void } = {}) {
 	const navigate = useNavigate()
 	const { myBrandCards, myBrandCardDetails, myBrandsFeedLoading } = useDaemonContext()
+	const handleAddNewMerchantCard = () => {
+		if (onAddNewMerchantCard) {
+			onAddNewMerchantCard()
+			return
+		}
+		navigate('/myWallet')
+	}
 
 	const sorted = useMemo(
 		() => [...myBrandCards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en')),
@@ -395,7 +402,7 @@ export function MyBrandsListSection() {
 					<p className="text-sm font-medium text-slate-600 dark:text-slate-400">No merchant cards yet.</p>
 					<button
 						type="button"
-						onClick={() => navigate('/myWallet')}
+						onClick={handleAddNewMerchantCard}
 						className="mt-4 text-sm font-semibold text-[#004bc3] dark:text-[#6ba3ff]"
 					>
 						Add a card in Wallet
@@ -514,7 +521,7 @@ export function MyBrandsListSection() {
 					</div>
 					<button
 						type="button"
-						onClick={() => navigate('/myWallet')}
+						onClick={handleAddNewMerchantCard}
 						className="mt-3 flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 py-6 text-slate-500 transition-all hover:border-[#1562f0] hover:bg-white/60 hover:text-[#1562f0] dark:border-slate-600 dark:text-slate-400 dark:hover:border-[#6ba3ff] dark:hover:bg-slate-900/60 dark:hover:text-[#6ba3ff]"
 					>
 						<CreditCard className="h-5 w-5" />

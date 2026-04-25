@@ -36,7 +36,6 @@ import PayScreen from '@/pages/Pay/send'
 
 import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
-import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
@@ -279,6 +278,8 @@ const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
 ]
 
 /** CashTrees 大卡：EOA / AA 两侧 USDC（链上 balanceOf）+ 基础设施卡 points（与 getMyAssets 同源）；CAD 合计在 UI 内按 Oracle 折算 */
+const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
+
 async function loadCashTreesWalletSnapshot(profile: Parameters<typeof getMyAssets>[0]): Promise<{
 	eoaUsdc: string
 	aaUsdc: string
@@ -2132,21 +2133,25 @@ const Home = ({}) => {
 																"
 															>
 																{activateWalletEoaQrValue ? (
-																	<QRCodeCanvas
-																		value={activateWalletEoaQrValue}
-																		size={180}
-																		level="H"
-																		includeMargin={false}
-																		bgColor="#ffffff"
-																		fgColor="#000000"
-																		imageSettings={{
-																			src: VERRA_BRAND_LOGO_SRC,
-																			height: 56,
-																			width: 56,
-																			excavate: true,
-																		}}
-																		className="block"
-																	/>
+																	<div className="relative h-[180px] w-[180px]">
+																		<QRCodeCanvas
+																			value={activateWalletEoaQrValue}
+																			size={180}
+																			level="H"
+																			includeMargin={false}
+																			bgColor="#ffffff"
+																			fgColor="#000000"
+																			className="block"
+																		/>
+																		<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[18px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
+																			<img
+																				src={APP_LOGO_SRC}
+																				alt="Beamio"
+																				className="h-full w-full rounded-[14px] object-contain"
+																				draggable={false}
+																			/>
+																		</div>
+																	</div>
 																) : (
 																	<div className="w-[180px] h-[180px] flex items-center justify-center text-xs text-gray-400 text-center px-4">
 																		Loading payment link…
@@ -2235,7 +2240,7 @@ const Home = ({}) => {
 											<div className="space-y-6 px-8 pb-8">
 												<div className="py-2 text-center">
 													<p className="text-sm font-medium leading-relaxed text-white/80">
-														Tap at any Verra SoftPOS to pay seamlessly.
+														Tap at any Beamio SoftPOS to pay seamlessly.
 													</p>
 												</div>
 												<button
@@ -2269,27 +2274,17 @@ const Home = ({}) => {
 									</div>
 									<div>
 										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Top Up</p>
-										<p className="mt-1 text-[10px] leading-tight text-[#424655] dark:text-slate-400">
-											Let the cashier scan this to add funds.
-										</p>
 									</div>
 									</button>
 									<button
 										type="button"
-										onClick={() => {
-											setShowGiftSheet(true)
-											setShowFooter(false)
-										}}
 										className="flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-all hover:bg-[#e7e8e9] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5"
 									>
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
 										<Gift size={22} strokeWidth={2} aria-hidden />
 									</div>
 									<div>
-										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Transfer</p>
-										<p className="mt-1 text-[10px] leading-tight text-[#424655] dark:text-slate-400">
-											Send Money or Gift Pack.
-										</p>
+										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Gift</p>
 									</div>
 									</button>
 								</section>
@@ -2357,15 +2352,6 @@ const Home = ({}) => {
 															: Number.isFinite(ptsNum)
 																? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
 																: '—'
-												const activePasses =
-													assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired)
-														.length ?? 0
-												const passLine =
-													detail === undefined
-														? '…'
-														: activePasses > 0
-															? `${activePasses} active Pass${activePasses !== 1 ? 'es' : ''}`
-															: 'No active Passes'
 												return (
 													<div
 														key={uc.cardAddress}
@@ -2426,15 +2412,6 @@ const Home = ({}) => {
 														</div>
 														<div className="shrink-0 text-right">
 															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{pointsLine}</p>
-															<p
-																className={
-																	activePasses > 0
-																		? 'text-[10px] font-medium text-emerald-600 dark:text-emerald-400'
-																		: 'text-[10px] font-medium text-[#424655] dark:text-slate-500'
-																}
-															>
-																{passLine}
-															</p>
 														</div>
 													</div>
 												)
@@ -2725,10 +2702,7 @@ const Home = ({}) => {
 														aria-hidden
 													/>
 													<p className="text-lg font-bold text-gray-900 dark:text-slate-100 text-center">
-														Waiting for NFC card scan
-													</p>
-													<p className="text-xs text-gray-500 dark:text-slate-400 text-center mt-2 leading-relaxed px-1">
-														Hold your CashTrees card near the NFC sensor on your phone when prompted.
+														Waiting...
 													</p>
 												</>
 											) : (
@@ -2751,15 +2725,6 @@ const Home = ({}) => {
 											<span className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
 												Secured by Beamio Protocol
 											</span>
-										</div>
-										<div className="p-4 pt-2">
-											<button
-												type="button"
-												onClick={() => cancelCashTreesNfcBind()}
-												className="w-full py-3.5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 active:scale-[0.98] text-gray-900 dark:text-slate-100 rounded-full font-bold text-sm border border-gray-200 dark:border-slate-600"
-											>
-												Cancel
-											</button>
 										</div>
 									</>
 								)}
@@ -3049,7 +3014,7 @@ const Home = ({}) => {
 									<div>
 										<h4 className="mb-1 font-bold text-[#191c1d] dark:text-slate-100">Hardware Security Layer</h4>
 										<p className="text-sm leading-relaxed text-[#424655] dark:text-slate-400">
-											Verra keys use physical-layer encryption. Freezing a key immediately revokes access across all terminal endpoints globally.
+											Beamio keys use physical-layer encryption. Freezing a key immediately revokes access across all terminal endpoints globally.
 										</p>
 									</div>
 								</div>
@@ -3080,7 +3045,7 @@ const Home = ({}) => {
 							<motion.div
 								className={
 									payReceiveQrMode === 'pay'
-										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col overflow-hidden overscroll-contain rounded-t-xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-20px_60px_rgba(0,0,0,0.1)] dark:bg-slate-900'
+										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-20px_60px_rgba(0,0,0,0.1)] dark:bg-slate-900'
 										: 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[min(92dvh,900px)] flex-col items-center rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+3rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
 								}
 								initial={{ y: '100%' }}
@@ -3116,7 +3081,7 @@ const Home = ({}) => {
 								<div
 									className={
 										payReceiveQrMode === 'pay'
-											? 'w-full max-w-lg shrink-0 overflow-hidden px-6 pb-4'
+											? 'mx-auto w-full max-w-lg shrink-0 overflow-hidden px-6 pb-4'
 											: 'min-h-0 w-full max-w-lg flex-1 overflow-y-auto overscroll-contain px-6 pb-4'
 									}
 								>
@@ -3176,20 +3141,27 @@ const Home = ({}) => {
 																		includeMargin={false}
 																		bgColor="#ffffff"
 																		fgColor="#000000"
-																		imageSettings={{
-																			src: VERRA_BRAND_LOGO_SRC,
-																			height: Math.min(
-																				56,
-																				Math.max(36, Math.round((56 * paySheetQrSize) / 256))
-																			),
-																			width: Math.min(
-																				56,
-																				Math.max(36, Math.round((56 * paySheetQrSize) / 256))
-																			),
-																			excavate: true,
-																		}}
 																		className="block rounded-sm"
 																	/>
+																	<div
+																		className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center bg-white shadow-[0_4px_14px_rgba(0,0,0,0.12)]"
+																		style={{
+																			width: Math.min(64, Math.max(44, Math.round((64 * paySheetQrSize) / 256))),
+																			height: Math.min(64, Math.max(44, Math.round((64 * paySheetQrSize) / 256))),
+																			borderRadius: Math.min(18, Math.max(12, Math.round((18 * paySheetQrSize) / 256))),
+																			padding: Math.min(6, Math.max(4, Math.round((6 * paySheetQrSize) / 256))),
+																		}}
+																	>
+																		<img
+																			src={APP_LOGO_SRC}
+																			alt="Beamio"
+																			className="h-full w-full object-contain"
+																			style={{
+																				borderRadius: Math.min(14, Math.max(10, Math.round((14 * paySheetQrSize) / 256))),
+																			}}
+																			draggable={false}
+																		/>
+																	</div>
 																	{payRelaySecondsLeft <= 0 && (
 																		<div
 																			className="absolute inset-0 flex items-center justify-center rounded-sm bg-white/90 backdrop-blur-sm dark:bg-slate-900/85"
@@ -3267,21 +3239,25 @@ const Home = ({}) => {
 												<div className="relative flex w-72 max-w-full flex-col items-center rounded-xl border-2 border-dashed border-[#c3c6d8] bg-[#f3f4f5] p-6 dark:border-slate-600 dark:bg-slate-800/90">
 													<div className="relative rounded-md bg-white p-3 shadow-sm dark:bg-slate-900">
 														{topUpReceiveQrValue ? (
-															<QRCodeCanvas
-																value={topUpReceiveQrValue}
-																size={192}
-																level="H"
-																includeMargin={false}
-																bgColor="#ffffff"
-																fgColor="#000000"
-																imageSettings={{
-																	src: VERRA_BRAND_LOGO_SRC,
-																	height: 52,
-																	width: 52,
-																	excavate: true,
-																}}
-																className="block rounded-sm"
-															/>
+															<div className="relative h-48 w-48">
+																<QRCodeCanvas
+																	value={topUpReceiveQrValue}
+																	size={192}
+																	level="H"
+																	includeMargin={false}
+																	bgColor="#ffffff"
+																	fgColor="#000000"
+																	className="block rounded-sm"
+																/>
+																<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[18px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
+																	<img
+																		src={APP_LOGO_SRC}
+																		alt="Beamio"
+																		className="h-full w-full rounded-[14px] object-contain"
+																		draggable={false}
+																	/>
+																</div>
+															</div>
 														) : (
 															<div className="flex h-48 w-48 items-center justify-center text-center text-sm text-[#424655] dark:text-slate-400">
 																Loading code…
@@ -4375,7 +4351,14 @@ const Home = ({}) => {
 				</div>
 			</div>
 
-			<MyBrandsFullScreenDrawer open={showMyBrandsDrawer} onClose={() => setShowMyBrandsDrawer(false)} />
+			<MyBrandsFullScreenDrawer
+				open={showMyBrandsDrawer}
+				onClose={() => setShowMyBrandsDrawer(false)}
+				onAddNewMerchantCard={() => {
+					setShowMyBrandsDrawer(false)
+					navigate('/discover')
+				}}
+			/>
 		</div>
 	)
 }

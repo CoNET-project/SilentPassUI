@@ -77,18 +77,27 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
 
   const displayedKey = revealedKey || privateKey || ''
 
+  const revealPrivateKey = async () => {
+    if (!password.trim() || loading) return
+    const k = await getPrivatekey()
+    if (!k) return
+    setRevealedKey(k)
+    setKeyVisible(true)
+    setStep('revealed')
+  }
+
   const keyText = useMemo(() => {
     if (!displayedKey) return 'No private key found.'
     return keyVisible ? displayedKey : maskKey(displayedKey)
   }, [displayedKey, keyVisible])
 
   return (
-    <div className="min-h-screen w-full bg-white">
-      <div className="mx-auto w-full max-w-[560px] px-6 pt-8 pb-10">
+    <div className="w-full bg-transparent">
+      <div className="mx-auto w-full max-w-[560px] px-4 pb-6 pt-2 sm:px-6">
         {step === 'locked' ? (
           <>
             {/* Danger Zone */}
-            <div className="mt-2">
+            <div>
               <div className="text-[30px] font-extrabold tracking-[-0.02em] text-red-600">
                 Danger Zone
               </div>
@@ -98,7 +107,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
             </div>
 
             {/* Password input */}
-            <div className="mt-8">
+            <div className="mt-6">
               <div
                 className={`
                   w-full rounded-2xl bg-white
@@ -113,6 +122,11 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                   onChange={e => {
                     setPassword(e.target.value)
                     if (errorText) setErrorText('')
+                  }}
+                  onKeyDown={e => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    void revealPrivateKey()
                   }}
                   type={pwVisible ? 'text' : 'password'}
                   placeholder="Enter Wallet Password"
@@ -148,20 +162,13 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
             </div>
 
             {/* Bottom Reveal button */}
-            <div className="mt-10">
+            <div className="mt-8">
               <AppButton
                 fullWidth
                 variant="danger"
                 loading={loading}
                 disabled={!canReveal}
-                onClick={async () => {
-                  if (!password.trim() || loading) return
-                  const k = await getPrivatekey()
-                  if (!k) return
-                  setRevealedKey(k)
-                  setKeyVisible(true)
-                  setStep('revealed')
-                }}
+                onClick={revealPrivateKey}
                 className={`
                   ${!password.trim() ? 'bg-slate-300 hover:bg-slate-300 shadow-none' : ''}
                   rounded-2xl h-14 text-[18px]
@@ -181,11 +188,11 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                 <AlertTriangle className="h-7 w-7 text-red-500" strokeWidth={2.3} />
               </div>
 
-              <div className="mt-6 text-[40px] leading-none font-extrabold tracking-[-0.03em] text-slate-900">
+              <div className="mt-6 font-manrope text-3xl font-extrabold leading-tight tracking-tight text-slate-900">
                 Handle with Care
               </div>
 
-              <div className="mt-4 text-[20px] text-slate-500 leading-relaxed max-w-[40rem]">
+              <div className="mt-2 max-w-lg text-sm leading-relaxed text-[#595c5e]">
                 Beamio cannot undo the exposure of your private key.
               </div>
             </div>
@@ -257,18 +264,18 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                 variant="secondary"
                 onClick={onCopy}
                 className="
-                  rounded-[26px] h-20
+                  rounded-full h-12
                   bg-white hover:bg-slate-50
                   ring-1 ring-slate-200
-                  shadow-[0_18px_60px_rgba(15,23,42,0.10)]
+                  shadow-sm
                   text-slate-900
-                  text-[24px] font-extrabold
+                  text-sm font-semibold
                 "
                 leftIcon={
                   copied ? (
-                    <Check className="h-7 w-7" strokeWidth={2.6} />
+                    <Check className="h-4 w-4" strokeWidth={2.25} />
                   ) : (
-                    <Copy className="h-7 w-7" strokeWidth={2.6} />
+                    <Copy className="h-4 w-4" strokeWidth={2.25} />
                   )
                 }
               >

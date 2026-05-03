@@ -368,6 +368,7 @@ export const quotePointsForUSDC = async (
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 const updateCardShareMetadataEndpoint = `${beamioApi}/api/updateCardShareMetadata`
+const cardUpdateTiersEndpoint = `${beamioApi}/api/cardUpdateTiers`
 const cardsByCategoryEndpoint = `${beamioApi}/api/cardsByCategory`
 
 /** 与 x402sdk getLatestCards / cardsByCategory 返回的单卡结构一致（Cluster JSON） */
@@ -438,6 +439,7 @@ const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
 const cardClearAdminMintCounterEndpoint = `${beamioApi}/api/cardClearAdminMintCounter`
+const cardTerminalSettlementClearEndpoint = `${beamioApi}/api/cardTerminalSettlementClear`
 
 /** 通过 Factory 预测 EOA 的 AA 地址（index=0）。用于离线签字前构建 adminManager(predictedAA,...)，无需先部署。Endpoint 收到 adminEOA 后会 ensureAAForEOA 再执行。 */
 export const getPredictedAAAddress = async (eoa: string): Promise<string> => {
@@ -793,6 +795,25 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 				'(EOA/keyID 须与创建卡时的 cardOwner 一致，或检查 profile 是否仅有 AA 而无 keyID)',
 			)
 		}
+		if (merged.length === 0) {
+			try {
+				const apiItems = await fetchMyCardsFromApi(ownersForFactory)
+				for (const c of apiItems) {
+					const key = c.cardAddress.toLowerCase()
+					if (seen.has(key)) continue
+					seen.add(key)
+					merged.push(c)
+				}
+			} catch (apiErr) {
+				if (typeof console !== 'undefined' && console.warn) {
+					console.warn(
+						'[getCardsOfOwnerWithDetailsForProfile] RPC 空结果后 API 补查失败，保留 RPC trusted-empty。owners:',
+						ownersForFactory,
+						(apiErr as Error)?.message ?? apiErr,
+					)
+				}
+			}
+		}
 		return { cards: filterExcludedUserCards(merged), trusted: true }
 	} catch (e) {
 		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
@@ -889,6 +910,13 @@ export type UpdateBeamioCardShareMetadataParams = {
 	transferWhitelistEnabled?: boolean
 }
 
+export type UpdateBeamioCardTiersParams = UpdateBeamioCardShareMetadataParams & {
+	data: string
+	deadline: number
+	nonce: string
+	ownerSignature: string
+}
+
 /**
  * 已发卡仅更新链下 metadata（`/api/updateCardShareMetadata`）：写入 0x{card}0.json 并同步 beamio_cards.metadata_json。
  * Recharge bonus 的增删改需在商户端确认后点此接口（或等价 Publish），POS/应用从 metadata 读取规则。
@@ -918,6 +946,47 @@ export const updateBeamioCardShareMetadata = async (
 			return { success: true, cardAddress: data.cardAddress as string | undefined }
 		}
 		return { success: false, error: data.error ?? 'Update metadata failed' }
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg }
+	}
+}
+
+/**
+ * 已发卡更新 tiers：链上执行 `BeamioUserCard.setTiers(...)`，确认后同步 ERC-1155 card metadata / DB。
+ */
+export const updateBeamioCardTiers = async (
+	params: UpdateBeamioCardTiersParams
+): Promise<{ success: boolean; cardAddress?: string; hash?: string; error?: string }> => {
+	try {
+		const response = await fetch(cardUpdateTiersEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: params.cardAddress,
+				data: params.data,
+				deadline: params.deadline,
+				nonce: params.nonce,
+				ownerSignature: params.ownerSignature,
+				shareTokenMetadata: params.shareTokenMetadata,
+				...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
+				...(params.upgradeType === 0 || params.upgradeType === 1 || params.upgradeType === 2
+					? { upgradeType: params.upgradeType }
+					: {}),
+				...(typeof params.transferWhitelistEnabled === 'boolean' && {
+					transferWhitelistEnabled: params.transferWhitelistEnabled,
+				}),
+			}),
+		})
+		const data = await response.json()
+		if (response.ok && data.success) {
+			return {
+				success: true,
+				cardAddress: data.cardAddress as string | undefined,
+				hash: data.hash as string | undefined,
+			}
+		}
+		return { success: false, error: data.error ?? 'Update tiers failed' }
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : String(e)
 		return { success: false, error: msg }
@@ -1075,6 +1144,43 @@ export const signClearAdminMintCounter = async (
 	return wallet.signTypedData(domain, types, value)
 }
 
+/** EIP-712：Terminal Settlement clear — 仅在 indexer 记 `TX_Terminal_RESET`（与 ClearAdminMintCounter 类型不同）。 */
+export const signTerminalSettlementClear = async (
+	adminPrivateKey: string,
+	cardAddress: string,
+	subordinate: string,
+	deadline: number,
+	nonceHex: string
+): Promise<string> => {
+	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
+	const factoryAddress = contracts.BeamioCardFactory.address
+	const domain = {
+		name: 'BeamioUserCardFactory',
+		version: '1',
+		chainId: 8453,
+		verifyingContract: factoryAddress,
+	}
+	const types = {
+		TerminalSettlementClear: [
+			{ name: 'cardAddress', type: 'address' },
+			{ name: 'subordinate', type: 'address' },
+			{ name: 'deadline', type: 'uint256' },
+			{ name: 'nonce', type: 'bytes32' },
+		],
+	}
+	const n =
+		nonceHex.length === 66 && nonceHex.startsWith('0x')
+			? (nonceHex as `0x${string}`)
+			: (ethers.keccak256(ethers.toUtf8Bytes(nonceHex)) as `0x${string}`)
+	const value = {
+		cardAddress: ethers.getAddress(cardAddress),
+		subordinate: ethers.getAddress(subordinate),
+		deadline,
+		nonce: n,
+	}
+	return wallet.signTypedData(domain, types, value)
+}
+
 /** Parent admin 签 ClearAdminMintCounter 后提交 Cluster → Master（Base Factory + CoNET Indexer）。 */
 export const postCardClearAdminMintCounter = async (payload: {
 	cardAddress: string
@@ -1098,6 +1204,34 @@ export const postCardClearAdminMintCounter = async (payload: {
 		const data = await res.json()
 		if (!res.ok) return { success: false, error: data.error ?? 'cardClearAdminMintCounter failed' }
 		return { success: true, tx: data.tx }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
+
+/** Terminal settlement clear：仅 indexer TX_Terminal_RESET；Cluster/Master `/api/cardTerminalSettlementClear`。 */
+export const postCardTerminalSettlementClear = async (payload: {
+	cardAddress: string
+	subordinate: string
+	deadline: number
+	nonce: string
+	adminSignature: string
+}): Promise<{ success: boolean; syncTx?: string; error?: string }> => {
+	try {
+		const res = await fetch(cardTerminalSettlementClearEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: ethers.getAddress(payload.cardAddress),
+				subordinate: ethers.getAddress(payload.subordinate),
+				deadline: payload.deadline,
+				nonce: payload.nonce,
+				adminSignature: payload.adminSignature,
+			}),
+		})
+		const data = await res.json()
+		if (!res.ok) return { success: false, error: data.error ?? 'cardTerminalSettlementClear failed' }
+		return { success: true, syncTx: typeof data.syncTx === 'string' ? data.syncTx : undefined }
 	} catch (e: any) {
 		return { success: false, error: e?.message ?? String(e) }
 	}
@@ -1219,6 +1353,22 @@ const cancelRedeemInterface = new ethers.Interface([
 /** 构建 cancelRedeem 的 calldata（供 executeForOwner 使用） */
 export const encodeCancelRedeem = (code: string): string =>
     cancelRedeemInterface.encodeFunctionData('cancelRedeem', [code])
+
+const setTiersInterface = new ethers.Interface([
+	'function setTiers(tuple(uint256 minUsdc6,uint256 attr,uint256 tierExpirySeconds)[] newTiers)',
+])
+
+/** 构建 setTiers 的 calldata（供 executeForOwner 使用），会整体替换 BeamioUserCard 链上 tiers。 */
+export const encodeSetTiers = (
+	tiers: Array<{ minUsdc6: string | bigint; attr: number | bigint; tierExpirySeconds?: number | bigint }>
+): string =>
+	setTiersInterface.encodeFunctionData('setTiers', [
+		tiers.map((t) => ({
+			minUsdc6: BigInt(t.minUsdc6),
+			attr: BigInt(t.attr),
+			tierExpirySeconds: BigInt(t.tierExpirySeconds ?? 0),
+		})),
+	])
 
 const addAdminInterface = new ethers.Interface([
     'function addAdmin(address newAdmin, uint256 newThreshold)',

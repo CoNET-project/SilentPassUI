@@ -6,6 +6,7 @@ import { useDaemonContext } from "./providers/DaemonProvider"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import Home from "./pages/Home"
 import History from "./pages/History/MyWalletDashboardNew"
+import SalesOverview from "./pages/History/SalesOverview"
 import Pay from "./pages/Pay"
 import QrOperationPage from "./pages/Pay/QrOperationPage"
 import Chat from "./pages/chat"
@@ -1014,6 +1015,7 @@ function AppShell() {
 				<Route path="/" element={<Home />} />
 				<Route element={<RequireUnlockedWallet />}>
 					<Route path="/History" element={<History />} />
+					<Route path="/History/sales-overview" element={<SalesOverview />} />
 					<Route path="/Pay" element={<Pay />} />
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />

@@ -41,7 +41,7 @@ export default function WorkspaceCreatingOverlay() {
 					boxSizing: "border-box",
 				}}
 			>
-				{/* TopAppBar — Untitled: corporate_fare tile + Verra Business Lite, transparent, center / lg:start */}
+				{/* TopAppBar — Untitled: corporate_fare tile + Beamio Business Lite, transparent, center / lg:start */}
 				<header
 					className="relative z-[10052] flex w-full items-center justify-center gap-2 bg-transparent px-8 pt-8 lg:justify-start lg:px-12"
 					style={{ paddingTop: "max(2rem, env(safe-area-inset-top))" }}
@@ -57,7 +57,7 @@ export default function WorkspaceCreatingOverlay() {
 						className="biz-identity-headline text-xl font-extrabold tracking-tighter"
 						style={{ color: PRIMARY }}
 					>
-						Verra Business Lite
+						Beamio Business Lite
 					</span>
 				</header>
 

@@ -1,6 +1,6 @@
 {
 	"name": "beamio",
-	"version": "0.50.2",
+	"version": "0.52.0",
 	"private": true,
 	"homepage": "/biz",
 	"dependencies": {

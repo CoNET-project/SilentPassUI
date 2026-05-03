@@ -705,36 +705,74 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress, setProfiles])
 
   /**
-   * Merchant OS（Verra Merchant `/native-pos`）：统一 CoNET L1 `block` 守护进程。
+   * Merchant OS（Verra Merchant `/native-pos`）：统一 6s 后台守护进程。
    * - Overview 链上 KPI / metadata / Staff：`registerMerchantOsOverviewBackgroundWork`
    * - Members & Loyalty：`registerMembersLoyaltyBackgroundWork`
-   * 与 `beamio-interval-daemon-no-overlap` 一致：单通道 tickInFlight，上一拍结束后再接下一 block；两阶段串行，避免叠 RPC。
-   * 未注册任一任务时 onBlock 立即返回（全站仅多一次空分支）。
+   * 与 `beamio-interval-daemon-no-overlap` 一致：每轮完整 await 后再排下一轮；同一 tick 内各分支并行执行。
    */
   useEffect(() => {
     let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
     let tickInFlight = false
+    let tickSeq = 0
+    const MERCHANT_OS_BACKGROUND_TICK_MS = 6_000
+    const MERCHANT_OS_BRANCH_TIMEOUT_MS = 20_000
 
-    const onBlock = () => {
-      if (cancelled || tickInFlight) return
-      const overviewFn = merchantOsOverviewBgWorkRef.current
-      const membersFn = membersLoyaltyBgWorkRef.current
-      if (!overviewFn && !membersFn) return
-      tickInFlight = true
-      void (async () => {
-        try {
-          if (overviewFn) await overviewFn()
-          if (!cancelled && membersFn) await membersFn()
-        } finally {
-          tickInFlight = false
-        }
-      })()
+    const withBranchTimeout = async (
+      fn: () => Promise<void>,
+      label: 'overview' | 'members',
+      tickId: number
+    ) => {
+      const startedAt = Date.now()
+      const startedIso = new Date(startedAt).toISOString()
+      console.info(`[merchant-os-daemon][${label}] tick#${tickId} start ${startedIso}`)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          fn(),
+          new Promise<void>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`merchant-os-${label}-tick-timeout`)), MERCHANT_OS_BRANCH_TIMEOUT_MS)
+          }),
+        ])
+        const elapsed = Date.now() - startedAt
+        console.info(`[merchant-os-daemon][${label}] tick#${tickId} end ok elapsed_ms=${elapsed}`)
+      } catch (err) {
+        const elapsed = Date.now() - startedAt
+        const msg = (err as Error)?.message ?? String(err)
+        const status = msg.includes('timeout') ? 'timeout' : 'error'
+        console.warn(`[merchant-os-daemon][${label}] tick#${tickId} end ${status} elapsed_ms=${elapsed} err=${msg}`)
+      } finally {
+        if (timer !== undefined) clearTimeout(timer)
+      }
     }
 
-    conetDepinProvider.on('block', onBlock)
+    const runTick = async () => {
+      if (cancelled || tickInFlight) return
+      tickInFlight = true
+      const tickId = ++tickSeq
+      try {
+        const overviewFn = merchantOsOverviewBgWorkRef.current
+        const membersFn = membersLoyaltyBgWorkRef.current
+        const tasks: Promise<unknown>[] = []
+        if (overviewFn) tasks.push(withBranchTimeout(overviewFn, 'overview', tickId))
+        if (membersFn) tasks.push(withBranchTimeout(membersFn, 'members', tickId))
+        if (tasks.length > 0) {
+          await Promise.allSettled(tasks)
+        }
+      } finally {
+        tickInFlight = false
+        if (!cancelled) {
+          timeoutId = setTimeout(() => {
+            void runTick()
+          }, MERCHANT_OS_BACKGROUND_TICK_MS)
+        }
+      }
+    }
+
+    void runTick()
     return () => {
       cancelled = true
-      conetDepinProvider.off('block', onBlock)
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
   }, [])
 

@@ -1,387 +1,317 @@
 <!DOCTYPE html>
 
-<html lang="en"><head>
+<html class="light" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Card Issuance Setup | Verra Portal</title>
+<title>Kinbok Merchant Wallet</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              "primary-fixed-dim": "#648eff",
-              "tertiary-container": "#f797ef",
-              "on-surface-variant": "#595c5e",
-              "on-primary-fixed-variant": "#00276d",
-              "tertiary-dim": "#7f2d7e",
-              "error": "#b31b25",
-              "surface": "#f5f7f9",
-              "on-tertiary-fixed-variant": "#6c1a6c",
-              "outline-variant": "#abadaf",
-              "surface-container-low": "#eef1f3",
-              "inverse-on-surface": "#9a9d9f",
-              "surface-tint": "#0051d1",
-              "surface-variant": "#d9dde0",
-              "surface-container-lowest": "#ffffff",
-              "error-container": "#fb5151",
-              "surface-dim": "#d0d5d8",
-              "on-background": "#2c2f31",
-              "on-tertiary-container": "#610e62",
-              "surface-container-high": "#dfe3e6",
-              "on-error": "#ffefee",
-              "secondary-fixed-dim": "#cad5ed",
-              "primary-container": "#7a9dff",
-              "primary": "#0051d1",
-              "on-secondary-fixed-variant": "#515c70",
-              "secondary-dim": "#455064",
-              "surface-bright": "#f5f7f9",
-              "error-dim": "#9f0519",
-              "secondary-fixed": "#d8e3fb",
-              "on-surface": "#2c2f31",
-              "on-error-container": "#570008",
-              "inverse-primary": "#5f8bff",
-              "on-primary": "#f1f2ff",
-              "surface-container": "#e5e9eb",
-              "on-secondary-container": "#475266",
-              "outline": "#747779",
-              "secondary": "#515c70",
-              "on-tertiary": "#ffeef8",
-              "on-secondary-fixed": "#354053",
-              "surface-container-highest": "#d9dde0",
-              "primary-dim": "#0047b8",
-              "on-secondary": "#eff2ff",
-              "background": "#f5f7f9",
-              "tertiary": "#8d3a8b",
-              "on-primary-container": "#001e59",
-              "secondary-container": "#d8e3fb",
-              "tertiary-fixed-dim": "#e88ae1",
-              "on-primary-fixed": "#000000",
-              "inverse-surface": "#0b0f10",
-              "primary-fixed": "#7a9dff",
-              "tertiary-fixed": "#f797ef",
-              "on-tertiary-fixed": "#400041"
-            },
-            fontFamily: {
-              "headline": ["Manrope"],
-              "body": ["Inter"],
-              "label": ["Inter"]
-            },
-            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
-          },
-        },
-      }
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#92001c",
+                        "tertiary-fixed-dim": "#ffb3b1",
+                        "surface": "#f9f9ff",
+                        "on-secondary-fixed-variant": "#574500",
+                        "on-primary-fixed": "#00184a",
+                        "secondary-fixed-dim": "#e9c349",
+                        "on-error": "#ffffff",
+                        "inverse-on-surface": "#edf0ff",
+                        "on-primary-container": "#edefff",
+                        "inverse-primary": "#b3c5ff",
+                        "tertiary-fixed": "#ffdad8",
+                        "secondary": "#735c00",
+                        "tertiary-container": "#d02839",
+                        "secondary-container": "#fed65b",
+                        "surface-dim": "#d3daef",
+                        "surface-variant": "#dce2f7",
+                        "on-background": "#141b2b",
+                        "on-secondary-container": "#745c00",
+                        "primary-container": "#1562f0",
+                        "on-tertiary-fixed": "#410007",
+                        "on-secondary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-tint": "#0054d8",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed-dim": "#b3c5ff",
+                        "inverse-surface": "#293040",
+                        "error-container": "#ffdad6",
+                        "outline-variant": "#c3c6d8",
+                        "on-primary": "#ffffff",
+                        "primary": "#004bc3",
+                        "background": "#f9f9ff",
+                        "surface-container": "#e9edff",
+                        "on-tertiary-container": "#ffebea",
+                        "error": "#ba1a1a",
+                        "outline": "#737687",
+                        "on-secondary-fixed": "#241a00",
+                        "surface-container-high": "#e1e8fd",
+                        "primary-fixed": "#dbe1ff",
+                        "surface-container-low": "#f1f3ff",
+                        "on-surface-variant": "#424655",
+                        "on-error-container": "#93000a",
+                        "tertiary": "#ac0124",
+                        "on-primary-fixed-variant": "#003fa5",
+                        "surface-bright": "#f9f9ff",
+                        "secondary-fixed": "#ffe088",
+                        "on-surface": "#141b2b",
+                        "surface-container-highest": "#dce2f7"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "unit": "8px",
+                        "container-padding": "24px",
+                        "bento-gap": "20px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Manrope"],
+                        "label-caps": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "display-lg": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "letterSpacing": "0em", "fontWeight": "400" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "letterSpacing": "0em", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
     </script>
 <style>
-      .material-symbols-outlined {
-        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-      }
-      .glass-card {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(20px);
-      }
-      .verra-gradient {
-        background: linear-gradient(135deg, #0051d1 0%, #7a9dff 100%);
-      }
-      body {
-        -webkit-font-smoothing: antialiased;
-      }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .icon-fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        /* Custom Ambient Shadows for design system */
+        .shadow-bento {
+            box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.03);
+        }
+        .shadow-ambient {
+            box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
+        }
+        .border-bento {
+            border: 1px solid rgba(0, 0, 0, 0.03);
+        }
     </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
 </head>
-<body class="bg-surface font-body text-on-surface">
-<!-- SideNavBar -->
-<aside class="h-screen w-72 fixed left-0 top-0 z-40 bg-slate-50 flex flex-col py-8 h-full shadow-[20px_0_40px_rgba(21,98,240,0.04)] font-['Manrope'] antialiased tracking-tight">
-<div class="px-8 mb-10">
-<span class="text-2xl font-black text-blue-600 tracking-tighter">Verra Portal</span>
-<p class="text-xs text-on-surface-variant font-medium mt-1">Enterprise Merchant</p>
+<body class="bg-background text-on-background font-body-sm antialiased min-h-screen flex flex-col pt-16 pb-24 md:pb-0 md:pl-80">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-4 h-16 bg-[#FFFFFF] dark:bg-zinc-950 border-b border-zinc-100 dark:border-zinc-800 shadow-[0_10px_30px_rgba(0,0,0,0.04)] font-manrope text-sm font-semibold tracking-tight text-[#1562F0] dark:text-blue-400">
+<div class="flex items-center gap-3">
+<button class="md:hidden text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all active:scale-95 duration-200 ease-in-out p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+</button>
+<span class="text-[#1562F0] font-bold text-lg">@merchant_handle</span>
 </div>
-<nav class="flex-1 space-y-1">
-<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
-<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-<span class="font-medium">Dashboard</span>
+<button class="text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all active:scale-95 duration-200 ease-in-out p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</button>
+</header>
+<!-- NavigationDrawer (Hidden on Mobile) -->
+<aside class="hidden md:flex fixed inset-y-0 left-0 w-80 z-[60] flex-col p-6 rounded-r-2xl h-full divide-y divide-zinc-100 dark:divide-zinc-800 shadow-2xl bg-[#FFFFFF] dark:bg-zinc-950 font-manrope text-base text-[#1562F0] dark:text-blue-400">
+<div class="flex items-center gap-4 pb-6">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center overflow-hidden shrink-0">
+<img alt="Merchant Avatar" class="w-full h-full object-cover" data-alt="professional male business portrait in modern office setting with bright lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDTpynNqwJn4w_zr4Yd1ZhEa1sXKtCygt88YskJXS3PKVlskwPYQmiJIUroYubMx7bL06fkYCua4LFbDzHBKtdHRSRC8-W3g8vm5NK_Ickv-t4h3iY8WW4C0FV1iszluB_6kbbvW0fEqrx0GmINyhoIY6TNvMzkfI6TKbsfpF3HKiiegUujcvYSbEPmG-5y1cjoJypSu9WrnkhsgdXZRc6XyC07nC93wZX8t5T4Nc7UwyR4vm2lkTHmLB-GX6ENd0t6IPdden_bMpQ"/>
+</div>
+<div>
+<h2 class="text-[#1562F0] font-black text-lg leading-tight">Kinbok Merchant</h2>
+<p class="text-on-surface-variant text-sm mt-0.5">Verified Verra Partner</p>
+</div>
+</div>
+<nav class="flex-1 pt-6 flex flex-col gap-2">
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-transform duration-300 ease-out group" href="#">
+<span class="material-symbols-outlined group-hover:text-[#1562F0] transition-colors" data-icon="storefront">storefront</span>
+<span class="font-medium">Business Profile</span>
 </a>
-<a class="flex items-center gap-3 bg-blue-600 text-white rounded-full px-4 py-3 mx-2 font-semibold active:scale-95 transition-transform" href="#">
-<span class="material-symbols-outlined" data-icon="credit_card">credit_card</span>
-<span class="font-medium">Card Issuance</span>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 text-[#1562F0] font-bold border-l-4 border-[#1562F0] transition-transform duration-300 ease-out group" href="#">
+<span class="material-symbols-outlined icon-fill" data-icon="receipt_long">receipt_long</span>
+<span class="font-medium">Transaction History</span>
 </a>
-<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
-<span class="material-symbols-outlined" data-icon="group">group</span>
-<span class="font-medium">Cardholders</span>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-transform duration-300 ease-out group" href="#">
+<span class="material-symbols-outlined group-hover:text-[#1562F0] transition-colors" data-icon="enhanced_encryption">enhanced_encryption</span>
+<span class="font-medium">Safety &amp; Vault</span>
 </a>
-<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
-<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
-<span class="font-medium">Transactions</span>
-</a>
-<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
-<span class="material-symbols-outlined" data-icon="leaderboard">leaderboard</span>
-<span class="font-medium">Analytics</span>
-</a>
-<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300 active:scale-95" href="#">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-<span class="font-medium">Settings</span>
-</a>
-</nav>
-<div class="mt-auto border-t border-slate-100 pt-6 space-y-1">
-<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300" href="#">
-<span class="material-symbols-outlined" data-icon="help">help</span>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-transform duration-300 ease-out group" href="#">
+<span class="material-symbols-outlined group-hover:text-[#1562F0] transition-colors" data-icon="contact_support">contact_support</span>
 <span class="font-medium">Help Center</span>
 </a>
-<a class="flex items-center gap-3 text-slate-500 px-4 py-3 mx-2 hover:text-blue-600 transition-all duration-300" href="#">
-<span class="material-symbols-outlined" data-icon="logout">logout</span>
-<span class="font-medium">Sign Out</span>
-</a>
-</div>
-</aside>
-<!-- TopAppBar -->
-<header class="fixed top-0 right-0 left-72 h-20 z-30 bg-white/70 backdrop-blur-2xl flex justify-between items-center px-10 w-full font-['Manrope'] font-medium">
-<div class="flex items-center gap-6">
-<h1 class="text-xl font-extrabold text-on-surface tracking-tight">Merchant Dashboard</h1>
-<div class="relative group">
-<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline" data-icon="search">search</span>
-<input class="pl-12 pr-6 py-2 bg-surface-container-low rounded-full border-none focus:ring-2 focus:ring-primary/20 w-64 text-sm transition-all" placeholder="Search parameters..." type="text"/>
-</div>
-</div>
-<div class="flex items-center gap-8">
-<nav class="flex items-center gap-6">
-<a class="text-slate-500 hover:text-slate-900" href="#">Docs</a>
-<a class="text-slate-500 hover:text-slate-900" href="#">Support</a>
-<a class="text-slate-500 hover:text-slate-900" href="#">API</a>
 </nav>
-<div class="flex items-center gap-4">
-<button class="p-2 hover:bg-slate-50/50 rounded-full transition-opacity active:opacity-80">
-<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications">notifications</span>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 max-w-5xl mx-auto w-full px-4 md:px-8 py-8 flex flex-col gap-8">
+<!-- Wallet Header & Hero Value -->
+<section class="flex flex-col gap-2 items-center text-center py-6">
+<span class="font-label-caps text-on-surface-variant uppercase tracking-widest text-label-caps">Total Estimated Value</span>
+<div class="flex flex-col items-center gap-1">
+<span class="font-display-lg text-on-background text-display-lg font-bold">C$ 12,450.00</span>
+<span class="font-headline-md text-on-surface-variant font-semibold text-lg opacity-80">9,151.29 USDC</span>
+</div>
+<div class="flex items-center gap-3 mt-4 bg-surface-container-high px-4 py-1.5 rounded-full border border-surface-variant">
+<span class="flex items-center gap-1 font-body-sm text-sm text-[#10B981] font-semibold">
+<span class="material-symbols-outlined text-[16px]" data-icon="trending_up">trending_up</span>
+        VIP Rate: 1 USDC = C$ 1.355
+    </span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="font-body-sm text-sm text-on-surface-variant">
+        Bank: 1.340
+    </span>
+</div>
+</section>
+<!-- Main Asset Card (Premium White/Blue) -->
+<section class="bg-surface-container-lowest rounded-2xl p-container-padding shadow-ambient border border-primary-fixed-dim relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
+<div class="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary via-transparent to-transparent pointer-events-none"></div>
+<div class="flex items-center gap-6 z-10 w-full md:w-auto">
+<div class="w-16 h-16 rounded-xl bg-primary-container text-on-primary flex items-center justify-center shadow-lg shrink-0">
+<span class="material-symbols-outlined text-3xl icon-fill" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<div class="flex flex-col gap-1">
+<h3 class="font-headline-md text-headline-md text-on-background">@merchant_handle</h3>
+<div class="flex items-center gap-2 text-on-surface-variant font-mono text-sm bg-surface-container py-1 px-3 rounded-md">
+<span>0x7A2...9B4f</span>
+<button class="hover:text-primary transition-colors flex items-center">
+<span class="material-symbols-outlined text-[16px]" data-icon="content_copy">content_copy</span>
 </button>
-<div class="flex items-center gap-3 pl-4 border-l border-slate-200">
-<img alt="Administrator Profile" class="w-10 h-10 rounded-full object-cover" data-alt="Professional headshot of a smiling executive in a modern office setting with soft natural light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7601lwVQN3tdQI5Nrp6MMFhU-c9zJUz99MmS0tH5R1veYawcPpsaUqi9YKA2p0YGni7iR_-jHhS7QFAoutCQ6y6njTjLjTt3GyuVTIgS-9Q2i5yQaH55dIdtJfXnu0kIJSBolIsuVMEKcJSnWXCWv8pMjLEE55F1JtCAglj7Pb_G7mM_a8y4MZoJxlzhDgrtXCJ28xuxWQz9bdWAH9tugXIIaO9iD3X_-UN6WVe3ddDCjoXTuCMvsJbVX_o5a2V6DviULQafp5o1L"/>
-<span class="material-symbols-outlined text-on-surface-variant" data-icon="account_circle">account_circle</span>
 </div>
 </div>
 </div>
-</header>
-<!-- Main Content -->
-<main class="pl-72 pt-20 pb-20 min-h-screen">
-<div class="max-w-6xl mx-auto px-12 py-12">
-<!-- Page Header -->
-<div class="flex flex-col mb-12">
-<span class="text-primary font-bold tracking-widest text-[10px] uppercase mb-2">Configuration Studio</span>
-<h2 class="text-4xl font-extrabold font-headline tracking-tighter text-on-surface">Card Issuance Setup</h2>
-<p class="text-on-surface-variant mt-2 text-lg">Define the parameters and rewards logic for your new merchant card program.</p>
-</div>
-<div class="grid grid-cols-12 gap-10">
-<!-- Setup Form (Left/Center) -->
-<div class="col-span-8 space-y-10">
-<!-- Section 1: Card Identity -->
-<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-<div class="flex items-center gap-4 mb-8">
-<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" data-icon="fingerprint">fingerprint</span>
-</div>
-<h3 class="text-xl font-bold font-headline">Card Identity</h3>
-</div>
-<div class="grid grid-cols-2 gap-6">
-<div class="space-y-2">
-<label class="text-sm font-semibold text-on-surface-variant ml-2">Program Name</label>
-<input class="w-full bg-surface-container-low border-none rounded-md px-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="e.g., Acme Rewards Plus" type="text"/>
-</div>
-<div class="space-y-2">
-<label class="text-sm font-semibold text-on-surface-variant ml-2">Currency Symbol</label>
-<input class="w-full bg-surface-container-low border-none rounded-md px-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="e.g., $VERRA" type="text"/>
-</div>
+<div class="z-10 w-full md:w-auto flex justify-end">
+<img alt="Abstract 3D rendering" class="w-32 h-auto object-contain drop-shadow-xl rounded-lg hidden md:block" data-alt="high quality abstract 3d rendering of floating blue and white glass geometric shapes soft studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUPCmwlEx-aldR1pNXUg5-J-5A8bcbpJp7Bru2a-ePMY7h6skNroAIy07jbXQeIhwviEbBriTNhNs-TAcCHRq0BB8_ZOy5cakWxIGjjIIZDiBIIrL9yKE-reLcYyEtOg1E1vMnN-w8sLoCEsw4v4WudbtPHFdisfDE8SCs9hqaWCYfwrHwDFjicGT1e-8fO_jHDpCIRwaaC7mGKpaDkGvuZa8sbZUnQBsG5nZl2RAWPceVbLQ-aFfUfCYLdi4-E42vSnqD3DBSnBo"/>
 </div>
 </section>
-<!-- Section 2: Recharge Parameters -->
-<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-<div class="flex items-center gap-4 mb-2">
-<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" data-icon="account_balance_wallet">account_balance_wallet</span>
+<!-- Manage Funds Bento Grid -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-bento">
+<!-- Receive USDC -->
+<button class="bg-surface-container-lowest p-container-padding rounded-2xl shadow-bento border-bento flex flex-col items-start gap-4 hover:shadow-ambient hover:-translate-y-1 transition-all duration-300 group text-left">
+<div class="w-12 h-12 rounded-full bg-surface-container-high text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="qr_code_scanner">qr_code_scanner</span>
 </div>
-<h3 class="text-xl font-bold font-headline">Recharge Parameters</h3>
+<div>
+<h4 class="font-headline-md text-lg font-semibold text-on-background mb-1">Receive USDC</h4>
+<p class="font-body-sm text-sm text-on-surface-variant">Static QR for instant deposits</p>
 </div>
-<p class="text-sm text-on-surface-variant mb-8 ml-16">Define the limits for card balance additions. Default is capped under $1,000.</p>
-<div class="grid grid-cols-2 gap-6 ml-16">
-<div class="space-y-2">
-<label class="text-sm font-semibold text-on-surface-variant ml-2">Minimum Top-up</label>
-<div class="relative">
-<span class="absolute left-6 top-1/2 -translate-y-1/2 font-bold text-primary">$</span>
-<input class="w-full bg-surface-container-low border-none rounded-md pl-12 pr-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="10" type="number"/>
+</button>
+<!-- Deposit via Kinbok -->
+<button class="bg-surface-container-lowest p-container-padding rounded-2xl shadow-bento border-bento flex flex-col items-start gap-4 hover:shadow-ambient hover:-translate-y-1 transition-all duration-300 group text-left">
+<div class="w-12 h-12 rounded-full bg-surface-container-high text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
 </div>
+<div>
+<h4 class="font-headline-md text-lg font-semibold text-on-background mb-1">Deposit via Kinbok</h4>
+<p class="font-body-sm text-sm text-on-surface-variant">Physical cash to digital USDC</p>
 </div>
-<div class="space-y-2">
-<label class="text-sm font-semibold text-on-surface-variant ml-2">Maximum Top-up</label>
-<div class="relative">
-<span class="absolute left-6 top-1/2 -translate-y-1/2 font-bold text-primary">$</span>
-<input class="w-full bg-surface-container-low border-none rounded-md pl-12 pr-6 py-4 focus:ring-2 focus:ring-primary/20 transition-all font-medium" placeholder="1,000" type="number"/>
+</button>
+<!-- B2B FX Exchange -->
+<button class="bg-surface-container-lowest p-container-padding rounded-2xl shadow-bento border-bento flex flex-col items-start gap-4 hover:shadow-ambient hover:-translate-y-1 transition-all duration-300 group text-left">
+<div class="w-12 h-12 rounded-full bg-surface-container-high text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="currency_exchange">currency_exchange</span>
 </div>
+<div>
+<h4 class="font-headline-md text-lg font-semibold text-on-background mb-1">B2B FX Exchange</h4>
+<p class="font-body-sm text-sm text-on-surface-variant">Frictionless USD/CAD swap</p>
 </div>
-</div>
+</button>
 </section>
-<!-- Section 3: Loyalty Tier Rules -->
-<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-<div class="flex items-center gap-4 mb-8">
-<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" data-icon="military_tech">military_tech</span>
-</div>
-<h3 class="text-xl font-bold font-headline">Loyalty Tier Rules</h3>
-</div>
-<div class="space-y-4">
-<label class="flex items-center p-6 bg-surface border-2 border-transparent hover:border-primary/20 rounded-lg cursor-pointer transition-all group">
-<input checked="" class="w-5 h-5 text-primary border-outline-variant focus:ring-primary" name="tier_rule" type="radio"/>
-<div class="ml-6">
-<span class="block font-bold text-on-surface">Single Top-up Amount</span>
-<span class="block text-sm text-on-surface-variant">Tier granted based on a single recharge value. No downgrades.</span>
-</div>
-<span class="material-symbols-outlined ml-auto text-outline group-hover:text-primary transition-colors" data-icon="bolt">bolt</span>
-</label>
-<label class="flex items-center p-6 bg-surface border-2 border-transparent hover:border-primary/20 rounded-lg cursor-pointer transition-all group">
-<input class="w-5 h-5 text-primary border-outline-variant focus:ring-primary" name="tier_rule" type="radio"/>
-<div class="ml-6">
-<span class="block font-bold text-on-surface">Cumulative Spend</span>
-<span class="block text-sm text-on-surface-variant">Tier granted based on lifetime spending. Permanent status.</span>
-</div>
-<span class="material-symbols-outlined ml-auto text-outline group-hover:text-primary transition-colors" data-icon="history">history</span>
-</label>
-<label class="flex items-center p-6 bg-surface border-2 border-transparent hover:border-primary/20 rounded-lg cursor-pointer transition-all group">
-<input class="w-5 h-5 text-primary border-outline-variant focus:ring-primary" name="tier_rule" type="radio"/>
-<div class="ml-6">
-<span class="block font-bold text-on-surface">Current Balance</span>
-<span class="block text-sm text-on-surface-variant">Dynamic auto-upgrade and downgrade based on active balance.</span>
-</div>
-<span class="material-symbols-outlined ml-auto text-outline group-hover:text-primary transition-colors" data-icon="sync_alt">sync_alt</span>
-</label>
-</div>
+<!-- Large Action Button -->
+<section>
+<button class="w-full bg-inverse-surface text-inverse-on-surface hover:bg-on-surface py-5 px-6 rounded-2xl font-headline-md font-semibold text-lg flex items-center justify-center gap-3 transition-all duration-200 shadow-ambient active:scale-[0.98]">
+<span class="material-symbols-outlined" data-icon="local_atm">local_atm</span>
+                Withdraw to Cash (Kinbok)
+            </button>
 </section>
-<!-- Section 4: Tier Configuration -->
-<section class="bg-surface-container-lowest rounded-lg p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-<div class="flex items-center justify-between mb-8">
+<!-- Recent Activity Ledger -->
+<section class="flex flex-col gap-4 mt-4">
+<h3 class="font-headline-md text-headline-md text-on-background">Recent Activity</h3>
+<div class="flex flex-col gap-3">
+<!-- Transaction 1: Amber Status -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl shadow-bento border-bento flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 <div class="flex items-center gap-4">
-<div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" data-icon="layers">layers</span>
+<div class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]" data-icon="arrow_downward">arrow_downward</span>
 </div>
-<h3 class="text-xl font-bold font-headline">Tier Configuration</h3>
+<div>
+<p class="font-headline-md text-base font-semibold text-on-background">New Deposit</p>
+<p class="font-body-sm text-sm text-on-surface-variant">Today, 2:45 PM • -140 B-Units</p>
 </div>
-<button class="text-primary text-sm font-bold hover:underline flex items-center gap-1">
-<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
-                                Add Custom Tier
-                            </button>
 </div>
-<div class="overflow-hidden rounded-md border border-outline-variant/10">
-<table class="w-full text-left border-collapse">
-<thead class="bg-surface-container-low">
-<tr>
-<th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Tier Name</th>
-<th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Threshold ($)</th>
-<th class="px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Benefits</th>
-<th class="px-6 py-4"></th>
-</tr>
-</thead>
-<tbody class="divide-y divide-outline-variant/10">
-<tr>
-<td class="px-6 py-5">
-<div class="flex items-center gap-3">
-<div class="w-3 h-3 rounded-full bg-slate-300"></div>
-<span class="font-bold">Silver</span>
+<div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 sm:gap-1">
+<span class="font-headline-md font-semibold text-lg text-[#10B981]">+$5,000.00 CAD</span>
+<span class="bg-[#FEF3C7] text-[#92400E] px-3 py-1 rounded-full font-label-caps text-[10px] uppercase tracking-wider font-bold">Awaiting Kinbok Scan</span>
 </div>
-</td>
-<td class="px-6 py-5">
-<input class="w-24 bg-surface border-none rounded-md px-3 py-1 text-sm font-bold text-primary" type="text" value="500"/>
-</td>
-<td class="px-6 py-5 text-sm text-on-surface-variant">2% Cashback</td>
-<td class="px-6 py-5 text-right"><span class="material-symbols-outlined text-outline cursor-pointer" data-icon="edit">edit</span></td>
-</tr>
-<tr>
-<td class="px-6 py-5">
-<div class="flex items-center gap-3">
-<div class="w-3 h-3 rounded-full bg-yellow-400"></div>
-<span class="font-bold">Gold</span>
 </div>
-</td>
-<td class="px-6 py-5">
-<input class="w-24 bg-surface border-none rounded-md px-3 py-1 text-sm font-bold text-primary" type="text" value="1,500"/>
-</td>
-<td class="px-6 py-5 text-sm text-on-surface-variant">5% Cashback</td>
-<td class="px-6 py-5 text-right"><span class="material-symbols-outlined text-outline cursor-pointer" data-icon="edit">edit</span></td>
-</tr>
-<tr>
-<td class="px-6 py-5">
-<div class="flex items-center gap-3">
-<div class="w-3 h-3 rounded-full bg-slate-500"></div>
-<span class="font-bold">Platinum</span>
+<!-- Transaction 2: Green Status -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl shadow-bento border-bento flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]" data-icon="shopping_cart">shopping_cart</span>
 </div>
-</td>
-<td class="px-6 py-5">
-<input class="w-24 bg-surface border-none rounded-md px-3 py-1 text-sm font-bold text-primary" type="text" value="5,000"/>
-</td>
-<td class="px-6 py-5 text-sm text-on-surface-variant">10% Cashback</td>
-<td class="px-6 py-5 text-right"><span class="material-symbols-outlined text-outline cursor-pointer" data-icon="edit">edit</span></td>
-</tr>
-</tbody>
-</table>
+<div>
+<p class="font-headline-md text-base font-semibold text-on-background">Purchase</p>
+<p class="font-body-sm text-sm text-on-surface-variant">Yesterday, 10:12 AM • -12 B-Units</p>
+</div>
+</div>
+<div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 sm:gap-1">
+<span class="font-headline-md font-semibold text-lg text-on-background">-$45.00</span>
+<span class="bg-[#D1FAE5] text-[#065F46] px-3 py-1 rounded-full font-label-caps text-[10px] uppercase tracking-wider font-bold">Completed</span>
+</div>
+</div>
+<!-- Transaction 3: Red Status -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl shadow-bento border-bento flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]" data-icon="arrow_upward">arrow_upward</span>
+</div>
+<div>
+<p class="font-headline-md text-base font-semibold text-on-background">Withdrawal</p>
+<p class="font-body-sm text-sm text-on-surface-variant">Oct 12, 4:30 PM • 0 B-Units</p>
+</div>
+</div>
+<div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 sm:gap-1">
+<span class="font-headline-md font-semibold text-lg text-on-background">-$2,000.00</span>
+<span class="bg-[#FEE2E2] text-[#991B1B] px-3 py-1 rounded-full font-label-caps text-[10px] uppercase tracking-wider font-bold">Expired</span>
+</div>
+</div>
 </div>
 </section>
-</div>
-<!-- Preview Sidebar (Right) -->
-<div class="col-span-4 space-y-8">
-<div class="sticky top-32">
-<!-- Card Preview -->
-<div class="bg-surface-container-lowest rounded-lg p-8 shadow-[0_20px_40px_rgba(21,98,240,0.06)] mb-8 overflow-hidden relative">
-<h3 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant mb-6">Live Preview</h3>
-<!-- Verra Card Mockup -->
-<div class="verra-gradient w-full aspect-[1.58/1] rounded-lg p-8 text-white relative flex flex-col justify-between shadow-2xl">
-<!-- Glass Overlay Effect -->
-<div class="absolute inset-0 bg-white/5 backdrop-blur-[1px] pointer-events-none"></div>
-<div class="relative z-10 flex justify-between items-start">
-<div class="flex flex-col">
-<span class="text-[10px] opacity-70 uppercase tracking-widest font-bold">Program</span>
-<span class="text-lg font-bold font-headline tracking-tight">Acme Rewards Plus</span>
-</div>
-<span class="material-symbols-outlined text-3xl opacity-40" data-icon="contactless">contactless</span>
-</div>
-<div class="relative z-10 mt-auto">
-<div class="flex items-center gap-4 mb-4">
-<div class="w-12 h-9 bg-white/20 rounded-md backdrop-blur-md flex items-center justify-center">
-<div class="w-8 h-6 bg-gradient-to-br from-yellow-200 to-yellow-500 rounded-sm opacity-80"></div>
-</div>
-</div>
-<div class="flex justify-between items-end">
-<div class="flex flex-col">
-<span class="text-[8px] opacity-60 uppercase tracking-widest font-bold">Member ID</span>
-<span class="text-sm font-mono tracking-[0.2em] font-medium">4412 • 0098 • 1120</span>
-</div>
-<span class="text-2xl font-black italic tracking-tighter">VERRA</span>
-</div>
-</div>
-</div>
-<div class="mt-8 space-y-4">
-<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
-<span class="text-sm text-on-surface-variant">Tier Logic</span>
-<span class="text-sm font-bold">Single Top-up</span>
-</div>
-<div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
-<span class="text-sm text-on-surface-variant">Initial Currency</span>
-<span class="text-sm font-bold">$VERRA</span>
-</div>
-<div class="flex justify-between items-center py-2">
-<span class="text-sm text-on-surface-variant">Program Status</span>
-<span class="flex items-center gap-1.5 text-xs font-bold bg-primary/10 text-primary px-3 py-1 rounded-full">
-<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                                        Drafting
-                                    </span>
-</div>
-</div>
-</div>
-<!-- Action Button -->
-<button class="w-full verra-gradient text-white rounded-full py-5 font-bold text-lg shadow-xl hover:shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3">
-<span class="material-symbols-outlined" data-icon="rocket_launch">rocket_launch</span>
-                            Publish &amp; Issue Card
-                        </button>
-<p class="text-center text-xs text-on-surface-variant mt-4 px-6">By publishing, you agree to the Merchant Services Agreement and Program Compliance terms.</p>
-</div>
-</div>
-</div>
-</div>
 </main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-6 pb-8 pt-3 bg-[#FFFFFF]/80 backdrop-blur-md dark:bg-zinc-950/80 rounded-t-2xl border-t border-zinc-100 dark:border-zinc-800 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] font-manrope text-[10px] font-bold uppercase tracking-widest text-[#1562F0] dark:text-blue-400">
+<a class="flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-600 hover:text-[#1562F0] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1 text-[24px]" data-icon="home">home</span>
+<span>Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#1562F0] dark:text-blue-400 bg-zinc-50 dark:bg-zinc-900 rounded-xl px-4 py-1 active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1 text-[24px] icon-fill" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span>Wallet</span>
+</a>
+<a class="flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-600 hover:text-[#1562F0] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1 text-[24px]" data-icon="groups">groups</span>
+<span>Customers</span>
+</a>
+<a class="flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-600 hover:text-[#1562F0] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1 text-[24px]" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+</nav>
 </body></html>

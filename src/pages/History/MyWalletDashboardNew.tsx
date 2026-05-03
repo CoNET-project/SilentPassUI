@@ -54,6 +54,7 @@ import {
 	Layers,
 	ImagePlus,
 	Trash2,
+	BarChart3,
 } from 'lucide-react'
 import PayScreen from '@/pages/Pay/send/index'
 import PaymentLink from '@/pages/Pay/PaymentLink/index'
@@ -1861,6 +1862,15 @@ export default function MyWalletDashboardNew() {
 						</div>
 						{/* 按钮组胶囊 */}
 						<div className="flex items-center gap-2 px-2 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
+							<button
+								type="button"
+								onClick={() => navigate('/History/sales-overview')}
+								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
+								title="Sales overview"
+								aria-label="Sales overview"
+							>
+								<BarChart3 className="w-5 h-5" strokeWidth={2.4} />
+							</button>
 							<button
 								type="button"
 								onClick={() => {

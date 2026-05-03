@@ -29,6 +29,7 @@ import Chat from '@/pages/chat/chat';
 import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
 import BeamioMeMainScreen from '@/components/Setting';
+import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import { searchUsername, getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
 import { formatAmount, displayFiatPrefixFromCode, type ICurrency } from '@/services/currency';
 import contracts from '@/utils/contracts';
@@ -45,6 +46,8 @@ import {
   signExecuteForAdmin,
   signClearAdminMintCounter,
   postCardClearAdminMintCounter,
+  signTerminalSettlementClear,
+  postCardTerminalSettlementClear,
   signExecuteForOwner,
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
@@ -54,6 +57,8 @@ import {
   signBUnitRefuel3009,
   createBeamioCard,
   updateBeamioCardShareMetadata,
+  updateBeamioCardTiers,
+  encodeSetTiers,
   fetchCardsByCategory,
   getCardOwner,
   queryBusinessStartKetRedeemOnChain,
@@ -318,7 +323,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
       />
       <main className="relative px-4 pb-36 pt-4 sm:px-6 md:pt-6">
         <header className="mb-2 flex items-center justify-between border-b border-[#abadaf]/25 pb-4">
-          <h1 className="font-manrope text-xl font-bold tracking-tight text-[#0051d1]">Verra Business lite</h1>
+          <h1 className="font-manrope text-xl font-bold tracking-tight text-[#0051d1]">Beamio Business lite</h1>
         </header>
         <section className="mb-10 mt-6 flex flex-col items-center text-center">
           <div className="relative mb-8 h-32 w-32">
@@ -397,7 +402,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
         </div>
       </main>
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#abadaf]/20 bg-white/80 p-4 backdrop-blur-md sm:left-[var(--biz-sidebar-offset,0px)]">
-        <div className="mx-auto w-full max-w-2xl">
+                <div className="mx-auto w-full max-w-5xl">
           <button
             type="button"
             onClick={onStartDesigning}
@@ -673,6 +678,7 @@ type MembersOwnedProgramOverviewRow = {
   cardAddress: string
   programName: string
   image?: string
+  tiers?: CardTierMetadata[]
   ownerAddress: string
   currency: string
   ownerDisplayName: string
@@ -751,7 +757,7 @@ type MemberDirectoryUserType = 'app' | 'nfc' | 'both' | 'unknown'
 /** Persisted Members Directory — local-first display; written only on successful feeder/fetch (trusted-cache protocol). */
 type MembersLoyaltyDirectoryTrustedBundleV1 = {
   topupRows: BizTopupMemberTableRow[]
-  serverRollup: { totalTopupEvents: number; totalRepeatTopupEvents: number }
+  serverRollup: { totalTopupEvents: number; totalRepeatTopupEvents: number; totalMemberActivations?: number }
   chainCumulativeMintDisplay: number | null
   activeCardsCount?: number
 }
@@ -1417,6 +1423,36 @@ function directoryMemberTierFromPoints(points: number): { label: 'Gold' | 'Silve
   return { label: 'Silver', gold: false };
 }
 
+type MembersRewardTierInfo = {
+  highestThreshold: number
+  highestLabel: string
+}
+
+function resolveMembersRewardTierInfo(tiers: CardTierMetadata[] | undefined): MembersRewardTierInfo | null {
+  const parsed = (tiers ?? [])
+    .map((tier, idx) => {
+      const raw = tier.minUsdc6 != null && tier.minUsdc6 !== '' ? Number(tier.minUsdc6) : NaN;
+      return {
+        threshold: Number.isFinite(raw) ? Math.round(raw / 1_000_000) : NaN,
+        label: (tier.name ?? '').trim() || `Tier ${idx + 1}`,
+      };
+    })
+    .filter((tier) => Number.isFinite(tier.threshold) && tier.threshold > 0);
+  if (parsed.length < 3) return null;
+  const baseThreshold = Math.min(...parsed.map((tier) => tier.threshold));
+  const rewardTiers = parsed.filter((tier) => tier.threshold > baseThreshold);
+  if (rewardTiers.length < 2) return null;
+  rewardTiers.sort((a, b) => b.threshold - a.threshold);
+  const highest = rewardTiers[0];
+  return { highestThreshold: highest.threshold, highestLabel: highest.label };
+}
+
+function memberRowReachedHighestRewardTier(row: BizTopupMemberTableRow, tierInfo: MembersRewardTierInfo | null): boolean {
+  if (!tierInfo) return false;
+  const bal = row.currentCardToken0Balance;
+  return bal != null && Number.isFinite(bal) && bal >= tierInfo.highestThreshold;
+}
+
 type MembersDirectorySegment = 'app' | 'anon_nfc';
 
 /** Members tab — no AA / day-0 editorial (`newOnloading.html` Members canvas: insights + glass empty state). */
@@ -1662,7 +1698,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
               <ArrowLeft className="size-5" strokeWidth={2.2} aria-hidden />
             </button>
             <h1 className="truncate font-manrope text-lg font-bold tracking-tight text-[#0051d1]">
-              Verra Business Lite
+              Beamio Business Lite
             </h1>
           </div>
           <button
@@ -1885,7 +1921,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
             <ArrowLeft className="size-6" strokeWidth={2} aria-hidden />
           </button>
           <div className="min-w-0">
-            <span className="block truncate font-manrope text-lg font-black tracking-tight text-[#1562f0]">Verra Business Lite</span>
+            <span className="block truncate font-manrope text-lg font-black tracking-tight text-[#1562f0]">Beamio Business Lite</span>
             <span className="block truncate text-[11px] font-semibold uppercase tracking-[0.15em] text-[#595c5e]">
               {selectedPlanLabel}
             </span>
@@ -2231,26 +2267,17 @@ function WalletsTreasuryShell(props: {
     onSend,
     onCashOutUnavailable,
     onViewAllHistory,
-    onOpenMarketRefuel,
     oracleUsdcPerCad,
     onOracleRefresh,
-    vaultUsdcBold,
     merchantTagAt,
     merchantAvatarSrc,
-    onMobileMenuOpen,
     onBuyViaCoinbase,
-    marketAutoRefillOn,
-    onToggleMarketAutoRefill,
-    protocolFuelBUnits,
-    marketFuelCapacityPct,
-    marketBUnitRunwayDays,
     activityPreview,
   } = props;
   const [receiveQrOpen, setReceiveQrOpen] = useState(false);
   const [cashOutModalOpen, setCashOutModalOpen] = useState(false);
   const [cashOutLoading, setCashOutLoading] = useState(false);
   const [cashOutError, setCashOutError] = useState('');
-  const [walletToolbarSearch, setWalletToolbarSearch] = useState('');
   const [aaCopiedFlash, setAaCopiedFlash] = useState(false);
 
   const aaQrValue = useMemo(() => {
@@ -2333,353 +2360,224 @@ function WalletsTreasuryShell(props: {
     });
   }, [aaQrValue]);
 
+  const eoaCapsuleAddress = cashOutEoaAddress && ethers.isAddress(cashOutEoaAddress) ? ethers.getAddress(cashOutEoaAddress) : '';
+  const aaCapsuleAddress = aaQrValue && ethers.isAddress(aaQrValue) ? ethers.getAddress(aaQrValue) : '';
+  const recentWalletActivity = activityPreview.slice(0, 3);
+  const openReceive = () => {
+    if (aaQrValue) setReceiveQrOpen(true);
+    else onReceive();
+  };
+  const openCashOut = () => {
+    if (cashOutEoaAddress?.trim() && ethers.isAddress(cashOutEoaAddress.trim())) {
+      setCashOutModalOpen(true);
+    } else {
+      onCashOutUnavailable();
+    }
+  };
+
   return (
     <div className="w-full">
-      {/* Mobile — `marketExample.html` Wallet (Apr 2026) */}
-      <div className="lg:hidden -mx-6 w-[calc(100%+3rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-2xl">
-
-        <div className="mx-auto max-w-2xl space-y-8 px-4 pb-8">
-          <section className="space-y-4">
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#515c70]/60">Total Estimated Value</span>
-              <h1 className="text-5xl font-extrabold tracking-tight text-[#2c2f31]">{cadPrimary}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-lg font-semibold text-[#0051d1]">{vaultUsdcBold}</span>
-                <span className="h-1 w-1 rounded-full bg-[#abadaf]" aria-hidden />
-                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-[#515c70]/60">
-                  {walletCadPerUsdcDisplay != null ? (
-                    <>1 USDC = C$ {walletCadPerUsdcDisplay.toFixed(2)}</>
-                  ) : (
-                    <>Oracle unavailable</>
-                  )}
-                  <button
-                    type="button"
-                    onClick={onOracleRefresh}
-                    className={`rounded-full p-0.5 text-[#515c70] transition-colors hover:text-[#0051d1] ${bizFocusRingClass}`}
-                    aria-label="Refresh exchange rate"
-                  >
-                    <RefreshCw className="size-3.5" strokeWidth={2} aria-hidden />
-                  </button>
-                </span>
-              </div>
-            </div>
-
-            <div
-              className="relative overflow-hidden rounded-[2.5rem] p-8 text-white shadow-[0_24px_48px_rgba(0,81,209,0.18)]"
-              style={{
-                background:
-                  'radial-gradient(at 0% 0%, #0051d1 0%, transparent 50%), radial-gradient(at 100% 0%, #7a9dff 0%, transparent 50%), radial-gradient(at 100% 100%, #610e62 0%, transparent 50%), #0051d1',
-              }}
-            >
-              <div className="pointer-events-none absolute -right-12 -top-12 size-48 rounded-full bg-white/10 blur-3xl" aria-hidden />
-              <div className="pointer-events-none absolute -bottom-8 -left-8 size-32 rounded-full bg-purple-500/20 blur-2xl" aria-hidden />
-              <div className="relative z-10 space-y-10">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    {settlementActive ? (
-                      <div className="flex items-center gap-2">
-                        <BadgeCheck className="size-4 shrink-0 text-white" strokeWidth={2} aria-hidden />
-                        <p className="text-xs font-bold uppercase tracking-widest text-white/90">Verified Business</p>
-                      </div>
-                    ) : (
-                      <p className="text-xs font-bold uppercase tracking-widest text-white/70">Business workspace</p>
-                    )}
-                    <h3 className="truncate text-2xl font-extrabold tracking-tight">{merchantTagAt}</h3>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur-md">
-                    <Wallet className="size-7 text-white" strokeWidth={2} aria-hidden />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Smart Wallet Address</p>
-                      {aaQrValue ? (
-                        <button
-                          type="button"
-                          onClick={copyAaAddress}
-                          className="flex items-center gap-2 text-left transition-opacity hover:opacity-90"
-                        >
-                          <span className="font-mono text-sm tracking-wider">{fmtAddr(aaQrValue)}</span>
-                          {aaCopiedFlash ? (
-                            <Check className="size-3.5 shrink-0 text-emerald-300" strokeWidth={2} aria-hidden />
-                          ) : (
-                            <Copy className="size-3.5 shrink-0 text-white/40" strokeWidth={2} aria-hidden />
-                          )}
-                        </button>
-                      ) : (
-                        <p className="text-sm font-medium text-white/70">Not activated yet</p>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1">
-                        <span className="text-[10px] font-bold">Base</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#515c70]/60">Manage Funds</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (aaQrValue) setReceiveQrOpen(true);
-                  else onReceive();
-                }}
-                className={`flex flex-col items-center justify-center gap-3 rounded-[2rem] border border-[#abadaf]/10 bg-white p-6 shadow-sm transition-all active:scale-95 ${bizFocusRingClass}`}
-              >
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-[#0051d1]/5">
-                  <QrCode className="size-7 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                </div>
-                <span className="text-xs font-bold text-[#2c2f31]">Receive USDC</span>
-              </button>
-              <button
-                type="button"
-                onClick={onBuyViaCoinbase}
-                className={`flex flex-col items-center justify-center gap-3 rounded-[2rem] border border-[#abadaf]/10 bg-white p-6 shadow-sm transition-all active:scale-95 ${bizFocusRingClass}`}
-              >
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-blue-600">
-                  <CreditCard className="size-6 text-white" strokeWidth={2} aria-hidden />
-                </div>
-                <span className="text-xs font-bold text-[#2c2f31]">Buy via Coinbase</span>
-              </button>
-            </div>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-0 pb-8 font-sans text-[#141b2b]">
+        <section className="flex flex-col items-center gap-2 py-4 text-center sm:py-6">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#424655]/70 sm:text-xs">Total Estimated Value</span>
+          <div className="flex flex-col items-center gap-1">
+            <span className="font-manrope text-4xl font-extrabold leading-tight tracking-[-0.04em] text-[#141b2b] sm:text-5xl">
+              {cadPrimary}
+            </span>
+            <span className="text-base font-semibold text-[#424655]/80 sm:text-lg">{usdcSecondary}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3 rounded-full border border-[#dce2f7] bg-[#e1e8fd] px-4 py-1.5">
+            <span className="flex items-center gap-1 text-sm font-semibold text-emerald-600">
+              <TrendingUp className="size-4" strokeWidth={2} aria-hidden />
+              {walletCadPerUsdcDisplay != null ? `VIP Rate: 1 USDC = C$ ${walletCadPerUsdcDisplay.toFixed(3)}` : 'VIP Rate unavailable'}
+            </span>
+            <span className="h-1 w-1 rounded-full bg-[#c3c6d8]" aria-hidden />
+            <span className="text-sm text-[#424655]">Bank: 1.340</span>
             <button
               type="button"
-              onClick={() => {
-                if (cashOutEoaAddress?.trim() && ethers.isAddress(cashOutEoaAddress.trim())) {
-                  setCashOutModalOpen(true);
-                } else {
-                  onCashOutUnavailable();
-                }
-              }}
-              className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#2c2f31] py-4 text-sm font-bold text-white shadow-lg transition-all active:scale-[0.98] ${bizFocusRingClass}`}
+              onClick={onOracleRefresh}
+              className={`rounded-full p-1 text-[#424655] transition-colors hover:text-[#0054d8] ${bizFocusRingClass}`}
+              aria-label="Refresh exchange rate"
             >
-              <LogOut className="size-4" strokeWidth={2} aria-hidden />
-              Withdraw to Bank Account
+              <RefreshCw className="size-3.5" strokeWidth={2} aria-hidden />
             </button>
-          </section>
+          </div>
+        </section>
 
-          <section className="space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-[#2c2f31]">Business Fuel</h2>
-              <span className="shrink-0 rounded-full border border-[#8d3a8b]/20 bg-[#8d3a8b]/10 px-3 py-1 text-[10px] font-black uppercase tracking-tighter text-[#8d3a8b]">
-                System Critical
-              </span>
-            </div>
-            <div className="space-y-6 rounded-[2rem] border border-[#abadaf]/10 bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-4">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b]/10">
-                    <Fuel className="size-6 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-2xl font-extrabold text-[#2c2f31]">
-                      {protocolFuelBUnits != null && Number.isFinite(protocolFuelBUnits)
-                        ? Number(protocolFuelBUnits).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })
-                        : '—'}{' '}
-                      <span className="text-sm font-semibold text-[#515c70]">Units</span>
-                    </p>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#515c70]/60">Active Fleet Balance</p>
-                  </div>
+        <section className="relative flex flex-col justify-between gap-6 overflow-hidden rounded-2xl border border-[#b3c5ff] bg-white p-6 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#004bc3]/10 via-transparent to-transparent" />
+          <div className="relative z-10 flex items-center justify-between gap-6">
+            <div className="flex min-w-0 items-center gap-5 md:gap-6">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-[#1562f0] text-white shadow-lg">
+                <Wallet className="size-8" strokeWidth={2} aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  {settlementActive ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#1562f0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1562f0]">
+                      <BadgeCheck className="size-3.5" strokeWidth={2} aria-hidden />
+                      Verified Verra Partner
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-[#eef1f3] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
+                      Settlement pending
+                    </span>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={onToggleMarketAutoRefill}
-                  className="shrink-0 rounded-full bg-[#eef1f3] px-6 py-2 text-xs font-bold text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]"
-                >
-                  Auto-Refill: {marketAutoRefillOn ? 'ON' : 'OFF'}
-                </button>
+                <h3 className="truncate font-manrope text-2xl font-semibold tracking-tight text-[#141b2b]">{merchantTagAt}</h3>
               </div>
-              <div className="space-y-2">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
-                  <div
-                    className="h-full rounded-full bg-[#8d3a8b] transition-all"
-                    style={{ width: marketFuelCapacityPct != null ? `${marketFuelCapacityPct}%` : '0%' }}
-                  />
+            </div>
+            <div className="hidden w-32 justify-end md:flex">
+              <div className="relative h-28 w-28 rounded-3xl bg-gradient-to-br from-[#dbe1ff] via-white to-[#b3c5ff] shadow-[0_18px_45px_rgba(21,98,240,0.18)]">
+                <div className="absolute left-4 top-5 h-12 w-12 rounded-2xl bg-[#1562f0]/80 blur-[1px]" />
+                <div className="absolute bottom-4 right-4 h-14 w-14 rounded-full bg-white/80 shadow-lg" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <img src={merchantAvatarSrc} alt="" className="h-14 w-14 rounded-2xl object-cover shadow-md" />
                 </div>
-                <p className="text-center text-[10px] font-medium text-[#515c70]/50">
-                  {marketBUnitRunwayDays != null
-                    ? `Approx. ${marketBUnitRunwayDays} day${marketBUnitRunwayDays === 1 ? '' : 's'} of operation remaining at current burn rate`
-                    : 'Burn rate unavailable until Charge activity is recorded for today.'}
-                </p>
               </div>
             </div>
-            <p className="text-center text-[11px] font-medium text-[#595c5e]">
-              Refill B-Units in{' '}
-              <button
-                type="button"
-                onClick={onOpenMarketRefuel}
-                className={`font-bold text-[#0051d1] underline-offset-2 hover:underline ${bizFocusRingClass}`}
-              >
-                Market
-              </button>
-              .
-            </p>
-          </section>
-
-          <section className="space-y-4 pb-8">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-[#2c2f31]">Recent Activity</h2>
-              <button
-                type="button"
-                onClick={onViewAllHistory}
-                className={`flex items-center gap-1 text-xs font-bold text-[#0051d1] ${bizFocusRingClass}`}
-              >
-                View Ledger
-                <ExternalLink className="size-3.5" strokeWidth={2} aria-hidden />
-              </button>
-            </div>
-            {activityPreview.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#abadaf]/30 bg-white px-5 py-8 text-center shadow-sm">
-                <History className="mx-auto mb-2 size-9 text-[#abadaf]" strokeWidth={1.75} aria-hidden />
-                <p className="text-sm font-semibold text-[#2c2f31]">No activity yet</p>
-                <p className="mt-1 text-xs text-[#595c5e]">Open Transactions for the full ledger.</p>
-              </div>
+          </div>
+          <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 border-t border-[#dce2f7]/70 pt-4">
+            {eoaCapsuleAddress ? (
+              <AddressCapsule
+                address={eoaCapsuleAddress}
+                className="max-w-full border-[#dce2f7] bg-[#e9edff] text-[#424655]"
+                leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
+              />
             ) : (
-              <div className="space-y-3">
-                {activityPreview.map((tx) => {
-                  const { Icon, wrap } = walletMobileActivityIconFrame(tx);
-                  const { top, bottom } = walletMobileActivityRightColumn(tx);
-                  return (
-                    <div
-                      key={tx.indexerTxId}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-[#abadaf]/5 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-4">
-                        <div className={`flex size-12 shrink-0 items-center justify-center rounded-2xl ${wrap}`}>
-                          <Icon className="size-6" strokeWidth={2} aria-hidden />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-[#2c2f31]">{tx.type}</p>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-[#515c70]/60">
-                              {tx.dateStr}
-                              {tx.time ? `, ${tx.time}` : ''}
-                            </p>
-                            {tx.bUnits > 0 ? (
-                              <>
-                                <span className="size-1 rounded-full bg-[#abadaf]" aria-hidden />
-                                <p className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider text-[#8d3a8b]">
-                                  <Zap className="size-2.5" strokeWidth={3} aria-hidden />-{tx.bUnits.toFixed(2)} B-Units
-                                </p>
-                              </>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="font-bold text-[#2c2f31]">{top}</p>
-                        <p className="text-[9px] font-mono text-[#515c70]/40">{bottom}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <span className="rounded-full border border-[#dce2f7] bg-[#e9edff] px-3 py-1.5 font-mono text-[11px] font-semibold text-[#424655]">
+                EOA unavailable
+              </span>
             )}
-          </section>
-        </div>
-      </div>
+            {aaCapsuleAddress ? (
+              <AddressCapsule
+                address={aaCapsuleAddress}
+                className="max-w-full border-[#eadcf7] bg-[#f5ecff] text-[#424655]"
+                leadingIcon={<Hexagon className="h-3.5 w-3.5 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />}
+              />
+            ) : (
+              <span className="rounded-full border border-[#eadcf7] bg-[#f5ecff] px-3 py-1.5 font-mono text-[11px] font-semibold text-[#424655]">
+                AA unavailable
+              </span>
+            )}
+            {aaCopiedFlash ? (
+              <span className="text-[11px] font-bold text-emerald-500">Copied</span>
+            ) : null}
+          </div>
+        </section>
 
-      <div className="hidden lg:block">
-      <section className="relative overflow-hidden rounded-xl border border-slate-100/80 bg-white p-10 text-center shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-[#0051d1]/5 blur-3xl" />
-        <div className="relative flex flex-col items-center gap-1">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#0051d1]/10 bg-[#7a9dff]/10 px-4 py-1.5">
-            <span
-              className={`h-2 w-2 rounded-full ${settlementActive ? 'animate-pulse bg-[#0051d1]' : 'bg-slate-300'}`}
-              aria-hidden
-            />
-            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#0051d1]">
-              {settlementActive ? 'Settlement account active' : 'Settlement pending activation'}
-            </span>
-          </div>
-          <h1 className="mb-2 font-sans text-5xl font-extrabold tracking-tight text-[#2c2f31] md:text-6xl">{cadPrimary}</h1>
-          <p className="text-sm font-medium tracking-wide text-[#595c5e]/80">{usdcSecondary}</p>
-        </div>
-      </section>
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          {[
+            {
+              title: 'Receive USDC',
+              desc: 'Static QR for instant deposits',
+              Icon: QrCode,
+              onClick: openReceive,
+            },
+            {
+              title: 'Deposit via Kinbok',
+              desc: 'Physical cash to digital USDC',
+              Icon: CreditCard,
+              onClick: onBuyViaCoinbase,
+            },
+            {
+              title: 'B2B FX Exchange',
+              desc: 'Frictionless USD/CAD swap',
+              Icon: RefreshCw,
+              onClick: onSend,
+            },
+          ].map(({ title, desc, Icon, onClick }) => (
+            <button
+              key={title}
+              type="button"
+              onClick={onClick}
+              className={`group flex flex-col items-start gap-4 rounded-2xl border border-black/[0.03] bg-white p-6 text-left shadow-[0_4px_24px_-4px_rgba(0,0,0,0.03)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)] active:scale-[0.98] ${bizFocusRingClass}`}
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e1e8fd] text-[#004bc3] transition-colors group-hover:bg-[#004bc3] group-hover:text-white">
+                <Icon className="size-6" strokeWidth={2} aria-hidden />
+              </div>
+              <div>
+                <h4 className="mb-1 font-manrope text-lg font-semibold text-[#141b2b]">{title}</h4>
+                <p className="text-sm text-[#424655]">{desc}</p>
+              </div>
+            </button>
+          ))}
+        </section>
 
-      <section className="mt-8 flex gap-4">
-        <button
-          type="button"
-          onClick={() => {
-            if (aaQrValue) setReceiveQrOpen(true);
-            else onReceive();
-          }}
-          className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
-            <ArrowDown className="size-5 text-[#0051d1] transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
-          </div>
-          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Receive</span>
-        </button>
-        <button
-          type="button"
-          onClick={onSend}
-          className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
-            <ArrowUp className="size-5 text-[#0051d1] transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
-          </div>
-          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Send USDC</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (cashOutEoaAddress?.trim() && ethers.isAddress(cashOutEoaAddress.trim())) {
-              setCashOutModalOpen(true);
-            } else {
-              onCashOutUnavailable();
-            }
-          }}
-          className={`group flex flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-white p-6 shadow-[0_4px_12px_rgba(21,98,240,0.04)] transition-all duration-300 hover:bg-[#7a9dff]/10 active:scale-95 ${bizFocusRingClass}`}
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/5 transition-colors duration-300 group-hover:bg-[#0051d1] group-hover:text-white">
-            <Landmark className="size-5 text-[#0051d1] transition-colors group-hover:text-white" strokeWidth={2} aria-hidden />
-          </div>
-          <span className="text-sm font-extrabold uppercase tracking-widest text-[#0051d1]">Cash Out</span>
-        </button>
-      </section>
-
-      <section className="mb-8 mt-12">
-        <div className="mb-6 flex items-center justify-between px-2">
-          <h2 className="text-xl font-bold tracking-tight text-[#2c2f31]">Financial History</h2>
+        <section>
           <button
             type="button"
-            onClick={onViewAllHistory}
-            className={`text-xs font-bold uppercase tracking-widest text-[#0051d1] transition-opacity hover:opacity-70 ${bizFocusRingClass}`}
+            onClick={openCashOut}
+            className={`flex w-full items-center justify-center gap-3 rounded-2xl bg-[#293040] px-6 py-5 font-manrope text-lg font-semibold text-[#edf0ff] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)] transition-all hover:bg-[#141b2b] active:scale-[0.98] ${bizFocusRingClass}`}
           >
-            View All
+            <Landmark className="size-5" strokeWidth={2} aria-hidden />
+            Withdraw to Cash (Kinbok)
           </button>
-        </div>
-        <div className="rounded-xl border border-dashed border-[#abadaf]/30 bg-white px-6 py-10 text-center shadow-[0_2px_8px_rgba(21,98,240,0.02)]">
-          <History className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.75} aria-hidden />
-          <p className="text-sm font-semibold text-[#2c2f31]">No financial history yet</p>
-          <p className="mt-2 text-sm text-[#595c5e]">
-            Open `Transactions` to view your live ledger once wallet activity is available.
-          </p>
-        </div>
-      </section>
+        </section>
 
-      <p className="text-center text-[11px] font-medium text-[#595c5e]">
-        Protocol fuel (B-Units): refill in{' '}
-        <button
-          type="button"
-          onClick={onOpenMarketRefuel}
-          className={`font-bold text-[#0051d1] underline-offset-2 hover:underline ${bizFocusRingClass}`}
-        >
-          Market
-        </button>
-        .
-      </p>
+        <section className="mt-1 flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-manrope text-2xl font-semibold tracking-tight text-[#141b2b]">Recent Activity</h3>
+            <button
+              type="button"
+              onClick={onViewAllHistory}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-[#0054d8] transition-colors hover:bg-[#dbe1ff] ${bizFocusRingClass}`}
+            >
+              View All
+            </button>
+          </div>
+          {recentWalletActivity.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#c3c6d8] bg-white px-6 py-10 text-center shadow-[0_4px_24px_-4px_rgba(0,0,0,0.03)]">
+              <History className="mx-auto mb-3 size-10 text-[#c3c6d8]" strokeWidth={1.75} aria-hidden />
+              <p className="text-sm font-semibold text-[#141b2b]">No activity yet</p>
+              <p className="mt-2 text-sm text-[#424655]">Deposits, purchases, and withdrawals will appear here.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {recentWalletActivity.map((tx) => {
+                const { Icon, wrap } = walletMobileActivityIconFrame(tx);
+                const { top, bottom } = walletMobileActivityRightColumn(tx);
+                const isPositive = tx.type === 'In-Store Top-Up';
+                const normalizedTop = top.replace(/^\+\s*/, '').trim();
+                const displayTop =
+                  top === '—'
+                    ? top
+                    : isPositive
+                      ? `+${normalizedTop}`
+                      : tx.type === 'Charge' || tx.type === 'Tip'
+                        ? `-${normalizedTop}`
+                        : normalizedTop;
+                return (
+                  <button
+                    key={tx.indexerTxId}
+                    type="button"
+                    onClick={onViewAllHistory}
+                    className={`flex flex-col justify-between gap-4 rounded-2xl border border-black/[0.03] bg-white p-5 text-left shadow-[0_4px_24px_-4px_rgba(0,0,0,0.03)] transition-shadow hover:shadow-[0_10px_40px_-10px_rgba(0,0,0,0.08)] sm:flex-row sm:items-center ${bizFocusRingClass}`}
+                  >
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${wrap}`}>
+                        <Icon className="size-5" strokeWidth={2} aria-hidden />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-manrope text-base font-semibold text-[#141b2b]">{tx.type === 'In-Store Top-Up' ? 'New Deposit' : tx.type}</p>
+                        <p className="mt-0.5 text-sm text-[#424655]">
+                          {tx.dateStr}
+                          {tx.time ? `, ${tx.time}` : ''}
+                          {tx.bUnits > 0 ? ` • -${tx.bUnits.toFixed(2)} B-Units` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center sm:gap-1">
+                      <span className={`font-manrope text-lg font-semibold ${isPositive ? 'text-emerald-600' : 'text-[#141b2b]'}`}>{displayTop}</span>
+                      <span className="rounded-full bg-[#d1fae5] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#065f46]">Completed</span>
+                      <span className="sr-only">{bottom}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
 
       {receiveQrOpen && aaQrValue ? (
@@ -4295,6 +4193,8 @@ function overviewPeriodConsumptionCaption(tf: string): string {
 const TX_MERCHANT_PAY_TIP_UPDATED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:tip_updated'))
 /** keccak256("TX_TIP") - NFC Container / Charge 独立小费行（与 x402sdk MemberCard 一致） */
 const TX_TIP_LEDGER_CATEGORY = ethers.keccak256(ethers.toUtf8Bytes('TX_TIP'))
+/** keccak256("TX_Terminal_RESET") - Settlement clear 标点（Indexer；payee = Terminal EOA） */
+const TX_TERMINAL_RESET_LEDGER_CATEGORY = ethers.keccak256(ethers.toUtf8Bytes('TX_Terminal_RESET'))
 const TX_MERCHANT_PAY_CONFIRMED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:confirmed'))
 const TX_CATEGORY_ZERO = ethers.ZeroHash
 
@@ -4317,6 +4217,8 @@ const NFC_TOPUP_TX_BONUS_CARD = ethers.keccak256(ethers.toUtf8Bytes('bonusCard')
 /** Top-Up style txCategory hashes (same as indexer fetch mapping) */
 const INDEXER_TX_TOPUP_CATEGORIES = new Set([
   ethers.keccak256(ethers.toUtf8Bytes('usdcTopupCard')),
+  ethers.keccak256(ethers.toUtf8Bytes('usdcNewCard')),
+  ethers.keccak256(ethers.toUtf8Bytes('usdcUpgradeNewCard')),
   ethers.keccak256(ethers.toUtf8Bytes('newCard')),
   ethers.keccak256(ethers.toUtf8Bytes('upgradeNewCard')),
   ethers.keccak256(ethers.toUtf8Bytes('topupCard')),
@@ -5171,11 +5073,10 @@ function topUpRowVisibleOnMerchantEoaLedger(tx: TxDisplayRow, merchantAdminLower
 }
 
 /**
- * Wallet → Recent Activity: never show In-Store Top-Up; hide Charge when tied to issuer-owned program cards
+ * Wallet → Recent Activity: show deposits/top-ups plus wallet-side charges; hide Charge rows tied to issuer-owned program cards
  * (raw.ledgerSourceAssetCard or NFC top-up displayJson.cardAddress).
  */
 function txIsExcludedFromWalletMobileActivityPreview(tx: TxDisplayRow, issuerProgramCardsLower: Set<string>): boolean {
-  if (tx.type === 'In-Store Top-Up') return true
   if (tx.type !== 'Charge') return false
   if (issuerProgramCardsLower.size === 0) return false
   const raw = tx.raw as Record<string, unknown>
@@ -5191,6 +5092,13 @@ function txIsExcludedFromWalletMobileActivityPreview(tx: TxDisplayRow, issuerPro
   } catch {
     return false
   }
+}
+
+function txDisplayRowCurrencyFiatIsUsdc(tx: TxDisplayRow): boolean {
+  const raw = tx.raw as Record<string, unknown>
+  const meta = parseIndexerMetaTuple(raw.meta)
+  const currencyFiat = Number.parseInt(meta.currencyFiat, 10)
+  return Number.isFinite(currencyFiat) && currencyFiat === BEAMIO_CURRENCY_TYPE_USDC
 }
 
 function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFilterCtx): boolean {
@@ -5723,6 +5631,50 @@ function terminalLastActivityLabelFromIndexerTxs(
   for (const tx of txs) {
     if (txDisplayRowIsIndexerBunitLedger(tx)) continue
     if (!txMatchesTerminalForStaffLastActivity(tx, term)) continue
+    const ts = txDisplayRowTimestampSec(tx)
+    if (ts > best) best = ts
+  }
+  if (best <= 0) return null
+  const d = new Date(best * 1000)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+/** Latest `TX_Terminal_RESET` whose payee is this terminal → same locale as Last activity */
+function terminalSettlementClearLabelFromIndexerTxs(
+  txs: readonly TxDisplayRow[],
+  term: { id: string }
+): string | null {
+  const tid = term.id.trim()
+  let termLower = tid.toLowerCase()
+  if (ethers.isAddress(tid)) {
+    try {
+      termLower = ethers.getAddress(tid).toLowerCase()
+    } catch {
+      /* keep termLower */
+    }
+  }
+  const resetCat = TX_TERMINAL_RESET_LEDGER_CATEGORY.toLowerCase()
+  let best = 0
+  for (const tx of txs) {
+    const raw = tx.raw as { txCategory?: unknown; payee?: unknown }
+    if (normalizeIndexerTxCategoryHex(raw.txCategory) !== resetCat) continue
+    const p = typeof raw.payee === 'string' ? raw.payee.trim() : ''
+    if (!p) continue
+    let payeeLower: string
+    try {
+      payeeLower = ethers.getAddress(p).toLowerCase()
+    } catch {
+      payeeLower = p.toLowerCase()
+    }
+    if (payeeLower !== termLower) continue
     const ts = txDisplayRowTimestampSec(tx)
     if (ts > best) best = ts
   }
@@ -6529,14 +6481,20 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
 }
 
 /**
- * Verra Merchant（Merchant OS）链上 KPI / metadata / Staff：以 **localStorage trusted cache 本地为主**，CoNET L1 `block` 后台拉取为辅（`beamio-ai-onchain-fetch.mdc`）。
- * 节拍由 **DaemonProvider** 统一 `conetDepinProvider.on('block')` 触发（与 Members 串行，见 `registerMerchantOsOverviewBackgroundWork`），**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
+ * Verra Merchant（Merchant OS）链上 KPI / metadata / Staff：以 **localStorage trusted cache 本地为主**，6s daemon 后台拉取为辅（`beamio-ai-onchain-fetch.mdc`）。
+ * 节拍由 **DaemonProvider** 统一 setTimeout 链触发（与 Members 串行，见 `registerMerchantOsOverviewBackgroundWork`），**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
  */
 
 /** In-memory fetch cache: default 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
 const FETCH_TTL_MS = 30_000;
 /** Ledger indexer in-memory TTL: keep low so new Charges are re-fetched soon (global queue may still serialize behind other tabs). */
 const LEDGER_INDEXER_MEM_CACHE_TTL_MS = 3_500;
+/** Members directory/rollup must follow the 6s Merchant OS daemon closely; trusted cache still protects failures. */
+const MEMBERS_DIRECTORY_MEM_CACHE_TTL_MS = 3_500;
+/** Avoid hanging on owner->cards discovery; fallback to known card sources quickly. */
+const MEMBERS_OWNER_CARDS_FETCH_TIMEOUT_MS = 3_500;
+/** Main Members daemon should not block KPI refresh on slow per-holder balance RPC. */
+const MEMBERS_BALANCE_FETCH_TIMEOUT_MS = 1_800;
 /** TopAdmin 周期补充：仅用于可能未写入 `assetActionIds[card]` 的 TX_TIP（与 ActionFacet 注释一致）。 */
 const LEDGER_INDEXER_DAY_OFFSETS: readonly number[] = [0, 1, 2, 3, 4];
 /**
@@ -6559,11 +6517,28 @@ function rejectLedgerIndexerFetchAfter(ms: number): Promise<never> {
     setTimeout(() => reject(new Error('ledger-indexer-fetch-timeout')), ms);
   });
 }
+
+function rejectMembersBalanceFetchAfter(ms: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('members-balance-fetch-timeout')), ms);
+  });
+}
+
+function rejectMembersOwnerCardsFetchAfter(ms: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('members-owner-cards-fetch-timeout')), ms);
+  });
+}
 const fetchCache = new Map<string, { value: unknown; fetchedAt: number }>();
 const fetchInProgress = new Map<string, Promise<unknown>>();
 let globalFetchQueue: Promise<void> = Promise.resolve();
 
-async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMs: number = FETCH_TTL_MS): Promise<T> {
+async function fetchWithCache<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlMs: number = FETCH_TTL_MS,
+  skipGlobalQueue: boolean = false
+): Promise<T> {
   const now = Date.now();
   const cached = fetchCache.get(key) as { value: T; fetchedAt: number } | undefined;
   if (cached && (now - cached.fetchedAt) < ttlMs) {
@@ -6576,7 +6551,9 @@ async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMs: 
   }
 
   const run = async (): Promise<T> => {
-    await globalFetchQueue;
+    if (!skipGlobalQueue) {
+      await globalFetchQueue;
+    }
     const result = await fetcher();
     return result;
   };
@@ -7015,7 +6992,15 @@ function formatRegistryApiRowChannel(m: { usedNfc: boolean; usedApp: boolean }):
 const MEMBER_REGISTRY_PAGE_SIZE = 20;
 
 /** 地址胶囊：短缩地址 + 右侧 copy 图标，点击复制到剪贴板，成功后显示绿色 check */
-const AddressCapsule = ({ address, className = '' }: { address: string; className?: string }) => {
+const AddressCapsule = ({
+  address,
+  className = '',
+  leadingIcon,
+}: {
+  address: string;
+  className?: string;
+  leadingIcon?: React.ReactNode;
+}) => {
   const [copied, setCopied] = useState(false);
   const short = fmtAddr(address);
   const handleCopy = useCallback(async () => {
@@ -7035,6 +7020,7 @@ const AddressCapsule = ({ address, className = '' }: { address: string; classNam
       className={`inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full font-mono text-[11px] font-semibold border transition-colors ${className}`}
       title="Copy address"
     >
+      {leadingIcon ? <span className="shrink-0">{leadingIcon}</span> : null}
       <span className="truncate">{short}</span>
       {copied ? <Check size={12} className="shrink-0 text-emerald-500" /> : <Copy size={12} className="shrink-0 opacity-70 hover:opacity-100" />}
     </button>
@@ -7043,12 +7029,14 @@ const AddressCapsule = ({ address, className = '' }: { address: string; classNam
 
 /** Fixed to `BeamioCurrency.CurrencyType.CAD` (enum index 0). See `src/BeamioUserCard/BeamioCurrency.sol`. */
 const CARD_ISSUANCE_BEAMIO_CURRENCY = 'CAD' as const;
-const CARD_ISSUANCE_MIN_TOPUP_MIN = 10;
+const CARD_ISSUANCE_MIN_TOPUP_MIN = 5;
 const CARD_ISSUANCE_MAX_TOPUP_MAX = 999;
 /** Default maximum top-up (whole dollars only, no decimals). */
 const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = 100;
 /** Default minimum top-up (whole dollars only, no decimals). */
-const CARD_ISSUANCE_MIN_TOPUP_DEFAULT = 10;
+const CARD_ISSUANCE_MIN_TOPUP_DEFAULT = 5;
+/** Older saved configurator drafts used 10 as the default; upgrade only that untouched legacy default. */
+const CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT = 10;
 /** Max length for Card Issuance configuration text (card description, tier description, etc.). */
 const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
 /** Consumer app card title (`shareTokenMetadata.displayName`). */
@@ -7057,6 +7045,8 @@ const CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT = 100;
 const CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT = 10;
 /** Short Name (program points ticker): max length, derived from Card Unit Name unless edited. */
 const CARD_ISSUANCE_SHORT_NAME_MAX_LEN = 4;
+/** Card Configurator · Visual Identity: default Card Unit Name (program name on-chain / metadata). */
+const CARD_ISSUANCE_DEFAULT_UNIT_NAME = 'beamio';
 
 type CardIssuanceBonusRuleRow = {
   id: string;
@@ -7188,6 +7178,29 @@ const CARD_ISSUANCE_TIER_RULE_OPTIONS: Array<{
 ];
 
 const CARD_ISSUANCE_TIER_RULE_KEYS: CardIssuanceTierRule[] = CARD_ISSUANCE_TIER_RULE_OPTIONS.map((o) => o.key);
+
+/** Maps on-chain `BeamioUserCard.upgradeType()` (0…2) to Card Configurator loyalty rule keys. */
+function cardIssuanceTierRuleFromUpgradeType(upgradeType: number): CardIssuanceTierRule | null {
+  if (upgradeType === 0) return 'single';
+  if (upgradeType === 1) return 'balance';
+  if (upgradeType === 2) return 'cumulative';
+  return null;
+}
+
+/** Persisted per EOA + program card (`saveTrustedCache`). `upgradeType` / tier rule are fixed after card deploy. */
+type ProgramCardLoyaltyTierRuleTrustedV1 = {
+  v: 1;
+  tierRuleKey: CardIssuanceTierRule;
+  /** On-chain `upgradeType` when cached (0…2). */
+  upgradeType: number;
+};
+
+function programCardLoyaltyTierRuleTrustedCacheKey(eoaLower: string, programCardAddress: string): string | null {
+  const e = (eoaLower ?? '').trim().toLowerCase();
+  const c = (programCardAddress ?? '').trim();
+  if (!e || !ethers.isAddress(e) || !c || !ethers.isAddress(c)) return null;
+  return `eoa:${e}:program-card:${ethers.getAddress(c).toLowerCase()}:loyalty-tier-rule:v1`;
+}
 
 /** Mobile Add/Edit Reward Tier sheet subtitle — reflects the selected Loyalty Rule Type. */
 const CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE: Record<CardIssuanceTierRule, string> = {
@@ -7541,7 +7554,7 @@ function cardIssuanceTierGradientTheme(backgroundColorRaw: string): CardIssuance
   };
 }
 
-/** Single membership tier in Card Configurator; Min tracks Min. Reload Amount (not edited in tier table). */
+/** Base membership tier in Card Configurator; its Min keeps Min. Reload Amount in sync. */
 const CARD_ISSUANCE_SINGLE_TIER_ID = 'tier-base';
 
 const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
@@ -7634,14 +7647,10 @@ function reconcileTierThresholdsWithMinTopup(
       const baseNext: CardIssuanceTierRow = {
         ...t,
         id: CARD_ISSUANCE_SINGLE_TIER_ID,
-        name: 'Base',
-        preset: 'silver',
         threshold: String(topupN),
       };
       if (
         t.id !== baseNext.id ||
-        t.name !== baseNext.name ||
-        t.preset !== baseNext.preset ||
         t.threshold !== baseNext.threshold
       ) {
         changed = true;
@@ -7666,7 +7675,7 @@ function reconcileTierThresholdsWithMinTopup(
  * Short Name from Card Unit Name:
  * - one word → first CARD_ISSUANCE_SHORT_NAME_MAX_LEN chars of that word;
  * - multiple words → split CARD_ISSUANCE_SHORT_NAME_MAX_LEN across words (remainder to earlier words),
- *   prefix from each (e.g. two words → 2+2: "Verra Platinum" → "VEPL").
+ *   prefix from each (e.g. two words → 2+2: "beamio Rewards" → "BERE").
  */
 function deriveCardIssuanceShortNameFromUnitName(rawName: string): string {
   const trimmed = rawName.trim();
@@ -7889,9 +7898,9 @@ export default function MerchantOS() {
  /** Bumps when Lite onboarding form saves so `hasVerraLiteBusinessRequiredFields` is re-evaluated. */
  const [liteBusinessFormRevision, setLiteBusinessFormRevision] = useState(0);
  const [liteChainAckRevision, setLiteChainAckRevision] = useState(0);
- const [cardIssuanceProgramName, setCardIssuanceProgramName] = useState('VERRA');
+ const [cardIssuanceProgramName, setCardIssuanceProgramName] = useState(CARD_ISSUANCE_DEFAULT_UNIT_NAME);
  const [cardIssuanceCurrencySymbol, setCardIssuanceCurrencySymbol] = useState(() =>
-   deriveCardIssuanceShortNameFromUnitName('VERRA')
+   deriveCardIssuanceShortNameFromUnitName(CARD_ISSUANCE_DEFAULT_UNIT_NAME)
  );
  const [cardIssuanceStoreDisplayName, setCardIssuanceStoreDisplayName] = useState('');
 const [cardIssuanceBonusRules, setCardIssuanceBonusRules] = useState<CardIssuanceBonusRuleRow[]>([]);
@@ -7902,6 +7911,9 @@ const [cardIssuanceBonusRules, setCardIssuanceBonusRules] = useState<CardIssuanc
    String(CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT)
  );
  const [cardIssuanceBonusRuleEditorOpen, setCardIssuanceBonusRuleEditorOpen] = useState(false);
+ /** Issued card: POST /api/updateCardShareMetadata while bonus editor is open (separate from tier Publish loading). */
+ const [cardIssuanceBonusRuleEditorPublishing, setCardIssuanceBonusRuleEditorPublishing] = useState(false);
+ const [cardIssuanceBonusRuleEditorServerError, setCardIssuanceBonusRuleEditorServerError] = useState('');
 const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useState<string | null>(null);
  /** Programs overview: confirm before removing a recharge bonus rule from draft state. */
  const [cardIssuanceBonusRuleDeleteConfirmId, setCardIssuanceBonusRuleDeleteConfirmId] = useState<string | null>(
@@ -7940,6 +7952,17 @@ const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useS
      return { ...prev, [rule]: next };
    });
  }, []);
+ const applyCardIssuanceQuickDefaultRewardsProgram = useCallback(() => {
+   const minS = String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT);
+   const maxS = String(CARD_ISSUANCE_MAX_TOPUP_MAX);
+   setCardIssuanceMinTopup(minS);
+   setCardIssuanceMaxTopup(maxS);
+   setCardIssuanceTierRule('single');
+   setTiersByLoyaltyRule((prev) => ({
+     ...prev,
+     single: reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), minS),
+   }));
+ }, []);
 const [cardIssuanceTierEditorOpen, setCardIssuanceTierEditorOpen] = useState(false);
 const [cardIssuanceEditingTierId, setCardIssuanceEditingTierId] = useState<string | null>(null);
 const [cardIssuanceTierEditorName, setCardIssuanceTierEditorName] = useState('');
@@ -7970,6 +7993,8 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  const [settingsMerchantLogoError, setSettingsMerchantLogoError] = useState('');
  /** Settings: full-screen slide-over editor for Business Profile */
  const [settingsBusinessProfileOverlayOpen, setSettingsBusinessProfileOverlayOpen] = useState(false);
+ const [settingsSecurityBackupOpen, setSettingsSecurityBackupOpen] = useState(false);
+ const [settingsPrivateKeyRevealOpen, setSettingsPrivateKeyRevealOpen] = useState(false);
  const [cardIssuanceOnchainFetch, setCardIssuanceOnchainFetch] = useState<'idle' | 'loading' | 'done'>('idle');
  const [cardIssuanceExistingCard, setCardIssuanceExistingCard] = useState<{
    cardAddress: string;
@@ -7991,9 +8016,15 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  );
  /** Wizard step for Card Configurator on viewports ≤1023px (`marketExample.html` pattern). */
  const [cardIssuanceMobileStep, setCardIssuanceMobileStep] = useState(1);
+ /** New issuance only: quick default operational limits + Single top-up, or full Steps 2–3 wizard. */
+ const [cardIssuanceRewardsPreset, setCardIssuanceRewardsPreset] = useState<'default' | 'custom'>('custom');
+ /** Skip Steps 2–3 on mobile/new issuance when preset is Default. */
+ const cardIssuanceQuickDefaultRewardsFlow =
+   !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
  /** Hero logo scale 0–3: draft + shareTokenMetadata.logoDisplayTier; Step 2 tap cycles. */
  const [cardIssuanceLogoDisplayTier, setCardIssuanceLogoDisplayTier] = useState<CardPreviewLogoDisplayTier>(0);
  const [isCardConfiguratorMobileViewport, setIsCardConfiguratorMobileViewport] = useState(false);
+ const [isMediumMerchantViewport, setIsMediumMerchantViewport] = useState(false);
  /** Pre-issuance Card Configurator: false until chain fetch done and optional local draft applied (avoid clobbering draft on save). */
  const [cardConfiguratorDraftLoaded, setCardConfiguratorDraftLoaded] = useState(false);
  /** Lowercase EOA for Card Configurator pre-issuance draft (`verra_card_configurator_draft_v1:`). */
@@ -8012,8 +8043,23 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  }, []);
 
  useEffect(() => {
+   if (typeof window === 'undefined') return;
+   const mq = window.matchMedia('(min-width: 701px) and (max-width: 1023px)');
+   const apply = () => setIsMediumMerchantViewport(mq.matches);
+   apply();
+   mq.addEventListener('change', apply);
+   return () => mq.removeEventListener('change', apply);
+ }, []);
+
+ useEffect(() => {
    setCardIssuanceMobileStep(1);
  }, [cardIssuanceActiveProgramView]);
+
+ useEffect(() => {
+   if (!cardIssuanceQuickDefaultRewardsFlow) return;
+   if (!isCardConfiguratorMobileViewport) return;
+   setCardIssuanceMobileStep((s) => (s > 1 ? 1 : s));
+ }, [cardIssuanceQuickDefaultRewardsFlow, isCardConfiguratorMobileViewport]);
 
  useEffect(() => {
    if (!cardIssuanceExistingCard) {
@@ -8132,7 +8178,7 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  const cardIssuancePreviewProgram =
    cardIssuanceStoreDisplayName.trim() ||
    cardIssuanceProgramName.trim() ||
-   'VERRA';
+   CARD_ISSUANCE_DEFAULT_UNIT_NAME;
  const cardIssuancePreviewSelectedTier = useMemo(() => {
    if (!cardIssuancePreviewTierId) return null;
    return cardIssuanceTiers.find((t) => t.id === cardIssuancePreviewTierId) ?? null;
@@ -8160,6 +8206,12 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  );
 
  const programsOverviewActiveCardGradientCss = useMemo(() => {
+   if (cardIssuanceExistingCard && cardIssuanceTiers.length > 0) {
+     const hero = findHighestCardIssuanceTierRow(cardIssuanceTiers);
+     if (hero) {
+       return cardIssuanceTierRowGradientCss(hero.backgroundColor ?? '');
+     }
+   }
    const tiers = cardIssuanceExistingCard?.meta?.tiers;
    if (tiers?.length) {
      const sorted = [...tiers].sort((a, b) => {
@@ -8173,10 +8225,16 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
      return cardIssuanceTierRowGradientCss(top?.backgroundColor ?? '');
    }
    return cardIssuancePreviewCardGradientCss;
- }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewCardGradientCss]);
+ }, [cardIssuanceExistingCard, cardIssuanceTiers, cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewCardGradientCss]);
 
- /** Pass hero colors aligned with Step 2 sticky preview (highest `minUsdc6` tier background). */
+ /** Pass hero colors aligned with Tiers panel (highest threshold row); fallback to last metadata / configure preview. */
  const programsOverviewPassHeroTheme = useMemo(() => {
+   if (cardIssuanceExistingCard && cardIssuanceTiers.length > 0) {
+     const hero = findHighestCardIssuanceTierRow(cardIssuanceTiers);
+     if (hero) {
+       return cardIssuanceTierGradientTheme(hero.backgroundColor ?? '');
+     }
+   }
    const tiers = cardIssuanceExistingCard?.meta?.tiers;
    if (tiers?.length) {
      const sorted = [...tiers].sort((a, b) => {
@@ -8190,9 +8248,17 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
      return cardIssuanceTierGradientTheme(top?.backgroundColor ?? '');
    }
    return cardIssuancePreviewPassHeroTheme;
- }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewPassHeroTheme]);
+ }, [cardIssuanceExistingCard, cardIssuanceTiers, cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewPassHeroTheme]);
 
  const programsOverviewCardMaxDiscountPct = useMemo(() => {
+   if (cardIssuanceExistingCard && cardIssuanceTiers.length > 0) {
+     let m = 0;
+     for (const row of cardIssuanceTiers) {
+       const d = Number.parseFloat((row.discountPercent ?? '').trim() || '0');
+       if (Number.isFinite(d) && d > m) m = d;
+     }
+     if (m > 0) return Math.round(m);
+   }
    const tiers = cardIssuanceExistingCard?.meta?.tiers;
    let m = 0;
    if (tiers?.length) {
@@ -8203,7 +8269,12 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
    }
    if (m > 0) return m;
    return cardIssuancePreviewMaxDiscountPct;
- }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewMaxDiscountPct]);
+ }, [
+   cardIssuanceExistingCard,
+   cardIssuanceTiers,
+   cardIssuanceExistingCard?.meta?.tiers,
+   cardIssuancePreviewMaxDiscountPct,
+ ]);
 
  const programsOverviewCardMinTopupDisplay = useMemo(() => {
    const cad = cardIssuanceExistingCard?.meta?.minimumTopupCad;
@@ -8240,6 +8311,61 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
    const dn = (cardIssuanceExistingCard.meta.displayName ?? '').trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX);
    setCardIssuanceStoreDisplayName(dn);
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.displayName]);
+
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta?.tiers?.length) return;
+  const sorted = [...cardIssuanceExistingCard.meta.tiers].sort((a, b) => {
+    const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
+    const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
+    const ca = Number.isFinite(na) ? na : Number.POSITIVE_INFINITY;
+    const cb = Number.isFinite(nb) ? nb : Number.POSITIVE_INFINITY;
+    return ca - cb;
+  });
+  const rows = sorted.map((t, i) => {
+    const minRaw = t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
+    const minUnits = Number.isFinite(minRaw) ? Math.max(1, Math.round(minRaw / 1e6)) : CARD_ISSUANCE_MIN_TOPUP_DEFAULT + i;
+    const discountPct = parseDiscountPctFromTierMetadataDescription(t.description);
+    return makeCardIssuanceTierRow({
+      id: i === 0 ? CARD_ISSUANCE_SINGLE_TIER_ID : `tier-issued-${t.index ?? i}`,
+      name: (t.name ?? '').trim() || (i === 0 ? 'Base' : `Tier ${i + 1}`),
+      preset: i === 0 ? 'silver' : i === 1 ? 'gold' : 'custom',
+      threshold: String(minUnits),
+      discountPercent: Number.isFinite(discountPct) ? String(discountPct) : '0',
+      tierDescription: t.description ?? '',
+      tierDescriptionOpen: false,
+      backgroundColor: t.backgroundColor ?? (i === 0 ? '#94a3b8' : '#6366f1'),
+    });
+  });
+  const ut = cardIssuanceExistingCard.upgradeType;
+  const ruleKeyFromChain = ut != null && ut >= 0 && ut <= 2 ? cardIssuanceTierRuleFromUpgradeType(ut) : null;
+  const ruleKey = ruleKeyFromChain ?? cardIssuanceTierRule;
+  setTiersByLoyaltyRule((prev) => ({
+    ...prev,
+    [ruleKey]: reconcileTierThresholdsWithMinTopup(rows, String(rows[0]?.threshold ?? CARD_ISSUANCE_MIN_TOPUP_DEFAULT)),
+  }));
+  if (rows[0]?.threshold) setCardIssuanceMinTopup(rows[0].threshold);
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta?.tiers,
+  cardIssuanceExistingCard?.upgradeType,
+  cardIssuanceTierRule,
+]);
+
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  const metaMin = cardIssuanceExistingCard.meta.minimumTopupCad;
+  if (metaMin != null && Number.isFinite(metaMin)) {
+    setCardIssuanceMinTopup(String(Math.round(Number(metaMin))));
+  }
+  const metaMax = cardIssuanceExistingCard.meta.maximumTopupCad;
+  if (metaMax != null && Number.isFinite(metaMax)) {
+    setCardIssuanceMaxTopup(String(Math.round(Number(metaMax))));
+  }
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta?.minimumTopupCad,
+  cardIssuanceExistingCard?.meta?.maximumTopupCad,
+]);
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
@@ -8298,6 +8424,14 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    });
  }, [cardIssuanceExistingCard?.meta?.tiers]);
 
+ const programsOverviewTierRowsSortedAscending = useMemo(() => {
+   return [...cardIssuanceTiers].sort((a, b) => {
+     const na = cardIssuanceTierThresholdToInt(a.threshold);
+     const nb = cardIssuanceTierThresholdToInt(b.threshold);
+     return na - nb;
+   });
+ }, [cardIssuanceTiers]);
+
  const programsOverviewProgramFullName = useMemo(() => {
    if (!cardIssuanceExistingCard) {
      return cardIssuanceProgramName.trim() || cardIssuancePreviewProgram;
@@ -8320,10 +8454,80 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    return (cardIssuanceExistingCard?.userCard?.currency ?? '').trim() || '—';
  }, [cardIssuanceCurrencySymbol, cardIssuanceExistingCard?.userCard?.currency]);
 
- const programsOverviewTierRuleOption = useMemo(
-   () => CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === cardIssuanceTierRule),
-   [cardIssuanceTierRule]
+ const programsCardLoyaltyTierRuleCacheKey = useMemo(() => {
+   const eoa = cardConfiguratorDraftEoaKey;
+   const card = cardIssuanceExistingCard?.cardAddress?.trim();
+   if (!eoa || !card) return '';
+   return programCardLoyaltyTierRuleTrustedCacheKey(eoa, card) ?? '';
+ }, [cardConfiguratorDraftEoaKey, cardIssuanceExistingCard?.cardAddress]);
+
+ const programsOverviewTierRuleOption = useMemo(() => {
+   let fromCache: CardIssuanceTierRule | null = null;
+   if (programsCardLoyaltyTierRuleCacheKey) {
+     const raw = loadTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey);
+     if (
+       raw &&
+       raw.v === 1 &&
+       typeof raw.tierRuleKey === 'string' &&
+       CARD_ISSUANCE_TIER_RULE_KEYS.includes(raw.tierRuleKey as CardIssuanceTierRule)
+     ) {
+       fromCache = raw.tierRuleKey as CardIssuanceTierRule;
+     }
+   }
+   const ut = cardIssuanceExistingCard?.upgradeType;
+   const fromChain = ut != null && ut >= 0 && ut <= 2 ? cardIssuanceTierRuleFromUpgradeType(ut) : null;
+   const effectiveKey = fromCache ?? fromChain ?? cardIssuanceTierRule;
+   return CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === effectiveKey);
+ }, [programsCardLoyaltyTierRuleCacheKey, cardIssuanceExistingCard?.upgradeType, cardIssuanceTierRule]);
+
+ const programsOverviewTierRuleKey = useMemo(
+   (): CardIssuanceTierRule => programsOverviewTierRuleOption?.key ?? cardIssuanceTierRule,
+   [programsOverviewTierRuleOption, cardIssuanceTierRule]
  );
+
+ useEffect(() => {
+   if (!programsCardLoyaltyTierRuleCacheKey) return;
+   const card = cardIssuanceExistingCard;
+   if (!card?.cardAddress || !card.meta) return;
+   const ut = card.upgradeType;
+   if (ut == null || ut < 0 || ut > 2) return;
+   const tierKey = cardIssuanceTierRuleFromUpgradeType(ut);
+   if (!tierKey) return;
+   saveTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey, {
+     v: 1,
+     tierRuleKey: tierKey,
+     upgradeType: ut,
+   });
+ }, [
+   programsCardLoyaltyTierRuleCacheKey,
+   cardIssuanceExistingCard?.cardAddress,
+   cardIssuanceExistingCard?.meta,
+   cardIssuanceExistingCard?.upgradeType,
+ ]);
+
+ useEffect(() => {
+   if (!programsCardLoyaltyTierRuleCacheKey || !cardIssuanceExistingCard?.cardAddress) return;
+   const raw = loadTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey);
+   if (!raw || raw.v !== 1 || typeof raw.tierRuleKey !== 'string') return;
+   if (!CARD_ISSUANCE_TIER_RULE_KEYS.includes(raw.tierRuleKey as CardIssuanceTierRule)) return;
+   const next = raw.tierRuleKey as CardIssuanceTierRule;
+   setCardIssuanceTierRule((prev) => (prev === next ? prev : next));
+ }, [programsCardLoyaltyTierRuleCacheKey, cardIssuanceExistingCard?.cardAddress]);
+
+ /** Issued Program overview: tier rows + publish must use the same bucket as on-chain `upgradeType`. Local cache / default state can otherwise point at `single` while metadata hydrates `balance`/`cumulative`. */
+ useEffect(() => {
+   if (!cardIssuanceExistingCard?.cardAddress) return;
+   if (cardIssuanceActiveProgramView !== 'overview') return;
+   const ut = cardIssuanceExistingCard.upgradeType;
+   if (ut < 0 || ut > 2) return;
+   const k = cardIssuanceTierRuleFromUpgradeType(ut);
+   if (!k) return;
+   setCardIssuanceTierRule((prev) => (prev === k ? prev : k));
+ }, [
+   cardIssuanceExistingCard?.cardAddress,
+   cardIssuanceExistingCard?.upgradeType,
+   cardIssuanceActiveProgramView,
+ ]);
 
  /** Programs overview: min/max reload amounts for dashboard cards (metadata overrides form when present). */
  const programsOverviewReloadLimitsDisplay = useMemo(() => {
@@ -8580,11 +8784,15 @@ const cardIssuanceTierEditorValidationError = useMemo(() => {
     return 'Enter a valid discount benefit.';
   }
   const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
-  if (cardIssuanceTierEditorThresholdInt <= minTopupN) {
+  const editingBaseTier = cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID;
+  if (editingBaseTier && cardIssuanceTierEditorThresholdInt < CARD_ISSUANCE_MIN_TOPUP_MIN) {
+    return `Base Tier must be at least ${CARD_ISSUANCE_MIN_TOPUP_MIN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`;
+  }
+  if (!editingBaseTier && cardIssuanceTierEditorThresholdInt <= minTopupN) {
     return 'Reward tiers must be above the Base minimum spending amount.';
   }
   const otherThresholds = cardIssuanceTiers
-    .filter((tier) => tier.id !== CARD_ISSUANCE_SINGLE_TIER_ID && tier.id !== cardIssuanceEditingTierId)
+    .filter((tier) => tier.id !== cardIssuanceEditingTierId)
     .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
   if (otherThresholds.includes(cardIssuanceTierEditorThresholdInt)) {
     return 'Another tier already uses this minimum spending amount.';
@@ -8613,7 +8821,7 @@ const openCardIssuanceTierCreate = useCallback(() => {
 
 const openCardIssuanceTierEdit = useCallback((tierId: string) => {
   const row = cardIssuanceTiers.find((tier) => tier.id === tierId);
-  if (!row || row.id === CARD_ISSUANCE_SINGLE_TIER_ID) return;
+  if (!row) return;
   setCardIssuanceEditingTierId(tierId);
   setCardIssuanceTierEditorName(row.name);
   setCardIssuanceTierEditorThreshold(row.threshold);
@@ -8634,6 +8842,10 @@ const closeCardIssuanceTierEditor = useCallback(() => {
 
 const applyCardIssuanceTierEditor = useCallback(() => {
   if (cardIssuanceTierEditorValidationError) return;
+  const nextMinTopup =
+    cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
+      ? String(cardIssuanceTierEditorThresholdInt ?? CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
+      : cardIssuanceMinTopup;
   const nextRow = makeCardIssuanceTierRow({
     id: cardIssuanceEditingTierId ?? undefined,
     name: cardIssuanceTierEditorName.trim(),
@@ -8643,7 +8855,10 @@ const applyCardIssuanceTierEditor = useCallback(() => {
       cardIssuanceTierEditorDiscountNumber == null
         ? '0'
         : String(Number(cardIssuanceTierEditorDiscountNumber.toFixed(2))),
-    tierDescription: cardIssuanceTierEditorDescription.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
+    tierDescription:
+      cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
+        ? ''
+        : cardIssuanceTierEditorDescription.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
     backgroundColor: cardIssuanceTierEditorBackgroundColor,
     tierDescriptionOpen: false,
   });
@@ -8651,8 +8866,11 @@ const applyCardIssuanceTierEditor = useCallback(() => {
     const merged = cardIssuanceEditingTierId
       ? prev.map((tier) => (tier.id === cardIssuanceEditingTierId ? nextRow : tier))
       : [...prev, nextRow];
-    return reconcileTierThresholdsWithMinTopup(merged, cardIssuanceMinTopup);
+    return reconcileTierThresholdsWithMinTopup(merged, nextMinTopup);
   });
+  if (cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID) {
+    setCardIssuanceMinTopup(nextMinTopup);
+  }
   setCardIssuanceTierEditorOpen(false);
   setCardIssuanceEditingTierId(null);
 }, [
@@ -8680,6 +8898,7 @@ const removeCardIssuanceTierFromEditor = useCallback(() => {
 }, [cardIssuanceEditingTierId, cardIssuanceMinTopup]);
 
 const openCardIssuanceBonusRuleCreate = useCallback(() => {
+  setCardIssuanceBonusRuleEditorServerError('');
   setCardIssuanceEditingBonusRuleId(null);
   setCardIssuanceBonusRulePaymentAmount(String(CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
   setCardIssuanceBonusRuleBonusValue(String(CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT));
@@ -8690,6 +8909,7 @@ const openCardIssuanceBonusRuleCreate = useCallback(() => {
 const openCardIssuanceBonusRuleEdit = useCallback((ruleId: string) => {
   const row = cardIssuanceBonusRules.find((item) => item.id === ruleId);
   if (!row) return;
+  setCardIssuanceBonusRuleEditorServerError('');
   setCardIssuanceEditingBonusRuleId(ruleId);
   setCardIssuanceBonusRulePaymentAmount(row.paymentAmount);
   setCardIssuanceBonusRuleBonusValue(row.bonusValue);
@@ -8740,9 +8960,9 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
   }
 }, [cardIssuanceEditingBonusRuleId]);
 
- const buildCardIssuanceTiersPayload = useCallback((): TierMetadata[] | undefined => {
-   if (cardIssuanceTiers.length === 0) return undefined;
-   const valid = cardIssuanceTiers
+ const buildCardIssuanceTiersPayloadFromRows = useCallback((rows: CardIssuanceTierRow[]): TierMetadata[] | undefined => {
+   if (rows.length === 0) return undefined;
+   const valid = rows
      .filter((t) => t.name.trim() !== '')
      .map((t, idx) => {
        const raw = t.threshold.replace(/,/g, '').trim();
@@ -8772,7 +8992,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      ...(t.description ? { description: t.description } : {}),
      ...(t.backgroundColor ? { backgroundColor: t.backgroundColor } : {}),
    }));
- }, [cardIssuanceTiers]);
+ }, []);
 
  const handleCardIssuanceIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
    async (e) => {
@@ -8929,7 +9149,14 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      (beamio.image.includes('getFragment?hash=') || beamio.image.includes('ipfs.conet.network'))
  );
 
- const handlePublishCardIssuance = useCallback(async () => {
+ const handlePublishCardIssuance = useCallback(
+   async (
+     opts?: {
+       bonusRulesOverride?: CardIssuanceBonusRuleRow[];
+       loadingScope?: 'default' | 'bonusEditor';
+     }
+   ): Promise<boolean> => {
+   const loadingScope = opts?.loadingScope ?? 'default';
    setCardIssuanceCreateError('');
    setCardIssuanceCreateResult(null);
    setCardIssuanceCategoryIndexSummary(null);
@@ -8937,51 +9164,62 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    const ownerRaw = (profiles?.[0]?.aaAccount ?? profiles?.[0]?.keyID ?? '').trim();
    if (!ownerRaw) {
      setCardIssuanceCreateError('Owner address not loaded. Ensure your account is ready in Settings.');
-     return;
+     return false;
    }
    let owner: string;
    try {
      owner = ethers.getAddress(ownerRaw);
    } catch {
      setCardIssuanceCreateError('Owner address is invalid.');
-     return;
+     return false;
    }
-   const metaName = cardIssuanceProgramName.trim();
+   const metaName =
+     cardIssuanceProgramName.trim() ||
+     cardIssuanceExistingCard?.meta?.name?.trim() ||
+     cardIssuanceExistingCard?.userCard?.name?.trim() ||
+     '';
    if (!metaName) {
      setCardIssuanceCreateError('Card name is required.');
-     return;
+     return false;
    }
-   const tiersPayload = buildCardIssuanceTiersPayload();
-   if (cardIssuanceTiers.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
+   const useQuickDefaultRewardsNewCard =
+     !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
+   const tiersRowsForPublish = useQuickDefaultRewardsNewCard
+     ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT))
+     : cardIssuanceTiers;
+   const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish);
+   if (tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
      setCardIssuanceCreateError('Each tier must have a name.');
-     return;
+     return false;
    }
-   for (const row of cardIssuanceTiers) {
+   for (const row of tiersRowsForPublish) {
      const tierName = row.name.trim();
      if (!tierName) continue;
      const tr = row.threshold.replace(/,/g, '').trim();
      if (tr === '') {
        setCardIssuanceCreateError(`Tier "${tierName}": threshold is required.`);
-       return;
+       return false;
      }
      const tInt = Number.parseInt(tr, 10);
      const tFloat = parseFloat(tr);
      if (!Number.isFinite(tFloat) || !Number.isFinite(tInt) || tFloat !== tInt) {
        setCardIssuanceCreateError(`Tier "${tierName}": threshold must be a whole number (no decimals).`);
-       return;
+       return false;
      }
      const bgRaw = row.backgroundColor.trim();
      if (bgRaw && !tierBackgroundColorForPayload(row.backgroundColor)) {
        setCardIssuanceCreateError(
          `Tier "${tierName}": background must be a valid CSS hex color (#RGB or #RRGGBB).`
        );
-       return;
+       return false;
      }
    }
-   const minTopupRaw = cardIssuanceMinTopup.replace(/,/g, '').trim();
+   const minTopupRaw = (
+     useQuickDefaultRewardsNewCard ? String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT) : cardIssuanceMinTopup
+   ).replace(/,/g, '').trim();
    if (minTopupRaw === '') {
      setCardIssuanceCreateError('Minimum top-up is required.');
-     return;
+     return false;
    }
    const minTopupN = Number.parseInt(minTopupRaw, 10);
    const minTopupAsFloat = parseFloat(minTopupRaw);
@@ -8991,12 +9229,14 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      minTopupAsFloat !== minTopupN
    ) {
      setCardIssuanceCreateError('Minimum top-up must be a whole number (no decimals).');
-     return;
+     return false;
    }
-   const maxTopupRaw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
+   const maxTopupRaw = (
+     useQuickDefaultRewardsNewCard ? String(CARD_ISSUANCE_MAX_TOPUP_MAX) : cardIssuanceMaxTopup
+   ).replace(/,/g, '').trim();
    if (maxTopupRaw === '') {
      setCardIssuanceCreateError('Maximum top-up is required.');
-     return;
+     return false;
    }
    const maxTopupN = Number.parseInt(maxTopupRaw, 10);
    const maxTopupAsFloat = parseFloat(maxTopupRaw);
@@ -9004,7 +9244,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      setCardIssuanceCreateError(
        `Minimum top-up must be at least ${CARD_ISSUANCE_MIN_TOPUP_MIN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`
      );
-     return;
+     return false;
    }
    if (
      !Number.isFinite(maxTopupAsFloat) ||
@@ -9012,35 +9252,38 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      maxTopupAsFloat !== maxTopupN
    ) {
      setCardIssuanceCreateError('Maximum top-up must be a whole number (no decimals).');
-     return;
+     return false;
    }
    if (maxTopupN > CARD_ISSUANCE_MAX_TOPUP_MAX) {
      setCardIssuanceCreateError(
        `Maximum top-up must not exceed ${CARD_ISSUANCE_MAX_TOPUP_MAX} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`
      );
-     return;
+     return false;
    }
    if (minTopupN > maxTopupN) {
      setCardIssuanceCreateError('Minimum top-up cannot be greater than maximum top-up.');
-     return;
+     return false;
    }
+   const tierRuleForPublish: CardIssuanceTierRule = useQuickDefaultRewardsNewCard
+     ? 'single'
+     : cardIssuanceTierRule;
+   const tierThresholdBoundedByMaxTopup = tierRuleForPublish !== 'cumulative';
    const metadataMaxTopupCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
-  const tierThresholdBoundedByMaxTopup = cardIssuanceTierRule !== 'cumulative';
    if (metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap)) {
      if (maxTopupN > metadataMaxTopupCap) {
        setCardIssuanceCreateError(
          `Maximum top-up cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`
        );
-       return;
+       return false;
      }
      if (minTopupN > metadataMaxTopupCap) {
        setCardIssuanceCreateError(
          `Minimum top-up cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`
        );
-       return;
+       return false;
      }
    }
-   for (const row of cardIssuanceTiers) {
+   for (const row of tiersRowsForPublish) {
      const tierName = row.name.trim();
      if (!tierName) continue;
      const tr = row.threshold.replace(/,/g, '').trim();
@@ -9052,7 +9295,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        setCardIssuanceCreateError(
          `Tier "${tierName}": threshold cannot exceed maximum top-up (${maxTopupN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}).`
        );
-       return;
+       return false;
      }
     if (
       tierThresholdBoundedByMaxTopup &&
@@ -9063,12 +9306,20 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        setCardIssuanceCreateError(
          `Tier "${tierName}": threshold cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (maximum top-up from card metadata).`
        );
-       return;
+       return false;
      }
    }
    const shouldClearCardConfiguratorDraft = !cardIssuanceExistingCard;
-   setCardIssuanceCreateLoading(true);
+   if (loadingScope === 'default') {
+     setCardIssuanceCreateLoading(true);
+   }
    try {
+     const bonusRowsForPublish = opts?.bonusRulesOverride ?? cardIssuanceBonusRules;
+     const bonusPayloadForPublish = bonusRowsForPublish
+       .map((row) => cardIssuanceBonusRuleRowToPayload(row))
+       .filter(
+         (row): row is { paymentAmount: number; bonusValue: number; bonusProportional: boolean } => Boolean(row)
+       );
      const shareTokenMetadataForPublish = {
        name: metaName,
        minimumTopup: minTopupN,
@@ -9078,10 +9329,10 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
              displayName: cardIssuanceStoreDisplayName.trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
            }
          : {}),
-       ...(cardIssuanceBonusRulesPayload.length > 0
+       ...(bonusPayloadForPublish.length > 0
          ? {
-             bonusRule: cardIssuanceBonusRulesPayload[0],
-             bonusRules: cardIssuanceBonusRulesPayload,
+             bonusRule: bonusPayloadForPublish[0],
+             bonusRules: bonusPayloadForPublish,
            }
          : {}),
        ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
@@ -9091,16 +9342,55 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
      };
      const tierRuleUpgradeForPublish =
-       cardIssuanceTierRule === 'balance' ? (1 as const) : cardIssuanceTierRule === 'cumulative' ? (2 as const) : undefined;
+       tierRuleForPublish === 'balance'
+         ? (1 as const)
+         : tierRuleForPublish === 'cumulative'
+           ? (2 as const)
+           : undefined;
 
-     const res = cardIssuanceExistingCard?.cardAddress
-       ? await updateBeamioCardShareMetadata({
-           cardAddress: cardIssuanceExistingCard.cardAddress,
+     let res: { success: boolean; cardAddress?: string; hash?: string; error?: string };
+     if (cardIssuanceExistingCard?.cardAddress) {
+       if (tiersPayload && tiersPayload.length > 0) {
+         const pk = profiles?.[0]?.privateKeyArmor;
+         if (!pk) {
+           setCardIssuanceCreateError('Wallet key not available. Unlock your wallet to update tiers on-chain.');
+           return false;
+         }
+         const cardAddrNorm = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+         const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+         const chainOwner = await getCardOwner(cardAddrNorm);
+         if (ethers.getAddress(chainOwner) !== signerAddr) {
+           setCardIssuanceCreateError('Tier updates require the card owner wallet. Switch to the owner wallet or re-issue the program card.');
+           return false;
+         }
+         const chainTiers = tiersPayload.map((t) => ({
+           minUsdc6: t.minUsdc6,
+           attr: t.attr,
+           tierExpirySeconds: 0,
+         }));
+         const data = encodeSetTiers(chainTiers);
+         const deadline = Math.floor(Date.now() / 1000) + 3600;
+         const nonce = ethers.hexlify(ethers.randomBytes(32));
+         const ownerSignature = await signExecuteForOwner(pk, cardAddrNorm, data, deadline, nonce);
+         res = await updateBeamioCardTiers({
+           cardAddress: cardAddrNorm,
+           data,
+           deadline,
+           nonce,
+           ownerSignature,
            shareTokenMetadata: shareTokenMetadataForPublish,
-           ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
+           tiers: tiersPayload,
            ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
-         })
-       : await createBeamioCard({
+         });
+       } else {
+         res = await updateBeamioCardShareMetadata({
+             cardAddress: cardIssuanceExistingCard.cardAddress,
+             shareTokenMetadata: shareTokenMetadataForPublish,
+             ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
+           });
+       }
+     } else {
+       res = await createBeamioCard({
            cardOwner: owner,
            currency: CARD_ISSUANCE_BEAMIO_CURRENCY,
            unitPriceHuman: '1',
@@ -9108,6 +9398,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
            shareTokenMetadata: shareTokenMetadataForPublish,
            ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
          });
+     }
 
      if (res.success && res.cardAddress) {
        setCardIssuanceOnChainRefreshNonce((n) => n + 1);
@@ -9208,19 +9499,25 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
            }
          }
        })();
-     } else {
-       setCardIssuanceCreateError(res.error ?? 'Publish failed.');
+       return true;
      }
+     setCardIssuanceCreateError(res.error ?? 'Publish failed.');
+     return false;
    } catch (e: any) {
      setCardIssuanceCreateError(e?.message ?? String(e));
+     return false;
    } finally {
-     setCardIssuanceCreateLoading(false);
+     if (loadingScope === 'default') {
+       setCardIssuanceCreateLoading(false);
+     }
    }
- }, [
+ },
+ [
    profiles,
    cardIssuanceProgramName,
    cardIssuanceCurrencySymbol,
    cardIssuanceStoreDisplayName,
+   cardIssuanceBonusRules,
    cardIssuanceBonusRulesPayload,
    cardIssuanceTiers,
    cardIssuanceTierRule,
@@ -9233,8 +9530,67 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    cardIssuanceExistingCard,
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardConfiguratorDraftEoaKey,
-   buildCardIssuanceTiersPayload,
+   buildCardIssuanceTiersPayloadFromRows,
+   cardIssuanceRewardsPreset,
    navigate,
+ ]);
+
+ const submitCardIssuanceBonusRuleEditor = useCallback(async () => {
+   if (!cardIssuanceBonusRuleEditorPayload || cardIssuanceBonusRuleEditorValidationError) return;
+   const nextBonusRules = cardIssuanceEditingBonusRuleId
+     ? cardIssuanceBonusRules.map((row) =>
+         row.id === cardIssuanceEditingBonusRuleId
+           ? {
+               ...row,
+               paymentAmount: String(cardIssuanceBonusRuleEditorPayload.paymentAmount),
+               bonusValue: String(cardIssuanceBonusRuleEditorPayload.bonusValue),
+               bonusProportional: cardIssuanceBonusRuleBonusProportional,
+             }
+           : row
+       )
+     : [
+         ...cardIssuanceBonusRules,
+         makeCardIssuanceBonusRuleRow(
+           cardIssuanceBonusRuleEditorPayload.paymentAmount,
+           cardIssuanceBonusRuleEditorPayload.bonusValue,
+           cardIssuanceBonusRuleBonusProportional
+         ),
+       ];
+   if (!cardIssuanceExistingCard?.cardAddress) {
+     applyCardIssuanceBonusRuleEditor();
+     return;
+   }
+   setCardIssuanceBonusRuleEditorServerError('');
+   setCardIssuanceCreateError('');
+   setCardIssuanceBonusRuleEditorPublishing(true);
+   try {
+     const ok = await handlePublishCardIssuance({
+       bonusRulesOverride: nextBonusRules,
+       loadingScope: 'bonusEditor',
+     });
+     if (ok) {
+       setCardIssuanceBonusRules(nextBonusRules);
+       setCardIssuanceBonusRuleEditorOpen(false);
+       setCardIssuanceEditingBonusRuleId(null);
+     } else {
+       setCardIssuanceBonusRuleEditorServerError(
+         'Could not save bonus rules. Review the error below and try again.'
+       );
+     }
+   } catch {
+     setCardIssuanceBonusRuleEditorServerError('Could not save bonus rules. Please try again.');
+   } finally {
+     setCardIssuanceBonusRuleEditorPublishing(false);
+   }
+ }, [
+   applyCardIssuanceBonusRuleEditor,
+   cardIssuanceBonusRuleBonusProportional,
+   cardIssuanceBonusRuleEditorPayload,
+   cardIssuanceBonusRuleEditorValidationError,
+   cardIssuanceBonusRules,
+   cardIssuanceEditingBonusRuleId,
+   cardIssuanceExistingCard?.cardAddress,
+   handlePublishCardIssuance,
  ]);
 
  useEffect(() => {
@@ -9340,17 +9696,25 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      }
      if (typeof draft.bonusRuleBonusValue === 'string' && draft.bonusRuleBonusValue.trim()) {
        setCardIssuanceBonusRuleBonusValue(draft.bonusRuleBonusValue);
-     }
-     if (typeof draft.minTopup === 'string' && draft.minTopup.trim()) {
-       setCardIssuanceMinTopup(draft.minTopup);
-     }
+    }
+    const draftMinTopupRaw =
+      typeof draft.minTopup === 'string' && draft.minTopup.trim()
+        ? draft.minTopup.trim()
+        : '';
+    const draftMinTopupNormalized =
+      draftMinTopupRaw.replace(/,/g, '') === String(CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT)
+        ? String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
+        : draftMinTopupRaw;
+    if (draftMinTopupNormalized) {
+      setCardIssuanceMinTopup(draftMinTopupNormalized);
+    }
      if (typeof draft.maxTopup === 'string' && draft.maxTopup.trim()) {
        setCardIssuanceMaxTopup(draft.maxTopup);
      }
      if (draft.tierRule) {
        setCardIssuanceTierRule(draft.tierRule);
-     }
-     const mapDraftTier = (t: {
+    }
+    const mapDraftTier = (t: {
        id: string
        name: string
        preset: CardIssuanceTierPreset
@@ -9362,8 +9726,13 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      }): CardIssuanceTierRow => ({
        id: t.id,
        name: t.name,
-       preset: t.preset,
-       threshold: t.threshold,
+      preset: t.preset,
+      threshold:
+        t.id === CARD_ISSUANCE_SINGLE_TIER_ID &&
+        draftMinTopupRaw.replace(/,/g, '') === String(CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT) &&
+        t.threshold.replace(/,/g, '').trim() === String(CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT)
+          ? String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
+          : t.threshold,
        discountPercent: t.discountPercent,
        tierDescription: t.tierDescription,
        tierDescriptionOpen: t.tierDescriptionOpen,
@@ -9411,6 +9780,22 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        requestAnimationFrame(() => {
          setCardIssuanceCurrencySymbol(sym);
        });
+     }
+     if (draft.rewardsPreset === 'default') {
+       setCardIssuanceRewardsPreset('default');
+       setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
+       setCardIssuanceMaxTopup(String(CARD_ISSUANCE_MAX_TOPUP_MAX));
+       setCardIssuanceTierRule('single');
+       setTiersByLoyaltyRule((prev) => ({
+         ...prev,
+         single: reconcileTierThresholdsWithMinTopup(
+           defaultCardIssuanceTiers(),
+           String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
+         ),
+       }));
+       setCardIssuanceMobileStep(1);
+     } else if (draft.rewardsPreset === 'custom') {
+       setCardIssuanceRewardsPreset('custom');
      }
    }
    setCardConfiguratorDraftLoaded(true);
@@ -9486,6 +9871,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      mobileStep: cardIssuanceMobileStep,
      configuratorPreviewMode: cardIssuanceConfiguratorPreviewMode,
      previewTierId: cardIssuancePreviewTierId,
+     rewardsPreset: cardIssuanceRewardsPreset,
    });
  }, [
    cardConfiguratorDraftEoaKey,
@@ -9507,6 +9893,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    cardIssuanceMobileStep,
    cardIssuanceConfiguratorPreviewMode,
    cardIssuancePreviewTierId,
+   cardIssuanceRewardsPreset,
  ]);
 
  useEffect(() => {
@@ -9653,24 +10040,35 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
  useEffect(() => {
    if (activeTab !== 'Settings') {
      setSettingsBusinessProfileOverlayOpen(false);
+     setSettingsSecurityBackupOpen(false);
+     setSettingsPrivateKeyRevealOpen(false);
    }
  }, [activeTab]);
  useEffect(() => {
-   if (!settingsBusinessProfileOverlayOpen) return;
+   if (!settingsBusinessProfileOverlayOpen && !settingsSecurityBackupOpen) return;
    const prevOverflow = document.body.style.overflow;
    document.body.style.overflow = 'hidden';
    return () => {
      document.body.style.overflow = prevOverflow;
    };
- }, [settingsBusinessProfileOverlayOpen]);
+ }, [settingsBusinessProfileOverlayOpen, settingsSecurityBackupOpen]);
  useEffect(() => {
-   if (!settingsBusinessProfileOverlayOpen) return;
+   if (!settingsBusinessProfileOverlayOpen && !settingsSecurityBackupOpen) return;
    const onKey = (e: KeyboardEvent) => {
-     if (e.key === 'Escape') setSettingsBusinessProfileOverlayOpen(false);
+     if (e.key !== 'Escape') return;
+     if (settingsPrivateKeyRevealOpen) {
+       setSettingsPrivateKeyRevealOpen(false);
+       return;
+     }
+     if (settingsSecurityBackupOpen) {
+       setSettingsSecurityBackupOpen(false);
+       return;
+     }
+     setSettingsBusinessProfileOverlayOpen(false);
    };
    document.addEventListener('keydown', onKey);
    return () => document.removeEventListener('keydown', onKey);
- }, [settingsBusinessProfileOverlayOpen]);
+ }, [settingsBusinessProfileOverlayOpen, settingsSecurityBackupOpen, settingsPrivateKeyRevealOpen]);
  const settingsBusinessStoreNameInputValue = useMemo(
    () => businessProfileForm.storeName ?? displayName(beamio ?? undefined) ?? '',
    [businessProfileForm.storeName, beamio],
@@ -10268,6 +10666,7 @@ const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useS
  }, [membersOwnedPrograms]);
  /** Members & Loyalty: rows from `beamio.app/api/cardMemberTopups` (mode=directory), refreshed by feeder; cache keys include EOA */
  const [membersLoyaltyTopupRows, setMembersLoyaltyTopupRows] = useState<BizTopupMemberTableRow[]>([]);
+ const [membersMobileDirectTopupRows, setMembersMobileDirectTopupRows] = useState<BizTopupMemberTableRow[]>([]);
  const membersLoyaltyTopupRowsRef = useRef<BizTopupMemberTableRow[]>([]);
  useEffect(() => {
    membersLoyaltyTopupRowsRef.current = membersLoyaltyTopupRows;
@@ -10275,6 +10674,10 @@ const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useS
  useEffect(() => {
    if (membersLoyaltyTopupRows.length > 0) setDashboardActiveCardsDirectoryHint(null);
  }, [membersLoyaltyTopupRows.length]);
+ useEffect(() => {
+   if (activeTab !== 'MembersLoyalty') return;
+   setMembersMobileDirectTopupRows([]);
+ }, [activeTab, walletStoragePartitionLower]);
 useEffect(() => {
   const hintCard =
     staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)
@@ -10296,7 +10699,8 @@ useEffect(() => {
           const { members } = await fetchAllBeamioCardMemberDirectoryHttp(hintCard);
           return countRecentActiveMembersFromDirectoryServerOnly(members);
         },
-        60_000
+        60_000,
+        true
       );
       if (!cancelled) {
         setDashboardActiveCardsDirectoryHint(hintCount);
@@ -10317,7 +10721,8 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
  const [membersLoyaltyServerRollup, setMembersLoyaltyServerRollup] = useState<{
    totalTopupEvents: number
    totalRepeatTopupEvents: number
- }>({ totalTopupEvents: 0, totalRepeatTopupEvents: 0 });
+   totalMemberActivations: number
+ }>({ totalTopupEvents: 0, totalRepeatTopupEvents: 0, totalMemberActivations: 0 });
  /** Sum of `getGlobalStatsFull(..., 0, 0).cumulativeMint` across owned programs (token #0, 6 decimals) — BeamioUserCard readme GlobalStatsFullView; not from HTTP API */
  const [membersLoyaltyChainCumulativeMintDisplay, setMembersLoyaltyChainCumulativeMintDisplay] = useState<number | null>(null);
  const [membersLoyaltyProgramKey, setMembersLoyaltyProgramKey] = useState<string>('all');
@@ -10950,7 +11355,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setMembersOwnedPrograms(null);
      membersOwnedProgramsRef.current = null;
      setMembersLoyaltyTopupRows([]);
-     setMembersLoyaltyServerRollup({ totalTopupEvents: 0, totalRepeatTopupEvents: 0 });
+     setMembersLoyaltyServerRollup({ totalTopupEvents: 0, totalRepeatTopupEvents: 0, totalMemberActivations: 0 });
      setMembersLoyaltyChainCumulativeMintDisplay(null);
    }
    prevEoaRef.current = currentEoa;
@@ -11283,6 +11688,10 @@ useEffect(() => {
  const [resetTerminalLimitModal, setResetTerminalLimitModal] = useState<TerminalRecord | null>(null);
  const [resetTerminalLimitLoading, setResetTerminalLimitLoading] = useState(false);
  const [resetTerminalLimitError, setResetTerminalLimitError] = useState<string | null>(null);
+ /** Staff: Settlement clear — indexer TX_Terminal_RESET only；独立于 Reset Terminal Limit（链上 mint 计数清零）。 */
+ const [settlementClearModal, setSettlementClearModal] = useState<TerminalRecord | null>(null);
+ const [settlementClearLoading, setSettlementClearLoading] = useState(false);
+ const [settlementClearError, setSettlementClearError] = useState<string | null>(null);
  /** Staff tab: which terminal row has the ⋮ actions menu open */
  const [staffTerminalActionMenuOpenId, setStaffTerminalActionMenuOpenId] = useState<string | null>(null);
  /** POS chat `beamio_pos_terminal_permission_v1` queue (same localStorage as App.tsx inbound handler) */
@@ -11736,7 +12145,9 @@ const txQueryRootAddress = useMemo(() => {
 
  const walletMobileActivityPreview = useMemo(() => {
    const rows = transactionsFilteredForTable.filter(
-     (tx) => !txIsExcludedFromWalletMobileActivityPreview(tx, walletIssuerProgramCardsLower),
+     (tx) =>
+       txDisplayRowCurrencyFiatIsUsdc(tx) &&
+       !txIsExcludedFromWalletMobileActivityPreview(tx, walletIssuerProgramCardsLower),
    )
    rows.sort((a, b) => txDisplayRowTimestampSec(b) - txDisplayRowTimestampSec(a))
    return rows.slice(0, 3)
@@ -11747,6 +12158,16 @@ const txQueryRootAddress = useMemo(() => {
    const out: Record<string, string> = {}
    for (const term of terminals) {
      const label = terminalLastActivityLabelFromIndexerTxs(indexerTransactions, term)
+     if (label) out[term.id.toLowerCase()] = label
+   }
+   return out
+ }, [indexerTransactions, terminals])
+
+ /** Staff Active Terminals: latest Settlement clear (`TX_Terminal_RESET`, payee = terminal EOA). */
+ const staffTerminalSettlementClearFromLedger = useMemo(() => {
+   const out: Record<string, string> = {}
+   for (const term of terminals) {
+     const label = terminalSettlementClearLabelFromIndexerTxs(indexerTransactions, term)
      if (label) out[term.id.toLowerCase()] = label
    }
    return out
@@ -12913,15 +13334,31 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
  const membersLoyaltyBgActiveRef = useRef(true);
  /** Latest directory merge tick — used to re-run fetch when opening Members (avoid stale empty bundle wiping rows). */
  const membersLoyaltyDirectoryTickRef = useRef<(() => Promise<void>) | null>(null);
+/** Owner-cards discovery is slow-path: refresh in background, never block current Members tick. */
+const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
  useEffect(() => {
    membersLoyaltyBgActiveRef.current = true;
    const tick = async () => {
-     if (!membersLoyaltyBgActiveRef.current || !profiles?.[0]) return;
+    if (!membersLoyaltyBgActiveRef.current) return;
+    const primaryProfile = profiles?.[0];
      const account =
-       membersBizViewerResolvedForCache(profiles[0].keyID, myAddress, fixedCardMetadata?.cardOwner) ??
+      membersBizViewerResolvedForCache(primaryProfile?.keyID, myAddress, fixedCardMetadata?.cardOwner) ??
+      (currentEoa && ethers.isAddress(currentEoa) ? ethers.getAddress(currentEoa) : null) ??
        (feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : null);
      if (!account) return;
-     const walletPartition = bizWalletStoragePartitionLower(profiles[0].keyID, myAddress);
+    const walletPartition = bizWalletStoragePartitionLower(primaryProfile?.keyID, myAddress);
+    const cardsQueryProfile =
+      primaryProfile ??
+      ({
+        keyID: account,
+        aaAccount: account,
+        issuedCards: membersOwnedProgramsToUserCardInfoForTopup(membersOwnedProgramsRef.current ?? []),
+      } as {
+        aaAccount?: string | null;
+        keyID?: string | null;
+        privateKeyArmor?: string | null;
+        issuedCards?: UserCardInfo[];
+      });
      const membersOwnedProgramsCacheKey =
        walletPartition && account && ethers.isAddress(account)
          ? `eoa:${walletPartition}:biz:members-owned-programs:v1:${ethers.getAddress(account).toLowerCase()}`
@@ -12929,116 +13366,103 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      const cachedMembersOwnedPrograms = membersOwnedProgramsCacheKey
        ? loadTrustedCache<MembersOwnedProgramOverviewRow[]>(membersOwnedProgramsCacheKey)
        : null;
-     let ownedCardsForTopupMerge: UserCardInfo[] = [];
-     let programOverviewRows: MembersOwnedProgramOverviewRow[] =
-       membersOwnedProgramsRef.current ?? [];
+    let programOverviewRows: MembersOwnedProgramOverviewRow[] =
+      (membersOwnedProgramsRef.current && membersOwnedProgramsRef.current.length > 0)
+        ? membersOwnedProgramsRef.current
+        : (cachedMembersOwnedPrograms ?? []);
+    if (membersOwnedProgramsRef.current == null && cachedMembersOwnedPrograms != null) {
+      setMembersOwnedPrograms(cachedMembersOwnedPrograms);
+      membersOwnedProgramsRef.current = cachedMembersOwnedPrograms;
+    }
+    let ownedCardsForTopupMerge: UserCardInfo[] = membersOwnedProgramsToUserCardInfoForTopup(programOverviewRows);
 
-     await globalFetchQueue;
-     try {
-       const p0 = profiles[0];
-       const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
-       ownedCardsForTopupMerge = cards ?? [];
-       if (!membersLoyaltyBgActiveRef.current) return;
-       if (!trusted && (!cards || cards.length === 0)) {
-         if (cachedMembersOwnedPrograms != null) {
-           if (!membersLoyaltyBgActiveRef.current) return;
-           setMembersOwnedPrograms(cachedMembersOwnedPrograms);
-           programOverviewRows = cachedMembersOwnedPrograms;
-           ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
-         }
-       } else if (!cards || cards.length === 0) {
-         if (!membersLoyaltyBgActiveRef.current) return;
-         setMembersOwnedPrograms([]);
-         programOverviewRows = [];
-         setMembersLoyaltyChainCumulativeMintDisplay(0);
-        setActiveCardsCount(0);
-        if (activeCardsTrustedCacheKey) saveTrustedCache(activeCardsTrustedCacheKey, 0);
-         if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, []);
-         if (walletPartition && account && ethers.isAddress(account)) {
-           saveMembersLoyaltyDirectoryBundleTrusted(walletPartition, ethers.getAddress(account).toLowerCase(), {
-             topupRows: [],
-             serverRollup: { totalTopupEvents: 0, totalRepeatTopupEvents: 0 },
-             chainCumulativeMintDisplay: 0,
-            activeCardsCount: 0,
-           });
-         }
-       } else {
-         const rows: MembersOwnedProgramOverviewRow[] = [];
-         for (const uc of cards) {
-           if (!membersLoyaltyBgActiveRef.current) break;
-           const addr = ethers.getAddress(uc.cardAddress);
-           const cRead = new ethers.Contract(addr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
-           let ownerAddr = ethers.getAddress(account);
-           try {
-             const o = (await cRead.owner()) as string;
-             if (o && ethers.isAddress(o)) ownerAddr = ethers.getAddress(o);
-           } catch {
-             /* keep fallback */
-           }
-           let meta: CardMetadataFromUri | null = null;
-           try {
-             meta =
-               (await getCardMetadataFromApi(addr)) ??
-               (await getCardMetadataFrom1155Json(addr)) ??
-               (await getCardMetadataFromUri(addr));
-           } catch {
-             meta = null;
-           }
-           const programName =
-             (typeof meta?.name === 'string' && meta.name.trim()) ||
-             (typeof uc.name === 'string' && uc.name.trim()) ||
-             `Program ${fmtAddr(addr)}`;
-           const image = typeof meta?.image === 'string' ? meta.image : undefined;
-           let ownerDisplayName = '';
-           let ownerAccountName = '';
-           let ownerImage: string | undefined;
-           try {
-             const res = await searchUsername(ownerAddr);
-             const peer = res?.results?.[0] as Parameters<typeof displayName>[0] | undefined;
-             if (peer) {
-               ownerDisplayName = displayName(peer);
-               ownerAccountName = String(
-                 (peer as { accountName?: string; username?: string }).accountName ??
-                   (peer as { username?: string }).username ??
-                   ''
-               ).replace(/^@/, '');
-               ownerImage = typeof (peer as { image?: string }).image === 'string' ? (peer as { image: string }).image : undefined;
-             }
-           } catch {
-             /* ignore */
-           }
-           let issuedLifetime: number | null = null;
-           try {
-             const gs = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
-             if (gs) issuedLifetime = amountE6ToDisplayNumber(gs.cumulativeIssued);
-           } catch {
-             /* ignore */
-           }
-           rows.push({
-             cardAddress: addr,
-             programName,
-             image,
-             ownerAddress: ownerAddr,
-             currency: uc.currency,
-             ownerDisplayName,
-             ownerAccountName,
-             ownerImage,
-             issuedLifetime,
-           });
-         }
-         if (!membersLoyaltyBgActiveRef.current) return;
-         setMembersOwnedPrograms(rows);
-         programOverviewRows = rows;
-         if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, rows);
-       }
-     } catch {
-       if (!membersLoyaltyBgActiveRef.current) return;
-       if (cachedMembersOwnedPrograms != null) {
-         setMembersOwnedPrograms(cachedMembersOwnedPrograms);
-         programOverviewRows = cachedMembersOwnedPrograms;
-         ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(cachedMembersOwnedPrograms);
-       }
-     }
+    /** Slow-path discovery of newly added owner cards (monotonic increase) — do not block current tick. */
+    if (!membersOwnerCardsRefreshInFlightRef.current) {
+      membersOwnerCardsRefreshInFlightRef.current = (async () => {
+        try {
+          const { cards, trusted } = await Promise.race([
+            getCardsOfOwnerWithDetailsForProfile(cardsQueryProfile),
+            rejectMembersOwnerCardsFetchAfter(MEMBERS_OWNER_CARDS_FETCH_TIMEOUT_MS),
+          ]) as Awaited<ReturnType<typeof getCardsOfOwnerWithDetailsForProfile>>;
+          if (!membersLoyaltyBgActiveRef.current) return;
+          if (!trusted || !cards || cards.length === 0) return;
+          const rows: MembersOwnedProgramOverviewRow[] = [];
+          for (const uc of cards) {
+            if (!membersLoyaltyBgActiveRef.current) break;
+            const addr = ethers.getAddress(uc.cardAddress);
+            const cRead = new ethers.Contract(addr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+            let ownerAddr = ethers.getAddress(account);
+            try {
+              const o = (await cRead.owner()) as string;
+              if (o && ethers.isAddress(o)) ownerAddr = ethers.getAddress(o);
+            } catch {
+              /* keep fallback */
+            }
+            let meta: CardMetadataFromUri | null = null;
+            try {
+              meta =
+                (await getCardMetadataFromApi(addr)) ??
+                (await getCardMetadataFrom1155Json(addr)) ??
+                (await getCardMetadataFromUri(addr));
+            } catch {
+              meta = null;
+            }
+            const programName =
+              (typeof meta?.name === 'string' && meta.name.trim()) ||
+              (typeof uc.name === 'string' && uc.name.trim()) ||
+              `Program ${fmtAddr(addr)}`;
+            const image = typeof meta?.image === 'string' ? meta.image : undefined;
+            let ownerDisplayName = '';
+            let ownerAccountName = '';
+            let ownerImage: string | undefined;
+            try {
+              const res = await searchUsername(ownerAddr);
+              const peer = res?.results?.[0] as Parameters<typeof displayName>[0] | undefined;
+              if (peer) {
+                ownerDisplayName = displayName(peer);
+                ownerAccountName = String(
+                  (peer as { accountName?: string; username?: string }).accountName ??
+                    (peer as { username?: string }).username ??
+                    ''
+                ).replace(/^@/, '');
+                ownerImage = typeof (peer as { image?: string }).image === 'string' ? (peer as { image: string }).image : undefined;
+              }
+            } catch {
+              /* ignore */
+            }
+            let issuedLifetime: number | null = null;
+            try {
+              const gs = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+              if (gs) issuedLifetime = amountE6ToDisplayNumber(gs.cumulativeIssued);
+            } catch {
+              /* ignore */
+            }
+            rows.push({
+              cardAddress: addr,
+              programName,
+              image,
+             ...(meta?.tiers?.length ? { tiers: meta.tiers } : {}),
+              ownerAddress: ownerAddr,
+              currency: uc.currency,
+              ownerDisplayName,
+              ownerAccountName,
+              ownerImage,
+              issuedLifetime,
+            });
+          }
+          if (!membersLoyaltyBgActiveRef.current || rows.length === 0) return;
+          setMembersOwnedPrograms(rows);
+          membersOwnedProgramsRef.current = rows;
+          if (membersOwnedProgramsCacheKey) saveTrustedCache(membersOwnedProgramsCacheKey, rows);
+        } catch (e) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('[membersLoyalty:daemon] owner-cards background refresh timeout/failure; keep known cards', e);
+          }
+        } finally {
+          membersOwnerCardsRefreshInFlightRef.current = null;
+        }
+      })();
+    }
 
      if (
        ownedCardsForTopupMerge.length === 0 &&
@@ -13049,6 +13473,49 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        ownedCardsForTopupMerge = membersOwnedProgramsToUserCardInfoForTopup(membersOwnedProgramsRef.current);
        programOverviewRows = membersOwnedProgramsRef.current;
      }
+
+    const addMembersTickFallbackCard = (cardAddress: string | null | undefined, name?: string, currency?: string) => {
+      if (!cardAddress || !ethers.isAddress(cardAddress)) return;
+      const norm = ethers.getAddress(cardAddress);
+      const lower = norm.toLowerCase();
+      if (ownedCardsForTopupMerge.some((c) => ethers.getAddress(c.cardAddress).toLowerCase() === lower)) return;
+      const programName = name?.trim() || `Program ${fmtAddr(norm)}`;
+      const cardCurrency = currency?.trim() || cardIssuanceExistingCard?.userCard?.currency || 'CAD';
+      ownedCardsForTopupMerge.push({
+        cardAddress: norm,
+        name: programName,
+        currency: cardCurrency,
+        priceE6: '1000000',
+        ptsPer1Currency: '1',
+      });
+      if (!programOverviewRows.some((p) => p.cardAddress.toLowerCase() === lower)) {
+        programOverviewRows = [
+          ...programOverviewRows,
+          {
+            cardAddress: norm,
+            programName,
+            ownerAddress: ethers.getAddress(account),
+            currency: cardCurrency,
+            ownerDisplayName: '',
+            ownerAccountName: '',
+            issuedLifetime: null,
+          },
+        ];
+      }
+    };
+
+    addMembersTickFallbackCard(
+      membersLoyaltyProgramKey !== 'all' ? membersLoyaltyProgramKey : undefined,
+      'Selected Program',
+      undefined
+    );
+    addMembersTickFallbackCard(staffProgramBeamioCardAddress, fixedCardMetadata?.name || 'Current Program', undefined);
+    addMembersTickFallbackCard(merchantOwnCardAddress, fixedCardMetadata?.name || 'Current Program', undefined);
+    addMembersTickFallbackCard(
+      cardIssuanceExistingCard?.cardAddress,
+      cardIssuanceExistingCard?.meta?.name || cardIssuanceExistingCard?.userCard?.name || 'Current Program',
+      cardIssuanceExistingCard?.userCard?.currency
+    );
 
      if (account && ethers.isAddress(account) && ownedCardsForTopupMerge.length > 0) {
        try {
@@ -13070,7 +13537,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              const g = await callGetGlobalStatsFullParsed(addrG, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
              if (!g) throw new Error('getGlobalStatsFull parse');
              return g.cumulativeMint.toString();
-           }).catch(() => null as string | null);
+          }, FETCH_TTL_MS, true).catch(() => null as string | null);
            if (!membersLoyaltyBgActiveRef.current) break;
            if (mintStr == null) continue;
            sumChainCumulativeMint += BigInt(mintStr);
@@ -13079,6 +13546,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          const merged: BizTopupMemberTableRow[] = [];
          let sumTopupEvents = 0;
          let sumRepeatTopupEvents = 0;
+        let sumMemberActivations = 0;
          for (const uc of ownedCardsForTopupMerge) {
            if (!membersLoyaltyBgActiveRef.current) break;
            const addr = ethers.getAddress(uc.cardAddress);
@@ -13088,20 +13556,29 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
              (typeof uc.name === 'string' && uc.name.trim()) ||
              `Program ${fmtAddr(addr)}`;
            const cacheKeyRollup = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:rollup:${cardLower}`;
-           const rollup = await fetchWithCache(cacheKeyRollup, () => fetchBeamioCardMemberTopupRollupHttp(addr));
+          const rollup = await fetchWithCache(
+            cacheKeyRollup,
+            () => fetchBeamioCardMemberTopupRollupHttp(addr),
+            MEMBERS_DIRECTORY_MEM_CACHE_TTL_MS,
+            true
+          );
            if (!membersLoyaltyBgActiveRef.current) break;
            sumTopupEvents += Number(rollup.totalTopupCount) || 0;
            sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
+           sumMemberActivations += (Number(rollup.nfcActivationCount) || 0) + (Number(rollup.appActivationCount) || 0);
            const cacheKeyMembers = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:directoryAll:v1:${cardLower}`;
-           const { members, total } = await fetchWithCache(cacheKeyMembers, () =>
-             fetchAllBeamioCardMemberDirectoryHttp(addr)
+          const { members, total } = await fetchWithCache(
+            cacheKeyMembers,
+            () => fetchAllBeamioCardMemberDirectoryHttp(addr),
+            MEMBERS_DIRECTORY_MEM_CACHE_TTL_MS,
+            true
            );
           const topAdminForCard =
             programOverviewRows.find((p) => p.cardAddress.toLowerCase() === cardLower)?.ownerAddress ?? account;
           const cacheKeyRecentActive = `eoa:${membersFetchPartition}:card:${cardLower}:dashboard:active90d:v1:${topAdminForCard.toLowerCase()}`;
           const recentActiveAccountKeys = await fetchWithCache(cacheKeyRecentActive, () =>
             fetchRecentActiveAccountKeysForDashboard(addr, topAdminForCard, conetDepinProvider)
-          ).catch(() => [] as string[]);
+          , FETCH_TTL_MS, true).catch(() => [] as string[]);
           const recentActiveSet = new Set(recentActiveAccountKeys.map((a) => a.toLowerCase()));
           const aliasToScopedKey = new Map<string, string>();
            if (!membersLoyaltyBgActiveRef.current) break;
@@ -13147,9 +13624,19 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
                /* ignore */
              }
             const cacheKeyBalance = `eoa:${membersFetchPartition}:card:${cardLower}:holder:${balanceAccount.toLowerCase()}:balance0:v1`;
-            const currentBalance = await fetchWithCache(cacheKeyBalance, () =>
-              fetchBeamioUserCardToken0BalanceDisplay(addr, balanceAccount, baseRpcProviderDirect)
-            ).catch(() => null as number | null);
+            let currentBalance: number | null = null;
+            /** Dashboard KPI path should stay responsive: skip expensive holder balance RPC unless user is actually on `/Members`. */
+            if (activeTab === 'MembersLoyalty') {
+              currentBalance = await Promise.race<number | null>([
+                fetchWithCache(
+                  cacheKeyBalance,
+                  () => fetchBeamioUserCardToken0BalanceDisplay(addr, balanceAccount, baseRpcProviderDirect),
+                  FETCH_TTL_MS,
+                  true
+                ),
+                rejectMembersBalanceFetchAfter(MEMBERS_BALANCE_FETCH_TIMEOUT_MS),
+              ]).catch(() => null as number | null);
+            }
             const hasStoredValue = currentBalance != null && Number.isFinite(currentBalance) && currentBalance > 0;
             const hasRecentTopup = lastTs > 0 && lastTs >= activeSinceSec;
             const hasRecentChargeOrTopup = recentActiveSet.has(eoaLower) || (!!aaLower && recentActiveSet.has(aaLower));
@@ -13195,6 +13682,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
          const rollupAgg = {
            totalTopupEvents: sumTopupEvents,
            totalRepeatTopupEvents: sumRepeatTopupEvents,
+           totalMemberActivations: sumMemberActivations,
          };
          setMembersLoyaltyTopupRows(merged);
          setMembersLoyaltyServerRollup(rollupAgg);
@@ -13235,6 +13723,15 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    walletStoragePartitionLower,
   activeCardsTrustedCacheKey,
   fixedCardMetadata?.cardOwner,
+  fixedCardMetadata?.name,
+  membersLoyaltyProgramKey,
+  activeTab,
+  staffProgramBeamioCardAddress,
+  merchantOwnCardAddress,
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta?.name,
+  cardIssuanceExistingCard?.userCard?.name,
+  cardIssuanceExistingCard?.userCard?.currency,
  ]);
 
  /** Opening Members: bust per-card directory cache (stale empty snapshot), then merge from API. */
@@ -13245,6 +13742,61 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
    }
    void membersLoyaltyDirectoryTickRef.current?.();
  }, [activeTab, walletStoragePartitionLower]);
+
+/** Dashboard Top-ups changed: force one Members sync so Total Members updates without entering `/Members`. */
+const membersSyncTopupSignalRef = useRef<string>('');
+useEffect(() => {
+  const signal = `${todayTopupSnapshot.count}:${todayTopupSnapshot.total.toFixed(6)}:${todayTopupDirectSnapshot.count}:${todayTopupDirectSnapshot.total.toFixed(6)}`;
+  if (!membersSyncTopupSignalRef.current) {
+    membersSyncTopupSignalRef.current = signal;
+    return;
+  }
+  if (membersSyncTopupSignalRef.current === signal) return;
+  membersSyncTopupSignalRef.current = signal;
+  if (walletStoragePartitionLower) {
+    invalidateFetchCache(`eoa:${walletStoragePartitionLower}:beamio:cardMemberTopups:rollup:`);
+    invalidateFetchCache(`eoa:${walletStoragePartitionLower}:beamio:cardMemberTopups:directoryAll:v1:`);
+  }
+  void membersLoyaltyDirectoryTickRef.current?.();
+}, [
+  todayTopupSnapshot.count,
+  todayTopupSnapshot.total,
+  todayTopupDirectSnapshot.count,
+  todayTopupDirectSnapshot.total,
+  overviewActivityTopupDisplayCount,
+  overviewActivityTopupDisplayTotal,
+  walletStoragePartitionLower,
+]);
+
+/** While staying on Dashboard, keep Members KPI ticking every 6s (no tab switch required). */
+const membersDashboardTickInFlightRef = useRef(false);
+useEffect(() => {
+  if (activeTab !== 'Overview') return;
+  let cancelled = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const loop = async () => {
+    if (cancelled) return;
+    if (!membersDashboardTickInFlightRef.current) {
+      membersDashboardTickInFlightRef.current = true;
+      try {
+        await membersLoyaltyDirectoryTickRef.current?.();
+      } catch {
+        /* keep last trusted Members state on failure */
+      } finally {
+        membersDashboardTickInFlightRef.current = false;
+      }
+    }
+    if (cancelled) return;
+    timeoutId = setTimeout(() => {
+      void loop();
+    }, 6_000) as ReturnType<typeof setTimeout>;
+  };
+  void loop();
+  return () => {
+    cancelled = true;
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  };
+}, [activeTab]);
 
  /** Unified Base overview feeder: one batch per **CoNET L1 new block**（Daemon 全局守护，全 Merchant OS 生命周期内持续刷新，不限当前 Tab）。 */
  const feederInProgressRef = useRef(false);
@@ -14578,6 +15130,17 @@ const isCardConfiguratorMobileShell = useMemo(
   ]
 );
 
+/** Programs mobile top chrome and the global mobile bar are mutually exclusive. */
+const mediumMenuPageUsesGlobalOnly = isMediumMerchantViewport && activeTab !== 'Overview';
+/** On tablet (701–1023px, below `lg`), `mediumMenuPageUsesGlobalOnly` hides Programs chrome but previously left the global floating bar visible; Card Configurator / Ket welcome already provide a fixed top bar — hide the duplicate global menu+search+tag strip. */
+const programsMobileTopNavVisible =
+  (activeTab === 'Card Issuance Setup' || ketNoCardProgramsEligible) &&
+  isCardConfiguratorMobileViewport &&
+  (!mediumMenuPageUsesGlobalOnly ||
+    isCardConfiguratorMobileShell ||
+    showCardIssuanceKetWelcomeCover) &&
+  (isCardConfiguratorMobileShell || showCardIssuanceKetWelcomeCover);
+
  const handleCardIssuanceKetWelcomeStartDesigning = useCallback(() => {
    setCardIssuanceKetWelcomeCoverDismissed(true);
    setCardIssuanceActiveProgramView('configure');
@@ -14656,31 +15219,29 @@ const isCardConfiguratorMobileShell = useMemo(
  const useTerminalsMarketLayout =
    isTerminalsMarketRoute || (isCardConfiguratorMobileViewport && activeTab === 'Staff');
  const hideMobileFloatingBar =
-  !showMobileMerchantFloatingBar ||
-  showBizFirstMembershipOnboarding ||
-  (useTerminalsMarketLayout && activeTab === 'Staff');
- /** Wallet tab: Vault EOA USDC → CAD headline (oracle). */
+ !showMobileMerchantFloatingBar ||
+ (showBizFirstMembershipOnboarding && activeTab !== 'Card Issuance Setup') ||
+ settingsSecurityBackupOpen ||
+ (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff');
+ /** Wallet tab: use global daemon EOA USDC balance; this panel must not self-fetch. */
  const walletTreasuryCadPrimary = useMemo(() => {
-   if (eoaUsdcBalance == null || eoaUsdcBalance === '') return '—';
-   const usdc = Number(eoaUsdcBalance);
+   const usdc = Number(usdcbalance);
    if (!Number.isFinite(usdc)) return '—';
    const rate = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
    if (!Number.isFinite(rate) || rate <= 0) return '—';
    const cad = usdc / rate;
    return `C$${cad.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
- }, [eoaUsdcBalance, oracleCadUsdc]);
+ }, [oracleCadUsdc, usdcbalance]);
  const walletTreasuryUsdcSecondary = useMemo(() => {
-   if (eoaUsdcBalance == null || eoaUsdcBalance === '') return '≈ — USDC';
-   const usdc = Number(eoaUsdcBalance);
+   const usdc = Number(usdcbalance);
    if (!Number.isFinite(usdc)) return '≈ — USDC';
    return `≈ ${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
- }, [eoaUsdcBalance]);
+ }, [usdcbalance]);
  const walletVaultUsdcBoldLine = useMemo(() => {
-   if (eoaUsdcBalance == null || eoaUsdcBalance === '') return '—';
-   const usdc = Number(eoaUsdcBalance);
+   const usdc = Number(usdcbalance);
    if (!Number.isFinite(usdc)) return '—';
    return `${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
- }, [eoaUsdcBalance]);
+ }, [usdcbalance]);
  const walletMerchantTagAt = useMemo(() => {
    const t = merchantOwnerProfile?.username?.trim() || merchantOwnerProfile?.accountName?.trim() || '';
    const base = t.replace(/^@/, '');
@@ -14692,7 +15253,19 @@ const isCardConfiguratorMobileShell = useMemo(
    const seed = merchantOwnerProfile?.username ?? merchantOwnerProfile?.accountName ?? profiles?.[0]?.keyID ?? 'beamio';
    return getImg(seed);
  }, [merchantOwnerProfile?.image, merchantOwnerProfile?.username, merchantOwnerProfile?.accountName, profiles?.[0]?.keyID]);
- const topupMemberTableRowsAll = useMemo((): BizTopupMemberTableRow[] => membersLoyaltyTopupRows, [membersLoyaltyTopupRows]);
+ const topupMemberTableRowsAll = useMemo((): BizTopupMemberTableRow[] => {
+   if (membersMobileDirectTopupRows.length === 0) return membersLoyaltyTopupRows;
+   const byKey = new Map<string, BizTopupMemberTableRow>();
+   for (const row of membersLoyaltyTopupRows) {
+     byKey.set(`${row.cardLower}:${row.memberAddress.toLowerCase()}`, row);
+   }
+   for (const row of membersMobileDirectTopupRows) {
+     const key = `${row.cardLower}:${row.memberAddress.toLowerCase()}`;
+     const existing = byKey.get(key);
+     byKey.set(key, existing ? { ...row, ...existing } : row);
+   }
+   return [...byKey.values()];
+ }, [membersLoyaltyTopupRows, membersMobileDirectTopupRows]);
 
  const membersTopupDirectoryFiltered = useMemo(() => {
    const q = membersLoyaltySearch.trim().toLowerCase();
@@ -14734,6 +15307,21 @@ const isCardConfiguratorMobileShell = useMemo(
    return filterDirectoryRowsByInclusiveChannel(membersMobileDirectorySorted, memberDirectoryUserTypeDb);
  }, [membersMobileDirectorySorted, memberDirectoryUserTypeDb]);
 
+ const membersRewardTierInfoByCardLower = useMemo(() => {
+   const map = new Map<string, MembersRewardTierInfo>();
+   for (const program of membersOwnedPrograms ?? []) {
+     if (!program.cardAddress || !ethers.isAddress(program.cardAddress)) continue;
+     const info = resolveMembersRewardTierInfo(program.tiers);
+     if (info) map.set(ethers.getAddress(program.cardAddress).toLowerCase(), info);
+   }
+   const currentCard = cardIssuanceExistingCard?.cardAddress;
+   if (currentCard && ethers.isAddress(currentCard)) {
+     const info = resolveMembersRewardTierInfo(cardIssuanceExistingCard?.meta?.tiers);
+     if (info) map.set(ethers.getAddress(currentCard).toLowerCase(), info);
+   }
+   return map;
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.tiers, membersOwnedPrograms]);
+
  /** Mirrors daemon `activeCardScopedKeys` (stored value OR lookback top-up); used when `activeCardsCount` is stale `0` from cache / `??` bug. */
  const dashboardActiveCardsRowDerivedCount = useMemo(() => {
    const since = Math.floor(Date.now() / 1000) - ACTIVE_CARDS_LOOKBACK_DAYS * 24 * 3600;
@@ -14760,7 +15348,13 @@ const isCardConfiguratorMobileShell = useMemo(
  const membersTopupKpisAll = useMemo(() => {
    /** `activeCardsCount === 0` is a valid number: `?? topupMemberTableRowsAll.length` wrongly kept 0 instead of falling back. Prefer max with row-derived active (indexer-only actives may still exceed rows). */
    const directoryHint = topupMemberTableRowsAll.length === 0 ? (dashboardActiveCardsDirectoryHint ?? 0) : 0;
-   const count = Math.max(activeCardsCount ?? 0, dashboardActiveCardsRowDerivedCount, directoryHint);
+  const count = Math.max(
+    activeCardsCount ?? 0,
+    dashboardActiveCardsRowDerivedCount,
+    directoryHint,
+    membersLoyaltyServerRollup.totalMemberActivations ?? 0,
+    topupMemberTableRowsAll.length
+  );
    return {
     count,
      /** `getGlobalStatsFull.cumulativeMint` summed across owned programs (÷1e6); see BeamioUserCard readme */
@@ -14816,38 +15410,28 @@ const isCardConfiguratorMobileShell = useMemo(
  }, [membersDirectoryDetailRow, membersLoyaltyProgramKey, membersDirectorySegment, memberDirectoryUserTypeDb]);
 
  const membersMobileTopSpenderRow = useMemo(() => {
-   const rows = membersMobileDirectorySegmentRows;
+  const rows = membersMobileDirectorySorted;
    if (!rows.length) return null;
-   let best = rows[0];
-  let bestTier = directoryMemberTierFromPoints(directoryMemberPointsHuman(best));
-  let bestPts = directoryMemberPointsHuman(best);
-  let bestLastSeen = best.lastSeenTs || 0;
-   for (let i = 1; i < rows.length; i++) {
-     const r = rows[i];
-    const tier = directoryMemberTierFromPoints(directoryMemberPointsHuman(r));
-     const p = directoryMemberPointsHuman(r);
-    const lastSeen = r.lastSeenTs || 0;
-    if (
-      Number(tier.gold) > Number(bestTier.gold) ||
-      (tier.gold === bestTier.gold && (p > bestPts || (p === bestPts && lastSeen > bestLastSeen)))
-    ) {
-       best = r;
-      bestTier = tier;
-       bestPts = p;
-      bestLastSeen = lastSeen;
+   let best: BizTopupMemberTableRow | null = null;
+   let bestBalance = Number.NEGATIVE_INFINITY;
+   let bestLastSeen = 0;
+   for (const row of rows) {
+     const tierInfo = membersRewardTierInfoByCardLower.get(row.cardLower);
+     if (!memberRowReachedHighestRewardTier(row, tierInfo ?? null)) continue;
+     const balance = row.currentCardToken0Balance ?? 0;
+     const lastSeen = row.lastSeenTs || 0;
+     if (!best || balance > bestBalance || (balance === bestBalance && lastSeen > bestLastSeen)) {
+       best = row;
+       bestBalance = balance;
+       bestLastSeen = lastSeen;
      }
    }
-   if (bestPts <= 0) return null;
    return best;
- }, [membersMobileDirectorySegmentRows]);
+}, [membersMobileDirectorySorted, membersRewardTierInfoByCardLower]);
 
  const membersMobileListExcludingFeatured = useMemo(() => {
-   const ts = membersMobileTopSpenderRow;
-   if (!ts) return membersMobileDirectorySegmentRows;
-   const key = (r: BizTopupMemberTableRow) => `${r.cardLower}-${r.memberAddress.toLowerCase()}`;
-   const tsKey = key(ts);
-   return membersMobileDirectorySegmentRows.filter((r) => key(r) !== tsKey);
- }, [membersMobileDirectorySegmentRows, membersMobileTopSpenderRow]);
+  return membersMobileDirectorySorted;
+}, [membersMobileDirectorySorted]);
 
  useEffect(() => {
    setMembersMobileListCap(8);
@@ -14899,9 +15483,11 @@ const isCardConfiguratorMobileShell = useMemo(
        if (coerced.length === 0 && prev.length > 0) return prev;
        return coerced;
      });
-     setMembersLoyaltyServerRollup(
-       bundle.serverRollup ?? { totalTopupEvents: 0, totalRepeatTopupEvents: 0 },
-     );
+    setMembersLoyaltyServerRollup({
+      totalTopupEvents: bundle.serverRollup?.totalTopupEvents ?? 0,
+      totalRepeatTopupEvents: bundle.serverRollup?.totalRepeatTopupEvents ?? 0,
+      totalMemberActivations: bundle.serverRollup?.totalMemberActivations ?? 0,
+    });
      if (bundle.chainCumulativeMintDisplay !== undefined) {
        setMembersLoyaltyChainCumulativeMintDisplay(bundle.chainCumulativeMintDisplay);
      }
@@ -14920,43 +15506,109 @@ const isCardConfiguratorMobileShell = useMemo(
 /** Mobile-first fallback: if the heavy merged daemon has not populated rows yet, seed Members from direct directory API pages. */
 useEffect(() => {
   if (activeTab !== 'MembersLoyalty') return;
-  if (membersLoyaltyTopupRows.length > 0) return;
-  const fallbackPrograms: Array<{ cardAddress: string; programName: string; currency?: string }> =
-    (membersOwnedPrograms ?? [])
-      .filter((p) => p.cardAddress && ethers.isAddress(p.cardAddress))
-      .map((p) => ({
-        cardAddress: ethers.getAddress(p.cardAddress),
-        programName: p.programName,
-        currency: p.currency,
-      })) ??
-    [];
-  if (fallbackPrograms.length === 0 && staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)) {
+  let fallbackPrograms: Array<{ cardAddress: string; programName: string; currency?: string }> = [];
+  const addFallbackProgram = (cardAddress: string | null | undefined, programName?: string, currency?: string) => {
+    if (!cardAddress || !ethers.isAddress(cardAddress)) return;
+    const norm = ethers.getAddress(cardAddress);
+    const lower = norm.toLowerCase();
+    if (fallbackPrograms.some((p) => ethers.getAddress(p.cardAddress).toLowerCase() === lower)) return;
     fallbackPrograms.push({
-      cardAddress: ethers.getAddress(staffProgramBeamioCardAddress),
-      programName: fixedCardMetadata?.name || 'Current Program',
-      currency: undefined,
+      cardAddress: norm,
+      programName: programName?.trim() || `Program ${fmtAddr(norm)}`,
+      currency,
     });
+  };
+  for (const p of membersOwnedPrograms ?? []) {
+    addFallbackProgram(p.cardAddress, p.programName, p.currency);
   }
-  if (fallbackPrograms.length === 0) return;
+  addFallbackProgram(
+    membersLoyaltyProgramKey !== 'all' ? membersLoyaltyProgramKey : undefined,
+    'Selected Program',
+    undefined,
+  );
+  addFallbackProgram(staffProgramBeamioCardAddress, fixedCardMetadata?.name || 'Current Program', undefined);
+  addFallbackProgram(merchantOwnCardAddress, fixedCardMetadata?.name || 'Current Program', undefined);
+  addFallbackProgram(
+    cardIssuanceExistingCard?.cardAddress,
+    cardIssuanceExistingCard?.meta?.name || cardIssuanceExistingCard?.userCard?.name || 'Current Program',
+    cardIssuanceExistingCard?.userCard?.currency,
+  );
   let cancelled = false;
   void (async () => {
     try {
+      const fallbackViewer =
+        membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner) ??
+        (feederEoa && ethers.isAddress(feederEoa) ? ethers.getAddress(feederEoa) : null);
+      const fallbackProfile =
+        profiles?.[0] ??
+        (fallbackViewer
+          ? ({
+              keyID: fallbackViewer,
+              aaAccount: fallbackViewer,
+              issuedCards: membersOwnedProgramsToUserCardInfoForTopup(membersOwnedPrograms ?? []),
+            } as {
+              aaAccount?: string | null;
+              keyID?: string | null;
+              privateKeyArmor?: string | null;
+              issuedCards?: UserCardInfo[];
+            })
+          : null);
+      if (fallbackProfile) {
+        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(fallbackProfile);
+        if (cancelled) return;
+        if (trusted && cards.length > 0) {
+          for (const card of cards) {
+            addFallbackProgram(card.cardAddress, card.name || `Program ${fmtAddr(card.cardAddress)}`, card.currency);
+          }
+        }
+      }
+      if (fallbackPrograms.length === 0) return;
       const merged: BizTopupMemberTableRow[] = [];
+      let directTopupEvents = 0;
+      let directRepeatTopupEvents = 0;
+      let directMemberActivations = 0;
       for (const program of fallbackPrograms) {
+        const cardLower = ethers.getAddress(program.cardAddress).toLowerCase();
+        const rollup = await fetchBeamioCardMemberTopupRollupHttp(program.cardAddress).catch(() => null);
+        if (cancelled) return;
+        if (rollup) {
+          directTopupEvents += Number(rollup.totalTopupCount) || 0;
+          directRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
+          directMemberActivations += (Number(rollup.nfcActivationCount) || 0) + (Number(rollup.appActivationCount) || 0);
+        }
         const { members } = await fetchAllBeamioCardMemberDirectoryHttp(program.cardAddress);
         if (cancelled) return;
-        merged.push(
-          ...mapDirectoryApiMembersToBizTopupRows(
-            program.cardAddress,
-            program.programName,
-            program.currency,
-            members,
-          ),
+        const rows = mapDirectoryApiMembersToBizTopupRows(
+          program.cardAddress,
+          program.programName,
+          program.currency,
+          members,
         );
+        for (const row of rows) {
+          const balanceAccount =
+            row.aaAddress && ethers.isAddress(row.aaAddress)
+              ? ethers.getAddress(row.aaAddress)
+              : row.memberAddress && ethers.isAddress(row.memberAddress)
+                ? ethers.getAddress(row.memberAddress)
+                : '';
+          if (!balanceAccount) continue;
+          const cacheKeyBalance = `eoa:${walletStoragePartitionLower || 'unknown'}:card:${cardLower}:holder:${balanceAccount.toLowerCase()}:balance0:v1`;
+          row.currentCardToken0Balance = await fetchWithCache(cacheKeyBalance, () =>
+            fetchBeamioUserCardToken0BalanceDisplay(program.cardAddress, balanceAccount, baseRpcProviderDirect)
+          , FETCH_TTL_MS, true).catch(() => null as number | null);
+          if (cancelled) return;
+        }
+        merged.push(...rows);
       }
       merged.sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
       if (cancelled || merged.length === 0) return;
+      setMembersMobileDirectTopupRows(merged);
       setMembersLoyaltyTopupRows((prev) => (prev.length > 0 ? prev : merged));
+      setMembersLoyaltyServerRollup((prev) => ({
+        totalTopupEvents: Math.max(prev.totalTopupEvents, directTopupEvents),
+        totalRepeatTopupEvents: Math.max(prev.totalRepeatTopupEvents, directRepeatTopupEvents),
+        totalMemberActivations: Math.max(prev.totalMemberActivations ?? 0, directMemberActivations, merged.length),
+      }));
     } catch {
       /* keep existing trusted state on failure */
     }
@@ -14966,10 +15618,22 @@ useEffect(() => {
   };
 }, [
   activeTab,
-  membersLoyaltyTopupRows.length,
   membersOwnedPrograms,
+  membersLoyaltyProgramKey,
   staffProgramBeamioCardAddress,
+  merchantOwnCardAddress,
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta?.name,
+  cardIssuanceExistingCard?.userCard?.name,
+  cardIssuanceExistingCard?.userCard?.currency,
   fixedCardMetadata?.name,
+  fixedCardMetadata?.cardOwner,
+  myAddress,
+  feederEoa,
+  walletStoragePartitionLower,
+  profiles?.[0]?.keyID,
+  profiles?.[0]?.aaAccount,
+  profiles?.[0]?.privateKeyArmor,
 ]);
 
  useEffect(() => {
@@ -15167,7 +15831,28 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
  const salesCTreeLifetime = totalSalesLifetime;
  const tipsCTreeLifetime = totalTipsLifetime;
  const totalCTreeReceivedLifetime = salesCTreeLifetime + tipsCTreeLifetime;
-const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
+/** Customer Balance: all-time ledger Top-ups minus Charges, not token#0 chain balance. */
+const retainedCapitalLifetime = useMemo(() => {
+  const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
+  let topups = 0;
+  let chargesCad = 0;
+  for (const tx of indexerTransactions) {
+    if (!bizTxMatchesTransactionTableFilters(tx, overviewDashboardActivityFilterCtx)) continue;
+    if (tx.type === 'In-Store Top-Up') {
+      topups += topupTxDisplayRowIssuedAmount(tx);
+    } else if (tx.type === 'Charge') {
+      chargesCad += chargeTxDisplayRowApproxCad(tx, cadOracle);
+    }
+  }
+  const charges =
+    programCardBeamioCurrencyType != null &&
+    programCardBeamioCurrencyType === BEAMIO_CURRENCY_TYPE_USDC &&
+    Number.isFinite(cadOracle) &&
+    cadOracle > 0
+      ? chargesCad / cadOracle
+      : chargesCad;
+  return topups - charges;
+}, [indexerTransactions, oracleCadUsdc, overviewDashboardActivityFilterCtx, programCardBeamioCurrencyType]);
  const netSettlementBalanceLifetime = totalCTreeReceivedLifetime - topUpsIssuedLifetime;
  const totalUSDCBalance = salesUSDC + tipsUSDC;
 
@@ -15736,6 +16421,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                        className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
                                        onClick={() => {
                                          setStaffTerminalActionMenuOpenId(null);
+                                         setSettlementClearError(null);
+                                         setSettlementClearModal(term);
+                                       }}
+                                     >
+                                       <Receipt className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                                       Settlement clear
+                                     </button>
+                                     <button
+                                       type="button"
+                                       role="menuitem"
+                                       className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+                                       onClick={() => {
+                                         setStaffTerminalActionMenuOpenId(null);
                                          setResetTerminalLimitError(null);
                                          setResetTerminalLimitModal(term);
                                        }}
@@ -15759,13 +16457,21 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                  ) : null}
                                </div>
                              </div>
-                             <div className="mb-4 grid grid-cols-2 gap-3 border-t border-[#abadaf]/10 pt-3 sm:mb-5 sm:gap-4 sm:pt-4">
+                             <div className="mb-4 grid grid-cols-1 gap-3 border-t border-[#abadaf]/10 pt-3 sm:mb-5 sm:grid-cols-3 sm:gap-4 sm:pt-4">
                                <div>
                                  <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-[#595c5e] sm:mb-1 sm:text-[10px]">
                                    Last Activity
                                  </span>
                                  <span className="text-base font-bold text-[#2c2f31] sm:text-lg">
                                    {staffTerminalLastActivityFromLedger[term.id.toLowerCase()] ?? '—'}
+                                 </span>
+                               </div>
+                               <div>
+                                 <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-[#595c5e] sm:mb-1 sm:text-[10px]">
+                                   Settlement clear
+                                 </span>
+                                 <span className="text-base font-bold text-[#2c2f31] sm:text-lg">
+                                   {staffTerminalSettlementClearFromLedger[term.id.toLowerCase()] ?? '—'}
                                  </span>
                                </div>
                                <div>
@@ -16381,7 +17087,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
 
      {/* --- Main Content Area --- */}
      <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out min-w-0">
-      {!hideMobileFloatingBar && !isCardConfiguratorMobileShell && (
+      {!hideMobileFloatingBar && !programsMobileTopNavVisible && (
         <div
           className="pointer-events-none fixed inset-x-0 z-20 px-3 lg:hidden"
           style={{
@@ -16437,7 +17143,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
         </div>
       )}
 
-      <header className="sticky top-0 z-10 hidden shrink-0 border-b border-slate-200/60 bg-white/70 px-3 py-3 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl md:block md:px-5 md:py-2.5">
+      <header
+        className={`sticky top-0 z-10 hidden shrink-0 border-b border-slate-200/60 bg-white/70 px-3 py-3 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl md:px-5 md:py-2.5 ${
+          mediumMenuPageUsesGlobalOnly ? 'lg:block' : 'md:block'
+        }`}
+      >
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-2">
 
         <div className="flex min-w-0 items-center gap-3">
@@ -16640,10 +17350,10 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
         ref={setMobileScrollContainerNode}
         onScroll={handleMobileContentScroll}
         className={`flex-1 min-h-0 relative overflow-y-auto p-2 sm:p-4 ${
-          isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS : ''
+          isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? 'bg-transparent' : ''
         }`}
       >
-        {!hideMobileFloatingBar && !isCardConfiguratorMobileShell ? (
+        {!hideMobileFloatingBar && !programsMobileTopNavVisible ? (
           <div
             className="shrink-0 lg:hidden"
             style={{ minHeight: 'calc(max(0.75rem, env(safe-area-inset-top, 0px)) + 4.75rem)' }}
@@ -19479,62 +20189,13 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                    <div className="flex items-center gap-2">
                      <span className="size-2 shrink-0 animate-pulse rounded-full bg-[#0051d1]" aria-hidden />
                      <p className="text-sm font-semibold uppercase tracking-wide text-[#515c70]/70">
-                       Active members: {membersMobileDirectorySegmentRows.length.toLocaleString()}
+                       Active members: {membersMobileDirectorySorted.length.toLocaleString()}
                      </p>
                    </div>
                  </section>
 
                  <div className="grid gap-4">
-                   {membersMobileTopSpenderRow ? (() => {
-                     const row = membersMobileTopSpenderRow;
-                     const pts = directoryMemberPointsHuman(row);
-                     const tier = directoryMemberTierFromPoints(pts);
-                     const tagRaw = row.beamioTag.replace(/^@/, '').trim();
-                     const displayName = formatDirectoryMemberDisplayName(row.beamioTag);
-                     const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
-                     const eliteLabel = tier.gold && pts >= 500 ? 'Platinum Elite' : `${tier.label.toUpperCase()} TIER`;
-                     return (
-                       <button
-                         type="button"
-                         key={`featured-${row.cardLower}-${row.memberAddress.toLowerCase()}`}
-                         onClick={() => setMembersDirectoryDetailRow(row)}
-                         className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0051d1] via-[#1562f0] to-[#7a9dff] p-5 text-left text-white shadow-[0_12px_40px_rgba(0,81,209,0.35)] ${bizFocusRingClass}`}
-                       >
-                         <div className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-white/15 blur-2xl" aria-hidden />
-                         <div className="pointer-events-none absolute -bottom-8 -left-8 size-36 rounded-full bg-[#7a9dff]/30 blur-2xl" aria-hidden />
-                        <div className="relative z-10 flex items-center gap-4">
-                           <div className="relative size-[3.75rem] shrink-0 overflow-hidden rounded-full border-2 border-white/35 bg-white/10">
-                             <img
-                               src={getImg(tagRaw || row.memberAddress)}
-                               alt=""
-                               className="size-full object-cover"
-                             />
-                           </div>
-                          <div className="min-w-0 flex-1 flex flex-col justify-center self-center">
-                            <h3 className="truncate font-manrope text-2xl font-extrabold leading-tight tracking-tight text-white">
-                              @{displayName}
-                             </h3>
-                            {inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag) === 'nfc' ? (
-                              <div className="mt-3 flex min-w-0 items-center gap-1.5">
-                                <Nfc className="size-4 shrink-0 text-white" strokeWidth={2} aria-hidden />
-                              </div>
-                            ) : null}
-                           </div>
-                           <div className="flex shrink-0 flex-col items-end text-right">
-                             <Sparkles className="size-5 text-white" strokeWidth={2} aria-hidden />
-                             <p className="mt-2 font-manrope text-2xl font-extrabold tabular-nums leading-none text-white">
-                               {directoryMemberLifetimeTopupDisplay(row)}
-                             </p>
-                             <div className="mt-3 rounded-full border border-white/25 bg-white/20 px-3 py-1.5 backdrop-blur-md">
-                               <span className="text-[10px] font-bold uppercase tracking-wider text-white">{eliteLabel}</span>
-                             </div>
-                           </div>
-                         </div>
-                       </button>
-                     );
-                   })() : null}
-
-                  {membersMobileListExcludingFeatured.length === 0 && !membersMobileTopSpenderRow ? (
+                 {membersMobileListExcludingFeatured.length === 0 ? (
                      <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white p-10 text-center shadow-sm">
                        <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
                        <p className="text-sm font-semibold text-[#2c2f31]">No members in this view</p>
@@ -19558,17 +20219,27 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                              : 'NFC user';
                        const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
                        const showStarBadge = tier.gold;
-                       const tierPillLabel = `${tier.label.toUpperCase()} TIER`;
+                      const rewardTierInfo = membersRewardTierInfoByCardLower.get(row.cardLower) ?? null;
+                      const isHighestRewardTier = memberRowReachedHighestRewardTier(row, rewardTierInfo);
+                      const tierPillLabel = isHighestRewardTier
+                        ? `${(rewardTierInfo?.highestLabel ?? tier.label).toUpperCase()} TIER`
+                        : `${tier.label.toUpperCase()} TIER`;
                        return (
                          <button
                            type="button"
                            key={`m-${row.cardLower}-${row.memberAddress.toLowerCase()}`}
                            onClick={() => setMembersDirectoryDetailRow(row)}
-                           className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-[#e8eaed] bg-white p-5 text-left shadow-[0_4px_24px_rgba(15,23,42,0.06)] transition-transform hover:scale-[1.01] active:scale-[0.99] ${bizFocusRingClass}`}
+                          className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-5 text-left transition-transform hover:scale-[1.01] active:scale-[0.99] ${
+                            isHighestRewardTier
+                              ? 'border-[#0051d1]/20 bg-gradient-to-br from-[#0051d1] via-[#1562f0] to-[#7a9dff] text-white shadow-[0_12px_40px_rgba(0,81,209,0.30)]'
+                              : 'border-[#e8eaed] bg-white shadow-[0_4px_24px_rgba(15,23,42,0.06)]'
+                          } ${bizFocusRingClass}`}
                          >
                            <div className="flex min-w-0 flex-1 items-center gap-4">
                              <div className="relative shrink-0">
-                               <div className="size-14 overflow-hidden rounded-full bg-[#eef1f3] ring-1 ring-black/[0.04]">
+                              <div className={`size-14 overflow-hidden rounded-full ring-1 ${
+                                isHighestRewardTier ? 'bg-white/10 ring-white/30' : 'bg-[#eef1f3] ring-black/[0.04]'
+                              }`}>
                                  <img
                                    src={getImg(tagRaw || row.memberAddress)}
                                    alt=""
@@ -19582,21 +20253,23 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                ) : null}
                              </div>
                              <div className="min-w-0">
-                              <h3 className="truncate font-manrope text-lg font-bold text-[#2c2f31]">@{displayName}</h3>
+                             <h3 className={`truncate font-manrope text-lg font-bold ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>@{displayName}</h3>
                               {inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag) === 'nfc' ? (
                                 <div className="mt-1 flex min-w-0 items-center gap-1.5">
-                                  <Nfc className="size-4 shrink-0 text-[#515c70]/70" strokeWidth={2} aria-hidden />
+                                  <Nfc className={`size-4 shrink-0 ${isHighestRewardTier ? 'text-white' : 'text-[#515c70]/70'}`} strokeWidth={2} aria-hidden />
                                 </div>
                               ) : null}
                              </div>
                            </div>
                            <div className="shrink-0 text-right">
-                             <p className="font-manrope text-lg font-extrabold tabular-nums text-[#2c2f31]">
-                               {directoryMemberLifetimeTopupDisplay(row)}
+                            <p className={`font-manrope text-lg font-extrabold tabular-nums ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>
+                              {directoryMemberCurrentBalanceDisplay(row)}
                              </p>
                              <span
                                className={`mt-2 inline-block rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
-                                 tier.gold
+                                isHighestRewardTier
+                                  ? 'border border-white/25 bg-white/20 text-white'
+                                  : tier.gold
                                    ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200/80'
                                    : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200/80'
                                }`}
@@ -20305,6 +20978,15 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                      {staffTerminalLastActivityFromLedger[term.id.toLowerCase()] ?? '—'}
                                    </span>
                                  </div>
+                                 <div className="flex flex-col">
+                                   <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Settlement clear</span>
+                                   <span
+                                     className="text-xs font-medium text-[#2c2f31]"
+                                     title="Latest TX_Terminal_RESET with payee = this terminal EOA"
+                                   >
+                                     {staffTerminalSettlementClearFromLedger[term.id.toLowerCase()] ?? '—'}
+                                   </span>
+                                 </div>
                                  <div className="flex min-w-0 flex-1 flex-col items-end text-right">
                                    <span className="text-[10px] font-bold uppercase text-[#515c70]/60">Issuance</span>
                                    {s == null || issued == null ? (
@@ -20362,6 +21044,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                    className="absolute right-0 top-full z-30 mt-1 w-[min(100vw-2rem,14rem)] overflow-hidden rounded-xl border border-[#abadaf]/25 bg-white py-1 shadow-lg shadow-black/10"
                                    role="menu"
                                  >
+                                   <button
+                                     type="button"
+                                     role="menuitem"
+                                     className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+                                     onClick={() => {
+                                       setStaffTerminalActionMenuOpenId(null);
+                                       setSettlementClearError(null);
+                                       setSettlementClearModal(term);
+                                     }}
+                                   >
+                                     <Receipt className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                                     Settlement clear
+                                   </button>
                                    <button
                                      type="button"
                                      role="menuitem"
@@ -20625,15 +21320,25 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              </div>
            ) : (
            <div
-             className={`relative mx-auto w-full max-w-[1280px] animate-in fade-in duration-300 px-3 pb-8 pt-2 font-sans antialiased text-[#2c2f31] sm:px-5 lg:px-8 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS}`}
+             className={`relative mx-auto w-full max-w-[1280px] animate-in fade-in duration-300 px-3 pb-8 pt-2 font-sans antialiased text-[#2c2f31] sm:px-5 lg:px-8 ${
+               cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview'
+                 ? 'bg-transparent'
+                 : CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS
+             }`}
            >
              {isCardConfiguratorMobileShell ? (
                <CardConfiguratorMobileChrome
-                 step={cardIssuanceMobileStep}
-                 totalSteps={3}
-                 headerLayout={cardIssuanceMobileStep >= 2 ? 'market' : 'default'}
+                 step={cardIssuanceQuickDefaultRewardsFlow ? 1 : cardIssuanceMobileStep}
+                 totalSteps={cardIssuanceQuickDefaultRewardsFlow ? 1 : 3}
+                 headerLayout={
+                   cardIssuanceQuickDefaultRewardsFlow
+                     ? 'default'
+                     : cardIssuanceMobileStep >= 2
+                       ? 'market'
+                       : 'default'
+                 }
                  trailingBrandLabel={cardIssuancePreviewProgram}
-                 showTopBack={cardIssuanceMobileStep > 1}
+                 showTopBack={cardIssuanceQuickDefaultRewardsFlow ? false : cardIssuanceMobileStep > 1}
                  onTopBack={() => {
                    if (cardIssuanceMobileStep > 1) {
                      setCardIssuanceMobileStep((s) => Math.max(1, s - 1));
@@ -20649,19 +21354,38 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                    handleTabChange('Overview');
                  }}
                  primaryLabel={
-                   cardIssuanceMobileStep === 1
-                     ? 'Next: Set rewards'
-                     : cardIssuanceMobileStep === 2
-                       ? 'Next: Review program'
-                       : cardIssuanceCreateLoading
-                         ? 'Creating…'
-                         : cardIssuanceExistingCard
-                           ? 'Publish changes'
-                           : 'Publish & issue card'
+                   cardIssuanceQuickDefaultRewardsFlow && cardIssuanceMobileStep === 1
+                     ? cardIssuanceCreateLoading
+                       ? 'Creating…'
+                       : 'Publish & issue card'
+                     : cardIssuanceMobileStep === 1
+                       ? 'Next: Set rewards'
+                       : cardIssuanceMobileStep === 2
+                         ? 'Next: Review program'
+                         : cardIssuanceCreateLoading
+                           ? 'Creating…'
+                           : cardIssuanceExistingCard
+                             ? 'Publish changes'
+                             : 'Publish & issue card'
                  }
-                 primaryDisabled={cardIssuanceMobileStep === 3 && cardIssuanceCreateLoading}
-                 showPrimaryChevron={cardIssuanceMobileStep === 1 || cardIssuanceMobileStep === 2}
+                 primaryDisabled={
+                   cardIssuanceCreateLoading &&
+                   (cardIssuanceMobileStep === 3 ||
+                     (cardIssuanceQuickDefaultRewardsFlow && cardIssuanceMobileStep === 1))
+                 }
+                 showPrimaryChevron={
+                   (cardIssuanceMobileStep === 1 && !cardIssuanceQuickDefaultRewardsFlow) ||
+                   cardIssuanceMobileStep === 2
+                 }
                  onPrimary={() => {
+                   if (
+                     cardIssuanceQuickDefaultRewardsFlow &&
+                     cardIssuanceMobileStep === 1 &&
+                     !cardIssuanceExistingCard
+                   ) {
+                     void handlePublishCardIssuance();
+                     return;
+                   }
                    if (cardIssuanceMobileStep < 2) {
                      setCardIssuanceMobileStep((s) => Math.min(2, s + 1));
                      requestAnimationFrame(() => {
@@ -20691,6 +21415,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  isCardConfiguratorMobileShell ? 'hidden' : ''
                } ${
                  cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview' ? 'hidden' : ''
+               } ${
+                 isCardConfiguratorMobileViewport ? 'md:hidden' : ''
                }`}
              >
                <div className="min-w-0">
@@ -20728,7 +21454,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      disabled={cardIssuanceCreateLoading}
                      className={`rounded-full bg-[#1562f0] px-6 py-2 text-sm font-bold text-[#f1f2ff] shadow-md shadow-[#1562f0]/15 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                    >
-                     {cardIssuanceCreateLoading ? 'Creating…' : 'Publish Changes'}
+                     {cardIssuanceCreateLoading
+                      ? 'Creating…'
+                      : cardIssuanceExistingCard
+                        ? 'Publish changes'
+                        : 'Publish & issue card'}
                    </button>
                  </div>
                ) : null}
@@ -20773,7 +21503,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      ? CARD_CONFIGURATOR_MOBILE_MAIN_PAD_MARKET_HEADER
                      : CARD_CONFIGURATOR_MOBILE_MAIN_PAD
                    : ''
-               } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS : ''}`}
+               } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? 'bg-transparent' : ''}`}
              >
                <div className="min-w-0 space-y-6 min-[1440px]:col-span-7">
                  <section
@@ -20813,7 +21543,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          type="text"
                          value={cardIssuanceProgramName}
                         onChange={(e) => setCardIssuanceProgramName(e.target.value)}
-                         placeholder="e.g. Verra Platinum"
+                         placeholder="e.g. beamio Rewards"
                          className={`w-full rounded-md border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                        />
                      </div>
@@ -20993,14 +21723,65 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                            })}
                          </div>
                        </div>
+                       {!cardIssuanceExistingCard ? (
+                         <div className="mt-4 w-full min-w-0 space-y-2 border-t border-[#abadaf]/15 pt-4">
+                           <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
+                             Rewards setup
+                           </span>
+                           <div
+                             className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                             role="radiogroup"
+                             aria-label="Rewards setup"
+                           >
+                             <button
+                               type="button"
+                               role="radio"
+                               aria-checked={cardIssuanceRewardsPreset === 'default'}
+                               onClick={() => {
+                                 setCardIssuanceRewardsPreset('default');
+                                 applyCardIssuanceQuickDefaultRewardsProgram();
+                               }}
+                               className={`rounded-2xl border px-3 py-3 text-left transition-colors ${bizFocusRingClass} ${
+                                 cardIssuanceRewardsPreset === 'default'
+                                   ? 'border-[#1562f0] bg-blue-50/50 ring-2 ring-inset ring-[#1562f0]'
+                                   : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
+                               }`}
+                             >
+                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">Default</span>
+                             </button>
+                             <button
+                               type="button"
+                               role="radio"
+                               aria-checked={cardIssuanceRewardsPreset === 'custom'}
+                               onClick={() => setCardIssuanceRewardsPreset('custom')}
+                               className={`rounded-2xl border px-3 py-3 text-left transition-colors ${bizFocusRingClass} ${
+                                 cardIssuanceRewardsPreset === 'custom'
+                                   ? 'border-[#1562f0] bg-blue-50/50 ring-2 ring-inset ring-[#1562f0]'
+                                   : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
+                               }`}
+                             >
+                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">Custom</span>
+                               <span className="mt-1 block text-[11px] font-medium leading-snug text-[#595c5e]">
+                                 Set operational limits, loyalty rule, and tiers in the next steps
+                               </span>
+                             </button>
+                           </div>
+                           {cardIssuanceRewardsPreset === 'default' ? (
+                             <p className="ml-1 text-xs font-medium leading-relaxed text-[#595c5e]">
+                               Default uses standard limits and Single top-up. Publish from this screen on mobile, or
+                               use Publish below on desktop.
+                             </p>
+                           ) : null}
+                         </div>
+                       ) : null}
                      </div>
                  </div>
                  </section>
 
                  {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? (
-                   <div className={`space-y-5 px-2 pb-4 pt-1 sm:px-3 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS}`}>
+                   <div className="space-y-5 bg-transparent px-2 pb-4 pt-1 sm:px-3">
                      <div
-                       className={`sticky z-40 mx-auto w-full max-w-lg px-3 pb-4 sm:px-4 sm:pb-5 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS} ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
+                       className={`sticky z-40 mx-auto w-full max-w-lg bg-transparent px-3 pb-4 sm:px-4 sm:pb-5 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
                        <section aria-label="Card preview">
                          <div className="px-1 pb-1 sm:px-2 sm:pb-2">
@@ -21188,12 +21969,10 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
                            {tiersByLoyaltyRule[cardIssuanceTierRule].map((row) => {
                              const isBaseTier = row.id === CARD_ISSUANCE_SINGLE_TIER_ID;
-                             const tierLabel = (isBaseTier ? 'Base' : row.name.trim() || 'Tier').toUpperCase();
+                            const tierLabel = (row.name.trim() || (isBaseTier ? 'Base' : 'Tier')).toUpperCase();
                              const thresholdRaw = row.threshold.trim() || '0';
                              const thresholdInt = Number.parseInt(thresholdRaw.replace(/\D/g, ''), 10);
-                             const tierAmountLabel = isBaseTier
-                               ? 'C$0'
-                               : Number.isFinite(thresholdInt)
+                            const tierAmountLabel = Number.isFinite(thresholdInt)
                                  ? `C$${thresholdInt.toLocaleString('en-CA')}`
                                  : `C$${thresholdRaw}`;
                              const discountN = Number.parseFloat(row.discountPercent.trim() || '0');
@@ -21557,7 +22336,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                    );
                                    setCardIssuanceMinTopup(String(v));
                                  }}
-                                 placeholder="10"
+                                 placeholder="5"
                                  className={`w-full rounded-xl border-2 border-[#dfe3e6] bg-white py-3 pl-9 pr-3 font-manrope text-base font-bold text-[#2c2f31] shadow-sm transition-colors focus:border-[#0051d1] focus:outline-none focus:ring-0 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                                />
                              </div>
@@ -21843,7 +22622,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             );
                             setCardIssuanceMinTopup(String(v));
                           }}
-                           placeholder="10"
+                           placeholder="5"
                            className={`w-full rounded-md border-none bg-[#eef1f3] py-4 pl-10 pr-5 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                          />
                        </div>
@@ -22050,11 +22829,8 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                         <div className="space-y-3">
                           {cardIssuanceTiers.map((row) => {
                             const isBaseTier = row.id === CARD_ISSUANCE_SINGLE_TIER_ID;
-                            const tierName = isBaseTier ? 'Base' : row.name.trim() || 'Tier';
-                            const requirementAmount =
-                              isBaseTier
-                                ? cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
-                                : row.threshold.trim() || '0';
+                            const tierName = row.name.trim() || (isBaseTier ? 'Base' : 'Tier');
+                            const requirementAmount = row.threshold.trim() || '0';
                             const visual = getCardIssuanceTierCardVisual(row.preset);
                             const discountValue = row.discountPercent.trim() || '0';
                             const tierGradient = cardIssuanceTierRowGradientCss(row.backgroundColor);
@@ -22085,36 +22861,41 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                       />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                      <div className="mb-2 flex items-center gap-2">
-                                        <h4
-                                          className="font-manrope text-base font-bold"
-                                          style={{ color: tierTheme.primary }}
-                                        >
-                                          {tierName}
-                                        </h4>
-                                        {isBaseTier ? (
-                                          <Lock
-                                            className="h-4 w-4"
-                                            strokeWidth={2}
-                                            style={{ color: tierTheme.tertiary }}
-                                            aria-hidden
-                                          />
-                                        ) : null}
-                                        {isBaseTier ? (
-                                          <span
-                                            className="ml-auto rounded-full px-3 py-1 text-[10px] font-bold uppercase"
-                                            style={{
-                                              backgroundColor: tierTheme.defaultBadgeBg,
-                                              color: tierTheme.defaultBadgeFg,
-                                            }}
-                                          >
-                                            DEFAULT
-                                          </span>
-                                        ) : (
-                     <button
-                       type="button"
+                                      <div className="mb-2 flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="flex min-w-0 items-center gap-2">
+                                            <h4
+                                              className="truncate font-manrope text-base font-bold"
+                                              style={{ color: tierTheme.primary }}
+                                            >
+                                              {tierName}
+                                            </h4>
+                                            {isBaseTier ? (
+                                              <Lock
+                                                className="h-4 w-4 shrink-0"
+                                                strokeWidth={2}
+                                                style={{ color: tierTheme.tertiary }}
+                                                aria-hidden
+                                              />
+                                            ) : null}
+                                          </div>
+                                          {isBaseTier ? (
+                                            <span
+                                              className="mt-1 inline-flex rounded-full px-2.5 py-0.5 text-[9px] font-bold uppercase"
+                                              style={{
+                                                backgroundColor: tierTheme.defaultBadgeBg,
+                                                color: tierTheme.defaultBadgeFg,
+                                              }}
+                                            >
+                                              Base tier
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-1">
+                                          <button
+                                            type="button"
                                             onClick={() => openCardIssuanceTierEdit(row.id)}
-                                            className={`ml-auto inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${bizFocusRingClass}`}
+                                            className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${bizFocusRingClass}`}
                                             style={{ color: tierTheme.secondary }}
                                             onMouseEnter={(e) => {
                                               (e.currentTarget as HTMLButtonElement).style.backgroundColor =
@@ -22126,9 +22907,34 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                             aria-label={`Edit ${tierName} tier`}
                                           >
                                             <Pencil className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-                     </button>
-                                        )}
-                   </div>
+                                          </button>
+                                          {!isBaseTier ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setCardIssuanceTiers((tiers) =>
+                                                  reconcileTierThresholdsWithMinTopup(
+                                                    tiers.filter((t) => t.id !== row.id),
+                                                    cardIssuanceMinTopup
+                                                  )
+                                                )
+                                              }
+                                              className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${bizFocusRingClass}`}
+                                              style={{ color: tierTheme.tertiary }}
+                                              onMouseEnter={(e) => {
+                                                (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+                                                  editHoverBg;
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                (e.currentTarget as HTMLButtonElement).style.backgroundColor = '';
+                                              }}
+                                              aria-label={`Remove ${tierName} tier`}
+                                            >
+                                              <Trash2 className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                      </div>
                                       <div className="grid grid-cols-2 gap-3">
                                         <div>
                                           <p
@@ -22240,14 +23046,6 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                <div className="flex flex-col gap-2 min-w-0">
                                  <div className="flex items-center gap-2 min-w-0">
                                    <CardIssuanceTierIdentityIcon preset={row.preset} />
-                                  {row.id === CARD_ISSUANCE_SINGLE_TIER_ID ? (
-                                     <span
-                                       className="font-bold text-sm sm:text-base text-slate-900 min-w-0"
-                                       aria-label={`Tier name for ${row.id}`}
-                                     >
-                                       Base
-                                     </span>
-                                   ) : (
                                    <input
                                      type="text"
                                      value={row.name}
@@ -22260,7 +23058,6 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                      className={`font-bold text-sm sm:text-base text-slate-900 bg-white border border-slate-200 rounded-md min-w-0 w-full max-w-full px-2 py-1 shadow-sm ${bizFocusRingClass}`}
                                      aria-label={`Tier name for ${row.id}`}
                                    />
-                                   )}
                                  </div>
                                  {!row.tierDescriptionOpen ? (
                                    <button
@@ -22279,15 +23076,6 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                </div>
                              </td>
                              <td className={`min-w-0 ${cellBg} px-2 py-4 align-top group-hover:bg-[#e5e9eb]`}>
-                              {row.id === CARD_ISSUANCE_SINGLE_TIER_ID ? (
-                                 <span
-                                   className="inline-flex min-h-[2rem] w-full max-w-[4rem] box-border items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1 text-center text-xs font-semibold text-slate-700 sm:text-sm"
-                                                                     title="Matches Min. Reload Amount"
-                                   aria-label={`Min matches reload minimum ${cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}`}
-                                 >
-                                   {cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}
-                                 </span>
-                               ) : (
                                <input
                                  type="text"
                                  inputMode="numeric"
@@ -22306,6 +23094,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                     setCardIssuanceTiers((tiers) =>
                                       tiers.map((t) => (t.id === row.id ? { ...t, threshold: digitsOnly } : t))
                                     );
+                                     if (row.id === CARD_ISSUANCE_SINGLE_TIER_ID) {
+                                       setCardIssuanceMinTopup(digitsOnly);
+                                     }
                                    }}
                                 onBlur={() => {
                                   setCardIssuanceTiers((tiers) =>
@@ -22315,7 +23106,6 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                 className={`w-full max-w-[4rem] box-border bg-white border border-slate-200 rounded-md text-center text-xs sm:text-sm font-semibold text-slate-900 py-1 shadow-sm ${bizFocusRingClass}`}
                                 aria-label={`Threshold dollars for ${row.name || row.id}`}
                               />
-                               )}
                              </td>
                              <td className={`min-w-0 ${cellBg} px-2 py-4 align-top group-hover:bg-[#e5e9eb]`}>
                                <div className="flex min-w-0 items-center justify-start gap-0.5">
@@ -22368,7 +23158,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                              <td className={`${rowRoundLast} ${cellBg} px-4 py-4 text-right align-top group-hover:bg-[#e5e9eb]`}>
                                <button
                                  type="button"
-                                 disabled={cardIssuanceTiers.length <= 1}
+                                 disabled={cardIssuanceTiers.length <= 1 || row.id === CARD_ISSUANCE_SINGLE_TIER_ID}
                                  onClick={() =>
                                    setCardIssuanceTiers((tiers) =>
                                     reconcileTierThresholdsWithMinTopup(
@@ -22887,7 +23677,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                       onClick={closeCardIssuanceTierEditor}
                     />
                     <motion.div
-                      className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                      className="fixed inset-x-0 bottom-0 z-[91] mx-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
                       initial={{ y: '100%' }}
                       animate={{ y: 0 }}
                       exit={{ y: '100%' }}
@@ -22897,10 +23687,18 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                       <div className="mb-8 flex items-start justify-between gap-4">
                         <div>
                           <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                            {cardIssuanceEditingTierId ? 'Edit Tier' : 'New Tier'}
+                            {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
+                              ? 'Edit Base Tier'
+                              : cardIssuanceEditingTierId
+                                ? 'Edit Tier'
+                                : 'New Tier'}
                           </span>
                           <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
-                            {cardIssuanceEditingTierId ? 'Edit Reward Tier' : 'Add Reward Tier'}
+                            {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
+                              ? 'Edit Base Tier'
+                              : cardIssuanceEditingTierId
+                                ? 'Edit Reward Tier'
+                                : 'Add Reward Tier'}
                           </h3>
                           <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
                             {CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE[cardIssuanceTierRule]}
@@ -22952,6 +23750,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                 type="number"
                                 inputMode="numeric"
                                 autoComplete="off"
+                                min={CARD_ISSUANCE_MIN_TOPUP_MIN}
                                 value={cardIssuanceTierEditorThreshold}
                                 onKeyDown={preventNumericInputStepKeys}
                                 onKeyDownCapture={preventNumericInputStepKeys}
@@ -22964,7 +23763,11 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                   }
                                   setCardIssuanceTierEditorThreshold(raw.split('.')[0].replace(/\D/g, ''));
                                 }}
-                                placeholder="800"
+                                placeholder={
+                                  cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
+                                    ? String(CARD_ISSUANCE_MIN_TOPUP_MIN)
+                                    : "800"
+                                }
                                 className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                               />
                             </div>
@@ -23047,27 +23850,29 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                           </div>
                         </div>
 
-                        <div className="space-y-2">
-                          <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
-                            Metadata Note
-                          </label>
-                          <textarea
-                            value={cardIssuanceTierEditorDescription}
-                            onChange={(e) =>
-                              setCardIssuanceTierEditorDescription(
-                                e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
-                              )
-                            }
-                            placeholder="Optional. Shown in tier metadata for wallets and explorers."
-                            rows={3}
-                            maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
-                            spellCheck={true}
-                            className={`block w-full resize-y rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                          />
-                          <p className="text-right text-[10px] font-medium text-[#747779]">
-                            {cardIssuanceTierEditorDescription.length}/{CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
-                          </p>
-                        </div>
+                        {cardIssuanceEditingTierId !== CARD_ISSUANCE_SINGLE_TIER_ID ? (
+                          <div className="space-y-2">
+                            <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
+                              Metadata Note
+                            </label>
+                            <textarea
+                              value={cardIssuanceTierEditorDescription}
+                              onChange={(e) =>
+                                setCardIssuanceTierEditorDescription(
+                                  e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
+                                )
+                              }
+                              placeholder="Optional. Shown in tier metadata for wallets and explorers."
+                              rows={3}
+                              maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                              spellCheck={true}
+                              className={`block w-full resize-y rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                            />
+                            <p className="text-right text-[10px] font-medium text-[#747779]">
+                              {cardIssuanceTierEditorDescription.length}/{CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                            </p>
+                          </div>
+                        ) : null}
 
                         {cardIssuanceTierEditorValidationError ? (
                           <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -23086,7 +23891,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                             <span>{cardIssuanceEditingTierId ? 'Update Reward Tier' : 'Create Reward Tier'}</span>
                             <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
                           </button>
-                          {cardIssuanceEditingTierId ? (
+                          {cardIssuanceEditingTierId && cardIssuanceEditingTierId !== CARD_ISSUANCE_SINGLE_TIER_ID ? (
                             <button
                               type="button"
                               onClick={removeCardIssuanceTierFromEditor}
@@ -23116,7 +23921,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                        </h3>
                      </header>
                      <div
-                       className={`sticky z-40 w-full px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS} ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
+                       className={`sticky z-40 w-full bg-transparent px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
                        <section aria-label="Issued program card preview">
                          <div className="relative mx-auto w-full max-w-[380px] group/prev sm:max-w-[400px]">
@@ -23224,6 +24029,19 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                          <Info className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
                        </header>
                        <div className="space-y-3 sm:space-y-4">
+                         <div>
+                           <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                             Loyalty rule type
+                           </span>
+                           <p className="font-manrope text-sm font-bold leading-snug text-[#2c2f31] sm:text-base">
+                             {programsOverviewTierRuleOption?.title ?? '—'}
+                           </p>
+                           <p className="mt-0.5 text-[10px] leading-relaxed text-[#595c5e] sm:text-xs">
+                             {programsOverviewTierRuleOption?.desktopDesc ??
+                               programsOverviewTierRuleOption?.mobileDesc ??
+                               ''}
+                           </p>
+                         </div>
                          <div>
                            <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
                              Name
@@ -23434,15 +24252,26 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                      <div>
                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
                          <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Tiers &amp; rules</h3>
-                         <span className="rounded-full border border-[#1562f0]/15 bg-white px-3 py-0.5 text-[10px] font-bold text-[#1562f0] sm:px-4 sm:py-1 sm:text-xs">
-                           {(programsOverviewTiersSortedAscending.length || cardIssuanceTiers.length).toLocaleString()} active tiers
-                         </span>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full border border-[#1562f0]/15 bg-white px-3 py-0.5 text-[10px] font-bold text-[#1562f0] sm:px-4 sm:py-1 sm:text-xs">
+                            {programsOverviewTierRowsSortedAscending.length.toLocaleString()} active tiers
+                          </span>
+                          <button
+                            type="button"
+                            onClick={openCardIssuanceTierCreate}
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#1562f0] shadow-sm transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                            aria-label="Add membership tier"
+                          >
+                            <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                          </button>
+                        </div>
                        </div>
                        <div className="space-y-2 sm:space-y-3">
-                         {programsOverviewTiersSortedAscending.length > 0 ? (
-                           programsOverviewTiersSortedAscending.map((t, i) => {
-                             const minRaw = t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
-                             const minLabel = Number.isFinite(minRaw) ? (minRaw / 1e6).toLocaleString() : '—';
+                        {programsOverviewTierRowsSortedAscending.length > 0 ? (
+                          programsOverviewTierRowsSortedAscending.map((row, i) => {
+                            const isBaseTier = row.id === CARD_ISSUANCE_SINGLE_TIER_ID;
+                            const minRaw = cardIssuanceTierThresholdToInt(row.threshold);
+                            const minLabel = Number.isFinite(minRaw) ? minRaw.toLocaleString() : '—';
                             const currencyLabel = cardIssuanceExistingCard.userCard.currency?.trim() || 'pts';
                             const currencyPrefix =
                               currencyLabel.toUpperCase() === 'CAD'
@@ -23450,12 +24279,12 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                 : currencyLabel.toUpperCase() === 'USD' || currencyLabel.toUpperCase() === 'USDC'
                                   ? '$'
                                   : `${currencyLabel} `;
-                             const discountPct = parseDiscountPctFromTierMetadataDescription(t.description);
+                            const discountPct = Number.parseFloat(row.discountPercent.trim() || '0');
                              const medal = ['🥉', '🥈', '🥇'][Math.min(i, 2)] as string;
-                             const isTop = i === programsOverviewTiersSortedAscending.length - 1;
+                            const isTop = i === programsOverviewTierRowsSortedAscending.length - 1;
                              return (
                                <div
-                                 key={`${t.index ?? 't'}-${i}`}
+                                key={row.id}
                                  className={`flex items-center justify-between gap-3 rounded-lg border border-transparent bg-white p-3 transition-all hover:border-[#1562f0]/20 sm:gap-4 sm:rounded-xl sm:p-4 ${
                                    isTop ? 'ring-1 ring-[#1562f0]/10' : ''
                                  }`}
@@ -23465,13 +24294,30 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                                      {medal}
                                    </div>
                                    <div className="min-w-0">
-                                     <h4 className="font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{t.name ?? 'Tier'}</h4>
+                                     <div className="flex min-w-0 items-center gap-2">
+                                       <h4 className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">
+                                         {row.name.trim() || (isBaseTier ? 'Base' : 'Tier')}
+                                       </h4>
+                                       {isBaseTier ? (
+                                         <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-500">
+                                           Base
+                                         </span>
+                                       ) : null}
+                                     </div>
                                      <p className="font-manrope text-sm font-bold tracking-tight text-[#2c2f31] sm:text-base">
                                        {Number.isFinite(minRaw) ? `${currencyPrefix}${minLabel}` : '—'}
                                      </p>
                                    </div>
                                  </div>
-                                 <div className="shrink-0 text-right">
+                                 <div className="flex shrink-0 items-center gap-2 text-right">
+                                   <button
+                                     type="button"
+                                     onClick={() => openCardIssuanceTierEdit(row.id)}
+                                     className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                     aria-label={`Edit ${row.name.trim() || (isBaseTier ? 'Base' : 'tier')}`}
+                                   >
+                                     <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                                   </button>
                                    <p
                                      className={`font-manrope text-sm font-bold sm:text-base ${
                                        discountPct > 0
@@ -23491,9 +24337,22 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                            })
                          ) : (
                            <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
-                             No tier metadata on this card yet. Open the configurator to define tiers before publishing updates.
+                            No tier metadata on this card yet. Press + to define tiers before publishing updates.
                            </div>
                          )}
+                        <button
+                          type="button"
+                          onClick={() => void handlePublishCardIssuance()}
+                          disabled={cardIssuanceCreateLoading}
+                          className={`mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-3 text-sm font-bold text-white shadow-md shadow-[#1562f0]/15 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          {cardIssuanceCreateLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                          ) : (
+                            <Rocket className="h-4 w-4" strokeWidth={2} aria-hidden />
+                          )}
+                          Publish tier changes
+                        </button>
                        </div>
                      </div>
                    </div>
@@ -23514,6 +24373,207 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                  </section>
                </div>
              ) : null}
+            <AnimatePresence>
+              {cardIssuanceTierEditorOpen && cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview' ? (
+                <>
+                  <motion.button
+                    type="button"
+                    aria-label="Close tier editor"
+                    className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={closeCardIssuanceTierEditor}
+                  />
+                  <motion.div
+                    className="fixed inset-x-0 bottom-0 z-[91] mx-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                  >
+                    <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                    <div className="mb-6 flex items-start justify-between gap-4">
+                      <div>
+                        <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                          {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
+                            ? 'Edit Base Tier'
+                            : cardIssuanceEditingTierId
+                              ? 'Edit Tier'
+                              : 'New Tier'}
+                        </span>
+                        <h3 className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                          {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
+                            ? 'Edit Base Tier'
+                            : cardIssuanceEditingTierId
+                              ? 'Edit Reward Tier'
+                              : 'Add Reward Tier'}
+                        </h3>
+                        <p className="mt-2 text-sm leading-relaxed text-[#595c5e]">
+                          {CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE[programsOverviewTierRuleKey]}
+                        </p>
+                        <p className="mt-2 text-xs font-medium leading-relaxed text-[#595c5e]/85">
+                          Publish below to sync changes with your issued card contract.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={closeCardIssuanceTierEditor}
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                      >
+                        <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]" htmlFor="programs-overview-tier-name">
+                          Tier Name
+                        </label>
+                        <input
+                          id="programs-overview-tier-name"
+                          type="text"
+                          autoComplete="off"
+                          value={cardIssuanceTierEditorName}
+                          onChange={(e) => setCardIssuanceTierEditorName(e.target.value.slice(0, 32))}
+                          placeholder="e.g., Base, Gold, Platinum"
+                          className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-3.5 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]" htmlFor="programs-overview-tier-threshold">
+                            {CARD_ISSUANCE_TIER_THRESHOLD_LABEL[programsOverviewTierRuleKey]}
+                          </label>
+                          <div className="relative">
+                            <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
+                              C$
+                            </span>
+                            <input
+                              id="programs-overview-tier-threshold"
+                              type="number"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              min={CARD_ISSUANCE_MIN_TOPUP_MIN}
+                              value={cardIssuanceTierEditorThreshold}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onKeyDownCapture={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/,/g, '');
+                                if (raw === '') {
+                                  setCardIssuanceTierEditorThreshold('');
+                                  return;
+                                }
+                                setCardIssuanceTierEditorThreshold(raw.split('.')[0].replace(/\D/g, ''));
+                              }}
+                              placeholder="5"
+                              className={`w-full rounded-2xl border-none bg-[#eef1f3] py-3.5 pl-12 pr-5 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]" htmlFor="programs-overview-tier-discount">
+                            Discount Benefit
+                          </label>
+                          <div className="relative">
+                            <input
+                              id="programs-overview-tier-discount"
+                              type="number"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              value={cardIssuanceTierEditorDiscountPercent}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onKeyDownCapture={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              onChange={(e) => setCardIssuanceTierEditorDiscountPercent(normalizeCardIssuanceBonusRuleInput(e.target.value))}
+                              placeholder="10"
+                              className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-3.5 pr-11 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                            />
+                            <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
+                              %
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
+                          Tier Brand Color
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={tierBackgroundColorForPayload(cardIssuanceTierEditorBackgroundColor) ?? '#0051d1'}
+                            onChange={(e) => setCardIssuanceTierEditorBackgroundColor(e.target.value)}
+                            className="h-11 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
+                            aria-label="Choose custom tier color"
+                          />
+                          <input
+                            type="text"
+                            value={cardIssuanceTierEditorBackgroundColor}
+                            onChange={(e) => setCardIssuanceTierEditorBackgroundColor(e.target.value)}
+                            placeholder="#0051d1"
+                            className={`min-w-0 flex-1 rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm font-mono text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                          />
+                        </div>
+                      </div>
+
+                      {cardIssuanceEditingTierId !== CARD_ISSUANCE_SINGLE_TIER_ID ? (
+                        <div className="space-y-2">
+                          <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
+                            Metadata Note
+                          </label>
+                          <textarea
+                            value={cardIssuanceTierEditorDescription}
+                            onChange={(e) =>
+                              setCardIssuanceTierEditorDescription(
+                                e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
+                              )
+                            }
+                            placeholder="Optional. Shown in tier metadata for wallets and explorers."
+                            rows={3}
+                            maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                            spellCheck={true}
+                            className={`block w-full resize-y rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                          />
+                        </div>
+                      ) : null}
+
+                      {cardIssuanceTierEditorValidationError ? (
+                        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                          <p>{cardIssuanceTierEditorValidationError}</p>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-3 pt-1">
+                        <button
+                          type="button"
+                          onClick={applyCardIssuanceTierEditor}
+                          disabled={Boolean(cardIssuanceTierEditorValidationError)}
+                          className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          <span>{cardIssuanceEditingTierId ? 'Update Reward Tier' : 'Create Reward Tier'}</span>
+                          <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                        </button>
+                        {cardIssuanceEditingTierId && cardIssuanceEditingTierId !== CARD_ISSUANCE_SINGLE_TIER_ID ? (
+                          <button
+                            type="button"
+                            onClick={removeCardIssuanceTierFromEditor}
+                            className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] transition-colors hover:bg-[#fb5151]/12 ${bizFocusRingClass}`}
+                          >
+                            <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                            Remove Tier
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </motion.div>
+                </>
+              ) : null}
+            </AnimatePresence>
              <AnimatePresence>
                {cardIssuanceBonusRuleEditorOpen ? (
                  <>
@@ -23683,17 +24743,38 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                              <p>{cardIssuanceBonusRuleEditorValidationError}</p>
                            </div>
                          ) : null}
+                         {(cardIssuanceCreateError || cardIssuanceBonusRuleEditorServerError) &&
+                         !cardIssuanceBonusRuleEditorPublishing ? (
+                           <div className="mt-3 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                             <p>{cardIssuanceCreateError || cardIssuanceBonusRuleEditorServerError}</p>
+                           </div>
+                         ) : null}
                        </div>
 
                        <div className="pt-2">
                          <button
                            type="button"
-                           onClick={applyCardIssuanceBonusRuleEditor}
-                           disabled={!cardIssuanceBonusRuleEditorPayload || Boolean(cardIssuanceBonusRuleEditorValidationError)}
-                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                           onClick={() => void submitCardIssuanceBonusRuleEditor()}
+                           disabled={
+                             !cardIssuanceBonusRuleEditorPayload ||
+                             Boolean(cardIssuanceBonusRuleEditorValidationError) ||
+                             cardIssuanceBonusRuleEditorPublishing
+                           }
+                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all disabled:cursor-not-allowed disabled:opacity-60 max-[420px]:active:scale-95 ${cardIssuanceBonusRuleEditorPublishing ? '' : 'hover:scale-[1.02] active:scale-95'} ${bizFocusRingClass}`}
                          >
-                           <span>{cardIssuanceEditingBonusRuleId ? 'Update Rule' : 'Apply Rule'}</span>
-                           <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                           {cardIssuanceBonusRuleEditorPublishing ? (
+                             <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                           ) : (
+                             <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                           )}
+                           <span>
+                             {cardIssuanceBonusRuleEditorPublishing
+                               ? 'Saving...'
+                               : cardIssuanceEditingBonusRuleId
+                                 ? 'Update Rule'
+                                 : 'Apply Rule'}
+                           </span>
                          </button>
                        </div>
                      </div>
@@ -23756,6 +24837,9 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                <button
                  type="button"
                  id="biz-settings-security"
+                 aria-expanded={settingsSecurityBackupOpen}
+                 aria-controls="biz-settings-security-backup-panel"
+                 onClick={() => setSettingsSecurityBackupOpen(true)}
                  className={`${bizFocusRingClass} group relative flex w-full items-center gap-5 overflow-hidden rounded-lg bg-white p-6 text-left shadow-[0_10px_30px_rgba(179,27,37,0.05)] transition-transform active:scale-[0.98]`}
                >
                  <div className="absolute left-0 top-0 h-full w-1 bg-[#b31b25]" aria-hidden />
@@ -24321,6 +25405,173 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
                </div>
              </div>
              ) : null}
+
+            {settingsSecurityBackupOpen ? (
+              <div
+                id="biz-settings-security-backup-panel"
+                className="fixed inset-0 z-[60] flex min-h-dvh flex-col overflow-y-auto bg-[#f5f7f9] pb-28 font-sans text-[#2c2f31] antialiased"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="biz-settings-security-backup-title"
+              >
+                <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden>
+                  <div className="absolute -right-20 bottom-16 h-64 w-64 rounded-full bg-[#0051d1]/5 blur-3xl" />
+                  <div className="absolute -left-20 top-1/3 h-80 w-80 rounded-full bg-[#8d3a8b]/5 blur-3xl" />
+                </div>
+                <header className="sticky top-0 z-20 flex w-full items-center bg-[#f5f7f9]/70 px-4 pb-2 pt-2 backdrop-blur-xl sm:px-6 sm:pb-2.5 sm:pt-4">
+                  <div className="mx-auto flex w-full max-w-2xl items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (settingsPrivateKeyRevealOpen) {
+                          setSettingsPrivateKeyRevealOpen(false);
+                          return;
+                        }
+                        setSettingsSecurityBackupOpen(false);
+                      }}
+                      className={`${bizFocusRingClass} flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-all hover:bg-slate-100 active:scale-95`}
+                      aria-label={settingsPrivateKeyRevealOpen ? 'Back to Security & Backup' : 'Back to Settings'}
+                    >
+                      <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
+                    </button>
+                    <h1 className="font-manrope text-lg font-bold text-[#0051d1]">
+                      {settingsPrivateKeyRevealOpen ? 'Security & Backup' : 'Settings'}
+                    </h1>
+                  </div>
+                </header>
+
+                {settingsPrivateKeyRevealOpen ? (
+                  <main className="mx-auto w-full max-w-2xl px-0 pb-8 pt-2 sm:px-0">
+                    <PrivateKeyReveal
+                      privateKey={profiles?.[0]?.privateKeyArmor ?? ''}
+                      onClose={() => setSettingsPrivateKeyRevealOpen(false)}
+                    />
+                  </main>
+                ) : (
+                <main className="mx-auto w-full max-w-2xl px-4 pb-8 pt-4 sm:px-6">
+                  <section className="mb-10">
+                    <div className="mb-6">
+                      <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">
+                        Security Infrastructure
+                      </span>
+                      <h2 id="biz-settings-security-backup-title" className="font-manrope mb-4 text-3xl font-extrabold tracking-tight text-[#2c2f31]">
+                        Non-Custodial Shield
+                      </h2>
+                      <div className="relative overflow-hidden rounded-lg bg-[#eef1f3] p-6">
+                        <div className="relative z-10">
+                          <p className="text-sm leading-relaxed text-[#595c5e]">
+                            You are in full control of your assets. Business Lite does not store your private keys on our servers. Your security is entirely local and protected by your recovery phrase.
+                          </p>
+                        </div>
+                        <div className="absolute -bottom-8 -right-8 h-32 w-32 rounded-full bg-[#0051d1]/5 blur-3xl" aria-hidden />
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="group rounded-lg border border-transparent bg-white p-6 shadow-sm transition-all duration-300 hover:border-[#0051d1]/10 hover:shadow-md">
+                      <div className="flex h-full flex-col">
+                        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d8e3fb]">
+                          <AlertTriangle className="h-6 w-6 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
+                        </div>
+                        <h3 className="font-manrope mb-2 text-xl font-bold text-[#2c2f31]">View Recovery Key</h3>
+                        <p className="mb-6 text-xs leading-relaxed text-[#595c5e]">
+                          Access your 24-word phrase. Essential for account restoration if your device is lost.
+                        </p>
+                        <button
+                          type="button"
+                          className={`${bizFocusRingClass} mt-auto flex items-center justify-center gap-2 rounded-full bg-[#0051d1] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0047b8]`}
+                        >
+                          Reveal Phrase
+                          <Shield className="h-4 w-4" strokeWidth={2} aria-hidden />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="group rounded-lg border border-transparent bg-white p-6 shadow-sm transition-all duration-300 hover:border-[#0051d1]/10 hover:shadow-md">
+                      <div className="flex h-full flex-col">
+                        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d8e3fb]">
+                          <QrCode className="h-6 w-6 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
+                        </div>
+                        <h3 className="font-manrope mb-2 text-xl font-bold text-[#2c2f31]">Rotate Recovery QR</h3>
+                        <p className="mb-6 text-xs leading-relaxed text-[#595c5e]">
+                          Update your encrypted backup QR code to maintain current security standards.
+                        </p>
+                        <button
+                          type="button"
+                          className={`${bizFocusRingClass} mt-auto flex items-center justify-center gap-2 rounded-full bg-[#eef1f3] px-6 py-3 text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]`}
+                        >
+                          Generate New
+                          <RefreshCw className="h-4 w-4" strokeWidth={2} aria-hidden />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="group mt-4 rounded-lg border border-[#b31b25]/10 bg-[#b31b25]/5 p-8 transition-all duration-300 md:col-span-2">
+                      <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+                        <div className="max-w-md">
+                          <div className="mb-2 flex items-center gap-2 text-sm font-bold tracking-wide text-[#b31b25]">
+                            <AlertTriangle className="h-5 w-5 fill-[#b31b25]/10 text-[#b31b25]" strokeWidth={2.25} aria-hidden />
+                            DANGER ZONE
+                          </div>
+                          <h3 className="font-manrope mb-2 text-xl font-extrabold text-[#2c2f31]">Master Private Key</h3>
+                          <p className="text-xs leading-relaxed text-[#595c5e]">
+                            Viewing your raw master key is extremely dangerous. This key provides absolute control over all sub-accounts and funds. Never share this with anyone, including support.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSettingsPrivateKeyRevealOpen(true)}
+                          className={`${bizFocusRingClass} w-full rounded-full bg-[#b31b25] px-8 py-4 text-sm font-bold uppercase tracking-widest text-white shadow-lg shadow-[#b31b25]/20 transition-colors hover:bg-[#9f0519] md:w-auto`}
+                        >
+                          Export Master Key
+                        </button>
+                      </div>
+                      <div className="mt-6 flex items-center justify-between gap-3 border-t border-[#b31b25]/10 pt-4">
+                        <div className="min-w-0">
+                          {businessProfileEoaResolved && ethers.isAddress(businessProfileEoaResolved) ? (
+                            <AddressCapsule
+                              address={businessProfileEoaResolved}
+                              className="max-w-full border-[#b31b25]/15 bg-white/80 text-[#595c5e]"
+                              leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
+                            />
+                          ) : (
+                            <span className="text-xs font-medium text-[#595c5e]">Unavailable</span>
+                          )}
+                        </div>
+                        <div className="flex min-w-0 justify-end">
+                          {profiles?.[0]?.aaAccount && ethers.isAddress(profiles[0].aaAccount) ? (
+                            <AddressCapsule
+                              address={ethers.getAddress(profiles[0].aaAccount)}
+                              className="max-w-full border-[#b31b25]/15 bg-white/80 text-[#595c5e]"
+                              leadingIcon={<Hexagon className="h-3.5 w-3.5 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />}
+                            />
+                          ) : (
+                            <span className="text-xs font-medium text-[#595c5e]">Unavailable</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="relative mt-12 overflow-hidden rounded-xl bg-gradient-to-br from-[#0051d1] to-[#0047b8] p-8 text-white shadow-xl">
+                    <div className="relative z-10 flex items-center gap-6">
+                      <div className="hidden h-20 w-20 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-md sm:flex">
+                        <ShieldCheck className="h-10 w-10 text-white" strokeWidth={2.25} aria-hidden />
+                      </div>
+                      <div>
+                        <h4 className="font-manrope mb-1 text-lg font-bold">Ownership Verified</h4>
+                        <p className="text-sm leading-relaxed text-[#d8e3fb] opacity-90">
+                          Your device holds the unique cryptographic signature for this business wallet. Security level: Enterprise-Grade.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="absolute right-0 top-0 -mr-20 -mt-20 h-64 w-64 rounded-full bg-white/5" aria-hidden />
+                  </div>
+                </main>
+                )}
+              </div>
+            ) : null}
            </div>
          )}
 
@@ -25047,6 +26298,146 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          })()
        : null}
 
+     {/* --- TERMINAL SETTLEMENT CLEAR (indexer TX_Terminal_RESET only; not mint limit) --- */}
+     {settlementClearModal && (
+       <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+         <div
+           className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+           onClick={() =>
+             !settlementClearLoading &&
+             (setSettlementClearModal(null), setSettlementClearError(null))
+           }
+         />
+         <div className="relative w-full max-w-md rounded-[40px] bg-white p-8 shadow-2xl duration-200 animate-in zoom-in-95">
+           <div className="mb-6 flex items-center justify-between">
+             <div className="flex items-center gap-3">
+               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
+                 <Receipt size={24} />
+               </div>
+               <h2 className="text-xl font-bold tracking-tight text-black">Settlement clear</h2>
+             </div>
+             <button
+               type="button"
+               onClick={() =>
+                 !settlementClearLoading &&
+                 (setSettlementClearModal(null), setSettlementClearError(null))
+               }
+               className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black disabled:opacity-50"
+             >
+               <X size={20} />
+             </button>
+           </div>
+           <p className="mb-3 text-[14px] leading-snug text-slate-600">
+             Records a new reporting marker on the shared ledger. POS terminals will show totals and activity only for
+             transactions after this moment. This does <span className="font-semibold text-slate-800">not</span> reset the
+             issuance cap or on-chain mint counters — use <span className="font-semibold text-slate-800">Reset Terminal Limit</span>{' '}
+             when you need those cleared.
+           </p>
+           <div className="mb-4 space-y-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+             <div className="font-semibold text-slate-900">{settlementClearModal.name}</div>
+             <div className="text-[13px] text-slate-500">{settlementClearModal.tag}</div>
+             <AddressCapsule
+               address={ethers.getAddress(settlementClearModal.id)}
+               className="max-w-full border-slate-200 bg-white text-slate-700"
+             />
+           </div>
+           {settlementClearError && (
+             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] font-medium text-amber-800">
+               {settlementClearError}
+             </div>
+           )}
+           <div className="flex gap-3">
+             <button
+               type="button"
+               onClick={() =>
+                 !settlementClearLoading &&
+                 (setSettlementClearModal(null), setSettlementClearError(null))
+               }
+               disabled={settlementClearLoading}
+               className="flex-1 rounded-2xl border border-slate-200 py-3.5 text-[15px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+             >
+               Cancel
+             </button>
+             <button
+               type="button"
+               onClick={async () => {
+                 if (!settlementClearModal) return;
+                 setSettlementClearError(null);
+                 const pk = profiles?.[0]?.privateKeyArmor;
+                 if (!pk) {
+                   setSettlementClearError('Unlock your wallet to sign.');
+                   return;
+                 }
+                 setSettlementClearLoading(true);
+                 try {
+                   const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+                   if (!userEOA || !ethers.isAddress(userEOA)) {
+                     throw new Error('Wallet address not available.');
+                   }
+                   if (!staffProgramBeamioCardAddress) {
+                     throw new Error('No issued program card.');
+                   }
+                   const programCardAddr = staffProgramBeamioCardAddress;
+                   const chainSub = await resolveTerminalChainSubordinate(settlementClearModal.id);
+                   const card = new ethers.Contract(
+                     programCardAddr,
+                     USER_CARD_ADMIN_READ_ABI,
+                     baseRpcProviderDirect,
+                   );
+                   const parent = (await card.adminParent(chainSub)) as string;
+                   if (!parent || parent === ethers.ZeroAddress) {
+                     throw new Error(
+                       'This terminal has no parent admin on-chain. Only a linked parent admin can settlement clear.',
+                     );
+                   }
+                   if (ethers.getAddress(parent) !== ethers.getAddress(userEOA)) {
+                     throw new Error(
+                       `Connect the parent admin wallet (${parent}) to continue. Current wallet: ${userEOA}.`,
+                     );
+                   }
+                   const deadline = Math.floor(Date.now() / 1000) + 600;
+                   const nonce = ethers.hexlify(ethers.randomBytes(32));
+                   const adminSignature = await signTerminalSettlementClear(
+                     pk,
+                     programCardAddr,
+                     chainSub,
+                     deadline,
+                     nonce,
+                   );
+                   const res = await postCardTerminalSettlementClear({
+                     cardAddress: programCardAddr,
+                     subordinate: chainSub,
+                     deadline,
+                     nonce,
+                     adminSignature,
+                   });
+                   if (!res.success) {
+                     throw new Error(res.error ?? 'Settlement clear failed');
+                   }
+                   setSettlementClearModal(null);
+                 } catch (e: unknown) {
+                   setSettlementClearError(e instanceof Error ? e.message : 'Settlement clear failed');
+                 } finally {
+                   setSettlementClearLoading(false);
+                 }
+               }}
+               disabled={settlementClearLoading}
+               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#1562f0] py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-[#2b74f5] disabled:opacity-50"
+             >
+               {settlementClearLoading ? (
+                 <>
+                   <Loader2 className={`h-5 w-5 animate-spin ${bizUiPrimaryLoader}`} />
+                   Recording…
+                 </>
+               ) : (
+                 'Confirm'
+               )}
+             </button>
+           </div>
+         </div>
+       </div>
+     )}
+
      {/* --- RESET TERMINAL ISSUANCE LIMIT (parent admin clear mint counter) --- */}
      {resetTerminalLimitModal && (
        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -25667,7 +27058,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
          <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full shrink-0 bg-white/70 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
            <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between px-6">
              <div className="w-10 shrink-0" aria-hidden />
-             <h1 className="text-center font-sans text-lg font-bold tracking-tight text-[#2c2f31]">Verra Business Lite</h1>
+             <h1 className="text-center font-sans text-lg font-bold tracking-tight text-[#2c2f31]">Beamio Business Lite</h1>
              <div className="w-10 shrink-0" aria-hidden />
            </div>
          </header>
@@ -25716,7 +27107,7 @@ const retainedCapitalLifetime = retainedCapitalDisplay ?? 0;
              </button>
              <h1 className="text-center font-sans text-lg font-bold tracking-tight text-[#2c2f31]">
                {merchantKitStripeUi === 'succeeded' && merchantKitProgramLiveSource
-                 ? 'Verra Business Lite'
+                 ? 'Beamio Business Lite'
                  : merchantKitStripeUi === 'succeeded'
                    ? 'Thank you'
                    : 'Checkout'}

@@ -30,6 +30,8 @@ export type CardConfiguratorDraftTierV1 = {
   backgroundColor: string
 }
 
+export type CardConfiguratorDraftRewardsPresetV1 = 'default' | 'custom'
+
 export type CardConfiguratorDraftV1 = {
   version: 1
   programName?: string
@@ -52,6 +54,8 @@ export type CardConfiguratorDraftV1 = {
   mobileStep?: number
   configuratorPreviewMode?: 'app' | 'physical'
   previewTierId?: string | null
+  /** New issuance only: quick default rewards vs full wizard. */
+  rewardsPreset?: CardConfiguratorDraftRewardsPresetV1
   updatedAt?: number
 }
 
@@ -61,6 +65,10 @@ export function cardConfiguratorDraftStorageKey(eoaLower: string): string {
 
 const TIER_RULES: CardConfiguratorDraftTierRuleV1[] = ['single', 'cumulative', 'balance']
 const TIER_PRESETS: CardConfiguratorDraftTierPresetV1[] = ['silver', 'gold', 'platinum', 'custom']
+
+function normalizeRewardsPreset(raw: unknown): CardConfiguratorDraftRewardsPresetV1 | undefined {
+  return raw === 'default' || raw === 'custom' ? raw : undefined
+}
 
 function normalizeTierRule(raw: unknown): CardConfiguratorDraftTierRuleV1 | undefined {
   return typeof raw === 'string' && (TIER_RULES as string[]).includes(raw)
@@ -177,6 +185,7 @@ export function loadCardConfiguratorDraftForEoa(eoaLower: string): CardConfigura
       mobileStep,
       configuratorPreviewMode: previewMode,
       previewTierId,
+      rewardsPreset: normalizeRewardsPreset(p.rewardsPreset),
     }
     return draft
   } catch {

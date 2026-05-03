@@ -291,7 +291,7 @@ const BizHome = () => {
 					>
 						<div className="flex max-w-lg flex-col items-center gap-4">
 							<div className="flex items-center gap-2">
-								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>Verra Identity</span>
+								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>Beamio Identity</span>
 							</div>
 							<div className="flex items-start gap-3 sm:items-center">
 								<div className="relative mt-1 flex h-2 w-2 shrink-0 sm:mt-0">
@@ -299,7 +299,7 @@ const BizHome = () => {
 									<span className="relative inline-flex h-2 w-2 rounded-full bg-[#0051d1]" />
 								</div>
 								<p className="text-left text-xs font-semibold uppercase leading-snug tracking-wide text-[#595c5e] sm:text-center sm:text-sm">
-									We&apos;re verifying your business access and getting Verra Business OS ready.
+									We&apos;re verifying your business access and getting Beamio Business OS ready.
 								</p>
 							</div>
 						</div>

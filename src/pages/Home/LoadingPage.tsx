@@ -19,7 +19,7 @@ import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { getUserInfo, storeSystemData, checkStorage, restoreWithRedeem } from "@/services/beamio"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
-import BusinessIdentityForm from './BusinessIdentityForm'
+import BusinessIdentityForm, { type BusinessIdentitySuccess } from './BusinessIdentityForm'
 import WorkspaceCreatingOverlay from './WorkspaceCreatingOverlay'
 import RecoveryQRScreen from './RecoveryQRScreen'
 import RestoreEntryScreen from './RestoreEntryScreen'
@@ -355,7 +355,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										className="truncate text-xl font-extrabold leading-none tracking-tighter text-[#1562f0]"
 										style={headlineFont}
 									>
-										Verra Business Lite
+										Beamio Business Lite
 									</h1>
 								</div>
 								<a
@@ -473,7 +473,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									<ArrowLeft className="h-6 w-6" strokeWidth={2.25} aria-hidden />
 								</button>
 								<span className="text-xl font-black tracking-tight text-[#1562f0]" style={headlineFont}>
-									Verra Business Lite
+									Beamio Business Lite
 								</span>
 							</header>
 
@@ -990,7 +990,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						isRedeemFlow={!!redeemFromUrl}
 						showIntroHeader={false}
 						onWorkspaceCreatingChange={setWorkspaceCreating}
-						onSuccess={(qr) => {
+						onSuccess={(qr: BusinessIdentitySuccess) => {
 							setQrDataUrl(qr.qrDataUrl)
 							setRecoveryCode(qr.passcode)
 							setBeamioTag(qr.beamioTag ?? '')

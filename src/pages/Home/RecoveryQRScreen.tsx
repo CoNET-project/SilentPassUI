@@ -36,7 +36,7 @@ const toSafeFilename = (tag: string) =>
 function formatRecoveryKeyForDisplay(code: string): string {
 	if (!code) return ''
 	const trimmed = code.trim()
-	if (/^verra-/i.test(trimmed)) return trimmed.toUpperCase()
+	if (/^(verra-|beamio-)/i.test(trimmed)) return trimmed.toUpperCase()
 	const alnum = trimmed.replace(/[^a-zA-Z0-9]/g, '')
 	if (alnum.length === 0) return trimmed
 	const groups = alnum.toUpperCase().match(/.{1,4}/g) ?? []
@@ -217,7 +217,7 @@ const RecoveryQRScreen = ({
             Protect your business access.
           </h1>
           <p className="text-base leading-relaxed text-[#64748b]">
-            Save your recovery key so you can restore access to your Verra Business workspace if this device is lost or replaced.
+            Save your recovery key so you can restore access to your Beamio Business workspace if this device is lost or replaced.
           </p>
         </header>
 

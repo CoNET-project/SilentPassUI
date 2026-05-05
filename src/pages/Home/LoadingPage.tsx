@@ -360,9 +360,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								</div>
 								<a
 									className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-[#eef1f3] active:scale-95 ${bizBrandFocusRingClass}`}
-									href="https://verra.network/contact"
-									target="_blank"
-									rel="noopener noreferrer"
+									href="mailto:support@beamio.app?subject=Beamio%20Business%20help"
 									aria-label="Help"
 								>
 									<HelpCircle className="h-6 w-6 text-[#595c5e]" strokeWidth={2} aria-hidden />
@@ -682,11 +680,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 															I agree to{" "}
 															<a
 																className="text-[#1562f0] underline-offset-2 hover:underline"
-																href="https://verra.network/terms"
+																href="https://beamio.app/terms"
 																target="_blank"
 																rel="noopener noreferrer"
 															>
-																the Verra terms of service and smart contract deployment agreement
+																the Beamio terms of service and smart contract deployment agreement
 															</a>
 															. I understand this initiates a non-custodial environment.
 														</p>
@@ -734,7 +732,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						<div className="mb-6 flex items-center gap-0 md:mb-8">
 							<img src={BIZ_PUBLIC_LOGO512} alt="" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
 							<div className="text-2xl font-black tracking-tighter text-[#1562f0]" style={headlineFont}>
-								Verra Business
+								Beamio Business
 							</div>
 						</div>
 						<h1
@@ -744,7 +742,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							Set up your business for <span className="text-[#1562f0]">live commerce.</span>
 						</h1>
 						<p className="mb-6 text-base leading-relaxed text-[#595c5e] md:mb-8 md:text-lg">
-							Create your Verra Business workspace to issue membership cards, manage customer balance, and run branded payments in one
+							Create your Beamio Business workspace to issue membership cards, manage customer balance, and run branded payments in one
 							place.
 						</p>
 						<div className="space-y-4">
@@ -874,11 +872,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									I agree to{" "}
 									<a
 										className="text-[#1562f0] underline-offset-2 hover:underline"
-										href="https://verra.network/terms"
+										href="https://beamio.app/terms"
 										target="_blank"
 										rel="noopener noreferrer"
 									>
-										the Verra terms of service and smart contract deployment agreement
+										the Beamio terms of service and smart contract deployment agreement
 									</a>
 									. I understand this initiates a non-custodial environment.
 								</p>
@@ -906,13 +904,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			<footer className="mt-auto hidden flex-col items-center justify-between gap-4 border-t border-[#abadaf]/10 bg-[#eef1f3] px-5 py-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex md:flex-row md:px-10">
 				<div className="text-center tracking-[0.2em] md:text-left">Securely hosted by Beamio Infrastructure © 2026</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
-					<a className="transition-colors hover:text-[#1562f0]" href="https://verra.network/privacy" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
 						Privacy Policy
 					</a>
-					<a className="transition-colors hover:text-[#1562f0]" href="https://verra.network/terms" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
 						Terms of Service
 					</a>
-					<a className="transition-colors hover:text-[#1562f0]" href="https://verra.network/contact" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562f0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
 						Help Center
 					</a>
 				</div>
@@ -954,7 +952,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 					className="h-8 w-8 shrink-0 rounded-lg object-contain"
 				/>
 				<span className="text-xl font-extrabold tracking-tighter text-[#1562F0]" style={headlineFont}>
-					Verra Business
+					Beamio Business
 				</span>
 			</header>
 
@@ -965,7 +963,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							Create your business identity
 						</h2>
 						<p className="leading-relaxed text-[#666666]">
-							Choose your Verra handle and set the password that protects your business workspace.
+							Choose your Beamio handle and set the password that protects your business workspace.
 						</p>
 					</div>
 
@@ -1021,13 +1019,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 					<span>Securely hosted by Beamio Infrastructure © 2026</span>
 				</div>
 				<div className="flex flex-wrap justify-center gap-8 md:gap-8">
-					<a className="transition-colors hover:text-[#1562F0]" href="https://verra.network/privacy" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
 						Privacy Policy
 					</a>
-					<a className="transition-colors hover:text-[#1562F0]" href="https://verra.network/terms" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
 						Terms of Service
 					</a>
-					<a className="transition-colors hover:text-[#1562F0]" href="https://verra.network/contact" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562F0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
 						Help Center
 					</a>
 				</div>

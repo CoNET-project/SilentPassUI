@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, baseRpcProviderDirect, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS } from "../utils/constants";
+import { withBaseRpc } from "../utils/baseRpc";
 import {
 	BASE_MAINNET_FACTORIES,
 	BASE_TREASURY,
@@ -848,6 +849,31 @@ export type ShareTokenMetadataBonusRule = {
 	bonusProportional?: boolean
 }
 
+export type ShareTokenMetadataCoupon = {
+	id?: string
+	name?: string
+	discountPercent?: number
+	/** Maximum number of coupons that can be issued for this coupon definition. */
+	issueTotal?: number
+	/**
+	 * When true, members must use a redeem code to claim this coupon; when false/omitted, open claim (no secret code).
+	 * @since merchant Programs UI — persisted in shareTokenMetadata.coupons[]
+	 */
+	requiresRedeemCode?: boolean
+	/**
+	 * Inclusive validity window as local calendar dates (YYYY-MM-DD). Both must be set for clients to enforce.
+	 * @since merchant Programs coupon editor
+	 */
+	validFrom?: string
+	validTo?: string
+	icon?: string
+	backgroundColor?: string
+	description?: string
+	issued?: boolean
+	/** On-chain issued NFT `tokenId` after createIssuedNft (coupon series) */
+	issuedTokenId?: string | number
+}
+
 export type ShareTokenMetadata = {
 	name: string
 	/** Consumer-facing card title in apps (short); optional; falls back to `name` when absent */
@@ -868,6 +894,8 @@ export type ShareTokenMetadata = {
 	bonusRule?: ShareTokenMetadataBonusRule
 	/** Multiple recharge bonus rules previewed in configurator; optional */
 	bonusRules?: ShareTokenMetadataBonusRule[]
+	/** Program coupons metadata (icon can be an IPFS URL). */
+	coupons?: ShareTokenMetadataCoupon[]
 	/** Hero program logo scale on card surfaces (0–3). Optional; clients default to 0. */
 	logoDisplayTier?: number
 }
@@ -936,10 +964,12 @@ export const updateBeamioCardShareMetadata = async (
 				transferWhitelistEnabled: params.transferWhitelistEnabled,
 			}),
 		})
+		const signal = createFetchTimeoutSignal(180_000)
 		const response = await fetch(updateCardShareMetadataEndpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body,
+			...(signal ? { signal } : {}),
 		})
 		const data = await response.json()
 		if (response.ok && data.success) {
@@ -947,6 +977,9 @@ export const updateBeamioCardShareMetadata = async (
 		}
 		return { success: false, error: data.error ?? 'Update metadata failed' }
 	} catch (e: unknown) {
+		if (e instanceof DOMException && e.name === 'AbortError') {
+			return { success: false, error: 'Update metadata timed out. Check your network and try again.' }
+		}
 		const msg = e instanceof Error ? e.message : String(e)
 		return { success: false, error: msg }
 	}
@@ -959,6 +992,7 @@ export const updateBeamioCardTiers = async (
 	params: UpdateBeamioCardTiersParams
 ): Promise<{ success: boolean; cardAddress?: string; hash?: string; error?: string }> => {
 	try {
+		const signal = createFetchTimeoutSignal(180_000)
 		const response = await fetch(cardUpdateTiersEndpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -977,17 +1011,22 @@ export const updateBeamioCardTiers = async (
 					transferWhitelistEnabled: params.transferWhitelistEnabled,
 				}),
 			}),
+			...(signal ? { signal } : {}),
 		})
 		const data = await response.json()
 		if (response.ok && data.success) {
+			const addr = (data.cardAddress as string | undefined) ?? ethers.getAddress(params.cardAddress)
 			return {
 				success: true,
-				cardAddress: data.cardAddress as string | undefined,
-				hash: data.hash as string | undefined,
+				cardAddress: addr,
+				hash: (data.hash as string | undefined) ?? (typeof (data as { tx?: string }).tx === 'string' ? (data as { tx: string }).tx : undefined),
 			}
 		}
 		return { success: false, error: data.error ?? 'Update tiers failed' }
 	} catch (e: unknown) {
+		if (e instanceof DOMException && e.name === 'AbortError') {
+			return { success: false, error: 'Update tiers timed out. Check your network and try again.' }
+		}
 		const msg = e instanceof Error ? e.message : String(e)
 		return { success: false, error: msg }
 	}
@@ -1071,6 +1110,12 @@ export const postBuyCardPoints = async (
         }
     }
 
+/** BeamioUserCard 记录在链上的 `factoryGateway()`，EIP-712 `verifyingContract` 须与其一致。 */
+export const getCardFactoryGatewayForEip712 = async (cardAddress: string): Promise<string> => {
+	const c = new ethers.Contract(ethers.getAddress(cardAddress), ['function factoryGateway() view returns (address)'], baseEndpoint)
+	return ethers.getAddress(await c.factoryGateway())
+}
+
 /** 获取卡的 owner 地址。executeForOwner 要求签名者必须等于 card.owner()，AA 为 owner 时需用 EOA 签会失败。 */
 export const getCardOwner = async (cardAddress: string): Promise<string> => {
 	const card = new ethers.Contract(cardAddress, ['function owner() view returns (address)'], baseEndpoint)
@@ -1084,10 +1129,13 @@ export const signExecuteForAdmin = async (
 	cardAddress: string,
 	data: string,
 	deadline: number,
-	nonce: string
+	nonce: string,
+	verifyingContract?: string,
 ): Promise<string> => {
 	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
-	const factoryAddress = contracts.BeamioCardFactory.address
+	const factoryAddress = verifyingContract
+		? ethers.getAddress(verifyingContract)
+		: await withPromiseTimeout(getCardFactoryGatewayForEip712(cardAddress), 25_000, 'factoryGateway()')
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
@@ -1116,7 +1164,7 @@ export const signClearAdminMintCounter = async (
 	nonceHex: string
 ): Promise<string> => {
 	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
-	const factoryAddress = contracts.BeamioCardFactory.address
+	const factoryAddress = await getCardFactoryGatewayForEip712(cardAddress)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
@@ -1153,7 +1201,7 @@ export const signTerminalSettlementClear = async (
 	nonceHex: string
 ): Promise<string> => {
 	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
-	const factoryAddress = contracts.BeamioCardFactory.address
+	const factoryAddress = await getCardFactoryGatewayForEip712(cardAddress)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
@@ -1238,33 +1286,37 @@ export const postCardTerminalSettlementClear = async (payload: {
 }
 
 /** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。
- * 注意：签名者（从 privateKey 恢复的 EOA）必须等于 card.owner()。若卡 owner 为 AA 地址，用 EOA 签会 revert UC_InvalidSignature。 */
+ * 省略 `verifyingContract` 时使用卡 `factoryGateway()`（勿写死全局 CARD_FACTORY）。
+ * 注意：签名者必须等于 card.owner()；AA 为 owner 时用 EOA 签会失败。 */
 export const signExecuteForOwner = async (
-    ownerPrivateKey: string,
-    cardAddress: string,
-    data: string,
-    deadline: number,
-    nonce: string
+	ownerPrivateKey: string,
+	cardAddress: string,
+	data: string,
+	deadline: number,
+	nonce: string,
+	verifyingContract?: string,
 ): Promise<string> => {
-    const wallet = new ethers.Wallet(ownerPrivateKey, baseEndpoint)
-    const factoryAddress = contracts.BeamioCardFactory.address
-    const domain = {
-        name: 'BeamioUserCardFactory',
-        version: '1',
-        chainId: 8453,
-        verifyingContract: factoryAddress,
-    }
-    const types = {
-        ExecuteForOwner: [
-            { name: 'cardAddress', type: 'address' },
-            { name: 'dataHash', type: 'bytes32' },
-            { name: 'deadline', type: 'uint256' },
-            { name: 'nonce', type: 'bytes32' },
-        ],
-    }
-    const dataHash = ethers.keccak256(data)
-    const value = { cardAddress, dataHash, deadline, nonce }
-    return wallet.signTypedData(domain, types, value)
+	const wallet = new ethers.Wallet(ownerPrivateKey, baseEndpoint)
+	const vc = verifyingContract?.trim()
+		? ethers.getAddress(verifyingContract.trim())
+		: await withPromiseTimeout(getCardFactoryGatewayForEip712(cardAddress), 25_000, 'factoryGateway()')
+	const domain = {
+		name: 'BeamioUserCardFactory',
+		version: '1',
+		chainId: 8453,
+		verifyingContract: vc,
+	}
+	const types = {
+		ExecuteForOwner: [
+			{ name: 'cardAddress', type: 'address' },
+			{ name: 'dataHash', type: 'bytes32' },
+			{ name: 'deadline', type: 'uint256' },
+			{ name: 'nonce', type: 'bytes32' },
+		],
+	}
+	const dataHash = ethers.keccak256(data)
+	const value = { cardAddress, dataHash, deadline, nonce }
+	return wallet.signTypedData(domain, types, value)
 }
 
 const createRedeemInterface = new ethers.Interface([
@@ -1274,6 +1326,31 @@ const createRedeemInterface = new ethers.Interface([
 const createRedeemBatchInterface = new ethers.Interface([
     'function createRedeemBatch(bytes32[] hashes,uint256 points6,uint256 attr,uint64 validAfter,uint64 validBefore,uint256[] tokenIds,uint256[] amounts)',
 ])
+
+/** 构建 createRedeemBatch calldata；支持任意 tokenIds/amounts（如 issued NFT #）。codes 链上登记为 keccak256(utf8(code))，与 consumeRedeem 一致。 */
+export const encodeCreateRedeemBatchBundle = (
+	codes: string[],
+	points6Top: bigint,
+	attr: number,
+	validAfter: number,
+	validBefore: number,
+	tokenIds: (string | number | bigint)[],
+	amounts: (string | number | bigint)[],
+): string => {
+	const hashes = codes.map((c) => ethers.keccak256(ethers.toUtf8Bytes(c)))
+	const tids = tokenIds.map((t) => BigInt(t))
+	const amts = amounts.map((a) => BigInt(a))
+	const pts6ForRedeem = tids.some((t) => t === 0n) ? 0n : BigInt(points6Top)
+	return createRedeemBatchInterface.encodeFunctionData('createRedeemBatch', [
+		hashes,
+		pts6ForRedeem,
+		BigInt(attr),
+		validAfter,
+		validBefore,
+		tids,
+		amts,
+	])
+}
 
 /** 构建 createRedeemBatch 的 calldata（供 executeForOwner 使用）。codes 经 keccak256 得到 hashes。points6 仅放 bundle，top-level points6 传 0 避免兑换时双倍 mint */
 export const encodeCreateRedeemBatch = (
@@ -1310,38 +1387,52 @@ export const encodeCreateRedeem = (
 
 /** 提交批量创建 redeem 到 API cardCreateRedeem。使用 createRedeemBatch，无需 toUserEOA。 */
 export const postCardCreateRedeem = async (payload: {
-    cardAddress: string
-    codes: string[]
-    points6: string | number
-    validAfter: number
-    validBefore: number
-    deadline: number
-    nonce: string
-    ownerSignature: string
+	cardAddress: string
+	codes: string[]
+	points6: string | number
+	validAfter: number
+	validBefore: number
+	deadline: number
+	nonce: string
+	ownerSignature: string
+	/** 缺省 [0] + [points6]；issued NFT 场景传实际 tokenId 与 amount */
+	tokenIds?: string[]
+	amounts?: string[]
+	attr?: number
 }): Promise<{ success: boolean; error?: string; codes?: string[] }> => {
-    try {
-        const body = {
-            cardAddress: payload.cardAddress,
-            codes: payload.codes,
-            points6: String(payload.points6),
-            attr: 0,
-            validAfter: payload.validAfter,
-            validBefore: payload.validBefore,
-            tokenIds: ['0'],
-            amounts: [String(payload.points6)],
-            deadline: payload.deadline,
-            nonce: payload.nonce,
-            ownerSignature: payload.ownerSignature,
-        }
+	try {
+		const tids = payload.tokenIds?.length ? payload.tokenIds.map(String) : ['0']
+		const amts =
+			payload.amounts?.length === tids.length
+				? payload.amounts.map(String)
+				: [String(payload.points6)]
+		const body = {
+			cardAddress: payload.cardAddress,
+			codes: payload.codes,
+			points6: String(payload.points6),
+			attr: payload.attr ?? 0,
+			validAfter: payload.validAfter,
+			validBefore: payload.validBefore,
+			tokenIds: tids,
+			amounts: amts,
+			deadline: payload.deadline,
+			nonce: payload.nonce,
+			ownerSignature: payload.ownerSignature,
+		}
+		const signal = createFetchTimeoutSignal(180_000)
         const res = await fetch(cardCreateRedeemEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+			...(signal ? { signal } : {}),
         })
         const data = await res.json()
         if (!res.ok) return { success: false, error: data.error ?? 'cardCreateRedeem failed' }
         return { success: true, codes: payload.codes }
     } catch (e: any) {
+		if (e?.name === 'AbortError') {
+			return { success: false, error: 'Request timed out. Check your network and try again.' }
+		}
         return { success: false, error: e?.message ?? String(e) }
     }
 }
@@ -1451,29 +1542,163 @@ export const encodeCreateIssuedNft = (
 
 const cardCreateIssuedNftEndpoint = `${beamioApi}/api/cardCreateIssuedNft`
 
-/** 提交 createIssuedNft 到 API cardCreateIssuedNft。Cluster 预检后转发 Master executeForOwner 代付 gas 上链。可选 description、image（IPFS/fragment link）、background_color 用于服务端组装 EIP-1155 metadata */
+/**
+ * Abort after `ms` for fetch bodies. Prefer `AbortSignal.timeout` when present; otherwise
+ * `AbortController` so Safari / older Chromium still get an upper bound (no infinite “Saving…”).
+ */
+function createFetchTimeoutSignal(ms: number): AbortSignal | undefined {
+	try {
+		if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+			return AbortSignal.timeout(ms)
+		}
+		if (typeof AbortController !== 'undefined') {
+			const ctl = new AbortController()
+			setTimeout(() => {
+				try {
+					ctl.abort()
+				} catch {
+					/* noop */
+				}
+			}, ms)
+			return ctl.signal
+		}
+	} catch {
+		/* noop */
+	}
+	return undefined
+}
+
+/**
+ * Race against wall-clock timeout so a never-settling RPC cannot block the caller indefinitely.
+ * (e.g. waitForNewIssuedNftTokenId loop otherwise never advances if issuedNftIndex() hangs)
+ */
+export async function withPromiseTimeout<T>(p: Promise<T>, ms: number, label = 'request'): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined
+	try {
+		return await Promise.race([
+			p,
+			new Promise<T>((_, reject) => {
+				timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+			}),
+		])
+	} finally {
+		if (timer !== undefined) clearTimeout(timer)
+	}
+}
+
+/** 提交 createIssuedNft 到 API cardCreateIssuedNft。成功后响应体含 Master 从 Base receipt 解析的 `issuedNftTokenId`（客户端勿再轮询 issuedNftIndex）。 */
 export const postCardCreateIssuedNft = async (payload: {
-    cardAddress: string
-    data: string
-    deadline: number
-    nonce: string
-    ownerSignature: string
-    description?: string
-    image?: string
-    background_color?: string
-}): Promise<{ success: boolean; hash?: string; error?: string }> => {
-    try {
-        const res = await fetch(cardCreateIssuedNftEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        })
+	cardAddress: string
+	data: string
+	deadline: number
+	nonce: string
+	ownerSignature: string
+	description?: string
+	image?: string
+	background_color?: string
+	metadata_extra_properties?: string | Record<string, unknown>
+}): Promise<{ success: boolean; hash?: string; issuedNftTokenId?: string; error?: string }> => {
+	try {
+		const body: Record<string, unknown> = {
+			cardAddress: payload.cardAddress,
+			data: payload.data,
+			deadline: payload.deadline,
+			nonce: payload.nonce,
+			ownerSignature: payload.ownerSignature,
+		}
+		if (payload.description != null && String(payload.description).trim()) body.description = String(payload.description).trim()
+		if (payload.image != null && String(payload.image).trim()) body.image = String(payload.image).trim()
+		if (payload.background_color != null && String(payload.background_color).trim()) {
+			body.background_color = String(payload.background_color).trim()
+		}
+		if (payload.metadata_extra_properties != null) {
+			body.metadata_extra_properties =
+				typeof payload.metadata_extra_properties === 'string'
+					? payload.metadata_extra_properties
+					: JSON.stringify(payload.metadata_extra_properties)
+		}
+		const signal = createFetchTimeoutSignal(180_000)
+		const res = await fetch(cardCreateIssuedNftEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+			...(signal ? { signal } : {}),
+		})
         const data = await res.json()
         if (!res.ok) return { success: false, error: data.error ?? 'cardCreateIssuedNft failed' }
-        return { success: true, hash: data.hash }
+		const tid =
+			data?.issuedNftTokenId != null && String(data.issuedNftTokenId).trim() !== ''
+				? String(data.issuedNftTokenId).trim()
+				: undefined
+		return {
+			success: true,
+			hash: data.hash,
+			...(tid != null && tid !== '' ? { issuedNftTokenId: tid } : {}),
+		}
     } catch (e: any) {
+		if (e?.name === 'AbortError') {
+			return { success: false, error: 'Request timed out. Check your network and try again.' }
+		}
         return { success: false, error: e?.message ?? String(e) }
     }
+}
+
+const registerSeriesEndpoint = `${beamioApi}/api/registerSeries`
+
+/** 单次读 `issuedNftIndex()` 的 UI 超时（Create Coupon / 确认新系列）。慢 RPC 下过短会误判失败。 */
+export const ISSUED_NFT_INDEX_RPC_TIMEOUT_MS = 45_000
+
+/** 链上 `issuedNftIndex()` — 下一次将分配的 tokenId 等于返回值（赋值后递增）。
+ * 经 `withBaseRpc`：配额/网关类错误会自动换节点再试（比单一 baseEndpoint Proxy 静默挂死更可控）。 */
+export const readIssuedNftIndexCounter = async (cardAddress: string): Promise<bigint> => {
+	const addr = ethers.getAddress(cardAddress)
+	return withBaseRpc(async (provider) => {
+		const c = new ethers.Contract(addr, ['function issuedNftIndex() view returns (uint256)'], provider)
+		return BigInt(await c.issuedNftIndex())
+	})
+}
+
+/** createIssuedNft API 成功后轮询直到计数递增；返回新系列的 tokenId（= 新 index - 1）。 */
+export const waitForNewIssuedNftTokenId = async (cardAddress: string, indexBefore: bigint): Promise<bigint | null> => {
+	const addr = ethers.getAddress(cardAddress)
+	const maxWaitMs = 120_000
+	const perReadMs = 35_000
+	const started = Date.now()
+	while (Date.now() - started < maxWaitMs) {
+		try {
+			const idx = await withPromiseTimeout(readIssuedNftIndexCounter(addr), perReadMs, 'issuedNftIndex')
+			if (idx > indexBefore) return idx - 1n
+		} catch {
+			/* RPC timeout or transient error — keep polling until maxWaitMs */
+		}
+		await new Promise((r) => setTimeout(r, 2000))
+	}
+	return null
+}
+
+/** 登记 issued NFT 系列到 DB（与链上 `issuedNftSharedMetadataHash` 常为 0 对齐） */
+export const postRegisterIssuedNftSeries = async (params: {
+	cardAddress: string
+	tokenId: string | number | bigint
+	metadata?: Record<string, unknown>
+}): Promise<{ success: boolean; error?: string }> => {
+	try {
+		const res = await fetch(registerSeriesEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: ethers.getAddress(params.cardAddress),
+				tokenId: String(params.tokenId),
+				sharedMetadataHash: ethers.ZeroHash,
+				metadata: params.metadata ?? { kind: 'issued_nft_series' },
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as { error?: string }
+		if (!res.ok) return { success: false, error: data.error ?? `registerSeries HTTP ${res.status}` }
+		return { success: true }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
 }
 
 /** 提交 addAdmin 到 API cardAddAdmin。若传 adminEOA，Cluster 会先 ensureAAForEOA 再执行。 */
@@ -1564,6 +1789,10 @@ export type CardRedeemBatch = {
 	ptsPer1Currency?: string
 	createdAt: number
 	items: CardRedeemItem[]
+	/** When set, batch mints issued NFT via redeem bundle (not plain points) */
+	kind?: 'points' | 'issued_nft_coupon'
+	issuedNftTokenId?: string
+	couponId?: string
 }
 
 /** 从 CoNET_Data.cardRedeems 中移除合约返回 not_found 的 redeem，并持久化 */
@@ -2066,6 +2295,7 @@ export type CardMetadataFromUri = {
 	categories?: string[]
 	bonusRule?: ShareTokenMetadataBonusRule
 	bonusRules?: ShareTokenMetadataBonusRule[]
+	coupons?: ShareTokenMetadataCoupon[]
 	/** Parsed from shareTokenMetadata.minimumTopup (whole currency units) */
 	minimumTopupCad?: number
 	/** Parsed from shareTokenMetadata.maximumTopup (whole currency units) */
@@ -2089,6 +2319,7 @@ const cardMetadataCache = new Map<
 		categories?: string[]
 		bonusRule?: ShareTokenMetadataBonusRule
 		bonusRules?: ShareTokenMetadataBonusRule[]
+		coupons?: ShareTokenMetadataCoupon[]
 		minimumTopupCad?: number
 		maximumTopupCad?: number
 		logoDisplayTier?: CardPreviewLogoDisplayTier
@@ -2219,6 +2450,72 @@ function shareTokenBonusRulesFromUnknown(
 	return single ? [single] : undefined
 }
 
+function shareTokenCouponsFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): ShareTokenMetadataCoupon[] | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.coupons
+	if (!Array.isArray(raw) || raw.length === 0) return undefined
+	const out: ShareTokenMetadataCoupon[] = []
+	for (const entry of raw) {
+		if (!entry || typeof entry !== 'object') continue
+		const obj = entry as Record<string, unknown>
+		const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+		const name = typeof obj.name === 'string' ? obj.name.trim() : ''
+		const discountRaw = typeof obj.discountPercent === 'number'
+			? obj.discountPercent
+			: typeof obj.discountPercent === 'string'
+				? Number.parseFloat(obj.discountPercent)
+				: Number.NaN
+		const discountPercent =
+			Number.isFinite(discountRaw) && discountRaw > 0
+				? Math.round(discountRaw * 100) / 100
+				: undefined
+		if (!name || discountPercent == null) continue
+		let issueTotal: number | undefined
+		const itRaw =
+			obj.issueTotal ?? obj.totalIssuance ?? obj.issueTotalCap ?? obj.maxIssueCount ?? obj.mintLimit
+		if (typeof itRaw === 'number' && Number.isFinite(itRaw)) {
+			const n = Math.trunc(itRaw)
+			if (n >= 1) issueTotal = n
+		} else if (typeof itRaw === 'string') {
+			const n = Number.parseInt(itRaw.replace(/,/g, '').trim(), 10)
+			if (Number.isFinite(n) && n >= 1) issueTotal = n
+		}
+		const icon = typeof obj.icon === 'string' ? obj.icon.trim() : ''
+		const backgroundColor = typeof obj.backgroundColor === 'string' ? obj.backgroundColor.trim() : ''
+		const description = typeof obj.description === 'string' ? obj.description.trim() : ''
+		const validFromRaw = obj.validFrom ?? obj.startDate
+		const validToRaw = obj.validTo ?? obj.endDate
+		const validFrom = typeof validFromRaw === 'string' ? validFromRaw.trim() : ''
+		const validTo = typeof validToRaw === 'string' ? validToRaw.trim() : ''
+		const issued =
+			obj.issued === true || obj.issued === 1 || obj.issued === '1' || obj.issued === 'true'
+		const requiresRedeemCode =
+			obj.requiresRedeemCode === true ||
+			obj.requiresRedeemCode === 1 ||
+			obj.requiresRedeemCode === '1' ||
+			obj.requiresRedeemCode === 'true' ||
+			obj.redeemCodeRequired === true ||
+			obj.redeemCodeRequired === 1 ||
+			obj.redeemCodeRequired === '1' ||
+			obj.redeemCodeRequired === 'true'
+		out.push({
+			...(id ? { id } : {}),
+			name,
+			discountPercent,
+			...(issueTotal != null ? { issueTotal } : {}),
+			...(requiresRedeemCode ? { requiresRedeemCode: true } : {}),
+			...(validFrom && validTo ? { validFrom, validTo } : {}),
+			...(icon ? { icon } : {}),
+			...(backgroundColor ? { backgroundColor } : {}),
+			...(description ? { description } : {}),
+			...(issued ? { issued: true } : {}),
+		})
+	}
+	return out.length > 0 ? out : undefined
+}
+
 /** per-NFT metadata 缓存：cardOwner_tokenId -> { name?, description?, image?, timestamp }，TTL 5 分钟 */
 const nftMetadataCache = new Map<string, { name?: string; description?: string; image?: string; timestamp: number }>()
 const NFT_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
@@ -2241,7 +2538,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			name?: string
 			image?: string
 			description?: string
-			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown }
+			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			tiers?: CardTierMetadata[]
 			properties?: Record<string, unknown>
 		}
@@ -2251,6 +2548,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const coupons = shareTokenCouponsFromUnknown(share)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
@@ -2258,6 +2556,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(displayName && { displayName }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(coupons && { coupons }),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,
@@ -2290,6 +2589,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const coupons = shareTokenCouponsFromUnknown(share)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
 		const meta: CardMetadataFromUri = {
@@ -2298,6 +2598,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(displayName && { displayName }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(coupons && { coupons }),
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
 			...(categories && { categories }),
@@ -2387,7 +2688,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			name?: string
 			image?: string
 			description?: string
-			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown }
+			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			tiers?: CardTierMetadata[]
 		}
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
@@ -2397,6 +2698,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const displayName = shareTokenDisplayNameFromUnknown(shareObj)
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
+		const coupons = shareTokenCouponsFromUnknown(shareObj)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(shareObj)
 		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
@@ -2404,6 +2706,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(displayName && { displayName }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(coupons && { coupons }),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,

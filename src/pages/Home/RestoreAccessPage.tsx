@@ -120,7 +120,7 @@ export default function RestoreAccessPage({
 						</button>
 						<h1 className="text-lg font-bold tracking-tight text-[#2c2f31]">Recovery</h1>
 					</div>
-					<div className="text-xl font-black tracking-tighter text-[#0051d1]">Verra</div>
+					<div className="text-xl font-black tracking-tighter text-[#0051d1]">Beamio</div>
 				</div>
 			</header>
 
@@ -192,9 +192,7 @@ export default function RestoreAccessPage({
 						) : null}
 
 						<a
-							href="https://verra.network/contact"
-							target="_blank"
-							rel="noopener noreferrer"
+							href="mailto:support@beamio.app?subject=Beamio%20Business%20recovery"
 							className="inline-flex items-center gap-2 font-medium text-[#0051d1] transition-all hover:underline"
 						>
 							<HelpCircle className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
@@ -223,7 +221,7 @@ export default function RestoreAccessPage({
 
 			<footer className="mt-auto py-8 text-center">
 				<p className="text-[10px] uppercase tracking-widest text-[#595c5e]/60">
-					Powered by Verra Cryptographic Infrastructure
+					Powered by Beamio Cryptographic Infrastructure
 				</p>
 			</footer>
 

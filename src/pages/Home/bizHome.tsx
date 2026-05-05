@@ -110,7 +110,7 @@ const assembleEncryptKeysObject = async (
 	setWorkspaceScreenLocked(false)
 }
 
-/** Post-login signing-in screen — `marketExample.html` (Verra Business OS - Signing In) */
+/** Post-login signing-in screen — `marketExample.html` (Beamio Business OS - Signing In) */
 const SIGNING_IN_STYLE = `
 @keyframes biz-signing-spin {
 	to { transform: rotate(360deg); }
@@ -275,7 +275,7 @@ const BizHome = () => {
 								Preparing your business workspace…
 							</h1>
 							<p className="px-6 text-lg font-medium leading-relaxed text-[#595c5e]">
-								We&apos;re verifying your business access and getting Verra Business OS ready.
+								We&apos;re verifying your business access and getting Beamio Business OS ready.
 							</p>
 							<div className="pt-8">
 								<span className="biz-signing-pulse-soft inline-block rounded-full bg-[#eef1f3] px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#515c70]">
@@ -331,7 +331,7 @@ const BizHome = () => {
 				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-6 py-4">
 					<div className="flex items-center gap-2">
 						<Fingerprint className="h-5 w-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
-						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>VERRA GATEWAY</span>
+						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>BEAMIO GATEWAY</span>
 					</div>
 					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#dfe3e6]">
 						<Briefcase className="h-4 w-4 text-[#595c5e]" strokeWidth={2} aria-hidden />
@@ -345,7 +345,7 @@ const BizHome = () => {
 						Access your business workspace
 					</h1>
 					<p className="text-base leading-relaxed text-[#595c5e]">
-						Use your BeamioTag and password to continue to Verra Business OS.
+						Use your BeamioTag and password to continue to Beamio Business OS.
 					</p>
 				</section>
 
@@ -355,7 +355,7 @@ const BizHome = () => {
 					<div className="mb-8">
 						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>Continue with your business identity</h2>
 						<p className="text-sm leading-snug text-[#595c5e]">
-							Enter the business identity you just created to access your Verra workspace.
+							Enter the business identity you just created to access your Beamio workspace.
 						</p>
 					</div>
 
@@ -384,7 +384,7 @@ const BizHome = () => {
 							<div className="mt-2 flex items-start gap-2 px-1">
 								<Info className="mt-0.5 h-4 w-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
 								<p className="text-[11px] leading-normal text-[#595c5e]">
-									Your BeamioTag is your business identity on Verra.
+									Your BeamioTag is your business identity on Beamio.
 								</p>
 							</div>
 						</div>
@@ -440,7 +440,7 @@ const BizHome = () => {
 									</>
 								) : (
 									<>
-										Continue to Verra Business OS
+										Continue to Beamio Business OS
 										<ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
 									</>
 								)}
@@ -462,9 +462,7 @@ const BizHome = () => {
 
 				<footer className="mt-12 text-center">
 					<a
-						href="https://verra.network/contact"
-						target="_blank"
-						rel="noopener noreferrer"
+						href="mailto:support@beamio.app?subject=Beamio%20Business%20workspace"
 						className={`${headlineFont} mx-auto inline-flex items-center justify-center gap-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]`}
 					>
 						<HelpCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />

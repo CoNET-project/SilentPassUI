@@ -291,13 +291,13 @@ export function OnboardingBusinessDetailsScreen({
 			<footer className="mt-auto flex flex-col items-center justify-between gap-6 border-t border-[#abadaf]/10 bg-[#eef1f3] px-8 py-8 pb-24 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex-row md:px-16 md:pb-8">
 				<div className="text-center tracking-[0.2em] md:text-left">Securely hosted by Beamio Infrastructure © 2026</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
-					<a className="transition-colors hover:text-[#1562f0]" href="https://verra.network/privacy" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
 						Privacy Policy
 					</a>
-					<a className="transition-colors hover:text-[#1562f0]" href="https://verra.network/terms" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
 						Terms of Service
 					</a>
-					<a className="transition-colors hover:text-[#1562f0]" href="https://verra.network/contact" target="_blank" rel="noopener noreferrer">
+					<a className="transition-colors hover:text-[#1562f0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
 						Help Center
 					</a>
 				</div>

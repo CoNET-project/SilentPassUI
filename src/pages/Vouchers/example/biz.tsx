@@ -17,6 +17,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { setWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock';
 import {
   storeSystemData,
+  generateCODE,
   getBalance,
   formatWithThousands,
   purchaseBUnitFromBase,
@@ -49,6 +50,12 @@ import {
   signTerminalSettlementClear,
   postCardTerminalSettlementClear,
   signExecuteForOwner,
+  encodeCreateIssuedNft,
+  postCardCreateIssuedNft,
+  encodeCreateRedeemBatchBundle,
+  postCardCreateRedeem,
+  withPromiseTimeout,
+  postRegisterIssuedNftSeries,
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
   getCardMetadataFromUri,
@@ -70,6 +77,7 @@ import {
   type CardTierMetadata,
   type TierMetadata,
   type UserCardInfo,
+  type CardRedeemBatch,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect } from '@/utils/constants';
@@ -1117,8 +1125,8 @@ function MerchantKitStripeThankYouPanel(props: {
           >
             <div className="flex justify-between items-start">
               <div>
-                <div className={`font-bold text-lg ${isFs ? 'text-white' : 'text-white'}`}>Verra Card</div>
-                <div className="text-[8px] font-medium uppercase tracking-[0.2em] text-white/40">Verra Smart Network</div>
+                <div className={`font-bold text-lg ${isFs ? 'text-white' : 'text-white'}`}>Beamio Card</div>
+                <div className="text-[8px] font-medium uppercase tracking-[0.2em] text-white/40">Beamio Smart Network</div>
               </div>
               <div className="flex flex-col items-end">
                 <Radio className="size-10 text-white/90" strokeWidth={1.5} aria-hidden />
@@ -1428,6 +1436,43 @@ type MembersRewardTierInfo = {
   highestLabel: string
 }
 
+type MembersRewardTierLevel = {
+  threshold: number
+  label: string
+}
+
+function resolveMembersRewardTierLevels(tiers: CardTierMetadata[] | undefined): MembersRewardTierLevel[] {
+  const parsed = (tiers ?? [])
+    .map((tier, idx) => {
+      const raw = tier.minUsdc6 != null && tier.minUsdc6 !== '' ? Number(tier.minUsdc6) : NaN;
+      return {
+        threshold: Number.isFinite(raw) ? Math.round(raw / 1_000_000) : NaN,
+        label: (tier.name ?? '').trim() || `Tier ${idx + 1}`,
+      };
+    })
+    .filter((tier) => Number.isFinite(tier.threshold) && tier.threshold > 0);
+  if (parsed.length < 2) return [];
+  const baseThreshold = Math.min(...parsed.map((tier) => tier.threshold));
+  return parsed
+    .filter((tier) => tier.threshold > baseThreshold)
+    .sort((a, b) => a.threshold - b.threshold);
+}
+
+function resolveMembersRewardTierBadgeLabelFromLevels(
+  levels: MembersRewardTierLevel[] | undefined,
+  balance: number | null | undefined
+): string | null {
+  if (!levels || levels.length === 0) return null;
+  if (balance != null && Number.isFinite(balance)) {
+    let reached: MembersRewardTierLevel | null = null;
+    for (const level of levels) {
+      if (balance >= level.threshold) reached = level;
+    }
+    if (reached) return `${reached.label} Member`;
+  }
+  return `${levels[0].label} Member`;
+}
+
 function resolveMembersRewardTierInfo(tiers: CardTierMetadata[] | undefined): MembersRewardTierInfo | null {
   const parsed = (tiers ?? [])
     .map((tier, idx) => {
@@ -1445,6 +1490,18 @@ function resolveMembersRewardTierInfo(tiers: CardTierMetadata[] | undefined): Me
   rewardTiers.sort((a, b) => b.threshold - a.threshold);
   const highest = rewardTiers[0];
   return { highestThreshold: highest.threshold, highestLabel: highest.label };
+}
+
+function hasMembersRewardTier(tiers: CardTierMetadata[] | undefined): boolean {
+  const parsed = (tiers ?? [])
+    .map((tier) => {
+      const raw = tier.minUsdc6 != null && tier.minUsdc6 !== '' ? Number(tier.minUsdc6) : NaN;
+      return Number.isFinite(raw) ? Math.round(raw / 1_000_000) : NaN;
+    })
+    .filter((v) => Number.isFinite(v) && v > 0);
+  if (parsed.length < 2) return false;
+  const base = Math.min(...parsed);
+  return parsed.some((v) => v > base);
 }
 
 function memberRowReachedHighestRewardTier(row: BizTopupMemberTableRow, tierInfo: MembersRewardTierInfo | null): boolean {
@@ -1512,7 +1569,7 @@ function MembersLoyaltyNoAaEditorial(props: { onSetUpFirstProgram: () => void })
           Your community starts here.
         </h2>
         <p className="mb-10 max-w-xl px-4 text-lg font-medium leading-relaxed text-[#595c5e]">
-          When customers tap your physical NFC cards or buy your digital cards in the Verra App, their profiles and balances will securely appear
+          When customers tap your physical NFC cards or buy your digital cards in the Beamio App, their profiles and balances will securely appear
           here.
         </p>
 
@@ -1851,7 +1908,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                 type="button"
                 onClick={() => {
                   window.open(
-                    'mailto:support@beamio.app?subject=Verra%20Business%20Enterprise%20Kit%20inquiry',
+                    'mailto:support@beamio.app?subject=Beamio%20Business%20Enterprise%20Kit%20inquiry',
                     '_blank',
                     'noopener,noreferrer'
                   );
@@ -1878,7 +1935,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                 >
                   microscopic fuel
                 </button>{' '}
-                for your Verra network. By using these internal units to process transactions and upgrades, your business can scale with
+                for your Beamio network. By using these internal units to process transactions and upgrades, your business can scale with
                 near-zero merchant overhead.
               </p>
             </div>
@@ -2114,7 +2171,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    the Verra terms of service and smart contract deployment agreement
+                    the Beamio terms of service and smart contract deployment agreement
                   </a>
                   . I understand this initiates a non-custodial environment.
                 </p>
@@ -2179,7 +2236,7 @@ function StaffSoftPosHero(props: { onLinkNew: () => void }) {
             Transform your phone into a secure <span style={{ color: STAFF_SOFTPOS_UI_PRIMARY }}>Payment Terminal</span>.
           </h1>
           <p className="mb-4 max-w-md text-sm font-medium leading-relaxed text-[#515c70] sm:text-base md:mb-5 md:text-[1.05rem]">
-            Verra SoftPOS allows you to accept contactless payments directly on your NFC-enabled device. No extra hardware required—just tap and go.
+            Beamio SoftPOS allows you to accept contactless payments directly on your NFC-enabled device. No extra hardware required—just tap and go.
           </p>
         </div>
         <div className="relative z-10">
@@ -2416,7 +2473,7 @@ function WalletsTreasuryShell(props: {
                   {settlementActive ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-[#1562f0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1562f0]">
                       <BadgeCheck className="size-3.5" strokeWidth={2} aria-hidden />
-                      Verified Verra Partner
+                      Verified Beamio Partner
                     </span>
                   ) : (
                     <span className="rounded-full bg-[#eef1f3] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
@@ -3436,7 +3493,7 @@ function StaffTerminalsNoAaOnloadingShell(props: {
             Ready to accept payments?
           </h2>
           <p className="text-sm font-medium leading-relaxed text-slate-500 sm:text-base">
-            Install the Verra SoftPOS app on any NFC-enabled device to turn it into a secure payment terminal. No extra hardware required—just tap and
+            Install the Beamio SoftPOS app on any NFC-enabled device to turn it into a secure payment terminal. No extra hardware required—just tap and
             go.
           </p>
         </div>
@@ -3464,7 +3521,7 @@ function StaffTerminalsNoAaOnloadingShell(props: {
           <div className="space-y-1.5">
             <h4 className="text-sm font-bold text-slate-900 sm:text-base">No active devices found</h4>
             <p className="max-w-xs text-xs font-medium text-slate-500 sm:text-sm">
-              Once you link a device using the Verra app, it will appear here for real-time tracking.
+              Once you link a device using the Beamio app, it will appear here for real-time tracking.
             </p>
           </div>
         </div>
@@ -3512,7 +3569,7 @@ function StaffTerminalsInfoGrid() {
         </div>
         <h4 className="mb-1.5 text-base font-bold text-[#2c2f31] sm:mb-2 sm:text-lg">Pure Software Solution</h4>
         <p className="text-xs leading-relaxed text-[#515c70] sm:text-sm">
-          No clunky card machines or expensive hardware. Just install the Verra SoftPOS app on any NFC-enabled smartphone or tablet to start accepting
+          No clunky card machines or expensive hardware. Just install the Beamio SoftPOS app on any NFC-enabled smartphone or tablet to start accepting
           secure payments instantly.
         </p>
       </div>
@@ -3532,14 +3589,14 @@ function StaffTerminalsInfoGrid() {
         </div>
         <h4 className="mb-1.5 text-base font-bold text-[#2c2f31] sm:mb-2 sm:text-lg">Smart Network Reporting</h4>
         <p className="text-xs leading-relaxed text-[#515c70] sm:text-sm">
-          Track live sales from all mobile terminals and digital cards in one consolidated Verra Business dashboard.
+          Track live sales from all mobile terminals and digital cards in one consolidated Beamio Business dashboard.
         </p>
       </div>
     </div>
   );
 }
 
-/** Verra Messages day-zero UI — `marketExample.html` (dual pane + Concierge welcome). */
+/** Beamio Messages day-zero UI — `marketExample.html` (dual pane + Concierge welcome). */
 const VERRA_CONCIERGE_INBOX_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDJTutfeByR_K_9krcUU0clVT6UuCnszHaJmz5MccUtFKyKcx82xLURJSgCSEd26zmWUDW3xdDwHwQmxOfNtkhrdSEJakhHElMP5bN0R8p70uV2jVuOFZnH9V_8GU_PkWKbNCC29SMq-hSB6B2ET1dIrcEZmcQKK4qo61SI2dPbVk2FNFGQ4f_5wuuhOKwS0-ykjsUwZYl9kQGVClrsrzXDNze7a4d0AQJ4RVPDiBtUt9JPVjkBoLqByQGQDy_nPDx4E84YLvqfLeo';
 
@@ -3616,10 +3673,10 @@ function MessagesDayZeroShell(props: {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-bold text-[#2c2f31]">Verra Concierge</span>
+                  <span className="truncate font-bold text-[#2c2f31]">Beamio Concierge</span>
                   <span className="shrink-0 text-[10px] font-medium text-[#747779]">NOW</span>
                 </div>
-                <p className="truncate text-sm font-medium text-[#595c5e]">Welcome to Verra! This is your secure…</p>
+                <p className="truncate text-sm font-medium text-[#595c5e]">Welcome to Beamio! This is your secure…</p>
               </div>
               <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0051d1]" aria-hidden />
             </div>
@@ -3644,7 +3701,7 @@ function MessagesDayZeroShell(props: {
                   VC
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold leading-none text-[#2c2f31]">Verra Concierge</h3>
+                  <h3 className="text-lg font-bold leading-none text-[#2c2f31]">Beamio Concierge</h3>
                   <div className="mt-1 flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
                     <span className="text-[11px] font-bold uppercase tracking-widest text-[#747779]">
@@ -3692,7 +3749,7 @@ function MessagesDayZeroShell(props: {
                         <Hand className="size-7" strokeWidth={2} aria-hidden />
                       </div>
                       <div>
-                        <h4 className="text-xl font-bold text-[#1562f0]">Welcome to Verra!</h4>
+                        <h4 className="text-xl font-bold text-[#1562f0]">Welcome to Beamio!</h4>
                         <p className="mt-1 text-xs font-medium text-[#747779]">Secure business inbox</p>
                       </div>
                     </div>
@@ -3793,6 +3850,8 @@ function memberDirectoryFormatTsSec(sec: number): string {
 type MemberDirectoryProfileDrawerProps = {
   row: BizTopupMemberTableRow;
   segment: MembersDirectorySegment;
+  hasRewardTier: boolean;
+  tierBadgeLabel: string | null;
   cadPerUsdcOracle: number;
   onClose: () => void;
   onSendGift: () => void;
@@ -3800,9 +3859,8 @@ type MemberDirectoryProfileDrawerProps = {
 
 /** Returns motion layers for `AnimatePresence` (multiple direct children). */
 function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileDrawerProps): React.ReactElement[] {
-  const { row, segment, cadPerUsdcOracle, onClose, onSendGift } = props;
+  const { row, segment, hasRewardTier, tierBadgeLabel, cadPerUsdcOracle, onClose, onSendGift } = props;
   const pts = directoryMemberPointsHuman(row);
-  const tier = directoryMemberTierFromPoints(pts);
   const tagRaw = row.beamioTag.replace(/^@/, '').trim();
   const displayTitle = tagRaw ? formatDirectoryMemberDisplayName(row.beamioTag) : segment === 'app' ? 'App user' : 'NFC user';
   const headlineTag =
@@ -3871,28 +3929,30 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
               {headlineTag}
             </h3>
             <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
-            <div
-              className={`mt-3 inline-flex items-center rounded-full border px-3 py-1 ${
-                tier.gold ? 'border-amber-100/50 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-100 text-slate-700'
-              }`}
-            >
-              <span className="font-sans text-xs font-bold">{tier.gold ? 'Gold Member' : 'Silver Member'}</span>
-            </div>
+            {hasRewardTier && tierBadgeLabel ? (
+              <div
+                className="mt-3 inline-flex items-center rounded-full border border-[#0051d1]/20 bg-[#0051d1]/10 px-3 py-1 text-[#0047b8]"
+              >
+                <span className="font-sans text-xs font-bold">{tierBadgeLabel}</span>
+              </div>
+            ) : null}
           </div>
 
-          <div className="mb-8">
-            <div className="mb-3 flex items-end justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Tier Progress</span>
-              <span className="text-xs font-bold text-[#0051d1]">{tierProgressPct}%</span>
+          {hasRewardTier ? (
+            <div className="mb-8">
+              <div className="mb-3 flex items-end justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Tier Progress</span>
+                <span className="text-xs font-bold text-[#0051d1]">{tierProgressPct}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
+                <div className="h-full rounded-full bg-[#0051d1] transition-all" style={{ width: `${tierProgressPct}%` }} />
+              </div>
+              <div className="mt-3 flex justify-between text-[11px] font-medium text-[#595c5e]">
+                <span>{cadDisplay} volume (oracle)</span>
+                <span className="text-right font-bold text-[#0047b8]">{toNextLabel}</span>
+              </div>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
-              <div className="h-full rounded-full bg-[#0051d1] transition-all" style={{ width: `${tierProgressPct}%` }} />
-            </div>
-            <div className="mt-3 flex justify-between text-[11px] font-medium text-[#595c5e]">
-              <span>{cadDisplay} volume (oracle)</span>
-              <span className="text-right font-bold text-[#0047b8]">{toNextLabel}</span>
-            </div>
-          </div>
+          ) : null}
 
           <div className="mb-8 grid grid-cols-1 gap-3">
             <div className="rounded-lg border border-white bg-[#eef1f3] p-5 shadow-sm">
@@ -4302,6 +4362,8 @@ const TOPUP_BUINT_SERVICE_CATEGORY_LOWER = new Set([
 /** True = omit row from raw ingest. NFC/USDC top-up **service fee** lines are kept for merge into parent Top-Up. */
 function shouldSkipIndexerRowForMerchantTxTable(tx: { txCategory: string; payee: string }): boolean {
   const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
+  /** Keep USDC request-accounting rows in memory so Wallet Recent Activity can render bookkeeping items. */
+  if (cat === TX_BUINT_REQUEST_ACCOUNTING.toLowerCase()) return false
   if (TOPUP_BUINT_SERVICE_CATEGORY_LOWER.has(cat)) return false
   return isIndexerFetchedRowBunitLedger(tx)
 }
@@ -5099,6 +5161,12 @@ function txDisplayRowCurrencyFiatIsUsdc(tx: TxDisplayRow): boolean {
   const meta = parseIndexerMetaTuple(raw.meta)
   const currencyFiat = Number.parseInt(meta.currencyFiat, 10)
   return Number.isFinite(currencyFiat) && currencyFiat === BEAMIO_CURRENCY_TYPE_USDC
+}
+
+function txDisplayRowIsUsdcRequestAccounting(tx: TxDisplayRow): boolean {
+  const raw = tx.raw as Record<string, unknown>
+  const cat = normalizeIndexerTxCategoryHex(raw.txCategory)
+  return cat === TX_BUINT_REQUEST_ACCOUNTING.toLowerCase()
 }
 
 function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFilterCtx): boolean {
@@ -6481,7 +6549,7 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
 }
 
 /**
- * Verra Merchant（Merchant OS）链上 KPI / metadata / Staff：以 **localStorage trusted cache 本地为主**，6s daemon 后台拉取为辅（`beamio-ai-onchain-fetch.mdc`）。
+ * Beamio Merchant（Merchant OS）链上 KPI / metadata / Staff：以 **localStorage trusted cache 本地为主**，6s daemon 后台拉取为辅（`beamio-ai-onchain-fetch.mdc`）。
  * 节拍由 **DaemonProvider** 统一 setTimeout 链触发（与 Members 串行，见 `registerMerchantOsOverviewBackgroundWork`），**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
  */
 
@@ -7039,6 +7107,155 @@ const CARD_ISSUANCE_MIN_TOPUP_DEFAULT = 5;
 const CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT = 10;
 /** Max length for Card Issuance configuration text (card description, tier description, etc.). */
 const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
+/** Default max number of times a program coupon can be issued (metadata). */
+const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT = 100;
+const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX = 9_999_999;
+
+type CardIssuanceCouponMetaHydrationShape = {
+  issueTotal?: number | string;
+  totalIssuance?: number | string;
+  issueTotalCap?: number | string;
+  maxIssueCount?: number | string;
+  mintLimit?: number | string;
+  requiresRedeemCode?: boolean | number | string;
+  redeemCodeRequired?: boolean | number | string;
+  validFrom?: string;
+  validTo?: string;
+  startDate?: string;
+  endDate?: string;
+  /** From published coupon metadata or nested `beamioCoupon` merged by indexer. */
+  issuedTokenId?: number | string;
+  beamioCoupon?: { issuedTokenId?: number | string };
+};
+
+function parseCouponIssueTotalFromHydration(meta: CardIssuanceCouponMetaHydrationShape): string {
+  const keys = ['issueTotal', 'totalIssuance', 'issueTotalCap', 'maxIssueCount', 'mintLimit'] as const;
+  for (const k of keys) {
+    const v = meta[k];
+    if (typeof v !== 'number' && typeof v !== 'string') continue;
+    const raw = String(v).replace(/,/g, '').trim();
+    const issueTotalN = Number.parseInt(raw, 10);
+    const issueTotalAsFloat = Number.parseFloat(raw);
+    if (
+      Number.isFinite(issueTotalAsFloat) &&
+      Number.isFinite(issueTotalN) &&
+      issueTotalAsFloat === issueTotalN &&
+      issueTotalN >= 1 &&
+      issueTotalN <= CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX
+    ) {
+      return String(issueTotalN);
+    }
+  }
+  return String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT);
+}
+
+/** Same calendar day next month (handles month length). */
+function addOneCalendarMonthYmd(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) return ymd;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  const dt = new Date(y, mo, d);
+  dt.setMonth(dt.getMonth() + 1);
+  return formatLocalYmd(dt);
+}
+
+function couponDefaultValidFromYmd(): string {
+  return formatLocalYmd(new Date());
+}
+
+function couponDefaultValidToYmd(): string {
+  return addOneCalendarMonthYmd(couponDefaultValidFromYmd());
+}
+
+const COUPON_YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parseCouponYmd(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const t = raw.trim();
+  if (!COUPON_YMD_RE.test(t)) return null;
+  const d = new Date(`${t}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return t;
+}
+
+/** Inclusive YYYY-MM-DD → redeem `validAfter` / `validBefore` (UTC), with small `validAfter` slack. */
+function couponYmdRangeToUnixValidWindow(fromYmd: string, toYmd: string): { validAfter: number; validBefore: number } {
+  const fm = COUPON_YMD_RE.exec(fromYmd.trim());
+  const tm = COUPON_YMD_RE.exec(toYmd.trim());
+  if (!fm || !tm) {
+    const now = Math.floor(Date.now() / 1000);
+    return { validAfter: now - 120, validBefore: now + 86400 * 365 * 30 };
+  }
+  const ys = Number(fm[1]);
+  const ms = Number(fm[2]);
+  const ds = Number(fm[3]);
+  const ye = Number(tm[1]);
+  const me = Number(tm[2]);
+  const de = Number(tm[3]);
+  const startSec = Math.floor(Date.UTC(ys, ms - 1, ds, 0, 0, 0) / 1000);
+  const endSec = Math.floor(Date.UTC(ye, me - 1, de, 23, 59, 59) / 1000);
+  return { validAfter: Math.max(0, startSec - 120), validBefore: endSec };
+}
+
+function redeemValidityForCoupon(
+  dr: 'none' | 'range',
+  vfStore: string,
+  vtStore: string
+): { validAfter: number; validBefore: number } {
+  if (dr === 'range' && parseCouponYmd(vfStore) && parseCouponYmd(vtStore)) {
+    return couponYmdRangeToUnixValidWindow(vfStore, vtStore);
+  }
+  const now = Math.floor(Date.now() / 1000);
+  return { validAfter: now - 120, validBefore: now + 86400 * 365 * 30 };
+}
+
+function parseCouponDateRestrictionFromHydration(meta: CardIssuanceCouponMetaHydrationShape): {
+  restriction: 'none' | 'range';
+  fromYmd: string;
+  toYmd: string;
+} {
+  const from =
+    parseCouponYmd(meta.validFrom) ??
+    parseCouponYmd(meta.startDate) ??
+    parseCouponYmd((meta as { valid_from?: string }).valid_from);
+  const to =
+    parseCouponYmd(meta.validTo) ??
+    parseCouponYmd(meta.endDate) ??
+    parseCouponYmd((meta as { valid_to?: string }).valid_to);
+  if (from && to) {
+    return { restriction: 'range', fromYmd: from, toYmd: to };
+  }
+  return { restriction: 'none', fromYmd: '', toYmd: '' };
+}
+
+function parseCouponIssuedTokenIdFromHydration(meta: CardIssuanceCouponMetaHydrationShape): string | undefined {
+  const pick = (v: unknown): string | undefined => {
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return String(Math.trunc(v));
+    if (typeof v !== 'string') return undefined;
+    const t = v.trim();
+    return /^\d+$/.test(t) ? t : undefined;
+  };
+  return (
+    pick(meta.issuedTokenId) ??
+    pick(meta.beamioCoupon?.issuedTokenId) ??
+    pick((meta as { properties?: { beamioCoupon?: { issuedTokenId?: number | string } } }).properties?.beamioCoupon
+      ?.issuedTokenId)
+  );
+}
+
+function parseCouponRequiresRedeemFromHydration(meta: CardIssuanceCouponMetaHydrationShape): boolean {
+  const flags = [meta.requiresRedeemCode, meta.redeemCodeRequired] as const;
+  for (const v of flags) {
+    if (v === true || v === 1) return true;
+    if (typeof v === 'string') {
+      const t = v.trim().toLowerCase();
+      if (t === '1' || t === 'true' || t === 'yes') return true;
+    }
+  }
+  return false;
+}
 /** Consumer app card title (`shareTokenMetadata.displayName`). */
 const CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX = 20;
 const CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT = 100;
@@ -7055,6 +7272,136 @@ type CardIssuanceBonusRuleRow = {
   /** When true, POS applies bonus = top-up × (bonusValue / paymentAmount). */
   bonusProportional: boolean;
 };
+
+type CardIssuanceCouponRow = {
+  id: string;
+  name: string;
+  discountPercent: string;
+  /** Maximum total issuance count for this coupon (metadata). */
+  issueTotal: string;
+  /** When true, claiming requires a redeem code; when false, open claim without a code. */
+  requiresRedeemCode: boolean;
+  /** No date window in metadata vs inclusive local calendar range (YYYY-MM-DD). */
+  couponDateRestriction: 'none' | 'range';
+  /** When `couponDateRestriction` is `range`, inclusive start date. */
+  couponValidFromYmd: string;
+  /** When `couponDateRestriction` is `range`, inclusive end date. */
+  couponValidToYmd: string;
+  icon: string;
+  backgroundColor: string;
+  description: string;
+  issued: boolean;
+  /** On-chain issued NFT tokenId after successful createIssuedNft (coupon series). */
+  issuedTokenId?: string;
+};
+
+function makeCardIssuanceCouponRow(
+  name = '',
+  discountPercent: number | string = 10,
+  icon = '',
+  backgroundColor = '#0051d1',
+  description = '',
+  issueTotal: number | string = CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT,
+  requiresRedeemCode = false,
+  couponDateRestriction: 'none' | 'range' = 'none',
+  couponValidFromYmd = '',
+  couponValidToYmd = '',
+  issued = false,
+  issuedTokenId?: string,
+  couponId?: string
+): CardIssuanceCouponRow {
+  return {
+    id: couponId?.trim() || `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: String(name),
+    discountPercent: String(discountPercent),
+    issueTotal: String(issueTotal),
+    requiresRedeemCode,
+    couponDateRestriction,
+    couponValidFromYmd: String(couponValidFromYmd),
+    couponValidToYmd: String(couponValidToYmd),
+    icon: String(icon),
+    backgroundColor: String(backgroundColor),
+    description: String(description),
+    issued,
+    ...(issuedTokenId?.trim() ? { issuedTokenId: issuedTokenId.trim() } : {}),
+  };
+}
+
+type CardIssuanceCouponMetadataPayload = {
+  id: string;
+  name: string;
+  discountPercent: number;
+  issueTotal: number;
+  requiresRedeemCode?: boolean;
+  /** Inclusive local calendar start (YYYY-MM-DD); only with validTo. */
+  validFrom?: string;
+  /** Inclusive local calendar end (YYYY-MM-DD); only with validFrom. */
+  validTo?: string;
+  icon?: string;
+  backgroundColor?: string;
+  description?: string;
+  issued?: boolean;
+  /** On-chain ERC-1155 issued NFT series id */
+  issuedTokenId?: string;
+};
+
+function buildCardIssuanceCouponMetadataPayload(
+  rows: CardIssuanceCouponRow[]
+): CardIssuanceCouponMetadataPayload[] | undefined {
+  const out = rows
+    .map((row): CardIssuanceCouponMetadataPayload | null => {
+      const id = row.id.trim();
+      const name = row.name.trim();
+      const discount = Number.parseFloat(row.discountPercent.trim());
+      const issueTotalRaw = row.issueTotal.replace(/,/g, '').trim();
+      const issueTotalN = Number.parseInt(issueTotalRaw, 10);
+      const issueTotalAsFloat = parseFloat(issueTotalRaw);
+      if (!id || !name || !Number.isFinite(discount) || discount <= 0 || discount > 100) {
+        return null;
+      }
+      if (
+        !Number.isFinite(issueTotalAsFloat) ||
+        !Number.isFinite(issueTotalN) ||
+        issueTotalAsFloat !== issueTotalN ||
+        issueTotalN < 1 ||
+        issueTotalN > CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX
+      ) {
+        return null;
+      }
+      const backgroundColor = tierBackgroundColorForPayload(row.backgroundColor);
+      const icon = row.icon.trim();
+      const description = row.description.trim();
+      const payload: CardIssuanceCouponMetadataPayload = {
+        id,
+        name,
+        discountPercent: Number(discount.toFixed(2)),
+        issueTotal: issueTotalN,
+        ...(row.requiresRedeemCode ? { requiresRedeemCode: true } : {}),
+        ...(icon ? { icon } : {}),
+        ...(backgroundColor ? { backgroundColor } : {}),
+        ...(description ? { description } : {}),
+      };
+      if (
+        row.couponDateRestriction === 'range' &&
+        parseCouponYmd(row.couponValidFromYmd) &&
+        parseCouponYmd(row.couponValidToYmd)
+      ) {
+        payload.validFrom = parseCouponYmd(row.couponValidFromYmd) ?? undefined;
+        payload.validTo = parseCouponYmd(row.couponValidToYmd) ?? undefined;
+      }
+      if (row.issued) payload.issued = true;
+      const it = row.issuedTokenId?.trim();
+      if (it) payload.issuedTokenId = it;
+      return payload;
+    })
+    .filter((row): row is CardIssuanceCouponMetadataPayload => row != null);
+  return out.length > 0 ? out : undefined;
+}
+
+function cardIssuanceCouponIconLooksLikeImageUrl(raw: string): boolean {
+  const t = raw.trim().toLowerCase();
+  return t.startsWith('http://') || t.startsWith('https://') || t.startsWith('ipfs://');
+}
 
 function makeCardIssuanceBonusRuleRow(
   paymentAmount: number | string = CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT,
@@ -7915,6 +8262,24 @@ const [cardIssuanceBonusRules, setCardIssuanceBonusRules] = useState<CardIssuanc
  const [cardIssuanceBonusRuleEditorPublishing, setCardIssuanceBonusRuleEditorPublishing] = useState(false);
  const [cardIssuanceBonusRuleEditorServerError, setCardIssuanceBonusRuleEditorServerError] = useState('');
 const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useState<string | null>(null);
+const [cardIssuanceCoupons, setCardIssuanceCoupons] = useState<CardIssuanceCouponRow[]>([]);
+const [cardIssuanceCouponEditorOpen, setCardIssuanceCouponEditorOpen] = useState(false);
+const [cardIssuanceEditingCouponId, setCardIssuanceEditingCouponId] = useState<string | null>(null);
+const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState('');
+const [cardIssuanceCouponDiscountPercent, setCardIssuanceCouponDiscountPercent] = useState('10');
+const [cardIssuanceCouponIcon, setCardIssuanceCouponIcon] = useState('');
+const [cardIssuanceCouponBackgroundColor, setCardIssuanceCouponBackgroundColor] = useState('#0051d1');
+const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState('');
+const [cardIssuanceCouponIssueTotal, setCardIssuanceCouponIssueTotal] = useState(
+  String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)
+);
+const [cardIssuanceCouponRequiresRedeemCode, setCardIssuanceCouponRequiresRedeemCode] = useState(false);
+const [cardIssuanceCouponDateRestriction, setCardIssuanceCouponDateRestriction] = useState<'none' | 'range'>('none');
+const [cardIssuanceCouponValidFromYmd, setCardIssuanceCouponValidFromYmd] = useState(() => couponDefaultValidFromYmd());
+const [cardIssuanceCouponValidToYmd, setCardIssuanceCouponValidToYmd] = useState(() => couponDefaultValidToYmd());
+const cardIssuanceCouponIconFileRef = useRef<HTMLInputElement>(null);
+const [cardIssuanceCouponIconUploading, setCardIssuanceCouponIconUploading] = useState(false);
+const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
  /** Programs overview: confirm before removing a recharge bonus rule from draft state. */
  const [cardIssuanceBonusRuleDeleteConfirmId, setCardIssuanceBonusRuleDeleteConfirmId] = useState<string | null>(
    null
@@ -7932,6 +8297,7 @@ const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useS
  const cardIssuanceBonusRuleBonusWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTierEditorDiscountWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceCouponIssueTotalWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const [cardIssuanceTierRule, setCardIssuanceTierRule] = useState<CardIssuanceTierRule>('single');
  const cardIssuanceTierRuleRef = useRef<CardIssuanceTierRule>('single');
  cardIssuanceTierRuleRef.current = cardIssuanceTierRule;
@@ -7971,6 +8337,15 @@ const [cardIssuanceTierEditorDiscountPercent, setCardIssuanceTierEditorDiscountP
 const [cardIssuanceTierEditorBackgroundColor, setCardIssuanceTierEditorBackgroundColor] = useState('#6366f1');
 const [cardIssuanceTierEditorDescription, setCardIssuanceTierEditorDescription] = useState('');
 const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState<CardIssuanceTierPreset>('custom');
+const handlePublishCardIssuanceRef = useRef<
+  (opts?: {
+    bonusRulesOverride?: CardIssuanceBonusRuleRow[];
+    couponsOverride?: CardIssuanceCouponRow[];
+    tiersOverride?: CardIssuanceTierRow[];
+    minTopupOverride?: string;
+    loadingScope?: 'default' | 'bonusEditor';
+  }) => Promise<boolean>
+>(async () => false);
  const [cardIssuanceShareImageUrl, setCardIssuanceShareImageUrl] = useState('');
  const [cardIssuanceShareImageUploading, setCardIssuanceShareImageUploading] = useState(false);
  /** Single category id (e.g. travel); stored in metadata `shareTokenMetadata.categories` as one-element array */
@@ -7978,6 +8353,8 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  /** Card-level metadata description (`shareTokenMetadata.description`). */
  const [cardIssuanceDescription, setCardIssuanceDescription] = useState('');
  const [cardIssuanceCreateLoading, setCardIssuanceCreateLoading] = useState(false);
+ /** Coupon editor (Create / Save Coupon) — separate from global Publish loading */
+ const [cardIssuanceCouponEditorPublishing, setCardIssuanceCouponEditorPublishing] = useState(false);
  const [cardIssuanceCreateError, setCardIssuanceCreateError] = useState('');
   const [cardIssuanceCreateResult, setCardIssuanceCreateResult] = useState<{ cardAddress: string; hash?: string } | null>(
     null
@@ -8017,7 +8394,9 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
  /** Wizard step for Card Configurator on viewports ≤1023px (`marketExample.html` pattern). */
  const [cardIssuanceMobileStep, setCardIssuanceMobileStep] = useState(1);
  /** New issuance only: quick default operational limits + Single top-up, or full Steps 2–3 wizard. */
- const [cardIssuanceRewardsPreset, setCardIssuanceRewardsPreset] = useState<'default' | 'custom'>('custom');
+ const [cardIssuanceRewardsPreset, setCardIssuanceRewardsPreset] = useState<
+   'default' | 'custom' | 'salesManagement'
+>('default');
  /** Skip Steps 2–3 on mobile/new issuance when preset is Default. */
  const cardIssuanceQuickDefaultRewardsFlow =
    !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
@@ -8393,6 +8772,58 @@ useEffect(() => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
   cardIssuanceExistingCard?.meta?.bonusRule,
+]);
+
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  const metaCouponsRaw = (
+    cardIssuanceExistingCard.meta as CardMetadataFromUri & {
+      coupons?: Array<
+        CardIssuanceCouponMetaHydrationShape & {
+          id?: string;
+          name?: string;
+          discountPercent?: number | string;
+          icon?: string;
+          backgroundColor?: string;
+          description?: string;
+          issued?: boolean;
+        }
+      >;
+    }
+  ).coupons ?? [];
+  const rows = metaCouponsRaw.map((coupon, idx) => {
+    const discountRaw =
+      typeof coupon.discountPercent === 'number' || typeof coupon.discountPercent === 'string'
+        ? Number(coupon.discountPercent)
+        : Number.NaN;
+    const discountPercent =
+      Number.isFinite(discountRaw) && discountRaw > 0 ? String(Number(discountRaw.toFixed(2))) : '10';
+    const dr = parseCouponDateRestrictionFromHydration(coupon);
+    const hydratedIssuedTok = parseCouponIssuedTokenIdFromHydration(coupon);
+    const stableCouponId =
+      typeof coupon.id === 'string' && coupon.id.trim() ? coupon.id.trim() : undefined;
+    return makeCardIssuanceCouponRow(
+      coupon.name ?? `Coupon ${idx + 1}`,
+      discountPercent,
+      coupon.icon ?? '',
+      coupon.backgroundColor ?? '#0051d1',
+      coupon.description ?? '',
+      parseCouponIssueTotalFromHydration(coupon),
+      parseCouponRequiresRedeemFromHydration(coupon),
+      dr.restriction,
+      dr.fromYmd,
+      dr.toYmd,
+      coupon.issued === true,
+      hydratedIssuedTok,
+      stableCouponId
+    );
+  });
+  setCardIssuanceCoupons(rows);
+  setCardIssuanceEditingCouponId(null);
+  setCardIssuanceCouponEditorOpen(false);
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta,
 ]);
 
  const programsOverviewShareImage = useMemo(() => {
@@ -8840,8 +9271,9 @@ const closeCardIssuanceTierEditor = useCallback(() => {
   setCardIssuanceEditingTierId(null);
 }, []);
 
-const applyCardIssuanceTierEditor = useCallback(() => {
+const applyCardIssuanceTierEditor = useCallback(async () => {
   if (cardIssuanceTierEditorValidationError) return;
+  if (cardIssuanceCreateLoading) return;
   const nextMinTopup =
     cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
       ? String(cardIssuanceTierEditorThresholdInt ?? CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
@@ -8862,20 +9294,29 @@ const applyCardIssuanceTierEditor = useCallback(() => {
     backgroundColor: cardIssuanceTierEditorBackgroundColor,
     tierDescriptionOpen: false,
   });
-  setCardIssuanceTiers((prev) => {
-    const merged = cardIssuanceEditingTierId
-      ? prev.map((tier) => (tier.id === cardIssuanceEditingTierId ? nextRow : tier))
-      : [...prev, nextRow];
-    return reconcileTierThresholdsWithMinTopup(merged, nextMinTopup);
-  });
+  const merged = cardIssuanceEditingTierId
+    ? cardIssuanceTiers.map((tier) => (tier.id === cardIssuanceEditingTierId ? nextRow : tier))
+    : [...cardIssuanceTiers, nextRow];
+  const nextTiers = reconcileTierThresholdsWithMinTopup(merged, nextMinTopup);
+  setCardIssuanceTiers(nextTiers);
   if (cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID) {
     setCardIssuanceMinTopup(nextMinTopup);
   }
   setCardIssuanceTierEditorOpen(false);
   setCardIssuanceEditingTierId(null);
+
+  if (cardIssuanceExistingCard?.cardAddress) {
+    await handlePublishCardIssuanceRef.current({
+      tiersOverride: nextTiers,
+      minTopupOverride: nextMinTopup,
+    });
+  }
 }, [
+  cardIssuanceCreateLoading,
   cardIssuanceEditingTierId,
+  cardIssuanceExistingCard?.cardAddress,
   cardIssuanceMinTopup,
+  cardIssuanceTiers,
   cardIssuanceTierEditorBackgroundColor,
   cardIssuanceTierEditorDescription,
   cardIssuanceTierEditorDiscountNumber,
@@ -8885,17 +9326,432 @@ const applyCardIssuanceTierEditor = useCallback(() => {
   cardIssuanceTierEditorValidationError,
 ]);
 
-const removeCardIssuanceTierFromEditor = useCallback(() => {
+const removeCardIssuanceTierFromEditor = useCallback(async () => {
   if (!cardIssuanceEditingTierId || cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID) return;
-  setCardIssuanceTiers((prev) =>
-    reconcileTierThresholdsWithMinTopup(
-      prev.filter((tier) => tier.id !== cardIssuanceEditingTierId),
-      cardIssuanceMinTopup
-    )
+  if (cardIssuanceCreateLoading) return;
+  const nextTiers = reconcileTierThresholdsWithMinTopup(
+    cardIssuanceTiers.filter((tier) => tier.id !== cardIssuanceEditingTierId),
+    cardIssuanceMinTopup
   );
+  setCardIssuanceTiers(nextTiers);
   setCardIssuanceTierEditorOpen(false);
   setCardIssuanceEditingTierId(null);
-}, [cardIssuanceEditingTierId, cardIssuanceMinTopup]);
+
+  if (cardIssuanceExistingCard?.cardAddress) {
+    await handlePublishCardIssuanceRef.current({
+      tiersOverride: nextTiers,
+      minTopupOverride: cardIssuanceMinTopup,
+    });
+  }
+}, [
+  cardIssuanceCreateLoading,
+  cardIssuanceEditingTierId,
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceMinTopup,
+  cardIssuanceTiers,
+]);
+
+const openCardIssuanceCouponCreate = useCallback(() => {
+  setCardIssuanceCouponEditorError('');
+  setCardIssuanceEditingCouponId(null);
+  setCardIssuanceCouponName('');
+  setCardIssuanceCouponDiscountPercent('10');
+  setCardIssuanceCouponIcon('');
+  setCardIssuanceCouponBackgroundColor('#0051d1');
+  setCardIssuanceCouponDescription('');
+  setCardIssuanceCouponIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
+  setCardIssuanceCouponRequiresRedeemCode(false);
+  setCardIssuanceCouponDateRestriction('none');
+  setCardIssuanceCouponValidFromYmd(couponDefaultValidFromYmd());
+  setCardIssuanceCouponValidToYmd(couponDefaultValidToYmd());
+  setCardIssuanceCouponEditorOpen(true);
+}, []);
+
+const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
+  const row = cardIssuanceCoupons.find((item) => item.id === couponId);
+  if (!row) return;
+  setCardIssuanceCouponEditorError('');
+  setCardIssuanceEditingCouponId(couponId);
+  setCardIssuanceCouponName(row.name);
+  setCardIssuanceCouponDiscountPercent(row.discountPercent);
+  setCardIssuanceCouponIssueTotal(row.issueTotal || String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
+  setCardIssuanceCouponIcon(row.icon || '');
+  setCardIssuanceCouponBackgroundColor(
+    tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#0051d1')
+  );
+  setCardIssuanceCouponDescription(row.description || '');
+  setCardIssuanceCouponRequiresRedeemCode(row.requiresRedeemCode === true);
+  setCardIssuanceCouponDateRestriction(row.couponDateRestriction === 'range' ? 'range' : 'none');
+  setCardIssuanceCouponValidFromYmd(
+    row.couponDateRestriction === 'range' && row.couponValidFromYmd ? row.couponValidFromYmd : couponDefaultValidFromYmd()
+  );
+  setCardIssuanceCouponValidToYmd(
+    row.couponDateRestriction === 'range' && row.couponValidToYmd ? row.couponValidToYmd : couponDefaultValidToYmd()
+  );
+  setCardIssuanceCouponEditorOpen(true);
+}, [cardIssuanceCoupons]);
+
+const submitCardIssuanceCouponEditor = useCallback(async () => {
+  const name = cardIssuanceCouponName.trim();
+  const discount = Number.parseFloat(cardIssuanceCouponDiscountPercent.trim());
+  const icon = cardIssuanceCouponIcon.trim();
+  const backgroundColorRaw = cardIssuanceCouponBackgroundColor.trim();
+  const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw);
+  const description = cardIssuanceCouponDescription.trim();
+  const issueTotalRaw = cardIssuanceCouponIssueTotal.replace(/,/g, '').trim();
+  const issueTotalN = Number.parseInt(issueTotalRaw, 10);
+  const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
+  if (!name) {
+    setCardIssuanceCouponEditorError('Coupon name is required.');
+    return;
+  }
+  if (!Number.isFinite(discount) || discount <= 0 || discount > 100) {
+    setCardIssuanceCouponEditorError('Discount must be between 0 and 100.');
+    return;
+  }
+  if (
+    !Number.isFinite(issueTotalAsFloat) ||
+    !Number.isFinite(issueTotalN) ||
+    issueTotalAsFloat !== issueTotalN ||
+    issueTotalN < 1 ||
+    issueTotalN > CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX
+  ) {
+    setCardIssuanceCouponEditorError(
+      `Total issuance must be a whole number from 1 to ${CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX.toLocaleString()}.`
+    );
+    return;
+  }
+  if (backgroundColorRaw && !backgroundColor) {
+    setCardIssuanceCouponEditorError('Background color must be a valid #RRGGBB value.');
+    return;
+  }
+  if (cardIssuanceCouponDateRestriction === 'range') {
+    const vf = parseCouponYmd(cardIssuanceCouponValidFromYmd);
+    const vt = parseCouponYmd(cardIssuanceCouponValidToYmd);
+    if (!vf || !vt) {
+      setCardIssuanceCouponEditorError('Start date and end date are required when using a date range.');
+      return;
+    }
+    if (vf > vt) {
+      setCardIssuanceCouponEditorError('End date must be on or after the start date.');
+      return;
+    }
+  }
+  const discountFixed = String(Number(discount.toFixed(2)));
+  const issueTotalFixed = String(issueTotalN);
+  const dr: 'none' | 'range' = cardIssuanceCouponDateRestriction === 'range' ? 'range' : 'none';
+  const vfStore = dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidFromYmd) ?? '' : '';
+  const vtStore = dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidToYmd) ?? '' : '';
+  setCardIssuanceCouponEditorError('');
+
+  /** Edit draft only (no new on-chain series). */
+  if (cardIssuanceEditingCouponId) {
+    let nextCoupons: CardIssuanceCouponRow[] = [];
+    setCardIssuanceCoupons((prev) => {
+      nextCoupons = prev.map((item) =>
+        item.id === cardIssuanceEditingCouponId
+          ? {
+              ...item,
+              name,
+              discountPercent: discountFixed,
+              issueTotal: issueTotalFixed,
+              requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
+              couponDateRestriction: dr,
+              couponValidFromYmd: vfStore,
+              couponValidToYmd: vtStore,
+              icon,
+              backgroundColor: backgroundColor ?? '#0051d1',
+              description,
+              issued: item.issued,
+              issuedTokenId: item.issuedTokenId,
+            }
+          : item
+      );
+      return nextCoupons;
+    });
+    if (cardIssuanceExistingCard?.cardAddress) {
+      setCardIssuanceCouponEditorPublishing(true);
+      try {
+        const ok = await handlePublishCardIssuanceRef.current({
+          couponsOverride: nextCoupons,
+          loadingScope: 'bonusEditor',
+        });
+        if (!ok) {
+          setCardIssuanceCouponEditorError(
+            'Could not save coupon changes. Fix any publish validation errors and try again.'
+          );
+        }
+      } catch (e: unknown) {
+        setCardIssuanceCouponEditorError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setCardIssuanceCouponEditorPublishing(false);
+      }
+    }
+    setCardIssuanceCouponEditorOpen(false);
+    setCardIssuanceEditingCouponId(null);
+    return;
+  }
+
+  /** New coupon: draft-only when program card not issued yet. */
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    let nextCoupons: CardIssuanceCouponRow[] = [];
+    setCardIssuanceCoupons((prev) => {
+      nextCoupons = [
+        ...prev,
+        makeCardIssuanceCouponRow(
+          name,
+          discountFixed,
+          icon,
+          backgroundColor ?? '#0051d1',
+          description,
+          issueTotalFixed,
+          cardIssuanceCouponRequiresRedeemCode,
+          dr,
+          vfStore,
+          vtStore,
+          false,
+          undefined,
+          undefined
+        ),
+      ];
+      return nextCoupons;
+    });
+    setCardIssuanceCouponEditorOpen(false);
+    setCardIssuanceEditingCouponId(null);
+    return;
+  }
+
+  const p0 = profiles?.[0];
+  if (!p0?.privateKeyArmor?.trim()) {
+    setCardIssuanceCouponEditorError('Unlock your wallet; program owner key is required to issue coupons.');
+    return;
+  }
+
+  setCardIssuanceCouponEditorPublishing(true);
+  try {
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const wallet = new ethers.Wallet(p0.privateKeyArmor.trim());
+    const chainOwner = ethers.getAddress(
+      await withPromiseTimeout(getCardOwner(cardAddr), 20_000, 'card.owner()')
+    );
+    if (chainOwner !== ethers.getAddress(wallet.address)) {
+      setCardIssuanceCouponEditorError(
+        'Coupon issuance requires the Beamio program card owner wallet. Switch to owner in Wallet, then retry.'
+      );
+      return;
+    }
+
+    let validAfterChain = 0;
+    let validBeforeChain = 0;
+    if (dr === 'range' && vfStore && vtStore) {
+      const cw = couponYmdRangeToUnixValidWindow(vfStore, vtStore);
+      validAfterChain = cw.validAfter;
+      validBeforeChain = cw.validBefore;
+    }
+
+    const couponRowDraft = makeCardIssuanceCouponRow(
+      name,
+      discountFixed,
+      icon,
+      backgroundColor ?? '#0051d1',
+      description,
+      issueTotalFixed,
+      cardIssuanceCouponRequiresRedeemCode,
+      dr,
+      vfStore,
+      vtStore,
+      false,
+      undefined,
+      undefined
+    );
+
+    const metaProps = {
+      beamioCoupon: {
+        couponId: couponRowDraft.id,
+        name,
+        discountPercent: Number(discountFixed),
+        issueTotal: issueTotalN,
+        requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
+        ...(dr === 'range' && vfStore && vtStore ? { validFrom: vfStore, validTo: vtStore } : {}),
+        ...(icon ? { icon } : {}),
+        ...(backgroundColor ? { backgroundColor } : {}),
+        ...(description ? { description } : {}),
+      },
+    };
+
+    const nftData = encodeCreateIssuedNft(name, validAfterChain, validBeforeChain, issueTotalN, 0, '0');
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const ownerSig = await signExecuteForOwner(p0.privateKeyArmor.trim(), cardAddr, nftData, deadline, nonce);
+    const descFirst =
+      description.trim() ||
+      `Program coupon: ${name}`;
+    const createRes = await postCardCreateIssuedNft({
+      cardAddress: cardAddr,
+      data: nftData,
+      deadline,
+      nonce,
+      ownerSignature: ownerSig,
+      description: descFirst,
+      ...(icon.trim() ? { image: icon.trim() } : {}),
+      background_color: (backgroundColor ?? '#0051d1').trim(),
+      metadata_extra_properties: metaProps,
+    });
+    if (!createRes.success) {
+      setCardIssuanceCouponEditorError(createRes.error ?? 'Failed to create coupon NFT on-chain.');
+      return;
+    }
+
+    const issuedRaw = createRes.issuedNftTokenId?.trim()
+    if (!issuedRaw) {
+      setCardIssuanceCouponEditorError(
+        'Coupon NFT was submitted but the server did not return issuedNftTokenId. Deploy a current API build (Master executeForOwner returns receipt tokenId), then retry.'
+      );
+      return;
+    }
+    let newTokenId: bigint
+    try {
+      newTokenId = BigInt(issuedRaw)
+    } catch {
+      setCardIssuanceCouponEditorError('Server returned an invalid issuedNftTokenId. Please retry or contact support.');
+      return;
+    }
+    const tokenIdStr = String(newTokenId);
+
+    void postRegisterIssuedNftSeries({
+      cardAddress: cardAddr,
+      tokenId: tokenIdStr,
+      metadata: { ...metaProps.beamioCoupon, issuedTokenId: tokenIdStr },
+    }).catch(() => {});
+
+    let redeemErr: string | undefined;
+    if (cardIssuanceCouponRequiresRedeemCode) {
+      const codes: string[] = [];
+      for (let i = 0; i < issueTotalN; i++) {
+        codes.push(generateCODE('').code);
+      }
+      const { validAfter, validBefore } = redeemValidityForCoupon(dr, vfStore, vtStore);
+      const rDeadline = Math.floor(Date.now() / 1000) + 3600;
+      const rNonce = ethers.hexlify(ethers.randomBytes(32));
+      const redeemData = encodeCreateRedeemBatchBundle(codes, 0n, 0, validAfter, validBefore, [newTokenId], [1n]);
+      const redeemSig = await signExecuteForOwner(p0.privateKeyArmor.trim(), cardAddr, redeemData, rDeadline, rNonce);
+      const redeemRes = await postCardCreateRedeem({
+        cardAddress: cardAddr,
+        codes,
+        points6: '0',
+        validAfter,
+        validBefore,
+        deadline: rDeadline,
+        nonce: rNonce,
+        ownerSignature: redeemSig,
+        tokenIds: [tokenIdStr],
+        amounts: ['1'],
+        attr: 0,
+      });
+      if (!redeemRes.success || !redeemRes.codes) {
+        redeemErr =
+          redeemRes.error ??
+          'Coupon NFT was created but redeem codes could not be registered. Create redeems from Wallet if needed.';
+      } else {
+        const batch: CardRedeemBatch = {
+          batchId: `coupon-${couponRowDraft.id}-${Date.now()}`,
+          cardAddress: cardAddr,
+          points6: '0',
+          pointsHuman: '1 NFT',
+          createdAt: Date.now(),
+          kind: 'issued_nft_coupon',
+          issuedNftTokenId: tokenIdStr,
+          couponId: couponRowDraft.id,
+          items: redeemRes.codes.map((code) => ({
+            code,
+            hash: ethers.keccak256(ethers.toUtf8Bytes(code)),
+          })),
+        };
+        const prev = CoNET_Data;
+        if (prev) {
+          const updatedList: CardRedeemBatch[] = [
+            ...(((prev as { cardRedeems?: CardRedeemBatch[] }).cardRedeems ?? []) as CardRedeemBatch[]),
+            batch,
+          ];
+          setCoNET_Data({ ...prev, cardRedeems: updatedList } as typeof prev);
+          await storeSystemData();
+        }
+      }
+    }
+
+    const finalRow: CardIssuanceCouponRow = {
+      ...couponRowDraft,
+      issued: true,
+      issuedTokenId: tokenIdStr,
+    };
+    let nextCoupons: CardIssuanceCouponRow[] = [];
+    setCardIssuanceCoupons((prev) => {
+      nextCoupons = [...prev, finalRow];
+      return nextCoupons;
+    });
+    const metadataOk = await handlePublishCardIssuanceRef.current({
+      couponsOverride: nextCoupons,
+      loadingScope: 'bonusEditor',
+    });
+    if (metadataOk) {
+      setCardIssuanceCouponEditorOpen(false);
+      setCardIssuanceEditingCouponId(null);
+    } else {
+      setCardIssuanceCouponEditorError(
+        'Coupon was saved on-chain, but updating share metadata failed. Try again from Publish or retry Add Coupon.'
+      );
+    }
+    if (redeemErr) {
+      setCardIssuanceOwnerAdminNotice({ kind: 'warn', text: redeemErr });
+    }
+  } catch (e: unknown) {
+    setCardIssuanceCouponEditorError(e instanceof Error ? e.message : String(e));
+  } finally {
+    setCardIssuanceCouponEditorPublishing(false);
+  }
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceCouponBackgroundColor,
+  cardIssuanceCouponDescription,
+  cardIssuanceCouponDiscountPercent,
+  cardIssuanceCouponIcon,
+  cardIssuanceCouponIssueTotal,
+  cardIssuanceCouponRequiresRedeemCode,
+  cardIssuanceCouponDateRestriction,
+  cardIssuanceCouponValidFromYmd,
+  cardIssuanceCouponValidToYmd,
+  cardIssuanceCouponName,
+  cardIssuanceEditingCouponId,
+  profiles,
+]);
+
+const removeCardIssuanceCouponDraft = useCallback(async (couponId: string) => {
+  let nextCoupons: CardIssuanceCouponRow[] = [];
+  setCardIssuanceCoupons((prev) => {
+    nextCoupons = prev.filter((item) => !(item.id === couponId && !item.issued));
+    return nextCoupons;
+  });
+  if (cardIssuanceExistingCard?.cardAddress) {
+    await handlePublishCardIssuanceRef.current({
+      couponsOverride: nextCoupons,
+      loadingScope: 'default',
+    });
+  }
+}, [cardIssuanceExistingCard?.cardAddress]);
+
+const issueCardIssuanceCoupon = useCallback(async (couponId: string) => {
+  let nextCoupons: CardIssuanceCouponRow[] = [];
+  setCardIssuanceCoupons((prev) => {
+    nextCoupons = prev.map((item) => (item.id === couponId ? { ...item, issued: true } : item));
+    return nextCoupons;
+  });
+  if (cardIssuanceExistingCard?.cardAddress) {
+    await handlePublishCardIssuanceRef.current({
+      couponsOverride: nextCoupons,
+      loadingScope: 'default',
+    });
+  }
+}, [cardIssuanceExistingCard?.cardAddress]);
 
 const openCardIssuanceBonusRuleCreate = useCallback(() => {
   setCardIssuanceBonusRuleEditorServerError('');
@@ -9041,6 +9897,53 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    [profiles]
  );
 
+const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  async (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    const isSvg = file.type === 'image/svg+xml';
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceCouponEditorError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
+      return;
+    }
+    setCardIssuanceCouponEditorError('');
+    setCardIssuanceCouponIconUploading(true);
+    try {
+      let blob: Blob = file;
+      if (!isSvg && file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
+        blob = await resizeToFitLimit(file, IPFS_UPLOAD_TARGET_MAX_BYTES);
+      }
+      let dataUrl = await blobToDataUrl(blob);
+      let hash: string | null = null;
+      try {
+        hash = await postToIPFS(p0, dataUrl);
+      } catch (err: any) {
+        const msg = err?.message ?? String(err);
+        if (typeof msg === 'string' && msg.includes('413') && !isSvg) {
+          blob = await compressToJpeg(blob, IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES);
+          dataUrl = await blobToDataUrl(blob);
+          hash = await postToIPFS(p0, dataUrl);
+        } else {
+          throw err;
+        }
+      }
+      if (hash) {
+        setCardIssuanceCouponIcon(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+      } else {
+        setCardIssuanceCouponEditorError('Coupon icon upload failed.');
+      }
+    } catch (err: any) {
+      setCardIssuanceCouponEditorError(err?.message ?? 'Coupon icon upload failed.');
+    } finally {
+      setCardIssuanceCouponIconUploading(false);
+    }
+  },
+  [profiles]
+);
+
  const persistBeamioProfileImage = useCallback(
    async (ipfsImageUrl: string): Promise<boolean> => {
      const tmpData = CoNET_Data;
@@ -9153,6 +10056,9 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    async (
      opts?: {
        bonusRulesOverride?: CardIssuanceBonusRuleRow[];
+      couponsOverride?: CardIssuanceCouponRow[];
+      tiersOverride?: CardIssuanceTierRow[];
+      minTopupOverride?: string;
        loadingScope?: 'default' | 'bonusEditor';
      }
    ): Promise<boolean> => {
@@ -9184,9 +10090,10 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    }
    const useQuickDefaultRewardsNewCard =
      !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
-   const tiersRowsForPublish = useQuickDefaultRewardsNewCard
-     ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT))
-     : cardIssuanceTiers;
+  const tiersRowsForPublish = opts?.tiersOverride ??
+    (useQuickDefaultRewardsNewCard
+      ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT))
+      : cardIssuanceTiers);
    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish);
    if (tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
      setCardIssuanceCreateError('Each tier must have a name.');
@@ -9214,9 +10121,9 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        return false;
      }
    }
-   const minTopupRaw = (
-     useQuickDefaultRewardsNewCard ? String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT) : cardIssuanceMinTopup
-   ).replace(/,/g, '').trim();
+  const minTopupRaw = (
+    opts?.minTopupOverride ?? (useQuickDefaultRewardsNewCard ? String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT) : cardIssuanceMinTopup)
+  ).replace(/,/g, '').trim();
    if (minTopupRaw === '') {
      setCardIssuanceCreateError('Minimum top-up is required.');
      return false;
@@ -9320,6 +10227,8 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        .filter(
          (row): row is { paymentAmount: number; bonusValue: number; bonusProportional: boolean } => Boolean(row)
        );
+    const couponsRowsForPublish = opts?.couponsOverride ?? cardIssuanceCoupons;
+    const couponsPayloadForPublish = buildCardIssuanceCouponMetadataPayload(couponsRowsForPublish);
      const shareTokenMetadataForPublish = {
        name: metaName,
        minimumTopup: minTopupN,
@@ -9335,6 +10244,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
              bonusRules: bonusPayloadForPublish,
            }
          : {}),
+      coupons: couponsPayloadForPublish ?? [],
        ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
        ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
        logoDisplayTier: cardIssuanceLogoDisplayTier,
@@ -9400,7 +10310,12 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
          });
      }
 
-     if (res.success && res.cardAddress) {
+     const resolvedPublishCardAddr =
+       res.cardAddress ??
+       (cardIssuanceExistingCard?.cardAddress
+         ? ethers.getAddress(cardIssuanceExistingCard.cardAddress)
+         : undefined);
+    if (res.success && resolvedPublishCardAddr) {
        setCardIssuanceOnChainRefreshNonce((n) => n + 1);
        const metadataOnlyPublish = Boolean(cardIssuanceExistingCard);
        const txHashFromRes =
@@ -9414,14 +10329,14 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
            text: 'Program metadata published. Recharge bonus and related settings will be used by POS and apps after a short cache refresh.',
          });
        } else {
-         setCardIssuanceCreateResult({ cardAddress: res.cardAddress, hash: txHashFromRes });
+         setCardIssuanceCreateResult({ cardAddress: resolvedPublishCardAddr, hash: txHashFromRes });
          if (shouldClearCardConfiguratorDraft && cardConfiguratorDraftEoaKey) {
            clearCardConfiguratorDraftForEoa(cardConfiguratorDraftEoaKey);
          }
          setProfileOwnsIssuedBeamioCard(true);
          setProfileOwnsIssuedBeamioCardFetched(true);
          setCardIssuancePublishCelebration({
-           cardAddress: res.cardAddress,
+           cardAddress: resolvedPublishCardAddr,
            hash: typeof txHashFromRes === 'string' ? txHashFromRes : '',
          });
        }
@@ -9429,7 +10344,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        const categoryIdForIndex = cardIssuanceCategoryId.trim();
        const profileForPost = profiles?.[0];
        void (async () => {
-         const createdAddr = res.cardAddress;
+         const createdAddr = resolvedPublishCardAddr;
          if (!createdAddr) {
            return;
          }
@@ -9518,6 +10433,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    cardIssuanceCurrencySymbol,
    cardIssuanceStoreDisplayName,
    cardIssuanceBonusRules,
+  cardIssuanceCoupons,
    cardIssuanceBonusRulesPayload,
    cardIssuanceTiers,
    cardIssuanceTierRule,
@@ -9534,6 +10450,10 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    cardIssuanceRewardsPreset,
    navigate,
  ]);
+
+useEffect(() => {
+  handlePublishCardIssuanceRef.current = handlePublishCardIssuance;
+}, [handlePublishCardIssuance]);
 
  const submitCardIssuanceBonusRuleEditor = useCallback(async () => {
    if (!cardIssuanceBonusRuleEditorPayload || cardIssuanceBonusRuleEditorValidationError) return;
@@ -9781,7 +10701,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
          setCardIssuanceCurrencySymbol(sym);
        });
      }
-     if (draft.rewardsPreset === 'default') {
+    if (draft.rewardsPreset === 'default') {
        setCardIssuanceRewardsPreset('default');
        setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
        setCardIssuanceMaxTopup(String(CARD_ISSUANCE_MAX_TOPUP_MAX));
@@ -9794,8 +10714,10 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
          ),
        }));
        setCardIssuanceMobileStep(1);
-     } else if (draft.rewardsPreset === 'custom') {
+    } else if (draft.rewardsPreset === 'custom') {
        setCardIssuanceRewardsPreset('custom');
+    } else if (draft.rewardsPreset === 'salesManagement') {
+      setCardIssuanceRewardsPreset('salesManagement');
      }
    }
    setCardConfiguratorDraftLoaded(true);
@@ -11345,8 +12267,8 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setAdminMintLimitQuota(null);
      setAdminMintCounterFromClear(null);
      setProtocolFuelReserveBalance(null);
-     setIndexerTransactions([]);
-     setTerminals([]);
+    setIndexerTransactions([]);
+    setTerminals(loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? []);
      setSubordinateBalances({});
      setTerminalStats({});
      setAaUsdcBalance(null);
@@ -11359,7 +12281,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setMembersLoyaltyChainCumulativeMintDisplay(null);
    }
    prevEoaRef.current = currentEoa;
- }, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, staffProgramBeamioCardAddress]);
+}, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, staffProgramBeamioCardAddress, linkedTerminalsCacheKey]);
 
  const handleTabChange = useCallback((tab: string, opts?: { transactionsSidebar?: 'transactions' | 'insights' }) => {
   if (isTerminalsMarketRoute && tab !== 'Staff') {
@@ -11580,6 +12502,33 @@ useEffect(() => {
  );
  const terminalsRef = useRef(terminals);
  terminalsRef.current = terminals;
+
+useEffect(() => {
+  // Local-first: when cache bucket changes, only overwrite with trusted rows; avoid empty-key transition flicker.
+  const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
+  if (cached.length > 0) {
+    setTerminals(cached);
+    return;
+  }
+  // During first-login hydration, `staffProgramCardCacheBucket` may briefly be unresolved.
+  // Reuse last resolved program bucket for this EOA before allowing an empty overwrite.
+  if (currentEoa && ethers.isAddress(currentEoa)) {
+    const lastProgram = lastResolvedStaffProgramCacheKey ? loadTrustedCache<string>(lastResolvedStaffProgramCacheKey) : null;
+    if (lastProgram && ethers.isAddress(lastProgram)) {
+      const lastCardLower = ethers.getAddress(lastProgram).toLowerCase();
+      const fallbackKey = `eoa:${currentEoa}:linked-terminals:${lastCardLower}`;
+      const fallback = loadTrustedCache<TerminalRecord[]>(fallbackKey) ?? [];
+      if (fallback.length > 0) {
+        setTerminals(fallback);
+        return;
+      }
+    }
+  }
+  // Keep current in-memory trusted rows if present; only render empty when nothing trusted is known.
+  if (terminalsRef.current.length === 0) {
+    setTerminals([]);
+  }
+}, [linkedTerminalsCacheKey, currentEoa, lastResolvedStaffProgramCacheKey]);
 
  useEffect(() => {
    const c = loadTrustedCache<Record<string, BizTerminalChainStats | null>>(staffTerminalChainStatsCacheKey) ?? {};
@@ -12144,14 +13093,17 @@ const txQueryRootAddress = useMemo(() => {
  }, [membersOwnedPrograms, staffProgramBeamioCardAddress])
 
  const walletMobileActivityPreview = useMemo(() => {
-   const rows = transactionsFilteredForTable.filter(
-     (tx) =>
-       txDisplayRowCurrencyFiatIsUsdc(tx) &&
-       !txIsExcludedFromWalletMobileActivityPreview(tx, walletIssuerProgramCardsLower),
-   )
+  const rows = indexerTransactions.filter((tx) => {
+    const isUsdcLedgerItem = txDisplayRowIsUsdcRequestAccounting(tx)
+    const isWalletUsdcFlow =
+      txDisplayRowCurrencyFiatIsUsdc(tx) &&
+      !txDisplayRowIsIndexerBunitLedger(tx) &&
+      !txIsExcludedFromWalletMobileActivityPreview(tx, walletIssuerProgramCardsLower)
+    return isWalletUsdcFlow || isUsdcLedgerItem
+  })
    rows.sort((a, b) => txDisplayRowTimestampSec(b) - txDisplayRowTimestampSec(a))
    return rows.slice(0, 3)
- }, [transactionsFilteredForTable, walletIssuerProgramCardsLower])
+}, [indexerTransactions, walletIssuerProgramCardsLower])
 
  /** Staff Active Terminals: Last activity from latest matching Transactions / indexer row (not table filters). */
  const staffTerminalLastActivityFromLedger = useMemo(() => {
@@ -12678,11 +13630,13 @@ const overviewActivityChargeDisplayTotal = useMemo(() => {
 const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
   if (!userEOA || !ethers.isAddress(userEOA)) {
-    setTerminals([]);
+    const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey);
+    if (cached?.length) setTerminals(cached);
     return;
   }
   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
-    setTerminals([]);
+    const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey);
+    if (cached?.length) setTerminals(cached);
     if (!opts?.silent) setTerminalsLoading(false);
     return;
   }
@@ -12816,7 +13770,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   } catch {
     const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey);
     if (cached?.length) setTerminals(cached);
-    else setTerminals([]);
+    // Untrusted failure: keep last trusted in-memory value.
   } finally {
     if (!opts?.silent) setTerminalsLoading(false);
   }
@@ -13544,6 +14498,39 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
            chainMintOkCount += 1;
          }
          const merged: BizTopupMemberTableRow[] = [];
+         const trustedBalanceByScopedKey = new Map<string, number>();
+         for (const row of membersLoyaltyTopupRowsRef.current) {
+           const member = row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress) : '';
+           if (!member) continue;
+           const aa =
+             row.aaAddress && ethers.isAddress(row.aaAddress) && row.aaAddress.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+               ? ethers.getAddress(row.aaAddress)
+               : '';
+           const scoped = `${row.cardLower}:${(aa || member).toLowerCase()}`;
+           const bal = row.currentCardToken0Balance;
+           if (bal != null && Number.isFinite(bal)) {
+             trustedBalanceByScopedKey.set(scoped, bal);
+           }
+         }
+         if (walletPartition && account && ethers.isAddress(account)) {
+           const cachedBundle = loadTrustedCache<MembersLoyaltyDirectoryTrustedBundleV1>(
+             membersLoyaltyDirectoryBundleCacheKey(walletPartition, ethers.getAddress(account).toLowerCase())
+           );
+           const cachedRows = coerceBizTopupMemberRowsFromTrustedCache(cachedBundle?.topupRows);
+           for (const row of cachedRows) {
+             const member = row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress) : '';
+             if (!member) continue;
+             const aa =
+               row.aaAddress && ethers.isAddress(row.aaAddress) && row.aaAddress.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+                 ? ethers.getAddress(row.aaAddress)
+                 : '';
+             const scoped = `${row.cardLower}:${(aa || member).toLowerCase()}`;
+             const bal = row.currentCardToken0Balance;
+             if (bal != null && Number.isFinite(bal) && !trustedBalanceByScopedKey.has(scoped)) {
+               trustedBalanceByScopedKey.set(scoped, bal);
+             }
+           }
+         }
          let sumTopupEvents = 0;
          let sumRepeatTopupEvents = 0;
         let sumMemberActivations = 0;
@@ -13624,10 +14611,10 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                /* ignore */
              }
             const cacheKeyBalance = `eoa:${membersFetchPartition}:card:${cardLower}:holder:${balanceAccount.toLowerCase()}:balance0:v1`;
-            let currentBalance: number | null = null;
+            let currentBalance: number | null = trustedBalanceByScopedKey.get(scopedKey) ?? null;
             /** Dashboard KPI path should stay responsive: skip expensive holder balance RPC unless user is actually on `/Members`. */
             if (activeTab === 'MembersLoyalty') {
-              currentBalance = await Promise.race<number | null>([
+              const fetchedBalance = await Promise.race<number | null>([
                 fetchWithCache(
                   cacheKeyBalance,
                   () => fetchBeamioUserCardToken0BalanceDisplay(addr, balanceAccount, baseRpcProviderDirect),
@@ -13636,6 +14623,10 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                 ),
                 rejectMembersBalanceFetchAfter(MEMBERS_BALANCE_FETCH_TIMEOUT_MS),
               ]).catch(() => null as number | null);
+              if (fetchedBalance != null && Number.isFinite(fetchedBalance)) {
+                currentBalance = fetchedBalance;
+                trustedBalanceByScopedKey.set(scopedKey, fetchedBalance);
+              }
             }
             const hasStoredValue = currentBalance != null && Number.isFinite(currentBalance) && currentBalance > 0;
             const hasRecentTopup = lastTs > 0 && lastTs >= activeSinceSec;
@@ -15223,25 +16214,60 @@ const programsMobileTopNavVisible =
  (showBizFirstMembershipOnboarding && activeTab !== 'Card Issuance Setup') ||
  settingsSecurityBackupOpen ||
  (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff');
- /** Wallet tab: use global daemon EOA USDC balance; this panel must not self-fetch. */
- const walletTreasuryCadPrimary = useMemo(() => {
-   const usdc = Number(usdcbalance);
-   if (!Number.isFinite(usdc)) return '—';
-   const rate = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
-   if (!Number.isFinite(rate) || rate <= 0) return '—';
-   const cad = usdc / rate;
-   return `C$${cad.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
- }, [oracleCadUsdc, usdcbalance]);
- const walletTreasuryUsdcSecondary = useMemo(() => {
-   const usdc = Number(usdcbalance);
-   if (!Number.isFinite(usdc)) return '≈ — USDC';
-   return `≈ ${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
- }, [usdcbalance]);
- const walletVaultUsdcBoldLine = useMemo(() => {
-   const usdc = Number(usdcbalance);
-   if (!Number.isFinite(usdc)) return '—';
-   return `${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
- }, [usdcbalance]);
+/** Wallet tab Total Estimated Value: sum trusted EOA + AA USDC balance, then display by card currency (USDC keeps native; others use CAD oracle). */
+const walletTreasuryCombinedUsdc = useMemo(() => {
+  const parseUsdc = (raw: string | null): number | null => {
+    if (raw == null) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n;
+  };
+  const eoa = parseUsdc(eoaUsdcBalance);
+  const aa = parseUsdc(aaUsdcBalance);
+  if (eoa != null || aa != null) return (eoa ?? 0) + (aa ?? 0);
+  const fallback = Number(usdcbalance);
+  return Number.isFinite(fallback) && fallback >= 0 ? fallback : null;
+}, [aaUsdcBalance, eoaUsdcBalance, usdcbalance]);
+const walletTreasuryDisplayCurrency = useMemo((): ICurrency => {
+  const code = beamioFiatCurrencyLabel(programCardBeamioCurrencyType ?? 0).toUpperCase();
+  switch (code) {
+    case 'CAD':
+    case 'USD':
+    case 'JPY':
+    case 'CNY':
+    case 'USDC':
+    case 'HKD':
+    case 'EUR':
+    case 'SGD':
+    case 'TWD':
+      return code as ICurrency;
+    default:
+      return 'CAD';
+  }
+}, [programCardBeamioCurrencyType]);
+const walletTreasuryCadPrimary = useMemo(() => {
+  const usdc = walletTreasuryCombinedUsdc;
+  if (usdc == null || !Number.isFinite(usdc)) return '—';
+  if (walletTreasuryDisplayCurrency === 'USDC') {
+    return `${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
+  }
+  const rate = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
+  if (!Number.isFinite(rate) || rate <= 0) return '—';
+  const converted = usdc / rate;
+  const prefix = displayFiatPrefixFromCode(walletTreasuryDisplayCurrency, 'CAD');
+  const glue = formatBonusRuleMoneyPrefixGlue(prefix);
+  return `${prefix}${glue}${converted.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}, [oracleCadUsdc, walletTreasuryCombinedUsdc, walletTreasuryDisplayCurrency]);
+const walletTreasuryUsdcSecondary = useMemo(() => {
+  const usdc = walletTreasuryCombinedUsdc;
+  if (usdc == null || !Number.isFinite(usdc)) return '— USDC';
+  return `${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
+}, [walletTreasuryCombinedUsdc]);
+const walletVaultUsdcBoldLine = useMemo(() => {
+  const usdc = walletTreasuryCombinedUsdc;
+  if (usdc == null || !Number.isFinite(usdc)) return '—';
+  return `${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
+}, [walletTreasuryCombinedUsdc]);
  const walletMerchantTagAt = useMemo(() => {
    const t = merchantOwnerProfile?.username?.trim() || merchantOwnerProfile?.accountName?.trim() || '';
    const base = t.replace(/^@/, '');
@@ -15321,6 +16347,35 @@ const programsMobileTopNavVisible =
    }
    return map;
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.tiers, membersOwnedPrograms]);
+
+const membersHasRewardTierByCardLower = useMemo(() => {
+  const map = new Map<string, boolean>();
+  for (const program of membersOwnedPrograms ?? []) {
+    if (!program.cardAddress || !ethers.isAddress(program.cardAddress)) continue;
+    map.set(ethers.getAddress(program.cardAddress).toLowerCase(), hasMembersRewardTier(program.tiers));
+  }
+  const currentCard = cardIssuanceExistingCard?.cardAddress;
+  if (currentCard && ethers.isAddress(currentCard)) {
+    map.set(ethers.getAddress(currentCard).toLowerCase(), hasMembersRewardTier(cardIssuanceExistingCard?.meta?.tiers));
+  }
+  return map;
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.tiers, membersOwnedPrograms]);
+
+const membersRewardTierLevelsByCardLower = useMemo(() => {
+  const map = new Map<string, MembersRewardTierLevel[]>();
+  for (const program of membersOwnedPrograms ?? []) {
+    if (!program.cardAddress || !ethers.isAddress(program.cardAddress)) continue;
+    map.set(ethers.getAddress(program.cardAddress).toLowerCase(), resolveMembersRewardTierLevels(program.tiers));
+  }
+  const currentCard = cardIssuanceExistingCard?.cardAddress;
+  if (currentCard && ethers.isAddress(currentCard)) {
+    map.set(
+      ethers.getAddress(currentCard).toLowerCase(),
+      resolveMembersRewardTierLevels(cardIssuanceExistingCard?.meta?.tiers)
+    );
+  }
+  return map;
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.tiers, membersOwnedPrograms]);
 
  /** Mirrors daemon `activeCardScopedKeys` (stored value OR lookback top-up); used when `activeCardsCount` is stale `0` from cache / `??` bug. */
  const dashboardActiveCardsRowDerivedCount = useMemo(() => {
@@ -16319,6 +17374,8 @@ const retainedCapitalLifetime = useMemo(() => {
                          const pct =
                            quota != null && quota > 0 && issued != null ? Math.min(100, (issued / quota) * 100) : 0;
                          const isPrimary = termIdx === 0;
+                        const termEoa =
+                          term.id && ethers.isAddress(term.id) ? ethers.getAddress(term.id) : null;
                          const Icon = terminalIcons[termIdx % terminalIcons.length]!;
                          return (
                            <div
@@ -16342,6 +17399,12 @@ const retainedCapitalLifetime = useMemo(() => {
                                        </span>
                                      ) : null}
                                    </div>
+                                  {termEoa ? (
+                                    <AddressCapsule
+                                      address={termEoa}
+                                      className="mt-2 max-w-full border-[#abadaf]/30 bg-white text-[#595c5e]"
+                                    />
+                                  ) : null}
                                    <div className="mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-1.5 sm:mt-3">
                                      {(() => {
                                        const keys = terminalTopupMethodsForDisplay(term.allowedTopupMethods);
@@ -17178,7 +18241,7 @@ const retainedCapitalLifetime = useMemo(() => {
             {navChromeTab === 'Overview' && showBizFirstMembershipOnboarding
              ? 'Business OS'
               : navChromeTab === 'Overview'
-               ? 'Verra Merchant'
+               ? 'Beamio Merchant'
                 : navChromeTab === 'Card Issuance Setup'
                   ? 'Programs'
                 : activeTab === 'Wallets'
@@ -17478,7 +18541,7 @@ const retainedCapitalLifetime = useMemo(() => {
                             : '0.00'}
                         </span>{' '}
                         bonus B-Units to get started. Create your first program to begin issuing membership cards and serving customers with stored
-                        value in Verra Business OS.
+                        value in Beamio Business OS.
                       </p>
                     </div>
                     <div className="flex w-full shrink-0 flex-col items-stretch gap-3 sm:flex-row md:w-auto">
@@ -19688,7 +20751,7 @@ const retainedCapitalLifetime = useMemo(() => {
                        </div>
                        <div className="min-w-0">
                          <h3 className="text-xl font-bold text-[#2c2f31]">Standard Kit</h3>
-                         <p className="text-sm text-[#595c5e]">2,000 B-Units + 10x Verra NFC Cards (White Edition)</p>
+                        <p className="text-sm text-[#595c5e]">2,000 B-Units + 10x Beamio NFC Cards (White Edition)</p>
                        </div>
                      </div>
                      <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -20207,8 +21270,6 @@ const retainedCapitalLifetime = useMemo(() => {
                      </div>
                    ) : (
                      membersMobileListExcludingFeatured.slice(0, membersMobileListCap).map((row) => {
-                       const pts = directoryMemberPointsHuman(row);
-                       const tier = directoryMemberTierFromPoints(pts);
                        const tagRaw = row.beamioTag.replace(/^@/, '').trim();
                        const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
                        const displayName =
@@ -20218,12 +21279,18 @@ const retainedCapitalLifetime = useMemo(() => {
                              ? formatDirectoryMemberDisplayName(row.beamioTag)
                              : 'NFC user';
                        const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
-                       const showStarBadge = tier.gold;
+                      const hasRewardTier = membersHasRewardTierByCardLower.get(row.cardLower) ?? false;
+                      const rewardTierLevels = membersRewardTierLevelsByCardLower.get(row.cardLower);
                       const rewardTierInfo = membersRewardTierInfoByCardLower.get(row.cardLower) ?? null;
                       const isHighestRewardTier = memberRowReachedHighestRewardTier(row, rewardTierInfo);
-                      const tierPillLabel = isHighestRewardTier
-                        ? `${(rewardTierInfo?.highestLabel ?? tier.label).toUpperCase()} TIER`
-                        : `${tier.label.toUpperCase()} TIER`;
+                      const showStarBadge = hasRewardTier && isHighestRewardTier;
+                      const tierBadgeLabel = resolveMembersRewardTierBadgeLabelFromLevels(
+                        rewardTierLevels,
+                        row.currentCardToken0Balance
+                      );
+                      const tierPillLabel = tierBadgeLabel
+                        ? `${tierBadgeLabel.replace(/\s+Member$/i, '').toUpperCase()} TIER`
+                        : null;
                        return (
                          <button
                            type="button"
@@ -20265,17 +21332,17 @@ const retainedCapitalLifetime = useMemo(() => {
                             <p className={`font-manrope text-lg font-extrabold tabular-nums ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>
                               {directoryMemberCurrentBalanceDisplay(row)}
                              </p>
-                             <span
-                               className={`mt-2 inline-block rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
-                                isHighestRewardTier
-                                  ? 'border border-white/25 bg-white/20 text-white'
-                                  : tier.gold
-                                   ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200/80'
-                                   : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200/80'
-                               }`}
-                             >
-                               {tierPillLabel}
-                             </span>
+                            {hasRewardTier && tierPillLabel ? (
+                              <span
+                                className={`mt-2 inline-block rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
+                                  isHighestRewardTier
+                                    ? 'border border-white/25 bg-white/20 text-white'
+                                    : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200/80'
+                                }`}
+                              >
+                                {tierPillLabel}
+                              </span>
+                            ) : null}
                            </div>
                          </button>
                        );
@@ -20530,8 +21597,14 @@ const retainedCapitalLifetime = useMemo(() => {
                  {membersDesktopDirectoryCardRows.length > 0 ? (
                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                      {membersDesktopDirectoryCardRows.map((row) => {
-                       const pts = directoryMemberPointsHuman(row);
-                       const tier = directoryMemberTierFromPoints(pts);
+                      const hasRewardTier = membersHasRewardTierByCardLower.get(row.cardLower) ?? false;
+                      const rewardTierLevels = membersRewardTierLevelsByCardLower.get(row.cardLower);
+                      const rewardTierInfo = membersRewardTierInfoByCardLower.get(row.cardLower) ?? null;
+                      const isHighestRewardTier = memberRowReachedHighestRewardTier(row, rewardTierInfo);
+                      const tierBadgeLabel = resolveMembersRewardTierBadgeLabelFromLevels(
+                        rewardTierLevels,
+                        row.currentCardToken0Balance
+                      );
                        const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
                        const tagRaw = row.beamioTag.replace(/^@/, '').trim();
                        const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
@@ -20552,13 +21625,15 @@ const retainedCapitalLifetime = useMemo(() => {
                                alt=""
                                className="size-14 rounded-full object-cover"
                              />
-                             <div
-                               className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
-                                 tier.gold ? 'bg-yellow-400' : 'bg-slate-300'
-                               }`}
-                             >
-                               <Star className="size-2.5 fill-white text-white" strokeWidth={0} aria-hidden />
-                             </div>
+                            {hasRewardTier ? (
+                              <div
+                                className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
+                                  isHighestRewardTier ? 'bg-yellow-400' : 'bg-slate-300'
+                                }`}
+                              >
+                                <Star className="size-2.5 fill-white text-white" strokeWidth={0} aria-hidden />
+                              </div>
+                            ) : null}
                            </div>
                            <div className="min-w-0 flex-1">
                              <p className="truncate font-bold text-[#2c2f31]">{displayTitle}</p>
@@ -20584,13 +21659,15 @@ const retainedCapitalLifetime = useMemo(() => {
                            </div>
                            <div className="shrink-0 text-right">
                              <p className="font-extrabold tabular-nums text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
-                             <span
-                               className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
-                                 tier.gold ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
-                               }`}
-                             >
-                               {tier.label}
-                             </span>
+                            {hasRewardTier && tierBadgeLabel ? (
+                              <span
+                                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                                  isHighestRewardTier ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {tierBadgeLabel.replace(/\s+Member$/i, '')}
+                              </span>
+                            ) : null}
                            </div>
                          </button>
                        );
@@ -20619,6 +21696,11 @@ const retainedCapitalLifetime = useMemo(() => {
                    ? memberDirectoryProfileDrawerMotionLayers({
                        row: membersDirectoryDetailRow,
                        segment: membersDirectoryDrawerSegment,
+                      hasRewardTier: membersHasRewardTierByCardLower.get(membersDirectoryDetailRow.cardLower) ?? false,
+                      tierBadgeLabel: resolveMembersRewardTierBadgeLabelFromLevels(
+                        membersRewardTierLevelsByCardLower.get(membersDirectoryDetailRow.cardLower),
+                        membersDirectoryDetailRow.currentCardToken0Balance
+                      ),
                        cadPerUsdcOracle: oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK,
                        onClose: () => setMembersDirectoryDetailRow(null),
                        onSendGift: () => {
@@ -21151,7 +22233,7 @@ const retainedCapitalLifetime = useMemo(() => {
                        </li>
                        <li className="flex items-start gap-3">
                          <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                         <span className="text-sm font-normal leading-snug text-slate-700">10x VERRA Generic NFC Cards</span>
+                        <span className="text-sm font-normal leading-snug text-slate-700">10x BEAMIO Generic NFC Cards</span>
                        </li>
                        <li className="flex items-start gap-3">
                          <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
@@ -21197,7 +22279,7 @@ const retainedCapitalLifetime = useMemo(() => {
                        <ul className="mb-10 space-y-3.5">
                          {[
                            'System Activation',
-                           '20x VERRA Generic NFC Cards',
+                          '20x BEAMIO Generic NFC Cards',
                            'Custom Design Service Unlocked',
                            'Order custom cards from factory (from C$2.50/ea)',
                          ].map((line) => (
@@ -21228,7 +22310,7 @@ const retainedCapitalLifetime = useMemo(() => {
                      <div className="flex items-start justify-between">
                        <Nfc className="size-10 shrink-0 text-[#0051d1]" strokeWidth={1.5} aria-hidden />
                        <div className="text-right">
-                         <p className="text-[10px] font-black uppercase tracking-widest text-[#0051d1]/60">Verra Business</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#0051d1]/60">Beamio Business</p>
                          <p className="text-sm font-bold text-slate-900">Member Platinum</p>
                        </div>
                      </div>
@@ -21425,7 +22507,7 @@ const retainedCapitalLifetime = useMemo(() => {
                      ? 'Programs Management'
                      : 'Card Configurator'}
                  </h2>
-                 <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#747779]">Verra Studio · Loyalty Engine</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#747779]">Beamio Studio · Loyalty Engine</p>
                </div>
                {(!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') &&
                cardIssuanceOnchainFetch !== 'loading' ? (
@@ -21729,7 +22811,7 @@ const retainedCapitalLifetime = useMemo(() => {
                              Rewards setup
                            </span>
                            <div
-                             className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                            className="grid grid-cols-1 gap-2 sm:grid-cols-3"
                              role="radiogroup"
                              aria-label="Rewards setup"
                            >
@@ -21772,6 +22854,12 @@ const retainedCapitalLifetime = useMemo(() => {
                                use Publish below on desktop.
                              </p>
                            ) : null}
+                          {cardIssuanceRewardsPreset === 'salesManagement' ? (
+                            <p className="ml-1 text-xs font-medium leading-relaxed text-[#595c5e]">
+                              Sales Management is designed for product-driven teams where staff earn points from sales
+                              records.
+                            </p>
+                          ) : null}
                          </div>
                        ) : null}
                      </div>
@@ -23884,17 +24972,28 @@ const retainedCapitalLifetime = useMemo(() => {
                         <div className="pt-2 space-y-3">
                           <button
                             type="button"
-                            onClick={applyCardIssuanceTierEditor}
-                            disabled={Boolean(cardIssuanceTierEditorValidationError)}
+                            onClick={() => void applyCardIssuanceTierEditor()}
+                            disabled={Boolean(cardIssuanceTierEditorValidationError) || cardIssuanceCreateLoading}
                             className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                           >
-                            <span>{cardIssuanceEditingTierId ? 'Update Reward Tier' : 'Create Reward Tier'}</span>
-                            <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                            {cardIssuanceCreateLoading ? (
+                              <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                            ) : (
+                              <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                            )}
+                            <span>
+                              {cardIssuanceCreateLoading
+                                ? 'Saving Tier Changes...'
+                                : cardIssuanceEditingTierId
+                                  ? 'Update Reward Tier'
+                                  : 'Create Reward Tier'}
+                            </span>
                           </button>
                           {cardIssuanceEditingTierId && cardIssuanceEditingTierId !== CARD_ISSUANCE_SINGLE_TIER_ID ? (
                             <button
                               type="button"
-                              onClick={removeCardIssuanceTierFromEditor}
+                              onClick={() => void removeCardIssuanceTierFromEditor()}
+                              disabled={cardIssuanceCreateLoading}
                               className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-4 font-manrope text-sm font-bold text-[#b31b25] transition-colors hover:bg-[#fb5151]/12 ${bizFocusRingClass}`}
                             >
                               <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
@@ -24100,6 +25199,122 @@ const retainedCapitalLifetime = useMemo(() => {
                          </div>
                        </div>
                      </div>
+
+                    <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
+                      <div
+                        className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
+                        aria-hidden
+                      />
+                      <header className="mb-3 flex items-center justify-between gap-2">
+                        <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Coupons</h3>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full border border-[#1562f0]/15 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0]">
+                            {cardIssuanceCoupons.length.toLocaleString()} total
+                          </span>
+                          <button
+                            type="button"
+                            onClick={openCardIssuanceCouponCreate}
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm transition-colors hover:bg-[#0d4ec4] ${bizFocusRingClass}`}
+                            aria-label="Add coupon"
+                          >
+                            <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                          </button>
+                        </div>
+                      </header>
+                      <div className="space-y-2.5 sm:space-y-3">
+                        {cardIssuanceCoupons.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-[#f8fafc] p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
+                            No coupons yet. Press + to add a coupon for this program.
+                          </div>
+                        ) : (
+                          cardIssuanceCoupons.map((coupon) => (
+                            <div
+                              key={coupon.id}
+                              className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-[#f8fbff] p-3 sm:rounded-xl sm:p-4"
+                            >
+                              <div className="min-w-0">
+                                <div className="mb-1 flex min-w-0 items-center gap-2">
+                                  <span
+                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm text-white shadow-sm"
+                                    style={{ backgroundColor: tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#0051d1' }}
+                                    aria-hidden
+                                  >
+                                    {cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? (
+                                      <img src={coupon.icon} alt="" className="h-6 w-6 rounded-full object-cover" />
+                                    ) : (
+                                      coupon.icon || '🎟️'
+                                    )}
+                                  </span>
+                                  <p className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{coupon.name}</p>
+                                </div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
+                                  {coupon.discountPercent}% off
+                                </p>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
+                                  {coupon.requiresRedeemCode ? 'Redeem code' : 'Open claim'}
+                                </p>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
+                                  Total issuance:{' '}
+                                  {(() => {
+                                    const n = Number.parseInt(coupon.issueTotal.replace(/,/g, '').trim(), 10);
+                                    return Number.isFinite(n) ? n.toLocaleString() : coupon.issueTotal;
+                                  })()}
+                                </p>
+                                {coupon.couponDateRestriction === 'range' && coupon.couponValidFromYmd && coupon.couponValidToYmd ? (
+                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
+                                    Valid: {coupon.couponValidFromYmd} – {coupon.couponValidToYmd}
+                                  </p>
+                                ) : null}
+                                {coupon.description.trim() ? (
+                                  <p className="mt-1 line-clamp-2 text-[11px] text-[#595c5e]">{coupon.description}</p>
+                                ) : null}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                                {coupon.issued ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
+                                    <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+                                    Issued
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => issueCardIssuanceCoupon(coupon.id)}
+                                    className={`inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 transition-colors hover:bg-emerald-100 ${bizFocusRingClass}`}
+                                  >
+                                    Issue
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openCardIssuanceCouponEdit(coupon.id)}
+                                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                  aria-label={`Edit coupon ${coupon.name}`}
+                                >
+                                  <Pencil className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                </button>
+                                {coupon.issued ? (
+                                  <span
+                                    title="Issued coupons cannot be deleted."
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400"
+                                  >
+                                    <Lock className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeCardIssuanceCouponDraft(coupon.id)}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#b31b25] transition-colors hover:bg-rose-50 ${bizFocusRingClass}`}
+                                    aria-label={`Delete coupon ${coupon.name}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
 
                      <div className="rounded-xl bg-[#eef1f3] p-4 sm:rounded-2xl sm:p-5">
                        <header className="mb-3 flex items-center justify-between gap-2">
@@ -24336,23 +25551,10 @@ const retainedCapitalLifetime = useMemo(() => {
                              );
                            })
                          ) : (
-                           <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
-                            No tier metadata on this card yet. Press + to define tiers before publishing updates.
-                           </div>
+                          <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
+                           No tier metadata on this card yet. Press + to define tiers. Changes are submitted immediately when you save.
+                          </div>
                          )}
-                        <button
-                          type="button"
-                          onClick={() => void handlePublishCardIssuance()}
-                          disabled={cardIssuanceCreateLoading}
-                          className={`mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-3 text-sm font-bold text-white shadow-md shadow-[#1562f0]/15 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                        >
-                          {cardIssuanceCreateLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
-                          ) : (
-                            <Rocket className="h-4 w-4" strokeWidth={2} aria-hidden />
-                          )}
-                          Publish tier changes
-                        </button>
                        </div>
                      </div>
                    </div>
@@ -24373,6 +25575,336 @@ const retainedCapitalLifetime = useMemo(() => {
                  </section>
                </div>
              ) : null}
+            <AnimatePresence>
+              {cardIssuanceCouponEditorOpen ? (
+                <>
+                  <motion.button
+                    type="button"
+                    aria-label="Close coupon editor"
+                    className="fixed inset-0 z-[92] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => {
+                      setCardIssuanceCouponEditorOpen(false);
+                      setCardIssuanceEditingCouponId(null);
+                    }}
+                  />
+                  <motion.div
+                    className="fixed inset-0 z-[93] flex w-full flex-col bg-white shadow-[-24px_0_64px_rgba(0,0,0,0.14)]"
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+                  >
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                      <div className="shrink-0 border-b border-[#e5e9eb]/80 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top,0px))] sm:px-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                              {cardIssuanceEditingCouponId ? 'Edit Coupon' : 'New Coupon'}
+                            </span>
+                            <h3 className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
+                              {cardIssuanceEditingCouponId ? 'Edit Coupon' : 'Create Coupon'}
+                            </h3>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCardIssuanceCouponEditorOpen(false);
+                              setCardIssuanceEditingCouponId(null);
+                            }}
+                            className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#abadaf]/30 bg-white text-[#747779] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+                            aria-label="Close"
+                          >
+                            <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-5 sm:px-6">
+                  <div className="space-y-3 pb-24">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon name</label>
+                      <input
+                        type="text"
+                        value={cardIssuanceCouponName}
+                        onChange={(e) => setCardIssuanceCouponName(e.target.value)}
+                        placeholder="e.g., Welcome bonus"
+                        autoComplete="off"
+                        className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                        How members claim
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCardIssuanceCouponRequiresRedeemCode(false)}
+                          className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                            !cardIssuanceCouponRequiresRedeemCode
+                              ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                              : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                          }`}
+                        >
+                          Open claim
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCardIssuanceCouponRequiresRedeemCode(true)}
+                          className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                            cardIssuanceCouponRequiresRedeemCode
+                              ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                              : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                          }`}
+                        >
+                          Redeem code
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[11px] text-[#abadaf]">
+                        {cardIssuanceCouponRequiresRedeemCode
+                          ? 'Members enter a redeem code to claim this coupon (create codes in Redeem tools).'
+                          : 'Members can claim without entering a secret redeem code, within your issuance cap.'}
+                      </p>
+                    </div>
+                    <div>
+                      <label
+                        className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                        htmlFor="programs-overview-coupon-issue-total"
+                      >
+                        Total issuance
+                      </label>
+                      <input
+                        ref={cardIssuanceCouponIssueTotalWheelRef}
+                        id="programs-overview-coupon-issue-total"
+                        type="number"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        min={1}
+                        max={CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX}
+                        value={cardIssuanceCouponIssueTotal}
+                        onKeyDown={preventNumericInputStepKeys}
+                        onKeyDownCapture={preventNumericInputStepKeys}
+                        onWheel={preventNumericInputWheelStep}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/,/g, '');
+                          if (raw === '') {
+                            setCardIssuanceCouponIssueTotal('');
+                            return;
+                          }
+                          setCardIssuanceCouponIssueTotal(raw.split('.')[0].replace(/\D/g, ''));
+                        }}
+                        placeholder={String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)}
+                        className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                      />
+                      <p className="mt-1 text-[11px] text-[#abadaf]">
+                        Maximum redemptions issued for this coupon (whole number, 1–
+                        {CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX.toLocaleString()}).
+                      </p>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon icon</label>
+                      <input
+                        ref={cardIssuanceCouponIconFileRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCardIssuanceCouponIconPick}
+                      />
+                      {!cardIssuanceCouponIcon ? (
+                        <button
+                          type="button"
+                          onClick={() => cardIssuanceCouponIconFileRef.current?.click()}
+                          disabled={cardIssuanceCouponIconUploading}
+                          className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          {cardIssuanceCouponIconUploading ? (
+                            <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                          ) : (
+                            <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
+                          )}
+                          <span className="mt-2 text-[11px] font-bold text-[#747779]">
+                            {cardIssuanceCouponIconUploading ? 'Uploading…' : 'Upload icon (PNG, JPEG, or SVG)'}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="relative h-[112px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
+                          <img src={cardIssuanceCouponIcon} alt="" className="h-full w-full object-contain" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCardIssuanceCouponIcon('');
+                              if (cardIssuanceCouponIconFileRef.current) cardIssuanceCouponIconFileRef.current.value = '';
+                            }}
+                            className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
+                            aria-label="Remove coupon icon"
+                          >
+                            <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                        Description
+                      </label>
+                      <textarea
+                        value={cardIssuanceCouponDescription}
+                        onChange={(e) => setCardIssuanceCouponDescription(e.target.value)}
+                        placeholder="Add coupon details for members"
+                        rows={3}
+                        className={`block w-full resize-none rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon background color</label>
+                      <div className="flex flex-wrap gap-2">
+                        {CARD_ISSUANCE_TIER_COLOR_PRESETS.map((hex) => {
+                          const selected =
+                            (tierBackgroundColorForPayload(cardIssuanceCouponBackgroundColor) ??
+                              cardIssuanceCouponBackgroundColor.toLowerCase()) === hex.toLowerCase();
+                          return (
+                            <button
+                              key={`coupon-color-${hex}`}
+                              type="button"
+                              aria-label={`Select coupon color ${hex}`}
+                              onClick={() => setCardIssuanceCouponBackgroundColor(hex)}
+                              className={`h-8 w-8 rounded-full ring-2 ring-offset-2 transition-all hover:scale-110 ${
+                                selected ? 'ring-[#1562f0]/35' : 'ring-transparent'
+                              }`}
+                              style={{ backgroundColor: hex }}
+                            />
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={tierBackgroundColorForPayload(cardIssuanceCouponBackgroundColor) ?? '#0051d1'}
+                          onChange={(e) => setCardIssuanceCouponBackgroundColor(e.target.value)}
+                          className="h-10 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
+                          aria-label="Choose custom coupon color"
+                        />
+                        <input
+                          type="text"
+                          value={cardIssuanceCouponBackgroundColor}
+                          onChange={(e) => setCardIssuanceCouponBackgroundColor(e.target.value)}
+                          placeholder="#0051d1"
+                          className={`min-w-0 flex-1 rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm font-mono text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                        Validity period
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCardIssuanceCouponDateRestriction('none')}
+                          className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                            cardIssuanceCouponDateRestriction === 'none'
+                              ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                              : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                          }`}
+                        >
+                          No dates
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCardIssuanceCouponDateRestriction('range');
+                            setCardIssuanceCouponValidFromYmd((prev) => prev || couponDefaultValidFromYmd());
+                            setCardIssuanceCouponValidToYmd((prev) => prev || couponDefaultValidToYmd());
+                          }}
+                          className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                            cardIssuanceCouponDateRestriction === 'range'
+                              ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                              : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                          }`}
+                        >
+                          Date range
+                        </button>
+                      </div>
+                      {cardIssuanceCouponDateRestriction === 'range' ? (
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label
+                              className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                              htmlFor="programs-overview-coupon-valid-from"
+                            >
+                              Start date
+                            </label>
+                            <input
+                              id="programs-overview-coupon-valid-from"
+                              type="date"
+                              value={cardIssuanceCouponValidFromYmd}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setCardIssuanceCouponValidFromYmd(v);
+                                if (v && cardIssuanceCouponValidToYmd && v > cardIssuanceCouponValidToYmd) {
+                                  setCardIssuanceCouponValidToYmd(v);
+                                }
+                              }}
+                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                              htmlFor="programs-overview-coupon-valid-to"
+                            >
+                              End date
+                            </label>
+                            <input
+                              id="programs-overview-coupon-valid-to"
+                              type="date"
+                              min={cardIssuanceCouponValidFromYmd || undefined}
+                              value={cardIssuanceCouponValidToYmd}
+                              onChange={(e) => setCardIssuanceCouponValidToYmd(e.target.value)}
+                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                      <p className="mt-1 text-[11px] text-[#abadaf]">
+                        {cardIssuanceCouponDateRestriction === 'range'
+                          ? 'Inclusive calendar dates stored in program metadata for wallets and redemption flows.'
+                          : 'No validity window is stored; this coupon is not limited by start/end dates in metadata.'}
+                      </p>
+                    </div>
+                    {cardIssuanceCouponEditorError ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+                        {cardIssuanceCouponEditorError}
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={submitCardIssuanceCouponEditor}
+                      disabled={cardIssuanceCouponIconUploading || cardIssuanceCouponEditorPublishing}
+                      className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                    >
+                      {cardIssuanceCouponIconUploading || cardIssuanceCouponEditorPublishing ? (
+                        <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                      ) : (
+                        <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                      )}
+                      {cardIssuanceCouponIconUploading
+                        ? 'Uploading icon…'
+                        : cardIssuanceCouponEditorPublishing
+                          ? 'Saving…'
+                          : cardIssuanceEditingCouponId
+                            ? 'Save Coupon'
+                            : 'Add Coupon'}
+                    </button>
+                  </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </>
+              ) : null}
+            </AnimatePresence>
             <AnimatePresence>
               {cardIssuanceTierEditorOpen && cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview' ? (
                 <>
@@ -24551,17 +26083,28 @@ const retainedCapitalLifetime = useMemo(() => {
                       <div className="space-y-3 pt-1">
                         <button
                           type="button"
-                          onClick={applyCardIssuanceTierEditor}
-                          disabled={Boolean(cardIssuanceTierEditorValidationError)}
+                          onClick={() => void applyCardIssuanceTierEditor()}
+                          disabled={Boolean(cardIssuanceTierEditorValidationError) || cardIssuanceCreateLoading}
                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                         >
-                          <span>{cardIssuanceEditingTierId ? 'Update Reward Tier' : 'Create Reward Tier'}</span>
-                          <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                          {cardIssuanceCreateLoading ? (
+                            <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                          ) : (
+                            <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                          )}
+                          <span>
+                            {cardIssuanceCreateLoading
+                              ? 'Saving Tier Changes...'
+                              : cardIssuanceEditingTierId
+                                ? 'Update Reward Tier'
+                                : 'Create Reward Tier'}
+                          </span>
                         </button>
                         {cardIssuanceEditingTierId && cardIssuanceEditingTierId !== CARD_ISSUANCE_SINGLE_TIER_ID ? (
                           <button
                             type="button"
-                            onClick={removeCardIssuanceTierFromEditor}
+                            onClick={() => void removeCardIssuanceTierFromEditor()}
+                            disabled={cardIssuanceCreateLoading}
                             className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] transition-colors hover:bg-[#fb5151]/12 ${bizFocusRingClass}`}
                           >
                             <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
@@ -24807,7 +26350,7 @@ const retainedCapitalLifetime = useMemo(() => {
                <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.05em] text-[#0051d1]">Account Hub</p>
                <h3 className="font-manrope text-3xl font-extrabold leading-tight tracking-tight text-slate-900">Configuration</h3>
                <p className="mt-2 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                 Welcome to Verra Business OS. Complete your security protocol to unlock full operational features.
+                Welcome to Beamio Business OS. Complete your security protocol to unlock full operational features.
                </p>
              </section>
 
@@ -25610,7 +27153,7 @@ const retainedCapitalLifetime = useMemo(() => {
              <p className="mt-1 text-sm font-medium leading-snug text-[#595c5e] sm:text-[15px]">
                {terminalOnboardingEditing
                  ? 'Update display name, reload cap, and allowed top-up methods for this device.'
-                 : 'Link a new hardware or soft-POS instance to your Verra ecosystem.'}
+                : 'Link a new hardware or soft-POS instance to your Beamio ecosystem.'}
              </p>
            </div>
            <div className="space-y-5 sm:space-y-6">
@@ -26934,9 +28477,9 @@ const retainedCapitalLifetime = useMemo(() => {
                    <span className="mb-4 inline-block rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-widest">
                      Network Protocol
                    </span>
-                   <h2 className="mb-4 text-2xl font-bold sm:text-3xl">Verra Direct Fuel Logic</h2>
+                  <h2 className="mb-4 text-2xl font-bold sm:text-3xl">Beamio Direct Fuel Logic</h2>
                    <p className="max-w-xl leading-relaxed text-[#f1f2ff]/90">
-                     B-Units represent the &quot;fuel&quot; for your merchant operations. By utilizing Verra&apos;s direct network architecture, we
+                    B-Units represent the &quot;fuel&quot; for your merchant operations. By utilizing Beamio&apos;s direct network architecture, we
                      bypass traditional banking legacy layers. Instead of complex percentage fees, you use B-Units to power secure, instant digital
                      transactions and top-ups within the ecosystem.
                    </p>
@@ -26955,7 +28498,7 @@ const retainedCapitalLifetime = useMemo(() => {
                    <CreditCard className="size-6" strokeWidth={2} aria-hidden />
                  </div>
                  <h3 className="mb-2 text-lg font-bold text-[#2c2f31]">Customer Payment</h3>
-                 <p className="mb-4 text-sm text-[#595c5e]">Flat rate for every successful sale transaction via the Verra terminal.</p>
+                <p className="mb-4 text-sm text-[#595c5e]">Flat rate for every successful sale transaction via the Beamio terminal.</p>
                  <div className="flex items-baseline gap-2">
                    <span className="text-2xl font-extrabold tabular-nums text-[#2c2f31]">2 B-Units</span>
                    <span className="text-xs font-medium text-[#595c5e]">/trans</span>
@@ -27008,7 +28551,7 @@ const retainedCapitalLifetime = useMemo(() => {
                  </div>
                  <div className="space-y-2">
                    <div className="flex justify-between text-[10px] font-bold uppercase tracking-tight text-[#0051d1]">
-                     <span>Verra B-Unit Protocol</span>
+                    <span>Beamio B-Unit Protocol</span>
                      <span>$0.82 avg</span>
                    </div>
                    <div className="h-4 w-full overflow-hidden rounded-full bg-[#dfe3e6]">
@@ -27215,7 +28758,7 @@ const retainedCapitalLifetime = useMemo(() => {
                            setMerchantKitRedeemFeedback(null);
                          }}
                          className={`w-full rounded-md border-none bg-[#eef1f3] px-4 py-3 text-sm font-medium text-[#2c2f31] placeholder:text-[#747779]/60 transition-all focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                         placeholder="Enter code (e.g., VERRA2026)"
+                        placeholder="Enter code (e.g., BEAMIO2026)"
                          type="text"
                          autoComplete="off"
                          disabled={merchantKitBuintRedeemBusy}
@@ -27332,7 +28875,7 @@ const retainedCapitalLifetime = useMemo(() => {
                        <div className="flex items-start gap-3">
                          <Shield className="mt-0.5 size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
                          <p className="text-sm leading-relaxed text-[#595c5e]">
-						 You will be securely redirected to a Stripe checkout page in a new tab. Verra does not store any credit card information.
+						 You will be securely redirected to a Stripe checkout page in a new tab. Beamio does not store any credit card information.
                          </p>
                        </div>
                        {merchantKitStripeMessage ? (
@@ -27529,7 +29072,7 @@ const retainedCapitalLifetime = useMemo(() => {
                   {selectedProduct === 'standard_kit' ? (
                     <div className="flex gap-4">
                       <Coins size={20} className="text-blue-400 shrink-0 mt-0.5" strokeWidth={2} />
-                      <div><h4 className="text-[15px] font-bold text-white mb-1">Standard kit</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System activation, 10× VERRA generic NFC cards, 2,000 B-Units. Pay securely in CAD via Stripe.</p></div>
+                      <div><h4 className="text-[15px] font-bold text-white mb-1">Standard kit</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System activation, 10× BEAMIO generic NFC cards, 2,000 B-Units. Pay securely in CAD via Stripe.</p></div>
                     </div>
                   ) : selectedProduct === 'custom_kit' ? (
                     <div className="flex gap-4">

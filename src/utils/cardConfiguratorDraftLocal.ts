@@ -30,7 +30,7 @@ export type CardConfiguratorDraftTierV1 = {
   backgroundColor: string
 }
 
-export type CardConfiguratorDraftRewardsPresetV1 = 'default' | 'custom'
+export type CardConfiguratorDraftRewardsPresetV1 = 'default' | 'custom' | 'salesManagement'
 
 export type CardConfiguratorDraftV1 = {
   version: 1
@@ -67,7 +67,7 @@ const TIER_RULES: CardConfiguratorDraftTierRuleV1[] = ['single', 'cumulative', '
 const TIER_PRESETS: CardConfiguratorDraftTierPresetV1[] = ['silver', 'gold', 'platinum', 'custom']
 
 function normalizeRewardsPreset(raw: unknown): CardConfiguratorDraftRewardsPresetV1 | undefined {
-  return raw === 'default' || raw === 'custom' ? raw : undefined
+  return raw === 'default' || raw === 'custom' || raw === 'salesManagement' ? raw : undefined
 }
 
 function normalizeTierRule(raw: unknown): CardConfiguratorDraftTierRuleV1 | undefined {

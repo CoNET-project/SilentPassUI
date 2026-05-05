@@ -184,7 +184,7 @@ const RestoreEntryScreen = ({
 				<ScanBtn />
 			</div>
 
-			{/* Top bar — Verra Studio + help (matches newOnloading.html) */}
+			{/* Top bar — Beamio Studio + help (matches newOnloading.html) */}
 			<nav className="sticky top-0 z-50 flex h-16 w-full max-w-full shrink-0 items-center justify-between border-b border-[#abadaf]/10 bg-white/70 px-6 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl md:px-8">
 				<div className="flex min-w-0 items-center gap-3">
 					<button
@@ -204,13 +204,11 @@ const RestoreEntryScreen = ({
 						className="h-8 w-8 shrink-0 rounded-lg object-contain"
 					/>
 					<div className="truncate text-xl font-bold tracking-tight text-[#2c2f31] md:text-2xl" style={HEADLINE}>
-						Verra Studio
+						Beamio Studio
 					</div>
 				</div>
 				<a
-					href="https://verra.network/contact"
-					target="_blank"
-					rel="noopener noreferrer"
+					href="mailto:support@beamio.app?subject=Beamio%20Business%20help"
 					className={`flex h-10 w-10 items-center justify-center rounded-full text-[#747779] transition hover:text-[#1562f0] ${bizBrandFocusRingClass}`}
 					aria-label="Help"
 				>
@@ -318,9 +316,7 @@ const RestoreEntryScreen = ({
 								</div>
 								<div className="text-right">
 									<a
-										href="https://verra.network/contact"
-										target="_blank"
-										rel="noopener noreferrer"
+										href="mailto:support@beamio.app?subject=Beamio%20Business%20password%20help"
 										className="text-sm font-semibold text-[#1562f0] transition-colors hover:text-[#0047b8]"
 									>
 										Forgot Password?
@@ -454,12 +450,12 @@ const RestoreEntryScreen = ({
 				<div className="flex items-center gap-2 md:mb-0">
 					<img src={BIZ_PUBLIC_LOGO512} alt="" className="h-8 w-8 shrink-0 rounded-lg object-contain" />
 					<div className="text-lg font-bold text-[#2c2f31]" style={HEADLINE}>
-						Verra Studio
+						Beamio Studio
 					</div>
 				</div>
 				<div className="mb-4 flex flex-wrap justify-center gap-8 md:mb-0">
 					<a
-						href="https://verra.network/privacy"
+						href="https://beamio.app/privacy"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="text-xs uppercase tracking-widest text-slate-400 transition-colors hover:text-[#1562f0]"
@@ -467,7 +463,7 @@ const RestoreEntryScreen = ({
 						Privacy Policy
 					</a>
 					<a
-						href="https://verra.network/terms"
+						href="https://beamio.app/terms"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="text-xs uppercase tracking-widest text-slate-400 transition-colors hover:text-[#1562f0]"
@@ -475,24 +471,20 @@ const RestoreEntryScreen = ({
 						Terms of Service
 					</a>
 					<a
-						href="https://verra.network/contact"
-						target="_blank"
-						rel="noopener noreferrer"
+						href="mailto:support@beamio.app?subject=Beamio%20Business%20security"
 						className="text-xs uppercase tracking-widest text-slate-400 transition-colors hover:text-[#1562f0]"
 					>
 						Security Architecture
 					</a>
 					<a
-						href="https://verra.network/contact"
-						target="_blank"
-						rel="noopener noreferrer"
+						href="mailto:support@beamio.app?subject=Beamio%20Business%20support"
 						className="text-xs uppercase tracking-widest text-slate-400 transition-colors hover:text-[#1562f0]"
 					>
 						Contact Support
 					</a>
 				</div>
 				<div className="text-xs uppercase tracking-widest text-slate-400">
-					© 2026 Verra Studio. Secure B2B Infrastructure.
+					© 2026 Beamio Studio. Secure B2B Infrastructure.
 				</div>
 			</footer>
 

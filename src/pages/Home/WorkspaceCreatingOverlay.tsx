@@ -2,7 +2,7 @@ import React from "react"
 import { Briefcase, Building2 } from "lucide-react"
 
 /** Full-screen “Creating your business workspace” UI — z above Recovery modal (9998). */
-/** Layout aligned with `Vouchers/example/Untitled` (Verra Identity | Business Workspace Setup). */
+/** Layout aligned with `Vouchers/example/Untitled` (Beamio Identity | Business Workspace Setup). */
 export const WORKSPACE_CREATING_STYLE = `
 @keyframes biz-workspace-soft-pulse {
 	0%, 100% { opacity: 0.1; transform: scale(0.95); }
@@ -97,7 +97,7 @@ export default function WorkspaceCreatingOverlay() {
 							Creating your business lite workspace...
 						</h2>
 						<p className="text-base font-medium leading-relaxed" style={{ color: ON_SURFACE_VARIANT }}>
-							We&apos;re preparing your business identity and getting your Verra workspace ready.
+							We&apos;re preparing your business identity and getting your Beamio workspace ready.
 						</p>
 						<div className="pt-2">
 							<p className="text-sm font-medium" style={{ color: `${ON_SURFACE_VARIANT}66` }}>

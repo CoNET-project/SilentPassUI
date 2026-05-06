@@ -15,6 +15,7 @@ import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
 import { checkStorage, searchUsername, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits } from "@/services/beamio"
+import { postCardCouponOpenClaimWithCurrentWallet } from "@/services/BeamioCard"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
 import { isRpcDegraded } from "@/utils/rpcStatus"
@@ -126,6 +127,7 @@ function AppShell() {
   setChartsRef.current = setCharts
   const bUnitClaimAttemptedRef = useRef(false)
   const initialRedeemUrlProcessedRef = useRef(false)
+  const initialOpenClaimUrlProcessedRef = useRef(false)
 
   const navigate = useNavigate()
 
@@ -159,6 +161,48 @@ function AppShell() {
     })
     navigate('/History')
   }, [isInitialLoading, navigate, setRedeemFromUrl])
+
+  // 直接打开 coupon open-claim URL（如 ?beamiocard=0x...&couponId=...&claim=open）时，自动离线签名并提交申请
+  useEffect(() => {
+    if (isInitialLoading || initialOpenClaimUrlProcessedRef.current) return
+    if (typeof window === 'undefined') return
+    const p0 = profiles?.[0] as { privateKeyArmor?: string } | undefined
+    if (!p0?.privateKeyArmor) return
+    const parseFromParams = (sp: URLSearchParams): { cardAddress: string; couponId: string } | null => {
+      const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
+      const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
+      const claim = (sp.get('claim') ?? '').trim().toLowerCase()
+      if (!cardAddress || !couponId) return null
+      if (claim && claim !== 'open' && claim !== '1' && claim !== 'true') return null
+      if (!ethers.isAddress(cardAddress)) return null
+      return { cardAddress: ethers.getAddress(cardAddress), couponId }
+    }
+    let parsed: { cardAddress: string; couponId: string } | null = null
+    const search = window.location.search
+    const hash = window.location.hash || ''
+    if (search) parsed = parseFromParams(new URLSearchParams(search))
+    if (!parsed && hash.includes('coupon')) {
+      const hashQuery = hash.split('?')[1]
+      if (hashQuery) parsed = parseFromParams(new URLSearchParams(hashQuery))
+    }
+    if (!parsed) return
+    initialOpenClaimUrlProcessedRef.current = true
+    postCardCouponOpenClaimWithCurrentWallet({
+      cardAddress: parsed.cardAddress,
+      couponId: parsed.couponId,
+      privateKeyArmor: p0.privateKeyArmor,
+    }).then((ret) => {
+      if (ret.success) {
+        Toast.show({ content: `Coupon claimed${ret.tokenId ? ` (token ${ret.tokenId})` : ''}!`, position: 'top' })
+      } else {
+        Toast.show({ content: ret.error ?? 'Coupon open claim failed', position: 'top' })
+      }
+      navigate('/History')
+    }).catch((e: any) => {
+      Toast.show({ content: e?.message ?? 'Coupon open claim failed', position: 'top' })
+      navigate('/History')
+    })
+  }, [isInitialLoading, profiles, navigate])
 
   // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
   // 重要：claimant 必须从私钥推导，不能使用 keyID，否则会导致 signer != claimant 链上失败

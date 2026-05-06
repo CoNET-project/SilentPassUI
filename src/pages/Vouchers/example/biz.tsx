@@ -64,6 +64,7 @@ import {
   signBUnitRefuel3009,
   createBeamioCard,
   updateBeamioCardShareMetadata,
+  updateIssuedCouponMetadata,
   updateBeamioCardTiers,
   encodeSetTiers,
   fetchCardsByCategory,
@@ -8280,6 +8281,11 @@ const [cardIssuanceCouponValidToYmd, setCardIssuanceCouponValidToYmd] = useState
 const cardIssuanceCouponIconFileRef = useRef<HTMLInputElement>(null);
 const [cardIssuanceCouponIconUploading, setCardIssuanceCouponIconUploading] = useState(false);
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
+const cardIssuanceEditingCouponRow = useMemo(
+  () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null,
+  [cardIssuanceCoupons, cardIssuanceEditingCouponId]
+);
+const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.issued);
  /** Programs overview: confirm before removing a recharge bonus rule from draft state. */
  const [cardIssuanceBonusRuleDeleteConfirmId, setCardIssuanceBonusRuleDeleteConfirmId] = useState<string | null>(
    null
@@ -9392,13 +9398,27 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
 }, [cardIssuanceCoupons]);
 
 const submitCardIssuanceCouponEditor = useCallback(async () => {
-  const name = cardIssuanceCouponName.trim();
-  const discount = Number.parseFloat(cardIssuanceCouponDiscountPercent.trim());
+  const editingCouponExistingRow = cardIssuanceEditingCouponId
+    ? cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null
+    : null;
+  const lockIssuedOnChainFields = Boolean(editingCouponExistingRow?.issued);
+  const name = lockIssuedOnChainFields
+    ? (editingCouponExistingRow?.name?.trim() ?? '')
+    : cardIssuanceCouponName.trim();
+  const discount = Number.parseFloat(
+    lockIssuedOnChainFields
+      ? (editingCouponExistingRow?.discountPercent ?? '10').trim()
+      : cardIssuanceCouponDiscountPercent.trim()
+  );
   const icon = cardIssuanceCouponIcon.trim();
   const backgroundColorRaw = cardIssuanceCouponBackgroundColor.trim();
   const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw);
   const description = cardIssuanceCouponDescription.trim();
-  const issueTotalRaw = cardIssuanceCouponIssueTotal.replace(/,/g, '').trim();
+  const issueTotalRaw = (
+    lockIssuedOnChainFields
+      ? (editingCouponExistingRow?.issueTotal ?? String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT))
+      : cardIssuanceCouponIssueTotal
+  ).replace(/,/g, '').trim();
   const issueTotalN = Number.parseInt(issueTotalRaw, 10);
   const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
   if (!name) {
@@ -9425,7 +9445,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     setCardIssuanceCouponEditorError('Background color must be a valid #RRGGBB value.');
     return;
   }
-  if (cardIssuanceCouponDateRestriction === 'range') {
+  if (!lockIssuedOnChainFields && cardIssuanceCouponDateRestriction === 'range') {
     const vf = parseCouponYmd(cardIssuanceCouponValidFromYmd);
     const vt = parseCouponYmd(cardIssuanceCouponValidToYmd);
     if (!vf || !vt) {
@@ -9439,9 +9459,18 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   }
   const discountFixed = String(Number(discount.toFixed(2)));
   const issueTotalFixed = String(issueTotalN);
-  const dr: 'none' | 'range' = cardIssuanceCouponDateRestriction === 'range' ? 'range' : 'none';
-  const vfStore = dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidFromYmd) ?? '' : '';
-  const vtStore = dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidToYmd) ?? '' : '';
+  const requiresRedeemCodeFinal = lockIssuedOnChainFields
+    ? editingCouponExistingRow?.requiresRedeemCode === true
+    : cardIssuanceCouponRequiresRedeemCode;
+  const dr: 'none' | 'range' = lockIssuedOnChainFields
+    ? (editingCouponExistingRow?.couponDateRestriction === 'range' ? 'range' : 'none')
+    : (cardIssuanceCouponDateRestriction === 'range' ? 'range' : 'none');
+  const vfStore = lockIssuedOnChainFields
+    ? (dr === 'range' ? editingCouponExistingRow?.couponValidFromYmd ?? '' : '')
+    : (dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidFromYmd) ?? '' : '');
+  const vtStore = lockIssuedOnChainFields
+    ? (dr === 'range' ? editingCouponExistingRow?.couponValidToYmd ?? '' : '')
+    : (dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidToYmd) ?? '' : '');
   setCardIssuanceCouponEditorError('');
 
   /** Edit draft only (no new on-chain series). */
@@ -9452,13 +9481,13 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
         item.id === cardIssuanceEditingCouponId
           ? {
               ...item,
-              name,
-              discountPercent: discountFixed,
-              issueTotal: issueTotalFixed,
-              requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
-              couponDateRestriction: dr,
-              couponValidFromYmd: vfStore,
-              couponValidToYmd: vtStore,
+              name: item.issued ? item.name : name,
+              discountPercent: item.issued ? item.discountPercent : discountFixed,
+              issueTotal: item.issued ? item.issueTotal : issueTotalFixed,
+              requiresRedeemCode: item.issued ? item.requiresRedeemCode : requiresRedeemCodeFinal,
+              couponDateRestriction: item.issued ? item.couponDateRestriction : dr,
+              couponValidFromYmd: item.issued ? item.couponValidFromYmd : vfStore,
+              couponValidToYmd: item.issued ? item.couponValidToYmd : vtStore,
               icon,
               backgroundColor: backgroundColor ?? '#0051d1',
               description,
@@ -9472,13 +9501,54 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     if (cardIssuanceExistingCard?.cardAddress) {
       setCardIssuanceCouponEditorPublishing(true);
       try {
-        const ok = await handlePublishCardIssuanceRef.current({
-          couponsOverride: nextCoupons,
-          loadingScope: 'bonusEditor',
-        });
-        if (!ok) {
-          setCardIssuanceCouponEditorError(
-            'Could not save coupon changes. Fix any publish validation errors and try again.'
+        const prevRow = editingCouponExistingRow;
+        const nextRow = nextCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null;
+        const issuedTokenId = prevRow?.issuedTokenId?.trim() ?? '';
+        const isIssuedCouponEdit = Boolean(prevRow?.issued && issuedTokenId);
+        let saveOk = true;
+        if (isIssuedCouponEdit && prevRow && nextRow) {
+          const metadataChanged =
+            prevRow.icon !== nextRow.icon ||
+            prevRow.backgroundColor !== nextRow.backgroundColor ||
+            prevRow.description !== nextRow.description;
+          const nonMetadataChanged = prevRow.discountPercent !== nextRow.discountPercent;
+          if (metadataChanged) {
+            const metadataRes = await updateIssuedCouponMetadata({
+              cardAddress: cardIssuanceExistingCard.cardAddress,
+              couponId: nextRow.id,
+              issuedTokenId,
+              icon: nextRow.icon,
+              backgroundColor: nextRow.backgroundColor,
+              description: nextRow.description,
+            });
+            if (!metadataRes.success) {
+              saveOk = false;
+              setCardIssuanceCouponEditorError(
+                metadataRes.error ?? 'Could not update issued coupon metadata. Please try again.'
+              );
+            }
+          }
+          if (saveOk && nonMetadataChanged) {
+            const ok = await handlePublishCardIssuanceRef.current({
+              couponsOverride: nextCoupons,
+              loadingScope: 'bonusEditor',
+            });
+            if (!ok) {
+              saveOk = false;
+            }
+          }
+        } else {
+          const ok = await handlePublishCardIssuanceRef.current({
+            couponsOverride: nextCoupons,
+            loadingScope: 'bonusEditor',
+          });
+          if (!ok) {
+            saveOk = false;
+          }
+        }
+        if (!saveOk) {
+          setCardIssuanceCouponEditorError((prev) =>
+            prev || 'Could not save coupon changes. Fix any publish validation errors and try again.'
           );
         }
       } catch (e: unknown) {
@@ -9505,7 +9575,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
           backgroundColor ?? '#0051d1',
           description,
           issueTotalFixed,
-          cardIssuanceCouponRequiresRedeemCode,
+          requiresRedeemCodeFinal,
           dr,
           vfStore,
           vtStore,
@@ -9722,7 +9792,9 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   cardIssuanceCouponValidToYmd,
   cardIssuanceCouponName,
   cardIssuanceEditingCouponId,
+  cardIssuanceCoupons,
   profiles,
+  updateIssuedCouponMetadata,
 ]);
 
 const removeCardIssuanceCouponDraft = useCallback(async (couponId: string) => {
@@ -25623,15 +25695,22 @@ const retainedCapitalLifetime = useMemo(() => {
                       </div>
                       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-5 sm:px-6">
                   <div className="space-y-3 pb-24">
+                    {cardIssuanceCouponEditingIssued ? (
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-medium text-sky-900">
+                        This coupon has already been issued on-chain. Coupon name, discount, claim method, total issuance, and validity
+                        period are locked. You can still update coupon icon, description, and background color metadata.
+                      </div>
+                    ) : null}
                     <div>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon name</label>
                       <input
                         type="text"
                         value={cardIssuanceCouponName}
                         onChange={(e) => setCardIssuanceCouponName(e.target.value)}
+                        disabled={cardIssuanceCouponEditingIssued}
                         placeholder="e.g., Welcome bonus"
                         autoComplete="off"
-                        className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                        className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                       />
                     </div>
                     <div>
@@ -25641,23 +25720,31 @@ const retainedCapitalLifetime = useMemo(() => {
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => setCardIssuanceCouponRequiresRedeemCode(false)}
+                          onClick={() => {
+                            if (cardIssuanceCouponEditingIssued) return;
+                            setCardIssuanceCouponRequiresRedeemCode(false);
+                          }}
+                          disabled={cardIssuanceCouponEditingIssued}
                           className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
                             !cardIssuanceCouponRequiresRedeemCode
                               ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
                               : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
-                          }`}
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                           Open claim
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCardIssuanceCouponRequiresRedeemCode(true)}
+                          onClick={() => {
+                            if (cardIssuanceCouponEditingIssued) return;
+                            setCardIssuanceCouponRequiresRedeemCode(true);
+                          }}
+                          disabled={cardIssuanceCouponEditingIssued}
                           className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
                             cardIssuanceCouponRequiresRedeemCode
                               ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
                               : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
-                          }`}
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                           Redeem code
                         </button>
@@ -25687,6 +25774,7 @@ const retainedCapitalLifetime = useMemo(() => {
                         onKeyDown={preventNumericInputStepKeys}
                         onKeyDownCapture={preventNumericInputStepKeys}
                         onWheel={preventNumericInputWheelStep}
+                        disabled={cardIssuanceCouponEditingIssued}
                         onChange={(e) => {
                           const raw = e.target.value.replace(/,/g, '');
                           if (raw === '') {
@@ -25696,7 +25784,7 @@ const retainedCapitalLifetime = useMemo(() => {
                           setCardIssuanceCouponIssueTotal(raw.split('.')[0].replace(/\D/g, ''));
                         }}
                         placeholder={String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)}
-                        className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                        className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                       />
                       <p className="mt-1 text-[11px] text-[#abadaf]">
                         Maximum redemptions issued for this coupon (whole number, 1–
@@ -25802,27 +25890,33 @@ const retainedCapitalLifetime = useMemo(() => {
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => setCardIssuanceCouponDateRestriction('none')}
+                          onClick={() => {
+                            if (cardIssuanceCouponEditingIssued) return;
+                            setCardIssuanceCouponDateRestriction('none');
+                          }}
+                          disabled={cardIssuanceCouponEditingIssued}
                           className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
                             cardIssuanceCouponDateRestriction === 'none'
                               ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
                               : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
-                          }`}
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                           No dates
                         </button>
                         <button
                           type="button"
                           onClick={() => {
+                            if (cardIssuanceCouponEditingIssued) return;
                             setCardIssuanceCouponDateRestriction('range');
                             setCardIssuanceCouponValidFromYmd((prev) => prev || couponDefaultValidFromYmd());
                             setCardIssuanceCouponValidToYmd((prev) => prev || couponDefaultValidToYmd());
                           }}
+                          disabled={cardIssuanceCouponEditingIssued}
                           className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
                             cardIssuanceCouponDateRestriction === 'range'
                               ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
                               : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
-                          }`}
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                           Date range
                         </button>
@@ -25840,6 +25934,7 @@ const retainedCapitalLifetime = useMemo(() => {
                               id="programs-overview-coupon-valid-from"
                               type="date"
                               value={cardIssuanceCouponValidFromYmd}
+                              disabled={cardIssuanceCouponEditingIssued}
                               onChange={(e) => {
                                 const v = e.target.value;
                                 setCardIssuanceCouponValidFromYmd(v);
@@ -25847,7 +25942,7 @@ const retainedCapitalLifetime = useMemo(() => {
                                   setCardIssuanceCouponValidToYmd(v);
                                 }
                               }}
-                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                             />
                           </div>
                           <div>
@@ -25862,8 +25957,9 @@ const retainedCapitalLifetime = useMemo(() => {
                               type="date"
                               min={cardIssuanceCouponValidFromYmd || undefined}
                               value={cardIssuanceCouponValidToYmd}
+                              disabled={cardIssuanceCouponEditingIssued}
                               onChange={(e) => setCardIssuanceCouponValidToYmd(e.target.value)}
-                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                             />
                           </div>
                         </div>

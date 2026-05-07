@@ -4,7 +4,7 @@
 
 import React, { useMemo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Nfc, ChevronRight, Store, Info, QrCode, ShoppingBasket } from 'lucide-react'
+import { Nfc, ChevronRight, Store, Info, QrCode, ShoppingBasket, Clock3 } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -12,12 +12,115 @@ import { detectDeviceNfcCapability } from '@/utils/cashTreesNativeNfc'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import { resolveCardImageUrl, resolveHeldTierPresentation } from '@/pages/Brands/MyBrandsListSection'
 import { cardTierGradientCss, cardTierGradientTheme } from '@/utils/cardTierGradient'
+import { getCardActiveIssuedCouponSeries } from '@/services/BeamioCard'
 
 const STACK_CARD_OVERLAP_PX = 130
 const STACK_CARD_H = 200
 
 /** 与 Home 顶栏左侧胶囊 `homeAccent` 一致 */
 const WALLET_CAPSULE_ACCENT = '#1562f0'
+const ISSUED_NFT_START_ID = 100_000_000_000n
+
+type WalletOwnedCouponItem = {
+	id: string
+	cardAddress: string
+	tokenId: string
+	couponId: string
+	title: string
+	subtitle: string
+	iconUrl: string
+	backgroundImage: string
+	backgroundColorHex: string
+	validBeforeSec: number | null
+}
+
+const asRecord = (v: unknown): Record<string, unknown> | null =>
+	v && typeof v === 'object' ? (v as Record<string, unknown>) : null
+
+const readString = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+
+const readMetadataCouponId = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const root = readString(meta.couponId)
+	if (root) return root
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return readString(beamioCoupon?.couponId)
+}
+
+const readMetadataTitle = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return (
+		readString(meta.title) ||
+		readString(meta.name) ||
+		readString(beamioCoupon?.title) ||
+		readString(beamioCoupon?.name)
+	)
+}
+
+const readMetadataSubtitle = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return (
+		readString(meta.subtitle) ||
+		readString(meta.description) ||
+		readString(beamioCoupon?.subtitle) ||
+		readString(beamioCoupon?.description)
+	)
+}
+
+const readMetadataIconUrl = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	const imageObj = asRecord(meta.image)
+	return (
+		readString(meta.iconUrl) ||
+		readString(meta.icon) ||
+		readString(imageObj?.url) ||
+		readString(meta.image) ||
+		readString(beamioCoupon?.iconUrl) ||
+		readString(beamioCoupon?.icon)
+	)
+}
+
+const readMetadataBackgroundImage = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return (
+		readString(meta.backgroundImage) ||
+		readString(meta.coverImage) ||
+		readString(beamioCoupon?.backgroundImage) ||
+		readString(beamioCoupon?.coverImage)
+	)
+}
+
+const readMetadataBackgroundColor = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	const c =
+		readString(meta.backgroundColorHex) ||
+		readString(meta.background_color) ||
+		readString(beamioCoupon?.backgroundColorHex) ||
+		readString(beamioCoupon?.background_color)
+	if (!c) return ''
+	return c.startsWith('#') ? c : `#${c}`
+}
+
+const formatCouponExpiryPill = (validBeforeSec: number | null): string => {
+	if (!Number.isFinite(validBeforeSec ?? NaN) || (validBeforeSec ?? 0) <= 0) return 'VALID NOW'
+	const now = Math.floor(Date.now() / 1000)
+	if ((validBeforeSec ?? 0) <= now) return 'EXPIRED'
+	const delta = (validBeforeSec ?? now) - now
+	if (delta >= 86_400) return `EXPIRES IN ${Math.ceil(delta / 86_400)}D`
+	if (delta >= 3_600) return `EXPIRES IN ${Math.ceil(delta / 3_600)}H`
+	return `EXPIRES IN ${Math.max(1, Math.ceil(delta / 60))}M`
+}
 
 const capsuleChrome =
 	'rounded-full border border-slate-100/90 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800'
@@ -63,6 +166,8 @@ export default function WalletOverview() {
 
 	const [deviceHasNfc, setDeviceHasNfc] = useState(false)
 	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)
+	const [ownedCoupons, setOwnedCoupons] = useState<WalletOwnedCouponItem[]>([])
+	const [ownedCouponsLoading, setOwnedCouponsLoading] = useState(false)
 
 	useEffect(() => {
 		const run = () => setDeviceHasNfc(detectDeviceNfcCapability())
@@ -70,6 +175,95 @@ export default function WalletOverview() {
 		const t = window.setTimeout(run, 0)
 		return () => clearTimeout(t)
 	}, [])
+
+	useEffect(() => {
+		let cancelled = false
+		const run = async () => {
+			const cardContexts = myBrandCardsSorted
+				.map((card) => {
+					const cardLower = card.cardAddress.toLowerCase()
+					const detail = myBrandCardDetails[cardLower]
+					const ownedIssuedTokenIds = new Set<string>()
+					for (const nft of detail?.assets?.nfts ?? []) {
+						try {
+							const tid = BigInt(String(nft.tokenId ?? '0'))
+							if (tid >= ISSUED_NFT_START_ID) ownedIssuedTokenIds.add(String(nft.tokenId))
+						} catch {
+							// ignore invalid token id
+						}
+					}
+					if (!ownedIssuedTokenIds.size) return null
+					const fallbackName =
+						(detail?.meta?.name && detail.meta.name.trim()) || card.name || 'Merchant Program'
+					return { cardAddress: card.cardAddress, cardLower, fallbackName, ownedIssuedTokenIds }
+				})
+				.filter((x): x is { cardAddress: string; cardLower: string; fallbackName: string; ownedIssuedTokenIds: Set<string> } => !!x)
+
+			if (!cardContexts.length) {
+				setOwnedCoupons([])
+				setOwnedCouponsLoading(false)
+				return
+			}
+
+			setOwnedCouponsLoading(true)
+			const responses = await Promise.allSettled(
+				cardContexts.map(async (ctx) => {
+					const rows = await getCardActiveIssuedCouponSeries(ctx.cardAddress, 50)
+					const ownedRows = rows.filter((row) => ctx.ownedIssuedTokenIds.has(String(row.tokenId)))
+					return { ctx, ownedRows }
+				})
+			)
+			if (cancelled) return
+
+			const successfulCards = new Set<string>()
+			const nextRowsById = new Map<string, WalletOwnedCouponItem>()
+			for (const response of responses) {
+				if (response.status !== 'fulfilled') continue
+				successfulCards.add(response.value.ctx.cardLower)
+				for (const row of response.value.ownedRows) {
+					const meta = asRecord(row.metadata)
+					const title = readMetadataTitle(meta) || 'Coupon'
+					const subtitle = readMetadataSubtitle(meta) || response.value.ctx.fallbackName
+					const couponId = readMetadataCouponId(meta) || `token-${row.tokenId}`
+					const id = `${response.value.ctx.cardLower}:${row.tokenId}`
+					const validBeforeNum = Number(row.issuedNftValidBefore ?? 0)
+					nextRowsById.set(id, {
+						id,
+						cardAddress: response.value.ctx.cardAddress,
+						tokenId: String(row.tokenId),
+						couponId,
+						title,
+						subtitle,
+						iconUrl: readMetadataIconUrl(meta),
+						backgroundImage: readMetadataBackgroundImage(meta),
+						backgroundColorHex: readMetadataBackgroundColor(meta),
+						validBeforeSec: Number.isFinite(validBeforeNum) && validBeforeNum > 0 ? validBeforeNum : null,
+					})
+				}
+			}
+
+			const trackedCards = new Set(cardContexts.map((c) => c.cardLower))
+			setOwnedCoupons((prev) => {
+				const carry = prev.filter((item) => {
+					const cardLower = item.cardAddress.toLowerCase()
+					if (!trackedCards.has(cardLower)) return false
+					return !successfulCards.has(cardLower)
+				})
+				for (const row of nextRowsById.values()) carry.push(row)
+				return carry.sort((a, b) => {
+					const av = a.validBeforeSec ?? Number.MAX_SAFE_INTEGER
+					const bv = b.validBeforeSec ?? Number.MAX_SAFE_INTEGER
+					if (av !== bv) return av - bv
+					return a.title.localeCompare(b.title, 'en')
+				})
+			})
+			setOwnedCouponsLoading(false)
+		}
+		void run()
+		return () => {
+			cancelled = true
+		}
+	}, [myBrandCardsSorted, myBrandCardDetails])
 
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
 
@@ -234,6 +428,74 @@ export default function WalletOverview() {
 									})
 								)}
 							</div>
+					</section>
+
+					<section className="space-y-3">
+						<div className="flex items-center justify-between px-1">
+							<h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+								Active Vouchers
+							</h3>
+							<span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+								{ownedCoupons.length} VOUCHER{ownedCoupons.length !== 1 ? 'S' : ''}
+							</span>
+						</div>
+
+						{ownedCouponsLoading && ownedCoupons.length === 0 ? (
+							<div className="space-y-3">
+								<div className="h-[136px] animate-pulse rounded-[32px] bg-slate-200/80 dark:bg-slate-800" />
+								<div className="h-[136px] animate-pulse rounded-[32px] bg-slate-200/80 dark:bg-slate-800" />
+							</div>
+						) : ownedCoupons.length === 0 ? (
+							<div className="rounded-2xl border border-slate-200/80 bg-white p-4 text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+								No active vouchers yet.
+							</div>
+						) : (
+							<div className="space-y-3">
+								{ownedCoupons.map((row) => {
+									const expires = formatCouponExpiryPill(row.validBeforeSec)
+									const isUrgent = /IN \d+H|IN \d+M/.test(expires)
+									return (
+										<div
+											key={row.id}
+											className="relative h-[136px] overflow-hidden rounded-[32px] border border-white/10 shadow-[0_8px_24px_rgba(2,6,23,0.18)]"
+											style={{ backgroundColor: row.backgroundColorHex || '#2B2E3A' }}
+										>
+											{row.backgroundImage ? (
+												<img
+													src={row.backgroundImage}
+													alt=""
+													className="absolute inset-0 h-full w-full object-cover"
+													draggable={false}
+												/>
+											) : null}
+											<div className="absolute inset-0 bg-black/45" />
+											<div className="absolute left-[-14px] top-1/2 h-7 w-7 -translate-y-1/2 rounded-full bg-[#F2F2F7] dark:bg-slate-950" />
+											<div className="absolute right-[-14px] top-1/2 h-7 w-7 -translate-y-1/2 rounded-full bg-[#F2F2F7] dark:bg-slate-950" />
+
+											<div className="relative z-10 flex h-full items-center gap-4 px-5">
+												<div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/80 bg-black/20">
+													{row.iconUrl ? (
+														<img src={row.iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+													) : (
+														<Store className="h-6 w-6 text-white" />
+													)}
+												</div>
+												<div className="min-w-0">
+													<p className="truncate text-4xl font-bold leading-tight text-white">{row.title}</p>
+													<p className="truncate text-[13px] font-semibold text-white/90">{row.subtitle}</p>
+													<div
+														className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 ${isUrgent ? 'bg-rose-500 text-white' : 'bg-white/25 text-white'}`}
+													>
+														<Clock3 className="h-3 w-3" />
+														<span className="text-[11px] font-extrabold tracking-[0.3px]">{expires}</span>
+													</div>
+												</div>
+											</div>
+										</div>
+									)
+								})}
+							</div>
+						)}
 					</section>
 
 					{deviceHasNfc && (

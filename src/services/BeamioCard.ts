@@ -440,10 +440,11 @@ const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardCreateRedeemAdminEndpoint = `${beamioApi}/api/cardCreateRedeemAdmin`
 const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 
-type CardActiveIssuedCouponSeriesItem = {
+export type CardActiveIssuedCouponSeriesItem = {
 	cardAddress: string
 	tokenId: string
 	metadata?: Record<string, unknown> | null
+	issuedNftValidBefore?: string
 }
 
 function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefined): string {
@@ -459,10 +460,11 @@ function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefin
 	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
 }
 
-async function getCardActiveIssuedCouponSeries(cardAddress: string): Promise<CardActiveIssuedCouponSeriesItem[]> {
+export async function getCardActiveIssuedCouponSeries(cardAddress: string, limit = 50): Promise<CardActiveIssuedCouponSeriesItem[]> {
 	if (!cardAddress || !ethers.isAddress(cardAddress)) return []
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
 	try {
-		const res = await fetch(`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=50`)
+		const res = await fetch(`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=${normalizedLimit}`)
 		if (!res.ok) return []
 		const json = (await res.json().catch(() => ({}))) as { items?: CardActiveIssuedCouponSeriesItem[] }
 		return Array.isArray(json.items) ? json.items : []
@@ -514,14 +516,14 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			},
 			{
 				ClaimIssuedNft: [
-					{ name: 'cardAddr', type: 'address' },
+					{ name: 'cardAddress', type: 'address' },
 					{ name: 'tokenId', type: 'uint256' },
 					{ name: 'deadline', type: 'uint256' },
 					{ name: 'nonce', type: 'bytes32' },
 				],
 			},
 			{
-				cardAddr: cardNorm,
+				cardAddress: cardNorm,
 				tokenId: BigInt(tokenId),
 				deadline: BigInt(deadline),
 				nonce,

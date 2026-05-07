@@ -446,6 +446,7 @@ function openVerraNdefNativeAppInstall(): void {
 
 const USDC_ICON_URL = 'https://assets.coingecko.com/coins/images/6319/small/usdc.png';
 const BASE_ICON_URL = 'https://beamio.app/app/static/media/base-logo.275b67e94556e30ce59b.png';
+const CADD_ICON_URL = `${process.env.PUBLIC_URL || ''}/assets/cadd-icon.png`;
 
 /** Self-custody / security hero illustration (`public/assets/mbiz-self-custody-hero.png`) */
 const WALLET_SEND_SETTLE_BASE = 'https://api.settleonbase.xyz';
@@ -502,6 +503,17 @@ const UsdcBaseCompositeIcon = ({ size = 16, badgeSize }: { size?: number; badgeS
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size, minWidth: size, minHeight: size }}>
       <img src={USDC_ICON_URL} alt="USDC" className="block w-full h-full rounded-full object-contain" />
+      <img src={BASE_ICON_URL} alt="Base" className="block absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white" style={{ width: bs, height: bs }} />
+    </div>
+  );
+};
+
+/** CADD on Base 复合图标：主圆标 + 右下 Base 角标（与 USDC 组合样式一致） */
+const CaddBaseCompositeIcon = ({ size = 16, badgeSize }: { size?: number; badgeSize?: number }) => {
+  const bs = badgeSize ?? Math.round(size * 0.625);
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size, minWidth: size, minHeight: size }}>
+      <img src={CADD_ICON_URL} alt="CADD" className="block w-full h-full rounded-full object-contain" />
       <img src={BASE_ICON_URL} alt="Base" className="block absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white" style={{ width: bs, height: bs }} />
     </div>
   );
@@ -4878,14 +4890,15 @@ async function assertTerminalRegistrationPrecheckAlignedWithCluster(
   );
 }
 
-type TerminalTopupMethodKey = 'cash' | 'bankCard' | 'usdc' | 'airdrop'
-const TERMINAL_TOPUP_METHOD_ORDER: readonly TerminalTopupMethodKey[] = ['cash', 'bankCard', 'usdc', 'airdrop']
+type TerminalTopupMethodKey = 'cash' | 'bankCard' | 'usdc' | 'cadd' | 'airdrop'
+const TERMINAL_TOPUP_METHOD_ORDER: readonly TerminalTopupMethodKey[] = ['cash', 'bankCard', 'usdc', 'cadd', 'airdrop']
 
 /** iOS POS `TopupPaymentMethodOption.accentColor` (ContentView.swift) — icon foreground on light panels. */
 const TERMINAL_TOPUP_METHOD_ICON_CLASS: Record<TerminalTopupMethodKey, string> = {
   cash: 'text-[#6B7280]',
   bankCard: 'text-[#D49B1F]',
   usdc: '',
+  cadd: '',
   airdrop: 'text-[#EC4899]',
 }
 
@@ -12671,6 +12684,7 @@ useEffect(() => {
      cash: boolean;
      bankCard: boolean;
      usdc: boolean;
+    cadd: boolean;
      airdrop: boolean;
    };
    /** `null` = 新终端链路（与未打开「编辑终端」时一致）。 */
@@ -12898,8 +12912,9 @@ useEffect(() => {
    cash: boolean;
    bankCard: boolean;
    usdc: boolean;
+  cadd: boolean;
    airdrop: boolean;
- }>({ cash: true, bankCard: true, usdc: false, airdrop: false });
+}>({ cash: true, bankCard: true, usdc: false, cadd: false, airdrop: false });
  const [deviceHandleResolved, setDeviceHandleResolved] = useState<{
    username: string
    address: string
@@ -13023,7 +13038,7 @@ useEffect(() => {
    setNewDeviceName('');
    setNewTerminalMintLimit('1000');
    setTerminalOnboardingReloadUnlimited(true);
-   setTerminalOnboardingTopupMethods({ cash: true, bankCard: true, usdc: false, airdrop: false });
+  setTerminalOnboardingTopupMethods({ cash: true, bankCard: true, usdc: false, cadd: false, airdrop: false });
    setLinkTerminalError(null);
    setDeviceHandleError(null);
    setDeviceHandleResolved(null);
@@ -13069,6 +13084,7 @@ useEffect(() => {
              cash: allowed.has('cash'),
              bankCard: allowed.has('bankCard'),
              usdc: allowed.has('usdc'),
+            cadd: allowed.has('cadd'),
              airdrop: allowed.has('airdrop'),
            });
          }
@@ -17604,6 +17620,8 @@ const retainedCapitalLifetime = useMemo(() => {
                                                ? 'Bank card'
                                                : k === 'usdc'
                                                  ? 'USDC on Base'
+                                                : k === 'cadd'
+                                                  ? 'CADD on Base'
                                                  : 'Airdrop (bonus)';
                                          const tone = TERMINAL_TOPUP_METHOD_ICON_CLASS[k];
                                          return (
@@ -17616,6 +17634,8 @@ const retainedCapitalLifetime = useMemo(() => {
                                            >
                                              {k === 'usdc' ? (
                                                <UsdcBaseCompositeIcon size={20} badgeSize={12} />
+                                            ) : k === 'cadd' ? (
+                                              <CaddBaseCompositeIcon size={20} badgeSize={12} />
                                              ) : k === 'cash' ? (
                                                <Banknote className="size-[18px]" strokeWidth={2} aria-hidden />
                                              ) : k === 'bankCard' ? (
@@ -17851,7 +17871,7 @@ const retainedCapitalLifetime = useMemo(() => {
          ? ethers.MaxUint256
          : BigInt(Math.round(limitNum * 1_000_000));
        /** Always persist for POS / terminal clients (`/api/myPosAddress` → `terminalMetadata`). Modal uses same defaults as onboarding reset (cash+bankCard on). */
-       const allowedTopupMethodsPayload = (['cash', 'bankCard', 'usdc', 'airdrop'] as const).filter(
+      const allowedTopupMethodsPayload = (['cash', 'bankCard', 'usdc', 'cadd', 'airdrop'] as const).filter(
          (k) => effTopupMethods[k],
        );
        const metadata = JSON.stringify({
@@ -18046,7 +18066,7 @@ const retainedCapitalLifetime = useMemo(() => {
      newDeviceName: `POS ${tagPlain}`,
      newTerminalMintLimit: '1000',
      terminalOnboardingReloadUnlimited: true,
-     terminalOnboardingTopupMethods: { cash: true, bankCard: true, usdc: false, airdrop: false },
+    terminalOnboardingTopupMethods: { cash: true, bankCard: true, usdc: false, cadd: false, airdrop: false },
      terminalOnboardingEditing: null,
    }).then((res) => {
      if (!res.ok && res.error) {
@@ -27531,6 +27551,7 @@ const retainedCapitalLifetime = useMemo(() => {
                      { key: 'cash' as const, label: 'Cash', Icon: Banknote },
                      { key: 'bankCard' as const, label: 'Bank card', Icon: CreditCard },
                      { key: 'usdc' as const, label: 'USDC', composite: true as const },
+                    { key: 'cadd' as const, label: 'CADD', caddComposite: true as const },
                      { key: 'airdrop' as const, label: 'Airdrop (bonus)', Icon: Gift },
                    ] as const
                  ).map((row) => (
@@ -27544,8 +27565,10 @@ const retainedCapitalLifetime = useMemo(() => {
                        }
                      />
                      <div className="flex flex-col items-center gap-1.5 rounded-lg border-2 border-transparent bg-white p-3 text-center shadow-sm transition-all peer-checked:border-[#0051d1] peer-checked:bg-[#0051d1]/5 sm:gap-2 sm:p-3.5">
-                       {'composite' in row ? (
+                      {'composite' in row ? (
                          <UsdcBaseCompositeIcon size={26} badgeSize={15} />
+                      ) : 'caddComposite' in row ? (
+                        <CaddBaseCompositeIcon size={26} badgeSize={15} />
                        ) : (
                          <row.Icon
                            className={`h-6 w-6 sm:h-7 sm:w-7 ${TERMINAL_TOPUP_METHOD_ICON_CLASS[row.key]}`}
@@ -27682,6 +27705,7 @@ const retainedCapitalLifetime = useMemo(() => {
                       { key: 'cash' as const, label: 'Cash', Icon: Banknote },
                       { key: 'bankCard' as const, label: 'Bank card', Icon: CreditCard },
                       { key: 'usdc' as const, label: 'USDC', composite: true as const },
+                     { key: 'cadd' as const, label: 'CADD', caddComposite: true as const },
                       { key: 'airdrop' as const, label: 'Airdrop (bonus)', Icon: Gift },
                     ] as const
                   ).map((row) => (
@@ -27697,6 +27721,8 @@ const retainedCapitalLifetime = useMemo(() => {
                       <div className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-transparent bg-white p-3 text-center shadow-sm transition-all peer-checked:border-[#1562f0] peer-checked:bg-[#1562f0]/5">
                         {'composite' in row ? (
                           <UsdcBaseCompositeIcon size={24} badgeSize={14} />
+                        ) : 'caddComposite' in row ? (
+                          <CaddBaseCompositeIcon size={24} badgeSize={14} />
                         ) : (
                           <row.Icon
                             className={`h-6 w-6 ${TERMINAL_TOPUP_METHOD_ICON_CLASS[row.key]}`}

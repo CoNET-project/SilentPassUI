@@ -144,6 +144,8 @@ const SearchInputWithDropdown =
 			const _beamio = searchParams.get("beamio")||''
 			const _beamiocard = searchParams.get("beamiocard") || searchParams.get("Beamiocard") || ''
 			const _redeemcode = searchParams.get("redeemcode") || searchParams.get("Redeemcode") || ''
+			const _couponId = decodeURIComponent((searchParams.get("couponId") || searchParams.get("couponid") || '').trim())
+			const _claim = (searchParams.get("claim") || '').trim().toLowerCase()
 
 			// BeamioUserCard redeem URL → 打开 redeem 面板并预填
 			if (_redeemcode?.trim()) {
@@ -155,6 +157,16 @@ const SearchInputWithDropdown =
 				setShowDropdown(false)
 				closeWindow('/History')
 				return navigate('/History')
+			}
+
+			// Coupon open-claim URL：交由 App checkUrl 打开 Claim 页面，再由用户点 Claim 执行 workflow
+			if (_beamiocard?.trim() && _couponId && (!_claim || _claim === 'open' || _claim === '1' || _claim === 'true')) {
+				setScanData(url.href)
+				setLoading(false)
+				setShowDropdown(false)
+				closeWindow('/History')
+				navigate('/History')
+				return
 			}
 
 			if (_beamio) {

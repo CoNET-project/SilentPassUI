@@ -45,7 +45,8 @@ import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
-import { Check } from "lucide-react"
+import { Check, Ticket, Clock3 } from "lucide-react"
+import { postCardCouponOpenClaimWithCurrentWallet } from "@/services/BeamioCard"
 
 global.Buffer = require("buffer").Buffer
 
@@ -113,6 +114,8 @@ function AppShell() {
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [footerVisible, setFooterVisible] = useState(true)
   const [userPreviewItem, setUserPreviewItem] = useState<searchResult | null>()
+  const [couponClaimIntent, setCouponClaimIntent] = useState<{ cardAddress: string; couponId: string } | null>(null)
+  const [couponClaimSubmitting, setCouponClaimSubmitting] = useState(false)
   /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
   const [preferredPayeeWallet, setPreferredPayeeWallet] = useState<{ beamioAccount: string; wallet: string } | null>(null)
   const runningRef = useRef(false)
@@ -122,10 +125,21 @@ function AppShell() {
   setChartsRef.current = setCharts
   const bUnitClaimAttemptedRef = useRef(false)
   const initialRedeemUrlProcessedRef = useRef(false)
+  const initialOpenClaimUrlProcessedRef = useRef(false)
   const routeLockHashRef = useRef<string>("")
   const routeLockApplyingRef = useRef(false)
 
   const navigate = useNavigate()
+  const shortAddress = (addr: string) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : ''
+  const parseCouponOpenClaimFromParams = (sp: URLSearchParams): { cardAddress: string; couponId: string } | null => {
+    const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
+    const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
+    const claim = (sp.get('claim') ?? '').trim().toLowerCase()
+    if (!cardAddress || !couponId) return null
+    if (claim && claim !== 'open' && claim !== '1' && claim !== 'true') return null
+    if (!ethers.isAddress(cardAddress)) return null
+    return { cardAddress: ethers.getAddress(cardAddress), couponId }
+  }
 
   // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时解析并跳转
   useEffect(() => {
@@ -157,6 +171,58 @@ function AppShell() {
     })
     navigate('/History')
   }, [isInitialLoading, navigate, setRedeemFromUrl])
+
+  // 直接打开 coupon open-claim URL（如 ?beamiocard=0x...&couponId=...&claim=open）时先打开确认页
+  useEffect(() => {
+    if (isInitialLoading || initialOpenClaimUrlProcessedRef.current) return
+    if (typeof window === 'undefined') return
+
+    let parsed: { cardAddress: string; couponId: string } | null = null
+    const search = window.location.search
+    const hash = window.location.hash || ''
+    if (search) parsed = parseCouponOpenClaimFromParams(new URLSearchParams(search))
+    if (!parsed && hash.includes('coupon')) {
+      const hashQuery = hash.split('?')[1]
+      if (hashQuery) parsed = parseCouponOpenClaimFromParams(new URLSearchParams(hashQuery))
+    }
+    if (!parsed) return
+
+    initialOpenClaimUrlProcessedRef.current = true
+    setCouponClaimIntent(parsed)
+    setShowFooter(false)
+    navigate('/History')
+  }, [isInitialLoading, navigate, setShowFooter])
+
+  const handleConfirmCouponClaim = async () => {
+    if (!couponClaimIntent || couponClaimSubmitting) return
+    const privateKeyArmor = (profiles?.[0] as { privateKeyArmor?: string } | undefined)?.privateKeyArmor?.trim() || ''
+    if (!privateKeyArmor) {
+      Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+      return
+    }
+    setCouponClaimSubmitting(true)
+    try {
+      const ret = await postCardCouponOpenClaimWithCurrentWallet({
+        cardAddress: couponClaimIntent.cardAddress,
+        couponId: couponClaimIntent.couponId,
+        privateKeyArmor,
+      })
+      Toast.show({
+        content: ret.success
+          ? `Coupon claimed${ret.tokenId ? ` (token ${ret.tokenId})` : ''}!`
+          : (ret.error ?? 'Coupon open claim failed'),
+        position: 'top',
+      })
+      if (ret.success) {
+        setCouponClaimIntent(null)
+        setShowFooter(true)
+      }
+    } catch (e: any) {
+      Toast.show({ content: e?.message ?? 'Coupon open claim failed', position: 'top' })
+    } finally {
+      setCouponClaimSubmitting(false)
+    }
+  }
 
   // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
   // 重要：claimant 必须从私钥推导，不能使用 keyID，否则会导致 signer != claimant 链上失败
@@ -952,6 +1018,8 @@ function AppShell() {
     const _beamio = searchParams.get("beamio") || ""
     const _beamiocard = searchParams.get("beamiocard") || searchParams.get("Beamiocard") || ""
     const _redeemcode = searchParams.get("redeemcode") || searchParams.get("Redeemcode") || ""
+    const _couponId = decodeURIComponent((searchParams.get("couponId") || searchParams.get("couponid") || "").trim())
+    const _claim = (searchParams.get("claim") || "").trim().toLowerCase()
 
 	setScanData("")
 
@@ -971,6 +1039,20 @@ function AppShell() {
         cardAddress: _beamiocard?.trim() || undefined,
         redeemCode: decodeURIComponent(_redeemcode.trim()),
       })
+      navigate("/History")
+      return
+    }
+
+    // Coupon open-claim URL: beamiocard + couponId + claim=open/1/true
+    if (_beamiocard?.trim() && _couponId && (!_claim || _claim === "open" || _claim === "1" || _claim === "true")) {
+      const parsedCoupon = parseCouponOpenClaimFromParams(searchParams)
+      if (!parsedCoupon) {
+        Toast.show({ content: "Coupon link is invalid or wallet is not ready", position: "top" })
+        navigate("/History")
+        return
+      }
+      setCouponClaimIntent(parsedCoupon)
+      setShowFooter(false)
       navigate("/History")
       return
     }
@@ -1409,6 +1491,73 @@ function AppShell() {
 
 			{/* Redeem 结果：BeamioOnboardingModal Go To Home 后后台 redeem 完成，从下往上滑出 */}
 			<AnimatePresence>
+				{couponClaimIntent && (
+					<motion.div
+						key="coupon-claim-overlay"
+						className="fixed inset-0 z-[220] bg-white dark:bg-slate-900 flex flex-col"
+						initial={{ x: "100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "100%" }}
+						transition={{ duration: 0.25, ease: "easeOut" }}
+					>
+						<div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-slate-200 dark:border-slate-800">
+							<div>
+								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Coupon Claim</h2>
+								<p className="text-xs text-slate-500 dark:text-slate-400">Confirm before submitting on-chain claim.</p>
+							</div>
+							<button
+								type="button"
+								onClick={() => {
+									if (couponClaimSubmitting) return
+									setCouponClaimIntent(null)
+									setShowFooter(true)
+								}}
+								disabled={couponClaimSubmitting}
+								className="text-sm font-medium text-slate-600 dark:text-slate-300 disabled:opacity-50"
+							>
+								Close
+							</button>
+						</div>
+
+						<div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+							<div className="relative overflow-hidden rounded-3xl border border-white/20 shadow-[0_12px_28px_rgba(15,23,42,0.32)] bg-gradient-to-br from-indigo-500 via-purple-600 to-fuchsia-700 p-4 min-h-[136px]">
+								<div className="absolute -top-12 -right-8 w-36 h-36 rounded-full bg-white/10" />
+								<div className="absolute left-[-13px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white dark:bg-slate-900" />
+								<div className="absolute right-[-13px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white dark:bg-slate-900" />
+								<div className="relative flex items-center gap-3 h-full">
+									<div className="w-14 h-14 rounded-full bg-black/20 border border-white/30 flex items-center justify-center shrink-0">
+										<Ticket className="w-6 h-6 text-white" />
+									</div>
+									<div className="min-w-0 flex-1">
+										<p className="text-white font-bold text-[18px] leading-tight truncate">Coupon Open Claim</p>
+										<p className="text-white/90 text-[13px] font-semibold truncate">Program Offer</p>
+										<p className="text-white/85 text-[11px] font-bold uppercase tracking-wide mt-1 break-all">{couponClaimIntent.couponId}</p>
+										<div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-rose-500 text-white">
+											<Clock3 className="w-3 h-3" />
+											<span className="text-[11px] font-extrabold tracking-[0.2px]">OPEN CLAIM</span>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 space-y-2">
+								<p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Card Address</p>
+								<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{shortAddress(couponClaimIntent.cardAddress)}</p>
+								<p className="text-[11px] text-slate-500 dark:text-slate-400 break-all">{couponClaimIntent.cardAddress}</p>
+							</div>
+						</div>
+
+						<div className="px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2 border-t border-slate-200 dark:border-slate-800">
+							<AppButton
+								fullWidth
+								onClick={handleConfirmCouponClaim}
+								disabled={couponClaimSubmitting}
+								className="rounded-xl"
+							>
+								{couponClaimSubmitting ? 'Claiming...' : 'Claim'}
+							</AppButton>
+						</div>
+					</motion.div>
+				)}
 				{redeemResult && (
 					<>
 						<motion.div

@@ -435,9 +435,121 @@ function logCreateCardRequestBody(endpoint: string, body: string): void {
 const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
+const cardCouponOpenClaimEndpoint = `${beamioApi}/api/cardCouponOpenClaim`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardCreateRedeemAdminEndpoint = `${beamioApi}/api/cardCreateRedeemAdmin`
 const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
+
+type CardActiveIssuedCouponSeriesItem = {
+	cardAddress: string
+	tokenId: string
+	metadata?: Record<string, unknown> | null
+}
+
+function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefined): string {
+	if (!meta || typeof meta !== 'object') return ''
+	const root = meta as Record<string, unknown>
+	const rootId = root.couponId
+	if (typeof rootId === 'string' && rootId.trim()) return rootId.trim()
+	const properties = root.properties
+	if (!properties || typeof properties !== 'object') return ''
+	const beamioCoupon = (properties as Record<string, unknown>).beamioCoupon
+	if (!beamioCoupon || typeof beamioCoupon !== 'object') return ''
+	const nestedId = (beamioCoupon as Record<string, unknown>).couponId
+	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
+}
+
+async function getCardActiveIssuedCouponSeries(cardAddress: string): Promise<CardActiveIssuedCouponSeriesItem[]> {
+	if (!cardAddress || !ethers.isAddress(cardAddress)) return []
+	try {
+		const res = await fetch(`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=50`)
+		if (!res.ok) return []
+		const json = (await res.json().catch(() => ({}))) as { items?: CardActiveIssuedCouponSeriesItem[] }
+		return Array.isArray(json.items) ? json.items : []
+	} catch {
+		return []
+	}
+}
+
+async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
+	const wanted = couponId.trim()
+	if (!wanted) return null
+	const rows = await getCardActiveIssuedCouponSeries(cardAddress)
+	for (const row of rows) {
+		const id = readCouponIdFromMetadata(row.metadata ?? null)
+		if (id && id === wanted) return String(row.tokenId)
+	}
+	return null
+}
+
+/** 用户离线签字 + 直连 API：无 redeemcode 的 coupon open-claim。 */
+export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
+	cardAddress: string
+	couponId: string
+	privateKeyArmor: string
+}): Promise<{ success: boolean; tx?: string; tokenId?: string; error?: string; status?: number }> => {
+	const cardAddress = params.cardAddress?.trim() ?? ''
+	const couponId = params.couponId?.trim() ?? ''
+	const privateKeyArmor = params.privateKeyArmor?.trim() ?? ''
+	if (!cardAddress || !couponId || !privateKeyArmor || !ethers.isAddress(cardAddress)) {
+		return { success: false, error: 'Invalid cardAddress, couponId, or privateKey' }
+	}
+	try {
+		const signer = new ethers.Wallet(privateKeyArmor)
+		const userEOA = ethers.getAddress(signer.address)
+		const cardNorm = ethers.getAddress(cardAddress)
+		const tokenId = await resolveOpenClaimTokenIdByCouponId(cardNorm, couponId)
+		if (!tokenId) return { success: false, error: 'Coupon not found or inactive on this card.' }
+
+		const cardRead = new ethers.Contract(cardNorm, ['function factoryGateway() view returns (address)'], baseEndpoint)
+		const verifyingContract = ethers.getAddress(await cardRead.factoryGateway())
+		const deadline = Math.floor(Date.now() / 1000) + 15 * 60
+		const nonce = ethers.hexlify(ethers.randomBytes(32))
+		const userSignature = await signer.signTypedData(
+			{
+				name: 'BeamioUserCardFactory',
+				version: '1',
+				chainId: 8453,
+				verifyingContract,
+			},
+			{
+				ClaimIssuedNft: [
+					{ name: 'cardAddr', type: 'address' },
+					{ name: 'tokenId', type: 'uint256' },
+					{ name: 'deadline', type: 'uint256' },
+					{ name: 'nonce', type: 'bytes32' },
+				],
+			},
+			{
+				cardAddr: cardNorm,
+				tokenId: BigInt(tokenId),
+				deadline: BigInt(deadline),
+				nonce,
+			}
+		)
+
+		const res = await fetch(cardCouponOpenClaimEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: cardNorm,
+				couponId,
+				userEOA,
+				tokenId,
+				deadline,
+				nonce,
+				userSignature,
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as { success?: boolean; tx?: string; error?: string; tokenId?: string }
+		if (!res.ok || data.success === false) {
+			return { success: false, error: data.error ?? `HTTP ${res.status}`, status: res.status }
+		}
+		return { success: true, tx: data.tx, tokenId: data.tokenId ?? tokenId }
+	} catch (e: any) {
+		return { success: false, error: e?.shortMessage ?? e?.message ?? String(e) }
+	}
+}
 
 /** 用户兑换 redeem 码：提交到 API，服务端调用 redeemForUser，将点数 mint 到用户 AA */
 export const postCardRedeem = async (

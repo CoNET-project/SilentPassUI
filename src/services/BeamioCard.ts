@@ -569,7 +569,7 @@ export const postCardRedeem = async (
 	}
 }
 
-type CardActiveIssuedCouponSeriesItem = {
+export type CardActiveIssuedCouponSeriesItem = {
 	cardAddress: string
 	tokenId: string
 	metadata?: Record<string, unknown> | null
@@ -588,10 +588,16 @@ function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefin
 	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
 }
 
-async function getCardActiveIssuedCouponSeries(cardAddress: string): Promise<CardActiveIssuedCouponSeriesItem[]> {
+export async function fetchCardActiveIssuedCouponSeries(
+	cardAddress: string,
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[]> {
 	if (!cardAddress || !ethers.isAddress(cardAddress)) return []
+	const lim = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 50) : 50
 	try {
-		const res = await fetch(`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=50`)
+		const res = await fetch(
+			`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=${lim}`
+		)
 		if (!res.ok) return []
 		const json = (await res.json().catch(() => ({}))) as { items?: CardActiveIssuedCouponSeriesItem[] }
 		return Array.isArray(json.items) ? json.items : []
@@ -603,7 +609,7 @@ async function getCardActiveIssuedCouponSeries(cardAddress: string): Promise<Car
 async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
 	const wanted = couponId.trim()
 	if (!wanted) return null
-	const rows = await getCardActiveIssuedCouponSeries(cardAddress)
+	const rows = await fetchCardActiveIssuedCouponSeries(cardAddress)
 	for (const row of rows) {
 		const id = readCouponIdFromMetadata(row.metadata ?? null)
 		if (id && id === wanted) return String(row.tokenId)
@@ -646,14 +652,14 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			},
 			{
 				ClaimIssuedNft: [
-					{ name: 'cardAddr', type: 'address' },
+					{ name: 'cardAddress', type: 'address' },
 					{ name: 'tokenId', type: 'uint256' },
 					{ name: 'deadline', type: 'uint256' },
 					{ name: 'nonce', type: 'bytes32' },
 				],
 			},
 			{
-				cardAddr: cardNorm,
+				cardAddress: cardNorm,
 				tokenId: BigInt(tokenId),
 				deadline: BigInt(deadline),
 				nonce,
@@ -968,7 +974,6 @@ export type ShareTokenMetadataBonusRule = {
 export type ShareTokenMetadataCoupon = {
 	id?: string
 	name?: string
-	discountPercent?: number
 	/** Maximum number of coupons that can be issued for this coupon definition. */
 	issueTotal?: number
 	/**
@@ -2616,16 +2621,7 @@ function shareTokenCouponsFromUnknown(
 		const obj = entry as Record<string, unknown>
 		const id = typeof obj.id === 'string' ? obj.id.trim() : ''
 		const name = typeof obj.name === 'string' ? obj.name.trim() : ''
-		const discountRaw = typeof obj.discountPercent === 'number'
-			? obj.discountPercent
-			: typeof obj.discountPercent === 'string'
-				? Number.parseFloat(obj.discountPercent)
-				: Number.NaN
-		const discountPercent =
-			Number.isFinite(discountRaw) && discountRaw > 0
-				? Math.round(discountRaw * 100) / 100
-				: undefined
-		if (!name || discountPercent == null) continue
+		if (!name) continue
 		let issueTotal: number | undefined
 		const itRaw =
 			obj.issueTotal ?? obj.totalIssuance ?? obj.issueTotalCap ?? obj.maxIssueCount ?? obj.mintLimit
@@ -2657,7 +2653,6 @@ function shareTokenCouponsFromUnknown(
 		out.push({
 			...(id ? { id } : {}),
 			name,
-			discountPercent,
 			...(issueTotal != null ? { issueTotal } : {}),
 			...(requiresRedeemCode ? { requiresRedeemCode: true } : {}),
 			...(validFrom && validTo ? { validFrom, validTo } : {}),

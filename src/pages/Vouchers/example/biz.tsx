@@ -74,6 +74,7 @@ import {
   postBusinessStartKetRedeemRedeem,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
+  fetchCardActiveIssuedCouponSeries,
   type CardMetadataFromUri,
   type CardTierMetadata,
   type TierMetadata,
@@ -7277,7 +7278,6 @@ type CardIssuanceBonusRuleRow = {
 type CardIssuanceCouponRow = {
   id: string;
   name: string;
-  discountPercent: string;
   /** Maximum total issuance count for this coupon (metadata). */
   issueTotal: string;
   /** When true, claiming requires a redeem code; when false, open claim without a code. */
@@ -7298,7 +7298,6 @@ type CardIssuanceCouponRow = {
 
 function makeCardIssuanceCouponRow(
   name = '',
-  discountPercent: number | string = 10,
   icon = '',
   backgroundColor = '#0051d1',
   description = '',
@@ -7314,7 +7313,6 @@ function makeCardIssuanceCouponRow(
   return {
     id: couponId?.trim() || `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: String(name),
-    discountPercent: String(discountPercent),
     issueTotal: String(issueTotal),
     requiresRedeemCode,
     couponDateRestriction,
@@ -7331,7 +7329,6 @@ function makeCardIssuanceCouponRow(
 type CardIssuanceCouponMetadataPayload = {
   id: string;
   name: string;
-  discountPercent: number;
   issueTotal: number;
   requiresRedeemCode?: boolean;
   /** Inclusive local calendar start (YYYY-MM-DD); only with validTo. */
@@ -7353,11 +7350,10 @@ function buildCardIssuanceCouponMetadataPayload(
     .map((row): CardIssuanceCouponMetadataPayload | null => {
       const id = row.id.trim();
       const name = row.name.trim();
-      const discount = Number.parseFloat(row.discountPercent.trim());
       const issueTotalRaw = row.issueTotal.replace(/,/g, '').trim();
       const issueTotalN = Number.parseInt(issueTotalRaw, 10);
       const issueTotalAsFloat = parseFloat(issueTotalRaw);
-      if (!id || !name || !Number.isFinite(discount) || discount <= 0 || discount > 100) {
+      if (!id || !name) {
         return null;
       }
       if (
@@ -7375,7 +7371,6 @@ function buildCardIssuanceCouponMetadataPayload(
       const payload: CardIssuanceCouponMetadataPayload = {
         id,
         name,
-        discountPercent: Number(discount.toFixed(2)),
         issueTotal: issueTotalN,
         ...(row.requiresRedeemCode ? { requiresRedeemCode: true } : {}),
         ...(icon ? { icon } : {}),
@@ -8267,7 +8262,6 @@ const [cardIssuanceCoupons, setCardIssuanceCoupons] = useState<CardIssuanceCoupo
 const [cardIssuanceCouponEditorOpen, setCardIssuanceCouponEditorOpen] = useState(false);
 const [cardIssuanceEditingCouponId, setCardIssuanceEditingCouponId] = useState<string | null>(null);
 const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState('');
-const [cardIssuanceCouponDiscountPercent, setCardIssuanceCouponDiscountPercent] = useState('10');
 const [cardIssuanceCouponIcon, setCardIssuanceCouponIcon] = useState('');
 const [cardIssuanceCouponBackgroundColor, setCardIssuanceCouponBackgroundColor] = useState('#0051d1');
 const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState('');
@@ -8281,6 +8275,8 @@ const [cardIssuanceCouponValidToYmd, setCardIssuanceCouponValidToYmd] = useState
 const cardIssuanceCouponIconFileRef = useRef<HTMLInputElement>(null);
 const [cardIssuanceCouponIconUploading, setCardIssuanceCouponIconUploading] = useState(false);
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
+const [cardIssuanceCouponShareOpenId, setCardIssuanceCouponShareOpenId] = useState<string | null>(null);
+const [cardIssuanceCouponShareUrlCopied, setCardIssuanceCouponShareUrlCopied] = useState(false);
 const cardIssuanceEditingCouponRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null,
   [cardIssuanceCoupons, cardIssuanceEditingCouponId]
@@ -8386,6 +8382,18 @@ const handlePublishCardIssuanceRef = useRef<
    /** On-chain `upgradeType`: 0 | 1 | 2 */
    upgradeType: number;
  } | null>(null);
+const cardIssuanceCouponShareRow = useMemo(
+  () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
+  [cardIssuanceCoupons, cardIssuanceCouponShareOpenId]
+);
+const cardIssuanceCouponShareUrl = useMemo(() => {
+  const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+  const couponId = cardIssuanceCouponShareRow?.id?.trim() ?? '';
+  if (!cardAddress || !couponId || !ethers.isAddress(cardAddress)) return '';
+  return `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+    ethers.getAddress(cardAddress)
+  )}&couponId=${encodeURIComponent(couponId)}&claim=open`;
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponShareRow?.id]);
  const [cardIssuanceOnChainRefreshNonce, setCardIssuanceOnChainRefreshNonce] = useState(0);
  const [cardIssuanceConfiguratorPreviewMode, setCardIssuanceConfiguratorPreviewMode] = useState<'app' | 'physical'>(
    'app'
@@ -8782,13 +8790,14 @@ useEffect(() => {
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  let cancelled = false;
+  const cardAddressForCoupons = cardIssuanceExistingCard.cardAddress;
   const metaCouponsRaw = (
     cardIssuanceExistingCard.meta as CardMetadataFromUri & {
       coupons?: Array<
         CardIssuanceCouponMetaHydrationShape & {
           id?: string;
           name?: string;
-          discountPercent?: number | string;
           icon?: string;
           backgroundColor?: string;
           description?: string;
@@ -8797,20 +8806,13 @@ useEffect(() => {
       >;
     }
   ).coupons ?? [];
-  const rows = metaCouponsRaw.map((coupon, idx) => {
-    const discountRaw =
-      typeof coupon.discountPercent === 'number' || typeof coupon.discountPercent === 'string'
-        ? Number(coupon.discountPercent)
-        : Number.NaN;
-    const discountPercent =
-      Number.isFinite(discountRaw) && discountRaw > 0 ? String(Number(discountRaw.toFixed(2))) : '10';
+  const rowsFromMetadata = metaCouponsRaw.map((coupon, idx) => {
     const dr = parseCouponDateRestrictionFromHydration(coupon);
     const hydratedIssuedTok = parseCouponIssuedTokenIdFromHydration(coupon);
     const stableCouponId =
       typeof coupon.id === 'string' && coupon.id.trim() ? coupon.id.trim() : undefined;
     return makeCardIssuanceCouponRow(
       coupon.name ?? `Coupon ${idx + 1}`,
-      discountPercent,
       coupon.icon ?? '',
       coupon.backgroundColor ?? '#0051d1',
       coupon.description ?? '',
@@ -8824,9 +8826,121 @@ useEffect(() => {
       stableCouponId
     );
   });
-  setCardIssuanceCoupons(rows);
-  setCardIssuanceEditingCouponId(null);
-  setCardIssuanceCouponEditorOpen(false);
+  void (async () => {
+    let rowsFromSeries: CardIssuanceCouponRow[] = [];
+    try {
+      const activeSeries = await fetchCardActiveIssuedCouponSeries(cardAddressForCoupons, 50);
+      if (!cancelled && activeSeries.length > 0) {
+        rowsFromSeries = activeSeries.map((item, idx) => {
+          const rootMeta =
+            item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+              ? (item.metadata as Record<string, unknown>)
+              : {};
+          const props =
+            rootMeta.properties && typeof rootMeta.properties === 'object' && !Array.isArray(rootMeta.properties)
+              ? (rootMeta.properties as Record<string, unknown>)
+              : {};
+          const beamioCoupon =
+            props.beamioCoupon && typeof props.beamioCoupon === 'object' && !Array.isArray(props.beamioCoupon)
+              ? (props.beamioCoupon as Record<string, unknown>)
+              : {};
+          const mergedMeta = {
+            ...rootMeta,
+            ...beamioCoupon,
+            issued: true,
+            issuedTokenId: item.tokenId,
+          } as CardIssuanceCouponMetaHydrationShape & {
+            id?: string;
+            couponId?: string;
+            name?: string;
+            icon?: string;
+            backgroundColor?: string;
+            description?: string;
+          };
+          const dr = parseCouponDateRestrictionFromHydration(mergedMeta);
+          const idRaw =
+            (typeof mergedMeta.couponId === 'string' && mergedMeta.couponId.trim()
+              ? mergedMeta.couponId
+              : typeof mergedMeta.id === 'string' && mergedMeta.id.trim()
+                ? mergedMeta.id
+                : '') || '';
+          const tokenId = parseCouponIssuedTokenIdFromHydration(mergedMeta) ?? String(item.tokenId).trim();
+          const title =
+            typeof mergedMeta.name === 'string' && mergedMeta.name.trim()
+              ? mergedMeta.name
+              : `Coupon ${idx + 1}`;
+          return makeCardIssuanceCouponRow(
+            title,
+            typeof mergedMeta.icon === 'string' ? mergedMeta.icon : '',
+            typeof mergedMeta.backgroundColor === 'string' ? mergedMeta.backgroundColor : '#0051d1',
+            typeof mergedMeta.description === 'string' ? mergedMeta.description : '',
+            parseCouponIssueTotalFromHydration(mergedMeta),
+            parseCouponRequiresRedeemFromHydration(mergedMeta),
+            dr.restriction,
+            dr.fromYmd,
+            dr.toYmd,
+            true,
+            tokenId,
+            idRaw || undefined
+          );
+        });
+      }
+    } catch {
+      /* series channel is best-effort; keep metadata channel */
+    }
+    if (cancelled) return;
+    const rows = [...rowsFromMetadata];
+    for (const sRow of rowsFromSeries) {
+      const idx = rows.findIndex(
+        (row) =>
+          (sRow.issuedTokenId && row.issuedTokenId && sRow.issuedTokenId === row.issuedTokenId) ||
+          row.id === sRow.id
+      );
+      if (idx < 0) {
+        rows.push(sRow);
+      } else {
+        rows[idx] = {
+          ...rows[idx],
+          ...sRow,
+          issued: true,
+          issuedTokenId: sRow.issuedTokenId ?? rows[idx].issuedTokenId,
+        };
+      }
+    }
+    setCardIssuanceCoupons((prev) => {
+      /** Keep last trusted/local coupons when remote hydration returns empty unexpectedly. */
+      if (rows.length === 0 && prev.length > 0) {
+        return prev;
+      }
+      const merged: CardIssuanceCouponRow[] = [];
+      const prevById = new Map(prev.map((item) => [item.id, item] as const));
+      for (const row of rows) {
+        const old = prevById.get(row.id);
+        if (!old) {
+          merged.push(row);
+          continue;
+        }
+        merged.push({
+          ...row,
+          /** Preserve issued flags/tokenId until metadata catches up. */
+          issued: row.issued || old.issued,
+          issuedTokenId: row.issuedTokenId ?? old.issuedTokenId,
+        });
+      }
+      const mergedIds = new Set(merged.map((item) => item.id));
+      for (const old of prev) {
+        if (old.issued && !mergedIds.has(old.id)) {
+          merged.push(old);
+        }
+      }
+      return merged;
+    });
+    setCardIssuanceEditingCouponId(null);
+    setCardIssuanceCouponEditorOpen(false);
+  })();
+  return () => {
+    cancelled = true;
+  };
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta,
@@ -9361,7 +9475,6 @@ const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponEditorError('');
   setCardIssuanceEditingCouponId(null);
   setCardIssuanceCouponName('');
-  setCardIssuanceCouponDiscountPercent('10');
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponBackgroundColor('#0051d1');
   setCardIssuanceCouponDescription('');
@@ -9379,7 +9492,6 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   setCardIssuanceCouponEditorError('');
   setCardIssuanceEditingCouponId(couponId);
   setCardIssuanceCouponName(row.name);
-  setCardIssuanceCouponDiscountPercent(row.discountPercent);
   setCardIssuanceCouponIssueTotal(row.issueTotal || String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceCouponIcon(row.icon || '');
   setCardIssuanceCouponBackgroundColor(
@@ -9397,6 +9509,29 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   setCardIssuanceCouponEditorOpen(true);
 }, [cardIssuanceCoupons]);
 
+const openCardIssuanceCouponShare = useCallback((couponId: string) => {
+  const row = cardIssuanceCoupons.find((item) => item.id === couponId);
+  if (!row || !row.issued || row.requiresRedeemCode) return;
+  setCardIssuanceCouponShareUrlCopied(false);
+  setCardIssuanceCouponShareOpenId(couponId);
+}, [cardIssuanceCoupons]);
+
+const closeCardIssuanceCouponShare = useCallback(() => {
+  setCardIssuanceCouponShareOpenId(null);
+  setCardIssuanceCouponShareUrlCopied(false);
+}, []);
+
+const copyCardIssuanceCouponShareUrl = useCallback(async () => {
+  if (!cardIssuanceCouponShareUrl) return;
+  try {
+    await navigator.clipboard.writeText(cardIssuanceCouponShareUrl);
+    setCardIssuanceCouponShareUrlCopied(true);
+    setTimeout(() => setCardIssuanceCouponShareUrlCopied(false), 2000);
+  } catch {
+    // ignore
+  }
+}, [cardIssuanceCouponShareUrl]);
+
 const submitCardIssuanceCouponEditor = useCallback(async () => {
   const editingCouponExistingRow = cardIssuanceEditingCouponId
     ? cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null
@@ -9405,11 +9540,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   const name = lockIssuedOnChainFields
     ? (editingCouponExistingRow?.name?.trim() ?? '')
     : cardIssuanceCouponName.trim();
-  const discount = Number.parseFloat(
-    lockIssuedOnChainFields
-      ? (editingCouponExistingRow?.discountPercent ?? '10').trim()
-      : cardIssuanceCouponDiscountPercent.trim()
-  );
   const icon = cardIssuanceCouponIcon.trim();
   const backgroundColorRaw = cardIssuanceCouponBackgroundColor.trim();
   const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw);
@@ -9423,10 +9553,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
   if (!name) {
     setCardIssuanceCouponEditorError('Coupon name is required.');
-    return;
-  }
-  if (!Number.isFinite(discount) || discount <= 0 || discount > 100) {
-    setCardIssuanceCouponEditorError('Discount must be between 0 and 100.');
     return;
   }
   if (
@@ -9457,7 +9583,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       return;
     }
   }
-  const discountFixed = String(Number(discount.toFixed(2)));
   const issueTotalFixed = String(issueTotalN);
   const requiresRedeemCodeFinal = lockIssuedOnChainFields
     ? editingCouponExistingRow?.requiresRedeemCode === true
@@ -9482,7 +9607,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
           ? {
               ...item,
               name: item.issued ? item.name : name,
-              discountPercent: item.issued ? item.discountPercent : discountFixed,
               issueTotal: item.issued ? item.issueTotal : issueTotalFixed,
               requiresRedeemCode: item.issued ? item.requiresRedeemCode : requiresRedeemCodeFinal,
               couponDateRestriction: item.issued ? item.couponDateRestriction : dr,
@@ -9511,7 +9635,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             prevRow.icon !== nextRow.icon ||
             prevRow.backgroundColor !== nextRow.backgroundColor ||
             prevRow.description !== nextRow.description;
-          const nonMetadataChanged = prevRow.discountPercent !== nextRow.discountPercent;
           if (metadataChanged) {
             const metadataRes = await updateIssuedCouponMetadata({
               cardAddress: cardIssuanceExistingCard.cardAddress,
@@ -9528,15 +9651,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
               );
             }
           }
-          if (saveOk && nonMetadataChanged) {
-            const ok = await handlePublishCardIssuanceRef.current({
-              couponsOverride: nextCoupons,
-              loadingScope: 'bonusEditor',
-            });
-            if (!ok) {
-              saveOk = false;
-            }
-          }
+          // issued coupon on-chain fields are immutable; metadata endpoint already handled allowed edits
         } else {
           const ok = await handlePublishCardIssuanceRef.current({
             couponsOverride: nextCoupons,
@@ -9570,7 +9685,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
         ...prev,
         makeCardIssuanceCouponRow(
           name,
-          discountFixed,
           icon,
           backgroundColor ?? '#0051d1',
           description,
@@ -9621,7 +9735,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
 
     const couponRowDraft = makeCardIssuanceCouponRow(
       name,
-      discountFixed,
       icon,
       backgroundColor ?? '#0051d1',
       description,
@@ -9639,7 +9752,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       beamioCoupon: {
         couponId: couponRowDraft.id,
         name,
-        discountPercent: Number(discountFixed),
         issueTotal: issueTotalN,
         requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
         ...(dr === 'range' && vfStore && vtStore ? { validFrom: vfStore, validTo: vtStore } : {}),
@@ -9783,7 +9895,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceCouponBackgroundColor,
   cardIssuanceCouponDescription,
-  cardIssuanceCouponDiscountPercent,
   cardIssuanceCouponIcon,
   cardIssuanceCouponIssueTotal,
   cardIssuanceCouponRequiresRedeemCode,
@@ -25320,9 +25431,6 @@ const retainedCapitalLifetime = useMemo(() => {
                                   <p className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{coupon.name}</p>
                                 </div>
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
-                                  {coupon.discountPercent}% off
-                                </p>
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
                                   {coupon.requiresRedeemCode ? 'Redeem code' : 'Open claim'}
                                 </p>
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
@@ -25356,6 +25464,17 @@ const retainedCapitalLifetime = useMemo(() => {
                                     Issue
                                   </button>
                                 )}
+                                {coupon.issued && !coupon.requiresRedeemCode ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openCardIssuanceCouponShare(coupon.id)}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                    aria-label={`Show claim URL and QR for coupon ${coupon.name}`}
+                                    title="Claim URL and QR"
+                                  >
+                                    <QrCode className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => openCardIssuanceCouponEdit(coupon.id)}
@@ -25697,7 +25816,7 @@ const retainedCapitalLifetime = useMemo(() => {
                   <div className="space-y-3 pb-24">
                     {cardIssuanceCouponEditingIssued ? (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-medium text-sky-900">
-                        This coupon has already been issued on-chain. Coupon name, discount, claim method, total issuance, and validity
+                        This coupon has already been issued on-chain. Coupon name, claim method, total issuance, and validity
                         period are locked. You can still update coupon icon, description, and background color metadata.
                       </div>
                     ) : null}
@@ -29662,6 +29781,98 @@ const retainedCapitalLifetime = useMemo(() => {
          </div>
        </div>
      )}
+
+    {cardIssuanceCouponShareOpenId &&
+    cardIssuanceCouponShareRow &&
+    !cardIssuanceCouponShareRow.requiresRedeemCode &&
+    cardIssuanceCouponShareRow.issued &&
+    cardIssuanceCouponShareUrl ? (
+      <div
+        className="fixed inset-0 z-[95] flex items-center justify-center p-4 sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="coupon-share-qr-title"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+          onClick={closeCardIssuanceCouponShare}
+          aria-label="Close coupon share dialog"
+        />
+        <div
+          className="relative z-10 w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Open Claim Distribution</p>
+              <h2 id="coupon-share-qr-title" className="mt-1 truncate font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31]">
+                {cardIssuanceCouponShareRow.name}
+              </h2>
+              <p className="mt-1 text-xs font-medium text-[#595c5e]">
+                Share this URL or QR with members. Anyone who meets eligibility can claim without redeem code.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeCardIssuanceCouponShare}
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+          <div className="grid gap-5 px-5 py-5 sm:grid-cols-[auto_1fr] sm:items-start sm:px-6 sm:py-6">
+            <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <QRCodeCanvas
+                value={cardIssuanceCouponShareUrl}
+                size={176}
+                level="H"
+                includeMargin
+                bgColor="#ffffff"
+                fgColor="#000000"
+                imageSettings={{
+                  src: qrCenterIcon,
+                  height: 40,
+                  width: 40,
+                  excavate: true,
+                }}
+                className="rounded-lg"
+              />
+            </div>
+            <div className="min-w-0 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Claim URL</p>
+                <p className="break-all font-mono text-[11px] text-slate-700">{cardIssuanceCouponShareUrl}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={copyCardIssuanceCouponShareUrl}
+                  className={`inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
+                >
+                  {cardIssuanceCouponShareUrlCopied ? (
+                    <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+                  ) : (
+                    <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                  )}
+                  {cardIssuanceCouponShareUrlCopied ? 'Copied' : 'Copy URL'}
+                </button>
+                <a
+                  href={cardIssuanceCouponShareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-3 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/15 ${bizFocusRingClass}`}
+                >
+                  Open link
+                  <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
 
      {/* TxDisplayRow JSON modal (`raw` = full indexer Transaction + mapped UI fields) */}
      {rawTxJsonModal && (

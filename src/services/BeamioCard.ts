@@ -573,6 +573,9 @@ export type CardActiveIssuedCouponSeriesItem = {
 	cardAddress: string
 	tokenId: string
 	metadata?: Record<string, unknown> | null
+	issuedNftMaxSupply?: string
+	issuedNftMintedCount?: string
+	issuedNftRemainingSupply?: string
 }
 
 function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefined): string {

@@ -7293,6 +7293,8 @@ type CardIssuanceCouponRow = {
   name: string;
   /** Maximum total issuance count for this coupon (metadata). */
   issueTotal: string;
+  /** Remaining mintable issuance from on-chain `issuedNftRemainingSupply` when available. */
+  issueLeft?: string;
   /** When true, claiming requires a redeem code; when false, open claim without a code. */
   requiresRedeemCode: boolean;
   /** No date window in metadata vs inclusive local calendar range (YYYY-MM-DD). */
@@ -7321,7 +7323,8 @@ function makeCardIssuanceCouponRow(
   couponValidToYmd = '',
   issued = false,
   issuedTokenId?: string,
-  couponId?: string
+  couponId?: string,
+  issueLeft?: string
 ): CardIssuanceCouponRow {
   return {
     id: couponId?.trim() || `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -7336,6 +7339,7 @@ function makeCardIssuanceCouponRow(
     description: String(description),
     issued,
     ...(issuedTokenId?.trim() ? { issuedTokenId: issuedTokenId.trim() } : {}),
+    ...(issueLeft != null && String(issueLeft).trim() ? { issueLeft: String(issueLeft).trim() } : {}),
   };
 }
 
@@ -8878,6 +8882,12 @@ useEffect(() => {
                 ? mergedMeta.id
                 : '') || '';
           const tokenId = parseCouponIssuedTokenIdFromHydration(mergedMeta) ?? String(item.tokenId).trim();
+          const issueTotalFromChainRaw = String((item as { issuedNftMaxSupply?: string }).issuedNftMaxSupply ?? '').trim();
+          const issueLeftFromChainRaw = String((item as { issuedNftRemainingSupply?: string }).issuedNftRemainingSupply ?? '').trim();
+          const issueTotalFromChain =
+            issueTotalFromChainRaw && /^\d+$/.test(issueTotalFromChainRaw) ? issueTotalFromChainRaw : '';
+          const issueLeftFromChain =
+            issueLeftFromChainRaw && /^\d+$/.test(issueLeftFromChainRaw) ? issueLeftFromChainRaw : '';
           const title =
             typeof mergedMeta.name === 'string' && mergedMeta.name.trim()
               ? mergedMeta.name
@@ -8887,14 +8897,15 @@ useEffect(() => {
             typeof mergedMeta.icon === 'string' ? mergedMeta.icon : '',
             typeof mergedMeta.backgroundColor === 'string' ? mergedMeta.backgroundColor : '#0051d1',
             typeof mergedMeta.description === 'string' ? mergedMeta.description : '',
-            parseCouponIssueTotalFromHydration(mergedMeta),
+            issueTotalFromChain || parseCouponIssueTotalFromHydration(mergedMeta),
             parseCouponRequiresRedeemFromHydration(mergedMeta),
             dr.restriction,
             dr.fromYmd,
             dr.toYmd,
             true,
             tokenId,
-            idRaw || undefined
+            idRaw || undefined,
+            issueLeftFromChain || undefined
           );
         });
       }
@@ -8917,6 +8928,7 @@ useEffect(() => {
           ...sRow,
           issued: true,
           issuedTokenId: sRow.issuedTokenId ?? rows[idx].issuedTokenId,
+          issueLeft: sRow.issueLeft ?? rows[idx].issueLeft,
         };
       }
     }
@@ -25454,10 +25466,18 @@ const retainedCapitalLifetime = useMemo(() => {
                                   {coupon.requiresRedeemCode ? 'Redeem code' : 'Open claim'}
                                 </p>
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
-                                  Total issuance:{' '}
+                                  Total issuance/Left:{' '}
                                   {(() => {
                                     const n = Number.parseInt(coupon.issueTotal.replace(/,/g, '').trim(), 10);
-                                    return Number.isFinite(n) ? n.toLocaleString() : coupon.issueTotal;
+                                    const totalText = Number.isFinite(n) ? n.toLocaleString() : coupon.issueTotal;
+                                    const leftRaw = String(coupon.issueLeft ?? '').replace(/,/g, '').trim();
+                                    const leftN = Number.parseInt(leftRaw, 10);
+                                    const leftText = Number.isFinite(leftN)
+                                      ? leftN.toLocaleString()
+                                      : Number.isFinite(n)
+                                        ? n.toLocaleString()
+                                        : coupon.issueTotal;
+                                    return `${totalText}/${leftText}`;
                                   })()}
                                 </p>
                                 {coupon.couponDateRestriction === 'range' && coupon.couponValidFromYmd && coupon.couponValidToYmd ? (

@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from "react"
 import {
   ChevronRight,
   Server,
-  Sparkles,
   Activity,
   Zap,
   ShieldCheck,
@@ -22,17 +21,17 @@ import {
   Banknote,
   PackageOpen,
   ArrowLeft,
-  Store,
-  Plus,
-  Search,
-  SlidersHorizontal,
-  Plane,
-  Gamepad2,
   ShoppingBag,
-  Utensils,
   Clapperboard,
+	UtensilsCrossed,
+	ShoppingCart,
+	GraduationCap,
+	HeartPulse,
+	Dumbbell,
+	Building2,
+	Gift,
+	Star,
 } from "lucide-react"
-import type { LucideIcon } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
@@ -47,7 +46,6 @@ import USDCUserCardTopupControl from "./USDCUserCardTopupControl"
 import ShowPayQR from "./showPayQR"
 import greenCard from "./assets/greenCard.png"
 import blackCard from "./assets/BlackCard.png"
-import cardFaceTexture from "./assets/cardFaceTexture.png"
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
@@ -63,6 +61,8 @@ const TRENDING_FETCH_TIMEOUT_MS = 12_000
 type DiscoverLatestCardRow = {
 	cardAddress: string
 	name: string
+	/** Owner business metadata (e.g. `storeName`) for Discover title display. */
+	businessName: string | null
 	/** Share / brand image — shown as logo (top-left on card face). */
 	logoUrl: string | null
 	/** Highest tier (`minUsdc6` max) CSS background from metadata.tiers. */
@@ -80,6 +80,39 @@ type DiscoverLatestCardRow = {
 	symbol: string | null
 }
 
+type DiscoverCategoryTab =
+	| "food-beverage"
+	| "grocery-convenience"
+	| "retail-shopping"
+	| "education-training"
+	| "health-beauty"
+	| "fitness-wellness"
+	| "entertainment-leisure"
+	| "local-services"
+type DiscoverFeaturedCard = {
+	id: string
+	cardAddress: string | null
+	category: DiscoverCategoryTab
+	title: string
+	subtitle: string
+	assetLabel: string
+	rating: string
+	image: string
+	logo: string | null
+}
+type DiscoverCategoryOption = { id: DiscoverCategoryTab; label: string; Icon: typeof Building2; circleClass: string }
+
+const DISCOVER_CATEGORY_OPTIONS: DiscoverCategoryOption[] = [
+	{ id: "food-beverage", label: "Food & Beverage", Icon: UtensilsCrossed, circleClass: "bg-red-50 text-red-600" },
+	{ id: "grocery-convenience", label: "Grocery & Convenience", Icon: ShoppingCart, circleClass: "bg-amber-50 text-amber-700" },
+	{ id: "retail-shopping", label: "Retail & Shopping", Icon: ShoppingBag, circleClass: "bg-orange-50 text-orange-600" },
+	{ id: "education-training", label: "Education & Training", Icon: GraduationCap, circleClass: "bg-indigo-50 text-indigo-700" },
+	{ id: "health-beauty", label: "Health & Beauty", Icon: HeartPulse, circleClass: "bg-pink-50 text-pink-600" },
+	{ id: "fitness-wellness", label: "Fitness & Wellness", Icon: Dumbbell, circleClass: "bg-lime-50 text-lime-800" },
+	{ id: "entertainment-leisure", label: "Entertainment & Leisure", Icon: Clapperboard, circleClass: "bg-emerald-50 text-emerald-600" },
+	{ id: "local-services", label: "Services", Icon: Building2, circleClass: "bg-sky-50 text-sky-700" },
+]
+
 /** Only allow safe inline style colors (hex / rgb / rgba). */
 function discoverSafeCssColor(raw: string | null | undefined): string | null {
 	if (raw == null || typeof raw !== "string") return null
@@ -90,38 +123,6 @@ function discoverSafeCssColor(raw: string | null | undefined): string | null {
 	return null
 }
 
-/** Align `biz.tsx` `normalizeNftBackgroundHex` / `tierBackgroundColorForPayload` for card preview gradient start color. */
-function normalizeDiscoverTierHexForGradient(input: string | undefined | null): string | null {
-	if (input == null || typeof input !== "string") return null
-	const s = input.trim()
-	if (/^#[0-9a-fA-F]{6}$/.test(s)) return s
-	if (/^#[0-9a-fA-F]{3}$/.test(s)) {
-		const h = s.slice(1)
-		return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`
-	}
-	if (/^#[0-9a-fA-F]{8}$/.test(s)) return `#${s.slice(1, 7)}`
-	return null
-}
-
-/** Same as `cardIssuancePreviewCardGradientCss` in `biz.tsx`: 135deg tier tone → #7a9dff. */
-function discoverCardFaceGradientCss(tierTopBackground: string | null | undefined): string {
-	const raw = tierTopBackground?.trim()
-	if (!raw) {
-		return "linear-gradient(135deg, #1562f0 0%, #7a9dff 100%)"
-	}
-	const safe = discoverSafeCssColor(tierTopBackground)
-	if (!safe) {
-		return "linear-gradient(135deg, #1562f0 0%, #7a9dff 100%)"
-	}
-	let start = "#1562f0"
-	if (safe.startsWith("#")) {
-		const hex = normalizeDiscoverTierHexForGradient(safe)
-		if (hex) start = hex
-	} else if (/^rgba?\(/i.test(safe)) {
-		start = safe
-	}
-	return `linear-gradient(135deg, ${start} 0%, #7a9dff 100%)`
-}
 
 /** Parse metadata.tiers: highest tier = max `minUsdc6` (aligned with on-chain `_findBestValidMembership`). */
 function parseDiscoverTiersFromMeta(meta: Record<string, unknown> | null): {
@@ -226,22 +227,43 @@ function parseDiscoverCardSymbol(meta: Record<string, unknown> | null): string |
 	return null
 }
 
-/** Same ids as Market “Categories” row / biz issuance chips; default Shopping. */
-function discoverCategoryLucideIcon(categoryId: string | null): LucideIcon {
-	switch (categoryId) {
-		case "travel":
-			return Plane
-		case "gaming":
-			return Gamepad2
-		case "food":
-			return Utensils
-		case "movies":
-			return Clapperboard
-		case "shopping":
-			return ShoppingBag
-		default:
-			return ShoppingBag
+function readDiscoverNestedObject(
+	base: Record<string, unknown> | null,
+	key: string
+): Record<string, unknown> | null {
+	if (!base) return null
+	const v = base[key]
+	return v != null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+
+function readDiscoverStringField(
+	base: Record<string, unknown> | null,
+	keys: string[]
+): string | null {
+	if (!base) return null
+	for (const k of keys) {
+		const v = base[k]
+		if (typeof v === "string" && v.trim()) return v.trim()
 	}
+	return null
+}
+
+/** Prefer owner business metadata store name (biz `Business Name`), then common brand/title aliases. */
+function parseDiscoverBusinessName(meta: Record<string, unknown> | null): string | null {
+	if (!meta) return null
+	const share = readDiscoverNestedObject(meta, "shareTokenMetadata")
+	const businessMetadata = readDiscoverNestedObject(meta, "businessMetadata")
+	const businessProfile = readDiscoverNestedObject(meta, "businessProfile")
+	const ownerBusinessMetadata = readDiscoverNestedObject(meta, "ownerBusinessMetadata")
+	const cardBusiness = readDiscoverNestedObject(meta, "businessCard")
+	return (
+		readDiscoverStringField(ownerBusinessMetadata, ["storeName", "businessName"]) ??
+		readDiscoverStringField(businessMetadata, ["storeName", "businessName"]) ??
+		readDiscoverStringField(businessProfile, ["storeName", "businessName"]) ??
+		readDiscoverStringField(cardBusiness, ["storeName", "businessName", "merchantName", "brandName"]) ??
+		readDiscoverStringField(share, ["storeName", "businessName", "merchantName", "brandName", "displayName"]) ??
+		readDiscoverStringField(meta, ["storeName", "businessName", "merchantName", "brandName", "displayName"])
+	)
 }
 
 /** latestCards `holderCount`：链上 totalActiveMemberships 与 getGlobalStatsFull 回退，非 ERC-1155 #0 唯一地址枚举 */
@@ -281,9 +303,11 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 				: Number(holderRaw ?? 0)
 	const categoryId = parseDiscoverPrimaryCategoryId(meta)
 	const symbol = parseDiscoverCardSymbol(meta)
+	const businessName = parseDiscoverBusinessName(meta)
 	return {
 		cardAddress: ethers.getAddress(addr),
 		name,
+		businessName,
 		logoUrl,
 		tierTopBackground,
 		programDescription,
@@ -944,7 +968,6 @@ const PurchaseCreditsSheet = ({
           setUpgradeCapsule(null)
           return
         }
-        const currency = (item as { currency?: string })?.currency ?? "CAD"
         const amountNeededCad = Number(await quoteUSDCToCAD(cardAddress, amountNeededUsdc.toFixed(2)))
         const nextTierContractIdx = contractTiers.findIndex((t) => t.minUsdc6 === nextTier.minUsdc6)
         const tierMeta = meta?.tiers?.find((t) => t.index === nextTierContractIdx) ?? meta?.tiers?.[nextTierContractIdx]
@@ -1138,7 +1161,12 @@ export default function Market() {
 	const [inventory, setInventory] = useState<Record<number, InventoryInstance[]>>({})
 	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
 	const [qrPayload, setQrPayload] = useState<string>("")
-	const [discoverQuery, setDiscoverQuery] = useState("")
+	const [discoverCategory, setDiscoverCategory] = useState<DiscoverCategoryTab>("local-services")
+	const discoverCategoryOptionsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
+		const selected = DISCOVER_CATEGORY_OPTIONS.find((o) => o.id === discoverCategory)
+		if (!selected) return DISCOVER_CATEGORY_OPTIONS
+		return [selected, ...DISCOVER_CATEGORY_OPTIONS.filter((o) => o.id !== discoverCategory)]
+	}, [discoverCategory])
 	/**
 	 * Trending Now：local-first
 	 *  - 进入页面立即从 localStorage 读取上一次 trusted rows 显示，loading 立即结束（stale-while-revalidate）。
@@ -1264,24 +1292,108 @@ export default function Market() {
 		setSettingsOpen("USDCTopup")
 	}
 
-	const q = discoverQuery.trim().toLowerCase()
-	const showDiscoverSenPho = !q || /sen|pho|cafe|viet|noodle/.test(q)
-	const showDiscoverLumina = !q || /lumina|coffee|roast|cafe/.test(q)
+	const classifyDiscoverCardCategory = (card: DiscoverLatestCardRow): DiscoverCategoryTab => {
+		const name = card.name.toLowerCase()
+		const description = card.programDescription.toLowerCase()
+		const category = (card.categoryId ?? "").toLowerCase()
+		if (category === "food-beverage") return "food-beverage"
+		if (category === "grocery-convenience") return "grocery-convenience"
+		if (category === "retail-shopping" || category === "shopping") return "retail-shopping"
+		if (category === "education-training") return "education-training"
+		if (category === "health-beauty") return "health-beauty"
+		if (category === "fitness-wellness") return "fitness-wellness"
+		if (category === "entertainment-leisure" || category === "movies") return "entertainment-leisure"
+		if (category === "local-services") return "local-services"
+		if (/grocery|supermarket|mart|convenience|store/.test(name) || /grocery|supermarket|mart|convenience|store/.test(description)) {
+			return "grocery-convenience"
+		}
+		if (/retail|shopping|fashion|boutique|mall/.test(name) || /retail|shopping|fashion|boutique|mall/.test(description)) {
+			return "retail-shopping"
+		}
+		if (/education|school|academy|training|course|lesson/.test(name) || /education|school|academy|training|course|lesson/.test(description)) {
+			return "education-training"
+		}
+		if (/beauty|spa|salon|health|clinic|wellness/.test(name) || /beauty|spa|salon|health|clinic|wellness/.test(description)) {
+			return "health-beauty"
+		}
+		if (/gym|fitness|yoga|pilates|workout/.test(name) || /gym|fitness|yoga|pilates|workout/.test(description)) {
+			return "fitness-wellness"
+		}
+		if (/movie|cinema|game|gaming|theater|entertainment|leisure/.test(name) || /movie|cinema|game|gaming|theater|entertainment|leisure/.test(description)) {
+			return "entertainment-leisure"
+		}
+		if (
+			category === "food" ||
+			/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(name) ||
+			/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(description)
+		) {
+			return "food-beverage"
+		}
+		if (
+			/cof|cafe|roast|espresso|latte/.test(name) ||
+			/cof|cafe|roast|espresso|latte/.test(description)
+		) {
+			return "food-beverage"
+		}
+		return "local-services"
+	}
 
-	const filteredLatestCards = useMemo(() => {
-		if (!q) return latestCardsRows
-		return latestCardsRows.filter(
-			(c) =>
-				c.name.toLowerCase().includes(q) ||
-				c.cardAddress.toLowerCase().includes(q) ||
-				c.programDescription.toLowerCase().includes(q)
-		)
-	}, [latestCardsRows, q])
+	const discoverFeaturedCards = useMemo<DiscoverFeaturedCard[]>(() => {
+		const rows: DiscoverFeaturedCard[] = latestCardsRows.map((card, idx) => {
+			const isFood = classifyDiscoverCardCategory(card) === "food-beverage"
+			return {
+				id: card.cardAddress,
+				cardAddress: card.cardAddress,
+				category: classifyDiscoverCardCategory(card),
+				title: card.businessName ?? card.name,
+				subtitle: card.programDescription || (isFood ? "Modern cuisine" : "Artisan coffee & pastries"),
+				assetLabel:
+					card.topTierName && card.topTierMinDisplay
+						? `${card.topTierName} · ${card.topTierMinDisplay}`
+						: card.topTierName ?? card.topTierMinDisplay ?? "Member Benefits",
+				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
+				image:
+					idx % 2 === 0
+						? "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80"
+						: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
+				logo: card.logoUrl,
+			}
+		})
+		if (rows.length > 0) return [...rows].reverse()
+		return [
+			{
+				id: "fallback-origin-roasters",
+				cardAddress: null,
+				category: "food-beverage" as DiscoverCategoryTab,
+				title: "Origin Roasters",
+				subtitle: "Artisan Coffee & Pastries",
+				assetLabel: "10% Bonus + 2 Vouchers",
+				rating: "4.9",
+				image:
+					"https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80",
+				logo: null,
+			},
+			{
+				id: "fallback-vue-dining",
+				cardAddress: null,
+				category: "food-beverage" as DiscoverCategoryTab,
+				title: "Vue Dining",
+				subtitle: "Modern European Cuisine",
+				assetLabel: "1 Free Dessert",
+				rating: "4.8",
+				image:
+					"https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1200&q=80",
+				logo: null,
+			},
+		]
+	}, [latestCardsRows])
 
-	const showDiscoverEmpty =
-		!latestCardsLoading &&
-		filteredLatestCards.length === 0 &&
-		!(showDiscoverSenPho || showDiscoverLumina)
+	const filteredFeaturedCards = useMemo(
+		() => discoverFeaturedCards.filter((item: DiscoverFeaturedCard) => item.category === discoverCategory),
+		[discoverCategory, discoverFeaturedCards]
+	)
+
+	const showDiscoverEmpty = !latestCardsLoading && filteredFeaturedCards.length === 0
 
 	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
 
@@ -1307,134 +1419,123 @@ export default function Market() {
 			/>
 
 		<div className="animate-in fade-in duration-300 pb-8 max-w-lg mx-auto w-full">
-			<section className="px-6 pt-6 pb-2">
-				<div className="flex gap-3">
-					<div className="relative flex-grow min-w-0">
-						<Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 dark:text-slate-400 pointer-events-none" strokeWidth={2} />
-						<input
-							type="search"
-							value={discoverQuery}
-							onChange={(e) => setDiscoverQuery(e.target.value)}
-							className="w-full pl-12 pr-4 py-4 bg-[#eef1f3] dark:bg-slate-800/90 rounded-2xl border-none focus:ring-2 focus:ring-[#0051d1]/25 dark:focus:ring-[#7a9dff]/30 font-medium text-[#2c2f31] dark:text-slate-100 placeholder:text-slate-400 outline-none"
-							placeholder="Search cards, brands..."
-							autoComplete="off"
-							autoCorrect="off"
-						/>
-					</div>
-					<button
-						type="button"
-						className="w-14 h-14 shrink-0 bg-[#eef1f3] dark:bg-slate-800/90 rounded-2xl flex items-center justify-center text-[#2c2f31] dark:text-slate-200 hover:bg-[#dfe3e6] dark:hover:bg-slate-700 active:scale-95 transition-colors"
-						aria-label="Filters"
-					>
-						<SlidersHorizontal className="w-5 h-5" strokeWidth={2} />
-					</button>
+			<section className="px-4 pt-4 pb-2">
+				<div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+					{discoverCategoryOptionsOrdered.map((tab) => {
+						const Icon = tab.Icon
+						const active = discoverCategory === tab.id
+						return (
+							<button
+								key={tab.id}
+								type="button"
+								onClick={() => setDiscoverCategory(tab.id)}
+								className={[
+									"flex flex-shrink-0 flex-col items-center gap-2 min-w-[4.5rem] rounded-2xl p-1.5 transition-all",
+									active
+										? "ring-2 ring-inset ring-[#1562f0] bg-blue-50/50 shadow-sm"
+										: "opacity-80",
+								].join(" ")}
+							>
+								<div
+									className={`flex h-14 w-14 items-center justify-center rounded-full shadow-sm ${tab.circleClass} ${active ? "shadow-md" : ""}`}
+								>
+									<Icon className="h-6 w-6" strokeWidth={2} aria-hidden />
+								</div>
+								<span className="max-w-[5rem] text-center text-[15px] font-bold leading-tight tracking-tight text-slate-600">
+									{tab.label}
+								</span>
+							</button>
+						)
+					})}
 				</div>
 			</section>
 
-			<section className="px-6 py-6">
+			<section className="px-4 py-4">
 				<div className="flex items-center gap-2 mb-4 flex-wrap">
-					<h3 className="font-bold text-xl text-[#2c2f31] dark:text-slate-100">Trending Now</h3>
-					<div className="flex items-center gap-1.5 bg-amber-100/90 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 px-2.5 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/50">
-						<Sparkles size={12} className="shrink-0" />
-						<span className="text-[10px] font-bold uppercase tracking-wider">Store memberships</span>
-					</div>
+					<h3 className="font-bold text-[21px] leading-none tracking-tight text-[#202227] dark:text-slate-100">Featured Brands</h3>
 				</div>
 
 				{/* untrusted 错误：仅在彻底无 cache rows 时提示，避免 cache 命中时干扰阅读 */}
 				{latestCardsError && latestCardsRows.length === 0 ? (
-					<p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{latestCardsError}</p>
+					<p className="text-[6px] text-amber-600 dark:text-amber-400 mb-3">{latestCardsError}</p>
 				) : null}
 				{/* loading 文案：仅在没有任何 trusted rows 可显示时出现；有 cache 立即跳过 */}
 				{latestCardsLoading && latestCardsRows.length === 0 ? (
-					<p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Loading new cards…</p>
+					<p className="text-[7px] text-slate-500 dark:text-slate-400 mb-4">Loading new cards…</p>
 				) : null}
 
-				<div className="grid grid-cols-2 gap-3 sm:gap-4">
-				{filteredLatestCards.map((c) => {
-					const faceGradient = discoverCardFaceGradientCss(c.tierTopBackground)
-					const CategoryIcon = discoverCategoryLucideIcon(c.categoryId)
+				<div className="grid grid-cols-1 gap-5">
+				{filteredFeaturedCards.map((item) => {
+					const cardAddress = item.cardAddress
 					return (
 					<div
-						key={c.cardAddress}
-						className="bg-white dark:bg-slate-900 rounded-2xl p-3 shadow-sm border border-[#e5e9eb] dark:border-slate-700 flex flex-col min-w-0"
+						key={item.id}
+						className="bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden min-w-0"
 					>
-						<div className="aspect-[4/3] rounded-xl mb-3 overflow-hidden relative dark:ring-1 dark:ring-white/10 isolate shadow-lg shadow-[#1562f0]/30">
-							<div
-								className="absolute inset-0 z-0"
-								style={{ background: faceGradient }}
-								aria-hidden
+						<div className="relative">
+							<img
+								src={item.image}
+								alt={item.title}
+								className="w-full aspect-[16/9] object-cover"
+								draggable={false}
 							/>
-							<div
-								className="pointer-events-none absolute -right-8 -top-8 z-[1] h-28 w-28 rounded-full bg-white/10 blur-3xl sm:h-32 sm:w-32"
-								aria-hidden
-							/>
-							<div
-								className="pointer-events-none absolute -bottom-8 -left-8 z-[1] h-28 w-28 rounded-full bg-black/15 blur-2xl sm:h-32 sm:w-32"
-								aria-hidden
-							/>
-							<div
-								className="absolute inset-0 z-[2] bg-cover bg-center bg-no-repeat pointer-events-none opacity-[0.015]"
-								style={{ backgroundImage: `url(${cardFaceTexture})` }}
-								aria-hidden
-							/>
-							{c.logoUrl ? (
-								<img
-									src={c.logoUrl}
-									alt=""
-									className="absolute top-2 left-2 z-[3] w-10 h-10 sm:w-11 sm:h-11 rounded-lg object-cover drop-shadow-md"
-									onError={(e) => {
-										e.currentTarget.style.display = "none"
-									}}
-								/>
-							) : (
-								<div className="absolute top-2 left-2 z-[3] flex items-center justify-center text-white drop-shadow-md">
-									<Store className="w-8 h-8 sm:w-9 sm:h-9" strokeWidth={2} />
+							<div className="absolute top-3 right-3 bg-white/90 text-[#2c2f31] rounded-full px-3 py-1.5 inline-flex items-center gap-1.5 shadow-sm">
+								<Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />
+								<span className="text-[12px] font-bold leading-none">{item.rating}</span>
+							</div>
+							<div className="absolute -bottom-8 left-6">
+								<div className="w-16 h-16 rounded-2xl bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] flex items-center justify-center border border-slate-100">
+									{item.logo ? (
+										<img
+											src={item.logo}
+											alt=""
+											className="w-11 h-11 rounded-xl object-cover"
+											onError={(e) => {
+												e.currentTarget.style.display = "none"
+											}}
+										/>
+									) : (
+										<span className="text-[20px] font-semibold text-[#94afff] leading-none">
+											{item.title.charAt(0).toUpperCase()}
+										</span>
+									)}
 								</div>
-							)}
-							{c.symbol ? (
-								<div
-									className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center px-3 py-8"
-									aria-hidden
-								>
-									<p className="max-w-[92%] text-center text-base font-black leading-none tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:text-lg line-clamp-2 break-words">
-										{c.symbol}
-									</p>
-								</div>
-							) : null}
-							<div
-								className="absolute bottom-2 right-2 z-[3] inline-flex items-center gap-1 max-w-[calc(100%-0.75rem)] px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-[6px] text-white text-[9px] sm:text-[10px] font-semibold leading-tight tabular-nums shadow-sm"
-								title="Highest tier (metadata): name and minimum threshold"
-							>
-								<CategoryIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 opacity-95" strokeWidth={2} aria-hidden />
-								<span className="truncate">
-									{c.topTierName && c.topTierMinDisplay
-										? `${c.topTierName} · ${c.topTierMinDisplay}`
-										: (c.topTierName ?? c.topTierMinDisplay ?? c.currency)}
-								</span>
 							</div>
 						</div>
-						<h4 className="font-bold text-sm leading-tight text-[#2c2f31] dark:text-slate-100 line-clamp-2">{c.name}</h4>
-						
-						<button
-							type="button"
-							onClick={() => openDiscoverCardTopup(c.cardAddress)}
-							className="mt-3 w-full py-2 bg-[#0051d1] dark:bg-[#1562f0] text-white rounded-full text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-transform"
-						>
-							Get Card
-						</button>
-						{c.programDescription ? (
-							<div className="mt-3 pt-3 border-t border-[#e5e9eb] dark:border-slate-700 min-w-0">
-								<p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-snug line-clamp-4 whitespace-pre-wrap break-words">
-									{c.programDescription}
+						<div className="px-6 pb-6 pt-11">
+							<div className="flex items-start justify-between gap-3 mb-1">
+								<h4 className="font-bold text-[19px] leading-none tracking-tight text-[#1f2328] dark:text-slate-100 line-clamp-1">
+									{item.title}
+								</h4>
+								<p className="text-[#2f5fcf] text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap pt-1">
+									Your Assets
 								</p>
 							</div>
-						) : null}
+							<p className="text-[#4b5361] dark:text-slate-300 text-[15px] leading-tight mb-4 line-clamp-2">
+								{item.subtitle}
+							</p>
+							<div className="rounded-2xl bg-[#f0f2f4] dark:bg-slate-800 px-4 py-3 inline-flex items-center gap-2">
+								<Gift className="w-5 h-5 text-[#2f5fcf]" />
+								<span className="text-[14px] leading-tight font-semibold text-[#232a34] dark:text-slate-100">
+									{item.assetLabel}
+								</span>
+							</div>
+							{cardAddress ? (
+								<button
+									type="button"
+									onClick={() => openDiscoverCardTopup(cardAddress)}
+									className="mt-4 w-full py-3 bg-[#1562f0] text-white rounded-2xl text-[19px] font-semibold active:scale-95 transition-transform"
+								>
+									View Brand Card
+								</button>
+							) : null}
+						</div>
 					</div>
 					)
 				})}
 
 				{showDiscoverEmpty ? (
-					<p className="col-span-full text-center text-sm text-slate-500 dark:text-slate-400 py-10 px-4">
+					<p className="col-span-full text-center text-[7px] text-slate-500 dark:text-slate-400 py-10 px-4">
 						No cards match your search.
 					</p>
 				) : null}

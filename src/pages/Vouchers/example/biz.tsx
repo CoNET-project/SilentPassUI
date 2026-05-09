@@ -2350,6 +2350,9 @@ function WalletsTreasuryShell(props: {
   const [cashOutLoading, setCashOutLoading] = useState(false);
   const [cashOutError, setCashOutError] = useState('');
   const [aaCopiedFlash, setAaCopiedFlash] = useState(false);
+  const [receiveUsdcAmount, setReceiveUsdcAmount] = useState('10.00');
+  const [receivePrecheckStatus, setReceivePrecheckStatus] = useState<'idle' | 'checking' | 'payable' | 'unpayable'>('idle');
+  const [receivePrecheckMessage, setReceivePrecheckMessage] = useState('');
 
   const aaQrValue = useMemo(() => {
     const t = aaReceiveAddress?.trim() ?? '';
@@ -2360,6 +2363,70 @@ function WalletsTreasuryShell(props: {
       return '';
     }
   }, [aaReceiveAddress]);
+  const receiveEoaValue = useMemo(() => {
+    const t = cashOutEoaAddress?.trim() ?? '';
+    if (!t) return '';
+    try {
+      return ethers.getAddress(t);
+    } catch {
+      return '';
+    }
+  }, [cashOutEoaAddress]);
+  const receiveAmountNormalized = useMemo(() => {
+    const raw = receiveUsdcAmount.trim().replace(/,/g, '');
+    if (!/^\d+(?:\.\d{1,6})?$/.test(raw)) return '';
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    return n.toFixed(2);
+  }, [receiveUsdcAmount]);
+  const receivePaymentUrl = useMemo(() => {
+    if (!receiveEoaValue || !receiveAmountNormalized) return '';
+    return `https://beamio.app/Vouchers?Amount=${encodeURIComponent(receiveAmountNormalized)}&currency=${encodeURIComponent('USDC')}&acceptTokens=USDC&to=${encodeURIComponent(receiveEoaValue)}`;
+  }, [receiveEoaValue, receiveAmountNormalized]);
+  useEffect(() => {
+    if (!receiveQrOpen) {
+      setReceivePrecheckStatus('idle');
+      setReceivePrecheckMessage('');
+      return;
+    }
+    if (!receiveEoaValue || !receiveAmountNormalized) {
+      setReceivePrecheckStatus('unpayable');
+      setReceivePrecheckMessage('Enter a valid recipient EOA and amount.');
+      return;
+    }
+    let cancelled = false;
+    setReceivePrecheckStatus('checking');
+    setReceivePrecheckMessage('');
+    const params = new URLSearchParams({
+      to: receiveEoaValue,
+      amount: receiveAmountNormalized,
+      currency: 'USDC',
+      acceptTokens: 'USDC',
+    }).toString();
+    void fetch(`${BEAMIO_APP_URL}/api/vouchersReceivePreCheck?${params}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(async (r) => {
+        const data = (await r.json()) as { success?: boolean; error?: string };
+        if (cancelled) return;
+        if (r.ok && data.success) {
+          setReceivePrecheckStatus('payable');
+          setReceivePrecheckMessage('Payable: receiver precheck passed.');
+          return;
+        }
+        setReceivePrecheckStatus('unpayable');
+        setReceivePrecheckMessage(data.error || 'Receiver B-Unit is insufficient. Cannot receive now.');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReceivePrecheckStatus('unpayable');
+        setReceivePrecheckMessage('Precheck request failed. Please retry.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [receiveQrOpen, receiveEoaValue, receiveAmountNormalized]);
 
   useEffect(() => {
     if (!receiveQrOpen) return;
@@ -2423,19 +2490,19 @@ function WalletsTreasuryShell(props: {
     return 1 / r;
   }, [oracleUsdcPerCad]);
 
-  const copyAaAddress = useCallback(() => {
-    if (!aaQrValue) return;
-    void navigator.clipboard.writeText(aaQrValue).then(() => {
+  const copyReceivePaymentUrl = useCallback(() => {
+    if (!receivePaymentUrl) return;
+    void navigator.clipboard.writeText(receivePaymentUrl).then(() => {
       setAaCopiedFlash(true);
       window.setTimeout(() => setAaCopiedFlash(false), 2000);
     });
-  }, [aaQrValue]);
+  }, [receivePaymentUrl]);
 
   const eoaCapsuleAddress = cashOutEoaAddress && ethers.isAddress(cashOutEoaAddress) ? ethers.getAddress(cashOutEoaAddress) : '';
   const aaCapsuleAddress = aaQrValue && ethers.isAddress(aaQrValue) ? ethers.getAddress(aaQrValue) : '';
   const recentWalletActivity = activityPreview.slice(0, 3);
   const openReceive = () => {
-    if (aaQrValue) setReceiveQrOpen(true);
+    if (receiveEoaValue) setReceiveQrOpen(true);
     else onReceive();
   };
   const openCashOut = () => {
@@ -2651,7 +2718,7 @@ function WalletsTreasuryShell(props: {
         </section>
       </div>
 
-      {receiveQrOpen && aaQrValue ? (
+      {receiveQrOpen && receiveEoaValue ? (
         <div
           className="fixed inset-0 z-[240] flex flex-col justify-end sm:items-center sm:justify-center sm:p-6"
           role="dialog"
@@ -2671,10 +2738,10 @@ function WalletsTreasuryShell(props: {
                           <div className="min-w-0 flex-1 flex flex-col justify-center">
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">Receive</p>
                   <h2 id="wallet-receive-qr-title" className="mt-1 font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
-                    USDC to Smart Account
+                    USDC Payment Link
                   </h2>
                   <p className="mt-2 text-xs font-medium leading-relaxed text-[#595c5e]">
-                    Scan with any wallet that supports USDC on Base. Funds credit your merchant AA.
+                    Payer opens this URL in any wallet browser and signs an on-chain USDC transfer to your biz EOA.
                   </p>
                   <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#abadaf]/25 bg-[#eef1f3] px-3 py-1.5">
                     <UsdcBaseCompositeIcon size={18} badgeSize={11} />
@@ -2694,7 +2761,7 @@ function WalletsTreasuryShell(props: {
             <div className="space-y-5 px-6 py-6">
               <div className="mx-auto w-fit rounded-xl border border-black/10 bg-white p-3 text-center shadow-[0_4px_20px_rgba(21,98,240,0.06)]">
                 <QRCodeCanvas
-                  value={aaQrValue}
+                  value={receivePaymentUrl || receiveEoaValue}
                   size={176}
                   level="H"
                   includeMargin
@@ -2709,21 +2776,61 @@ function WalletsTreasuryShell(props: {
                   className="inline-block rounded-lg"
                 />
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-1 text-[11px] leading-none text-[#747779]">
-                  <span className="font-bold uppercase tracking-wider text-[#abadaf]">Smart Account</span>
-                  <span className="font-mono font-semibold text-[#515c70]">{fmtAddr(aaQrValue)}</span>
+                  <span className="font-bold uppercase tracking-wider text-[#abadaf]">Biz Wallet (EOA)</span>
+                  <span className="font-mono font-semibold text-[#515c70]">{fmtAddr(receiveEoaValue)}</span>
                 </div>
               </div>
               <div className="rounded-2xl border border-[#abadaf]/20 bg-white px-4 py-3">
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#747779]">Address</p>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#747779]">Recipient EOA</p>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <AddressCapsule
-                    address={aaQrValue}
+                    address={receiveEoaValue}
                     className="max-w-[min(100%,280px)] border-[#abadaf]/30 bg-[#f5f7f9] text-[#2c2f31]"
                   />
                 </div>
-                <p className="mt-3 text-[11px] font-medium leading-relaxed text-[#747779]">
-                  Send USDC on Base only. Other tokens or networks may be lost.
-                </p>
+                <div className="mt-3 space-y-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#747779]">Amount (USDC)</label>
+                  <input
+                    value={receiveUsdcAmount}
+                    onChange={(e) => setReceiveUsdcAmount(e.target.value)}
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder="10.00"
+                    className={`w-full rounded-xl border border-[#d9dde0] bg-white px-3 py-2 text-sm font-semibold text-[#2c2f31] ${bizFocusRingClass}`}
+                  />
+                  <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
+                    Currency: USDC on Base. Share this URL/QR so the payer can complete transfer from a third-party wallet.
+                  </p>
+                </div>
+                {receivePrecheckStatus === 'checking' ? (
+                  <div className="mt-3 rounded-lg border border-[#abadaf]/25 bg-[#eef1f3] px-3 py-2 text-[11px] font-semibold text-[#515c70]">
+                    Checking receiver precheck...
+                  </div>
+                ) : null}
+                {receivePrecheckStatus === 'payable' ? (
+                  <div className="mt-3 rounded-lg border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700">
+                    {receivePrecheckMessage}
+                  </div>
+                ) : null}
+                {receivePrecheckStatus === 'unpayable' ? (
+                  <div className="mt-3 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+                    Unpayable: {receivePrecheckMessage || 'Receiver precheck did not pass.'}
+                  </div>
+                ) : null}
+                <div className="mt-3 rounded-lg border border-[#d9dde0]/70 bg-[#f5f7f9] px-3 py-2">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#747779]">Payment URL</p>
+                  <p className="break-all font-mono text-[11px] font-semibold text-[#515c70]">{receivePaymentUrl || 'Enter a valid amount to generate URL'}</p>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={copyReceivePaymentUrl}
+                    disabled={!receivePaymentUrl || receivePrecheckStatus !== 'payable'}
+                    className={`inline-flex items-center justify-center rounded-full border border-[#abadaf]/30 bg-white px-3 py-1.5 text-[11px] font-bold text-[#0051d1] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+                  >
+                    {aaCopiedFlash ? 'Copied' : 'Copy URL'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -13448,6 +13555,11 @@ const overviewActivityChargeDisplayTotal = useMemo(() => {
   }
   return sumCad
 }, [overviewDashboardActivityTxs, oracleCadUsdc, programCardBeamioCurrencyType])
+/** Same window + formulas as Top-ups / Charges KPI tiles: ledger Top-ups − Charges only. */
+const overviewCustomerBalanceFromActivity = useMemo(
+  () => overviewActivityTopupTotal - overviewActivityChargeDisplayTotal,
+  [overviewActivityTopupTotal, overviewActivityChargeDisplayTotal],
+)
  const overviewActivityChargeDisplayCount = overviewActivityChargeCount
  const overviewActivityTipsLedgerEntries = useMemo(
    () => buildTipsCollectedLedgerEntriesFromMerged(overviewDashboardActivityTxs),
@@ -17097,28 +17209,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
  const salesCTreeLifetime = totalSalesLifetime;
  const tipsCTreeLifetime = totalTipsLifetime;
  const totalCTreeReceivedLifetime = salesCTreeLifetime + tipsCTreeLifetime;
-/** Customer Balance: all-time ledger Top-ups minus Charges, not token#0 chain balance. */
-const retainedCapitalLifetime = useMemo(() => {
-  const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
-  let topups = 0;
-  let chargesCad = 0;
-  for (const tx of indexerTransactions) {
-    if (!bizTxMatchesTransactionTableFilters(tx, overviewDashboardActivityFilterCtx)) continue;
-    if (tx.type === 'In-Store Top-Up') {
-      topups += topupTxDisplayRowIssuedAmount(tx);
-    } else if (tx.type === 'Charge') {
-      chargesCad += chargeTxDisplayRowApproxCad(tx, cadOracle);
-    }
-  }
-  const charges =
-    programCardBeamioCurrencyType != null &&
-    programCardBeamioCurrencyType === BEAMIO_CURRENCY_TYPE_USDC &&
-    Number.isFinite(cadOracle) &&
-    cadOracle > 0
-      ? chargesCad / cadOracle
-      : chargesCad;
-  return topups - charges;
-}, [indexerTransactions, oracleCadUsdc, overviewDashboardActivityFilterCtx, programCardBeamioCurrencyType]);
  const netSettlementBalanceLifetime = totalCTreeReceivedLifetime - topUpsIssuedLifetime;
  const totalUSDCBalance = salesUSDC + tipsUSDC;
 
@@ -19066,7 +19156,10 @@ const retainedCapitalLifetime = useMemo(() => {
                         <div>
                           <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Customer Balance</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
-                            C${retainedCapitalLifetime.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {formatMerchantChargeOverviewHuman(
+                              overviewCustomerBalanceFromActivity,
+                              programCardBeamioCurrencyType,
+                            )}
                           </p>
                         </div>
                       </div>
@@ -19239,7 +19332,10 @@ const retainedCapitalLifetime = useMemo(() => {
                 </div>
                 <div className="relative space-y-1">
                   <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
-                    {`C$${retainedCapitalLifetime.toFixed(2)}`}
+                    {formatMerchantChargeOverviewHuman(
+                      overviewCustomerBalanceFromActivity,
+                      programCardBeamioCurrencyType,
+                    )}
                   </h2>
                   <p className="flex items-center gap-1 text-[11px] font-bold text-[#1562f0] sm:text-xs">
                     <TrendingUp className="size-4 shrink-0" strokeWidth={2} aria-hidden />

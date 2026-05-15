@@ -64,6 +64,7 @@ import {
   signBUnitRefuel3009,
   createBeamioCard,
   updateBeamioCardShareMetadata,
+  updateCardMerchantImage,
   updateIssuedCouponMetadata,
   updateBeamioCardTiers,
   encodeSetTiers,
@@ -87,14 +88,7 @@ import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddress
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi';
-import {
-  IPFS_GET_FRAGMENT,
-  IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES,
-  IPFS_UPLOAD_TARGET_MAX_BYTES,
-  blobToDataUrl,
-  compressToJpeg,
-  resizeToFitLimit,
-} from '@/utils/ipfsCardImageUpload';
+import { IPFS_GET_FRAGMENT, uploadImageFileToIpfsWithRetry } from '@/utils/ipfsCardImageUpload';
 import {
   hasLiteBusinessChainAck,
   hasVerraLiteBusinessRequiredFields,
@@ -295,9 +289,10 @@ import {
   Globe,
   Cloud,
   PartyPopper,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
-import qrCenterIcon from '@/components/assets/32x32.svg';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
 import {
   CardConfiguratorMobileChrome,
@@ -2768,7 +2763,7 @@ function WalletsTreasuryShell(props: {
                   bgColor="#ffffff"
                   fgColor="#000000"
                   imageSettings={{
-                    src: qrCenterIcon,
+                    src: `${process.env.PUBLIC_URL || ''}/logo512.png`,
                     height: 44,
                     width: 44,
                     excavate: true,
@@ -2800,12 +2795,12 @@ function WalletsTreasuryShell(props: {
                   />
                   <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
                     Currency: USDC on Base. Share this URL/QR so the payer can complete transfer from a third-party wallet.
-                  </p>
-                </div>
+                </p>
+              </div>
                 {receivePrecheckStatus === 'checking' ? (
                   <div className="mt-3 rounded-lg border border-[#abadaf]/25 bg-[#eef1f3] px-3 py-2 text-[11px] font-semibold text-[#515c70]">
                     Checking receiver precheck...
-                  </div>
+            </div>
                 ) : null}
                 {receivePrecheckStatus === 'payable' ? (
                   <div className="mt-3 rounded-lg border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700">
@@ -4051,28 +4046,28 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
             </h3>
             <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
             {hasRewardTier && tierBadgeLabel ? (
-              <div
+            <div
                 className="mt-3 inline-flex items-center rounded-full border border-[#0051d1]/20 bg-[#0051d1]/10 px-3 py-1 text-[#0047b8]"
-              >
+            >
                 <span className="font-sans text-xs font-bold">{tierBadgeLabel}</span>
-              </div>
+            </div>
             ) : null}
           </div>
 
           {hasRewardTier ? (
-            <div className="mb-8">
-              <div className="mb-3 flex items-end justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Tier Progress</span>
-                <span className="text-xs font-bold text-[#0051d1]">{tierProgressPct}%</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
-                <div className="h-full rounded-full bg-[#0051d1] transition-all" style={{ width: `${tierProgressPct}%` }} />
-              </div>
-              <div className="mt-3 flex justify-between text-[11px] font-medium text-[#595c5e]">
-                <span>{cadDisplay} volume (oracle)</span>
-                <span className="text-right font-bold text-[#0047b8]">{toNextLabel}</span>
-              </div>
+          <div className="mb-8">
+            <div className="mb-3 flex items-end justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Tier Progress</span>
+              <span className="text-xs font-bold text-[#0051d1]">{tierProgressPct}%</span>
             </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
+              <div className="h-full rounded-full bg-[#0051d1] transition-all" style={{ width: `${tierProgressPct}%` }} />
+            </div>
+            <div className="mt-3 flex justify-between text-[11px] font-medium text-[#595c5e]">
+              <span>{cadDisplay} volume (oracle)</span>
+              <span className="text-right font-bold text-[#0047b8]">{toNextLabel}</span>
+            </div>
+          </div>
           ) : null}
 
           <div className="mb-8 grid grid-cols-1 gap-3">
@@ -4424,6 +4419,10 @@ const TX_BUINT_SEND_USDC = ethers.keccak256(ethers.toUtf8Bytes('sendUSDC'))
 const TX_BUINT_X402_SEND = ethers.keccak256(ethers.toUtf8Bytes('x402Send'))
 const TX_BUINT_NFC_TOPUP_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('nfcTopup:bunitService'))
 const TX_BUINT_USDC_TOPUP_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('usdcTopup:bunitService'))
+/** Indexer: Create Coupon / issued NFT flow — separate B-Unit service fee row (`MemberCard` `createIssuedNftCoupon:bunitService`). */
+const TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE = ethers.keccak256(
+  ethers.toUtf8Bytes('createIssuedNftCoupon:bunitService')
+)
 
 const INDEXER_BUINT_LEDGER_CATEGORY_HEX_LOWER = new Set([
   TX_BUINT_CLAIM.toLowerCase(),
@@ -4434,6 +4433,7 @@ const INDEXER_BUINT_LEDGER_CATEGORY_HEX_LOWER = new Set([
   TX_BUINT_X402_SEND.toLowerCase(),
   TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
   TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
+  TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
 ])
 
 function normalizeIndexerTxCategoryHex(cat: unknown): string {
@@ -4489,6 +4489,17 @@ function shouldSkipIndexerRowForMerchantTxTable(tx: { txCategory: string; payee:
   return isIndexerFetchedRowBunitLedger(tx)
 }
 
+/** Indexer `TX_Terminal_RESET` (settlement period marker). Omitted from /Transactions; rows stay in `indexerTransactions` for Staff settlement-clear labels. */
+function indexerTxCategoryIsTerminalSettlementReset(cat: unknown): boolean {
+  const h = normalizeIndexerTxCategoryHex(cat)
+  return h !== '' && h === TX_TERMINAL_RESET_LEDGER_CATEGORY.toLowerCase()
+}
+
+function txDisplayRowIsTerminalSettlementReset(tx: TxDisplayRow): boolean {
+  const raw = tx.raw as { txCategory?: unknown }
+  return indexerTxCategoryIsTerminalSettlementReset(raw.txCategory)
+}
+
 function txDisplayRowIsIndexerBunitLedger(r: TxDisplayRow): boolean {
   const raw = r.raw as { txCategory?: unknown; payee?: unknown }
   if (isIndexerBuintLedgerCategory(raw.txCategory)) return true
@@ -4497,6 +4508,7 @@ function txDisplayRowIsIndexerBunitLedger(r: TxDisplayRow): boolean {
 
 function dashboardActivityTypeFromIndexerRow(tx: { txCategory: string; payee: string }): 'Charge' | 'In-Store Top-Up' | 'Tip' | null {
   if (shouldSkipIndexerRowForMerchantTxTable(tx)) return null
+  if (indexerTxCategoryIsTerminalSettlementReset(tx.txCategory)) return null
   const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
   if (!cat || TOPUP_BUINT_SERVICE_CATEGORY_LOWER.has(cat)) return null
   if (cat === TX_MERCHANT_PAY_TIP_UPDATED.toLowerCase() || cat === TX_TIP_LEDGER_CATEGORY.toLowerCase()) return 'Tip'
@@ -5293,6 +5305,7 @@ function txDisplayRowIsUsdcRequestAccounting(tx: TxDisplayRow): boolean {
 
 function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFilterCtx): boolean {
   if (txDisplayRowIsIndexerBunitLedger(tx)) return false
+  if (txDisplayRowIsTerminalSettlementReset(tx)) return false
   if (ctx.activeLedger === 'AA' && !ctx.hasAaAccount) return false
   const isVaultTx = tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault'
   const merchantLo = ctx.merchantAdminLower ?? null
@@ -5771,6 +5784,30 @@ function mobileTransactionsDayHeadingLocal(tsSec: number): string {
   if (diffDays === 0) return 'TODAY'
   if (diffDays === 1) return 'YESTERDAY'
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()
+}
+
+/** Mobile Transactions top-up subtitle: channel (NFC vs App) + payment leg — matches indexer `source` / `displayJson.topupPaymentLeg`, not hardcoded USDC. */
+function mobileTransactionsTopupPaymentLegLabel(tx: TxDisplayRow): string {
+  try {
+    const raw = tx.raw as Record<string, unknown>
+    const dj = raw.displayJson
+    if (typeof dj === 'string' && dj.trim()) {
+      const o = JSON.parse(dj) as { topupPaymentLeg?: string }
+      const leg = String(o.topupPaymentLeg ?? '').toLowerCase()
+      if (leg === 'cash') return 'Cash'
+      if (leg === 'usdc') return 'USDC'
+    }
+  } catch {
+    /* ignore */
+  }
+  if (tx.method === 'Card') return 'USDC'
+  return tx.method
+}
+
+function mobileTransactionsTopupSubtitle(tx: TxDisplayRow, timeStr: string): string {
+  const channel = tx.source === 'NFC' ? 'NFC' : 'App'
+  const leg = mobileTransactionsTopupPaymentLegLabel(tx)
+  return `${channel} • ${leg} • ${timeStr || '—'}`
 }
 
 /** True when indexer `displayJson.terminal` matches a Staff POS tag (`@handle` optional). */
@@ -6672,7 +6709,7 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
 
 /**
  * Beamio Merchant（Merchant OS）链上 KPI / metadata / Staff：以 **localStorage trusted cache 本地为主**，6s daemon 后台拉取为辅（`beamio-ai-onchain-fetch.mdc`）。
- * 节拍由 **DaemonProvider** 统一 setTimeout 链触发（与 Members 串行，见 `registerMerchantOsOverviewBackgroundWork`），**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
+ * 节拍由 **DaemonProvider** 统一触发：Overview/Staff 为 6s `setTimeout` 链（与 Members 并行），**B-Unit 余额**为 CoNET L1 `block` 节拍（`registerMerchantOsBuintBalanceBackgroundWork`）；**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
  */
 
 /** In-memory fetch cache: default 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
@@ -7217,6 +7254,497 @@ const AddressCapsule = ({
   );
 };
 
+/** Smart Receipt drawer — primary card body aligned with desktop Ledger History row (participants, amounts, hash, B-Units, net column). */
+function smartReceiptLedgerAmountPreviewColumn(
+  tx: TxDisplayRow,
+  cadOracle: number,
+  pointsCurrencySymbol: string,
+): React.ReactNode {
+  if (tx.type === 'Charge') {
+    const raw = tx.raw as Record<string, unknown>;
+    const meta = parseIndexerMetaTuple(raw.meta);
+    const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6);
+    const pctOffStr = discountRateBpsToPercentOffLabel(meta.discountRateBps);
+    if (!(finalFiat > 0)) {
+      const finalUsdc = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6);
+      if (finalUsdc > 0) {
+        return (
+          <div className="flex flex-col gap-1.5 items-start">
+            <div className="flex items-start gap-2">
+              <Coins size={15} className="text-emerald-800 shrink-0 mt-0.5" strokeWidth={2} aria-hidden />
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
+                  {finalUsdc.toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+                </div>
+                <span className="text-[11px] text-slate-400 font-medium mt-0.5">
+                  ≈ ${(finalUsdc / cadOracle).toFixed(2)} CAD
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      return <span className="text-[13px] font-medium text-slate-400">—</span>;
+    }
+    const curLabel = beamioFiatCurrencyLabel(Number(meta.currencyFiat));
+    const mainCad = approximateCadFromFinalRequestFiat6(finalFiat, curLabel, cadOracle);
+    let tipFiatAdd = 0;
+    let tipUsdcAdd = 0;
+    if (tx.tipRaw) {
+      const tr = tx.tipRaw.raw as Record<string, unknown>;
+      tipFiatAdd = parseIndexerUintE6Field(tr.finalRequestAmountFiat6);
+      if (!(tipFiatAdd > 0) && tx.tipRaw.usdcAmount > 0) tipUsdcAdd = tx.tipRaw.usdcAmount;
+    }
+    let embeddedTipHuman = 0;
+    if (!tx.tipRaw) {
+      const emb = parseChargeBreakdownEmbeddedTip(raw);
+      if (emb) {
+        const req = emb.requestCurrencyUpper;
+        if (req === 'CAD' && curLabel === 'CAD') embeddedTipHuman = emb.tipHuman;
+        else if (
+          (req === 'USD' || req === 'USDC') &&
+          (curLabel === 'USD' || curLabel === 'USDC')
+        ) {
+          embeddedTipHuman = emb.tipHuman;
+        }
+      }
+    }
+    const tipUsdcAsDisplayFiat =
+      tipUsdcAdd > 0
+        ? curLabel === 'CAD'
+          ? tipUsdcAdd / cadOracle
+          : curLabel === 'USD' || curLabel === 'USDC'
+            ? tipUsdcAdd
+            : tipUsdcAdd / cadOracle
+        : 0;
+    const displayFiatFull = finalFiat + tipFiatAdd + tipUsdcAsDisplayFiat + embeddedTipHuman;
+    const cadApproxFull = mainCad + chargeTxDisplayRowMergedTipCad(tx, cadOracle);
+    return (
+      <div className="flex flex-col gap-1.5 items-start">
+        <div className="flex items-start gap-2">
+          <Ticket size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
+              {displayFiatFull.toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">{pointsCurrencySymbol}</span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-medium mt-0.5">≈ ${cadApproxFull.toFixed(2)} CAD</span>
+          </div>
+        </div>
+        {pctOffStr ? (
+          <div className="w-fit rounded-lg border border-emerald-200 bg-emerald-50/90 px-2.5 py-1">
+            <span className="text-[11px] font-bold text-emerald-800">Auto-Routing: {pctOffStr}% Off</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  if (tx.type.includes('Top-Up')) {
+    const meta = parseIndexerMetaTuple(tx.raw.meta);
+    const reqFiat = parseIndexerUintE6Field(meta.requestAmountFiat6);
+    return (
+      <div className="flex items-start gap-2">
+        <Ticket size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
+            {reqFiat.toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">{pointsCurrencySymbol}</span>
+          </div>
+          <span className="text-[11px] text-slate-400 font-medium mt-0.5">≈ ${reqFiat.toFixed(2)} CAD</span>
+        </div>
+      </div>
+    );
+  }
+  if (tx.method === 'Tip') {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-rose-600 whitespace-nowrap">
+          <Heart size={15} className="text-rose-500 shrink-0" /> {tx.usdcAmount.toFixed(2)}{' '}
+          <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">
+          ≈ ${(tx.usdcAmount / cadOracle).toFixed(2)} CAD
+        </span>
+      </div>
+    );
+  }
+  if (tx.method === 'Mixed') {
+    return (
+      <>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+            <Ticket size={15} className="text-emerald-500 shrink-0" /> {tx.ctreeAmount.toFixed(2)}{' '}
+            <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
+          </div>
+          <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
+        </div>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+            <Coins size={15} className="text-emerald-800 shrink-0" /> {tx.usdcAmount.toFixed(2)}{' '}
+            <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+          </div>
+          <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">
+            ≈ ${(tx.usdcAmount / cadOracle).toFixed(2)} CAD
+          </span>
+        </div>
+      </>
+    );
+  }
+  if (tx.method === 'Issued $CTree') {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+          <Ticket size={15} className="text-emerald-500 shrink-0" /> {tx.ctreeAmount.toFixed(2)}{' '}
+          <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
+      </div>
+    );
+  }
+  if (tx.method.includes('No Discount')) {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+          <Coins size={15} className="text-emerald-800 shrink-0" /> {tx.usdcAmount.toFixed(2)}{' '}
+          <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">
+          ≈ ${(tx.usdcAmount / cadOracle).toFixed(2)} CAD
+        </span>
+      </div>
+    );
+  }
+  if (tx.method.includes('Black Tier')) {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+          <Crown size={15} className="text-yellow-500 shrink-0" /> {tx.ctreeAmount.toFixed(2)}{' '}
+          <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
+      </div>
+    );
+  }
+  if (tx.method === '$CTree or USDC') {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+          <Coins size={15} className="text-emerald-800 shrink-0" /> {tx.usdcAmount.toFixed(2)}{' '}
+          <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">
+          ≈ ${(tx.usdcAmount / cadOracle).toFixed(2)} CAD
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+        <Ticket size={15} className="text-[#34C759] shrink-0" /> {tx.ctreeAmount.toFixed(2)}{' '}
+        <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
+      </div>
+      <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
+    </div>
+  );
+}
+
+type SmartReceiptLedgerAlignedPrimaryCardArgs = {
+  tx: TxDisplayRow;
+  cadOracle: number;
+  pointsCurrencySymbol: string;
+  payerAddr: string;
+  payerTag: string;
+  payeeAddr: string;
+  payeeTag: string;
+  tierCap: { name: string; backgroundColor?: string } | null | undefined;
+  totalCad: number;
+  ledgerTypeTitleSr: string;
+  ledgerCardStatusSr: { label: string; cls: string };
+  isVaultTerminalSr: boolean;
+  chargeTxNetValueColumnShowBreakdown: (t: TxDisplayRow) => boolean;
+  chargeMetaRequestAmountApproxCad: (t: TxDisplayRow) => number;
+};
+
+function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAlignedPrimaryCardArgs): React.ReactElement {
+  const {
+    tx,
+    cadOracle,
+    pointsCurrencySymbol,
+    payerAddr,
+    payerTag,
+    payeeAddr,
+    payeeTag,
+    tierCap,
+    totalCad,
+    ledgerTypeTitleSr,
+    ledgerCardStatusSr,
+    isVaultTerminalSr,
+    chargeTxNetValueColumnShowBreakdown,
+    chargeMetaRequestAmountApproxCad,
+  } = a;
+  const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
+  const useNfcSubtitle = LEDGER_NFC_BEAMIO_TAG_RE.test(payerHandle);
+  const tierPres =
+    tierCap != null && tierCap.name ? infraTierCapsulePresentation(tierCap.backgroundColor) : null;
+
+  return (
+    <div className="flex flex-col gap-4 border-b border-[#e5e9eb] bg-[#eef1f3]/50 px-6 py-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex min-w-0 flex-1 items-start gap-4">
+        <div
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
+            tx.type.includes('Top-Up')
+              ? 'bg-emerald-50 text-emerald-600'
+              : tx.type === 'Tip'
+                ? 'bg-rose-50 text-rose-600'
+                : isVaultTerminalSr
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'bg-[#1562f0]/10 text-[#1562f0]'
+          }`}
+        >
+          {tx.type === 'Tip' ? (
+            <Heart size={20} className="fill-rose-100" strokeWidth={2} aria-hidden />
+          ) : tx.type.includes('Top-Up') ? (
+            <ArrowUpFromLine size={20} strokeWidth={2} aria-hidden />
+          ) : isVaultTerminalSr ? (
+            <Shield size={20} strokeWidth={2} aria-hidden />
+          ) : (
+            <Zap size={20} strokeWidth={2.25} aria-hidden />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="text-base font-extrabold tracking-tight text-slate-900"
+              style={{ fontFamily: 'Manrope, ui-sans-serif, system-ui, sans-serif' }}
+            >
+              {ledgerTypeTitleSr}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${ledgerCardStatusSr.cls}`}
+            >
+              {ledgerCardStatusSr.label}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {tx.type.includes('Top-Up') || ((tx.type === 'Charge' || tx.type === 'Tip') && !isVaultTerminalSr) ? (
+              <>
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  {payerTag ? (
+                    <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{payerTag}</span>
+                  ) : payerAddr ? (
+                    <AddressCapsule address={payerAddr} className="bg-slate-100 border-slate-200 text-slate-700" />
+                  ) : tx.type === 'Charge' || tx.type === 'Tip' ? (
+                    <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
+                  ) : (
+                    <span className="font-medium text-[15px] text-slate-500">—</span>
+                  )}
+                  {tx.type === 'Charge' && tierCap != null && tierPres ? (
+                    <span
+                      className="inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1"
+                      style={tierPres.wrap}
+                      title="Payer membership tier (program BeamioUserCard NFT metadata)"
+                    >
+                      <ShieldCheck size={14} className="shrink-0" strokeWidth={2.25} style={{ color: tierPres.fg }} />
+                      <span
+                        className="text-[11px] font-bold whitespace-nowrap max-w-[160px] truncate"
+                        style={{ color: tierPres.fg }}
+                      >
+                        {tierCap.name}
+                      </span>
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium flex-wrap">
+                  {useNfcSubtitle ? (
+                    <>
+                      <Nfc size={14} className="text-slate-400 shrink-0" />
+                      <span className="whitespace-nowrap">NFC •</span>
+                    </>
+                  ) : (
+                    <>
+                      <Smartphone size={14} className="text-emerald-800 shrink-0" />
+                      <span className="whitespace-nowrap">App •</span>
+                    </>
+                  )}
+                  {payeeTag ? (
+                    <span className="whitespace-nowrap">{payeeTag}</span>
+                  ) : payeeAddr ? (
+                    <AddressCapsule address={payeeAddr} className="bg-slate-50 border-slate-200 text-slate-600 text-[12px]" />
+                  ) : (tx.type === 'Charge' || tx.type === 'Tip') && tx.terminal ? (
+                    <span className="whitespace-nowrap">{tx.terminal}</span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </div>
+              </>
+            ) : isVaultTerminalSr ? (
+              <>
+                <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">
+                  {tx.beamioTag || 'The Vault'}
+                </span>
+                <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
+                  <Shield size={14} className="text-emerald-800" />
+                  <span>The Vault • On-Chain</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {tx.beamioTag ? (
+                    <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.beamioTag}</span>
+                  ) : (
+                    <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
+                  {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? (
+                    <Nfc size={14} className="text-slate-400" />
+                  ) : (
+                    <Smartphone size={14} className="text-emerald-800" />
+                  )}
+                  <span>
+                    {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? 'NFC' : 'App'} • {tx.terminal}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            {tx.dateStr ? <span className="whitespace-nowrap">{tx.dateStr}</span> : null}
+            {tx.dateStr && tx.time ? <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" aria-hidden /> : null}
+            <span className="whitespace-nowrap">{tx.time}</span>
+            <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" aria-hidden />
+            <span className="whitespace-nowrap font-mono text-[11px] text-slate-400">{tx.id}</span>
+          </div>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              {smartReceiptLedgerAmountPreviewColumn(tx, cadOracle, pointsCurrencySymbol)}
+            </div>
+            <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
+              {(tx.type.includes('Top-Up') || tx.type === 'Charge') && /^0x[0-9a-fA-F]{64}$/.test(tx.indexerTxId) ? (
+                <a
+                  href={`https://basescan.org/tx/${tx.indexerTxId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(ev) => ev.stopPropagation()}
+                  className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-colors cursor-pointer"
+                  title="View transaction on BaseScan"
+                >
+                  {tx.status === 'Pending' ? (
+                    <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+                  ) : (
+                    <CheckCircle2
+                      size={12}
+                      className={isVaultTerminalSr ? 'text-blue-500 shrink-0' : 'text-emerald-500 shrink-0'}
+                    />
+                  )}
+                  <span className="text-[12px] font-mono text-slate-500">{tx.hash}</span>
+                </a>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                  {tx.status === 'Pending' ? (
+                    <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+                  ) : (
+                    <CheckCircle2
+                      size={12}
+                      className={isVaultTerminalSr ? 'text-blue-500 shrink-0' : 'text-emerald-500 shrink-0'}
+                    />
+                  )}
+                  <span className="text-[12px] font-mono text-slate-500">{tx.hash}</span>
+                </div>
+              )}
+              {tx.bUnits > 0 ? (
+                <div
+                  className="flex items-center gap-1.5 bg-orange-50 px-2 py-1 rounded-md border border-orange-500/10 cursor-help"
+                  title={
+                    tx.type.includes('Top-Up')
+                      ? `Top-up B-Unit service: ${(tx.bUnits * 0.01).toFixed(2)} USDC notional`
+                      : `Protocol Fee: ${(tx.bUnits * 0.01).toFixed(2)} USDC`
+                  }
+                >
+                  <Fuel size={12} className="text-orange-500 shrink-0" />
+                  <span className="text-[11px] font-bold text-orange-500">{tx.bUnits.toFixed(2)} B-Units</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-md border border-slate-200/50">
+                  <span className="text-[11px] font-bold text-slate-400">0 B-Units (Base Gas)</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+        {tx.type === 'Charge' && chargeTxNetValueColumnShowBreakdown(tx) ? (() => {
+          const tipCadCol = chargeTxDisplayRowMergedTipCad(tx, cadOracle);
+          const strikeCad = chargeMetaRequestAmountApproxCad(tx) + tipCadCol;
+          const mainCad = chargeTxDisplayRowApproxCad(tx, cadOracle);
+          const showStrike = strikeCad > mainCad + 0.0005;
+          const mainCls = tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900';
+          return (
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-baseline justify-end gap-2 flex-wrap">
+                {showStrike ? (
+                  <span className="text-[15px] font-normal text-slate-400 line-through whitespace-nowrap tabular-nums">
+                    ${strikeCad.toFixed(2)}
+                  </span>
+                ) : null}
+                <span className={`font-semibold text-[18px] tracking-tight whitespace-nowrap tabular-nums ${mainCls}`}>
+                  ${mainCad.toFixed(2)}
+                </span>
+              </div>
+              <div
+                className={`text-[12px] font-medium whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}
+              >
+                {tx.status === 'Pending'
+                  ? 'Pending Settlement'
+                  : tipCadCol > 0
+                    ? `Incl. $${tipCadCol.toFixed(2)} Tip`
+                    : 'No Tip'}
+              </div>
+            </div>
+          );
+        })() : (
+          <>
+            <div
+              className={`font-semibold text-[18px] tracking-tight whitespace-nowrap tabular-nums ${
+                tx.type.includes('Top-Up')
+                  ? 'text-emerald-600'
+                  : tx.type === 'Tip'
+                    ? 'text-rose-600'
+                    : tx.status === 'Pending'
+                      ? 'text-amber-500'
+                      : 'text-slate-900'
+              }`}
+            >
+              {tx.type.includes('Top-Up') ? '+' : ''}${totalCad.toFixed(2)}
+            </div>
+            {(() => {
+              const sub =
+                tx.status === 'Pending'
+                  ? 'Pending Settlement'
+                  : tx.tip > 0
+                    ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip`
+                    : isVaultTerminalSr
+                      ? 'Treasury TX'
+                      : tx.type.includes('Top-Up')
+                        ? null
+                        : 'No Tip';
+              if (sub == null) return null;
+              return (
+                <div
+                  className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}
+                >
+                  {sub}
+                </div>
+              );
+            })()}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Fixed to `BeamioCurrency.CurrencyType.CAD` (enum index 0). See `src/BeamioUserCard/BeamioCurrency.sol`. */
 const CARD_ISSUANCE_BEAMIO_CURRENCY = 'CAD' as const;
 const CARD_ISSUANCE_MIN_TOPUP_MIN = 5;
@@ -7412,6 +7940,8 @@ type CardIssuanceCouponRow = {
   couponValidToYmd: string;
   icon: string;
   backgroundColor: string;
+  /** Wide hero background for this coupon only (https / IPFS gateway); not the program merchant banner. */
+  couponImage: string;
   description: string;
   issued: boolean;
   /** On-chain issued NFT tokenId after successful createIssuedNft (coupon series). */
@@ -7423,6 +7953,7 @@ function makeCardIssuanceCouponRow(
   icon = '',
   backgroundColor = '#0051d1',
   description = '',
+  couponImage = '',
   issueTotal: number | string = CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT,
   requiresRedeemCode = false,
   couponDateRestriction: 'none' | 'range' = 'none',
@@ -7443,6 +7974,7 @@ function makeCardIssuanceCouponRow(
     couponValidToYmd: String(couponValidToYmd),
     icon: String(icon),
     backgroundColor: String(backgroundColor),
+    couponImage: String(couponImage ?? '').trim(),
     description: String(description),
     issued,
     ...(issuedTokenId?.trim() ? { issuedTokenId: issuedTokenId.trim() } : {}),
@@ -7461,6 +7993,8 @@ type CardIssuanceCouponMetadataPayload = {
   validTo?: string;
   icon?: string;
   backgroundColor?: string;
+  /** Wide coupon ticket background image URL (https). */
+  couponImage?: string;
   description?: string;
   issued?: boolean;
   /** On-chain ERC-1155 issued NFT series id */
@@ -7491,6 +8025,7 @@ function buildCardIssuanceCouponMetadataPayload(
       }
       const backgroundColor = tierBackgroundColorForPayload(row.backgroundColor);
       const icon = row.icon.trim();
+      const couponImg = row.couponImage.trim();
       const description = row.description.trim();
       const payload: CardIssuanceCouponMetadataPayload = {
         id,
@@ -7499,6 +8034,7 @@ function buildCardIssuanceCouponMetadataPayload(
         ...(row.requiresRedeemCode ? { requiresRedeemCode: true } : {}),
         ...(icon ? { icon } : {}),
         ...(backgroundColor ? { backgroundColor } : {}),
+        ...(couponImg ? { couponImage: couponImg } : {}),
         ...(description ? { description } : {}),
       };
       if (
@@ -8358,6 +8894,7 @@ export default function MerchantOS() {
    setVoucherPayFromScan,
    registerMembersLoyaltyBackgroundWork,
    registerMerchantOsOverviewBackgroundWork,
+   registerMerchantOsBuintBalanceBackgroundWork,
    registerAddressMetadataMinuteWork,
  } = useDaemonContext();
  const [walletSendUsdcOpen, setWalletSendUsdcOpen] = useState(false);
@@ -8384,9 +8921,15 @@ const [cardIssuanceBonusRules, setCardIssuanceBonusRules] = useState<CardIssuanc
 const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useState<string | null>(null);
 const [cardIssuanceCoupons, setCardIssuanceCoupons] = useState<CardIssuanceCouponRow[]>([]);
 const [cardIssuanceCouponEditorOpen, setCardIssuanceCouponEditorOpen] = useState(false);
+/** Hydration must not reset editing session while the coupon editor is open (draft IPFS URL vs server row). */
+const cardIssuanceCouponEditorOpenRef = useRef(false);
+useEffect(() => {
+  cardIssuanceCouponEditorOpenRef.current = cardIssuanceCouponEditorOpen;
+}, [cardIssuanceCouponEditorOpen]);
 const [cardIssuanceEditingCouponId, setCardIssuanceEditingCouponId] = useState<string | null>(null);
 const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState('');
 const [cardIssuanceCouponIcon, setCardIssuanceCouponIcon] = useState('');
+const [cardIssuanceCouponImage, setCardIssuanceCouponImage] = useState('');
 const [cardIssuanceCouponBackgroundColor, setCardIssuanceCouponBackgroundColor] = useState('#0051d1');
 const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState('');
 const [cardIssuanceCouponIssueTotal, setCardIssuanceCouponIssueTotal] = useState(
@@ -8397,7 +8940,9 @@ const [cardIssuanceCouponDateRestriction, setCardIssuanceCouponDateRestriction] 
 const [cardIssuanceCouponValidFromYmd, setCardIssuanceCouponValidFromYmd] = useState(() => couponDefaultValidFromYmd());
 const [cardIssuanceCouponValidToYmd, setCardIssuanceCouponValidToYmd] = useState(() => couponDefaultValidToYmd());
 const cardIssuanceCouponIconFileRef = useRef<HTMLInputElement>(null);
+const cardIssuanceCouponImageFileRef = useRef<HTMLInputElement>(null);
 const [cardIssuanceCouponIconUploading, setCardIssuanceCouponIconUploading] = useState(false);
+const [cardIssuanceCouponImageUploading, setCardIssuanceCouponImageUploading] = useState(false);
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
 const [cardIssuanceCouponShareOpenId, setCardIssuanceCouponShareOpenId] = useState<string | null>(null);
 const [cardIssuanceCouponShareUrlCopied, setCardIssuanceCouponShareUrlCopied] = useState(false);
@@ -8474,6 +9019,13 @@ const handlePublishCardIssuanceRef = useRef<
 >(async () => false);
  const [cardIssuanceShareImageUrl, setCardIssuanceShareImageUrl] = useState('');
  const [cardIssuanceShareImageUploading, setCardIssuanceShareImageUploading] = useState(false);
+ const cardIssuanceMerchantImageFileRef = useRef<HTMLInputElement>(null);
+ /** Issued Program Asset panel: separate file input so upload works when Define your brand is off-screen (mobile / other tab). */
+ const cardIssuanceMerchantImageIssuedPanelFileRef = useRef<HTMLInputElement>(null);
+ const [cardIssuanceMerchantImageUrl, setCardIssuanceMerchantImageUrl] = useState('');
+ const [cardIssuanceMerchantImageUploading, setCardIssuanceMerchantImageUploading] = useState(false);
+ /** User removed hero for next Publish; suppresses metadata fallback until publish succeeds or card switches. */
+ const [cardIssuanceMerchantImageClearPending, setCardIssuanceMerchantImageClearPending] = useState(false);
  /** Single category id (e.g. travel); stored in metadata `shareTokenMetadata.categories` as one-element array */
  const [cardIssuanceCategoryId, setCardIssuanceCategoryId] = useState<string>(CARD_ISSUANCE_DEFAULT_CATEGORY_ID);
  /** Card-level metadata description (`shareTokenMetadata.description`). */
@@ -8589,6 +9141,10 @@ const cardIssuanceCouponShareUrl = useMemo(() => {
    const t = cardIssuanceExistingCard.meta?.logoDisplayTier;
    setCardIssuanceLogoDisplayTier(t ?? 0);
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.logoDisplayTier]);
+
+ useEffect(() => {
+   setCardIssuanceMerchantImageClearPending(false);
+ }, [cardIssuanceExistingCard?.cardAddress]);
 
  useEffect(() => {
    if (cardIssuanceTiers.length === 0) {
@@ -8924,6 +9480,8 @@ useEffect(() => {
           name?: string;
           icon?: string;
           backgroundColor?: string;
+          couponImage?: string;
+          coupon_image?: string;
           description?: string;
           issued?: boolean;
         }
@@ -8935,11 +9493,20 @@ useEffect(() => {
     const hydratedIssuedTok = parseCouponIssuedTokenIdFromHydration(coupon);
     const stableCouponId =
       typeof coupon.id === 'string' && coupon.id.trim() ? coupon.id.trim() : undefined;
+    const ciRaw = (coupon as { couponImage?: unknown }).couponImage;
+    const ciSnake = (coupon as { coupon_image?: unknown }).coupon_image;
+    const couponImgHydrated =
+      typeof ciRaw === 'string' && ciRaw.trim()
+        ? ciRaw.trim()
+        : typeof ciSnake === 'string' && ciSnake.trim()
+          ? ciSnake.trim()
+          : '';
     return makeCardIssuanceCouponRow(
       coupon.name ?? `Coupon ${idx + 1}`,
       coupon.icon ?? '',
       coupon.backgroundColor ?? '#0051d1',
       coupon.description ?? '',
+      couponImgHydrated,
       parseCouponIssueTotalFromHydration(coupon),
       parseCouponRequiresRedeemFromHydration(coupon),
       dr.restriction,
@@ -8999,11 +9566,20 @@ useEffect(() => {
             typeof mergedMeta.name === 'string' && mergedMeta.name.trim()
               ? mergedMeta.name
               : `Coupon ${idx + 1}`;
+          const ciM = (mergedMeta as { couponImage?: unknown }).couponImage;
+          const ciMsnake = (mergedMeta as { coupon_image?: unknown }).coupon_image;
+          const couponImgSeries =
+            typeof ciM === 'string' && ciM.trim()
+              ? ciM.trim()
+              : typeof ciMsnake === 'string' && ciMsnake.trim()
+                ? ciMsnake.trim()
+                : '';
           return makeCardIssuanceCouponRow(
             title,
             typeof mergedMeta.icon === 'string' ? mergedMeta.icon : '',
             typeof mergedMeta.backgroundColor === 'string' ? mergedMeta.backgroundColor : '#0051d1',
             typeof mergedMeta.description === 'string' ? mergedMeta.description : '',
+            couponImgSeries,
             issueTotalFromChain || parseCouponIssueTotalFromHydration(mergedMeta),
             parseCouponRequiresRedeemFromHydration(mergedMeta),
             dr.restriction,
@@ -9054,6 +9630,7 @@ useEffect(() => {
         }
         merged.push({
           ...row,
+          couponImage: row.couponImage ?? old.couponImage ?? '',
           /** Preserve issued flags/tokenId until metadata catches up. */
           issued: row.issued || old.issued,
           issuedTokenId: row.issuedTokenId ?? old.issuedTokenId,
@@ -9067,8 +9644,10 @@ useEffect(() => {
       }
       return merged;
     });
-    setCardIssuanceEditingCouponId(null);
-    setCardIssuanceCouponEditorOpen(false);
+    if (!cardIssuanceCouponEditorOpenRef.current) {
+      setCardIssuanceEditingCouponId(null);
+      setCardIssuanceCouponEditorOpen(false);
+    }
   })();
   return () => {
     cancelled = true;
@@ -9092,6 +9671,129 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
   if (existingCardImage) return existingCardImage;
   return (beamio?.image ?? '').trim();
 }, [cardIssuanceShareImageUrl, cardIssuanceExistingCard?.meta?.image, beamio?.image]);
+
+ const cardIssuanceEffectiveMerchantImage = useMemo(() => {
+   if (cardIssuanceMerchantImageClearPending) return '';
+   const draft = cardIssuanceMerchantImageUrl.trim();
+   if (draft) return draft;
+   const meta = cardIssuanceExistingCard?.meta as
+     | (CardMetadataFromUri & { shareTokenMetadata?: Record<string, unknown> })
+     | undefined;
+   if (!meta) return '';
+   const flat = (meta.merchantImage ?? '').trim();
+   if (flat) return flat;
+   const share = meta.shareTokenMetadata;
+   if (share && typeof share === 'object' && !Array.isArray(share)) {
+     const raw = share.merchantImage ?? share.merchant_image;
+     if (typeof raw === 'string' && raw.trim()) return raw.trim();
+   }
+   return '';
+ }, [
+   cardIssuanceMerchantImageClearPending,
+   cardIssuanceMerchantImageUrl,
+   cardIssuanceExistingCard?.meta,
+ ]);
+
+ /** SilentPassUI /discover Featured Brands row — live preview from current Define your brand fields */
+ const cardConfiguratorDiscoverPreviewTitle = useMemo(() => {
+   return (
+     cardIssuanceStoreDisplayName.trim() ||
+     cardIssuanceProgramName.trim() ||
+     (cardIssuanceExistingCard?.meta?.displayName ?? '').trim() ||
+     (cardIssuanceExistingCard?.meta?.name ?? '').trim() ||
+     'Your brand'
+   );
+ }, [
+   cardIssuanceStoreDisplayName,
+   cardIssuanceProgramName,
+   cardIssuanceExistingCard?.meta?.displayName,
+   cardIssuanceExistingCard?.meta?.name,
+ ]);
+
+ const cardConfiguratorDiscoverPreviewSubtitle = useMemo(() => {
+   const draft = cardIssuanceDescription.trim();
+   if (draft) return draft;
+   return 'Program description appears here on Discover.';
+ }, [cardIssuanceDescription]);
+
+ /** Create / Edit Coupon slide-over: ticket-style live preview (member app–like). */
+ const cardIssuanceCouponEditorLivePreview = useMemo(() => {
+   const offerTitle = cardIssuanceCouponName.trim() || 'Your offer';
+   const subtitle =
+     cardIssuanceCouponDescription.trim() || 'Add coupon details for members';
+   const couponIcon = cardIssuanceCouponIcon.trim();
+   const hasRenderableCouponIcon =
+     couponIcon.length > 0 &&
+     (cardIssuanceCouponIconLooksLikeImageUrl(couponIcon) || couponIcon.startsWith('data:image'));
+   const logoUrl = hasRenderableCouponIcon ? couponIcon : cardIssuanceEffectiveMerchantLogo.trim();
+   const hex =
+     tierBackgroundColorForPayload(cardIssuanceCouponBackgroundColor) ?? '#0051d1';
+   const letter = (offerTitle.slice(0, 1) || '?').toUpperCase();
+   const banner = cardIssuanceCouponImage.trim();
+   let expiryVariant: 'none' | 'hours' | 'days' | 'expired' | 'incomplete';
+   let expiryLabel: string;
+   if (cardIssuanceCouponDateRestriction !== 'range') {
+     expiryVariant = 'none';
+     expiryLabel = 'NO EXPIRY';
+   } else {
+     const ymd = cardIssuanceCouponValidToYmd.trim();
+     if (!ymd) {
+       expiryVariant = 'incomplete';
+       expiryLabel = 'SET END DATE';
+     } else {
+       const parts = ymd.split('-').map((x) => Number.parseInt(x, 10));
+       const y = parts[0];
+       const m = parts[1];
+       const d = parts[2];
+       if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+         expiryVariant = 'incomplete';
+         expiryLabel = 'SET END DATE';
+       } else {
+         const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+         const ms = end.getTime() - Date.now();
+         const hours = ms / 3600000;
+         if (ms <= 0) {
+           expiryVariant = 'expired';
+           expiryLabel = 'EXPIRED';
+         } else if (hours <= 48) {
+           expiryVariant = 'hours';
+           expiryLabel = `EXPIRES IN ${Math.max(1, Math.ceil(hours))}H`;
+         } else {
+           expiryVariant = 'days';
+           expiryLabel = `EXPIRES IN ${Math.max(1, Math.ceil(hours / 24))}D`;
+         }
+       }
+     }
+   }
+   return { offerTitle, subtitle, logoUrl, hex, banner, letter, expiryVariant, expiryLabel };
+ }, [
+   cardIssuanceCouponName,
+   cardIssuanceCouponDescription,
+   cardIssuanceCouponIcon,
+   cardIssuanceEffectiveMerchantLogo,
+   cardIssuanceCouponBackgroundColor,
+   cardIssuanceCouponImage,
+   cardIssuanceCouponDateRestriction,
+   cardIssuanceCouponValidToYmd,
+ ]);
+
+ const cardConfiguratorDiscoverPreviewAssetLabel = useMemo(() => {
+   const rows = cardIssuanceTiers.filter((t) => t.name.trim() !== '');
+   if (rows.length === 0) {
+     const sym = cardIssuanceCurrencySymbol.trim() || '—';
+     return `${sym} · Member benefits`;
+   }
+   const sorted = [...rows].sort(
+     (a, b) => cardIssuanceTierThresholdToInt(b.threshold) - cardIssuanceTierThresholdToInt(a.threshold)
+   );
+   const top = sorted[0];
+   const thr = top.threshold.replace(/,/g, '').trim();
+   const name = top.name.trim();
+   if (thr) {
+     return `${name} · ${thr}+ ${CARD_ISSUANCE_BEAMIO_CURRENCY}`;
+   }
+   return `${name} · Member benefits`;
+ }, [cardIssuanceTiers, cardIssuanceCurrencySymbol]);
 
  const programsOverviewTiersSortedAscending = useMemo(() => {
    const tiers = cardIssuanceExistingCard?.meta?.tiers;
@@ -9435,6 +10137,53 @@ const cardIssuanceRechargeBonusPreviewReceive = Number(
   (cardIssuanceRechargeBonusPreviewPay + cardIssuanceRechargeBonusPreviewBonus).toFixed(2)
 );
 
+/** Same fallback as SilentPassUI `Market.tsx` Discover hero when `merchantImage` is absent. */
+const MERCHANT_PANEL_DISCOVER_HERO_FALLBACK =
+  'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80';
+
+const merchantPanelDiscoverStyleRating = useMemo(() => {
+  const addr = (cardIssuanceExistingCard?.cardAddress ?? '').toLowerCase();
+  let n = 0;
+  for (let i = 2; i < addr.length; i++) n = (n + addr.charCodeAt(i)) % 4;
+  return Math.max(4.6, Math.min(5, 4.7 + n * 0.1)).toFixed(1);
+}, [cardIssuanceExistingCard?.cardAddress]);
+
+const merchantPanelDiscoverHeroSrc = useMemo(() => {
+  const hero = cardIssuanceEffectiveMerchantImage.trim();
+  if (hero) return hero;
+  return MERCHANT_PANEL_DISCOVER_HERO_FALLBACK;
+}, [cardIssuanceEffectiveMerchantImage]);
+
+const merchantPanelDiscoverSubtitle = useMemo(() => {
+  const d = cardIssuanceDescription.trim();
+  if (d) return d;
+  return 'Member perks and program details appear here for customers on Discover.';
+}, [cardIssuanceDescription]);
+
+const merchantPanelDiscoverAssetLabel = useMemo(() => {
+  const metaTiers = programsOverviewTiersSortedAscending;
+  if (metaTiers.length > 0) {
+    const top = metaTiers[metaTiers.length - 1];
+    const name = (top.name ?? '').trim();
+    const minRaw = top.minUsdc6 != null && String(top.minUsdc6).trim() !== '' ? String(top.minUsdc6) : '';
+    let minDisplay = '';
+    if (minRaw) {
+      try {
+        minDisplay = `${cardIssuanceDisplayMoneyPrefix}${Number(ethers.formatUnits(minRaw, 6)).toFixed(2)}`;
+      } catch {
+        minDisplay = '';
+      }
+    }
+    if (name && minDisplay) return `${name} · ${minDisplay}`;
+    if (name) return name;
+    if (minDisplay) return minDisplay;
+  }
+  if (cardIssuancePrimaryBonusRule) {
+    return formatBonusRuleDisplayString(cardIssuancePrimaryBonusRule, cardIssuanceDisplayMoneyPrefix);
+  }
+  return 'Member Benefits';
+}, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuancePrimaryBonusRule]);
+
 useEffect(() => {
   if (!cardIssuanceBonusRuleEditorOpen && !cardIssuanceTierEditorOpen) return;
   const prevOverflow = document.body.style.overflow;
@@ -9546,7 +10295,7 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
     backgroundColor: cardIssuanceTierEditorBackgroundColor,
     tierDescriptionOpen: false,
   });
-  const merged = cardIssuanceEditingTierId
+    const merged = cardIssuanceEditingTierId
     ? cardIssuanceTiers.map((tier) => (tier.id === cardIssuanceEditingTierId ? nextRow : tier))
     : [...cardIssuanceTiers, nextRow];
   const nextTiers = reconcileTierThresholdsWithMinTopup(merged, nextMinTopup);
@@ -9583,7 +10332,7 @@ const removeCardIssuanceTierFromEditor = useCallback(async () => {
   if (cardIssuanceCreateLoading) return;
   const nextTiers = reconcileTierThresholdsWithMinTopup(
     cardIssuanceTiers.filter((tier) => tier.id !== cardIssuanceEditingTierId),
-    cardIssuanceMinTopup
+      cardIssuanceMinTopup
   );
   setCardIssuanceTiers(nextTiers);
   setCardIssuanceTierEditorOpen(false);
@@ -9608,6 +10357,7 @@ const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceEditingCouponId(null);
   setCardIssuanceCouponName('');
   setCardIssuanceCouponIcon('');
+  setCardIssuanceCouponImage('');
   setCardIssuanceCouponBackgroundColor('#0051d1');
   setCardIssuanceCouponDescription('');
   setCardIssuanceCouponIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
@@ -9626,6 +10376,7 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   setCardIssuanceCouponName(row.name);
   setCardIssuanceCouponIssueTotal(row.issueTotal || String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceCouponIcon(row.icon || '');
+  setCardIssuanceCouponImage((row.couponImage ?? '').trim());
   setCardIssuanceCouponBackgroundColor(
     tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#0051d1')
   );
@@ -9673,6 +10424,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     ? (editingCouponExistingRow?.name?.trim() ?? '')
     : cardIssuanceCouponName.trim();
   const icon = cardIssuanceCouponIcon.trim();
+  const couponImageTrim = cardIssuanceCouponImage.trim();
   const backgroundColorRaw = cardIssuanceCouponBackgroundColor.trim();
   const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw);
   const description = cardIssuanceCouponDescription.trim();
@@ -9732,28 +10484,26 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
 
   /** Edit draft only (no new on-chain series). */
   if (cardIssuanceEditingCouponId) {
-    let nextCoupons: CardIssuanceCouponRow[] = [];
-    setCardIssuanceCoupons((prev) => {
-      nextCoupons = prev.map((item) =>
-        item.id === cardIssuanceEditingCouponId
-          ? {
-              ...item,
-              name: item.issued ? item.name : name,
-              issueTotal: item.issued ? item.issueTotal : issueTotalFixed,
-              requiresRedeemCode: item.issued ? item.requiresRedeemCode : requiresRedeemCodeFinal,
-              couponDateRestriction: item.issued ? item.couponDateRestriction : dr,
-              couponValidFromYmd: item.issued ? item.couponValidFromYmd : vfStore,
-              couponValidToYmd: item.issued ? item.couponValidToYmd : vtStore,
-              icon,
-              backgroundColor: backgroundColor ?? '#0051d1',
-              description,
-              issued: item.issued,
-              issuedTokenId: item.issuedTokenId,
-            }
-          : item
-      );
-      return nextCoupons;
-    });
+    const nextCoupons = cardIssuanceCoupons.map((item) =>
+      item.id === cardIssuanceEditingCouponId
+        ? {
+            ...item,
+            name: item.issued ? item.name : name,
+            issueTotal: item.issued ? item.issueTotal : issueTotalFixed,
+            requiresRedeemCode: item.issued ? item.requiresRedeemCode : requiresRedeemCodeFinal,
+            couponDateRestriction: item.issued ? item.couponDateRestriction : dr,
+            couponValidFromYmd: item.issued ? item.couponValidFromYmd : vfStore,
+            couponValidToYmd: item.issued ? item.couponValidToYmd : vtStore,
+            icon,
+            couponImage: couponImageTrim,
+            backgroundColor: backgroundColor ?? '#0051d1',
+            description,
+            issued: item.issued,
+            issuedTokenId: item.issuedTokenId,
+          }
+        : item
+    );
+    setCardIssuanceCoupons(nextCoupons);
     if (cardIssuanceExistingCard?.cardAddress) {
       setCardIssuanceCouponEditorPublishing(true);
       try {
@@ -9766,7 +10516,8 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
           const metadataChanged =
             prevRow.icon !== nextRow.icon ||
             prevRow.backgroundColor !== nextRow.backgroundColor ||
-            prevRow.description !== nextRow.description;
+            prevRow.description !== nextRow.description ||
+            (prevRow.couponImage ?? '') !== (nextRow.couponImage ?? '');
           if (metadataChanged) {
             const metadataRes = await updateIssuedCouponMetadata({
               cardAddress: cardIssuanceExistingCard.cardAddress,
@@ -9775,6 +10526,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
               icon: nextRow.icon,
               backgroundColor: nextRow.backgroundColor,
               description: nextRow.description,
+              couponImage: nextRow.couponImage ?? '',
             });
             if (!metadataRes.success) {
               saveOk = false;
@@ -9784,6 +10536,11 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             }
           }
           // issued coupon on-chain fields are immutable; metadata endpoint already handled allowed edits
+        } else if (prevRow?.issued && !issuedTokenId) {
+          saveOk = false;
+          setCardIssuanceCouponEditorError(
+            'This coupon is issued but its series id is not loaded yet. Wait for program data to finish loading, then try Save again.'
+          );
         } else {
           const ok = await handlePublishCardIssuanceRef.current({
             couponsOverride: nextCoupons,
@@ -9820,6 +10577,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
           icon,
           backgroundColor ?? '#0051d1',
           description,
+          couponImageTrim,
           issueTotalFixed,
           requiresRedeemCodeFinal,
           dr,
@@ -9870,6 +10628,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       icon,
       backgroundColor ?? '#0051d1',
       description,
+      couponImageTrim,
       issueTotalFixed,
       cardIssuanceCouponRequiresRedeemCode,
       dr,
@@ -9889,6 +10648,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
         ...(dr === 'range' && vfStore && vtStore ? { validFrom: vfStore, validTo: vtStore } : {}),
         ...(icon ? { icon } : {}),
         ...(backgroundColor ? { backgroundColor } : {}),
+        ...(couponImageTrim ? { couponImage: couponImageTrim } : {}),
         ...(description ? { description } : {}),
       },
     };
@@ -10028,6 +10788,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   cardIssuanceCouponBackgroundColor,
   cardIssuanceCouponDescription,
   cardIssuanceCouponIcon,
+  cardIssuanceCouponImage,
   cardIssuanceCouponIssueTotal,
   cardIssuanceCouponRequiresRedeemCode,
   cardIssuanceCouponDateRestriction,
@@ -10041,32 +10802,26 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
 ]);
 
 const removeCardIssuanceCouponDraft = useCallback(async (couponId: string) => {
-  let nextCoupons: CardIssuanceCouponRow[] = [];
-  setCardIssuanceCoupons((prev) => {
-    nextCoupons = prev.filter((item) => !(item.id === couponId && !item.issued));
-    return nextCoupons;
-  });
+  const nextCoupons = cardIssuanceCoupons.filter((item) => !(item.id === couponId && !item.issued));
+  setCardIssuanceCoupons(nextCoupons);
   if (cardIssuanceExistingCard?.cardAddress) {
     await handlePublishCardIssuanceRef.current({
       couponsOverride: nextCoupons,
       loadingScope: 'default',
     });
   }
-}, [cardIssuanceExistingCard?.cardAddress]);
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons]);
 
 const issueCardIssuanceCoupon = useCallback(async (couponId: string) => {
-  let nextCoupons: CardIssuanceCouponRow[] = [];
-  setCardIssuanceCoupons((prev) => {
-    nextCoupons = prev.map((item) => (item.id === couponId ? { ...item, issued: true } : item));
-    return nextCoupons;
-  });
+  const nextCoupons = cardIssuanceCoupons.map((item) => (item.id === couponId ? { ...item, issued: true } : item));
+  setCardIssuanceCoupons(nextCoupons);
   if (cardIssuanceExistingCard?.cardAddress) {
     await handlePublishCardIssuanceRef.current({
       couponsOverride: nextCoupons,
       loadingScope: 'default',
     });
   }
-}, [cardIssuanceExistingCard?.cardAddress]);
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons]);
 
 const openCardIssuanceBonusRuleCreate = useCallback(() => {
   setCardIssuanceBonusRuleEditorServerError('');
@@ -10171,7 +10926,6 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      const file = input.files?.[0];
      input.value = '';
      if (!file || !file.type.startsWith('image/')) return;
-     const isSvg = file.type === 'image/svg+xml';
      const p0 = profiles?.[0];
      if (!p0?.privateKeyArmor) {
        setCardIssuanceCreateError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
@@ -10180,24 +10934,7 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      setCardIssuanceCreateError('');
      setCardIssuanceShareImageUploading(true);
      try {
-       let blob: Blob = file;
-       if (!isSvg && file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
-         blob = await resizeToFitLimit(file, IPFS_UPLOAD_TARGET_MAX_BYTES);
-       }
-       let dataUrl = await blobToDataUrl(blob);
-       let hash: string | null = null;
-       try {
-         hash = await postToIPFS(p0, dataUrl);
-       } catch (err: any) {
-         const msg = err?.message ?? String(err);
-         if (typeof msg === 'string' && msg.includes('413') && !isSvg) {
-           blob = await compressToJpeg(blob, IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES);
-           dataUrl = await blobToDataUrl(blob);
-           hash = await postToIPFS(p0, dataUrl);
-         } else {
-           throw err;
-         }
-       }
+       const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
        if (hash) {
          setCardIssuanceShareImageUrl(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
        } else {
@@ -10212,13 +10949,94 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    [profiles]
  );
 
+ const handleCardIssuanceMerchantImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+   async (e) => {
+     const input = e.currentTarget;
+     const file = input.files?.[0];
+     input.value = '';
+     if (!file || !file.type.startsWith('image/')) return;
+     const p0 = profiles?.[0];
+     if (!p0?.privateKeyArmor) {
+       setCardIssuanceCreateError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
+       return;
+     }
+     setCardIssuanceCreateError('');
+     setCardIssuanceMerchantImageUploading(true);
+     try {
+       const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+       if (hash) {
+         const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+         setCardIssuanceMerchantImageClearPending(false);
+         setCardIssuanceMerchantImageUrl(url);
+         const issuedAddr = cardIssuanceExistingCard?.cardAddress?.trim();
+         if (issuedAddr && ethers.isAddress(issuedAddr)) {
+           const save = await updateCardMerchantImage({
+             cardAddress: ethers.getAddress(issuedAddr),
+             merchantImage: url,
+           });
+           if (!save.success) {
+             setCardIssuanceCreateError(save.error ?? 'Failed to save merchant image on server.');
+             setCardIssuanceMerchantImageUrl('');
+             return;
+           }
+           setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+         }
+       } else {
+         setCardIssuanceCreateError('Merchant image upload failed.');
+       }
+     } catch (err: any) {
+       setCardIssuanceCreateError(err?.message ?? 'Merchant image upload failed.');
+     } finally {
+       setCardIssuanceMerchantImageUploading(false);
+     }
+   },
+   [profiles, cardIssuanceExistingCard?.cardAddress]
+ );
+
+ const removeIssuedProgramMerchantImage = useCallback(async () => {
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim();
+   if (addr && ethers.isAddress(addr)) {
+     setCardIssuanceMerchantImageUploading(true);
+     setCardIssuanceCreateError('');
+     try {
+       const r = await updateCardMerchantImage({
+         cardAddress: ethers.getAddress(addr),
+         merchantImage: '',
+       });
+       if (!r.success) {
+         setCardIssuanceCreateError(r.error ?? 'Failed to remove merchant image on server.');
+         return;
+       }
+       setCardIssuanceMerchantImageUrl('');
+       setCardIssuanceMerchantImageClearPending(false);
+       if (cardIssuanceMerchantImageFileRef.current) {
+         cardIssuanceMerchantImageFileRef.current.value = '';
+       }
+       if (cardIssuanceMerchantImageIssuedPanelFileRef.current) {
+         cardIssuanceMerchantImageIssuedPanelFileRef.current.value = '';
+       }
+       setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+     } finally {
+       setCardIssuanceMerchantImageUploading(false);
+     }
+     return;
+   }
+   setCardIssuanceMerchantImageUrl('');
+   setCardIssuanceMerchantImageClearPending(true);
+   if (cardIssuanceMerchantImageFileRef.current) {
+     cardIssuanceMerchantImageFileRef.current.value = '';
+   }
+   if (cardIssuanceMerchantImageIssuedPanelFileRef.current) {
+     cardIssuanceMerchantImageIssuedPanelFileRef.current.value = '';
+   }
+ }, [cardIssuanceExistingCard?.cardAddress]);
+
 const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
     const input = e.currentTarget;
     const file = input.files?.[0];
     input.value = '';
     if (!file || !file.type.startsWith('image/')) return;
-    const isSvg = file.type === 'image/svg+xml';
     const p0 = profiles?.[0];
     if (!p0?.privateKeyArmor) {
       setCardIssuanceCouponEditorError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
@@ -10227,24 +11045,7 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
     setCardIssuanceCouponEditorError('');
     setCardIssuanceCouponIconUploading(true);
     try {
-      let blob: Blob = file;
-      if (!isSvg && file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
-        blob = await resizeToFitLimit(file, IPFS_UPLOAD_TARGET_MAX_BYTES);
-      }
-      let dataUrl = await blobToDataUrl(blob);
-      let hash: string | null = null;
-      try {
-        hash = await postToIPFS(p0, dataUrl);
-      } catch (err: any) {
-        const msg = err?.message ?? String(err);
-        if (typeof msg === 'string' && msg.includes('413') && !isSvg) {
-          blob = await compressToJpeg(blob, IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES);
-          dataUrl = await blobToDataUrl(blob);
-          hash = await postToIPFS(p0, dataUrl);
-        } else {
-          throw err;
-        }
-      }
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
       if (hash) {
         setCardIssuanceCouponIcon(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
       } else {
@@ -10254,6 +11055,35 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
       setCardIssuanceCouponEditorError(err?.message ?? 'Coupon icon upload failed.');
     } finally {
       setCardIssuanceCouponIconUploading(false);
+     }
+   },
+   [profiles]
+ );
+
+const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  async (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceCouponEditorError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
+      return;
+    }
+    setCardIssuanceCouponEditorError('');
+    setCardIssuanceCouponImageUploading(true);
+    try {
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      if (hash) {
+        setCardIssuanceCouponImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+      } else {
+        setCardIssuanceCouponEditorError('Coupon background image upload failed.');
+      }
+    } catch (err: any) {
+      setCardIssuanceCouponEditorError(err?.message ?? 'Coupon background image upload failed.');
+    } finally {
+      setCardIssuanceCouponImageUploading(false);
     }
   },
   [profiles]
@@ -10308,7 +11138,6 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
      const file = input.files?.[0];
      input.value = '';
      if (!file || !file.type.startsWith('image/')) return;
-     const isSvg = file.type === 'image/svg+xml';
      const p0 = profiles?.[0];
      if (!p0?.privateKeyArmor) {
        setSettingsMerchantLogoError('Profile not available for upload.');
@@ -10317,24 +11146,7 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
      setSettingsMerchantLogoError('');
      setSettingsMerchantLogoUploading(true);
      try {
-       let blob: Blob = file;
-       if (!isSvg && file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
-         blob = await resizeToFitLimit(file, IPFS_UPLOAD_TARGET_MAX_BYTES);
-       }
-       let dataUrl = await blobToDataUrl(blob);
-       let hash: string | null = null;
-       try {
-         hash = await postToIPFS(p0, dataUrl);
-       } catch (err: unknown) {
-         const msg = (err as Error)?.message ?? String(err);
-         if (typeof msg === 'string' && msg.includes('413') && !isSvg) {
-           blob = await compressToJpeg(blob, IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES);
-           dataUrl = await blobToDataUrl(blob);
-           hash = await postToIPFS(p0, dataUrl);
-         } else {
-           throw err;
-         }
-       }
+       const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
        if (!hash) {
          setSettingsMerchantLogoError('Logo upload failed.');
          return;
@@ -10407,7 +11219,7 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
      !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
   const tiersRowsForPublish = opts?.tiersOverride ??
     (useQuickDefaultRewardsNewCard
-      ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT))
+     ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT))
       : cardIssuanceTiers);
    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish);
    if (tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
@@ -10436,9 +11248,9 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
        return false;
      }
    }
-  const minTopupRaw = (
+   const minTopupRaw = (
     opts?.minTopupOverride ?? (useQuickDefaultRewardsNewCard ? String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT) : cardIssuanceMinTopup)
-  ).replace(/,/g, '').trim();
+   ).replace(/,/g, '').trim();
    if (minTopupRaw === '') {
      setCardIssuanceCreateError('Minimum top-up is required.');
      return false;
@@ -10562,6 +11374,7 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
       coupons: couponsPayloadForPublish ?? [],
        ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
        ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
+       ...(cardIssuanceMerchantImageUrl.trim() ? { merchantImage: cardIssuanceMerchantImageUrl.trim() } : {}),
        logoDisplayTier: cardIssuanceLogoDisplayTier,
        ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
        ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
@@ -10639,6 +11452,7 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
            : undefined;
 
        if (metadataOnlyPublish) {
+         setCardIssuanceMerchantImageClearPending(false);
          setCardIssuanceOwnerAdminNotice({
            kind: 'ok',
            text: 'Program metadata published. Recharge bonus and related settings will be used by POS and apps after a short cache refresh.',
@@ -10753,6 +11567,7 @@ const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElemen
    cardIssuanceTiers,
    cardIssuanceTierRule,
    cardIssuanceShareImageUrl,
+   cardIssuanceMerchantImageUrl,
    cardIssuanceLogoDisplayTier,
    cardIssuanceCategoryId,
    cardIssuanceDescription,
@@ -10992,6 +11807,9 @@ useEffect(() => {
      if (typeof draft.shareImageUrl === 'string') {
        setCardIssuanceShareImageUrl(draft.shareImageUrl);
      }
+     if (typeof draft.merchantImageUrl === 'string') {
+       setCardIssuanceMerchantImageUrl(draft.merchantImageUrl);
+     }
      if (draft.logoDisplayTier != null) {
        setCardIssuanceLogoDisplayTier(draft.logoDisplayTier);
      }
@@ -11102,6 +11920,7 @@ useEffect(() => {
        backgroundColor: t.backgroundColor,
      })),
      shareImageUrl: cardIssuanceShareImageUrl,
+     merchantImageUrl: cardIssuanceMerchantImageUrl,
      logoDisplayTier: cardIssuanceLogoDisplayTier,
      categoryId: cardIssuanceCategoryId,
      description: cardIssuanceDescription,
@@ -11124,6 +11943,7 @@ useEffect(() => {
    cardIssuanceTierRule,
    tiersByLoyaltyRule,
    cardIssuanceShareImageUrl,
+   cardIssuanceMerchantImageUrl,
    cardIssuanceLogoDisplayTier,
    cardIssuanceCategoryId,
    cardIssuanceDescription,
@@ -12582,7 +13402,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setAdminMintLimitQuota(null);
      setAdminMintCounterFromClear(null);
      setProtocolFuelReserveBalance(null);
-    setIndexerTransactions([]);
+     setIndexerTransactions([]);
     setTerminals(loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? []);
      setSubordinateBalances({});
      setTerminalStats({});
@@ -15112,7 +15932,7 @@ useEffect(() => {
   };
 }, [activeTab]);
 
- /** Unified Base overview feeder: one batch per **CoNET L1 new block**（Daemon 全局守护，全 Merchant OS 生命周期内持续刷新，不限当前 Tab）。 */
+ /** Unified Base overview feeder: one batch per **6s Daemon tick**（与 Members 并行）；B-Unit 余额由 CoNET `block` 守护进程单独刷新。 */
  const feederInProgressRef = useRef(false);
  const feederCancelledRef = useRef(false);
  const feederAccountRef = useRef('');
@@ -15548,40 +16368,7 @@ useEffect(() => {
 
        // Members 2c/2d：已迁至 DaemonProvider CoNET `block` + `registerMembersLoyaltyBackgroundWork`（后台更新，不依赖当前 Tab）。
 
-       // 3. Protocol Fuel Reserve: CoNET BUint.balanceOf sum for user EOA + AA (same CoNET block tick as indexer reads below).
-       // Trusted-cache protocol: only overwrite on full successful read; partial RPC failure → keep last trusted (persisted + in-memory).
-       // Sums EOA + AA (+ keyID if distinct); matches on-chain fuel held across the user's identities.
-       if (buintReserveTargets.length > 0 && !feederCancelledRef.current) {
-         const stepBuintKey = buintBalanceCacheKey;
-         try {
-           let sumRaw = 0n;
-           let allOk = true;
-           for (const addr of buintReserveTargets) {
-             try {
-              const display = await fetchConetBUnitBalanceDisplay(addr, conetDepinProvider);
-              sumRaw += BigInt(Math.round(display * 1_000_000));
-             } catch {
-               allOk = false;
-               break;
-             }
-           }
-           if (allOk && !feederCancelledRef.current) {
-             const balance = Number(sumRaw) / 1_000_000;
-             setProtocolFuelReserveBalance(balance);
-             if (stepBuintKey) saveTrustedCache(stepBuintKey, balance);
-           } else if (!feederCancelledRef.current) {
-             const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
-             if (fb != null) setProtocolFuelReserveBalance(fb);
-           }
-         } catch {
-           if (!feederCancelledRef.current) {
-             const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
-             if (fb != null) setProtocolFuelReserveBalance(fb);
-           }
-         }
-       } else if (buintReserveTargets.length === 0) {
-         setProtocolFuelReserveBalance(null);
-       }
+       // 3. Protocol Fuel Reserve (B-Units)：已迁至 DaemonProvider CoNET `block` + `registerMerchantOsBuintBalanceBackgroundWork`（与 Overview 6s feeder 解耦）。
 
        // 4. Protocol Fuel “consumption” for the Overview panel is derived client-side from Transactions-list
        //    Charge rows (`fees.bServiceUnits6`) in `transactionsFilteredForTable`, scoped by header `timeFilter` — not fetched here.
@@ -15688,6 +16475,77 @@ useEffect(() => {
    merchantOwnCardAddress,
    retainedCapitalTrustedCacheKey,
    walletStoragePartitionLower,
+ ]);
+
+ /** Dashboard B-Units (Protocol Fuel Reserve): CoNET L1 `block` tick via DaemonProvider; decoupled from 6s Overview feeder. */
+ useEffect(() => {
+   let cancelled = false;
+   const buintBalanceCacheKey = walletStoragePartitionLower
+     ? `eoa:${walletStoragePartitionLower}:buint:balance:v2`
+     : '';
+   const buintReserveTargets: string[] = [];
+   const buintTargetSeen = new Set<string>();
+   const pushBuintTarget = (raw: string | undefined) => {
+     const t = (raw ?? '').trim();
+     if (!t || !ethers.isAddress(t)) return;
+     const a = ethers.getAddress(t);
+     const k = a.toLowerCase();
+     if (buintTargetSeen.has(k)) return;
+     buintTargetSeen.add(k);
+     buintReserveTargets.push(a);
+   };
+   pushBuintTarget(profiles?.[0]?.keyID);
+   pushBuintTarget(myAddress);
+   pushBuintTarget(profiles?.[0]?.aaAccount);
+
+   const tick = async (): Promise<void> => {
+     if (cancelled) return;
+     if (buintReserveTargets.length === 0) {
+       if (!cancelled) setProtocolFuelReserveBalance(null);
+       return;
+     }
+     const stepBuintKey = buintBalanceCacheKey;
+     try {
+       let sumRaw = 0n;
+       let allOk = true;
+       for (const addr of buintReserveTargets) {
+         if (cancelled) return;
+         try {
+           const display = await fetchConetBUnitBalanceDisplay(addr, conetDepinProvider);
+           sumRaw += BigInt(Math.round(display * 1_000_000));
+         } catch {
+           allOk = false;
+           break;
+         }
+       }
+       if (cancelled) return;
+       if (allOk) {
+         const balance = Number(sumRaw) / 1_000_000;
+         setProtocolFuelReserveBalance(balance);
+         if (stepBuintKey) saveTrustedCache(stepBuintKey, balance);
+       } else {
+         const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
+         if (fb != null) setProtocolFuelReserveBalance(fb);
+       }
+     } catch {
+       if (cancelled) return;
+       const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
+       if (fb != null) setProtocolFuelReserveBalance(fb);
+     }
+   };
+
+   registerMerchantOsBuintBalanceBackgroundWork(() => tick());
+   void tick();
+   return () => {
+     cancelled = true;
+     registerMerchantOsBuintBalanceBackgroundWork(null);
+   };
+ }, [
+   registerMerchantOsBuintBalanceBackgroundWork,
+   walletStoragePartitionLower,
+   myAddress,
+   profiles?.[0]?.keyID,
+   profiles?.[0]?.aaAccount,
  ]);
 
 /**
@@ -16696,9 +17554,9 @@ const membersRewardTierLevelsByCardLower = useMemo(() => {
       ethers.getAddress(currentCard).toLowerCase(),
       resolveMembersRewardTierLevels(cardIssuanceExistingCard?.meta?.tiers)
     );
-  }
-  return map;
-}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.tiers, membersOwnedPrograms]);
+   }
+   return map;
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.tiers, membersOwnedPrograms]);
 
  /** Mirrors daemon `activeCardScopedKeys` (stored value OR lookback top-up); used when `activeCardsCount` is stale `0` from cache / `??` bug. */
  const dashboardActiveCardsRowDerivedCount = useMemo(() => {
@@ -19846,7 +20704,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             const tipCadM = isCharge ? mergedChargeTipCad(tx) : 0;
                             let subtitleM: string;
                             if (isTopup) {
-                              subtitleM = `via USDC • ${timeStrM || '—'}`;
+                              subtitleM = mobileTransactionsTopupSubtitle(tx, timeStrM);
                             } else if (payerTagM) {
                               subtitleM = `${payerTagM} • ${timeStrM || '—'}`;
                             } else if (isTip) {
@@ -19856,16 +20714,25 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             }
                             const rowKeyM = String(tx.indexerTxId || tx.id || `m-${g.bucketKey}-${idx}`);
                             return (
-                              <button
+                              <div
                                 key={rowKeyM}
-                                type="button"
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => setSmartReceiptTx(tx)}
-                                className={`flex w-full items-start gap-3 rounded-xl border border-slate-100/90 bg-white p-4 text-left shadow-sm transition-all active:scale-[0.99] ${bizFocusRingClass}`}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSmartReceiptTx(tx);
+                                  }
+                                }}
+                                className={`flex w-full cursor-pointer items-start gap-3 rounded-xl border border-slate-100/90 bg-white p-4 text-left shadow-sm outline-none transition-all focus-visible:ring-2 focus-visible:ring-[#1562f0]/25 active:scale-[0.99] ${bizFocusRingClass}`}
                               >
                                 <div
                                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
                                     isTopup
-                                      ? 'bg-sky-100 text-[#1562f0]'
+                                      ? tx.source === 'NFC'
+                                        ? 'bg-sky-100 text-sky-600'
+                                        : 'bg-sky-100 text-[#1562f0]'
                                       : isTip
                                         ? 'bg-rose-50 text-rose-500'
                                         : useNfcM
@@ -19874,7 +20741,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   }`}
                                 >
                                   {isTopup ? (
-                                    <Plus size={22} strokeWidth={2.25} aria-hidden />
+                                    tx.source === 'NFC' ? (
+                                      <Nfc size={20} strokeWidth={2} aria-hidden />
+                                    ) : (
+                                      <Plus size={22} strokeWidth={2.25} aria-hidden />
+                                    )
                                   ) : isTip ? (
                                     <Heart size={20} className="fill-rose-100" strokeWidth={2} aria-hidden />
                                   ) : useNfcM ? (
@@ -19884,7 +20755,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   )}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <div className="text-[15px] font-bold text-slate-900">{titleM}</div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[15px] font-bold text-slate-900">{titleM}</span>
+                                    <button
+                                      type="button"
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        setRawTxJsonModal(tx);
+                                      }}
+                                      className="inline-flex shrink-0 items-center justify-center rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#1562f0]"
+                                      title="View TxDisplayRow JSON (includes raw Transaction)"
+                                      aria-label="View TxDisplayRow JSON"
+                                    >
+                                      <Code size={14} />
+                                    </button>
+                                  </div>
                                   <div className="mt-0.5 text-[13px] text-slate-500">{subtitleM}</div>
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end text-right">
@@ -19899,7 +20784,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     </span>
                                   ) : null}
                                 </div>
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -20513,6 +21398,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  : '';
              const payerLower = payerAddr.toLowerCase();
              const payerTag = payerLower ? resolveReportingBeamioTagLower(payerLower) : '';
+             const payeeAddr =
+               typeof rawP.payee === 'string' && ethers.isAddress(rawP.payee)
+                 ? ethers.getAddress(rawP.payee)
+                 : '';
+             const payeeLower = payeeAddr.toLowerCase();
+             const payeeTag = payeeLower ? resolveReportingBeamioTagLower(payeeLower) : '';
              const tierCap =
                tx.type === 'Charge' && payerLower ? chargePayerInfraTierCapsuleByPayer[payerLower] : undefined;
              const routeRaw = rawP.route;
@@ -20530,6 +21421,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              const totalCad = calculateTxNetValueCAD(tx);
              const tipCad = mergedChargeTipCad(tx);
              const statusIsPending = tx.status === 'Pending';
+             const isVaultTerminalSr =
+               tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
+             let ledgerTypeTitleSr: string = tx.type;
+             if (tx.type === 'Charge') {
+               const rawLt = tx.raw as Record<string, unknown>;
+               const rteLt = rawLt.route;
+               const metaLt = parseIndexerMetaTuple(rawLt.meta);
+               const pctLt = discountRateBpsToPercentOffLabel(metaLt.discountRateBps);
+               if ((Array.isArray(rteLt) && rteLt.length > 0) || pctLt != null) {
+                 ledgerTypeTitleSr = 'Charge (Auto)';
+               }
+             }
+             const ledgerCardStatusSr =
+               tx.status === 'Pending'
+                 ? { label: 'Pending', cls: 'bg-amber-50 text-amber-700' as const }
+                 : tx.type.includes('Top-Up')
+                   ? { label: 'Confirmed', cls: 'bg-emerald-50 text-emerald-600' as const }
+                   : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const };
 
              const breakdownBlock = (() => {
                if (tx.type === 'Charge') {
@@ -20689,19 +21598,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </div>
                    <div className="min-h-0 flex-1 overflow-y-auto px-8 py-8">
                      <div className="mb-8 overflow-hidden rounded-[2rem] border border-[#abadaf]/15 bg-white shadow-sm">
-                       <div className="flex flex-col items-center border-b border-[#e5e9eb] bg-[#eef1f3]/50 px-6 py-6 text-center">
-                         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] shadow-lg shadow-[#0051d1]/20">
-                           <Receipt className="size-8 text-white" strokeWidth={2} aria-hidden />
-                         </div>
-                         <p className="text-lg font-bold text-[#2c2f31]">{tx.terminal || 'Terminal'}</p>
-                         <p className="mt-1 text-xs font-medium text-[#747779]">
-                           {[tx.dateStr, tx.time].filter(Boolean).join(' · ')}
-                           {payerTag ? ` · ${payerTag}` : ''}
-                           {!payerTag && payerAddr
-                             ? ` · ${payerAddr.slice(0, 6)}…${payerAddr.slice(-4)}`
-                             : ''}
-                         </p>
-                       </div>
+                       {renderSmartReceiptLedgerAlignedPrimaryCard({
+                         tx,
+                         cadOracle,
+                         pointsCurrencySymbol: dashboardPointsCurrencySymbol,
+                         payerAddr,
+                         payerTag,
+                         payeeAddr,
+                         payeeTag,
+                         tierCap,
+                         totalCad,
+                         ledgerTypeTitleSr,
+                         ledgerCardStatusSr,
+                         isVaultTerminalSr,
+                         chargeTxNetValueColumnShowBreakdown,
+                         chargeMetaRequestAmountApproxCad,
+                       })}
                        <div className="space-y-4 border-b border-[#e5e9eb] px-8 py-8">
                          <p className="text-[10px] font-black uppercase tracking-widest text-[#595c5e]">Transaction breakdown</p>
                          {breakdownBlock}
@@ -21644,15 +22556,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               {directoryMemberCurrentBalanceDisplay(row)}
                              </p>
                             {hasRewardTier && tierPillLabel ? (
-                              <span
-                                className={`mt-2 inline-block rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
-                                  isHighestRewardTier
-                                    ? 'border border-white/25 bg-white/20 text-white'
-                                    : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200/80'
-                                }`}
-                              >
-                                {tierPillLabel}
-                              </span>
+                             <span
+                               className={`mt-2 inline-block rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
+                                isHighestRewardTier
+                                  ? 'border border-white/25 bg-white/20 text-white'
+                                   : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200/80'
+                               }`}
+                             >
+                               {tierPillLabel}
+                             </span>
                             ) : null}
                            </div>
                          </button>
@@ -21937,13 +22849,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                className="size-14 rounded-full object-cover"
                              />
                             {hasRewardTier ? (
-                              <div
-                                className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
+                             <div
+                               className={`absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-white ${
                                   isHighestRewardTier ? 'bg-yellow-400' : 'bg-slate-300'
-                                }`}
-                              >
-                                <Star className="size-2.5 fill-white text-white" strokeWidth={0} aria-hidden />
-                              </div>
+                               }`}
+                             >
+                               <Star className="size-2.5 fill-white text-white" strokeWidth={0} aria-hidden />
+                             </div>
                             ) : null}
                            </div>
                            <div className="min-w-0 flex-1">
@@ -21971,13 +22883,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <div className="shrink-0 text-right">
                              <p className="font-extrabold tabular-nums text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
                             {hasRewardTier && tierBadgeLabel ? (
-                              <span
-                                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                             <span
+                               className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
                                   isHighestRewardTier ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-600'
-                                }`}
-                              >
+                               }`}
+                             >
                                 {tierBadgeLabel.replace(/\s+Member$/i, '')}
-                              </span>
+                             </span>
                             ) : null}
                            </div>
                          </button>
@@ -22904,6 +23816,75 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''
                    }`}
                  >
+                   <div
+                     className={`sticky top-0 z-30 -mx-6 mb-6 border-b border-[#abadaf]/15 bg-white/95 px-6 pb-5 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/80 sm:-mx-8 sm:px-8 ${
+                       isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''
+                     }`}
+                   >
+                     <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-[#0051d1]">
+                       Discover · Featured Brands preview
+                     </p>
+                     <div
+                       className="pointer-events-none mx-auto w-full max-w-md select-none"
+                       aria-label="Preview of how this program appears on consumer Discover"
+                     >
+                       <div className="w-full text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden">
+                         <div className="relative">
+                           {cardIssuanceEffectiveMerchantImage ? (
+                             <img
+                               src={cardIssuanceEffectiveMerchantImage}
+                               alt=""
+                               className="w-full aspect-[16/9] object-cover"
+                               draggable={false}
+                             />
+                           ) : (
+                             <div
+                               className="w-full aspect-[16/9] bg-gradient-to-br from-[#dfe6ee] via-[#e8edf2] to-[#ccd6e0] dark:from-slate-700 dark:via-slate-800 dark:to-slate-900"
+                               aria-hidden
+                             />
+                           )}
+                           <div className="absolute top-3 right-3 bg-white/90 text-[#2c2f31] rounded-full px-3 py-1.5 inline-flex items-center gap-1.5 shadow-sm dark:bg-slate-900/90 dark:text-slate-100">
+                             <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" aria-hidden />
+                             <span className="text-[12px] font-bold leading-none">4.8</span>
+                           </div>
+                           <div className="absolute -bottom-8 left-6">
+                             <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900">
+                               {cardIssuanceEffectiveMerchantLogo ? (
+                                 <img
+                                   src={cardIssuanceEffectiveMerchantLogo}
+                                   alt=""
+                                   className="h-11 w-11 rounded-xl object-cover"
+                                 />
+                               ) : (
+                                 <span className="text-[20px] font-semibold leading-none text-[#94afff]">
+                                   {cardConfiguratorDiscoverPreviewTitle.charAt(0).toUpperCase()}
+                                 </span>
+                               )}
+                             </div>
+                           </div>
+                         </div>
+                         <div className="px-6 pb-6 pt-11">
+                           <div className="mb-1 flex items-start justify-between gap-3">
+                             <h4 className="line-clamp-1 min-w-0 text-[19px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+                               {cardConfiguratorDiscoverPreviewTitle}
+                             </h4>
+                             <p className="shrink-0 pt-1 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-[#2f5fcf]">
+                               Your Assets
+                             </p>
+                           </div>
+                           <p className="mb-4 line-clamp-2 text-[15px] leading-tight text-[#4b5361] dark:text-slate-300">
+                             {cardConfiguratorDiscoverPreviewSubtitle}
+                           </p>
+                           <div className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#f0f2f4] px-4 py-3 dark:bg-slate-800">
+                             <Gift className="h-5 w-5 shrink-0 text-[#2f5fcf]" aria-hidden />
+                             <span className="line-clamp-2 text-[14px] font-semibold leading-tight text-[#232a34] dark:text-slate-100">
+                               {cardConfiguratorDiscoverPreviewAssetLabel}
+                             </span>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
                    {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 1 ? (
                      <header className="mb-8 space-y-2 border-b border-[#abadaf]/20 pb-6">
                        <span className="block text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
@@ -23116,8 +24097,60 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            })}
                          </div>
                        </div>
+                       <div className="col-span-full space-y-2 border-t border-[#abadaf]/15 pt-6">
+                         <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
+                           Merchant image
+                         </span>
+                         <p className="ml-1 text-[11px] font-medium leading-relaxed text-[#595c5e]">
+                           Optional banner or storefront photo. Resized if needed, uploaded to IPFS, then saved on
+                           publish under program metadata key merchantImage (alongside the square Merchant Logo in
+                           image).
+                         </p>
+                         <input
+                           ref={cardIssuanceMerchantImageFileRef}
+                           type="file"
+                           accept="image/*"
+                           className="hidden"
+                           onChange={handleCardIssuanceMerchantImagePick}
+                         />
+                         {!cardIssuanceEffectiveMerchantImage ? (
+                           <button
+                             type="button"
+                             onClick={() => cardIssuanceMerchantImageFileRef.current?.click()}
+                             disabled={cardIssuanceMerchantImageUploading}
+                             className="flex min-h-[160px] w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60"
+                           >
+                             {cardIssuanceMerchantImageUploading ? (
+                               <Loader2 className="h-8 w-8 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                             ) : (
+                               <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
+                             )}
+                             <span className="mt-2 text-[11px] font-bold text-[#747779]">
+                               {cardIssuanceMerchantImageUploading ? 'Uploading…' : 'Upload image (PNG or JPEG)'}
+                             </span>
+                           </button>
+                         ) : null}
+                         {cardIssuanceEffectiveMerchantImage ? (
+                           <div className="relative min-h-[160px] w-full shrink-0 overflow-hidden rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
+                             <img
+                               src={cardIssuanceEffectiveMerchantImage}
+                               alt=""
+                               className="h-full min-h-[160px] w-full object-cover"
+                             />
+                             <button
+                               type="button"
+                               aria-label="Remove merchant image"
+                               disabled={cardIssuanceMerchantImageUploading}
+                               onClick={() => void removeIssuedProgramMerchantImage()}
+                               className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                             >
+                               <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                             </button>
+                           </div>
+                         ) : null}
+                       </div>
                        {!cardIssuanceExistingCard ? (
-                         <div className="mt-4 w-full min-w-0 space-y-2 border-t border-[#abadaf]/15 pt-4">
+                         <div className="col-span-full mt-4 w-full min-w-0 space-y-2 border-t border-[#abadaf]/15 pt-4">
                            <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
                              Rewards setup
                            </span>
@@ -25290,7 +26323,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             {cardIssuanceCreateLoading ? (
                               <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
                             ) : (
-                              <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                            <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
                             )}
                             <span>
                               {cardIssuanceCreateLoading
@@ -25343,11 +26376,26 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <div
                                className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-xl border p-4 sm:rounded-2xl sm:p-5"
                                style={{
-                                 background: programsOverviewActiveCardGradientCss,
                                  color: programsOverviewPassHeroTheme.primary,
                                  borderColor: programsOverviewPassHeroTheme.cardBorder,
                                }}
                              >
+                               {cardIssuanceEffectiveMerchantImage ? (
+                                 <img
+                                   src={cardIssuanceEffectiveMerchantImage}
+                                   alt=""
+                                   className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                                 />
+                               ) : null}
+                               <div
+                                 className="pointer-events-none absolute inset-0"
+                                 style={{
+                                   background: cardIssuanceEffectiveMerchantImage
+                                     ? `linear-gradient(165deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.28) 45%, rgba(0,0,0,0.2) 100%), ${programsOverviewActiveCardGradientCss}`
+                                     : programsOverviewActiveCardGradientCss,
+                                 }}
+                                 aria-hidden
+                               />
                                <div
                                  className="pointer-events-none absolute inset-0 bg-white/5 backdrop-blur-[1px]"
                                  aria-hidden
@@ -25516,6 +26564,121 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
                         aria-hidden
                       />
+                      <header className="mb-2 flex items-center justify-between gap-2">
+                        <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Merchant image</h3>
+                        <ImagePlus className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+                      </header>
+                      <input
+                        ref={cardIssuanceMerchantImageIssuedPanelFileRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCardIssuanceMerchantImagePick}
+                      />
+
+                      <div
+                        className="w-full min-w-0 overflow-hidden rounded-[30px] border border-[#e8ecf0] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]"
+                        aria-label="Discover Featured Brands style preview"
+                      >
+                        <div className="relative">
+                          <img
+                            src={merchantPanelDiscoverHeroSrc}
+                            alt=""
+                            className="aspect-[16/9] w-full object-cover"
+                            draggable={false}
+                          />
+                          <div className="absolute right-3 top-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              aria-label="Upload merchant banner image"
+                              disabled={cardIssuanceMerchantImageUploading}
+                              onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-[#2c2f31] shadow-sm ring-1 ring-black/5 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {cardIssuanceMerchantImageUploading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                              ) : (
+                                <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                              )}
+                            </button>
+                            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-[#2c2f31] shadow-sm ring-1 ring-black/5">
+                              <Star className="h-3.5 w-3.5 text-amber-500" fill="currentColor" strokeWidth={0} aria-hidden />
+                              <span className="text-[12px] font-bold leading-none">{merchantPanelDiscoverStyleRating}</span>
+                            </div>
+                          </div>
+                          <div className="absolute -bottom-8 left-6">
+                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
+                              {programsOverviewShareImage ? (
+                                <img
+                                  src={programsOverviewShareImage}
+                                  alt=""
+                                  className="h-11 w-11 rounded-xl object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <span className="text-[20px] font-semibold leading-none text-[#94afff]">
+                                  {(programsOverviewDisplayName || 'P').charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="px-6 pb-6 pt-11">
+                          <div className="mb-1 flex items-start justify-between gap-3">
+                            <h4 className="line-clamp-1 text-[19px] font-bold leading-none tracking-tight text-[#1f2328]">
+                              {programsOverviewDisplayName}
+                            </h4>
+                            <p className="whitespace-nowrap pt-1 text-[10px] font-semibold uppercase tracking-wide text-[#2f5fcf]">
+                              Your Assets
+                            </p>
+                          </div>
+                          <p className="mb-4 line-clamp-2 text-[15px] font-medium leading-tight text-[#4b5361]">
+                            {merchantPanelDiscoverSubtitle}
+                          </p>
+                          <div className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#f0f2f4] px-4 py-3">
+                            <Gift className="h-5 w-5 shrink-0 text-[#2f5fcf]" strokeWidth={2} aria-hidden />
+                            <span className="line-clamp-2 text-left text-[14px] font-semibold leading-tight text-[#232a34]">
+                              {merchantPanelDiscoverAssetLabel}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {!cardIssuanceEffectiveMerchantImage.trim() ? (
+                        <p className="mt-3 text-[11px] font-medium leading-relaxed text-[#747779]">
+                          Hero image above is a stock placeholder until you upload your own wide banner.
+                        </p>
+                      ) : null}
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
+                          disabled={cardIssuanceMerchantImageUploading}
+                          className={`inline-flex items-center justify-center rounded-full border border-[#1562f0]/25 bg-[#1562f0]/8 px-4 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/12 disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          {cardIssuanceMerchantImageUploading ? 'Uploading…' : 'Upload or replace banner'}
+                        </button>
+                        {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => void removeIssuedProgramMerchantImage()}
+                            disabled={cardIssuanceMerchantImageUploading}
+                            className={`inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-[#b31b25] transition-colors hover:bg-rose-100 disabled:opacity-60 ${bizFocusRingClass}`}
+                          >
+                            Remove banner
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
+                      <div
+                        className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
+                        aria-hidden
+                      />
                       <header className="mb-3 flex items-center justify-between gap-2">
                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Coupons</h3>
                         <div className="flex items-center gap-2">
@@ -25640,8 +26803,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             </div>
                           ))
                         )}
-                      </div>
-                    </div>
+                       </div>
+                     </div>
 
                      <div className="rounded-xl bg-[#eef1f3] p-4 sm:rounded-2xl sm:p-5">
                        <header className="mb-3 flex items-center justify-between gap-2">
@@ -25878,9 +27041,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              );
                            })
                          ) : (
-                          <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
+                           <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
                            No tier metadata on this card yet. Press + to define tiers. Changes are submitted immediately when you save.
-                          </div>
+                           </div>
                          )}
                        </div>
                      </div>
@@ -25950,10 +27113,91 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       </div>
                       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-5 sm:px-6">
                   <div className="space-y-3 pb-24">
+                    <div className="rounded-2xl border border-[#e5e9eb] bg-white p-4 sm:p-5">
+                      <span className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                        Coupon preview
+                      </span>
+                      <div className="relative mx-auto w-full max-w-md px-3" role="region" aria-label="Coupon preview">
+                        <div className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
+                        <div className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
+                        <div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
+                          {cardIssuanceCouponEditorLivePreview.banner ? (
+                            <>
+                              <img
+                                src={cardIssuanceCouponEditorLivePreview.banner}
+                                alt=""
+                                className="absolute inset-0 h-full w-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
+                            </>
+                          ) : (
+                            <div
+                              className="absolute inset-0"
+                              style={{ backgroundColor: cardIssuanceCouponEditorLivePreview.hex }}
+                            />
+                          )}
+                          {!cardIssuanceCouponEditorLivePreview.banner ? (
+                            <>
+                              <div
+                                className="pointer-events-none absolute inset-0 opacity-[0.12]"
+                                style={{
+                                  backgroundImage:
+                                    'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+                                }}
+                                aria-hidden
+                              />
+                              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" aria-hidden />
+                            </>
+                          ) : null}
+                          <div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-5 py-4 sm:gap-4 sm:px-6 sm:py-5">
+                            <div className="relative h-[3.35rem] w-[3.35rem] shrink-0 overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
+                              {cardIssuanceCouponEditorLivePreview.logoUrl ? (
+                                <img
+                                  src={cardIssuanceCouponEditorLivePreview.logoUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg">
+                                  {cardIssuanceCouponEditorLivePreview.letter}
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1 text-white">
+                              <p className="truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
+                                {cardIssuanceCouponEditorLivePreview.offerTitle}
+                              </p>
+                              <p className="mt-0.5 truncate font-manrope text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
+                                {cardIssuanceCouponEditorLivePreview.subtitle}
+                              </p>
+                              <div
+                                className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                                  cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
+                                  cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired'
+                                    ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+                                    : cardIssuanceCouponEditorLivePreview.expiryVariant === 'incomplete'
+                                      ? 'bg-amber-500 text-white shadow-sm'
+                                      : 'border border-white/35 bg-white/18 text-white backdrop-blur-md'
+                                }`}
+                              >
+                                {cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
+                                cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired' ? (
+                                  <Clock className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                                ) : (
+                                  <Calendar className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                                )}
+                                <span className="truncate">{cardIssuanceCouponEditorLivePreview.expiryLabel}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     {cardIssuanceCouponEditingIssued ? (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-medium text-sky-900">
                         This coupon has already been issued on-chain. Coupon name, claim method, total issuance, and validity
-                        period are locked. You can still update coupon icon, description, and background color metadata.
+                        period are locked. You can still update the coupon icon, optional wide background photo, description,
+                        and background color metadata.
                       </div>
                     ) : null}
                     <div>
@@ -26137,6 +27381,57 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           className={`min-w-0 flex-1 rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm font-mono text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                         />
                       </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                        Coupon background image (optional)
+                      </label>
+                      <input
+                        ref={cardIssuanceCouponImageFileRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCardIssuanceCouponImagePick}
+                      />
+                      {!cardIssuanceCouponImage ? (
+                        <button
+                          type="button"
+                          onClick={() => cardIssuanceCouponImageFileRef.current?.click()}
+                          disabled={cardIssuanceCouponImageUploading}
+                          className={`flex min-h-[96px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          {cardIssuanceCouponImageUploading ? (
+                            <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                          ) : (
+                            <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
+                          )}
+                          <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
+                            {cardIssuanceCouponImageUploading
+                              ? 'Uploading…'
+                              : 'Upload wide banner (PNG or JPEG). Default: no image — only solid color below.'}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="relative h-[120px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#0f172a]/90">
+                          <img src={cardIssuanceCouponImage} alt="" className="h-full w-full object-cover opacity-95" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCardIssuanceCouponImage('');
+                              if (cardIssuanceCouponImageFileRef.current) {
+                                cardIssuanceCouponImageFileRef.current.value = '';
+                              }
+                            }}
+                            className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
+                            aria-label="Remove coupon background image"
+                          >
+                            <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                          </button>
+                        </div>
+                      )}
+                      <p className="mt-1 text-[11px] text-[#abadaf]">
+                        Applies only to this coupon ticket. Your program-wide merchant banner is not used here.
+                      </p>
                     </div>
                     <div>
                       <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
@@ -26441,7 +27736,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           {cardIssuanceCreateLoading ? (
                             <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
                           ) : (
-                            <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                          <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
                           )}
                           <span>
                             {cardIssuanceCreateLoading
@@ -27681,7 +28976,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        }
                      />
                      <div className="flex flex-col items-center gap-1.5 rounded-lg border-2 border-transparent bg-white p-3 text-center shadow-sm transition-all peer-checked:border-[#0051d1] peer-checked:bg-[#0051d1]/5 sm:gap-2 sm:p-3.5">
-                      {'composite' in row ? (
+                       {'composite' in row ? (
                          <UsdcBaseCompositeIcon size={26} badgeSize={15} />
                       ) : 'caddComposite' in row ? (
                         <CaddBaseCompositeIcon size={26} badgeSize={15} />
@@ -29974,7 +31269,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 bgColor="#ffffff"
                 fgColor="#000000"
                 imageSettings={{
-                  src: qrCenterIcon,
+                  src: `${process.env.PUBLIC_URL || ''}/logo512.png`,
                   height: 40,
                   width: 40,
                   excavate: true,

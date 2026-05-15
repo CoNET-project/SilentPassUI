@@ -369,6 +369,7 @@ export const quotePointsForUSDC = async (
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 const updateCardShareMetadataEndpoint = `${beamioApi}/api/updateCardShareMetadata`
+const updateCardMerchantImageEndpoint = `${beamioApi}/api/updateCardMerchantImage`
 const updateIssuedCouponMetadataEndpoint = `${beamioApi}/api/updateIssuedCouponMetadata`
 const cardUpdateTiersEndpoint = `${beamioApi}/api/cardUpdateTiers`
 const cardsByCategoryEndpoint = `${beamioApi}/api/cardsByCategory`
@@ -1004,6 +1005,11 @@ export type ShareTokenMetadata = {
 	displayName?: string
 	description?: string
 	image?: string
+	/**
+	 * Optional wide / hero merchant imagery (IPFS URL), distinct from square `image` logo.
+	 * Other clients read from `shareTokenMetadata.merchantImage`.
+	 */
+	merchantImage?: string
 	/** Program category ids (e.g. travel, gaming); optional, for merchant UI / discovery */
 	categories?: string[]
 	/** Points / fungible display symbol (e.g. "$VERRA"); persisted for merchant Daily Dashboard */
@@ -1070,6 +1076,40 @@ export type UpdateBeamioCardTiersParams = UpdateBeamioCardShareMetadataParams & 
 }
 
 /**
+ * 仅更新已登记卡的 `shareTokenMetadata.merchantImage`（https URL）或空字符串清除；服务端合并 DB 后写 metadata 文件。
+ */
+export const updateCardMerchantImage = async (params: {
+	cardAddress: string
+	merchantImage: string
+}): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
+	try {
+		const body = JSON.stringify({
+			cardAddress: params.cardAddress,
+			merchantImage: params.merchantImage ?? '',
+		})
+		const signal = createFetchTimeoutSignal(180_000)
+		const response = await fetch(updateCardMerchantImageEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body,
+			...(signal ? { signal } : {}),
+		})
+		const data = await response.json()
+		if (response.ok && data.success) {
+			invalidateBeamioCardMetadataCache(params.cardAddress)
+			return { success: true, cardAddress: data.cardAddress as string | undefined }
+		}
+		return { success: false, error: data.error ?? 'Update merchant image failed' }
+	} catch (e: unknown) {
+		if (e instanceof DOMException && e.name === 'AbortError') {
+			return { success: false, error: 'Update merchant image timed out. Check your network and try again.' }
+		}
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg }
+	}
+}
+
+/**
  * 已发卡仅更新链下 metadata（`/api/updateCardShareMetadata`）：写入 0x{card}0.json 并同步 beamio_cards.metadata_json。
  * Recharge bonus 的增删改需在商户端确认后点此接口（或等价 Publish），POS/应用从 metadata 读取规则。
  */
@@ -1116,6 +1156,8 @@ export const updateIssuedCouponMetadata = async (params: {
 	icon: string
 	backgroundColor: string
 	description: string
+	/** Wide coupon hero background (https); empty string clears. */
+	couponImage?: string
 }): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
 	try {
 		const body = JSON.stringify({
@@ -1125,6 +1167,7 @@ export const updateIssuedCouponMetadata = async (params: {
 			icon: params.icon,
 			backgroundColor: params.backgroundColor,
 			description: params.description,
+			couponImage: params.couponImage ?? '',
 		})
 		const signal = createFetchTimeoutSignal(180_000)
 		const response = await fetch(updateIssuedCouponMetadataEndpoint, {
@@ -2452,6 +2495,8 @@ export type CardMetadataFromUri = {
 	/** From shareTokenMetadata.displayName — shown on consumer card when set */
 	displayName?: string
 	image?: string
+	/** From shareTokenMetadata.merchantImage — optional banner / hero image URL */
+	merchantImage?: string
 	tiers?: CardTierMetadata[]
 	cardOwner?: string
 	categories?: string[]
@@ -2476,6 +2521,7 @@ const cardMetadataCache = new Map<
 		name?: string
 		displayName?: string
 		image?: string
+		merchantImage?: string
 		tiers?: CardTierMetadata[]
 		cardOwner?: string
 		categories?: string[]
@@ -2489,6 +2535,12 @@ const cardMetadataCache = new Map<
 	}
 >()
 const CARD_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
+
+/** Bust client cache after server-side metadata updates (e.g. merchantImage). */
+export function invalidateBeamioCardMetadataCache(cardAddress: string): void {
+	const key = cardAddress.trim().toLowerCase()
+	if (key) cardMetadataCache.delete(key)
+}
 
 /** Positive whole-number top-up limit from metadata shareTokenMetadata (CAD / card currency units). */
 export function parseShareTokenMetadataTopupLimit(raw: unknown): number | undefined {
@@ -2534,6 +2586,14 @@ function shareTokenCategoriesFromUnknown(share: Record<string, unknown> | undefi
 function shareTokenDisplayNameFromUnknown(share: Record<string, unknown> | undefined | null): string | undefined {
 	if (!share || typeof share !== 'object') return undefined
 	const raw = share.displayName ?? share.storeDisplayName
+	if (typeof raw !== 'string') return undefined
+	const t = raw.trim()
+	return t || undefined
+}
+
+function shareTokenMerchantImageFromUnknown(share: Record<string, unknown> | undefined | null): string | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.merchantImage ?? share.merchant_image
 	if (typeof raw !== 'string') return undefined
 	const t = raw.trim()
 	return t || undefined
@@ -2689,6 +2749,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const json = (await res.json()) as {
 			name?: string
 			image?: string
+			merchantImage?: string
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			tiers?: CardTierMetadata[]
@@ -2702,10 +2763,14 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
+		const merchantImage =
+			shareTokenMerchantImageFromUnknown(share) ??
+			(typeof json.merchantImage === 'string' && json.merchantImage.trim() ? json.merchantImage.trim() : undefined)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
 			image: (share?.image ?? json?.image) as string | undefined,
 			...(displayName && { displayName }),
+			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(coupons && { coupons }),
@@ -2744,10 +2809,16 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
+		const merchantImage =
+			shareTokenMerchantImageFromUnknown(share) ??
+			(typeof metaJson.merchantImage === 'string' && metaJson.merchantImage.trim()
+				? metaJson.merchantImage.trim()
+				: undefined)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
 			image: (share?.image ?? metaJson.image) as string | undefined,
 			...(displayName && { displayName }),
+			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(coupons && { coupons }),
@@ -2839,6 +2910,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const json = (await res.json()) as {
 			name?: string
 			image?: string
+			merchantImage?: string
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			tiers?: CardTierMetadata[]
@@ -2852,10 +2924,14 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
 		const coupons = shareTokenCouponsFromUnknown(shareObj)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(shareObj)
+		const merchantImage =
+			shareTokenMerchantImageFromUnknown(shareObj) ??
+			(typeof json.merchantImage === 'string' && json.merchantImage.trim() ? json.merchantImage.trim() : undefined)
 		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
 			image: json?.image ?? json?.shareTokenMetadata?.image,
 			...(displayName && { displayName }),
+			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(coupons && { coupons }),

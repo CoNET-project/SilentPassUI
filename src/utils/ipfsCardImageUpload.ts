@@ -1,6 +1,7 @@
 /**
  * IPFS image helpers for card / avatar uploads (same behavior as `pages/cardManager/index.tsx`).
  * Base64 payload stays under gateway limits via resize / JPEG fallback.
+ * SVG uploads are rasterized to PNG before IPFS so native clients (iOS AsyncImage, etc.) receive bitmap URLs.
  */
 
 /** Target file size 37MB so base64 (~49MB) stays under server 50MB limit */
@@ -24,6 +25,82 @@ function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
     }
     img.src = url
   })
+}
+
+/** SVG (or `.svg` filename) is rasterized so IPFS + iOS/Android bitmap pipelines stay consistent. */
+export function fileLooksLikeSvg(file: File): boolean {
+  const mime = (file.type || '').toLowerCase()
+  if (mime === 'image/svg+xml') return true
+  return file.name.toLowerCase().endsWith('.svg')
+}
+
+/**
+ * Converts local SVG to PNG via canvas (browser-decoded bitmap). Other image types pass through unchanged.
+ * @param maxDimension max width/height after preserve-aspect downscale (intrinsic SVG size may be huge)
+ */
+export async function prepareImageFileForIpfsUpload(file: File, maxDimension = 2048): Promise<File> {
+  if (!fileLooksLikeSvg(file)) return file
+  const img = await loadImageFromBlob(file)
+  if (typeof img.decode === 'function') {
+    try {
+      await img.decode()
+    } catch {
+      /* decode is best-effort; naturalWidth may still populate after onload */
+    }
+  }
+  let w = img.naturalWidth || img.width || 0
+  let h = img.naturalHeight || img.height || 0
+  if (w <= 0 || h <= 0) {
+    w = 512
+    h = 512
+  }
+  let dw = w
+  let dh = h
+  const m = Math.max(dw, dh)
+  if (m > maxDimension) {
+    const s = maxDimension / m
+    dw = Math.max(1, Math.round(dw * s))
+    dh = Math.max(1, Math.round(dh * s))
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = dw
+  canvas.height = dh
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas not available for SVG conversion')
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, dw, dh)
+  ctx.drawImage(img, 0, 0, dw, dh)
+  const pngBlob = await new Promise<Blob | null>((r) => canvas.toBlob((b) => r(b), 'image/png'))
+  if (!pngBlob) throw new Error('Failed to convert SVG to PNG')
+  let baseName = file.name.replace(/\.svg$/i, '').trim()
+  if (!baseName) baseName = 'image'
+  return new File([pngBlob], `${baseName}.png`, { type: 'image/png', lastModified: Date.now() })
+}
+
+/** Resize (if needed) → data URL → post; on 413, JPEG-compress and retry once. Applies SVG→PNG first. */
+export async function uploadImageFileToIpfsWithRetry(
+  file: File,
+  postToIPFS: (dataUrl: string) => Promise<string | null>
+): Promise<string | null> {
+  const prepared = await prepareImageFileForIpfsUpload(file)
+  let blob: Blob = prepared
+  if (blob.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
+    blob = await resizeToFitLimit(prepared, IPFS_UPLOAD_TARGET_MAX_BYTES)
+  }
+  let dataUrl = await blobToDataUrl(blob)
+  try {
+    return await postToIPFS(dataUrl)
+  } catch (err: unknown) {
+    const msg = (err as Error)?.message ?? String(err)
+    if (typeof msg === 'string' && msg.includes('413')) {
+      blob = await compressToJpeg(blob, IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES)
+      dataUrl = await blobToDataUrl(blob)
+      return await postToIPFS(dataUrl)
+    }
+    throw err
+  }
 }
 
 function toBlobFormat(mime: string): 'image/png' | 'image/jpeg' | 'image/webp' {

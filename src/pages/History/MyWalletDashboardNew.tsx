@@ -69,6 +69,7 @@ import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromA
 import { postToIPFS } from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
+import { IPFS_GET_FRAGMENT, uploadImageFileToIpfsWithRetry } from '@/utils/ipfsCardImageUpload'
 import type { RedeemStatusChain } from '@/services/BeamioCard'
 import { fiatPrefix, parseNodeEX, calcFeeFromReceived, formatTimev2, formatAmount, type ParsedNote } from '@/services/currency'
 import { CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/utils/constants'
@@ -1577,7 +1578,6 @@ export default function MyWalletDashboardNew() {
 		? (activeView === 'ccsa' ? CCSA_Card_Address : activeView)
 		: ''
 
-	const IPFS_GET_FRAGMENT = 'https://ipfs.conet.network/api/getFragment?hash='
 	const handleNewNftImagePick = useCallback<React.ChangeEventHandler<HTMLInputElement>>(async (e) => {
 		const input = e.currentTarget
 		const file = input.files?.[0]
@@ -1591,13 +1591,7 @@ export default function MyWalletDashboardNew() {
 		setNewNftError('')
 		setNewNftImageUploading(true)
 		try {
-			const dataUrl = await new Promise<string>((resolve, reject) => {
-				const reader = new FileReader()
-				reader.onload = () => resolve(String(reader.result))
-				reader.onerror = () => reject(reader.error)
-				reader.readAsDataURL(file)
-			})
-			const hash = await postToIPFS(profile, dataUrl)
+			const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(profile, dataUrl))
 			if (hash) {
 				setNewNftImageUrl(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`)
 			} else {

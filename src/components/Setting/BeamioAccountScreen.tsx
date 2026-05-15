@@ -7,6 +7,7 @@ import { getKeysFromCoNETPGPSCByAddress } from '@/services/chat'
 import { ethers } from 'ethers'
 import { AppButton } from '@/components/button/AppButton'
 import GetPicture from '@/components/GetPicture/GetPicture'
+import { blobToDataUrl, prepareImageFileForIpfsUpload } from '@/utils/ipfsCardImageUpload'
 const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
 const defaultName = 'Beamio'
 
@@ -102,16 +103,24 @@ export default function BeamioAccountScreen({ colse }: prof) {
     initData(beamio)
   }, [])
 
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
 	const file = e.target.files?.[0]
 	if (!file) return
 	if (!file.type.startsWith("image/")) return
   
 	// 允许重复选择同一个文件也触发 onChange
 	e.target.value = ""
+
+	let prepared: File
+	try {
+		prepared = await prepareImageFileForIpfsUpload(file)
+	} catch {
+		setAvatarUploadingIpfs(false)
+		return
+	}
   
 	// ✅ 1) 先用 objectURL 立即预览（avatarImageDataTemp 只存 URL）
-	const blobUrl = URL.createObjectURL(file)
+	const blobUrl = URL.createObjectURL(prepared)
   
 	setAvatarFileUrl(prev => {
 	  if (prev) URL.revokeObjectURL(prev)
@@ -119,14 +128,12 @@ export default function BeamioAccountScreen({ colse }: prof) {
 	})
   
 	setAvatarImageDataTemp(blobUrl)
-	setAvatarFileName(file.name)
+	setAvatarFileName(prepared.name)
 	setIpfsImageUrl(null)
 	setAvatarUploadingIpfs(true)
 
-	// ✅ 2) 异步转成 dataUrl → downscale → 上传 IPFS，成功后展示 IPFS URL
-	const reader = new FileReader()
-	reader.onloadend = () => {
-	  const dataUrl = reader.result as string
+	try {
+	  const dataUrl = await blobToDataUrl(prepared)
 	  if (!dataUrl) {
 		setAvatarUploadingIpfs(false)
 		return
@@ -153,8 +160,9 @@ export default function BeamioAccountScreen({ colse }: prof) {
 	  }
 	  img.onerror = () => setAvatarUploadingIpfs(false)
 	  img.src = dataUrl
+	} catch {
+	  setAvatarUploadingIpfs(false)
 	}
-	reader.readAsDataURL(file)
   }
 
   const handleSaveAvatar = async () => {

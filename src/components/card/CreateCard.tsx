@@ -4,6 +4,7 @@ import BeamioDetail from "./beamioCard"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { postToIPFS } from "@/services/beamio"
 import { X, Check, Plus } from "lucide-react"
+import { prepareImageFileForIpfsUpload } from "@/utils/ipfsCardImageUpload"
 
 const IPFS_GET_FRAGMENT = "https://ipfs.conet.network/api/getFragment?hash="
 
@@ -479,8 +480,10 @@ export default function DiceBearCardFullscreenEditor({
 		const profile = profiles?.[0]
 		if (!profile?.privateKeyArmor) return
 
+		// Rasterize SVG → PNG before downscale / IndexedDB / IPFS (native clients expect bitmap URLs)
+		const prepared = await prepareImageFileForIpfsUpload(file)
 		// ✅ 1) 降像素（严格规则）
-		const blob = await maybeDownscaleToBlob(file)
+		const blob = await maybeDownscaleToBlob(prepared)
 
 		// ✅ 2) 写入 IndexedDB（Blob）
 		await idbAddBlob(blob)

@@ -47,6 +47,8 @@ export type CardConfiguratorDraftV1 = {
   tiersByLoyaltyRule?: Partial<Record<CardConfiguratorDraftTierRuleV1, CardConfiguratorDraftTierV1[]>>
   tiers?: CardConfiguratorDraftTierV1[]
   shareImageUrl?: string
+  /** IPFS URL for `shareTokenMetadata.merchantImage` (wide / hero; distinct from logo `image`). */
+  merchantImageUrl?: string
   /** 0–3 hero logo scale; persisted to shareTokenMetadata.logoDisplayTier on publish */
   logoDisplayTier?: CardPreviewLogoDisplayTier
   categoryId?: string

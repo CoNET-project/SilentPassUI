@@ -21,16 +21,24 @@ import {
   Banknote,
   PackageOpen,
   ArrowLeft,
-  ShoppingBag,
-  Clapperboard,
+	ShoppingBag,
 	UtensilsCrossed,
 	ShoppingCart,
 	GraduationCap,
 	HeartPulse,
 	Dumbbell,
+	Clapperboard,
 	Building2,
 	Gift,
 	Star,
+	Search,
+	Mic,
+	Coffee,
+	Heart,
+	Medal,
+	Sparkles,
+	PlusCircle,
+	Radio,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -53,13 +61,34 @@ const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
 const DISCOVER_LATEST_CARDS_LIMIT = 20
 /** 进入 Market 页面立即展示已 cache 的 Trending Now，避免 API 504 / 超时时永远 loading */
-const TRENDING_CACHE_VERSION = 1
+const TRENDING_CACHE_VERSION = 3
 const TRENDING_CACHE_KEY = `beamio:trending:latestCards:v${TRENDING_CACHE_VERSION}:limit${DISCOVER_LATEST_CARDS_LIMIT}`
 /** /api/latestCards 实测可能 504 / 60s+ 挂起，给出明确超时；超时按 untrusted 处理，不清空已显示的 trusted rows */
 const TRENDING_FETCH_TIMEOUT_MS = 12_000
 
+/**
+ * Discover merchant visibility:
+ * - Cards with DB `created_at` **before** this instant (legacy): only show if `card_owner` is `DISCOVER_LEGACY_ALLOWED_CARD_OWNER`.
+ * - Cards with `created_at` **at or after** this instant: show (new registrations not subject to legacy mask).
+ * **Keep in sync with** `src/x402sdk/src/endpoint/latestCardsShared.ts` (`DISCOVER_NEW_MERCHANTS_UNFILTERED_SINCE_MS` + same EOA).
+ */
+const DISCOVER_NEW_MERCHANTS_UNFILTERED_SINCE_MS = Date.parse("2026-05-14T00:00:00.000Z")
+const DISCOVER_LEGACY_ALLOWED_CARD_OWNER_LOWER = ethers.getAddress(
+	"0xda2c9e028d7df4338763e1e14b081ae7316b803a"
+).toLowerCase()
+
+/** When `merchantImage` is absent in metadata, Discover row hero uses alternating stock photos. */
+const DISCOVER_FEATURE_FALLBACK_IMAGES = [
+	"https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80",
+	"https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
+] as const
+
 type DiscoverLatestCardRow = {
 	cardAddress: string
+	/** `beamio_cards.card_owner` from `/api/latestCards` (EOA). */
+	cardOwner: string | null
+	/** `beamio_cards.created_at` ISO from API — legacy vs new-merchant cutover. */
+	createdAt: string | null
 	name: string
 	/** Owner business metadata (e.g. `storeName`) for Discover title display. */
 	businessName: string | null
@@ -78,6 +107,8 @@ type DiscoverLatestCardRow = {
 	categoryId: string | null
 	/** Points / program ticker: `shareTokenMetadata.Symbol`|`symbol`, else metadata top-level (biz `parseFixedUserCardMetadata`). */
 	symbol: string | null
+	/** bizSite Define your brand — `merchantImage` (wide hero), not square program logo. */
+	merchantImage: string | null
 }
 
 type DiscoverCategoryTab =
@@ -89,6 +120,20 @@ type DiscoverCategoryTab =
 	| "fitness-wellness"
 	| "entertainment-leisure"
 	| "local-services"
+
+type DiscoverCategoryOption = { id: DiscoverCategoryTab; label: string; Icon: typeof Building2 }
+
+const DISCOVER_CATEGORY_OPTIONS: DiscoverCategoryOption[] = [
+	{ id: "food-beverage", label: "Food & Beverage", Icon: UtensilsCrossed },
+	{ id: "grocery-convenience", label: "Grocery & Convenience", Icon: ShoppingCart },
+	{ id: "retail-shopping", label: "Retail & Shopping", Icon: ShoppingBag },
+	{ id: "education-training", label: "Education & Training", Icon: GraduationCap },
+	{ id: "health-beauty", label: "Health & Beauty", Icon: HeartPulse },
+	{ id: "fitness-wellness", label: "Fitness & Wellness", Icon: Dumbbell },
+	{ id: "entertainment-leisure", label: "Entertainment & Leisure", Icon: Clapperboard },
+	{ id: "local-services", label: "Local Services", Icon: Building2 },
+]
+
 type DiscoverFeaturedCard = {
 	id: string
 	cardAddress: string | null
@@ -99,19 +144,55 @@ type DiscoverFeaturedCard = {
 	rating: string
 	image: string
 	logo: string | null
+	/** Card program currency (from latestCards row). */
+	currency: string
 }
-type DiscoverCategoryOption = { id: DiscoverCategoryTab; label: string; Icon: typeof Building2; circleClass: string }
 
-const DISCOVER_CATEGORY_OPTIONS: DiscoverCategoryOption[] = [
-	{ id: "food-beverage", label: "Food & Beverage", Icon: UtensilsCrossed, circleClass: "bg-red-50 text-red-600" },
-	{ id: "grocery-convenience", label: "Grocery & Convenience", Icon: ShoppingCart, circleClass: "bg-amber-50 text-amber-700" },
-	{ id: "retail-shopping", label: "Retail & Shopping", Icon: ShoppingBag, circleClass: "bg-orange-50 text-orange-600" },
-	{ id: "education-training", label: "Education & Training", Icon: GraduationCap, circleClass: "bg-indigo-50 text-indigo-700" },
-	{ id: "health-beauty", label: "Health & Beauty", Icon: HeartPulse, circleClass: "bg-pink-50 text-pink-600" },
-	{ id: "fitness-wellness", label: "Fitness & Wellness", Icon: Dumbbell, circleClass: "bg-lime-50 text-lime-800" },
-	{ id: "entertainment-leisure", label: "Entertainment & Leisure", Icon: Clapperboard, circleClass: "bg-emerald-50 text-emerald-600" },
-	{ id: "local-services", label: "Services", Icon: Building2, circleClass: "bg-sky-50 text-sky-700" },
-]
+function classifyDiscoverCardCategory(card: DiscoverLatestCardRow): DiscoverCategoryTab {
+	const name = card.name.toLowerCase()
+	const description = card.programDescription.toLowerCase()
+	const category = (card.categoryId ?? "").toLowerCase()
+	if (category === "food-beverage") return "food-beverage"
+	if (category === "grocery-convenience") return "grocery-convenience"
+	if (category === "retail-shopping" || category === "shopping") return "retail-shopping"
+	if (category === "education-training") return "education-training"
+	if (category === "health-beauty") return "health-beauty"
+	if (category === "fitness-wellness") return "fitness-wellness"
+	if (category === "entertainment-leisure" || category === "movies") return "entertainment-leisure"
+	if (category === "local-services") return "local-services"
+	if (/grocery|supermarket|mart|convenience|store/.test(name) || /grocery|supermarket|mart|convenience|store/.test(description)) {
+		return "grocery-convenience"
+	}
+	if (/retail|shopping|fashion|boutique|mall/.test(name) || /retail|shopping|fashion|boutique|mall/.test(description)) {
+		return "retail-shopping"
+	}
+	if (/education|school|academy|training|course|lesson/.test(name) || /education|school|academy|training|course|lesson/.test(description)) {
+		return "education-training"
+	}
+	if (/beauty|spa|salon|health|clinic|wellness/.test(name) || /beauty|spa|salon|health|clinic|wellness/.test(description)) {
+		return "health-beauty"
+	}
+	if (/gym|fitness|yoga|pilates|workout/.test(name) || /gym|fitness|yoga|pilates|workout/.test(description)) {
+		return "fitness-wellness"
+	}
+	if (/movie|cinema|game|gaming|theater|entertainment|leisure/.test(name) || /movie|cinema|game|gaming|theater|entertainment|leisure/.test(description)) {
+		return "entertainment-leisure"
+	}
+	if (
+		category === "food" ||
+		/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(name) ||
+		/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(description)
+	) {
+		return "food-beverage"
+	}
+	if (
+		/cof|cafe|roast|espresso|latte/.test(name) ||
+		/cof|cafe|roast|espresso|latte/.test(description)
+	) {
+		return "food-beverage"
+	}
+	return "local-services"
+}
 
 /** Only allow safe inline style colors (hex / rgb / rgba). */
 function discoverSafeCssColor(raw: string | null | undefined): string | null {
@@ -266,10 +347,47 @@ function parseDiscoverBusinessName(meta: Record<string, unknown> | null): string
 	)
 }
 
+/**
+ * bizSite **Define your brand** → Merchant image, stored on program metadata as `merchantImage`
+ * (wide scene / storefront — not the square program `image` used for logoUrl).
+ */
+function parseDiscoverMerchantImage(meta: Record<string, unknown> | null): string | null {
+	if (!meta) return null
+	const share = readDiscoverNestedObject(meta, "shareTokenMetadata")
+	const ownerBusinessMetadata = readDiscoverNestedObject(meta, "ownerBusinessMetadata")
+	const businessMetadata = readDiscoverNestedObject(meta, "businessMetadata")
+	const businessProfile = readDiscoverNestedObject(meta, "businessProfile")
+	return (
+		readDiscoverStringField(meta, ["merchantImage", "merchant_image"]) ??
+		readDiscoverStringField(share, ["merchantImage", "merchant_image"]) ??
+		readDiscoverStringField(ownerBusinessMetadata, ["merchantImage", "merchant_image"]) ??
+		readDiscoverStringField(businessMetadata, ["merchantImage", "merchant_image"]) ??
+		readDiscoverStringField(businessProfile, ["merchantImage", "merchant_image"])
+	)
+}
+
 /** latestCards `holderCount`：链上 totalActiveMemberships 与 getGlobalStatsFull 回退，非 ERC-1155 #0 唯一地址枚举 */
 function formatDiscoverHoldersCount(n: number): string {
 	if (!Number.isFinite(n) || n < 0) return "0"
 	return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.trunc(n))
+}
+
+function discoverCreatedAtMs(iso: string | null | undefined): number | null {
+	if (iso == null || typeof iso !== "string") return null
+	const t = Date.parse(iso.trim())
+	return Number.isFinite(t) ? t : null
+}
+
+/** Legacy rows (created before cutover) only if owned by the allowed EOA; newer rows always pass. */
+function passDiscoverMerchantOwnerPolicy(row: DiscoverLatestCardRow): boolean {
+	const createdMs = discoverCreatedAtMs(row.createdAt)
+	if (createdMs != null && createdMs >= DISCOVER_NEW_MERCHANTS_UNFILTERED_SINCE_MS) return true
+	if (!row.cardOwner) return false
+	return row.cardOwner.toLowerCase() === DISCOVER_LEGACY_ALLOWED_CARD_OWNER_LOWER
+}
+
+function applyDiscoverMerchantOwnerFilter(rows: DiscoverLatestCardRow[]): DiscoverLatestCardRow[] {
+	return rows.filter(passDiscoverMerchantOwnerPolicy)
 }
 
 function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null {
@@ -304,8 +422,27 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 	const categoryId = parseDiscoverPrimaryCategoryId(meta)
 	const symbol = parseDiscoverCardSymbol(meta)
 	const businessName = parseDiscoverBusinessName(meta)
+	const merchantImage = parseDiscoverMerchantImage(meta)
+	const ownerRaw = r.cardOwner ?? r.card_owner
+	let cardOwner: string | null = null
+	if (typeof ownerRaw === "string" && ownerRaw.trim() && ethers.isAddress(ownerRaw.trim())) {
+		try {
+			cardOwner = ethers.getAddress(ownerRaw.trim())
+		} catch {
+			cardOwner = null
+		}
+	}
+	const createdRaw = r.createdAt ?? r.created_at
+	const createdAt =
+		typeof createdRaw === "string" && createdRaw.trim()
+			? createdRaw.trim()
+			: createdRaw instanceof Date
+				? createdRaw.toISOString()
+				: null
 	return {
 		cardAddress: ethers.getAddress(addr),
+		cardOwner,
+		createdAt,
 		name,
 		businessName,
 		logoUrl,
@@ -317,6 +454,7 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 		topTierMinDisplay,
 		categoryId,
 		symbol,
+		merchantImage,
 	}
 }
 
@@ -341,7 +479,8 @@ function loadCachedTrendingRows(): DiscoverLatestCardRow[] | null {
 				typeof o.name === "string"
 			)
 		})
-		return safe.length > 0 ? safe : null
+		const gated = applyDiscoverMerchantOwnerFilter(safe)
+		return gated.length > 0 ? gated : null
 	} catch {
 		return null
 	}
@@ -1141,10 +1280,208 @@ const PurchaseCreditsSheet = ({
   )
 }
 
+/** Full-screen merchant detail from Discover list (slide in from right). */
+function DiscoverMerchantDetailFullScreen({
+	item,
+	onClose,
+	onJoinTopup,
+}: {
+	item: DiscoverFeaturedCard
+	onClose: () => void
+	onJoinTopup: () => void
+}) {
+	const [favorited, setFavorited] = useState(false)
+	const ccy = (item.currency || "CAD").toUpperCase()
+	const balanceLabel = `${item.title.replace(/\s+/g, " ").trim().toUpperCase()} CARD BALANCE`
+	const tierLine = item.assetLabel || "Member benefits"
+	const progressPct = Math.min(100, Math.max(8, Math.round(Number(item.rating) * 18)))
+
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onClose()
+		}
+		window.addEventListener("keydown", onKey)
+		return () => window.removeEventListener("keydown", onKey)
+	}, [onClose])
+
+	return (
+		<div className="flex h-full min-h-0 flex-col bg-[#f5f7f9] dark:bg-slate-950 text-[#1f2328] dark:text-slate-100">
+			<div className="relative shrink-0">
+				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
+					<img src={item.image} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+					<div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30" />
+					<div
+						className="absolute left-0 right-0 z-20 flex items-start justify-between px-4"
+						style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
+					>
+						<button
+							type="button"
+							onClick={onClose}
+							className="flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-lg ring-1 ring-black/5 active:scale-95 dark:bg-white/90"
+							aria-label="Back"
+						>
+							<ArrowLeft className="h-5 w-5" strokeWidth={2} />
+						</button>
+						<button
+							type="button"
+							onClick={() => setFavorited((v) => !v)}
+							className={[
+								"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95",
+								favorited
+									? "bg-rose-500 text-white ring-rose-600/30"
+									: "bg-slate-800/85 text-white ring-white/10",
+							].join(" ")}
+							aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+							aria-pressed={favorited}
+						>
+							<Heart className="h-5 w-5" strokeWidth={2} fill={favorited ? "currentColor" : "none"} />
+						</button>
+					</div>
+					<div className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-16 pt-8">
+						<div className="mb-1 flex items-center gap-2">
+							<span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm">
+								<Coffee className="h-5 w-5" strokeWidth={2} />
+							</span>
+						</div>
+						<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
+						<p className="mt-1 text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
+					</div>
+				</div>
+				<div className="relative z-30 -mt-10 px-5">
+					<button
+						type="button"
+						disabled={!item.cardAddress}
+						onClick={() => {
+							if (item.cardAddress) onJoinTopup()
+						}}
+						className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1562f0] py-3.5 text-[17px] font-bold text-white shadow-[0_12px_28px_rgba(21,98,240,0.45)] disabled:cursor-not-allowed disabled:opacity-45 active:scale-[0.98] transition-transform"
+					>
+						<PlusCircle className="h-5 w-5 shrink-0" strokeWidth={2} />
+						Join & Top-up Balance
+					</button>
+				</div>
+			</div>
+
+			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-28 pt-4">
+				<div className="mx-auto max-w-lg space-y-4">
+					<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+						<div className="mb-3 flex items-start justify-between">
+							<span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
+								<Wallet className="h-5 w-5" strokeWidth={2} />
+							</span>
+							<Radio className="h-5 w-5 text-slate-400" strokeWidth={2} aria-hidden />
+						</div>
+						<p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{balanceLabel}</p>
+						<p className="mt-1 text-2xl font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
+							— <span className="text-lg font-semibold text-slate-500 dark:text-slate-400">{ccy}</span>
+						</p>
+						<p className="mt-2 text-[12px] leading-snug text-slate-500 dark:text-slate-400">
+							Balance appears when your wallet holds this program card. Use Join to add funds.
+						</p>
+					</div>
+
+					<div className="rounded-[22px] bg-[#eef1f4] p-4 dark:bg-slate-800/80">
+						<div className="mb-3 flex items-center gap-2">
+							<Medal className="h-5 w-5 text-amber-600" strokeWidth={2} />
+							<span className="text-[16px] font-bold text-[#1f2328] dark:text-slate-100">Program tier</span>
+						</div>
+						<p className="text-[14px] font-medium text-slate-700 dark:text-slate-300">{tierLine}</p>
+						<div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-white/80 dark:bg-slate-900/60">
+							<div
+								className="h-full rounded-full bg-amber-500"
+								style={{ width: `${progressPct}%` }}
+							/>
+						</div>
+						<p className="mt-2 text-[12px] text-slate-600 dark:text-slate-400">Illustrative progress from public rating — not a live points balance.</p>
+						<button
+							type="button"
+							className="mt-4 w-full rounded-2xl bg-white py-3 text-[15px] font-semibold text-slate-800 shadow-sm ring-1 ring-slate-200/80 active:scale-[0.99] dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700"
+						>
+							View Rewards
+						</button>
+					</div>
+
+					<div>
+						<div className="mb-3 flex items-center justify-between">
+							<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
+							<button type="button" className="text-[14px] font-semibold text-[#1562f0]">
+								See all
+								<ChevronRight className="ml-0.5 inline h-4 w-4 align-text-bottom" strokeWidth={2} />
+							</button>
+						</div>
+						<div className="space-y-3">
+							<div className="rounded-[20px] bg-white p-4 shadow-[0_6px_18px_rgba(15,23,42,0.05)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+								<div className="flex gap-3">
+									<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+										15%
+									</span>
+									<div className="min-w-0 flex-1">
+										<p className="font-bold text-[#1f2328] dark:text-slate-100">Pastry pairings</p>
+										<p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-400">
+											Stacked savings on select pastries when you pay with this program.
+										</p>
+										<p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Sample offer</p>
+									</div>
+								</div>
+							</div>
+							<div className="rounded-[20px] bg-white p-4 shadow-[0_6px_18px_rgba(15,23,42,0.05)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+								<div className="flex gap-3">
+									<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[#1562f0] dark:bg-blue-950/60">
+										<Gift className="h-6 w-6" strokeWidth={2} />
+									</span>
+									<div className="min-w-0 flex-1">
+										<p className="font-bold text-[#1f2328] dark:text-slate-100">Free upgrade</p>
+										<p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-400">
+											Complimentary add-ons where the merchant enables them in metadata.
+										</p>
+										<p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Sample offer</p>
+									</div>
+								</div>
+							</div>
+							<div className="flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-slate-300 py-8 text-slate-500 dark:border-slate-600 dark:text-slate-400">
+								<Sparkles className="h-5 w-5 shrink-0" strokeWidth={2} />
+								<span className="text-[14px] font-medium">More offers unlocking soon</span>
+							</div>
+						</div>
+					</div>
+
+					<div className="pb-6">
+						<h2 className="mb-3 text-lg font-bold text-[#1f2328] dark:text-slate-100">
+							Recent activity at {item.title}
+						</h2>
+						<div className="space-y-0 overflow-hidden rounded-[20px] bg-white ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+							<div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5 dark:border-slate-800">
+								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+									<Coffee className="h-5 w-5" strokeWidth={2} />
+								</span>
+								<div className="min-w-0 flex-1">
+									<p className="font-semibold text-[#1f2328] dark:text-slate-100">In-store purchase</p>
+									<p className="text-[12px] text-slate-500 dark:text-slate-400">Shown when your card is linked</p>
+								</div>
+								<span className="shrink-0 text-[14px] font-semibold text-slate-400">—</span>
+							</div>
+							<div className="flex items-center gap-3 px-4 py-3.5">
+								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
+									<PlusCircle className="h-5 w-5" strokeWidth={2} />
+								</span>
+								<div className="min-w-0 flex-1">
+									<p className="font-semibold text-[#1f2328] dark:text-slate-100">Balance top-up</p>
+									<p className="text-[12px] text-slate-500 dark:text-slate-400">After you join and top up</p>
+								</div>
+								<span className="shrink-0 text-[14px] font-semibold text-[#1562f0]">—</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
 export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { profiles, myAddress, setShowFooter, beamio } = useDaemonContext()
+	const { profiles, myAddress, setShowFooter, chatSearchOpen, setChatSearchOpen, beamio } = useDaemonContext()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
@@ -1161,7 +1498,8 @@ export default function Market() {
 	const [inventory, setInventory] = useState<Record<number, InventoryInstance[]>>({})
 	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
 	const [qrPayload, setQrPayload] = useState<string>("")
-	const [discoverCategory, setDiscoverCategory] = useState<DiscoverCategoryTab>("local-services")
+	const [discoverCategory, setDiscoverCategory] = useState<DiscoverCategoryTab>("food-beverage")
+	const [discoverMerchantDetail, setDiscoverMerchantDetail] = useState<DiscoverFeaturedCard | null>(null)
 	const discoverCategoryOptionsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
 		const selected = DISCOVER_CATEGORY_OPTIONS.find((o) => o.id === discoverCategory)
 		if (!selected) return DISCOVER_CATEGORY_OPTIONS
@@ -1205,10 +1543,11 @@ export default function Market() {
 				const rows = items
 					.map(parseDiscoverLatestCardItem)
 					.filter((x): x is DiscoverLatestCardRow => x != null)
-				// Trusted success + 非空：更新内存与 trusted cache
+				const visible = applyDiscoverMerchantOwnerFilter(rows)
+				// Trusted success + 非空 raw：写入过滤后列表；若过滤后为空仍更新 UI 为 empty（不写入 cache）
 				if (rows.length > 0) {
-					setLatestCardsRows(rows)
-					saveCachedTrendingRows(rows)
+					setLatestCardsRows(visible)
+					if (visible.length > 0) saveCachedTrendingRows(visible)
 				}
 				// Trusted success + 空：windowed-scan 不可作为负向删除依据 → 保留旧 trusted rows
 			})
@@ -1283,6 +1622,13 @@ export default function Market() {
 		flash()
 	}
 
+	/** Discover top bar: open same global search as footer (portal masks page + bottom SearchInputWithDropdown). */
+	const openDiscoverGlobalSearch = () => {
+		if (chatSearchOpen) return
+		setShowFooter(false)
+		setChatSearchOpen(true)
+	}
+
 	/** Discover — API card opens top-up for that card address. */
 	const openDiscoverCardTopup = (cardAddress: string) => {
 		setShowFooter(false)
@@ -1292,59 +1638,27 @@ export default function Market() {
 		setSettingsOpen("USDCTopup")
 	}
 
-	const classifyDiscoverCardCategory = (card: DiscoverLatestCardRow): DiscoverCategoryTab => {
-		const name = card.name.toLowerCase()
-		const description = card.programDescription.toLowerCase()
-		const category = (card.categoryId ?? "").toLowerCase()
-		if (category === "food-beverage") return "food-beverage"
-		if (category === "grocery-convenience") return "grocery-convenience"
-		if (category === "retail-shopping" || category === "shopping") return "retail-shopping"
-		if (category === "education-training") return "education-training"
-		if (category === "health-beauty") return "health-beauty"
-		if (category === "fitness-wellness") return "fitness-wellness"
-		if (category === "entertainment-leisure" || category === "movies") return "entertainment-leisure"
-		if (category === "local-services") return "local-services"
-		if (/grocery|supermarket|mart|convenience|store/.test(name) || /grocery|supermarket|mart|convenience|store/.test(description)) {
-			return "grocery-convenience"
-		}
-		if (/retail|shopping|fashion|boutique|mall/.test(name) || /retail|shopping|fashion|boutique|mall/.test(description)) {
-			return "retail-shopping"
-		}
-		if (/education|school|academy|training|course|lesson/.test(name) || /education|school|academy|training|course|lesson/.test(description)) {
-			return "education-training"
-		}
-		if (/beauty|spa|salon|health|clinic|wellness/.test(name) || /beauty|spa|salon|health|clinic|wellness/.test(description)) {
-			return "health-beauty"
-		}
-		if (/gym|fitness|yoga|pilates|workout/.test(name) || /gym|fitness|yoga|pilates|workout/.test(description)) {
-			return "fitness-wellness"
-		}
-		if (/movie|cinema|game|gaming|theater|entertainment|leisure/.test(name) || /movie|cinema|game|gaming|theater|entertainment|leisure/.test(description)) {
-			return "entertainment-leisure"
-		}
-		if (
-			category === "food" ||
-			/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(name) ||
-			/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(description)
-		) {
-			return "food-beverage"
-		}
-		if (
-			/cof|cafe|roast|espresso|latte/.test(name) ||
-			/cof|cafe|roast|espresso|latte/.test(description)
-		) {
-			return "food-beverage"
-		}
-		return "local-services"
+	const openDiscoverMerchantDetail = (card: DiscoverFeaturedCard) => {
+		setDiscoverMerchantDetail(card)
+		setShowFooter(false)
+	}
+
+	const closeDiscoverMerchantDetail = () => {
+		setDiscoverMerchantDetail(null)
+		setShowFooter(true)
 	}
 
 	const discoverFeaturedCards = useMemo<DiscoverFeaturedCard[]>(() => {
 		const rows: DiscoverFeaturedCard[] = latestCardsRows.map((card, idx) => {
-			const isFood = classifyDiscoverCardCategory(card) === "food-beverage"
+			const category = classifyDiscoverCardCategory(card)
+			const isFood = category === "food-beverage"
+			const hero = card.merchantImage?.trim()
+			const fallback =
+				DISCOVER_FEATURE_FALLBACK_IMAGES[idx % DISCOVER_FEATURE_FALLBACK_IMAGES.length]
 			return {
 				id: card.cardAddress,
 				cardAddress: card.cardAddress,
-				category: classifyDiscoverCardCategory(card),
+				category,
 				title: card.businessName ?? card.name,
 				subtitle: card.programDescription || (isFood ? "Modern cuisine" : "Artisan coffee & pastries"),
 				assetLabel:
@@ -1352,40 +1666,14 @@ export default function Market() {
 						? `${card.topTierName} · ${card.topTierMinDisplay}`
 						: card.topTierName ?? card.topTierMinDisplay ?? "Member Benefits",
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
-				image:
-					idx % 2 === 0
-						? "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80"
-						: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
+				image: hero || fallback,
 				logo: card.logoUrl,
+				currency: card.currency,
 			}
 		})
 		if (rows.length > 0) return [...rows].reverse()
-		return [
-			{
-				id: "fallback-origin-roasters",
-				cardAddress: null,
-				category: "food-beverage" as DiscoverCategoryTab,
-				title: "Origin Roasters",
-				subtitle: "Artisan Coffee & Pastries",
-				assetLabel: "10% Bonus + 2 Vouchers",
-				rating: "4.9",
-				image:
-					"https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80",
-				logo: null,
-			},
-			{
-				id: "fallback-vue-dining",
-				cardAddress: null,
-				category: "food-beverage" as DiscoverCategoryTab,
-				title: "Vue Dining",
-				subtitle: "Modern European Cuisine",
-				assetLabel: "1 Free Dessert",
-				rating: "4.8",
-				image:
-					"https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1200&q=80",
-				logo: null,
-			},
-		]
+		// No placeholder brands when API list is empty (Discover is driven by real `latestCards` only).
+		return []
 	}, [latestCardsRows])
 
 	const filteredFeaturedCards = useMemo(
@@ -1406,11 +1694,11 @@ export default function Market() {
 
 	return (
 		<>
-		<div className="w-full h-full min-h-0 h-screen bg-[#f5f7f9] dark:bg-slate-950 overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100 text-[#2c2f31] dark:text-slate-100 antialiased">
+		<div className="w-full h-full min-h-0 h-screen bg-[#f5f7f9] dark:bg-slate-950 overflow-x-hidden overflow-y-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100 text-[#2c2f31] dark:text-slate-100 antialiased">
 
 		{/* 滚动容器：Discover 布局对齐 example/market.html */}
 		<div
-			className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-24 [scrollbar-width:thin]"
+			className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2 pb-24 [scrollbar-width:thin]"
 			style={{ WebkitOverflowScrolling: "touch", flex: "1 1 0%", minHeight: 0 }}
 		>
 			<div
@@ -1418,9 +1706,27 @@ export default function Market() {
 				style={{ minHeight: "calc(max(1rem, env(safe-area-inset-top, 0px)) + 1rem)" }}
 			/>
 
-		<div className="animate-in fade-in duration-300 pb-8 max-w-lg mx-auto w-full">
-			<section className="px-4 pt-4 pb-2">
-				<div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+		<div className="animate-in fade-in duration-300 pb-8 max-w-lg mx-auto w-full px-3 sm:px-5">
+			<section className="pt-3 pb-3">
+				<button
+					type="button"
+					onClick={openDiscoverGlobalSearch}
+					onFocus={openDiscoverGlobalSearch}
+					className="flex w-full items-center gap-3 rounded-full border border-[#e8ecf0] bg-white py-3 pl-4 pr-3 text-left shadow-[0_4px_14px_rgba(15,23,42,0.06)] outline-none ring-[#1562f0]/30 transition-shadow focus-visible:ring-2 dark:border-slate-700 dark:bg-slate-900 dark:shadow-none"
+					aria-label="Search businesses, NGOs, or friends"
+				>
+					<Search className="h-5 w-5 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
+					<span className="min-w-0 flex-1 truncate text-[15px] text-slate-400">
+						Search businesses, NGOs, or friends…
+					</span>
+					<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#1562f0] dark:bg-blue-950/50 dark:text-blue-400" aria-hidden>
+						<Mic className="h-5 w-5" strokeWidth={2} />
+					</span>
+				</button>
+			</section>
+			{/* Generous inset: box-shadow (~22px blur) must stay inside scrollport; avoid clipping vs overflow-x */}
+			<section className="pt-1 pb-8">
+				<div className="flex min-h-0 items-center gap-2 overflow-x-auto py-6 px-4 sm:py-7 sm:px-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
 					{discoverCategoryOptionsOrdered.map((tab) => {
 						const Icon = tab.Icon
 						const active = discoverCategory === tab.id
@@ -1430,27 +1736,21 @@ export default function Market() {
 								type="button"
 								onClick={() => setDiscoverCategory(tab.id)}
 								className={[
-									"flex flex-shrink-0 flex-col items-center gap-2 min-w-[4.5rem] rounded-2xl p-1.5 transition-all",
+									"flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2.5 text-[13px] sm:text-[14px] font-semibold tracking-tight transition-all whitespace-nowrap",
 									active
-										? "ring-2 ring-inset ring-[#1562f0] bg-blue-50/50 shadow-sm"
-										: "opacity-80",
+										? "bg-[#1562f0] text-white shadow-[0_8px_22px_rgba(21,98,240,0.42)]"
+										: "bg-white text-[#1f2328] shadow-[0_2px_10px_rgba(15,23,42,0.08)] border border-[#e8ecf0] dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
 								].join(" ")}
 							>
-								<div
-									className={`flex h-14 w-14 items-center justify-center rounded-full shadow-sm ${tab.circleClass} ${active ? "shadow-md" : ""}`}
-								>
-									<Icon className="h-6 w-6" strokeWidth={2} aria-hidden />
-								</div>
-								<span className="max-w-[5rem] text-center text-[15px] font-bold leading-tight tracking-tight text-slate-600">
-									{tab.label}
-								</span>
+								<Icon className="h-[17px] w-[17px] shrink-0 sm:h-[18px] sm:w-[18px]" strokeWidth={active ? 2.25 : 2} aria-hidden />
+								{tab.label}
 							</button>
 						)
 					})}
 				</div>
 			</section>
 
-			<section className="px-4 py-4">
+			<section className="py-4">
 				<div className="flex items-center gap-2 mb-4 flex-wrap">
 					<h3 className="font-bold text-[21px] leading-none tracking-tight text-[#202227] dark:text-slate-100">Featured Brands</h3>
 				</div>
@@ -1466,11 +1766,12 @@ export default function Market() {
 
 				<div className="grid grid-cols-1 gap-5">
 				{filteredFeaturedCards.map((item) => {
-					const cardAddress = item.cardAddress
 					return (
-					<div
+					<button
 						key={item.id}
-						className="bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden min-w-0"
+						type="button"
+						onClick={() => openDiscoverMerchantDetail(item)}
+						className="w-full min-w-0 text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f5f7f9] dark:focus-visible:ring-offset-slate-950 active:scale-[0.99] transition-transform"
 					>
 						<div className="relative">
 							<img
@@ -1520,17 +1821,8 @@ export default function Market() {
 									{item.assetLabel}
 								</span>
 							</div>
-							{cardAddress ? (
-								<button
-									type="button"
-									onClick={() => openDiscoverCardTopup(cardAddress)}
-									className="mt-4 w-full py-3 bg-[#1562f0] text-white rounded-2xl text-[19px] font-semibold active:scale-95 transition-transform"
-								>
-									View Brand Card
-								</button>
-							) : null}
 						</div>
-					</div>
+					</button>
 					)
 				})}
 
@@ -1545,6 +1837,30 @@ export default function Market() {
 
 		</div>
 		</div>
+
+		<AnimatePresence>
+			{discoverMerchantDetail ? (
+				<motion.div
+					key={`discover-merchant-${discoverMerchantDetail.id}`}
+					className="fixed inset-0 z-[100] flex flex-col bg-[#f5f7f9] dark:bg-slate-950"
+					initial={{ x: "100%" }}
+					animate={{ x: 0 }}
+					exit={{ x: "100%" }}
+					transition={{ duration: 0.28, ease: "easeOut" }}
+					onTouchMove={(e) => e.stopPropagation()}
+				>
+					<DiscoverMerchantDetailFullScreen
+						item={discoverMerchantDetail}
+						onClose={closeDiscoverMerchantDetail}
+						onJoinTopup={() => {
+							if (discoverMerchantDetail.cardAddress) {
+								openDiscoverCardTopup(discoverMerchantDetail.cardAddress)
+							}
+						}}
+					/>
+				</motion.div>
+			) : null}
+		</AnimatePresence>
 
 		{showCardDetail && (
 		<AnimatePresence>

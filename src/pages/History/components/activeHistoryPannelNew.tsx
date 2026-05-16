@@ -361,9 +361,22 @@ const ActiveHistoryPannelNew = ({
 		refreshRecentActivityNoAa,
 	} = useDaemonContext()
 	const navigate = useNavigate()
-	const [items, setItems] = useState<TxView[]>([])
-	const [loading, setLoading] = useState(true)
-	const [error, setError] = useState<string | null>(null)
+
+	const eoa = profiles?.[0]?.keyID?.trim()
+	const aa = profiles?.[0]?.aaAccount?.trim()
+	/** 仅调试/指定地址时用本地拉取；正常 EOA+AA 由 Daemon 合并喂料并按时间倒序 */
+	const useLocalIndexer = Boolean(overrideAddress && ethers.isAddress(overrideAddress))
+
+	const [items, setItems] = useState<TxView[]>(() =>
+		useLocalIndexer ? [] : recentActivityNoAaItems
+	)
+	const [loading, setLoading] = useState(
+		() => !useLocalIndexer && recentActivityNoAaLoading && recentActivityNoAaItems.length === 0
+	)
+	const [error, setError] = useState<string | null>(() =>
+		useLocalIndexer ? null : recentActivityNoAaError
+	)
+	const [manualRefreshing, setManualRefreshing] = useState(false)
 	const [activeTab, setActiveTab] = useState<'All' | 'Cash' | 'Vouchers'>('All')
 	const [selectedTx, setSelectedTx] = useState<TxView | null>(null)
 	const [showJson, setShowJson] = useState(false)
@@ -376,13 +389,11 @@ const ActiveHistoryPannelNew = ({
 	const [cancelRequestLoading, setCancelRequestLoading] = useState(false)
 	const [cancelRequestError, setCancelRequestError] = useState<string | null>(null)
 	const refreshLockRef = useRef(false)
+	const itemsCountRef = useRef(items.length)
+	useEffect(() => {
+		itemsCountRef.current = items.length
+	}, [items.length])
 	const { opacity: backBtnOpacity, onScroll: onAllActivityScroll, setRef: setAllActivityScrollRef } = useScrollCapsuleOpacity(compact && showFullDrawer)
-
-	const eoa = profiles?.[0]?.keyID?.trim()
-	const aa = profiles?.[0]?.aaAccount?.trim()
-
-	/** 仅调试/指定地址时用本地拉取；正常 EOA+AA 由 Daemon 合并喂料并按时间倒序 */
-	const useLocalIndexer = Boolean(overrideAddress && ethers.isAddress(overrideAddress))
 
 	// Detail Sheet 与 list 使用同一套 title 逻辑（Sent to / Received from；内部转账用固定文案）
 	const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
@@ -666,19 +677,28 @@ const ActiveHistoryPannelNew = ({
 			return
 		}
 
-		setLoading(true)
+		const hadItems = itemsCountRef.current > 0
+		if (!hadItems) {
+			setLoading(true)
+		}
 		setError(null)
-		const { items: nextItems, error: nextErr } = await fetchMergedRecentActivityFromIndexer(accounts)
-		setItems(nextItems)
-		setError(nextErr)
+		const { items: nextItems, error: nextErr, trusted } = await fetchMergedRecentActivityFromIndexer(accounts)
+		if (trusted) {
+			setItems(nextItems)
+			setError(null)
+		} else if (!hadItems && nextErr) {
+			setError(nextErr)
+		}
 		setLoading(false)
 	}, [eoa, aa, overrideAddress, myAddress])
 
 	const handleRefresh = useCallback(() => {
 		if (refreshLockRef.current) return
 		refreshLockRef.current = true
+		setManualRefreshing(true)
 		const done = () => {
 			refreshLockRef.current = false
+			setManualRefreshing(false)
 		}
 		if (useLocalIndexer) {
 			load().finally(done)
@@ -690,7 +710,7 @@ const ActiveHistoryPannelNew = ({
 	useEffect(() => {
 		if (!useLocalIndexer) {
 			setItems(recentActivityNoAaItems)
-			setLoading(recentActivityNoAaLoading)
+			setLoading(recentActivityNoAaLoading && recentActivityNoAaItems.length === 0)
 			setError(recentActivityNoAaError)
 		}
 	}, [
@@ -1220,11 +1240,11 @@ const ActiveHistoryPannelNew = ({
 					<button
 						type="button"
 						onClick={handleRefresh}
-						disabled={loading}
+						disabled={manualRefreshing}
 						className="w-[22.4px] h-[22.4px] flex items-center justify-center rounded-full bg-white dark:bg-slate-700 shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors disabled:opacity-50 shrink-0"
 						aria-label="Refresh"
 					>
-						{loading ? (
+						{manualRefreshing ? (
 							<Loader size={13} className="animate-spin text-[#1562f0]" />
 						) : (
 							<RefreshCw size={13} className="text-[#1562f0]" />
@@ -1275,8 +1295,8 @@ const ActiveHistoryPannelNew = ({
 				<div className="mb-2 flex justify-center mt-2">
 					<button
 						type="button"
-						onClick={load}
-						disabled={loading}
+						onClick={handleRefresh}
+						disabled={manualRefreshing}
 						className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/60 dark:bg-slate-700/50 border border-white/40 dark:border-slate-600/50 hover:bg-white/80 dark:hover:bg-slate-700/70 active:scale-[0.98] transition-all disabled:opacity-60 disabled:pointer-events-none"
 						aria-label="Refresh"
 					>
@@ -1285,7 +1305,7 @@ const ActiveHistoryPannelNew = ({
 						<span className="text-[11px] font-medium text-gray-500 dark:text-slate-400">
 							{activeTab === 'Cash' ? 'Main Wallet (USDC)' : activeTab === 'Vouchers' ? 'Express Pay (Assets)' : 'All Accounts'}
 						</span>
-						{loading ? (
+						{manualRefreshing ? (
 							<Loader size={14} className="animate-spin text-[#1562f0] shrink-0" />
 						) : (
 							<RefreshCw size={14} className="text-[#1562f0] shrink-0" strokeWidth={2.5} />

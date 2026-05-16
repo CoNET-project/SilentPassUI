@@ -306,15 +306,22 @@ function appendIndexerPage(
 /**
  * 合并多地址、多自然月 indexer 记账，去重后按时间降序截取「全局最近」若干条（不限于当月）。
  */
+export type FetchRecentActivityResult = {
+	items: TxView[]
+	error: string | null
+	/** false = RPC/超时等不可信，调用方不得用空列表覆盖已有可信缓存 */
+	trusted: boolean
+}
+
 export async function fetchMergedRecentActivityFromIndexer(
 	accounts: string[],
 	options?: FetchRecentActivityOptions
-): Promise<{ items: TxView[]; error: string | null }> {
+): Promise<FetchRecentActivityResult> {
 	const normalized = accounts
 		.filter((a) => a && ethers.isAddress(a))
 		.map((a) => ethers.getAddress(a))
 	if (normalized.length === 0) {
-		return { items: [], error: null }
+		return { items: [], error: null, trusted: true }
 	}
 
 	const maxReturn = options?.maxReturn ?? 30
@@ -354,10 +361,10 @@ export async function fetchMergedRecentActivityFromIndexer(
 		}
 
 		merged.sort((a, b) => b.timestampMs - a.timestampMs)
-		return { items: merged.slice(0, maxReturn), error: null }
+		return { items: merged.slice(0, maxReturn), error: null, trusted: true }
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : String(e)
-		return { items: [], error: msg }
+		return { items: [], error: msg, trusted: false }
 	}
 }
 

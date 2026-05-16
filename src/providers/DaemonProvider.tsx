@@ -20,17 +20,25 @@ import { getUsdcBalanceFromApi } from '@/services/beamio'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { fetchMergedRecentActivityFromIndexer, type TxView } from '@/pages/History/recentActivityIndexerMerge'
 import { loadMyBrandsFeedLocalCache, saveMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
+import {
+	loadRecentActivityLocalCache,
+	saveRecentActivityLocalCache,
+	txViewsFromLocalCache,
+} from '@/utils/recentActivityLocalCache'
+import { shouldUpdateRecentActivityList } from '@/utils/recentActivityFeedState'
+import {
+	areMyBrandDetailsMapsEqual,
+	myBrandCardListSignature,
+	type MyBrandCardFeedDetailsMap,
+} from '@/utils/myBrandsFeedState'
+
+export type { MyBrandCardFeedDetailsMap }
 
 /** CoNET mainnet RPC（与 App CoreContract 一致） */
 const CONET_MAINNET_RPC_HTTP = 'https://rpc1.conet.network'
 
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
-
-export type MyBrandCardFeedDetailsMap = Record<
-	string,
-	{ meta: CardMetadataFromUri | null; assets: Awaited<ReturnType<typeof getMyAssets>> | null }
->
 
 /** /home「Total Power」：仅 CAD 展示用（whole.frac）；由全局 wallet 喂料写入 */
 export type HomeTotalPowerCad = { whole: string; frac: string }
@@ -610,42 +618,49 @@ export function DaemonProvider({ children }: DaemonProps) {
         seenCards.add(key)
         cards.push(c)
       }
-      setMyBrandCards(cards)
+      const prevCards = myBrandCardsRef.current
+      const prevDetails = myBrandCardDetailsRef.current
+      const nextSig = myBrandCardListSignature(cards)
+      if (myBrandCardListSignature(prevCards) !== nextSig) {
+        setMyBrandCards(cards)
+      }
       if (cards.length === 0) {
-        setMyBrandCardDetails({})
+        if (Object.keys(prevDetails).length > 0) {
+          setMyBrandCardDetails({})
+        }
         if (eoaSave && ethers.isAddress(eoaSave)) {
           saveMyBrandsFeedLocalCache(eoaSave, [], [], {})
         }
         return {}
       }
       const allowed = new Set(cards.map((c) => c.cardAddress.toLowerCase()))
-      setMyBrandCardDetails((prev) => {
-        const pruned: MyBrandCardFeedDetailsMap = {}
-        for (const k of allowed) {
-          if (prev[k]) pruned[k] = prev[k]!
-        }
-        return pruned
-      })
       const next: MyBrandCardFeedDetailsMap = {}
+      for (const k of allowed) {
+        if (prevDetails[k]) next[k] = prevDetails[k]!
+      }
       await Promise.all(
         cards.map(async (uc) => {
           const key = uc.cardAddress.toLowerCase()
+          const prevRow = prevDetails[key]
           try {
             const [assets, meta] = await Promise.all([
-              getMyAssets(profile, uc.cardAddress, { bypassCache: true }),
+              getMyAssets(profile, uc.cardAddress),
               getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress),
             ])
-            const row = { meta: meta ?? null, assets: assets ?? null }
-            next[key] = row
-            setMyBrandCardDetails((prev) => ({ ...prev, [key]: row }))
+            next[key] = {
+              meta: meta ?? prevRow?.meta ?? null,
+              assets: assets ?? prevRow?.assets ?? null,
+            }
+            if (meta) rememberCardBasicMetadataTrusted(uc.cardAddress, meta)
           } catch {
-            const row = { meta: null, assets: null }
-            next[key] = row
-            setMyBrandCardDetails((prev) => ({ ...prev, [key]: row }))
+            if (prevRow) next[key] = prevRow
+            else next[key] = { meta: null, assets: null }
           }
         })
       )
-      setMyBrandCardDetails(next)
+      if (!areMyBrandDetailsMapsEqual(prevDetails, next)) {
+        setMyBrandCardDetails(next)
+      }
       if (eoaSave && ethers.isAddress(eoaSave)) {
         saveMyBrandsFeedLocalCache(eoaSave, ownerCards, holderUnionCards, next)
       }
@@ -749,8 +764,34 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   const noAaRecentActivityInFlight = useRef(false)
   const [recentActivityNoAaItems, setRecentActivityNoAaItems] = useState<TxView[]>([])
+  const recentActivityNoAaItemsRef = useRef<TxView[]>([])
   const [recentActivityNoAaLoading, setRecentActivityNoAaLoading] = useState(false)
   const [recentActivityNoAaError, setRecentActivityNoAaError] = useState<string | null>(null)
+  useEffect(() => {
+    recentActivityNoAaItemsRef.current = recentActivityNoAaItems
+  }, [recentActivityNoAaItems])
+
+  /** EOA 切换：从本地恢复 Recent Activity；无缓存则等首轮拉取 */
+  useLayoutEffect(() => {
+    const raw = profiles?.[0]?.keyID?.trim() ?? ''
+    const eoaLower = raw.toLowerCase()
+    if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      setRecentActivityNoAaItems([])
+      setRecentActivityNoAaError(null)
+      setRecentActivityNoAaLoading(false)
+      return
+    }
+    const hit = loadRecentActivityLocalCache(eoaLower)
+    if (hit?.length) {
+      const restored = txViewsFromLocalCache(hit)
+      setRecentActivityNoAaItems(restored)
+      setRecentActivityNoAaError(null)
+      setRecentActivityNoAaLoading(false)
+    } else {
+      setRecentActivityNoAaItems([])
+      setRecentActivityNoAaError(null)
+    }
+  }, [profiles?.[0]?.keyID])
 
   /** AA 检测 + indexer Recent Activity + EOA USDC + Total Power CAD；与 My Brands 同轨 6s setTimeout 链 */
   const runNoAaWalletFeedTick = useCallback(async (cardDetails: MyBrandCardFeedDetailsMap | null) => {
@@ -779,7 +820,10 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
 
     noAaRecentActivityInFlight.current = true
-    setRecentActivityNoAaLoading(true)
+    const hasRenderableActivity = recentActivityNoAaItemsRef.current.length > 0
+    if (!hasRenderableActivity) {
+      setRecentActivityNoAaLoading(true)
+    }
     let eoaUsdcStr = '0'
     let aaUsdcStr = '0'
     try {
@@ -846,9 +890,20 @@ export function DaemonProvider({ children }: DaemonProps) {
           accounts.push(maAddr)
         }
       }
-      const { items, error } = await fetchMergedRecentActivityFromIndexer(accounts)
-      setRecentActivityNoAaItems(items)
-      setRecentActivityNoAaError(error)
+      const eoaSave = eoa.toLowerCase()
+      const { items, error, trusted } = await fetchMergedRecentActivityFromIndexer(accounts)
+      if (trusted) {
+        const prevItems = recentActivityNoAaItemsRef.current
+        if (shouldUpdateRecentActivityList(prevItems, items)) {
+          setRecentActivityNoAaItems(items)
+        }
+        setRecentActivityNoAaError(null)
+        if (eoaSave && ethers.isAddress(eoaSave)) {
+          saveRecentActivityLocalCache(eoaSave, items)
+        }
+      } else if (!hasRenderableActivity && error) {
+        setRecentActivityNoAaError(error)
+      }
 
       try {
         const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)

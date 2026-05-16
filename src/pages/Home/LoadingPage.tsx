@@ -44,7 +44,9 @@ import RecoveryQRScreen from './RecoveryQRScreen'
 import RestoreWalletUnifiedScreen from './RestoreWalletUnifiedScreen'
 import WalletReadyScreen from './WalletReadyScreen'
 import RedeemVoucherScreen from './RedeemVoucherScreen'
+import ActiveCouponsScreen from './ActiveCouponsScreen'
 import { WALLET_READY_INTENT_KEY } from './walletReadyIntent'
+import { buildRedeemVoucherHistoryPath } from './redeemVoucherPath'
 import OnboardingWelcomeScreen from './OnboardingWelcomeScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
@@ -366,6 +368,17 @@ type Props = {
 
 const TOP_OFFSET = "calc(env(safe-area-inset-top) + 4rem)"
 
+/** 处于 onboarding 子屏时不触发自动 home()（含优惠券列表 / 手动兑换） */
+const ONBOARDING_MODAL_SCREENS = new Set([
+	'CreateUsernamePinScreen',
+	'RecoveryQRScreen',
+	'OnboardingWelcomeScreen',
+	'WalletReadyScreen',
+	'RestoreWalletScreen',
+	'ActiveCouponsScreen',
+	'RedeemVoucherScreen',
+])
+
 type RedeemSplashStepProps = {
 	onActivate: () => void
 	redeemDetails: import('@/services/BeamioCard').RedeemDetailsForDisplay | null
@@ -448,29 +461,6 @@ function parseRedeemFromUrl(): { cardAddress: string; redeemCode: string } | nul
 	}
 }
 
-function buildRedeemVoucherHistoryPath(input: string): string | null {
-	const raw = input.trim()
-	if (!raw) return null
-
-	let redeemCode = ''
-	let cardAddress = ''
-
-	try {
-		const u = new URL(raw)
-		redeemCode = u.searchParams.get('redeemcode') || u.searchParams.get('Redeemcode') || ''
-		cardAddress = (u.searchParams.get('beamiocard') || u.searchParams.get('Beamiocard') || '').trim()
-	} catch {
-		const query = raw.includes('?') ? raw.slice(raw.indexOf('?') + 1) : raw
-		const sp = new URLSearchParams(query)
-		redeemCode = sp.get('redeemcode') || sp.get('Redeemcode') || ''
-		cardAddress = (sp.get('beamiocard') || sp.get('Beamiocard') || '').trim()
-	}
-
-	const normalizedCode = decodeURIComponent((redeemCode || raw).trim())
-	const normalizedCard = cardAddress && ethers.isAddress(cardAddress) ? cardAddress : CCSA_Card_Address
-	return `/History?beamiocard=${encodeURIComponent(normalizedCard)}&redeemcode=${encodeURIComponent(normalizedCode)}`
-}
-
 export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, 
 		setAllNodes, setGossip, gossip,
@@ -481,7 +471,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const [loading, SetLoading] = useState(true)
 	const navigate = useNavigate()
 
-	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'OnboardingWelcomeScreen'|'WalletReadyScreen'|'RestoreWalletScreen'|'RedeemVoucherScreen'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'CreateUsernamePinScreen'|'RecoveryQRScreen'|'OnboardingWelcomeScreen'|'WalletReadyScreen'|'RestoreWalletScreen'|'ActiveCouponsScreen'|'RedeemVoucherScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(false)
 	const [qrDataUrl, setQrDataUrl] = useState('')
 	const [recoveryCode, setRecoveryCode]  = useState('')
@@ -666,16 +656,46 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		if (isWalletReady) updateManifestStartUrl(window.location.href)
 	}, [settingsOpen, redeemFromUrl, redeeming, redeemResult?.success, beamioTag, recoveryCode])
 
-	// loading ready 后：无 redeem URL 则直接进入 home（防重复调用）；WalletReadyScreen 阶段不触发
+	// loading ready 后：无 redeem URL 则直接进入 home（防重复调用）；onboarding 子屏阶段不触发
 	useEffect(() => {
 		if (isInitialEntry || !hasCheckedUrl || redeemFromUrl !== null || loading) return
-		if (settingsOpen === 'WalletReadyScreen' || settingsOpen === 'OnboardingWelcomeScreen') return
+		if (settingsOpen && ONBOARDING_MODAL_SCREENS.has(settingsOpen)) return
 		if (homeCalledRef.current) return
 		homeCalledRef.current = true
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
 		home()
 	}, [isInitialEntry, hasCheckedUrl, redeemFromUrl, loading, settingsOpen, home])
+
+	/** 已有 AA 时跳过 STEP 05（WalletReadyScreen），直接进入首页 */
+	const finishOnboardingToHome = () => {
+		setSettingsOpen('')
+		home()
+		navigate('/')
+	}
+
+	const handleOnboardingEnterHome = async () => {
+		if (walletAddr && ethers.isAddress(walletAddr)) {
+			finishOnboardingToHome()
+			return
+		}
+		const profile = CoNET_Data?.profiles?.[0] ?? temp?.profiles?.[0]
+		if (!profile) {
+			setSettingsOpen('WalletReadyScreen')
+			return
+		}
+		try {
+			const aa = await getAAAccount(profile)
+			if (aa && ethers.isAddress(aa)) {
+				setWalletAddr(aa)
+				finishOnboardingToHome()
+				return
+			}
+		} catch {
+			// AA 查询不可信时仍展示激活引导页，避免误跳过
+		}
+		setSettingsOpen('WalletReadyScreen')
+	}
 
 	// Wallet Ready：获取 AA 地址与 USDC 余额，并记录 EOA 地址
 	useEffect(() => {
@@ -1042,6 +1062,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							settingsOpen !== 'OnboardingWelcomeScreen' &&
 							settingsOpen !== 'WalletReadyScreen' &&
 							settingsOpen !== 'RestoreWalletScreen' &&
+							settingsOpen !== 'ActiveCouponsScreen' &&
 							settingsOpen !== 'RedeemVoucherScreen' &&
 							settingsOpen !== 'CreateUsernamePinScreen' &&
 							(
@@ -1068,6 +1089,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								settingsOpen === 'WalletReadyScreen' ||
 								settingsOpen === 'CreateUsernamePinScreen' ||
 								settingsOpen === 'RestoreWalletScreen' ||
+								settingsOpen === 'ActiveCouponsScreen' ||
 								settingsOpen === 'RedeemVoucherScreen'
 									? 'flex min-h-0 flex-1 flex-col overflow-hidden'
 									: 'min-h-0 flex-1 overflow-y-auto'
@@ -1108,7 +1130,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								settingsOpen === 'OnboardingWelcomeScreen' && (
 									<OnboardingWelcomeScreen
 										beamioTag={beamioTag || undefined}
-										onEnterHome={() => setSettingsOpen('WalletReadyScreen')}
+										onEnterHome={() => void handleOnboardingEnterHome()}
 									/>
 								)
 							}
@@ -1135,7 +1157,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											navigate('/')
 										}}
 										onRedeemGiftVoucher={() => {
-											setSettingsOpen('RedeemVoucherScreen')
+											setSettingsOpen('ActiveCouponsScreen')
 										}}
 										onFinishLater={() => home()}
 										address={eoaAddress || undefined}
@@ -1145,9 +1167,25 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								)
 							}
 							{
+								settingsOpen === 'ActiveCouponsScreen' && (
+									<ActiveCouponsScreen
+										onBack={() => setSettingsOpen('WalletReadyScreen')}
+										onManualEntry={() => setSettingsOpen('RedeemVoucherScreen')}
+										getPrivateKeyArmor={() =>
+											CoNET_Data?.profiles?.[0]?.privateKeyArmor ??
+											temp?.profiles?.[0]?.privateKeyArmor
+										}
+										onClaimSuccess={() => {
+											home()
+											navigate('/')
+										}}
+									/>
+								)
+							}
+							{
 								settingsOpen === 'RedeemVoucherScreen' && (
 									<RedeemVoucherScreen
-										onBack={() => setSettingsOpen('WalletReadyScreen')}
+										onBack={() => setSettingsOpen('ActiveCouponsScreen')}
 										onActivateVoucher={(voucherInput) => {
 											const path = buildRedeemVoucherHistoryPath(voucherInput)
 											if (!path) return

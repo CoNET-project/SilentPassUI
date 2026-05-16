@@ -33,6 +33,9 @@ import cashTreesHeroBg3 from '@/components/assets/cashTreesHeroBg3.png'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
+import ActiveCouponsScreen from '@/pages/Home/ActiveCouponsScreen'
+import RedeemVoucherScreen from '@/pages/Home/RedeemVoucherScreen'
+import { buildRedeemVoucherHistoryPath } from '@/pages/Home/redeemVoucherPath'
 
 import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -313,7 +316,10 @@ async function loadCashTreesWalletSnapshot(profile: Parameters<typeof getMyAsset
 
 type AddCashSheetMode = 'methods' | 'store_qr' | 'coinbase' | 'topup_store'
 
-const Home = ({}) => {
+type HomeProps = {
+}
+
+const Home = (_props: HomeProps) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
@@ -416,6 +422,7 @@ const Home = ({}) => {
 	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
 	const cashTreesNfcReq = useRef(0)
 	const activateWalletPanelRef = useRef<HTMLDivElement | null>(null)
+	const [activateGiftVoucherScreen, setActivateGiftVoucherScreen] = useState<'' | 'activeCoupons' | 'redeemVoucher'>('')
 	const [cashTreesHeroBgIndex, setCashTreesHeroBgIndex] = useState(0)
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
@@ -535,6 +542,15 @@ const Home = ({}) => {
 		setShowFooter(false)
 		return () => setShowFooter(true)
 	}, [showActivateWalletPanel, setShowFooter])
+
+	useEffect(() => {
+		if (!activateGiftVoucherScreen) return
+		setShowFooter(false)
+		return () => {
+			if (showActivateWalletPanel) setShowFooter(false)
+			else setShowFooter(true)
+		}
+	}, [activateGiftVoucherScreen, showActivateWalletPanel, setShowFooter])
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -2189,6 +2205,27 @@ const Home = ({}) => {
 												<p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Tap funded card to phone.</p>
 											</button>
 										) : null}
+
+										<button
+											type="button"
+											onClick={() => setActivateGiftVoucherScreen('activeCoupons')}
+											className={`w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex items-center gap-4 cursor-pointer group text-left ${deviceHasNfcReadCapability ? 'mt-4' : 'mt-0'}`}
+											aria-label="Redeem gift voucher: browse active coupons"
+										>
+											<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
+												<Gift size={22} className="text-[#1562f0]" strokeWidth={2} aria-hidden />
+											</div>
+											<div className="min-w-0 flex-1">
+												<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+													{deviceHasNfcReadCapability ? 'Option 3' : 'Option 2'}: Gift Voucher
+												</span>
+												<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Redeem Gift Voucher</p>
+												<p className="text-xs text-gray-500 dark:text-slate-400 mt-1 leading-snug">
+													Browse active coupons or enter a gift link.
+												</p>
+											</div>
+											<ChevronRight size={22} className="shrink-0 text-gray-400 group-hover:text-[#1562f0] transition-colors" aria-hidden />
+										</button>
 									</div>
 								</div>
 							) : (
@@ -2290,7 +2327,7 @@ const Home = ({}) => {
 								</section>
 							</div>
 
-							{(myBrandsFeedLoading || myBrandCardsSorted.length > 0) && (
+							{(myBrandCards.length > 0 || myBrandsFeedLoading) && (
 								<section className="mb-10">
 									<div className="mb-4 flex items-end justify-between px-1">
 										<h2 className="text-xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
@@ -2306,7 +2343,7 @@ const Home = ({}) => {
 										</button>
 									</div>
 									<div className="flex flex-col rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
-										{myBrandsFeedLoading && myBrandCardsSorted.length === 0 ? (
+										{myBrandsFeedLoading && myBrandCards.length === 0 ? (
 											<>
 												<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
 													<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
@@ -2344,14 +2381,11 @@ const Home = ({}) => {
 												const cardGlobalCurrency = (
 													assets?.cardCurrency ?? uc.currency ?? 'CAD'
 												).toUpperCase()
-												const pointsLine =
-													detail === undefined
+												const pointsLine = Number.isFinite(ptsNum)
+													? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
+													: detail === undefined
 														? '…'
-														: assets == null
-															? '—'
-															: Number.isFinite(ptsNum)
-																? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
-																: '—'
+														: '—'
 												return (
 													<div
 														key={uc.cardAddress}
@@ -4359,6 +4393,43 @@ const Home = ({}) => {
 					navigate('/discover')
 				}}
 			/>
+
+			{activateGiftVoucherScreen
+				? createPortal(
+						<AnimatePresence>
+							<motion.div
+								key="activate-gift-voucher-overlay"
+								className="fixed inset-0 z-[9998] flex min-h-0 flex-col bg-white dark:bg-slate-900"
+								initial={{ x: '100%' }}
+								animate={{ x: 0 }}
+								exit={{ x: '100%' }}
+								transition={{ duration: 0.3, ease: 'easeOut' }}
+							>
+								{activateGiftVoucherScreen === 'activeCoupons' ? (
+									<ActiveCouponsScreen
+										onBack={() => setActivateGiftVoucherScreen('')}
+										onManualEntry={() => setActivateGiftVoucherScreen('redeemVoucher')}
+										getPrivateKeyArmor={() => profiles?.[0]?.privateKeyArmor}
+										onClaimSuccess={() => setActivateGiftVoucherScreen('')}
+									/>
+								) : null}
+								{activateGiftVoucherScreen === 'redeemVoucher' ? (
+									<RedeemVoucherScreen
+										onBack={() => setActivateGiftVoucherScreen('activeCoupons')}
+										onActivateVoucher={(voucherInput) => {
+											const path = buildRedeemVoucherHistoryPath(voucherInput)
+											if (!path) return
+											setActivateGiftVoucherScreen('')
+											if (!showActivateWalletPanel) setShowFooter(true)
+											navigate(path)
+										}}
+									/>
+								) : null}
+							</motion.div>
+						</AnimatePresence>,
+						document.body
+					)
+				: null}
 		</div>
 	)
 }

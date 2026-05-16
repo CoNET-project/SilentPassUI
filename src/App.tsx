@@ -1,5 +1,5 @@
 // App.tsx
-import { useEffect, useRef, useState, useLayoutEffect } from "react"
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react"
 import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import Footer from "@/components/Footer"
@@ -1316,9 +1316,9 @@ function AppShell() {
 				当 search 控件执行关闭（返回按钮/选择结果）后，父容器必须执行 setChatSearchOpen(false) 隐藏 search */}
 			{chatSearchOpen && createPortal(
 				<div className="fixed inset-0 z-[100] flex flex-col">
-					{/* 遮罩：点击后关闭 search，确保父容器执行隐藏 */}
+					{/* 蒙版：点击后关闭 search，确保父容器执行隐藏 */}
 					<div
-						className="flex-1 min-h-0"
+						className="flex-1 min-h-0 bg-black/45 backdrop-blur-[1px]"
 						aria-hidden
 						onClick={() => {
 							setChatSearchOpen(false)

@@ -1,6 +1,6 @@
 {
-	"name": "Verra",
-	"version": "0.49.10",
+	"name": "Beamio",
+	"version": "0.50.3",
 	"private": true,
 	"homepage": "/app",
 	"dependencies": {

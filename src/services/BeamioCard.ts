@@ -460,17 +460,207 @@ function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefin
 	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
 }
 
-export async function getCardActiveIssuedCouponSeries(cardAddress: string, limit = 50): Promise<CardActiveIssuedCouponSeriesItem[]> {
+/** Align `cardCouponOpenClaimPreCheck` / issued NFT series tokenId floor. */
+const ISSUED_NFT_START_ID_MEMBER = 100_000_000_000n
+
+const OPEN_CLAIM_ONCHAIN_READ_ABI = [
+	'function issuedNftPriceInCurrency6(uint256 tokenId) view returns (uint256)',
+	'function issuedNftUserSigClaimUsed(address userEOA, uint256 tokenId) view returns (bool)',
+	'function issuedNftMaxSupply(uint256 tokenId) view returns (uint256)',
+	'function issuedNftMintedCount(uint256 tokenId) view returns (uint256)',
+] as const
+
+/** Same semantics as x402sdk `readCouponRequiresRedeemCode`. */
+function readCouponRequiresRedeemCode(meta: Record<string, unknown> | null | undefined): boolean {
+	if (!meta || typeof meta !== 'object') return false
+	const root = meta as Record<string, unknown>
+	const toBool = (v: unknown): boolean =>
+		v === true || v === 1 || v === '1' || v === 'true'
+	if (toBool(root.requiresRedeemCode) || toBool(root.redeemCodeRequired)) return true
+	const properties = root.properties
+	if (!properties || typeof properties !== 'object') return false
+	const beamioCoupon = (properties as Record<string, unknown>).beamioCoupon
+	if (!beamioCoupon || typeof beamioCoupon !== 'object') return false
+	const nested = beamioCoupon as Record<string, unknown>
+	return toBool(nested.requiresRedeemCode) || toBool(nested.redeemCodeRequired)
+}
+
+const openClaimCardReadContracts = new Map<string, ethers.Contract>()
+
+function openClaimCardReadContract(cardAddress: string): ethers.Contract {
+	const cardNorm = ethers.getAddress(cardAddress)
+	const key = cardNorm.toLowerCase()
+	let c = openClaimCardReadContracts.get(key)
+	if (!c) {
+		c = new ethers.Contract(cardNorm, OPEN_CLAIM_ONCHAIN_READ_ABI, baseEndpoint)
+		openClaimCardReadContracts.set(key, c)
+	}
+	return c
+}
+
+/**
+ * Cluster `cardCouponOpenClaimPreCheck` list-side filters (metadata + on-chain price/claimed/supply).
+ * Does not require AA — Master `ensureAAForEOAOnCard` creates AA during claim if missing.
+ * `false` = hide row; `true` = show; `null` = RPC uncertain — keep row (do not treat failure as non-claimable).
+ */
+async function passesOpenClaimListFiltersForUser(
+	row: CardActiveIssuedCouponSeriesItem,
+	userEOA: string
+): Promise<boolean | null> {
+	if (!readCouponIdFromMetadata(row.metadata ?? null)) return false
+	if (readCouponRequiresRedeemCode(row.metadata ?? null)) return false
+	let tokenIdN: bigint
+	try {
+		tokenIdN = BigInt(row.tokenId)
+	} catch {
+		return false
+	}
+	if (tokenIdN < ISSUED_NFT_START_ID_MEMBER) return false
+	if (!row.cardAddress || !ethers.isAddress(row.cardAddress)) return false
+	try {
+		const cardRead = openClaimCardReadContract(row.cardAddress)
+		const userNorm = ethers.getAddress(userEOA)
+		const [priceInCurrency6, alreadyClaimed, maxSupply, mintedCount] = await Promise.all([
+			cardRead.issuedNftPriceInCurrency6(tokenIdN) as Promise<bigint>,
+			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
+			cardRead.issuedNftMaxSupply(tokenIdN) as Promise<bigint>,
+			cardRead.issuedNftMintedCount(tokenIdN) as Promise<bigint>,
+		])
+		if (priceInCurrency6 !== 0n) return false
+		if (alreadyClaimed) return false
+		if (maxSupply > 0n && mintedCount >= maxSupply) return false
+		return true
+	} catch {
+		return null
+	}
+}
+
+const mapCouponOpenClaimApiError = (raw: string | undefined): string => {
+	const msg = (raw ?? '').trim()
+	if (!msg) return 'Coupon claim failed'
+	if (/Failed to create AA|ensureAAForEOAOnCard/i.test(msg)) {
+		return 'Failed to create Smart Account. Please try again shortly.'
+	}
+	if (/UC_ResolveAccountFailed|ResolveAccountFailed|ad12d341/i.test(msg)) {
+		return 'Smart Account setup failed. Please try again shortly.'
+	}
+	if (/already claimed|UC_IssuedNftSigClaimAlreadyUsed/i.test(msg)) {
+		return 'This wallet already claimed this coupon.'
+	}
+	if (/fully claimed|InsufficientBalance|supply/i.test(msg)) {
+		return 'Coupon supply has been fully claimed.'
+	}
+	if (/redeemCode|open claim is disabled/i.test(msg)) {
+		return 'This coupon requires a redeem code.'
+	}
+	if (/inactive|expired|InvalidTimeWindow/i.test(msg)) {
+		return 'This coupon is inactive or expired.'
+	}
+	return msg
+}
+
+async function filterCouponSeriesForOpenClaim(
+	rows: CardActiveIssuedCouponSeriesItem[],
+	userEOA: string | null | undefined
+): Promise<CardActiveIssuedCouponSeriesItem[]> {
+	if (!userEOA || !ethers.isAddress(userEOA)) return rows
+	const userNorm = ethers.getAddress(userEOA)
+	const out: CardActiveIssuedCouponSeriesItem[] = []
+	for (const row of rows) {
+		const verdict = await passesOpenClaimListFiltersForUser(row, userNorm)
+		if (verdict === false) continue
+		out.push(row)
+	}
+	return out
+}
+
+/** null = 请求不可信；[] = 可信空 */
+export async function fetchCardActiveIssuedCouponSeriesTrusted(
+	cardAddress: string,
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
 	if (!cardAddress || !ethers.isAddress(cardAddress)) return []
 	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
 	try {
-		const res = await fetch(`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=${normalizedLimit}`)
-		if (!res.ok) return []
+		const res = await fetch(
+			`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=${normalizedLimit}`
+		)
+		if (!res.ok) return null
 		const json = (await res.json().catch(() => ({}))) as { items?: CardActiveIssuedCouponSeriesItem[] }
 		return Array.isArray(json.items) ? json.items : []
 	} catch {
-		return []
+		return null
 	}
+}
+
+export async function getCardActiveIssuedCouponSeries(cardAddress: string, limit = 50): Promise<CardActiveIssuedCouponSeriesItem[]> {
+	const trusted = await fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, limit)
+	return trusted ?? []
+}
+
+/** 从全站最近登记的优惠券系列提取卡地址（用于 onboarding 列表，避免只扫基础设施卡） */
+async function fetchRecentIssuedCouponCardAddresses(limit = 50): Promise<string[] | null> {
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	try {
+		const res = await fetch(`${beamioApi}/api/recentIssuedCouponSeries?limit=${normalizedLimit}`)
+		if (!res.ok) return null
+		const json = (await res.json().catch(() => ({}))) as { items?: Array<{ cardAddress?: string }> }
+		const seen = new Set<string>()
+		for (const row of json.items ?? []) {
+			const raw = row.cardAddress?.trim()
+			if (!raw || !ethers.isAddress(raw)) continue
+			seen.add(ethers.getAddress(raw).toLowerCase())
+		}
+		return [...seen]
+	} catch {
+		return null
+	}
+}
+
+/**
+ * 进行中、可 open-claim 的优惠券：基础设施卡 + 全站 recent 系列所属商户卡，逐卡链上 isIssuedNftValid 过滤。
+ * 若提供 `userEOA`，再按 Cluster `cardCouponOpenClaimPreCheck` 规则过滤（无 redeemCode、免费券、未领取）。
+ * null = 全部卡请求均不可信。
+ */
+export async function fetchOngoingClaimableCouponSeries(
+	limit = 50,
+	userEOA?: string | null
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	const cardSet = new Set<string>(
+		ASSET_CARD_ADDRESSES.filter((a) => ethers.isAddress(a)).map((a) => a.toLowerCase())
+	)
+	const recentCards = await fetchRecentIssuedCouponCardAddresses(normalizedLimit)
+	if (recentCards) {
+		for (const c of recentCards) cardSet.add(c)
+	}
+	if (cardSet.size === 0) return []
+
+	const cardList = [...cardSet]
+	const responses = await Promise.all(
+		cardList.map((cardLower) => fetchCardActiveIssuedCouponSeriesTrusted(cardLower, normalizedLimit))
+	)
+	if (!responses.some((r) => r !== null)) return null
+
+	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
+	for (let i = 0; i < cardList.length; i++) {
+		const rows = responses[i]
+		if (!rows) continue
+		const cardAddress = ethers.getAddress(cardList[i])
+		for (const row of rows) {
+			merged.set(`${cardList[i]}:${row.tokenId}`, { ...row, cardAddress })
+		}
+	}
+	const sorted = [...merged.values()].sort((a, b) => {
+		const av = Number(a.issuedNftValidBefore ?? 0)
+		const bv = Number(b.issuedNftValidBefore ?? 0)
+		const aFinite = Number.isFinite(av) && av > 0
+		const bFinite = Number.isFinite(bv) && bv > 0
+		if (aFinite !== bFinite) return aFinite ? -1 : 1
+		if (aFinite && bFinite && av !== bv) return av - bv
+		return String(a.tokenId).localeCompare(String(b.tokenId), 'en')
+	})
+	return filterCouponSeriesForOpenClaim(sorted, userEOA)
 }
 
 async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
@@ -484,14 +674,17 @@ async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: 
 	return null
 }
 
-/** 用户离线签字 + 直连 API：无 redeemcode 的 coupon open-claim。 */
+/** 用户离线签字 + 直连 `POST /api/cardCouponOpenClaim`（Cluster 预检后 Master 执行）。 */
 export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 	cardAddress: string
 	couponId: string
+	/** When known from list row, skip re-scanning card series by couponId. */
+	tokenId?: string
 	privateKeyArmor: string
 }): Promise<{ success: boolean; tx?: string; tokenId?: string; error?: string; status?: number }> => {
 	const cardAddress = params.cardAddress?.trim() ?? ''
 	const couponId = params.couponId?.trim() ?? ''
+	const tokenIdParam = params.tokenId?.trim() ?? ''
 	const privateKeyArmor = params.privateKeyArmor?.trim() ?? ''
 	if (!cardAddress || !couponId || !privateKeyArmor || !ethers.isAddress(cardAddress)) {
 		return { success: false, error: 'Invalid cardAddress, couponId, or privateKey' }
@@ -500,7 +693,9 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 		const signer = new ethers.Wallet(privateKeyArmor)
 		const userEOA = ethers.getAddress(signer.address)
 		const cardNorm = ethers.getAddress(cardAddress)
-		const tokenId = await resolveOpenClaimTokenIdByCouponId(cardNorm, couponId)
+		const tokenId =
+			tokenIdParam ||
+			(await resolveOpenClaimTokenIdByCouponId(cardNorm, couponId))
 		if (!tokenId) return { success: false, error: 'Coupon not found or inactive on this card.' }
 
 		const cardRead = new ethers.Contract(cardNorm, ['function factoryGateway() view returns (address)'], baseEndpoint)
@@ -545,11 +740,15 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 		})
 		const data = (await res.json().catch(() => ({}))) as { success?: boolean; tx?: string; error?: string; tokenId?: string }
 		if (!res.ok || data.success === false) {
-			return { success: false, error: data.error ?? `HTTP ${res.status}`, status: res.status }
+			return {
+				success: false,
+				error: mapCouponOpenClaimApiError(data.error ?? `HTTP ${res.status}`),
+				status: res.status,
+			}
 		}
 		return { success: true, tx: data.tx, tokenId: data.tokenId ?? tokenId }
 	} catch (e: any) {
-		return { success: false, error: e?.shortMessage ?? e?.message ?? String(e) }
+		return { success: false, error: mapCouponOpenClaimApiError(e?.shortMessage ?? e?.message ?? String(e)) }
 	}
 }
 

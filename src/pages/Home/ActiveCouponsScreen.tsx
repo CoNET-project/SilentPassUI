@@ -1,0 +1,539 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Gift, Loader2, RefreshCw } from 'lucide-react'
+import { ethers } from 'ethers'
+import { Toast } from 'antd-mobile'
+import {
+	type CardActiveIssuedCouponSeriesItem,
+	fetchOngoingClaimableCouponSeries,
+	postCardCouponOpenClaimWithCurrentWallet,
+} from '@/services/BeamioCard'
+
+export type ActiveCouponListItem = {
+	id: string
+	cardAddress: string
+	tokenId: string
+	couponId: string
+	title: string
+	subtitle: string
+	iconUrl: string
+	backgroundImage: string
+	backgroundColorHex: string
+	validBeforeSec: number | null
+}
+
+type ActiveCouponsScreenProps = {
+	onBack: () => void
+	onManualEntry: () => void
+	getPrivateKeyArmor: () => string | undefined
+	onClaimSuccess?: () => void
+}
+
+type FetchState = 'loading' | 'idle' | 'error'
+type ClaimButtonStatus = 'idle' | 'loading' | 'success' | 'error'
+
+const asRecord = (v: unknown): Record<string, unknown> | null =>
+	v && typeof v === 'object' ? (v as Record<string, unknown>) : null
+
+const readString = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+
+const readMetadataCouponId = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const root = readString(meta.couponId)
+	if (root) return root
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return readString(beamioCoupon?.couponId)
+}
+
+const readMetadataTitle = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return (
+		readString(meta.title) ||
+		readString(meta.name) ||
+		readString(beamioCoupon?.title) ||
+		readString(beamioCoupon?.name)
+	)
+}
+
+const readMetadataSubtitle = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return (
+		readString(meta.subtitle) ||
+		readString(meta.description) ||
+		readString(beamioCoupon?.subtitle) ||
+		readString(beamioCoupon?.description)
+	)
+}
+
+const readMetadataIconUrl = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	const imageObj = asRecord(meta.image)
+	return (
+		readString(meta.iconUrl) ||
+		readString(meta.icon) ||
+		readString(imageObj?.url) ||
+		readString(meta.image) ||
+		readString(beamioCoupon?.iconUrl) ||
+		readString(beamioCoupon?.icon)
+	)
+}
+
+/** Wide ticket banner — biz publishes `couponImage` (see biz `cardIssuanceCouponEditorLivePreview.banner`). */
+const COUPON_BACKGROUND_IMAGE_KEYS = [
+	'couponImage',
+	'background',
+	'backgroundImage',
+	'backgroundImageUrl',
+	'cover',
+	'coverImage',
+] as const
+
+const readMetadataStringFromKeys = (src: Record<string, unknown> | null, keys: readonly string[]): string => {
+	if (!src) return ''
+	for (const key of keys) {
+		const v = readString(src[key])
+		if (v) return v
+	}
+	return ''
+}
+
+const readMetadataBackgroundImage = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	return (
+		readMetadataStringFromKeys(meta, COUPON_BACKGROUND_IMAGE_KEYS) ||
+		readMetadataStringFromKeys(beamioCoupon, COUPON_BACKGROUND_IMAGE_KEYS)
+	)
+}
+
+const COUPON_BACKGROUND_COLOR_KEYS = [
+	'backgroundColor',
+	'bgColor',
+	'color',
+	'backgroundColorHex',
+	'background_color',
+] as const
+
+const readMetadataBackgroundColor = (meta: Record<string, unknown> | null): string => {
+	if (!meta) return ''
+	const props = asRecord(meta.properties)
+	const beamioCoupon = asRecord(props?.beamioCoupon)
+	const c =
+		readMetadataStringFromKeys(meta, COUPON_BACKGROUND_COLOR_KEYS) ||
+		readMetadataStringFromKeys(beamioCoupon, COUPON_BACKGROUND_COLOR_KEYS)
+	if (!c) return ''
+	return c.startsWith('#') ? c : `#${c}`
+}
+
+const formatCouponExpiryPill = (validBeforeSec: number | null): string => {
+	if (!Number.isFinite(validBeforeSec ?? NaN) || (validBeforeSec ?? 0) <= 0) return 'VALID NOW'
+	const now = Math.floor(Date.now() / 1000)
+	if ((validBeforeSec ?? 0) <= now) return 'EXPIRED'
+	const delta = (validBeforeSec ?? now) - now
+	if (delta >= 86_400) return `EXPIRES IN ${Math.ceil(delta / 86_400)}D`
+	if (delta >= 3_600) return `EXPIRES IN ${Math.ceil(delta / 3_600)}H`
+	return `EXPIRES IN ${Math.max(1, Math.ceil(delta / 60))}M`
+}
+
+/** Same urgency rule as biz `cardIssuanceCouponEditorLivePreview` (hours / expired → red Clock + solid bg). */
+const couponExpiryUsesUrgentVariant = (expiresLabel: string): boolean =>
+	expiresLabel === 'EXPIRED' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel)
+
+function mapRow(cardAddress: string, row: CardActiveIssuedCouponSeriesItem): ActiveCouponListItem | null {
+	const meta = asRecord(row.metadata)
+	const couponId = readMetadataCouponId(meta)
+	if (!couponId) return null
+	const validBeforeNum = Number(row.issuedNftValidBefore ?? 0)
+	return {
+		id: `${cardAddress.toLowerCase()}:${row.tokenId}`,
+		cardAddress,
+		tokenId: String(row.tokenId),
+		couponId,
+		title: readMetadataTitle(meta) || 'Coupon',
+		subtitle: readMetadataSubtitle(meta) || 'Gift voucher',
+		iconUrl: readMetadataIconUrl(meta),
+		backgroundImage: readMetadataBackgroundImage(meta),
+		backgroundColorHex: readMetadataBackgroundColor(meta),
+		validBeforeSec: Number.isFinite(validBeforeNum) && validBeforeNum > 0 ? validBeforeNum : null,
+	}
+}
+
+export default function ActiveCouponsScreen({
+	onBack,
+	onManualEntry,
+	getPrivateKeyArmor,
+	onClaimSuccess,
+}: ActiveCouponsScreenProps) {
+	const [coupons, setCoupons] = useState<ActiveCouponListItem[]>([])
+	const [fetchState, setFetchState] = useState<FetchState>('loading')
+	const [claimStatusById, setClaimStatusById] = useState<Record<string, ClaimButtonStatus>>({})
+	const [claimErrorById, setClaimErrorById] = useState<Record<string, string>>({})
+	const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+	const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const claimStatusTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+	const couponsRef = useRef<ActiveCouponListItem[]>([])
+	couponsRef.current = coupons
+
+	const resolveUserEoa = useCallback((): string | null => {
+		const privateKeyArmor = getPrivateKeyArmor()?.trim() ?? ''
+		if (!privateKeyArmor) return null
+		try {
+			return ethers.getAddress(new ethers.Wallet(privateKeyArmor).address)
+		} catch {
+			return null
+		}
+	}, [getPrivateKeyArmor])
+
+	const scheduleClaimStatusReset = useCallback((rowId: string) => {
+		const prev = claimStatusTimersRef.current.get(rowId)
+		if (prev) clearTimeout(prev)
+		const timer = setTimeout(() => {
+			setClaimStatusById((s) => {
+				if (s[rowId] === 'idle') return s
+				const next = { ...s }
+				delete next[rowId]
+				return next
+			})
+			setClaimErrorById((s) => {
+				if (!s[rowId]) return s
+				const next = { ...s }
+				delete next[rowId]
+				return next
+			})
+			claimStatusTimersRef.current.delete(rowId)
+		}, 3000)
+		claimStatusTimersRef.current.set(rowId, timer)
+	}, [])
+
+	const loadCoupons = useCallback(async (opts?: { isRefresh?: boolean }) => {
+		if (opts?.isRefresh) setRefreshStatus('loading')
+		else setFetchState('loading')
+
+		const userEOA = resolveUserEoa()
+		const rows = await fetchOngoingClaimableCouponSeries(50, userEOA)
+		if (rows === null) {
+			if (opts?.isRefresh) {
+				setRefreshStatus('error')
+				if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+				refreshTimerRef.current = setTimeout(() => setRefreshStatus('idle'), 3000)
+			} else {
+				setFetchState(couponsRef.current.length > 0 ? 'idle' : 'error')
+			}
+			return
+		}
+
+		const merged = new Map<string, ActiveCouponListItem>()
+		for (const row of rows) {
+			const mapped = mapRow(row.cardAddress, row)
+			if (mapped) merged.set(mapped.id, mapped)
+		}
+
+		const next = [...merged.values()].sort((a, b) => {
+			const av = a.validBeforeSec ?? Number.MAX_SAFE_INTEGER
+			const bv = b.validBeforeSec ?? Number.MAX_SAFE_INTEGER
+			if (av !== bv) return av - bv
+			return a.title.localeCompare(b.title, 'en')
+		})
+
+		setCoupons(next)
+		setFetchState('idle')
+		if (opts?.isRefresh) {
+			setRefreshStatus('success')
+			if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+			refreshTimerRef.current = setTimeout(() => setRefreshStatus('idle'), 3000)
+		}
+	}, [resolveUserEoa])
+
+	useEffect(() => {
+		void loadCoupons()
+		return () => {
+			if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+			for (const t of claimStatusTimersRef.current.values()) clearTimeout(t)
+			claimStatusTimersRef.current.clear()
+		}
+	}, [loadCoupons])
+
+	const handleRefresh = () => {
+		if (refreshStatus !== 'idle') return
+		void loadCoupons({ isRefresh: true })
+	}
+
+	const handleClaim = async (row: ActiveCouponListItem) => {
+		const currentStatus = claimStatusById[row.id] ?? 'idle'
+		if (currentStatus !== 'idle') return
+		const privateKeyArmor = getPrivateKeyArmor()?.trim() ?? ''
+		if (!privateKeyArmor) {
+			Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+			return
+		}
+		const cardAddress = row.cardAddress?.trim() ?? ''
+		const couponId = row.couponId?.trim() ?? ''
+		const tokenId = row.tokenId?.trim() ?? ''
+		if (!cardAddress || !couponId || !tokenId || !ethers.isAddress(cardAddress)) {
+			Toast.show({ content: 'Coupon claim parameters are invalid', position: 'top' })
+			return
+		}
+		setClaimStatusById((s) => ({ ...s, [row.id]: 'loading' }))
+		setClaimErrorById((s) => {
+			if (!s[row.id]) return s
+			const next = { ...s }
+			delete next[row.id]
+			return next
+		})
+		try {
+			const ret = await postCardCouponOpenClaimWithCurrentWallet({
+				cardAddress: ethers.getAddress(cardAddress),
+				couponId,
+				tokenId,
+				privateKeyArmor,
+			})
+			if (ret.success) {
+				setClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
+				scheduleClaimStatusReset(row.id)
+				setCoupons((prev) => prev.filter((c) => c.id !== row.id))
+				onClaimSuccess?.()
+			} else {
+				setClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
+				setClaimErrorById((s) => ({ ...s, [row.id]: ret.error ?? 'Coupon claim failed' }))
+				scheduleClaimStatusReset(row.id)
+			}
+		} catch {
+			setClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
+			setClaimErrorById((s) => ({ ...s, [row.id]: 'Coupon claim failed' }))
+			scheduleClaimStatusReset(row.id)
+		}
+	}
+
+	return (
+		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f9f9fe] font-[Inter,system-ui,sans-serif] text-[#1a1c1f] selection:bg-[#004bc3]/20">
+			<header className="fixed left-0 right-0 top-0 z-50 bg-[#f9f9fe]/80 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-[20px]">
+				<div className="mx-auto flex h-16 w-full max-w-2xl items-center justify-between px-6">
+					<button
+						type="button"
+						onClick={onBack}
+						className="flex h-10 w-10 items-center justify-center rounded-full text-[#1562f0] transition-transform hover:bg-[#f3f3f8] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/35"
+						aria-label="Back"
+					>
+						<ArrowLeft className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+					</button>
+					<h1 className="text-lg font-bold tracking-[-0.02em] text-[#1a1c1f]">Active Coupons</h1>
+					<button
+						type="button"
+						onClick={handleRefresh}
+						disabled={refreshStatus !== 'idle'}
+						className="flex h-10 w-10 items-center justify-center rounded-full text-[#1562f0] transition-transform hover:bg-[#f3f3f8] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/35"
+						aria-label="Refresh coupons"
+					>
+						{refreshStatus === 'loading' ? (
+							<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+						) : refreshStatus === 'success' ? (
+							<Check className="h-5 w-5 text-emerald-500" strokeWidth={2.2} aria-hidden />
+						) : refreshStatus === 'error' ? (
+							<AlertTriangle className="h-5 w-5 text-amber-500" strokeWidth={2.2} aria-hidden />
+						) : (
+							<RefreshCw className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+						)}
+					</button>
+				</div>
+			</header>
+
+			<main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-6 overflow-y-auto px-6 pb-32 pt-24 [@media(max-height:760px)]:gap-5 [@media(max-height:760px)]:pb-28">
+				<section className="space-y-2">
+					<div className="flex items-center gap-2">
+						<Gift className="h-5 w-5 text-[#1562f0]" strokeWidth={2.2} aria-hidden />
+						<h2 className="text-2xl font-black tracking-[-0.03em] text-[#1a1c1f]">Ongoing Coupons</h2>
+					</div>
+					<p className="leading-relaxed text-[#424655]">
+						Choose an active coupon below to claim it to your wallet, or enter a gift link manually.
+					</p>
+				</section>
+
+				<section className="space-y-3">
+					<div className="flex items-center justify-between px-1">
+						<span className="text-[10px] font-bold uppercase tracking-widest text-[#737687]">Available now</span>
+						<span className="rounded-full bg-[#e8e8ed] px-2 py-0.5 text-[10px] font-bold text-[#424655]">
+							{coupons.length} COUPON{coupons.length !== 1 ? 'S' : ''}
+						</span>
+					</div>
+
+					{fetchState === 'loading' && coupons.length === 0 ? (
+						<div className="space-y-4">
+							<div className="h-[7.5rem] animate-pulse rounded-[1.75rem] bg-[#eef1f3]" />
+							<div className="h-[7.5rem] animate-pulse rounded-[1.75rem] bg-[#eef1f3]" />
+						</div>
+					) : fetchState === 'error' && coupons.length === 0 ? (
+						<div className="rounded-2xl border border-amber-200/80 bg-amber-50 p-4 text-sm text-amber-900">
+							Unable to load coupons right now. Pull refresh or try again shortly.
+						</div>
+					) : coupons.length === 0 ? (
+						<div className="rounded-2xl border border-[#e8e8ed] bg-white p-5 text-center text-sm text-[#424655] shadow-sm">
+							No active coupons at the moment.
+						</div>
+					) : (
+						<div className="space-y-4">
+							{coupons.map((row) => {
+								const expires = formatCouponExpiryPill(row.validBeforeSec)
+								const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
+								const claimStatus: ClaimButtonStatus = claimStatusById[row.id] ?? 'idle'
+								const isClaiming = claimStatus === 'loading'
+								const claimButtonDisabled = claimStatus !== 'idle'
+								const expiryBgStyle = expiryUrgent
+									? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+									: 'border border-white/35 bg-white/18 text-white backdrop-blur-md'
+								const ExpiryIcon = expiryUrgent ? Clock : Calendar
+
+								return (
+									<div
+										key={row.id}
+										role="button"
+										tabIndex={0}
+										onClick={() => void handleClaim(row)}
+										onKeyDown={(e) => {
+											if (claimButtonDisabled) return
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault()
+												void handleClaim(row)
+											}
+										}}
+										className="relative w-full active:opacity-[0.98] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f9fe] rounded-[1.75rem]"
+										aria-label={`Claim coupon ${row.title}`}
+									>
+										<div
+											className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f9f9fe] shadow-none ring-0 outline-none"
+											aria-hidden
+										/>
+										<div
+											className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f9f9fe] shadow-none ring-0 outline-none"
+											aria-hidden
+										/>
+										<div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
+												{row.backgroundImage ? (
+													<>
+														<img
+															src={row.backgroundImage}
+															alt=""
+															className="absolute inset-0 h-full w-full object-cover"
+															draggable={false}
+														/>
+														<div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
+													</>
+												) : (
+													<div
+														className="absolute inset-0"
+														style={{ backgroundColor: row.backgroundColorHex || '#2B2E3A' }}
+													/>
+												)}
+												{!row.backgroundImage ? (
+													<>
+														<div
+															className="pointer-events-none absolute inset-0 opacity-[0.12]"
+															style={{
+																backgroundImage:
+																	'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+															}}
+															aria-hidden
+														/>
+														<div
+															className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30"
+															aria-hidden
+														/>
+													</>
+												) : null}
+
+												<div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-[6.25rem] sm:gap-4 sm:px-8 sm:py-5 sm:pr-[6.75rem]">
+													<div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
+														{row.iconUrl ? (
+															<img src={row.iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+														) : row.backgroundImage ? (
+															<img src={row.backgroundImage} alt="" className="h-full w-full object-cover" draggable={false} />
+														) : (
+															<div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg font-manrope">
+																{row.title.charAt(0).toUpperCase()}
+															</div>
+														)}
+													</div>
+
+													<div className="min-w-0 flex-1 text-white font-manrope">
+														<p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
+															{row.title}
+														</p>
+														<p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
+															{row.subtitle}
+														</p>
+														<div
+															className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${expiryBgStyle}`}
+														>
+															{isClaiming ? (
+																<Loader2 className="h-3 w-3 shrink-0 animate-spin" strokeWidth={2.5} aria-hidden />
+															) : (
+																<ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+															)}
+															<span className="truncate">
+																{isClaiming ? 'CLAIMING…' : expires}
+															</span>
+														</div>
+													</div>
+
+													<div className="pointer-events-auto absolute right-6 top-1/2 z-[2] -translate-y-1/2 sm:right-8">
+														<button
+															type="button"
+															disabled={claimButtonDisabled}
+															onClick={(e) => {
+																e.stopPropagation()
+																void handleClaim(row)
+															}}
+															className="flex h-8 min-w-[4.25rem] shrink-0 items-center justify-center gap-1 rounded-full bg-white px-3 text-[12px] font-semibold font-manrope text-[#1562f0] shadow-sm transition-all duration-200 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[13px]"
+															title={claimStatus === 'error' ? claimErrorById[row.id] : undefined}
+															aria-label={
+																claimStatus === 'success'
+																	? 'Coupon claimed'
+																	: claimStatus === 'error'
+																		? claimErrorById[row.id] ?? 'Coupon claim failed'
+																		: 'Claim coupon'
+															}
+														>
+															{claimStatus === 'loading' ? (
+																<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+															) : claimStatus === 'success' ? (
+																<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+															) : claimStatus === 'error' ? (
+																<AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.4} aria-hidden />
+															) : (
+																'Claim'
+															)}
+														</button>
+													</div>
+												</div>
+											</div>
+									</div>
+								)
+							})}
+						</div>
+					)}
+				</section>
+
+				<section className="rounded-2xl border border-[#e8e8ed] bg-white p-5 shadow-sm">
+					<p className="text-sm font-semibold text-[#1a1c1f]">Have a redeem link or QR code?</p>
+					<p className="mt-1 text-[13px] leading-relaxed text-[#424655]">
+						Gift vouchers with a redeem code can be entered or scanned manually.
+					</p>
+					<button
+						type="button"
+						onClick={onManualEntry}
+						className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[#1562f0]/25 bg-[#1562f0]/8 text-sm font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/35"
+					>
+						Enter code or scan QR
+						<ArrowRight className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+					</button>
+				</section>
+			</main>
+		</div>
+	)
+}

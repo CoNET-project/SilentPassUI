@@ -5,12 +5,15 @@ import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS } from "@/servi
 import { ethers } from 'ethers'
 import {
 	getCardsOfOwnerWithDetailsForProfile,
+	fetchMyBrandsCouponSeriesForUser,
+	isCardExcludedFromDisplay,
 	getMyAssets,
 	getCardBasicMetadataStaleWhileRevalidate,
 	getAAAccount,
 	rememberCardBasicMetadataTrusted,
 	type UserCardInfo,
 	type CardMetadataFromUri,
+	type CardActiveIssuedCouponSeriesItem,
 } from '@/services/BeamioCard'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
@@ -19,7 +22,11 @@ import usdc_abi from '@/services/ABI/usdc_abi.json'
 import { getUsdcBalanceFromApi } from '@/services/beamio'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { fetchMergedRecentActivityFromIndexer, type TxView } from '@/pages/History/recentActivityIndexerMerge'
-import { loadMyBrandsFeedLocalCache, saveMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
+import {
+  loadMyBrandsFeedLocalCache,
+  saveMyBrandsFeedLocalCache,
+  type MyBrandsOwnedCouponSnapshot,
+} from '@/utils/myBrandsFeedLocalCache'
 import {
 	loadRecentActivityLocalCache,
 	saveRecentActivityLocalCache,
@@ -39,6 +46,143 @@ const CONET_MAINNET_RPC_HTTP = 'https://rpc1.conet.network'
 
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
+
+type ClaimableCouponSummary = { count: number; firstTitle?: string; firstCoupon?: MyBrandsOwnedCouponSnapshot | null }
+
+const couponMetaAsRecord = (v: unknown): Record<string, unknown> | null =>
+  v && typeof v === 'object' ? (v as Record<string, unknown>) : null
+
+const couponMetaString = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+
+const couponMetaStringFromKeys = (src: Record<string, unknown> | null, keys: readonly string[]): string => {
+  if (!src) return ''
+  for (const key of keys) {
+    const v = couponMetaString(src[key])
+    if (v) return v
+  }
+  return ''
+}
+
+const couponMetaBackgroundImageKeys = [
+  'couponImage',
+  'background',
+  'backgroundImage',
+  'backgroundImageUrl',
+  'cover',
+  'coverImage',
+] as const
+
+const couponMetaBackgroundColorKeys = [
+  'backgroundColor',
+  'bgColor',
+  'color',
+  'backgroundColorHex',
+  'background_color',
+] as const
+
+function mapMyBrandsOwnedCoupon(row: CardActiveIssuedCouponSeriesItem, cardAddress: string): MyBrandsOwnedCouponSnapshot | null {
+  const meta = couponMetaAsRecord(row.metadata)
+  if (!meta) return null
+  const props = couponMetaAsRecord(meta.properties)
+  const beamioCoupon = couponMetaAsRecord(props?.beamioCoupon)
+  const couponId = couponMetaString(meta.couponId) || couponMetaString(beamioCoupon?.couponId)
+  if (!couponId) return null
+  const imageObj = couponMetaAsRecord(meta.image)
+  const title =
+    couponMetaString(meta.title) ||
+    couponMetaString(meta.name) ||
+    couponMetaString(beamioCoupon?.title) ||
+    couponMetaString(beamioCoupon?.name) ||
+    'Coupon'
+  const subtitle =
+    couponMetaString(meta.subtitle) ||
+    couponMetaString(meta.description) ||
+    couponMetaString(beamioCoupon?.subtitle) ||
+    couponMetaString(beamioCoupon?.description) ||
+    'Gift voucher'
+  const iconUrl =
+    couponMetaString(meta.iconUrl) ||
+    couponMetaString(meta.icon) ||
+    couponMetaString(imageObj?.url) ||
+    couponMetaString(meta.image) ||
+    couponMetaString(beamioCoupon?.iconUrl) ||
+    couponMetaString(beamioCoupon?.icon)
+  const backgroundImage =
+    couponMetaStringFromKeys(meta, couponMetaBackgroundImageKeys) ||
+    couponMetaStringFromKeys(beamioCoupon, couponMetaBackgroundImageKeys)
+  const rawBackgroundColor =
+    couponMetaStringFromKeys(meta, couponMetaBackgroundColorKeys) ||
+    couponMetaStringFromKeys(beamioCoupon, couponMetaBackgroundColorKeys)
+  const validBeforeNum = Number(row.issuedNftValidBefore ?? 0)
+  return {
+    id: `${cardAddress.toLowerCase()}:${row.tokenId}`,
+    cardAddress,
+    tokenId: String(row.tokenId),
+    couponId,
+    title,
+    subtitle,
+    iconUrl,
+    backgroundImage,
+    backgroundColorHex: rawBackgroundColor ? (rawBackgroundColor.startsWith('#') ? rawBackgroundColor : `#${rawBackgroundColor}`) : '',
+    validBeforeSec: Number.isFinite(validBeforeNum) && validBeforeNum > 0 ? validBeforeNum : null,
+  }
+}
+
+function readMyBrandsCouponTitle(meta: Record<string, unknown> | null | undefined): string {
+	if (!meta || typeof meta !== 'object') return ''
+	const props = meta.properties
+	const beamioCoupon =
+		props && typeof props === 'object'
+			? (props as Record<string, unknown>).beamioCoupon
+			: null
+	const couponObj =
+		beamioCoupon && typeof beamioCoupon === 'object'
+			? (beamioCoupon as Record<string, unknown>)
+			: null
+	const candidates = [
+		meta.title,
+		meta.name,
+		couponObj?.title,
+		couponObj?.name,
+	]
+	for (const v of candidates) {
+		if (typeof v === 'string' && v.trim()) return v.trim()
+	}
+	return ''
+}
+
+function summarizeClaimableCouponCards(
+	rows: CardActiveIssuedCouponSeriesItem[] | null
+): Map<string, ClaimableCouponSummary> | null {
+	if (rows === null) return null
+	const out = new Map<string, ClaimableCouponSummary>()
+	for (const row of rows) {
+		const raw = row.cardAddress?.trim()
+		if (!raw || !ethers.isAddress(raw)) continue
+		const cardAddress = ethers.getAddress(raw)
+		if (isCardExcludedFromDisplay(cardAddress)) continue
+		const key = cardAddress.toLowerCase()
+		const prev = out.get(key)
+		const title = readMyBrandsCouponTitle(row.metadata ?? null)
+		const firstCoupon = prev?.firstCoupon ?? mapMyBrandsOwnedCoupon(row, cardAddress)
+		out.set(key, {
+			count: (prev?.count ?? 0) + 1,
+			firstTitle: prev?.firstTitle || title || undefined,
+			firstCoupon,
+		})
+	}
+	return out
+}
+
+function couponFallbackCardInfo(cardAddressLower: string, summary: ClaimableCouponSummary): UserCardInfo {
+	return {
+		cardAddress: ethers.getAddress(cardAddressLower),
+		name: summary.firstTitle ? 'Merchant coupon' : 'Coupon available',
+		currency: 'CAD',
+		priceE6: '1000000',
+		ptsPer1Currency: '1',
+	}
+}
 
 /** /home「Total Power」：仅 CAD 展示用（whole.frac）；由全局 wallet 喂料写入 */
 export type HomeTotalPowerCad = { whole: string; frac: string }
@@ -598,6 +742,22 @@ export function DaemonProvider({ children }: DaemonProps) {
       }
       setMyBrandsFeedLastConetBlock(conetBlockRef.current)
       const eoaSave = profile.keyID?.trim().toLowerCase() ?? ''
+      const eoaForCoupons = profile.keyID?.trim()
+      const aaForCoupons =
+        profile.aaAccount && ethers.isAddress(profile.aaAccount)
+          ? ethers.getAddress(profile.aaAccount)
+          : eoaForCoupons && ethers.isAddress(eoaForCoupons)
+            ? await getAAAccount(profile).catch(() => null)
+            : null
+      const couponRows =
+        eoaForCoupons && ethers.isAddress(eoaForCoupons)
+          ? await fetchMyBrandsCouponSeriesForUser(
+              50,
+              ethers.getAddress(eoaForCoupons),
+              aaForCoupons && ethers.isAddress(aaForCoupons) ? ethers.getAddress(aaForCoupons) : null
+            ).catch(() => null)
+          : []
+      const couponSummaries = summarizeClaimableCouponCards(couponRows)
       const nextHolderUnionMap = new Map<string, UserCardInfo>()
       for (const c of myBrandHolderUnionCardsRef.current) {
         nextHolderUnionMap.set(c.cardAddress.toLowerCase(), c)
@@ -618,13 +778,36 @@ export function DaemonProvider({ children }: DaemonProps) {
         seenCards.add(key)
         cards.push(c)
       }
+      if (couponSummaries) {
+        for (const [key, summary] of couponSummaries) {
+          if (seenCards.has(key)) continue
+          seenCards.add(key)
+          cards.push(couponFallbackCardInfo(key, summary))
+        }
+      } else {
+        /**
+         * Coupon discovery is another remote source. If it is untrusted this round,
+         * keep previously trusted coupon-only brands instead of treating the miss as empty.
+         */
+        for (const c of myBrandCardsRef.current) {
+          const key = c.cardAddress.toLowerCase()
+          if (seenCards.has(key)) continue
+          const prevCoupon = myBrandCardDetailsRef.current[key]?.claimableCoupons
+          if (!prevCoupon || prevCoupon.count <= 0) continue
+          seenCards.add(key)
+          cards.push(c)
+        }
+      }
       const prevCards = myBrandCardsRef.current
       const prevDetails = myBrandCardDetailsRef.current
-      const nextSig = myBrandCardListSignature(cards)
-      if (myBrandCardListSignature(prevCards) !== nextSig) {
-        setMyBrandCards(cards)
-      }
       if (cards.length === 0) {
+        if (prevCards.length > 0 || Object.keys(prevDetails).length > 0) {
+          /**
+           * My Brands 依赖窗口扫描 / 多源合并；周期刷新中的空结果不能作为负向删除依据。
+           * 必须在 setMyBrandCards 前返回，否则 /home 会每 6s 显示/消失。
+           */
+          return prevDetails
+        }
         if (Object.keys(prevDetails).length > 0) {
           setMyBrandCardDetails({})
         }
@@ -632,6 +815,10 @@ export function DaemonProvider({ children }: DaemonProps) {
           saveMyBrandsFeedLocalCache(eoaSave, [], [], {})
         }
         return {}
+      }
+      const nextSig = myBrandCardListSignature(cards)
+      if (myBrandCardListSignature(prevCards) !== nextSig) {
+        setMyBrandCards(cards)
       }
       const allowed = new Set(cards.map((c) => c.cardAddress.toLowerCase()))
       const next: MyBrandCardFeedDetailsMap = {}
@@ -650,11 +837,29 @@ export function DaemonProvider({ children }: DaemonProps) {
             next[key] = {
               meta: meta ?? prevRow?.meta ?? null,
               assets: assets ?? prevRow?.assets ?? null,
+              claimableCoupons: couponSummaries
+                ? couponSummaries.get(key) ?? null
+                : prevRow?.claimableCoupons ?? null,
             }
             if (meta) rememberCardBasicMetadataTrusted(uc.cardAddress, meta)
           } catch {
-            if (prevRow) next[key] = prevRow
-            else next[key] = { meta: null, assets: null }
+            if (prevRow) {
+              next[key] = {
+                ...prevRow,
+                claimableCoupons: couponSummaries
+                  ? couponSummaries.get(key) ?? null
+                  : prevRow.claimableCoupons ?? null,
+              }
+            }
+            else {
+              next[key] = {
+                meta: null,
+                assets: null,
+                claimableCoupons: couponSummaries
+                  ? couponSummaries.get(key) ?? null
+                  : null,
+              }
+            }
           }
         })
       )
@@ -765,6 +970,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const noAaRecentActivityInFlight = useRef(false)
   const [recentActivityNoAaItems, setRecentActivityNoAaItems] = useState<TxView[]>([])
   const recentActivityNoAaItemsRef = useRef<TxView[]>([])
+  const recentActivityNoAaSettledRef = useRef(false)
   const [recentActivityNoAaLoading, setRecentActivityNoAaLoading] = useState(false)
   const [recentActivityNoAaError, setRecentActivityNoAaError] = useState<string | null>(null)
   useEffect(() => {
@@ -776,6 +982,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     const raw = profiles?.[0]?.keyID?.trim() ?? ''
     const eoaLower = raw.toLowerCase()
     if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      recentActivityNoAaSettledRef.current = false
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaError(null)
       setRecentActivityNoAaLoading(false)
@@ -784,10 +991,12 @@ export function DaemonProvider({ children }: DaemonProps) {
     const hit = loadRecentActivityLocalCache(eoaLower)
     if (hit?.length) {
       const restored = txViewsFromLocalCache(hit)
+      recentActivityNoAaSettledRef.current = true
       setRecentActivityNoAaItems(restored)
       setRecentActivityNoAaError(null)
       setRecentActivityNoAaLoading(false)
     } else {
+      recentActivityNoAaSettledRef.current = false
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaError(null)
     }
@@ -798,6 +1007,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     if (noAaRecentActivityInFlight.current) return
     const profile = profilesRef.current?.[0]
     if (!profile?.keyID?.trim()) {
+      recentActivityNoAaSettledRef.current = false
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
@@ -809,6 +1019,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
     const eoa = profile.keyID.trim()
     if (!ethers.isAddress(eoa)) {
+      recentActivityNoAaSettledRef.current = false
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
@@ -820,7 +1031,8 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
 
     noAaRecentActivityInFlight.current = true
-    const hasRenderableActivity = recentActivityNoAaItemsRef.current.length > 0
+    const hasRenderableActivity =
+      recentActivityNoAaItemsRef.current.length > 0 || recentActivityNoAaSettledRef.current
     if (!hasRenderableActivity) {
       setRecentActivityNoAaLoading(true)
     }
@@ -893,12 +1105,18 @@ export function DaemonProvider({ children }: DaemonProps) {
       const eoaSave = eoa.toLowerCase()
       const { items, error, trusted } = await fetchMergedRecentActivityFromIndexer(accounts)
       if (trusted) {
+        recentActivityNoAaSettledRef.current = true
         const prevItems = recentActivityNoAaItemsRef.current
-        if (shouldUpdateRecentActivityList(prevItems, items)) {
+        if (items.length === 0 && prevItems.length > 0) {
+          /**
+           * Recent Activity 是不可变历史。周期刷新中的空列表不能负向覆盖已有历史，
+           * 否则 /home 会每 6s 在 loading 与旧数据之间闪动。
+           */
+        } else if (shouldUpdateRecentActivityList(prevItems, items)) {
           setRecentActivityNoAaItems(items)
         }
         setRecentActivityNoAaError(null)
-        if (eoaSave && ethers.isAddress(eoaSave)) {
+        if (items.length > 0 && eoaSave && ethers.isAddress(eoaSave)) {
           saveRecentActivityLocalCache(eoaSave, items)
         }
       } else if (!hasRenderableActivity && error) {

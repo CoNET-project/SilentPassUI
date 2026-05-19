@@ -6,6 +6,7 @@ import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CreditCard, Store } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -45,6 +46,7 @@ export type MyBrandCardDetailLike = {
 		cardCurrency?: string
 		nfts?: Array<{ tokenId: string; tier?: string; isExpired?: boolean }>
 	} | null
+		claimableCoupons?: { count: number; firstTitle?: string } | null
 }
 
 export type MyBrandBonusRuleRow = {
@@ -410,7 +412,7 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 				</div>
 			) : (
 				<>
-					<div className="flex flex-col rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
+					<div className="flex flex-col gap-2 rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
 						{sorted.map((uc) => {
 							const addrKey = uc.cardAddress.toLowerCase()
 							const detail = myBrandCardDetails[addrKey]
@@ -418,7 +420,6 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 								(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
 							const tierPres = resolveHeldTierPresentation(detail)
 							const subtitleFallback = `${uc.currency} merchant card`
-							const subtitle = tierPres.tierName.trim() || subtitleFallback
 							const imgUrl = resolveCardImageUrl(detail?.meta?.image)
 							const assets = detail?.assets ?? null
 							const ptsRaw = assets?.points
@@ -439,12 +440,31 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 											: '—'
 							const activePasses =
 								assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired).length ?? 0
+							const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
+							const ownedCoupon = detail?.claimableCoupons?.firstCoupon as ActiveCouponListItem | null | undefined
+							if (couponCount > 0 && ownedCoupon) {
+								return (
+									<ActiveCouponTicketItem
+										key={uc.cardAddress}
+										row={ownedCoupon}
+										actionLabel="Owned"
+										disabled
+										aria-label={`Owned coupon ${ownedCoupon.title}`}
+										punchBgClassName="bg-[#f3f4f5] dark:bg-slate-800"
+									/>
+								)
+							}
 							const passLine =
 								detail === undefined
 									? '…'
 									: activePasses > 0
 										? `${activePasses} active Pass${activePasses !== 1 ? 'es' : ''}`
-										: 'No active Passes'
+										: couponCount > 0
+											? `${couponCount} active Coupon${couponCount !== 1 ? 's' : ''}`
+											: 'No active Passes'
+							const displaySubtitle =
+								tierPres.tierName.trim() ||
+								(couponCount > 0 ? 'Coupon available' : subtitleFallback)
 							return (
 								<div
 									key={uc.cardAddress}
@@ -477,7 +497,7 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 													: undefined
 											}
 										>
-											{subtitle}
+											{displaySubtitle}
 										</p>
 										{tierPres.bonusPill || tierPres.discountLabel ? (
 											<div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -509,6 +529,8 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 											className={
 												activePasses > 0
 													? 'text-[10px] font-medium text-emerald-600 dark:text-emerald-400'
+													: couponCount > 0
+														? 'text-[10px] font-medium text-amber-600 dark:text-amber-400'
 													: 'text-[10px] font-medium text-[#424655] dark:text-slate-500'
 											}
 										>

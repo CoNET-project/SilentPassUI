@@ -5,6 +5,7 @@ import { Toast } from 'antd-mobile'
 import {
 	type CardActiveIssuedCouponSeriesItem,
 	fetchOngoingClaimableCouponSeries,
+	isCardExcludedFromDisplay,
 	postCardCouponOpenClaimWithCurrentWallet,
 } from '@/services/BeamioCard'
 
@@ -132,7 +133,7 @@ const readMetadataBackgroundColor = (meta: Record<string, unknown> | null): stri
 	return c.startsWith('#') ? c : `#${c}`
 }
 
-const formatCouponExpiryPill = (validBeforeSec: number | null): string => {
+export const formatCouponExpiryPill = (validBeforeSec: number | null): string => {
 	if (!Number.isFinite(validBeforeSec ?? NaN) || (validBeforeSec ?? 0) <= 0) return 'VALID NOW'
 	const now = Math.floor(Date.now() / 1000)
 	if ((validBeforeSec ?? 0) <= now) return 'EXPIRED'
@@ -143,10 +144,10 @@ const formatCouponExpiryPill = (validBeforeSec: number | null): string => {
 }
 
 /** Same urgency rule as biz `cardIssuanceCouponEditorLivePreview` (hours / expired → red Clock + solid bg). */
-const couponExpiryUsesUrgentVariant = (expiresLabel: string): boolean =>
+export const couponExpiryUsesUrgentVariant = (expiresLabel: string): boolean =>
 	expiresLabel === 'EXPIRED' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel)
 
-function mapRow(cardAddress: string, row: CardActiveIssuedCouponSeriesItem): ActiveCouponListItem | null {
+export function mapActiveCouponRow(cardAddress: string, row: CardActiveIssuedCouponSeriesItem): ActiveCouponListItem | null {
 	const meta = asRecord(row.metadata)
 	const couponId = readMetadataCouponId(meta)
 	if (!couponId) return null
@@ -163,6 +164,163 @@ function mapRow(cardAddress: string, row: CardActiveIssuedCouponSeriesItem): Act
 		backgroundColorHex: readMetadataBackgroundColor(meta),
 		validBeforeSec: Number.isFinite(validBeforeNum) && validBeforeNum > 0 ? validBeforeNum : null,
 	}
+}
+
+export function ActiveCouponTicketItem({
+	row,
+	actionStatus = 'idle',
+	actionError,
+	onAction,
+	actionLabel = 'Claim',
+	disabled = false,
+	ariaLabel,
+	punchBgClassName = 'bg-[#f9f9fe]',
+}: {
+	row: ActiveCouponListItem
+	actionStatus?: ClaimButtonStatus
+	actionError?: string
+	onAction?: () => void
+	actionLabel?: string
+	disabled?: boolean
+	ariaLabel?: string
+	punchBgClassName?: string
+}) {
+	const expires = formatCouponExpiryPill(row.validBeforeSec)
+	const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
+	const isLoading = actionStatus === 'loading'
+	const actionDisabled = disabled || actionStatus !== 'idle' || !onAction
+	const expiryBgStyle = expiryUrgent
+		? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+		: 'border border-white/35 bg-white/18 text-white backdrop-blur-md'
+	const ExpiryIcon = expiryUrgent ? Clock : Calendar
+	const interactive = Boolean(onAction)
+
+	return (
+		<div
+			role={interactive ? 'button' : undefined}
+			tabIndex={interactive ? 0 : undefined}
+			onClick={interactive ? onAction : undefined}
+			onKeyDown={
+				interactive
+					? (e) => {
+						if (actionDisabled) return
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault()
+							onAction?.()
+						}
+					}
+					: undefined
+			}
+			className="relative w-full rounded-[1.75rem] outline-none transition-opacity active:opacity-[0.98] focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f9fe]"
+			aria-label={ariaLabel}
+		>
+			<div
+				className={`pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-none ring-0 outline-none ${punchBgClassName}`}
+				aria-hidden
+			/>
+			<div
+				className={`pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full shadow-none ring-0 outline-none ${punchBgClassName}`}
+				aria-hidden
+			/>
+			<div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
+				{row.backgroundImage ? (
+					<>
+						<img
+							src={row.backgroundImage}
+							alt=""
+							className="absolute inset-0 h-full w-full object-cover"
+							draggable={false}
+						/>
+						<div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
+					</>
+				) : (
+					<div
+						className="absolute inset-0"
+						style={{ backgroundColor: row.backgroundColorHex || '#2B2E3A' }}
+					/>
+				)}
+				{!row.backgroundImage ? (
+					<>
+						<div
+							className="pointer-events-none absolute inset-0 opacity-[0.12]"
+							style={{
+								backgroundImage:
+									'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+							}}
+							aria-hidden
+						/>
+						<div
+							className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30"
+							aria-hidden
+						/>
+					</>
+				) : null}
+
+				<div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-[6.25rem] sm:gap-4 sm:px-8 sm:py-5 sm:pr-[6.75rem]">
+					<div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
+						{row.iconUrl ? (
+							<img src={row.iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+						) : row.backgroundImage ? (
+							<img src={row.backgroundImage} alt="" className="h-full w-full object-cover" draggable={false} />
+						) : (
+							<div className="font-manrope flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg">
+								{row.title.charAt(0).toUpperCase()}
+							</div>
+						)}
+					</div>
+
+					<div className="font-manrope min-w-0 flex-1 text-white">
+						<p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
+							{row.title}
+						</p>
+						<p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
+							{row.subtitle}
+						</p>
+						<div
+							className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${expiryBgStyle}`}
+						>
+							{isLoading ? (
+								<Loader2 className="h-3 w-3 shrink-0 animate-spin" strokeWidth={2.5} aria-hidden />
+							) : (
+								<ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+							)}
+							<span className="truncate">{isLoading ? 'CLAIMING…' : expires}</span>
+						</div>
+					</div>
+
+					<div className="pointer-events-auto absolute right-6 top-1/2 z-[2] -translate-y-1/2 sm:right-8">
+						<button
+							type="button"
+							disabled={actionDisabled}
+							onClick={(e) => {
+								e.stopPropagation()
+								onAction?.()
+							}}
+							className="font-manrope flex h-8 min-w-[4.25rem] shrink-0 items-center justify-center gap-1 rounded-full bg-white px-3 text-[12px] font-semibold text-[#1562f0] shadow-sm transition-all duration-200 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:text-[13px]"
+							title={actionStatus === 'error' ? actionError : undefined}
+							aria-label={
+								actionStatus === 'success'
+									? 'Coupon claimed'
+									: actionStatus === 'error'
+										? actionError ?? 'Coupon action failed'
+										: actionLabel
+							}
+						>
+							{actionStatus === 'loading' ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+							) : actionStatus === 'success' ? (
+								<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+							) : actionStatus === 'error' ? (
+								<AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.4} aria-hidden />
+							) : (
+								actionLabel
+							)}
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	)
 }
 
 export default function ActiveCouponsScreen({
@@ -231,7 +389,8 @@ export default function ActiveCouponsScreen({
 
 		const merged = new Map<string, ActiveCouponListItem>()
 		for (const row of rows) {
-			const mapped = mapRow(row.cardAddress, row)
+			if (isCardExcludedFromDisplay(row.cardAddress)) continue
+			const mapped = mapActiveCouponRow(row.cardAddress, row)
 			if (mapped) merged.set(mapped.id, mapped)
 		}
 
@@ -379,140 +538,20 @@ export default function ActiveCouponsScreen({
 					) : (
 						<div className="space-y-4">
 							{coupons.map((row) => {
-								const expires = formatCouponExpiryPill(row.validBeforeSec)
-								const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
 								const claimStatus: ClaimButtonStatus = claimStatusById[row.id] ?? 'idle'
-								const isClaiming = claimStatus === 'loading'
 								const claimButtonDisabled = claimStatus !== 'idle'
-								const expiryBgStyle = expiryUrgent
-									? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
-									: 'border border-white/35 bg-white/18 text-white backdrop-blur-md'
-								const ExpiryIcon = expiryUrgent ? Clock : Calendar
 
 								return (
-									<div
+									<ActiveCouponTicketItem
 										key={row.id}
-										role="button"
-										tabIndex={0}
-										onClick={() => void handleClaim(row)}
-										onKeyDown={(e) => {
-											if (claimButtonDisabled) return
-											if (e.key === 'Enter' || e.key === ' ') {
-												e.preventDefault()
-												void handleClaim(row)
-											}
-										}}
-										className="relative w-full active:opacity-[0.98] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f9fe] rounded-[1.75rem]"
+										row={row}
+										actionStatus={claimStatus}
+										actionError={claimErrorById[row.id]}
+										disabled={claimButtonDisabled}
+										onAction={() => void handleClaim(row)}
+										actionLabel="Claim"
 										aria-label={`Claim coupon ${row.title}`}
-									>
-										<div
-											className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f9f9fe] shadow-none ring-0 outline-none"
-											aria-hidden
-										/>
-										<div
-											className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f9f9fe] shadow-none ring-0 outline-none"
-											aria-hidden
-										/>
-										<div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
-												{row.backgroundImage ? (
-													<>
-														<img
-															src={row.backgroundImage}
-															alt=""
-															className="absolute inset-0 h-full w-full object-cover"
-															draggable={false}
-														/>
-														<div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
-													</>
-												) : (
-													<div
-														className="absolute inset-0"
-														style={{ backgroundColor: row.backgroundColorHex || '#2B2E3A' }}
-													/>
-												)}
-												{!row.backgroundImage ? (
-													<>
-														<div
-															className="pointer-events-none absolute inset-0 opacity-[0.12]"
-															style={{
-																backgroundImage:
-																	'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
-															}}
-															aria-hidden
-														/>
-														<div
-															className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30"
-															aria-hidden
-														/>
-													</>
-												) : null}
-
-												<div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-[6.25rem] sm:gap-4 sm:px-8 sm:py-5 sm:pr-[6.75rem]">
-													<div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
-														{row.iconUrl ? (
-															<img src={row.iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
-														) : row.backgroundImage ? (
-															<img src={row.backgroundImage} alt="" className="h-full w-full object-cover" draggable={false} />
-														) : (
-															<div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg font-manrope">
-																{row.title.charAt(0).toUpperCase()}
-															</div>
-														)}
-													</div>
-
-													<div className="min-w-0 flex-1 text-white font-manrope">
-														<p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
-															{row.title}
-														</p>
-														<p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
-															{row.subtitle}
-														</p>
-														<div
-															className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${expiryBgStyle}`}
-														>
-															{isClaiming ? (
-																<Loader2 className="h-3 w-3 shrink-0 animate-spin" strokeWidth={2.5} aria-hidden />
-															) : (
-																<ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
-															)}
-															<span className="truncate">
-																{isClaiming ? 'CLAIMING…' : expires}
-															</span>
-														</div>
-													</div>
-
-													<div className="pointer-events-auto absolute right-6 top-1/2 z-[2] -translate-y-1/2 sm:right-8">
-														<button
-															type="button"
-															disabled={claimButtonDisabled}
-															onClick={(e) => {
-																e.stopPropagation()
-																void handleClaim(row)
-															}}
-															className="flex h-8 min-w-[4.25rem] shrink-0 items-center justify-center gap-1 rounded-full bg-white px-3 text-[12px] font-semibold font-manrope text-[#1562f0] shadow-sm transition-all duration-200 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[13px]"
-															title={claimStatus === 'error' ? claimErrorById[row.id] : undefined}
-															aria-label={
-																claimStatus === 'success'
-																	? 'Coupon claimed'
-																	: claimStatus === 'error'
-																		? claimErrorById[row.id] ?? 'Coupon claim failed'
-																		: 'Claim coupon'
-															}
-														>
-															{claimStatus === 'loading' ? (
-																<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-															) : claimStatus === 'success' ? (
-																<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
-															) : claimStatus === 'error' ? (
-																<AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.4} aria-hidden />
-															) : (
-																'Claim'
-															)}
-														</button>
-													</div>
-												</div>
-											</div>
-									</div>
+									/>
 								)
 							})}
 						</div>

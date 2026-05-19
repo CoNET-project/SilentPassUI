@@ -33,7 +33,7 @@ import cashTreesHeroBg3 from '@/components/assets/cashTreesHeroBg3.png'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
-import ActiveCouponsScreen from '@/pages/Home/ActiveCouponsScreen'
+import ActiveCouponsScreen, { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
 import RedeemVoucherScreen from '@/pages/Home/RedeemVoucherScreen'
 import { buildRedeemVoucherHistoryPath } from '@/pages/Home/redeemVoucherPath'
 
@@ -502,6 +502,9 @@ const Home = (_props: HomeProps) => {
 			return [...myBrandCards]
 				// 仅当已知 amount 为 0 时隐藏；未加载完成 / 未知金额保留以避免 flicker
 				.filter((c) => {
+					const detail = myBrandCardDetails[c.cardAddress.toLowerCase()]
+					const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
+					if (couponCount > 0) return true
 					const n = getPts(c.cardAddress)
 					return !(Number.isFinite(n) && n === 0)
 				})
@@ -516,6 +519,10 @@ const Home = (_props: HomeProps) => {
 				})
 		},
 		[myBrandCards, myBrandCardDetails]
+	)
+	const myBrandCardsPreview = useMemo(
+		() => myBrandCardsSorted.slice(0, 5),
+		[myBrandCardsSorted]
 	)
 
 	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
@@ -904,20 +911,6 @@ const Home = (_props: HomeProps) => {
 		setShowPayReceiveSheet(true)
 		setShowFooter(false)
 	}
-
-	const openWalletFundingFromReceive = useCallback(() => {
-		setShowPayReceiveSheet(false)
-		setPayRelayQRPayload(null)
-		setPayRelayQRLoading(false)
-		setAddCashMode('methods')
-		setShowAddUsdcInSheet(false)
-		setIsSelectingTopUpStore(false)
-		setAddCashAmountCad('')
-		const first = homeStoreCards[0] ?? INITIAL_HOME_STORE_CARDS[0]!
-		setTopUpStore(first)
-		setShowAddCashSheet(true)
-		setShowFooter(false)
-	}, [homeStoreCards])
 
 	const topUpReceiveDisplayTag = useMemo(() => {
 		const tag = (beamio?.accountName ?? '').trim()
@@ -2210,7 +2203,7 @@ const Home = (_props: HomeProps) => {
 											type="button"
 											onClick={() => setActivateGiftVoucherScreen('activeCoupons')}
 											className={`w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex items-center gap-4 cursor-pointer group text-left ${deviceHasNfcReadCapability ? 'mt-4' : 'mt-0'}`}
-											aria-label="Redeem gift voucher: browse active coupons"
+											aria-label="Claim merchant coupon: browse active coupons"
 										>
 											<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
 												<Gift size={22} className="text-[#1562f0]" strokeWidth={2} aria-hidden />
@@ -2219,7 +2212,7 @@ const Home = (_props: HomeProps) => {
 												<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
 													{deviceHasNfcReadCapability ? 'Option 3' : 'Option 2'}: Gift Voucher
 												</span>
-												<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Redeem Gift Voucher</p>
+												<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Claim Merchant Coupon</p>
 												<p className="text-xs text-gray-500 dark:text-slate-400 mt-1 leading-snug">
 													Browse active coupons or enter a gift link.
 												</p>
@@ -2327,8 +2320,7 @@ const Home = (_props: HomeProps) => {
 								</section>
 							</div>
 
-							{(myBrandCards.length > 0 || myBrandsFeedLoading) && (
-								<section className="mb-10">
+							<section className="mb-10">
 									<div className="mb-4 flex items-end justify-between px-1">
 										<h2 className="text-xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
 											My Brands
@@ -2342,28 +2334,13 @@ const Home = (_props: HomeProps) => {
 											<ChevronRight size={16} strokeWidth={2.5} />
 										</button>
 									</div>
-									<div className="flex flex-col rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
-										{myBrandsFeedLoading && myBrandCards.length === 0 ? (
-											<>
-												<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
-													<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
-													<div className="flex-1 space-y-2">
-														<div className="h-3.5 w-24 rounded bg-white/80 dark:bg-slate-700" />
-														<div className="h-3 w-36 rounded bg-white/60 dark:bg-slate-600" />
-													</div>
-													<div className="h-10 w-16 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
-												</div>
-												<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
-													<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
-													<div className="flex-1 space-y-2">
-														<div className="h-3.5 w-28 rounded bg-white/80 dark:bg-slate-700" />
-														<div className="h-3 w-32 rounded bg-white/60 dark:bg-slate-600" />
-													</div>
-													<div className="h-10 w-16 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
-												</div>
-											</>
+									<div className="flex flex-col gap-2 rounded-lg bg-white p-2 dark:bg-slate-900">
+										{myBrandCardsPreview.length === 0 ? (
+											<div className="rounded-lg p-3 text-sm font-medium text-[#424655] dark:text-slate-400">
+												No merchant brands yet.
+											</div>
 										) : (
-											myBrandCardsSorted.map((uc) => {
+											myBrandCardsPreview.map((uc) => {
 												const addrKey = uc.cardAddress.toLowerCase()
 												const detail = myBrandCardDetails[addrKey]
 												const title =
@@ -2371,6 +2348,20 @@ const Home = (_props: HomeProps) => {
 												const tierPres = resolveHeldTierPresentation(detail as unknown)
 												const subtitleFallback = `${uc.currency} merchant card`
 												const subtitle = tierPres.tierName.trim() || subtitleFallback
+												const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
+												const ownedCoupon = detail?.claimableCoupons?.firstCoupon as ActiveCouponListItem | null | undefined
+												if (couponCount > 0 && ownedCoupon) {
+													return (
+														<ActiveCouponTicketItem
+															key={uc.cardAddress}
+															row={ownedCoupon}
+															actionLabel="Owned"
+															disabled
+															aria-label={`Owned coupon ${ownedCoupon.title}`}
+															punchBgClassName="bg-white dark:bg-slate-900"
+														/>
+													)
+												}
 												const imgUrl = resolveCardImageUrl(detail?.meta?.image)
 												const assets = detail?.assets ?? null
 												const ptsRaw = assets?.points
@@ -2453,7 +2444,6 @@ const Home = (_props: HomeProps) => {
 										)}
 									</div>
 								</section>
-							)}
 
 							{show200OK && (
 								<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
@@ -3309,17 +3299,7 @@ const Home = (_props: HomeProps) => {
 													</div>
 												</div>
 											</div>
-											<div className="mt-10 w-full max-w-md space-y-6 text-center">
-												<p className="text-sm text-[#424655] dark:text-slate-400">
-													Want to deposit USDC?{' '}
-													<button
-														type="button"
-														onClick={openWalletFundingFromReceive}
-														className="ml-1 font-bold text-[#004bc3] underline-offset-4 hover:underline dark:text-[#6ba3ff]"
-													>
-														Go to Wallet
-													</button>
-												</p>
+											<div className="mt-10 w-full max-w-md text-center">
 												<button
 													type="button"
 													onClick={closePayReceiveSheet}

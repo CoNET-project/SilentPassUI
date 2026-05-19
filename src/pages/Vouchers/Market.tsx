@@ -15,12 +15,12 @@ import {
   Wallet,
   Share,
   Truck,
-  MapPin,
-  Database,
-  Flame,
-  Banknote,
-  PackageOpen,
-  ArrowLeft,
+	MapPin,
+	Database,
+	Flame,
+	Banknote,
+	PackageOpen,
+	ArrowLeft,
 	ShoppingBag,
 	UtensilsCrossed,
 	ShoppingCart,
@@ -29,24 +29,25 @@ import {
 	Dumbbell,
 	Clapperboard,
 	Building2,
-	Gift,
-	Star,
 	Search,
 	Mic,
-	Coffee,
 	Heart,
-	Medal,
-	Sparkles,
-	PlusCircle,
 	Radio,
+	Clock,
+	Phone,
+	LayoutGrid,
+	Loader2,
+	Medal,
+	ExternalLink,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
-import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString } from "@/services/BeamioCard"
-import { fiatPrefix } from "@/services/currency"
+import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, type CardActiveIssuedCouponSeriesItem } from "@/services/BeamioCard"
+import { fiatPrefix, formatAmount } from "@/services/currency"
+import { mapActiveCouponRow, ActiveCouponTicketItem, type ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
@@ -54,6 +55,8 @@ import USDCUserCardTopupControl from "./USDCUserCardTopupControl"
 import ShowPayQR from "./showPayQR"
 import greenCard from "./assets/greenCard.png"
 import blackCard from "./assets/BlackCard.png"
+import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
+import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPromo.png"
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
@@ -82,6 +85,124 @@ const DISCOVER_FEATURE_FALLBACK_IMAGES = [
 	"https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80",
 	"https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
 ] as const
+
+/** Bundled hero overrides when on-chain metadata has no `merchantImage`. Key: card address lowercased. */
+const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
+	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": longdhangStoreCardBg,
+}
+
+/** All-filter list: pinned to top first (in array order). */
+const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
+	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694",
+] as const
+
+/** Featured Brands subtitle override by card address (lowercased). */
+const DISCOVER_CARD_SUBTITLE_OVERRIDES: Record<string, string> = {
+	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": "Shanghai Cuisine",
+	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694": "Health and Beauty",
+}
+
+function orderDiscoverAllWithPinnedTop(cards: DiscoverFeaturedCard[]): DiscoverFeaturedCard[] {
+	const pinnedSet = new Set(DISCOVER_ALL_TOP_CARD_ADDRESSES.map((a) => a.toLowerCase()))
+	const pinned: DiscoverFeaturedCard[] = []
+	const rest: DiscoverFeaturedCard[] = []
+	for (const item of cards) {
+		const addr = item.cardAddress?.toLowerCase()
+		if (addr && pinnedSet.has(addr)) pinned.push(item)
+		else rest.push(item)
+	}
+	const pinnedOrdered = DISCOVER_ALL_TOP_CARD_ADDRESSES.flatMap((addr) => {
+		const hit = pinned.find((p) => p.cardAddress?.toLowerCase() === addr.toLowerCase())
+		return hit ? [hit] : []
+	})
+	return [...pinnedOrdered, ...rest]
+}
+
+type DiscoverMerchantInfoPanel = {
+	welcomeTitle: string
+	welcomeText: string
+	aboutTitle?: string
+	aboutText?: string
+	openingHours?: string
+	contact?: string
+	location?: string
+}
+
+function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolean {
+	return Boolean(
+		panel.aboutTitle?.trim() &&
+			panel.aboutText?.trim() &&
+			panel.openingHours?.trim() &&
+			panel.contact?.trim() &&
+			panel.location?.trim()
+	)
+}
+
+/** Per-card About / hours / contact / location for Discover detail (when metadata lacks these fields). */
+const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> = {
+	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": {
+		welcomeTitle: "Welcome to LongDhang Inner Circle",
+		welcomeText:
+			"Unlock seamless dining and exclusive digital privileges. Top up your LongDhang Pass to enjoy instant bonus rewards.",
+		aboutTitle: "About LongDhang",
+		aboutText:
+			"Longdhang Shanghai Cuisine serves authentic, family-style dishes that capture the true taste of Old Shanghai. We specialize in traditional favorites, featuring our famous handmade Xiao Long Bao and deep-fried pork chops. Join us for a warm, welcoming dining experience that celebrates classic Shanghainese heritage.",
+		openingHours: "Mon-Fri: 11 am - 1 pm; 5 - 9:30 pm\nSaturday, Sunday: 11 am - 10 pm",
+		contact: "+1 (604) 285-1818",
+		location: "8053 Alexandra Rd,\nRichmond, BC V6X 3A6",
+	},
+	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694": {
+		welcomeTitle: "Welcome to STT Inner Circle",
+		welcomeText:
+			"Unlock your journey to holistic wellness and natural beauty. Join our exclusive digital membership to access premium treatments, tailored rewards, and seamless payment experiences.",
+		aboutTitle: "About STT Oriental Medical",
+		aboutText:
+			"STT Oriental Medical Centre Ltd. is a premier clinic specializing in customized health and beauty solutions through Traditional Chinese Medicine and natural medical aesthetics. Our experienced, multi-disciplinary team provides a comprehensive range of one-stop services, including acupuncture, osteopathic massage, preventive medicine therapies, and advanced anti-aging treatments. By combining traditional healing wisdom with modern therapeutic techniques, we are dedicated to helping you achieve optimal wellness and radiant beauty from the inside out.",
+		openingHours: "Mon-Sat: 9 am - 6 pm",
+		contact: "+1 (604) 270-1449",
+		location: "#1-7100 River Road,\nRichmond, BC",
+	},
+}
+
+type DiscoverMerchantPromoRewardTier = {
+	badge: string
+	title: string
+	description: string
+	/** Optional hero override; falls back to Discover merchant image. */
+	backgroundImage?: string
+}
+
+/** Curated VIP reward tier promo cards (Discover detail). Key: card address lowercased. */
+const DISCOVER_MERCHANT_PROMO_REWARD_TIERS: Record<string, DiscoverMerchantPromoRewardTier> = {
+	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": {
+		badge: "VIP Privilege",
+		title: "10% Bonus on Every Top-Up!",
+		description:
+			"Top up $100 CAD or more to instantly unlock a 10% bonus balance. (e.g., Add $100, receive $110). Treat yourself to authentic Shanghai cuisine anytime, with balance that never expires.",
+		backgroundImage: longdhangRewardTierPromo,
+	},
+}
+
+type DiscoverMerchantWellnessPointsPanel = {
+	title: string
+	memberSinceLabel: string
+	currentTierLabel: string
+	nextTierLabel: string
+	nextTierThresholdPts: number
+	benefitLabel: string
+}
+
+/** Wellness points loyalty summary (Discover detail Available Offers footer). */
+const DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS: Record<string, DiscoverMerchantWellnessPointsPanel> = {
+	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694": {
+		title: "Wellness Points",
+		memberSinceLabel: "Member since 2024",
+		currentTierLabel: "BASE WELLNESS TIER",
+		nextTierLabel: "Silver Wellness Tier",
+		nextTierThresholdPts: 1500,
+		benefitLabel: "New Member Benefit: 10% off clinical assessments",
+	},
+}
 
 type DiscoverLatestCardRow = {
 	cardAddress: string
@@ -121,7 +242,16 @@ type DiscoverCategoryTab =
 	| "entertainment-leisure"
 	| "local-services"
 
-type DiscoverCategoryOption = { id: DiscoverCategoryTab; label: string; Icon: typeof Building2 }
+/** Discover filter chip: category tab or show all merchants. */
+type DiscoverFilterTab = DiscoverCategoryTab | "all"
+
+type DiscoverCategoryOption = { id: DiscoverFilterTab; label: string; Icon: typeof Building2 }
+
+const DISCOVER_ALL_OPTION: DiscoverCategoryOption = {
+	id: "all",
+	label: "All",
+	Icon: LayoutGrid,
+}
 
 const DISCOVER_CATEGORY_OPTIONS: DiscoverCategoryOption[] = [
 	{ id: "food-beverage", label: "Food & Beverage", Icon: UtensilsCrossed },
@@ -134,11 +264,40 @@ const DISCOVER_CATEGORY_OPTIONS: DiscoverCategoryOption[] = [
 	{ id: "local-services", label: "Local Services", Icon: Building2 },
 ]
 
+function discoverCategoryIconForTab(category: DiscoverCategoryTab): typeof Building2 {
+	return DISCOVER_CATEGORY_OPTIONS.find((o) => o.id === category)?.Icon ?? Building2
+}
+
+function shortDiscoverContractAddress(address: string): string {
+	const trimmed = address.trim()
+	if (trimmed.length < 12) return trimmed
+	return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`
+}
+
+function DiscoverMerchantCardAddressCapsule({ address }: { address: string }) {
+	const openBaseScan = () => {
+		window.open(`https://basescan.org/address/${address}`, "_blank", "noopener,noreferrer")
+	}
+	return (
+		<button
+			type="button"
+			onClick={openBaseScan}
+			className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[12px] font-semibold text-white/90 backdrop-blur-sm transition hover:bg-white/25"
+			aria-label={`View contract on BaseScan: ${address}`}
+		>
+			<span className="truncate">{shortDiscoverContractAddress(address)}</span>
+			<ExternalLink className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+		</button>
+	)
+}
+
 type DiscoverFeaturedCard = {
 	id: string
 	cardAddress: string | null
 	category: DiscoverCategoryTab
 	title: string
+	/** Program name from card metadata (`shareTokenMetadata.name`). */
+	programName: string
 	subtitle: string
 	assetLabel: string
 	rating: string
@@ -272,6 +431,267 @@ function parseDiscoverTiersFromMeta(meta: Record<string, unknown> | null): {
 		topTierName,
 		topTierMinUsdc6: bestMin >= 0n ? bestMin : null,
 	}
+}
+
+type DiscoverOfferTierRow = {
+	name: string
+	minUsdc6: bigint
+	discountPct: number
+	backgroundColor: string | null
+}
+
+const DISCOVER_TIER_MEDALS = ["🥉", "🥈", "🥇"] as const
+
+function parseTierDiscountPct(description: string | null | undefined): number {
+	if (!description?.trim()) return 0
+	const m = description.trim().match(/(\d+(?:\.\d+)?)\s*%\s*discount/i)
+	return m ? Number.parseFloat(m[1]) : 0
+}
+
+/** Reward tiers only — excludes base tier (lowest `minUsdc6`, biz `CARD_ISSUANCE_SINGLE_TIER_ID` / tier-base). */
+function parseDiscoverRewardTiersFromMeta(
+	meta: Record<string, unknown> | null,
+	_currency: string
+): DiscoverOfferTierRow[] {
+	if (meta == null) return []
+	const raw = meta.tiers
+	if (!Array.isArray(raw) || raw.length === 0) return []
+	const rows: DiscoverOfferTierRow[] = []
+	for (const item of raw) {
+		if (item == null || typeof item !== "object") continue
+		const o = item as Record<string, unknown>
+		const minRaw = o.minUsdc6 ?? o.min_usdc6
+		let minUsdc6 = 0n
+		try {
+			if (typeof minRaw === "bigint") minUsdc6 = minRaw
+			else if (typeof minRaw === "number" && Number.isFinite(minRaw)) minUsdc6 = BigInt(Math.trunc(minRaw))
+			else if (typeof minRaw === "string" && minRaw.trim()) minUsdc6 = BigInt(minRaw.trim())
+		} catch {
+			minUsdc6 = 0n
+		}
+		const nested =
+			o.properties != null && typeof o.properties === "object"
+				? (o.properties as Record<string, unknown>)
+				: null
+		const nameRaw = o.name ?? nested?.name
+		const tierName =
+			typeof nameRaw === "string" && nameRaw.trim() ? nameRaw.trim() : "Tier"
+		const descRaw = o.description ?? nested?.description
+		const description = typeof descRaw === "string" ? descRaw : ""
+		const bgRaw =
+			o.backgroundColor ??
+			o.background_color ??
+			nested?.background_color ??
+			nested?.backgroundColor
+		const backgroundColor =
+			typeof bgRaw === "string" && bgRaw.trim() ? discoverSafeCssColor(bgRaw) : null
+		rows.push({
+			name: tierName,
+			minUsdc6,
+			discountPct: parseTierDiscountPct(description),
+			backgroundColor,
+		})
+	}
+	rows.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : a.minUsdc6 > b.minUsdc6 ? 1 : 0))
+	if (rows.length <= 1) return []
+	const baseMinUsdc6 = rows[0].minUsdc6
+	return rows.filter((row) => row.minUsdc6 > baseMinUsdc6)
+}
+
+type DiscoverMerchantCouponOffer = {
+	coupon: ActiveCouponListItem
+	supplySummary: string | null
+}
+
+type DiscoverCouponSeriesRow = CardActiveIssuedCouponSeriesItem & {
+	issuedNftMaxSupply?: string
+	issuedNftRemainingSupply?: string
+}
+
+function formatDiscoverCouponSupplySummary(row: DiscoverCouponSeriesRow): string | null {
+	const total = row.issuedNftMaxSupply?.replace(/,/g, "").trim()
+	const remaining = row.issuedNftRemainingSupply?.replace(/,/g, "").trim()
+	if (total && remaining) return `TOTAL ${total} · LEFT ${remaining}`
+	if (total) return `TOTAL ${total} · LEFT --`
+	if (remaining) return `LEFT ${remaining}`
+	return null
+}
+
+function normalizeDiscoverCouponSubtitle(subtitle: string): string {
+	const raw = subtitle.trim()
+	if (!raw || raw === "Gift voucher") return "Add coupon details for members"
+	return raw
+}
+
+/** POS / iOS `POSBizCouponPreviewTicket` parity — ticket notches + expiry pill. */
+function DiscoverMerchantCouponOfferRow({ row }: { row: DiscoverMerchantCouponOffer }) {
+	return (
+		<div className="space-y-1.5">
+			<ActiveCouponTicketItem row={row.coupon} punchBgClassName="bg-white dark:bg-slate-900" />
+			{row.supplySummary ? (
+				<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+					{row.supplySummary}
+				</p>
+			) : null}
+		</div>
+	)
+}
+
+function DiscoverMerchantTierOfferRow({
+	tier,
+	index,
+	total,
+	currency,
+}: {
+	tier: DiscoverOfferTierRow
+	index: number
+	total: number
+	currency: string
+}) {
+	const ccy = currency.toUpperCase() as Parameters<typeof fiatPrefix>[0]
+	const prefix = fiatPrefix(ccy)
+	const threshold =
+		tier.minUsdc6 > 0n
+			? `${prefix} ${formatAmount(Number(ethers.formatUnits(tier.minUsdc6, 6)), ccy)}`
+			: "—"
+	const medal = DISCOVER_TIER_MEDALS[Math.min(index, DISCOVER_TIER_MEDALS.length - 1)]
+	const isTop = index === total - 1
+	return (
+		<div
+			className={[
+				"flex items-center justify-between gap-3 rounded-xl border border-transparent bg-white p-3.5 dark:bg-slate-800/90",
+				isTop ? "ring-1 ring-[#1562f0]/10" : "",
+			].join(" ")}
+		>
+			<div className="flex min-w-0 items-center gap-3">
+				<div className="text-2xl" aria-hidden>
+					{medal}
+				</div>
+				<div className="min-w-0">
+					<h4 className="truncate text-[15px] font-bold text-[#1f2328] dark:text-slate-100">{tier.name}</h4>
+					<p className="text-[14px] font-bold tracking-tight text-[#1f2328] dark:text-slate-200">{threshold}</p>
+				</div>
+			</div>
+			<p
+				className={[
+					"shrink-0 text-right text-[14px] font-bold",
+					tier.discountPct > 0
+						? isTop
+							? "text-[#1562f0]"
+							: "text-[#1f2328] dark:text-slate-100"
+						: "text-slate-400",
+				].join(" ")}
+			>
+				{tier.discountPct > 0 ? `${Math.round(tier.discountPct)}% DISCOUNT` : "Member pricing"}
+			</p>
+		</div>
+	)
+}
+
+function DiscoverMerchantPromoRewardTierCard({
+	config,
+	fallbackImage,
+}: {
+	config: DiscoverMerchantPromoRewardTier
+	fallbackImage: string
+}) {
+	const hero = config.backgroundImage?.trim() || fallbackImage
+	return (
+		<div className="relative overflow-hidden rounded-[28px] shadow-[0_10px_28px_rgba(15,23,42,0.18)] ring-1 ring-black/10">
+			<img src={hero} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+			<div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/58 to-black/32" aria-hidden />
+			<div className="relative z-[1] flex flex-col p-5 pb-5 pt-4 sm:p-6">
+				<span className="inline-flex w-fit rounded-full bg-[#1562f0] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+					{config.badge}
+				</span>
+				<h4 className="mt-4 text-[22px] font-extrabold leading-[1.15] tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.72)] sm:text-[24px]">
+					{config.title}
+				</h4>
+				<p className="mt-3 text-[14px] font-medium leading-relaxed text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.68)] sm:text-[15px]">
+					{config.description}
+				</p>
+			</div>
+		</div>
+	)
+}
+
+function DiscoverMerchantWellnessPointsCard({
+	config,
+	points,
+}: {
+	config: DiscoverMerchantWellnessPointsPanel
+	points: number | null
+}) {
+	const pts = points != null && Number.isFinite(points) ? Math.max(0, Math.floor(points)) : null
+	const threshold = Math.max(1, config.nextTierThresholdPts)
+	const progressPct =
+		pts != null ? Math.min(100, Math.round((pts / threshold) * 100)) : null
+	const ptsDisplay = pts != null ? pts.toLocaleString() : "—"
+	const progressDisplay = progressPct != null ? `${progressPct}%` : "—"
+	const remainingPts =
+		pts != null ? Math.max(0, threshold - pts).toLocaleString() : config.nextTierThresholdPts.toLocaleString()
+
+	return (
+		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
+			<div className="flex items-start gap-3">
+				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eef1f3] text-[#595c5e] dark:bg-slate-800 dark:text-slate-300">
+					<Medal className="h-6 w-6" strokeWidth={2} aria-hidden />
+				</span>
+				<div className="min-w-0 flex-1">
+					<div className="flex items-start justify-between gap-3">
+						<div className="min-w-0">
+							<h3 className="text-[17px] font-bold leading-tight text-[#1f2328] dark:text-slate-100">
+								{config.title}
+							</h3>
+							<p className="mt-0.5 text-[13px] font-medium text-slate-500 dark:text-slate-400">
+								{config.memberSinceLabel}
+							</p>
+						</div>
+						<p className="shrink-0 text-[28px] font-extrabold leading-none tracking-tight text-[#1562f0]">
+							{ptsDisplay}
+							<span className="ml-1 text-[14px] font-bold">pts</span>
+						</p>
+					</div>
+				</div>
+			</div>
+
+			<div className="mt-5">
+				<div className="mb-2 flex items-center justify-between gap-2">
+					<span className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
+						{config.currentTierLabel}
+					</span>
+					<span className="text-[11px] font-bold text-[#1562f0]">{progressDisplay}</span>
+				</div>
+				<div className="h-1.5 overflow-hidden rounded-full bg-[#eef1f3] dark:bg-slate-800">
+					<div
+						className="h-full rounded-full bg-[#1562f0] transition-[width] duration-300"
+						style={{ width: `${progressPct ?? 0}%` }}
+					/>
+				</div>
+				<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+					{remainingPts} pts to {config.nextTierLabel}
+				</p>
+				<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1562f0]">
+					{progressDisplay}
+				</p>
+			</div>
+
+			<button
+				type="button"
+				disabled
+				aria-disabled="true"
+				className="mt-5 flex w-full cursor-default items-center gap-3 rounded-2xl bg-[#eef4ff] px-4 py-3.5 text-left dark:bg-slate-800/80"
+			>
+				<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
+					<Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+				</span>
+				<span className="min-w-0 flex-1 text-[14px] font-medium leading-snug text-[#1f2328] dark:text-slate-100">
+					{config.benefitLabel}
+				</span>
+				<ChevronRight className="h-5 w-5 shrink-0 text-[#1562f0]" strokeWidth={2.2} aria-hidden />
+			</button>
+		</div>
+	)
 }
 
 /** Align x402sdk `shareTokenMetadata.categories` + biz `CARD_ISSUANCE_CATEGORY_OPTIONS` ids. */
@@ -1280,21 +1700,169 @@ const PurchaseCreditsSheet = ({
   )
 }
 
+function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoPanel }) {
+	const rows = [
+		{ label: "Opening Hours", value: panel.openingHours, Icon: Clock },
+		{ label: "Contact", value: panel.contact, Icon: Phone },
+		{ label: "Location", value: panel.location, Icon: MapPin },
+	] as const
+
+	return (
+		<div className="rounded-[22px] bg-[#eef1f4] p-4 dark:bg-slate-800/80">
+			<h2 className="text-[16px] font-bold text-[#1f2328] dark:text-slate-100">{panel.aboutTitle}</h2>
+			<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">{panel.aboutText}</p>
+			<div className="mt-5 space-y-4">
+				{rows.map(({ label, value, Icon }) => (
+					<div key={label} className="flex gap-3">
+						<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
+							<Icon className="h-5 w-5" strokeWidth={2} />
+						</span>
+						<div className="min-w-0 flex-1">
+							<p className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">{label}</p>
+							<p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-slate-600 dark:text-slate-400">
+								{value}
+							</p>
+						</div>
+					</div>
+				))}
+			</div>
+		</div>
+	)
+}
+
 /** Full-screen merchant detail from Discover list (slide in from right). */
 function DiscoverMerchantDetailFullScreen({
 	item,
 	onClose,
-	onJoinTopup,
+	profile,
 }: {
 	item: DiscoverFeaturedCard
 	onClose: () => void
-	onJoinTopup: () => void
+	profile?: Parameters<typeof getMyAssets>[0] | null
 }) {
 	const [favorited, setFavorited] = useState(false)
+	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
+	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
+	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
+	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
+	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
 	const ccy = (item.currency || "CAD").toUpperCase()
-	const balanceLabel = `${item.title.replace(/\s+/g, " ").trim().toUpperCase()} CARD BALANCE`
-	const tierLine = item.assetLabel || "Member benefits"
-	const progressPct = Math.min(100, Math.max(8, Math.round(Number(item.rating) * 18)))
+	const merchantInfoPanel =
+		item.cardAddress != null
+			? DISCOVER_MERCHANT_INFO_PANELS[item.cardAddress.toLowerCase()]
+			: undefined
+	const passTitle = item.programName.trim() || item.title
+	const displayCurrency = (merchantAssets?.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
+	const balancePrefix = fiatPrefix(displayCurrency)
+	const balanceAmount = formatAmount(Number(merchantAssets?.points ?? 0), displayCurrency)
+	const balanceDisplay = merchantAssetsLoading
+		? "—"
+		: balancePrefix
+			? `${balancePrefix} ${balanceAmount}`
+			: balanceAmount
+	const hasActiveMembership =
+		merchantAssets != null &&
+		merchantAssets.nfts.some((n) => !n.isExpired && Number(n.tokenId) > 0)
+	const promoRewardTier =
+		item.cardAddress != null
+			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[item.cardAddress.toLowerCase()]
+			: undefined
+	const metadataTierCount = merchantOfferTiers?.length ?? 0
+	const rewardTierDisplayCount =
+		promoRewardTier != null || merchantOfferTiers != null
+			? (promoRewardTier ? 1 : 0) + metadataTierCount
+			: null
+	const showRewardTiersLoading = merchantOffersLoading && merchantOfferTiers == null && !promoRewardTier
+	const hasRewardTierContent =
+		promoRewardTier != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
+	const wellnessPointsPanel =
+		item.cardAddress != null
+			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[item.cardAddress.toLowerCase()]
+			: undefined
+	const wellnessPointsValue = merchantAssetsLoading
+		? null
+		: Number(merchantAssets?.points ?? 0)
+	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
+
+	useEffect(() => {
+		if (!profile?.keyID || !item.cardAddress) {
+			setMerchantAssets(null)
+			setMerchantAssetsLoading(false)
+			return
+		}
+		let cancelled = false
+		setMerchantAssetsLoading(true)
+		getMyAssets(profile, item.cardAddress)
+			.then((res) => {
+				if (!cancelled) setMerchantAssets(res ?? null)
+			})
+			.catch(() => {
+				// Untrusted fetch — keep panel visible; do not overwrite with synthetic zero.
+				if (!cancelled) setMerchantAssets((prev) => prev)
+			})
+			.finally(() => {
+				if (!cancelled) setMerchantAssetsLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [profile?.keyID, item.cardAddress])
+
+	useEffect(() => {
+		if (!item.cardAddress) {
+			setMerchantCoupons(null)
+			setMerchantOfferTiers(null)
+			setMerchantOffersLoading(false)
+			return
+		}
+		let cancelled = false
+		setMerchantOffersLoading(true)
+		const cardAddress = item.cardAddress
+		Promise.all([
+			fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, 50),
+			getCardMetadataFromApi(cardAddress).then((m) => m ?? getCardMetadataFromUri(cardAddress)),
+		])
+			.then(([couponRows, meta]) => {
+				if (cancelled) return
+				if (couponRows != null) {
+					const mapped = couponRows
+						.map((row: CardActiveIssuedCouponSeriesItem) => {
+							const seriesRow = row as DiscoverCouponSeriesRow
+							const coupon = mapActiveCouponRow(cardAddress, row)
+							if (!coupon) return null
+							return {
+								coupon: {
+									...coupon,
+									subtitle: normalizeDiscoverCouponSubtitle(coupon.subtitle),
+								},
+								supplySummary: formatDiscoverCouponSupplySummary(seriesRow),
+							} satisfies DiscoverMerchantCouponOffer
+						})
+						.filter((x): x is DiscoverMerchantCouponOffer => x != null)
+					setMerchantCoupons(mapped)
+				}
+				if (meta != null) {
+					const tiersFromApi = parseDiscoverRewardTiersFromMeta(
+						{ tiers: meta.tiers ?? [] } as Record<string, unknown>,
+						ccy
+					)
+					if (tiersFromApi.length > 0) {
+						setMerchantOfferTiers(tiersFromApi)
+					} else {
+						setMerchantOfferTiers([])
+					}
+				}
+			})
+			.catch(() => {
+				// Untrusted — keep previous coupon/tier state.
+			})
+			.finally(() => {
+				if (!cancelled) setMerchantOffersLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress, ccy])
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -1337,141 +1905,138 @@ function DiscoverMerchantDetailFullScreen({
 							<Heart className="h-5 w-5" strokeWidth={2} fill={favorited ? "currentColor" : "none"} />
 						</button>
 					</div>
-					<div className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-16 pt-8">
+					<div className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-5 pt-8">
 						<div className="mb-1 flex items-center gap-2">
 							<span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm">
-								<Coffee className="h-5 w-5" strokeWidth={2} />
+								<MerchantCategoryIcon className="h-5 w-5" strokeWidth={2} aria-hidden />
 							</span>
 						</div>
 						<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
 						<p className="mt-1 text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
+						{item.cardAddress ? <DiscoverMerchantCardAddressCapsule address={item.cardAddress} /> : null}
 					</div>
-				</div>
-				<div className="relative z-30 -mt-10 px-5">
-					<button
-						type="button"
-						disabled={!item.cardAddress}
-						onClick={() => {
-							if (item.cardAddress) onJoinTopup()
-						}}
-						className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1562f0] py-3.5 text-[17px] font-bold text-white shadow-[0_12px_28px_rgba(21,98,240,0.45)] disabled:cursor-not-allowed disabled:opacity-45 active:scale-[0.98] transition-transform"
-					>
-						<PlusCircle className="h-5 w-5 shrink-0" strokeWidth={2} />
-						Join & Top-up Balance
-					</button>
 				</div>
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-28 pt-4">
 				<div className="mx-auto max-w-lg space-y-4">
-					<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-						<div className="mb-3 flex items-start justify-between">
-							<span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
-								<Wallet className="h-5 w-5" strokeWidth={2} />
+					{merchantInfoPanel ? (
+						<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+							<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+								{merchantInfoPanel.welcomeTitle}
+							</h2>
+							<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
+								{merchantInfoPanel.welcomeText}
+							</p>
+						</div>
+					) : null}
+
+					<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0 flex-1">
+								<h3 className="truncate text-[17px] font-semibold leading-snug text-[#1f2328] dark:text-slate-100">
+									{passTitle}
+								</h3>
+								{hasActiveMembership ? (
+									<div className="mt-1.5 flex items-center gap-1.5">
+										<span className="h-2 w-2 shrink-0 rounded-full bg-[#1562f0]" aria-hidden />
+										<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+											Active Member
+										</span>
+									</div>
+								) : null}
+							</div>
+							<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
+								<Radio className="h-5 w-5" strokeWidth={2} aria-hidden />
 							</span>
-							<Radio className="h-5 w-5 text-slate-400" strokeWidth={2} aria-hidden />
 						</div>
-						<p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{balanceLabel}</p>
-						<p className="mt-1 text-2xl font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-							— <span className="text-lg font-semibold text-slate-500 dark:text-slate-400">{ccy}</span>
-						</p>
-						<p className="mt-2 text-[12px] leading-snug text-slate-500 dark:text-slate-400">
-							Balance appears when your wallet holds this program card. Use Join to add funds.
+						<p className="mt-5 text-[14px] font-medium text-slate-500 dark:text-slate-400">Available Balance</p>
+						<p className="mt-1 text-[32px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+							{balanceDisplay}
 						</p>
 					</div>
 
-					<div className="rounded-[22px] bg-[#eef1f4] p-4 dark:bg-slate-800/80">
-						<div className="mb-3 flex items-center gap-2">
-							<Medal className="h-5 w-5 text-amber-600" strokeWidth={2} />
-							<span className="text-[16px] font-bold text-[#1f2328] dark:text-slate-100">Program tier</span>
+					<div className="space-y-4">
+						<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
+
+						<div className="rounded-[22px] bg-white px-6 py-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-7">
+							<header className="mb-3 flex items-center justify-between gap-2">
+								<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Coupons</h3>
+								{merchantCoupons != null ? (
+									<span className="rounded-full border border-[#1562f0]/15 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0]">
+										{merchantCoupons.length.toLocaleString()} total
+									</span>
+								) : null}
+							</header>
+							{merchantOffersLoading && merchantCoupons == null ? (
+								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
+									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+									<span className="text-[14px] font-medium">Loading coupons…</span>
+								</div>
+							) : merchantCoupons != null && merchantCoupons.length > 0 ? (
+								<div className="space-y-3">
+									{merchantCoupons.map((row) => (
+										<DiscoverMerchantCouponOfferRow key={row.coupon.id} row={row} />
+									))}
+								</div>
+							) : (
+								<div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4 text-center text-[13px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
+									No coupons available yet.
+								</div>
+							)}
 						</div>
-						<p className="text-[14px] font-medium text-slate-700 dark:text-slate-300">{tierLine}</p>
-						<div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-white/80 dark:bg-slate-900/60">
-							<div
-								className="h-full rounded-full bg-amber-500"
-								style={{ width: `${progressPct}%` }}
+
+						<div className="rounded-[22px] bg-[#eef1f3] p-4 dark:bg-slate-900/80 sm:p-5">
+							<header className="mb-3 flex items-center justify-between gap-2">
+								<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Reward Tiers</h3>
+								{rewardTierDisplayCount != null ? (
+									<span className="rounded-full border border-[#1562f0]/15 bg-white px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0] dark:bg-slate-800">
+										{rewardTierDisplayCount.toLocaleString()} reward tiers
+									</span>
+								) : null}
+							</header>
+							{showRewardTiersLoading ? (
+								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
+									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+									<span className="text-[14px] font-medium">Loading reward tiers…</span>
+								</div>
+							) : hasRewardTierContent ? (
+								<div className="space-y-2.5">
+									{promoRewardTier ? (
+										<DiscoverMerchantPromoRewardTierCard
+											config={promoRewardTier}
+											fallbackImage={item.image}
+										/>
+									) : null}
+									{merchantOfferTiers?.map((tier, index) => (
+										<DiscoverMerchantTierOfferRow
+											key={`${tier.name}-${tier.minUsdc6.toString()}-${index}`}
+											tier={tier}
+											index={index}
+											total={merchantOfferTiers.length}
+											currency={displayCurrency}
+										/>
+									))}
+								</div>
+							) : (
+								<div className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-4 text-center text-[13px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
+									No reward tiers configured yet.
+								</div>
+							)}
+						</div>
+
+						{wellnessPointsPanel ? (
+							<DiscoverMerchantWellnessPointsCard
+								config={wellnessPointsPanel}
+								points={wellnessPointsValue}
 							/>
-						</div>
-						<p className="mt-2 text-[12px] text-slate-600 dark:text-slate-400">Illustrative progress from public rating — not a live points balance.</p>
-						<button
-							type="button"
-							className="mt-4 w-full rounded-2xl bg-white py-3 text-[15px] font-semibold text-slate-800 shadow-sm ring-1 ring-slate-200/80 active:scale-[0.99] dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700"
-						>
-							View Rewards
-						</button>
+						) : null}
 					</div>
 
-					<div>
-						<div className="mb-3 flex items-center justify-between">
-							<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
-							<button type="button" className="text-[14px] font-semibold text-[#1562f0]">
-								See all
-								<ChevronRight className="ml-0.5 inline h-4 w-4 align-text-bottom" strokeWidth={2} />
-							</button>
-						</div>
-						<div className="space-y-3">
-							<div className="rounded-[20px] bg-white p-4 shadow-[0_6px_18px_rgba(15,23,42,0.05)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-								<div className="flex gap-3">
-									<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-										15%
-									</span>
-									<div className="min-w-0 flex-1">
-										<p className="font-bold text-[#1f2328] dark:text-slate-100">Pastry pairings</p>
-										<p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-400">
-											Stacked savings on select pastries when you pay with this program.
-										</p>
-										<p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Sample offer</p>
-									</div>
-								</div>
-							</div>
-							<div className="rounded-[20px] bg-white p-4 shadow-[0_6px_18px_rgba(15,23,42,0.05)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-								<div className="flex gap-3">
-									<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[#1562f0] dark:bg-blue-950/60">
-										<Gift className="h-6 w-6" strokeWidth={2} />
-									</span>
-									<div className="min-w-0 flex-1">
-										<p className="font-bold text-[#1f2328] dark:text-slate-100">Free upgrade</p>
-										<p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-400">
-											Complimentary add-ons where the merchant enables them in metadata.
-										</p>
-										<p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Sample offer</p>
-									</div>
-								</div>
-							</div>
-							<div className="flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-slate-300 py-8 text-slate-500 dark:border-slate-600 dark:text-slate-400">
-								<Sparkles className="h-5 w-5 shrink-0" strokeWidth={2} />
-								<span className="text-[14px] font-medium">More offers unlocking soon</span>
-							</div>
-						</div>
-					</div>
+					{merchantInfoPanel && hasDiscoverMerchantAboutPanel(merchantInfoPanel) ? (
+						<DiscoverMerchantInfoPanelCard panel={merchantInfoPanel} />
+					) : null}
 
-					<div className="pb-6">
-						<h2 className="mb-3 text-lg font-bold text-[#1f2328] dark:text-slate-100">
-							Recent activity at {item.title}
-						</h2>
-						<div className="space-y-0 overflow-hidden rounded-[20px] bg-white ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-							<div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5 dark:border-slate-800">
-								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-									<Coffee className="h-5 w-5" strokeWidth={2} />
-								</span>
-								<div className="min-w-0 flex-1">
-									<p className="font-semibold text-[#1f2328] dark:text-slate-100">In-store purchase</p>
-									<p className="text-[12px] text-slate-500 dark:text-slate-400">Shown when your card is linked</p>
-								</div>
-								<span className="shrink-0 text-[14px] font-semibold text-slate-400">—</span>
-							</div>
-							<div className="flex items-center gap-3 px-4 py-3.5">
-								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
-									<PlusCircle className="h-5 w-5" strokeWidth={2} />
-								</span>
-								<div className="min-w-0 flex-1">
-									<p className="font-semibold text-[#1f2328] dark:text-slate-100">Balance top-up</p>
-									<p className="text-[12px] text-slate-500 dark:text-slate-400">After you join and top up</p>
-								</div>
-								<span className="shrink-0 text-[14px] font-semibold text-[#1562f0]">—</span>
-							</div>
-						</div>
-					</div>
 				</div>
 			</div>
 		</div>
@@ -1498,13 +2063,35 @@ export default function Market() {
 	const [inventory, setInventory] = useState<Record<number, InventoryInstance[]>>({})
 	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
 	const [qrPayload, setQrPayload] = useState<string>("")
-	const [discoverCategory, setDiscoverCategory] = useState<DiscoverCategoryTab>("food-beverage")
+	const [discoverCategory, setDiscoverCategory] = useState<DiscoverFilterTab>("all")
 	const [discoverMerchantDetail, setDiscoverMerchantDetail] = useState<DiscoverFeaturedCard | null>(null)
-	const discoverCategoryOptionsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
+	const discoverCategoryTabsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
+		if (discoverCategory === "all") return DISCOVER_CATEGORY_OPTIONS
 		const selected = DISCOVER_CATEGORY_OPTIONS.find((o) => o.id === discoverCategory)
 		if (!selected) return DISCOVER_CATEGORY_OPTIONS
 		return [selected, ...DISCOVER_CATEGORY_OPTIONS.filter((o) => o.id !== discoverCategory)]
 	}, [discoverCategory])
+
+	const renderDiscoverFilterChip = (tab: DiscoverCategoryOption) => {
+		const Icon = tab.Icon
+		const active = discoverCategory === tab.id
+		return (
+			<button
+				key={tab.id}
+				type="button"
+				onClick={() => setDiscoverCategory(tab.id)}
+				className={[
+					"flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2.5 text-[13px] sm:text-[14px] font-semibold tracking-tight transition-all whitespace-nowrap",
+					active
+						? "bg-[#1562f0] text-white shadow-[0_8px_22px_rgba(21,98,240,0.42)]"
+						: "bg-white text-[#1f2328] shadow-[0_2px_10px_rgba(15,23,42,0.08)] border border-[#e8ecf0] dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
+				].join(" ")}
+			>
+				<Icon className="h-[17px] w-[17px] shrink-0 sm:h-[18px] sm:w-[18px]" strokeWidth={active ? 2.25 : 2} aria-hidden />
+				{tab.label}
+			</button>
+		)
+	}
 	/**
 	 * Trending Now：local-first
 	 *  - 进入页面立即从 localStorage 读取上一次 trusted rows 显示，loading 立即结束（stale-while-revalidate）。
@@ -1629,15 +2216,6 @@ export default function Market() {
 		setChatSearchOpen(true)
 	}
 
-	/** Discover — API card opens top-up for that card address. */
-	const openDiscoverCardTopup = (cardAddress: string) => {
-		setShowFooter(false)
-		setTopupCardAddress(cardAddress)
-		setTopupItemId(null)
-		setTopupPresetAmountEmpty(false)
-		setSettingsOpen("USDCTopup")
-	}
-
 	const openDiscoverMerchantDetail = (card: DiscoverFeaturedCard) => {
 		setDiscoverMerchantDetail(card)
 		setShowFooter(false)
@@ -1653,20 +2231,28 @@ export default function Market() {
 			const category = classifyDiscoverCardCategory(card)
 			const isFood = category === "food-beverage"
 			const hero = card.merchantImage?.trim()
+			const cardHeroOverride =
+				DISCOVER_CARD_HERO_OVERRIDES[card.cardAddress.toLowerCase()]
 			const fallback =
 				DISCOVER_FEATURE_FALLBACK_IMAGES[idx % DISCOVER_FEATURE_FALLBACK_IMAGES.length]
+			const subtitleOverride =
+				DISCOVER_CARD_SUBTITLE_OVERRIDES[card.cardAddress.toLowerCase()]
 			return {
 				id: card.cardAddress,
 				cardAddress: card.cardAddress,
 				category,
 				title: card.businessName ?? card.name,
-				subtitle: card.programDescription || (isFood ? "Modern cuisine" : "Artisan coffee & pastries"),
+				programName: card.name,
+				subtitle:
+					subtitleOverride ||
+					card.programDescription ||
+					(isFood ? "Modern cuisine" : "Artisan coffee & pastries"),
 				assetLabel:
 					card.topTierName && card.topTierMinDisplay
 						? `${card.topTierName} · ${card.topTierMinDisplay}`
 						: card.topTierName ?? card.topTierMinDisplay ?? "Member Benefits",
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
-				image: hero || fallback,
+				image: hero || cardHeroOverride || fallback,
 				logo: card.logoUrl,
 				currency: card.currency,
 			}
@@ -1677,7 +2263,13 @@ export default function Market() {
 	}, [latestCardsRows])
 
 	const filteredFeaturedCards = useMemo(
-		() => discoverFeaturedCards.filter((item: DiscoverFeaturedCard) => item.category === discoverCategory),
+		() => {
+			const list =
+				discoverCategory === "all"
+					? discoverFeaturedCards
+					: discoverFeaturedCards.filter((item: DiscoverFeaturedCard) => item.category === discoverCategory)
+			return discoverCategory === "all" ? orderDiscoverAllWithPinnedTop(list) : list
+		},
 		[discoverCategory, discoverFeaturedCards]
 	)
 
@@ -1726,27 +2318,11 @@ export default function Market() {
 			</section>
 			{/* Generous inset: box-shadow (~22px blur) must stay inside scrollport; avoid clipping vs overflow-x */}
 			<section className="pt-1 pb-8">
-				<div className="flex min-h-0 items-center gap-2 overflow-x-auto py-6 px-4 sm:py-7 sm:px-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-					{discoverCategoryOptionsOrdered.map((tab) => {
-						const Icon = tab.Icon
-						const active = discoverCategory === tab.id
-						return (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => setDiscoverCategory(tab.id)}
-								className={[
-									"flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2.5 text-[13px] sm:text-[14px] font-semibold tracking-tight transition-all whitespace-nowrap",
-									active
-										? "bg-[#1562f0] text-white shadow-[0_8px_22px_rgba(21,98,240,0.42)]"
-										: "bg-white text-[#1f2328] shadow-[0_2px_10px_rgba(15,23,42,0.08)] border border-[#e8ecf0] dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
-								].join(" ")}
-							>
-								<Icon className="h-[17px] w-[17px] shrink-0 sm:h-[18px] sm:w-[18px]" strokeWidth={active ? 2.25 : 2} aria-hidden />
-								{tab.label}
-							</button>
-						)
-					})}
+				<div className="flex min-h-0 items-center gap-2 py-6 pl-4 pr-4 sm:py-7 sm:pl-6 sm:pr-6">
+					<div className="shrink-0">{renderDiscoverFilterChip(DISCOVER_ALL_OPTION)}</div>
+					<div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+						{discoverCategoryTabsOrdered.map((tab) => renderDiscoverFilterChip(tab))}
+					</div>
 				</div>
 			</section>
 
@@ -1780,10 +2356,6 @@ export default function Market() {
 								className="w-full aspect-[16/9] object-cover"
 								draggable={false}
 							/>
-							<div className="absolute top-3 right-3 bg-white/90 text-[#2c2f31] rounded-full px-3 py-1.5 inline-flex items-center gap-1.5 shadow-sm">
-								<Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />
-								<span className="text-[12px] font-bold leading-none">{item.rating}</span>
-							</div>
 							<div className="absolute -bottom-8 left-6">
 								<div className="w-16 h-16 rounded-2xl bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] flex items-center justify-center border border-slate-100">
 									{item.logo ? (
@@ -1812,15 +2384,9 @@ export default function Market() {
 									Your Assets
 								</p>
 							</div>
-							<p className="text-[#4b5361] dark:text-slate-300 text-[15px] leading-tight mb-4 line-clamp-2">
+							<p className="text-[#4b5361] dark:text-slate-300 text-[15px] leading-tight line-clamp-2">
 								{item.subtitle}
 							</p>
-							<div className="rounded-2xl bg-[#f0f2f4] dark:bg-slate-800 px-4 py-3 inline-flex items-center gap-2">
-								<Gift className="w-5 h-5 text-[#2f5fcf]" />
-								<span className="text-[14px] leading-tight font-semibold text-[#232a34] dark:text-slate-100">
-									{item.assetLabel}
-								</span>
-							</div>
 						</div>
 					</button>
 					)
@@ -1852,11 +2418,7 @@ export default function Market() {
 					<DiscoverMerchantDetailFullScreen
 						item={discoverMerchantDetail}
 						onClose={closeDiscoverMerchantDetail}
-						onJoinTopup={() => {
-							if (discoverMerchantDetail.cardAddress) {
-								openDiscoverCardTopup(discoverMerchantDetail.cardAddress)
-							}
-						}}
+						profile={profiles?.[0]}
 					/>
 				</motion.div>
 			) : null}

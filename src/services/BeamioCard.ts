@@ -663,6 +663,85 @@ export async function fetchOngoingClaimableCouponSeries(
 	return filterCouponSeriesForOpenClaim(sorted, userEOA)
 }
 
+const MY_BRANDS_COUPON_BALANCE_ABI = [
+	'function balanceOf(address account,uint256 id) view returns (uint256)',
+] as const
+
+/**
+ * My Brands should only include coupon brands for issued coupon NFTs the user already owns.
+ * Claimable-but-not-owned coupons belong in discovery/claim surfaces, not in My Brands.
+ */
+export async function fetchMyBrandsCouponSeriesForUser(
+	limit = 50,
+	userEOA?: string | null,
+	userAA?: string | null
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	const cardSet = new Set<string>(
+		ASSET_CARD_ADDRESSES.filter((a) => ethers.isAddress(a)).map((a) => a.toLowerCase())
+	)
+	const recentCards = await fetchRecentIssuedCouponCardAddresses(normalizedLimit)
+	if (recentCards) {
+		for (const c of recentCards) cardSet.add(c)
+	}
+	if (cardSet.size === 0) return []
+
+	const cardList = [...cardSet]
+	const responses = await Promise.all(
+		cardList.map((cardLower) => fetchCardActiveIssuedCouponSeriesTrusted(cardLower, normalizedLimit))
+	)
+	if (!responses.some((r) => r !== null)) return null
+
+	const userAccounts = [userEOA, userAA]
+		.map((a) => a?.trim())
+		.filter((a): a is string => Boolean(a && ethers.isAddress(a)))
+		.map((a) => ethers.getAddress(a))
+	const uniqueAccounts = [...new Set(userAccounts.map((a) => a.toLowerCase()))].map((a) => ethers.getAddress(a))
+	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
+
+	await Promise.all(
+		cardList.map(async (cardLower, i) => {
+			const rows = responses[i]
+			if (!rows) return
+			const cardAddress = ethers.getAddress(cardLower)
+			const cardRead = new ethers.Contract(cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, baseEndpoint)
+			await Promise.all(
+				rows.map(async (row) => {
+					const withCard = { ...row, cardAddress }
+					if (!uniqueAccounts.length) return
+					let tokenId: bigint
+					try {
+						tokenId = BigInt(row.tokenId)
+					} catch {
+						return
+					}
+					for (const account of uniqueAccounts) {
+						try {
+							const bal = await cardRead.balanceOf(account, tokenId) as bigint
+							if (bal > 0n) {
+								merged.set(`${cardLower}:${row.tokenId}`, withCard)
+								return
+							}
+						} catch {
+							/* Keep scanning other accounts/cards. */
+						}
+					}
+				})
+			)
+		})
+	)
+
+	return [...merged.values()].sort((a, b) => {
+		const av = Number(a.issuedNftValidBefore ?? 0)
+		const bv = Number(b.issuedNftValidBefore ?? 0)
+		const aFinite = Number.isFinite(av) && av > 0
+		const bFinite = Number.isFinite(bv) && bv > 0
+		if (aFinite !== bFinite) return aFinite ? -1 : 1
+		if (aFinite && bFinite && av !== bv) return av - bv
+		return String(a.tokenId).localeCompare(String(b.tokenId), 'en')
+	})
+}
+
 async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
 	const wanted = couponId.trim()
 	if (!wanted) return null

@@ -1315,10 +1315,10 @@ function AppShell() {
 			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画）
 				当 search 控件执行关闭（返回按钮/选择结果）后，父容器必须执行 setChatSearchOpen(false) 隐藏 search */}
 			{chatSearchOpen && createPortal(
-				<div className="fixed inset-0 z-[100] flex flex-col">
-					{/* 蒙版：点击后关闭 search，确保父容器执行隐藏 */}
+				<div className="fixed inset-0 z-[100]">
+					{/* Full-screen dim — search bar sits above; avoids bright strip below the bar */}
 					<div
-						className="flex-1 min-h-0 bg-black/45 backdrop-blur-[1px]"
+						className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
 						aria-hidden
 						onClick={() => {
 							setChatSearchOpen(false)
@@ -1326,8 +1326,9 @@ function AppShell() {
 						}}
 					/>
 					<div
-						className="flex-shrink-0 flex items-center px-4 pb-5"
+						className="absolute inset-x-0 bottom-0 z-10 flex items-center px-4 pb-5"
 						style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+						onClick={(e) => e.stopPropagation()}
 					>
 						<SearchInputWithDropdown
 							showHistory={false}

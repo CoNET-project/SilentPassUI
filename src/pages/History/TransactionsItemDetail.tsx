@@ -10,9 +10,7 @@ import {
 	Repeat2,
 	Info,
 	MessageCircle,
-	ShieldCheck,
 	Receipt,
-	Sparkles,
 	MoreVertical,
 	QrCode, Link as LinkIcon
 } from "lucide-react"
@@ -27,7 +25,6 @@ import { QRCodeCanvas } from 'qrcode.react'
 import bIcon from '@/components/assets/logo512.png'
 import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
 import PaymentReceipt from '@/pages/Pay/components/paymentReceipt'
-import BeamioFee from './BeamioFee'
 import FXDetail from './components/FXDetail'
 
 type Mode = "pay" | "request" | 'cashcode'
@@ -115,7 +112,6 @@ export function TransactionsItemDetail({
 	onSendAgain,
 	onMessage,
 }: Props) {
-	const isSponsored = true
 	const timeText = useMemo(() => formatTimeDetail(tx.date), [tx.date])
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const {setUsdcbalance, usdcbalance, myAddress, setUsdcToUSD, beamioUsers, setbBeamioUsers, currencyData, profiles, setNavigateLeftButtonArray} = useDaemonContext()
@@ -514,7 +510,7 @@ export function TransactionsItemDetail({
 
 						{/* 右侧：状态 + Receipt（整体在垂直方向向下对齐） */}
 						<div className="flex flex-col justify-end self-stretch gap-3">
-							{/* 顶部：状态 + Title + Gas sponsored */}
+							{/* 顶部：状态 + Title */}
 							<div className="relative flex items-center justify-between gap-3">
 							{/* 左侧：状态 */}
 							<div
@@ -555,16 +551,6 @@ export function TransactionsItemDetail({
 								</span>
 								)}
 							</div>
-
-							{/* 右侧：Gas sponsored */}
-							{/* {isSponsored ? (
-								<div className="inline-flex items-center gap-2 text-[12px] text-blue-600">
-								<ShieldCheck className="h-4 w-4 text-blue-700" strokeWidth={2.25} />
-								<span>Gas sponsored</span>
-								</div>
-							) : (
-								<div className="w-[110px]" />
-							)} */}
 							</div>
 
 							{/* iOS 透明水滴 · Receipt */}
@@ -746,7 +732,7 @@ export function TransactionsItemDetail({
 
 						
 						
-						{/* Network fee / Time */}
+						{/* Transaction details */}
 						
 						<div className="mt-3 overflow-hidden"> {/* mt-4 -> mt-3 */}
 
@@ -796,63 +782,12 @@ export function TransactionsItemDetail({
 
 									{/* Divider */}
 									
-									{
-										!!tx?.requestDetail && tx.requestDetail?.feeUSDC > 0 && 
-										<BeamioFee
-											grossUSDC={tx.requestDetail.totalPayUSDC||0}
-											feeUSDC={tx.requestDetail.feeUSDC||0}
-											netUSDC={tx.requestDetail.receivedUSDC||0}
-										/>
-									}
-								
-
 									</>
 								)
 							}
 							
 
 							
-							{/* Network fee */}
-							{
-								tx.type !== "pending" && (
-									<>
-										<div className="h-px bg-slate-100" />
-
-											<div className="flex items-center justify-between px-5 py-2.5 bg-white"> {/* py-3 -> 2.5 */}
-												<span className="text-[14px] text-slate-500">Network fee</span>
-
-													<div className="flex flex-col items-end">
-														<div
-															className={[
-																"inline-flex items-center gap-2",
-																"h-9 px-3 rounded-full",
-																"bg-blue-50",
-																"ring-1 ring-blue-200/70",
-																"text-blue-600",
-																"font-semibold text-[14px]",
-																"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
-																"flex-shrink-0",
-																"min-w-0"
-															].join(" ")}
-															>
-															<Sparkles className="w-5 h-5 shrink-0" />
-															<span className="inline max-w-[110px] truncate">
-																Sponsored
-															</span>
-														</div>
-
-														{/* {isSponsored && (
-														<span className="text-[12px] text-[rgb(0_122_255)] leading-tight">
-															Sponsored By @{fromBeamio?.username}
-														</span>
-														)} */}
-													</div>
-											</div>
-									</>
-								)
-							}
-							
-
 							<div className="h-px bg-slate-100" />
 
 							

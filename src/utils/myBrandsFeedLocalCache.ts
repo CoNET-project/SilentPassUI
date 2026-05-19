@@ -7,9 +7,26 @@ import { ethers } from 'ethers'
 import type { UserCardInfo } from '@/services/BeamioCard'
 import type { CardMetadataFromUri } from '@/services/BeamioCard'
 
+export type MyBrandsOwnedCouponSnapshot = {
+	id: string
+	cardAddress: string
+	tokenId: string
+	couponId: string
+	title: string
+	subtitle: string
+	iconUrl: string
+	backgroundImage: string
+	backgroundColorHex: string
+	validBeforeSec: number | null
+}
+
 export type MyBrandsFeedDetailsSnapshot = Record<
 	string,
-	{ meta: CardMetadataFromUri | null; assets: MyCardAssets | null }
+	{
+		meta: CardMetadataFromUri | null
+		assets: MyCardAssets | null
+		claimableCoupons?: { count: number; firstTitle?: string; firstCoupon?: MyBrandsOwnedCouponSnapshot | null } | null
+	}
 >
 
 type StoredPayload = {

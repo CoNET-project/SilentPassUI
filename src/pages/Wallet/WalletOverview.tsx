@@ -2,37 +2,29 @@
  * Wallet overview — aligned with pages/Vouchers/example/codingTemp.html (Wallet, 1–245)
  */
 
-import React, { useMemo, useEffect, useState } from 'react'
+import React, { useMemo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Nfc, ChevronRight, Store, Info, QrCode, ShoppingBasket, Clock3 } from 'lucide-react'
+import { ethers } from 'ethers'
+import { Store, Clock3 } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import { detectDeviceNfcCapability } from '@/utils/cashTreesNativeNfc'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
-import { resolveCardImageUrl, resolveHeldTierPresentation } from '@/pages/Brands/MyBrandsListSection'
-import { cardTierGradientCss, cardTierGradientTheme } from '@/utils/cardTierGradient'
+import { WalletMerchantPassStack } from '@/pages/Wallet/WalletMerchantPassStack'
+import { useWalletMerchantPassesStickyDisplay } from '@/pages/Wallet/useWalletMerchantPassesStickyDisplay'
 import { getCardActiveIssuedCouponSeries } from '@/services/BeamioCard'
-
-const STACK_CARD_OVERLAP_PX = 130
-const STACK_CARD_H = 200
+import {
+	loadWalletOwnedCouponsLocalCache,
+	saveWalletOwnedCouponsLocalCache,
+	walletOwnedCouponsSignature,
+	type WalletOwnedCouponCacheRow,
+} from '@/utils/walletOwnedCouponsLocalCache'
 
 /** 与 Home 顶栏左侧胶囊 `homeAccent` 一致 */
 const WALLET_CAPSULE_ACCENT = '#1562f0'
 const ISSUED_NFT_START_ID = 100_000_000_000n
 
-type WalletOwnedCouponItem = {
-	id: string
-	cardAddress: string
-	tokenId: string
-	couponId: string
-	title: string
-	subtitle: string
-	iconUrl: string
-	backgroundImage: string
-	backgroundColorHex: string
-	validBeforeSec: number | null
-}
+type WalletOwnedCouponItem = WalletOwnedCouponCacheRow
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>
 	v && typeof v === 'object' ? (v as Record<string, unknown>) : null
@@ -129,6 +121,7 @@ export default function WalletOverview() {
 	const navigate = useNavigate()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
 	const {
+		profiles,
 		myBrandCards,
 		myBrandCardDetails,
 		myBrandsFeedLoading,
@@ -162,23 +155,41 @@ export default function WalletOverview() {
 		[myBrandCards, myBrandCardDetails],
 	)
 
-	const stackPreviewCards = useMemo(() => myBrandCardsSorted.slice(0, 3), [myBrandCardsSorted])
+	const eoaLower = profiles?.[0]?.keyID?.trim().toLowerCase() ?? ''
+	const merchantPassesView = useWalletMerchantPassesStickyDisplay(
+		eoaLower,
+		myBrandCards,
+		myBrandCardDetails,
+		myBrandsFeedLoading
+	)
 
-	const [deviceHasNfc, setDeviceHasNfc] = useState(false)
 	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)
 	const [ownedCoupons, setOwnedCoupons] = useState<WalletOwnedCouponItem[]>([])
+	const ownedCouponsRef = useRef<WalletOwnedCouponItem[]>([])
 	const [ownedCouponsLoading, setOwnedCouponsLoading] = useState(false)
-
 	useEffect(() => {
-		const run = () => setDeviceHasNfc(detectDeviceNfcCapability())
-		run()
-		const t = window.setTimeout(run, 0)
-		return () => clearTimeout(t)
-	}, [])
+		ownedCouponsRef.current = ownedCoupons
+	}, [ownedCoupons])
+
+	/** EOA 切换：从本地恢复 Active Vouchers */
+	useLayoutEffect(() => {
+		const eoaLower = profiles?.[0]?.keyID?.trim().toLowerCase() ?? ''
+		if (!eoaLower || !ethers.isAddress(eoaLower)) {
+			setOwnedCoupons([])
+			setOwnedCouponsLoading(false)
+			return
+		}
+		const hit = loadWalletOwnedCouponsLocalCache(eoaLower)
+		if (hit?.length) {
+			setOwnedCoupons(hit)
+			setOwnedCouponsLoading(false)
+		}
+	}, [profiles?.[0]?.keyID])
 
 	useEffect(() => {
 		let cancelled = false
 		const run = async () => {
+			const eoaSave = profiles?.[0]?.keyID?.trim().toLowerCase() ?? ''
 			const cardContexts = myBrandCardsSorted
 				.map((card) => {
 					const cardLower = card.cardAddress.toLowerCase()
@@ -199,13 +210,27 @@ export default function WalletOverview() {
 				})
 				.filter((x): x is { cardAddress: string; cardLower: string; fallbackName: string; ownedIssuedTokenIds: Set<string> } => !!x)
 
+			const detailsStillLoading = myBrandCardsSorted.some((c) => {
+				const d = myBrandCardDetails[c.cardAddress.toLowerCase()]
+				return d === undefined || d.assets == null
+			})
+
 			if (!cardContexts.length) {
-				setOwnedCoupons([])
+				if (detailsStillLoading && ownedCouponsRef.current.length > 0) {
+					setOwnedCouponsLoading(false)
+					return
+				}
+				if (ownedCouponsRef.current.length === 0) {
+					setOwnedCoupons([])
+				}
 				setOwnedCouponsLoading(false)
 				return
 			}
 
-			setOwnedCouponsLoading(true)
+			const hasRenderableCoupons = ownedCouponsRef.current.length > 0
+			if (!hasRenderableCoupons) {
+				setOwnedCouponsLoading(true)
+			}
 			const responses = await Promise.allSettled(
 				cardContexts.map(async (ctx) => {
 					const rows = await getCardActiveIssuedCouponSeries(ctx.cardAddress, 50)
@@ -243,27 +268,38 @@ export default function WalletOverview() {
 			}
 
 			const trackedCards = new Set(cardContexts.map((c) => c.cardLower))
-			setOwnedCoupons((prev) => {
-				const carry = prev.filter((item) => {
-					const cardLower = item.cardAddress.toLowerCase()
-					if (!trackedCards.has(cardLower)) return false
-					return !successfulCards.has(cardLower)
-				})
-				for (const row of nextRowsById.values()) carry.push(row)
-				return carry.sort((a, b) => {
-					const av = a.validBeforeSec ?? Number.MAX_SAFE_INTEGER
-					const bv = b.validBeforeSec ?? Number.MAX_SAFE_INTEGER
-					if (av !== bv) return av - bv
-					return a.title.localeCompare(b.title, 'en')
-				})
+			const carry = ownedCouponsRef.current.filter((item) => {
+				const cardLower = item.cardAddress.toLowerCase()
+				if (!trackedCards.has(cardLower)) return false
+				return !successfulCards.has(cardLower)
 			})
+			const merged: WalletOwnedCouponItem[] = [...carry]
+			for (const row of nextRowsById.values()) merged.push(row)
+			merged.sort((a, b) => {
+				const av = a.validBeforeSec ?? Number.MAX_SAFE_INTEGER
+				const bv = b.validBeforeSec ?? Number.MAX_SAFE_INTEGER
+				if (av !== bv) return av - bv
+				return a.title.localeCompare(b.title, 'en')
+			})
+
+			const prevSig = walletOwnedCouponsSignature(ownedCouponsRef.current)
+			const nextSig = walletOwnedCouponsSignature(merged)
+			if (prevSig !== nextSig) {
+				setOwnedCoupons(merged)
+			}
+			const allCardsFetched =
+				cardContexts.length > 0 &&
+				cardContexts.every((c) => successfulCards.has(c.cardLower))
+			if (eoaSave && ethers.isAddress(eoaSave) && allCardsFetched) {
+				saveWalletOwnedCouponsLocalCache(eoaSave, merged)
+			}
 			setOwnedCouponsLoading(false)
 		}
 		void run()
 		return () => {
 			cancelled = true
 		}
-	}, [myBrandCardsSorted, myBrandCardDetails])
+	}, [myBrandCardsSorted, myBrandCardDetails, profiles?.[0]?.keyID])
 
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
 
@@ -306,129 +342,10 @@ export default function WalletOverview() {
 					style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
 				/>
 				<main className="mx-auto w-full max-w-2xl space-y-6 px-6 pt-2">
-					<section className="space-y-4 pt-2">
-							<div className="flex items-center justify-between px-1">
-								<h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-									Your Merchant Passes
-								</h3>
-								<div className="flex items-center gap-2">
-									{myBrandCardsSorted.length > 0 ? (
-										<button
-											type="button"
-											onClick={() => setShowMyBrandsDrawer(true)}
-											className="text-[10px] font-semibold text-[#1562f0] hover:text-[#0e4cbb] dark:text-[#6ba3ff]"
-										>
-											See all
-										</button>
-									) : null}
-									<span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-										{myBrandCardsSorted.length} CARD{myBrandCardsSorted.length !== 1 ? 'S' : ''}
-									</span>
-								</div>
-							</div>
-
-							<div className="flex flex-col">
-								{myBrandsFeedLoading && myBrandCardsSorted.length === 0 ? (
-									<div className="h-[200px] animate-pulse rounded-[1.5rem] bg-slate-200/80 dark:bg-slate-800" />
-								) : (
-									stackPreviewCards.map((uc, stackIdx) => {
-										const addrKey = uc.cardAddress.toLowerCase()
-										const detail = myBrandCardDetails[addrKey]
-										const title =
-											(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
-										const tierPres = resolveHeldTierPresentation(detail)
-										const tierLbl = tierPres.tierName.trim() || 'Loyalty Member'
-										const imgUrl = resolveCardImageUrl(detail?.meta?.image)
-										const ptsRaw = detail?.assets?.points
-										const ptsNum = Number(ptsRaw ?? '')
-										const cardGlobalCurrency = (
-											detail?.assets?.cardCurrency ?? uc.currency ?? 'CAD'
-										).toUpperCase()
-										const balanceLine =
-											detail === undefined
-												? '…'
-												: Number.isFinite(ptsNum)
-													? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
-													: '—'
-										const z = 10 * (stackIdx + 1)
-										const isLast = stackIdx === stackPreviewCards.length - 1
-										const footerIcons = [Info, QrCode, ShoppingBasket] as const
-										const FooterIcon = footerIcons[stackIdx % footerIcons.length]
-										const tierGradient = cardTierGradientCss(tierPres.accentColor)
-										const tierTheme = cardTierGradientTheme(tierPres.accentColor)
-										return (
-											<div
-												key={uc.cardAddress}
-												className="stack-card relative flex flex-col rounded-[1.5rem] border border-white/10 p-5 text-left text-white shadow-[0_-8px_24px_rgba(0,0,0,0.12)]"
-												style={{
-													zIndex: z,
-													marginBottom: isLast ? 0 : -STACK_CARD_OVERLAP_PX,
-													height: STACK_CARD_H,
-													borderColor: tierTheme.cardBorder,
-													color: tierTheme.primary,
-												}}
-											>
-												<div
-													className="absolute inset-0 rounded-[1.5rem]"
-													style={{ background: tierGradient }}
-													aria-hidden
-												/>
-												<div className="relative z-10 flex w-full flex-1 flex-col">
-													<div className="flex w-full items-start justify-between gap-2">
-														<div className="flex min-w-0 items-center gap-3">
-															<div
-																className="h-9 w-9 shrink-0 overflow-hidden rounded-full border p-1 shadow-sm"
-																style={{
-																	backgroundColor: tierTheme.iconOrbitBg,
-																	borderColor: tierTheme.iconOrbitBorder,
-																}}
-															>
-																{imgUrl ? (
-																	<img
-																		src={imgUrl}
-																		alt=""
-																		className="h-full w-full object-contain"
-																		draggable={false}
-																	/>
-																) : (
-																	<div className="flex h-full w-full items-center justify-center">
-																		<Store
-																			className="h-4 w-4"
-																			style={{ color: tierTheme.defaultBadgeFg }}
-																			aria-hidden
-																		/>
-																	</div>
-																)}
-															</div>
-															<div className="min-w-0">
-																<p className="text-sm font-bold tracking-tight truncate" style={{ color: tierTheme.primary }}>
-																	{title}
-																</p>
-																<p className="truncate text-[10px] font-medium" style={{ color: tierTheme.secondary }}>
-																	{tierLbl}
-																</p>
-															</div>
-														</div>
-														<div className="shrink-0 text-right">
-															<p className="text-[10px] font-bold tracking-widest" style={{ color: tierTheme.tertiary }}>
-																BALANCE
-															</p>
-															<p className="text-lg font-bold tabular-nums" style={{ color: tierTheme.primary }}>
-																{balanceLine}
-															</p>
-														</div>
-													</div>
-													<div className="mt-auto flex items-end justify-between" style={{ color: tierTheme.accent }}>
-														<p className="text-[10px] font-bold uppercase">Pass</p>
-														<FooterIcon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-													</div>
-												</div>
-											</div>
-										)
-									})
-								)}
-							</div>
-					</section>
+					<WalletMerchantPassStack
+						view={merchantPassesView}
+						onSeeAll={() => setShowMyBrandsDrawer(true)}
+					/>
 
 					<section className="space-y-3">
 						<div className="flex items-center justify-between px-1">
@@ -498,23 +415,6 @@ export default function WalletOverview() {
 						)}
 					</section>
 
-					{deviceHasNfc && (
-						<section>
-							<button
-								type="button"
-								onClick={() => navigate('/History')}
-								className="flex w-full items-center justify-between rounded-2xl border border-slate-200/80 bg-white p-5 text-left shadow-sm transition-transform active:scale-[0.99] dark:border-slate-800 dark:bg-slate-900"
-							>
-								<div className="flex items-center gap-4">
-									<div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-										<Nfc className="h-5 w-5" />
-									</div>
-									<p className="font-bold">NFC Keys</p>
-								</div>
-								<ChevronRight className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
-							</button>
-						</section>
-					)}
 				</main>
 			</div>
 			<MyBrandsFullScreenDrawer open={showMyBrandsDrawer} onClose={() => setShowMyBrandsDrawer(false)} />

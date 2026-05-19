@@ -12,7 +12,7 @@ type WalletReadyScreenProps = {
 	 * `postNfcLinkAppClaimWithKey` (EOA privateKey → `POST /api/nfcLinkAppClaimWithKey`) to finish binding.
 	 */
 	onNfcSync: () => void
-	/** Redeem Gift Voucher: enter the existing voucher scan/redeem area */
+	/** Claim Merchant Coupon: enter the existing coupon claim area */
 	onRedeemGiftVoucher: () => void
 	/** Close and finish later */
 	onFinishLater: () => void
@@ -130,7 +130,7 @@ export default function WalletReadyScreen({
 									<Gift className="h-10 w-10 [@media(max-height:760px)]:h-8 [@media(max-height:760px)]:w-8" strokeWidth={2} aria-hidden />
 								</div>
 								<div className="ml-6 min-w-0 flex-1">
-									<h3 className="text-lg font-bold text-[#1a1c1f]">Redeem Gift Voucher</h3>
+									<h3 className="text-lg font-bold text-[#1a1c1f]">Claim Merchant Coupon</h3>
 									<p className="mt-1 text-sm leading-snug text-[#424655]">
 										Activate your account using a gift link or by scanning a voucher QR code.
 									</p>

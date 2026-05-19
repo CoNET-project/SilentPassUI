@@ -15,7 +15,6 @@ import {
 	Ticket,
 	Loader,
 	RefreshCw,
-	Fuel,
 	Wallet,
 	Copy,
 	ExternalLink,
@@ -106,29 +105,6 @@ function formatCurrencySigned(amount: number, currencyCode: string) {
 }
 
 const FEE_INFO_KEYS = ['gasChainType', 'gasWei', 'gasUSDC6', 'serviceUSDC6', 'bServiceUSDC6', 'bServiceUnits6', 'feePayer'] as const
-/** FeeInfo 下标：5=bServiceUnits6, 4=bServiceUSDC6（readme 7.2） */
-const FEE_IDX_B_SERVICE_USDC6 = 4
-const FEE_IDX_B_SERVICE_UNITS6 = 5
-
-/** 从 fees（可能为 array 或 object）提取 B-Units 数量 */
-function extractBServiceUnits(fees: unknown): number {
-	if (!fees || typeof fees !== 'object') return 0
-	const f = fees as Record<string | number, unknown>
-	const units6 = f.bServiceUnits6 ?? f['bServiceUnits6'] ?? f[FEE_IDX_B_SERVICE_UNITS6]
-	if (units6 != null) return Number(units6) / 1e6
-	const usdc6 = f.bServiceUSDC6 ?? f['bServiceUSDC6'] ?? f[FEE_IDX_B_SERVICE_USDC6]
-	if (usdc6 != null) return Number(usdc6) * 100 / 1e6 // 100 B-Units = 1 USDC
-	return 0
-}
-
-/** request_create 预期 Beamio Fee（0.8%, min 2 max 200, 500 if >=5000 USDC）。链上 fees 为 0 时用于 UI 回退 */
-function calcRequestCreateFeeBUnits(amountUSDC6: number | string | bigint): number {
-	const amt = Number(amountUSDC6)
-	if (!Number.isFinite(amt) || amt <= 0) return 0
-	if (amt >= 5_000_000_000) return 500 // >=5000 USDC (6 decimals)
-	let fee = Math.ceil((amt / 1e6) * 0.008) // 0.8% of amount in USDC
-	return Math.min(Math.max(fee, 2), 200)
-}
 const META_KEYS = ['requestAmountFiat6', 'requestAmountUSDC6', 'currencyFiat', 'discountAmountFiat6', 'discountRateBps', 'taxAmountFiat6', 'taxRateBps', 'afterNotePayer', 'afterNotePayee'] as const
 const ROUTE_ITEM_KEYS = ['asset', 'amountE6', 'assetType', 'source', 'tokenId', 'itemCurrencyType', 'offsetInRequestCurrencyE6'] as const
 
@@ -390,6 +366,8 @@ const ActiveHistoryPannelNew = ({
 	const [cancelRequestError, setCancelRequestError] = useState<string | null>(null)
 	const refreshLockRef = useRef(false)
 	const itemsCountRef = useRef(items.length)
+	const nonLocalSettledRef = useRef(false)
+	const nonLocalKeyRef = useRef('')
 	useEffect(() => {
 		itemsCountRef.current = items.length
 	}, [items.length])
@@ -709,8 +687,23 @@ const ActiveHistoryPannelNew = ({
 
 	useEffect(() => {
 		if (!useLocalIndexer) {
-			setItems(recentActivityNoAaItems)
-			setLoading(recentActivityNoAaLoading && recentActivityNoAaItems.length === 0)
+			const key = `${eoa ?? ''}|${aa ?? ''}|${myAddress ?? ''}`
+			if (nonLocalKeyRef.current !== key) {
+				nonLocalKeyRef.current = key
+				nonLocalSettledRef.current = false
+			}
+			if (recentActivityNoAaItems.length > 0 || itemsCountRef.current === 0) {
+				setItems(recentActivityNoAaItems)
+			}
+			if (!recentActivityNoAaLoading || recentActivityNoAaItems.length > 0) {
+				nonLocalSettledRef.current = true
+			}
+			setLoading(
+				recentActivityNoAaLoading &&
+				recentActivityNoAaItems.length === 0 &&
+				itemsCountRef.current === 0 &&
+				!nonLocalSettledRef.current
+			)
 			setError(recentActivityNoAaError)
 		}
 	}, [
@@ -718,6 +711,9 @@ const ActiveHistoryPannelNew = ({
 		recentActivityNoAaItems,
 		recentActivityNoAaLoading,
 		recentActivityNoAaError,
+		eoa,
+		aa,
+		myAddress,
 	])
 
 	useEffect(() => {
@@ -819,14 +815,6 @@ const ActiveHistoryPannelNew = ({
 		const hex = typeof oph === 'string' ? oph : ethers.hexlify(oph as ethers.BytesLike)
 		return hex === ethers.ZeroHash ? '' : hex
 	}
-
-	/** 无 originalPaymentHash 且为付款方且有对方信息时（Send to xxx），用于 Network Gas 显示 2 B-Units */
-	const sendToNoOph = selectedTx && (() => {
-		const isInternalTransfer = selectedTx.type === 'internal_transfer'
-		const isEoaSent = !selectedTxMySideIsAA && !selectedTx.isInbound && !isInternalTransfer
-		const isAASent = selectedTxMySideIsAA && !selectedTx.isInbound && !isInternalTransfer
-		return (isEoaSent || isAASent) && !getOriginalPaymentHash(selectedTx) && !!(detailFullName || detailBeamioTag)
-	})()
 
 	/** 已取消的 request 的 originalPaymentHash 集合（来自 request_cancel 交易） */
 	const canceledHashes = useMemo(() => {
@@ -1908,15 +1896,6 @@ const ActiveHistoryPannelNew = ({
 								</span>
 							</div>
 							)}
-							{selectedTx.type === 'fuel_yield' && (
-								<div className="flex justify-between items-center text-[14px]">
-									<span className="text-gray-500 dark:text-slate-400 font-medium">Network GAS</span>
-									<span className="inline-flex items-center gap-1 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 px-2.5 py-1">
-										<Zap size={12} className="text-orange-500 shrink-0" />
-										<span className="font-semibold text-orange-500 text-[13px] leading-none">Sponsored</span>
-									</span>
-								</div>
-							)}
 							{selectedTx.type !== 'fuel_yield' && selectedTx.currencyCode !== 'USDC' && Math.abs(selectedTx.amountFiat) > 0 && selectedTx.amountUSDC !== 0 && (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">Exchange Rate</span>
@@ -1932,54 +1911,6 @@ const ActiveHistoryPannelNew = ({
 								</span>
 							</div>
 							)}
-							{(() => {
-								if (selectedIsCardTopupKind) return null
-								let networkGasBUnits = 0
-								if (!getOriginalPaymentHash(selectedTx) && selectedTx.isInbound) {
-									networkGasBUnits = 0
-								} else if (
-									selectedTx.type === 'internal_transfer' ||
-									(!selectedTxMySideIsAA && (selectedTx.type === 'transfer_out' || selectedTx.type === 'transfer_in')) ||
-									sendToNoOph
-								) {
-									const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
-									const chainBUnits = extractBServiceUnits(txWithFees?.fees)
-									networkGasBUnits = sendToNoOph ? 2 : (chainBUnits > 0 ? chainBUnits : 2)
-								}
-								const roundedGas = Number(networkGasBUnits.toFixed(2))
-								if (roundedGas <= 0) return null
-								return (
-									<div className="flex justify-between items-center text-[14px]">
-										<span className="text-gray-500 dark:text-slate-400 font-medium">Network Gas</span>
-										<span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 px-2.5 py-1">
-											<Fuel size={14} className="text-orange-500 shrink-0" />
-											<span className="font-semibold text-orange-500">-{roundedGas.toFixed(2)} B-Units</span>
-										</span>
-									</div>
-								)
-							})()}
-							{(() => {
-								// Prefer fullTransactionFromChain (getTransactionFullByTxId) for fees; fallback to rawTransaction
-								const txWithFees = fullTransactionFromChain ?? (selectedTx.rawTransaction as RawTxRecord | undefined)
-								let bUnits = extractBServiceUnits(txWithFees?.fees)
-								// 链上 fees 为 0 的 request_create：按金额计算预期 Beamio Fee 作为回退（历史记录）
-								if (bUnits === 0 && selectedTx.type === 'request_create') {
-									const rawAmt = txWithFees?.finalRequestAmountUSDC6 ?? (selectedTx.rawTransaction as RawTxRecord)?.finalRequestAmountUSDC6
-									const amt6 = rawAmt != null ? Number(rawAmt) : Math.round(selectedTx.amountUSDC * 1e6)
-									bUnits = calcRequestCreateFeeBUnits(amt6)
-								}
-								const roundedFee = Number(bUnits.toFixed(2))
-								if (roundedFee <= 0) return null
-								return (
-									<div className="flex justify-between items-center text-[14px]">
-										<span className="text-gray-500 dark:text-slate-400 font-medium">Beamio Fee</span>
-										<span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 px-2.5 py-1">
-											<Fuel size={14} className="text-orange-500 shrink-0" />
-											<span className="font-semibold text-orange-500">{roundedFee.toFixed(2)} B-Units</span>
-										</span>
-									</div>
-								)
-							})()}
 						</div>
 
 						<div className="space-y-3 mb-8">

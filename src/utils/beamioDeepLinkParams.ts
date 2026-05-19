@@ -1,0 +1,64 @@
+import { ethers } from 'ethers'
+
+/** Merge query from URL search + hash (#/?...) for HashRouter deep links. */
+export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
+	const merged = new URLSearchParams()
+	const input = raw?.trim() ?? ''
+	if (!input) return merged
+
+	const appendParams = (sp: URLSearchParams) => {
+		sp.forEach((value, key) => {
+			if (!merged.has(key)) merged.set(key, value)
+		})
+	}
+
+	try {
+		const u = input.startsWith('http') ? new URL(input) : new URL(input, 'https://beamio.app')
+		appendParams(u.searchParams)
+		const hash = u.hash || ''
+		if (hash.includes('?')) {
+			const hashQuery = hash.slice(hash.indexOf('?') + 1)
+			if (hashQuery) appendParams(new URLSearchParams(hashQuery))
+		}
+		return merged
+	} catch {
+		// Fallback: raw query string
+		const q = input.startsWith('?') ? input.slice(1) : input
+		appendParams(new URLSearchParams(q))
+		return merged
+	}
+}
+
+export function parseCouponOpenClaimFromParams(
+	sp: URLSearchParams
+): { cardAddress: string; couponId: string } | null {
+	const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
+	const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
+	const claim = (sp.get('claim') ?? '').trim().toLowerCase()
+	if (!cardAddress || !couponId) return null
+	if (claim && claim !== 'open' && claim !== '1' && claim !== 'true') return null
+	if (!ethers.isAddress(cardAddress)) return null
+	return { cardAddress: ethers.getAddress(cardAddress), couponId }
+}
+
+export function parseRedeemClaimFromParams(
+	sp: URLSearchParams
+): { cardAddress?: string; redeemCode: string } | null {
+	const redeemcode = (sp.get('redeemcode') ?? sp.get('Redeemcode') ?? '').trim()
+	if (!redeemcode) return null
+	const beamiocard = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
+	const cardAddress =
+		beamiocard && ethers.isAddress(beamiocard) ? ethers.getAddress(beamiocard) : undefined
+	return {
+		cardAddress,
+		redeemCode: decodeURIComponent(redeemcode),
+	}
+}
+
+export function isRedeemDeepLink(raw: string): boolean {
+	return !!parseRedeemClaimFromParams(collectDeepLinkSearchParams(raw))
+}
+
+export function isCouponOpenClaimDeepLink(raw: string): boolean {
+	return !!parseCouponOpenClaimFromParams(collectDeepLinkSearchParams(raw))
+}

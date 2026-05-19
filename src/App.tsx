@@ -45,8 +45,14 @@ import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
-import { Check, Ticket, Clock3 } from "lucide-react"
-import { postCardCouponOpenClaimWithCurrentWallet } from "@/services/BeamioCard"
+import { Check, Ticket, Clock3, Gift } from "lucide-react"
+import { postCardCouponOpenClaimWithCurrentWallet, postCardRedeem } from "@/services/BeamioCard"
+import {
+	collectDeepLinkSearchParams,
+	parseCouponOpenClaimFromParams,
+	parseRedeemClaimFromParams,
+	isRedeemDeepLink,
+} from "@/utils/beamioDeepLinkParams"
 
 global.Buffer = require("buffer").Buffer
 
@@ -105,7 +111,6 @@ function AppShell() {
 	setIsInitialLoading,
 	beamio,
 	setBeamio,
-	setRedeemFromUrl,
 	redeemResult,
 	setRedeemResult,
 	setMyAddress,
@@ -116,6 +121,8 @@ function AppShell() {
   const [userPreviewItem, setUserPreviewItem] = useState<searchResult | null>()
   const [couponClaimIntent, setCouponClaimIntent] = useState<{ cardAddress: string; couponId: string } | null>(null)
   const [couponClaimSubmitting, setCouponClaimSubmitting] = useState(false)
+  const [redeemClaimIntent, setRedeemClaimIntent] = useState<{ cardAddress?: string; redeemCode: string } | null>(null)
+  const [redeemClaimSubmitting, setRedeemClaimSubmitting] = useState(false)
   /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
   const [preferredPayeeWallet, setPreferredPayeeWallet] = useState<{ beamioAccount: string; wallet: string } | null>(null)
   const runningRef = useRef(false)
@@ -131,60 +138,25 @@ function AppShell() {
 
   const navigate = useNavigate()
   const shortAddress = (addr: string) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : ''
-  const parseCouponOpenClaimFromParams = (sp: URLSearchParams): { cardAddress: string; couponId: string } | null => {
-    const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
-    const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
-    const claim = (sp.get('claim') ?? '').trim().toLowerCase()
-    if (!cardAddress || !couponId) return null
-    if (claim && claim !== 'open' && claim !== '1' && claim !== 'true') return null
-    if (!ethers.isAddress(cardAddress)) return null
-    return { cardAddress: ethers.getAddress(cardAddress), couponId }
-  }
 
-  // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时解析并跳转
+  // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时先打开确认页
   useEffect(() => {
     if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
     if (typeof window === 'undefined') return
-    // 支持 query 在 search 或 hash 中（HashRouter 下可能为 #/?beamiocard=...）
-    let redeemcode: string | null = null
-    let beamiocard: string | null = null
-    const search = window.location.search
-    const hash = window.location.hash || ''
-    if (search) {
-      const sp = new URLSearchParams(search)
-      redeemcode = sp.get('redeemcode') ?? sp.get('Redeemcode')
-      beamiocard = sp.get('beamiocard') ?? sp.get('Beamiocard')
-    }
-    if ((!redeemcode?.trim()) && hash.includes('redeemcode')) {
-      const hashQuery = hash.split('?')[1]
-      if (hashQuery) {
-        const sp = new URLSearchParams(hashQuery)
-        redeemcode = sp.get('redeemcode') ?? sp.get('Redeemcode')
-        beamiocard = sp.get('beamiocard') ?? sp.get('Beamiocard')
-      }
-    }
-    if (!redeemcode?.trim()) return
+    const parsed = parseRedeemClaimFromParams(collectDeepLinkSearchParams(window.location.href))
+    if (!parsed) return
     initialRedeemUrlProcessedRef.current = true
-    setRedeemFromUrl({
-      cardAddress: beamiocard?.trim() || undefined,
-      redeemCode: decodeURIComponent(redeemcode.trim()),
-    })
+    setRedeemClaimIntent(parsed)
+    setShowFooter(false)
     navigate('/History')
-  }, [isInitialLoading, navigate, setRedeemFromUrl])
+  }, [isInitialLoading, navigate, setShowFooter])
 
   // 直接打开 coupon open-claim URL（如 ?beamiocard=0x...&couponId=...&claim=open）时先打开确认页
   useEffect(() => {
     if (isInitialLoading || initialOpenClaimUrlProcessedRef.current) return
     if (typeof window === 'undefined') return
 
-    let parsed: { cardAddress: string; couponId: string } | null = null
-    const search = window.location.search
-    const hash = window.location.hash || ''
-    if (search) parsed = parseCouponOpenClaimFromParams(new URLSearchParams(search))
-    if (!parsed && hash.includes('coupon')) {
-      const hashQuery = hash.split('?')[1]
-      if (hashQuery) parsed = parseCouponOpenClaimFromParams(new URLSearchParams(hashQuery))
-    }
+    const parsed = parseCouponOpenClaimFromParams(collectDeepLinkSearchParams(window.location.href))
     if (!parsed) return
 
     initialOpenClaimUrlProcessedRef.current = true
@@ -192,6 +164,41 @@ function AppShell() {
     setShowFooter(false)
     navigate('/History')
   }, [isInitialLoading, navigate, setShowFooter])
+
+  const handleConfirmRedeemClaim = async () => {
+    if (!redeemClaimIntent || redeemClaimSubmitting) return
+    const cardAddress = redeemClaimIntent.cardAddress?.trim() ?? ''
+    if (!cardAddress || !ethers.isAddress(cardAddress)) {
+      Toast.show({ content: 'Redeem link is missing a valid card address', position: 'top' })
+      return
+    }
+    const privateKeyArmor = (profiles?.[0] as { privateKeyArmor?: string } | undefined)?.privateKeyArmor?.trim() || ''
+    const toUserEOA = (profiles?.[0]?.keyID ?? '').trim()
+    if (!privateKeyArmor || !toUserEOA || !ethers.isAddress(toUserEOA)) {
+      Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+      return
+    }
+    setRedeemClaimSubmitting(true)
+    try {
+      const ret = await postCardRedeem(
+        ethers.getAddress(cardAddress),
+        redeemClaimIntent.redeemCode,
+        ethers.getAddress(toUserEOA)
+      )
+      if (ret.success) {
+        setRedeemResult({ success: true, tx: ret.tx })
+        setRedeemClaimIntent(null)
+        setShowFooter(true)
+        Toast.show({ content: 'Redeem submitted successfully', position: 'top' })
+      } else {
+        Toast.show({ content: ret.error ?? 'Redeem failed', position: 'top' })
+      }
+    } catch (e: any) {
+      Toast.show({ content: e?.message ?? 'Redeem failed', position: 'top' })
+    } finally {
+      setRedeemClaimSubmitting(false)
+    }
+  }
 
   const handleConfirmCouponClaim = async () => {
     if (!couponClaimIntent || couponClaimSubmitting) return
@@ -951,32 +958,11 @@ function AppShell() {
     }
   }
 
-  /** BeamioUserCard redeem URL：beamiocard + redeemcode → /History 并打开 ccsaRedeemOpen */
-  const isRedeemUrl = (raw: string): boolean => {
-    try {
-      if (!raw || typeof raw !== 'string') return false
-      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
-      const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
-      return !!(redeemcode?.trim())
-    } catch {
-      return false
-    }
-  }
+  /** BeamioUserCard redeem URL：beamiocard + redeemcode */
+  const isRedeemUrl = (raw: string): boolean => isRedeemDeepLink(raw)
 
-  const parseRedeemUrl = (raw: string): { cardAddress?: string; redeemCode: string } | null => {
-    try {
-      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
-      const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
-      const beamiocard = u.searchParams.get('beamiocard') ?? u.searchParams.get('Beamiocard')
-      if (!redeemcode?.trim()) return null
-      return {
-        cardAddress: beamiocard?.trim() || undefined,
-        redeemCode: decodeURIComponent(redeemcode.trim()),
-      }
-    } catch {
-      return null
-    }
-  }
+  const parseRedeemUrl = (raw: string): { cardAddress?: string; redeemCode: string } | null =>
+    parseRedeemClaimFromParams(collectDeepLinkSearchParams(raw))
 
   /** 商家发行的 bill paymentUrl：Amount=、currency=、acceptTokens= 为必选项，缺一视为非法 bill 不处理；路径为 /Vouchers 或域名含 beamio */
   const isPaymentUrl = (raw: string): boolean => {
@@ -1005,8 +991,7 @@ function AppShell() {
 
     let searchParams: URLSearchParams
     try {
-      const u = new URL(url)
-      searchParams = u.searchParams
+      searchParams = collectDeepLinkSearchParams(url)
     } catch {
       searchParams = new URLSearchParams(url)
     }
@@ -1033,13 +1018,17 @@ function AppShell() {
       return
     }
 
-    // BeamioUserCard redeem URL: beamiocard + redeemcode → 打开 redeem 面板并预填
+    // BeamioUserCard redeem URL → 打开 Redeem 确认页（与 coupon open-claim 相同流程）
     if (_redeemcode?.trim()) {
-      setRedeemFromUrl({
-        cardAddress: _beamiocard?.trim() || undefined,
-        redeemCode: decodeURIComponent(_redeemcode.trim()),
-      })
-      navigate("/History")
+      const parsedRedeem = parseRedeemClaimFromParams(searchParams)
+      if (!parsedRedeem) {
+        Toast.show({ content: 'Redeem link is invalid or wallet is not ready', position: 'top' })
+        navigate('/History')
+        return
+      }
+      setRedeemClaimIntent(parsedRedeem)
+      setShowFooter(false)
+      navigate('/History')
       return
     }
 
@@ -1136,7 +1125,8 @@ function AppShell() {
         const parsed = parseRedeemUrl(scanData)
         setScanData("")
         if (parsed) {
-          setRedeemFromUrl(parsed)
+          setRedeemClaimIntent(parsed)
+          setShowFooter(false)
           navigate("/History")
         }
         return
@@ -1492,6 +1482,86 @@ function AppShell() {
 
 			{/* Redeem 结果：BeamioOnboardingModal Go To Home 后后台 redeem 完成，从下往上滑出 */}
 			<AnimatePresence>
+				{redeemClaimIntent && (
+					<motion.div
+						key="redeem-claim-overlay"
+						className="fixed inset-0 z-[220] bg-white dark:bg-slate-900 flex flex-col"
+						initial={{ x: "100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "100%" }}
+						transition={{ duration: 0.25, ease: "easeOut" }}
+					>
+						<div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-slate-200 dark:border-slate-800">
+							<div>
+								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Code</h2>
+								<p className="text-xs text-slate-500 dark:text-slate-400">Confirm before submitting on-chain redeem.</p>
+							</div>
+							<button
+								type="button"
+								onClick={() => {
+									if (redeemClaimSubmitting) return
+									setRedeemClaimIntent(null)
+									setShowFooter(true)
+								}}
+								disabled={redeemClaimSubmitting}
+								className="text-sm font-medium text-slate-600 dark:text-slate-300 disabled:opacity-50"
+							>
+								Close
+							</button>
+						</div>
+
+						<div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+							<div className="relative overflow-hidden rounded-3xl border border-white/20 shadow-[0_12px_28px_rgba(15,23,42,0.32)] bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700 p-4 min-h-[136px]">
+								<div className="absolute -top-12 -right-8 w-36 h-36 rounded-full bg-white/10" />
+								<div className="absolute left-[-13px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white dark:bg-slate-900" />
+								<div className="absolute right-[-13px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white dark:bg-slate-900" />
+								<div className="relative flex items-center gap-3 h-full">
+									<div className="w-14 h-14 rounded-full bg-black/20 border border-white/30 flex items-center justify-center shrink-0">
+										<Gift className="w-6 h-6 text-white" />
+									</div>
+									<div className="min-w-0 flex-1">
+										<p className="text-white font-bold text-[18px] leading-tight truncate">Program Redeem</p>
+										<p className="text-white/90 text-[13px] font-semibold truncate">Coupon / NFT redeem code</p>
+										<p className="text-white/85 text-[11px] font-bold uppercase tracking-wide mt-1 break-all font-mono">
+											{redeemClaimIntent.redeemCode}
+										</p>
+										<div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-emerald-500 text-white">
+											<Clock3 className="w-3 h-3" />
+											<span className="text-[11px] font-extrabold tracking-[0.2px]">REDEEM</span>
+										</div>
+									</div>
+								</div>
+							</div>
+							{redeemClaimIntent.cardAddress ? (
+								<div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 space-y-2">
+									<p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Card Address</p>
+									<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+										{shortAddress(redeemClaimIntent.cardAddress)}
+									</p>
+									<p className="text-[11px] text-slate-500 dark:text-slate-400 break-all">{redeemClaimIntent.cardAddress}</p>
+								</div>
+							) : (
+								<div className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-4">
+									<p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Missing card address</p>
+									<p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+										This redeem link must include a valid program card address.
+									</p>
+								</div>
+							)}
+						</div>
+
+						<div className="px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2 border-t border-slate-200 dark:border-slate-800">
+							<AppButton
+								fullWidth
+								onClick={handleConfirmRedeemClaim}
+								disabled={redeemClaimSubmitting || !redeemClaimIntent.cardAddress}
+								className="rounded-xl"
+							>
+								{redeemClaimSubmitting ? 'Redeeming...' : 'Redeem'}
+							</AppButton>
+						</div>
+					</motion.div>
+				)}
 				{couponClaimIntent && (
 					<motion.div
 						key="coupon-claim-overlay"

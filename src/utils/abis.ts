@@ -8998,7 +8998,7 @@ export const BeamioAAAcountFactoryAbi = [
 	}
 ]
 
-export const cardAbi = [{"inputs":[{"internalType":"string","name":"uri_","type":"string"},{"internalType":"enum BeamioCurrency.CurrencyType","name":"currency_","type":"uint8"},{"internalType":"uint256","name":"pointsUnitPriceInCurrencyE6_","type":"uint256"},{"internalType":"address","name":"initialOwner","type":"address"},{"internalType":"address","name":"gateway_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[],"name":"BM_NotAuthorized","type":"error"},{"inputs":[],"name":"BM_ZeroAddress","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"balance","type":"uint256"},{"internalType":"uint256","name":"needed","type":"uint256"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"ERC1155InsufficientBalance","type":"error"},{"inputs":[{"internalType":"address","name":"approver","type":"address"}],"name":"ERC1155InvalidApprover","type":"error"},{"inputs":[{"internalType":"uint256","name":"idsLength","type":"uint256"},{"internalType":"uint256","name":"valuesLength","type":"uint256"}],"name":"ERC1155InvalidArrayLength","type":"error"},{"inputs":[{"internalType":"address","name":"operator","type":"address"}],"name":"ERC1155InvalidOperator","type":"error"},{"inputs":[{"internalType":"address","name":"receiver","type":"address"}],"name":"ERC1155InvalidReceiver","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"}],"name":"ERC1155InvalidSender","type":"error"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"address","name":"owner","type":"address"}],"name":"ERC1155MissingApprovalForAll","type":"error"},{"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"OwnableInvalidOwner","type":"error"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"OwnableUnauthorizedAccount","type":"error"},{"inputs":[],"name":"ReentrancyGuardReentrantCall","type":"error"},{"inputs":[],"name":"UC_AmountZero","type":"error"},{"inputs":[],"name":"UC_BelowMinThreshold","type":"error"},{"inputs":[],"name":"UC_GlobalMisconfigured","type":"error"},{"inputs":[],"name":"UC_InvalidProposal","type":"error"},{"inputs":[],"name":"UC_NoBeamioAccount","type":"error"},{"inputs":[],"name":"UC_NotAdmin","type":"error"},{"inputs":[],"name":"UC_PointsToNotWhitelisted","type":"error"},{"inputs":[],"name":"UC_PriceZero","type":"error"},{"inputs":[{"internalType":"bytes","name":"data","type":"bytes"}],"name":"UC_RedeemDelegateFailed","type":"error"},{"inputs":[],"name":"UC_RedeemModuleZero","type":"error"},{"inputs":[{"internalType":"address","name":"eoa","type":"address"},{"internalType":"address","name":"aaFactory","type":"address"},{"internalType":"address","name":"acct","type":"address"}],"name":"UC_ResolveAccountFailed","type":"error"},{"inputs":[],"name":"UC_SBTNonTransferable","type":"error"},{"inputs":[],"name":"UC_StatsModuleZero","type":"error"},{"inputs":[],"name":"UC_TierLenMismatch","type":"error"},{"inputs":[],"name":"UC_TierMinZero","type":"error"},{"inputs":[],"name":"UC_UnauthorizedGateway","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"beneficiaryAccount","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"expiry","type":"uint256"}],"name":"AdminCardMinted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"beneficiaryAccount","type":"address"},{"indexed":false,"internalType":"uint256","name":"points6","type":"uint256"}],"name":"AdminPointsMinted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"bool","name":"approved","type":"bool"}],"name":"ApprovalForAll","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"}],"name":"DefaultAttrUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"oldSecs","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newSecs","type":"uint256"}],"name":"ExpirySecondsUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":true,"internalType":"address","name":"userEOA","type":"address"},{"indexed":true,"internalType":"address","name":"acct","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"claimedAfter","type":"uint256"}],"name":"FaucetClaimed","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"components":[{"internalType":"uint64","name":"validUntil","type":"uint64"},{"internalType":"uint64","name":"perClaimMax","type":"uint64"},{"internalType":"uint128","name":"maxPerUser","type":"uint128"},{"internalType":"uint128","name":"maxGlobal","type":"uint128"},{"internalType":"bool","name":"enabled","type":"bool"},{"internalType":"uint8","name":"currency","type":"uint8"},{"internalType":"uint8","name":"decimals","type":"uint8"},{"internalType":"uint128","name":"priceInCurrency6","type":"uint128"}],"indexed":false,"internalType":"struct FaucetStorage.FaucetConfig","name":"cfg","type":"tuple"}],"name":"FaucetConfigUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"title","type":"bytes32"},{"indexed":false,"internalType":"uint64","name":"validAfter","type":"uint64"},{"indexed":false,"internalType":"uint64","name":"validBefore","type":"uint64"},{"indexed":false,"internalType":"uint256","name":"maxSupply","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"priceInCurrency6","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"sharedMetadataHash","type":"bytes32"}],"name":"IssuedNftCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":true,"internalType":"address","name":"recipient","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"IssuedNftMinted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"tierIndexOrMax","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"expiry","type":"uint256"}],"name":"MemberNFTIssued","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"uint256","name":"oldActiveTokenId","type":"uint256"},{"indexed":true,"internalType":"uint256","name":"newTokenId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"oldTierIndexOrMax","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newTierIndex","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newExpiry","type":"uint256"}],"name":"MemberNFTUpgraded","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"userEOA","type":"address"},{"indexed":true,"internalType":"address","name":"acct","type":"address"},{"indexed":false,"internalType":"uint256","name":"points6","type":"uint256"}],"name":"PointsMintedByGateway","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"payerEOA","type":"address"},{"indexed":true,"internalType":"address","name":"beneficiaryAccount","type":"address"},{"indexed":true,"internalType":"address","name":"usdc","type":"address"},{"indexed":false,"internalType":"uint256","name":"usdcIn6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"pointsMinted6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"unitPointPriceUsdc6","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"nonce","type":"bytes32"}],"name":"PointsPurchasedWithUSDC","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"priceInCurrencyE6","type":"uint256"}],"name":"PointsUnitPriceUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":true,"internalType":"address","name":"admin","type":"address"}],"name":"ProposalApproved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":true,"internalType":"bytes4","name":"selector","type":"bytes4"},{"indexed":true,"internalType":"address","name":"proposer","type":"address"}],"name":"ProposalCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"}],"name":"ProposalExecuted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"hash","type":"bytes32"}],"name":"RedeemCancelled","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"hash","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"points6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"}],"name":"RedeemCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"index","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"},{"indexed":false,"internalType":"bool","name":"upgradeByBalance","type":"bool"}],"name":"TierAppended","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"count","type":"uint256"}],"name":"TiersUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"indexed":false,"internalType":"uint256[]","name":"values","type":"uint256[]"}],"name":"TransferBatch","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"TransferSingle","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"bool","name":"enabled","type":"bool"}],"name":"TransferWhitelistEnabledUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"string","name":"value","type":"string"},{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"}],"name":"URI","type":"event"},{"inputs":[],"name":"ISSUED_NFT_START_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"NFT_START_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"POINTS_DECIMALS","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"POINTS_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"VERSION","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"uint256","name":"","type":"uint256"}],"name":"_userOwnedNfts","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"activeMembershipCountByTierIndex","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"activeMembershipCountByTokenId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"activeMembershipId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"activeTierIndexOrMax","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newAdmin","type":"address"},{"internalType":"uint256","name":"newThreshold","type":"uint256"}],"name":"addAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"i","type":"uint256"}],"name":"adminList","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"},{"internalType":"bool","name":"upgradeByBalance","type":"bool"}],"name":"appendTier","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"approveProposal","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"address","name":"adminSigner","type":"address"}],"name":"approveProposalByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"attributes","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address[]","name":"accounts","type":"address[]"},{"internalType":"uint256[]","name":"ids","type":"uint256[]"}],"name":"balanceOfBatch","outputs":[{"internalType":"uint256[]","name":"","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"string","name":"code","type":"string"}],"name":"cancelRedeem","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"title","type":"bytes32"},{"internalType":"uint64","name":"validAfter","type":"uint64"},{"internalType":"uint64","name":"validBefore","type":"uint64"},{"internalType":"uint256","name":"maxSupply","type":"uint256"},{"internalType":"uint256","name":"priceInCurrency6","type":"uint256"},{"internalType":"bytes32","name":"sharedMetadataHash","type":"bytes32"}],"name":"createIssuedNft","outputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes4","name":"selector","type":"bytes4"},{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"v1","type":"uint256"},{"internalType":"uint256","name":"v2","type":"uint256"},{"internalType":"uint256","name":"v3","type":"uint256"}],"name":"createProposal","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"hash","type":"bytes32"},{"internalType":"uint256","name":"points6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint64","name":"validAfter","type":"uint64"},{"internalType":"uint64","name":"validBefore","type":"uint64"},{"internalType":"uint256[]","name":"tokenIds","type":"uint256[]"},{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"name":"createRedeem","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32[]","name":"hashes","type":"bytes32[]"},{"internalType":"uint256","name":"points6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint64","name":"validAfter","type":"uint64"},{"internalType":"uint64","name":"validBefore","type":"uint64"},{"internalType":"uint256[]","name":"tokenIds","type":"uint256[]"},{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"name":"createRedeemBatch","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"poolHash","type":"bytes32"},{"internalType":"uint64","name":"validAfter","type":"uint64"},{"internalType":"uint64","name":"validBefore","type":"uint64"},{"internalType":"uint256[][]","name":"tokenIdsList","type":"uint256[][]"},{"internalType":"uint256[][]","name":"amountsList","type":"uint256[][]"},{"internalType":"uint32[]","name":"counts","type":"uint32[]"}],"name":"createRedeemPool","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"currency","outputs":[{"internalType":"enum BeamioCurrency.CurrencyType","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"debugGateway","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"defaultAttrWhenNoTiers","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"deployer","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"exists","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"expiresAt","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"expirySeconds","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"factoryGateway","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"faucetByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"faucetConfig","outputs":[{"components":[{"internalType":"uint64","name":"validUntil","type":"uint64"},{"internalType":"uint64","name":"perClaimMax","type":"uint64"},{"internalType":"uint128","name":"maxPerUser","type":"uint128"},{"internalType":"uint128","name":"maxGlobal","type":"uint128"},{"internalType":"bool","name":"enabled","type":"bool"},{"internalType":"uint8","name":"currency","type":"uint8"},{"internalType":"uint8","name":"decimals","type":"uint8"},{"internalType":"uint128","name":"priceInCurrency6","type":"uint128"}],"internalType":"struct FaucetStorage.FaucetConfig","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"gateway","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getOwnership","outputs":[{"internalType":"uint256","name":"pt","type":"uint256"},{"components":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"attribute","type":"uint256"},{"internalType":"uint256","name":"tierIndexOrMax","type":"uint256"},{"internalType":"uint256","name":"expiry","type":"uint256"},{"internalType":"bool","name":"isExpired","type":"bool"}],"internalType":"struct BeamioUserCard.NFTDetail[]","name":"nfts","type":"tuple[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"}],"name":"getOwnershipByEOA","outputs":[{"internalType":"uint256","name":"pt","type":"uint256"},{"components":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"attribute","type":"uint256"},{"internalType":"uint256","name":"tierIndexOrMax","type":"uint256"},{"internalType":"uint256","name":"expiry","type":"uint256"},{"internalType":"bool","name":"isExpired","type":"bool"}],"internalType":"struct BeamioUserCard.NFTDetail[]","name":"nfts","type":"tuple[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"hash","type":"bytes32"}],"name":"getRedeemStatus","outputs":[{"internalType":"bool","name":"active","type":"bool"},{"internalType":"uint256","name":"totalPoints6","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"string[]","name":"codes","type":"string[]"}],"name":"getRedeemStatusBatch","outputs":[{"internalType":"bool[]","name":"active","type":"bool[]"},{"internalType":"uint256[]","name":"totalPoints6","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32[]","name":"hashes","type":"bytes32[]"}],"name":"getRedeemStatusBatch","outputs":[{"internalType":"bool[]","name":"active","type":"bool[]"},{"internalType":"uint256[]","name":"totalPoints6","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"hash","type":"bytes32"},{"internalType":"address","name":"claimer","type":"address"}],"name":"getRedeemStatusEx","outputs":[{"internalType":"bool","name":"active","type":"bool"},{"internalType":"uint128","name":"points6","type":"uint128"},{"internalType":"bool","name":"isPool","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"idx","type":"uint256"}],"name":"getTierAt","outputs":[{"components":[{"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"},{"internalType":"bool","name":"upgradeByBalance","type":"bool"}],"internalType":"struct BeamioUserCard.Tier","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getTiersCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"a","type":"address"}],"name":"isAdmin","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"address","name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"isIssuedNftValid","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"issuedNftIndex","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftMaxSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftMintedCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftPriceInCurrency6","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftSharedMetadataHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftTitle","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftValidAfter","outputs":[{"internalType":"uint64","name":"","type":"uint64"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftValidBefore","outputs":[{"internalType":"uint64","name":"","type":"uint64"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint64","name":"hourIndex","type":"uint64"}],"name":"membershipFlowBucketAtHour","outputs":[{"internalType":"uint256","name":"issuedCount","type":"uint256"},{"internalType":"uint256","name":"upgradedCount","type":"uint256"},{"internalType":"uint256","name":"expiredDiscoveredCount","type":"uint256"},{"internalType":"uint256","name":"activeSwitchCount","type":"uint256"},{"internalType":"uint256","name":"activatedCount","type":"uint256"},{"internalType":"uint256","name":"deactivatedCount","type":"uint256"},{"internalType":"bool","name":"hasData","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint8","name":"scopeType","type":"uint8"},{"internalType":"uint256","name":"scopeKey","type":"uint256"},{"internalType":"uint64","name":"hourIndex","type":"uint64"}],"name":"membershipScopedFlowBucketAtHour","outputs":[{"internalType":"uint256","name":"issuedCount","type":"uint256"},{"internalType":"uint256","name":"upgradedCount","type":"uint256"},{"internalType":"uint256","name":"expiredDiscoveredCount","type":"uint256"},{"internalType":"uint256","name":"activeSwitchCount","type":"uint256"},{"internalType":"uint256","name":"activatedCount","type":"uint256"},{"internalType":"uint256","name":"deactivatedCount","type":"uint256"},{"internalType":"bool","name":"hasData","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"metadataBaseURI","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"amount6","type":"uint256"}],"name":"mintFaucetByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"mintIssuedNftByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"mintIssuedNftByOwner","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"tierIndex","type":"uint256"}],"name":"mintMemberCardByAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"points6","type":"uint256"}],"name":"mintPointsByAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"points6","type":"uint256"}],"name":"mintPointsByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pointsUnitPriceInCurrencyE6","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"proposalCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"proposals","outputs":[{"components":[{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"v1","type":"uint256"},{"internalType":"uint256","name":"v2","type":"uint256"},{"internalType":"uint256","name":"v3","type":"uint256"},{"internalType":"bytes4","name":"selector","type":"bytes4"},{"internalType":"uint256","name":"approvals","type":"uint256"},{"internalType":"bool","name":"executed","type":"bool"}],"internalType":"struct GovernanceStorage.Proposal","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"string[]","name":"codes","type":"string[]"},{"internalType":"address","name":"userEOA","type":"address"}],"name":"redeemBatchByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"code","type":"string"},{"internalType":"address","name":"userEOA","type":"address"}],"name":"redeemByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"code","type":"string"},{"internalType":"address","name":"userEOA","type":"address"}],"name":"redeemPoolByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"adminToRemove","type":"address"},{"internalType":"uint256","name":"newThreshold","type":"uint256"}],"name":"removeAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"internalType":"uint256[]","name":"values","type":"uint256[]"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeBatchTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"bool","name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"attr","type":"uint256"}],"name":"setDefaultAttr","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"secs","type":"uint256"}],"name":"setExpirySeconds","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint64","name":"validUntil","type":"uint64"},{"internalType":"uint64","name":"perClaimMax","type":"uint64"},{"internalType":"uint128","name":"maxPerUser","type":"uint128"},{"internalType":"uint128","name":"maxGlobal","type":"uint128"},{"internalType":"bool","name":"enabled","type":"bool"},{"internalType":"enum BeamioCurrency.CurrencyType","name":"cur","type":"uint8"},{"internalType":"uint128","name":"priceInCurrency6","type":"uint128"}],"name":"setFaucetConfig","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"priceInCurrencyE6","type":"uint256"}],"name":"setPointsUnitPrice","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"components":[{"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"},{"internalType":"bool","name":"upgradeByBalance","type":"bool"}],"internalType":"struct BeamioUserCard.Tier[]","name":"newTiers","type":"tuple[]"}],"name":"setTiers","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"bool","name":"allowed","type":"bool"}],"name":"setTransferWhitelist","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bool","name":"enabled","type":"bool"}],"name":"setTransferWhitelistEnabled","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"supportsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"poolHash","type":"bytes32"}],"name":"terminateRedeemPool","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"threshold","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"tiers","outputs":[{"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"},{"internalType":"bool","name":"upgradeByBalance","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"tokenTierIndexOrMax","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalActiveMemberships","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalMembershipIssued","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"totalMembershipIssuedByTierIndex","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalMembershipUpgraded","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"transferWhitelist","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"transferWhitelistEnabled","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"uri","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]
+export const cardAbi = [{"inputs":[{"internalType":"string","name":"uri_","type":"string"},{"internalType":"enum BeamioCurrency.CurrencyType","name":"currency_","type":"uint8"},{"internalType":"uint256","name":"pointsUnitPriceInCurrencyE6_","type":"uint256"},{"internalType":"address","name":"initialOwner","type":"address"},{"internalType":"address","name":"gateway_","type":"address"},{"internalType":"uint8","name":"upgradeType_","type":"uint8"},{"internalType":"bool","name":"initialTransferWhitelistEnabled","type":"bool"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[],"name":"BM_CallFailed","type":"error"},{"inputs":[],"name":"BM_NotAuthorized","type":"error"},{"inputs":[],"name":"BM_ZeroAddress","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"balance","type":"uint256"},{"internalType":"uint256","name":"needed","type":"uint256"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"ERC1155InsufficientBalance","type":"error"},{"inputs":[{"internalType":"address","name":"approver","type":"address"}],"name":"ERC1155InvalidApprover","type":"error"},{"inputs":[{"internalType":"uint256","name":"idsLength","type":"uint256"},{"internalType":"uint256","name":"valuesLength","type":"uint256"}],"name":"ERC1155InvalidArrayLength","type":"error"},{"inputs":[{"internalType":"address","name":"operator","type":"address"}],"name":"ERC1155InvalidOperator","type":"error"},{"inputs":[{"internalType":"address","name":"receiver","type":"address"}],"name":"ERC1155InvalidReceiver","type":"error"},{"inputs":[{"internalType":"address","name":"sender","type":"address"}],"name":"ERC1155InvalidSender","type":"error"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"address","name":"owner","type":"address"}],"name":"ERC1155MissingApprovalForAll","type":"error"},{"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"OwnableInvalidOwner","type":"error"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"OwnableUnauthorizedAccount","type":"error"},{"inputs":[],"name":"ReentrancyGuardReentrantCall","type":"error"},{"inputs":[],"name":"UC_AdminManagerRequiresOwnerSignature","type":"error"},{"inputs":[],"name":"UC_AmountZero","type":"error"},{"inputs":[],"name":"UC_BelowMinThreshold","type":"error"},{"inputs":[],"name":"UC_GlobalMisconfigured","type":"error"},{"inputs":[{"internalType":"address","name":"fromAccount","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"have","type":"uint256"},{"internalType":"uint256","name":"need","type":"uint256"}],"name":"UC_InsufficientBalance","type":"error"},{"inputs":[],"name":"UC_InvalidProposal","type":"error"},{"inputs":[],"name":"UC_InvalidUpgradeType","type":"error"},{"inputs":[{"internalType":"uint8","name":"kind","type":"uint8"}],"name":"UC_ModuleZero","type":"error"},{"inputs":[],"name":"UC_NoBeamioAccount","type":"error"},{"inputs":[],"name":"UC_NotAdmin","type":"error"},{"inputs":[],"name":"UC_OpenMintExecutorUnauthorized","type":"error"},{"inputs":[],"name":"UC_PriceZero","type":"error"},{"inputs":[{"internalType":"bytes","name":"data","type":"bytes"}],"name":"UC_RedeemDelegateFailed","type":"error"},{"inputs":[],"name":"UC_TierLenMismatch","type":"error"},{"inputs":[],"name":"UC_TierMinZero","type":"error"},{"inputs":[],"name":"UC_UnauthorizedGateway","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"beneficiaryAccount","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"expiry","type":"uint256"}],"name":"AdminCardMinted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"AdminPointsBurned","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"beneficiaryAccount","type":"address"},{"indexed":false,"internalType":"uint256","name":"points6","type":"uint256"}],"name":"AdminPointsMinted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"bool","name":"approved","type":"bool"}],"name":"ApprovalForAll","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"}],"name":"DefaultAttrUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"oldSecs","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newSecs","type":"uint256"}],"name":"ExpirySecondsUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":true,"internalType":"address","name":"userEOA","type":"address"},{"indexed":true,"internalType":"address","name":"acct","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"claimedAfter","type":"uint256"}],"name":"FaucetClaimed","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"components":[{"internalType":"uint64","name":"validUntil","type":"uint64"},{"internalType":"uint64","name":"perClaimMax","type":"uint64"},{"internalType":"uint128","name":"maxPerUser","type":"uint128"},{"internalType":"uint128","name":"maxGlobal","type":"uint128"},{"internalType":"bool","name":"enabled","type":"bool"},{"internalType":"uint8","name":"currency","type":"uint8"},{"internalType":"uint8","name":"decimals","type":"uint8"},{"internalType":"uint128","name":"priceInCurrency6","type":"uint128"}],"indexed":false,"internalType":"struct FaucetStorage.FaucetConfig","name":"cfg","type":"tuple"}],"name":"FaucetConfigUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"title","type":"bytes32"},{"indexed":false,"internalType":"uint64","name":"validAfter","type":"uint64"},{"indexed":false,"internalType":"uint64","name":"validBefore","type":"uint64"},{"indexed":false,"internalType":"uint256","name":"maxSupply","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"priceInCurrency6","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"sharedMetadataHash","type":"bytes32"}],"name":"IssuedNftCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":true,"internalType":"address","name":"recipient","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"IssuedNftMinted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"uint256","name":"tokenId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"tierIndexOrMax","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"expiry","type":"uint256"}],"name":"MemberNFTIssued","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"uint256","name":"oldActiveTokenId","type":"uint256"},{"indexed":true,"internalType":"uint256","name":"newTokenId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"oldTierIndexOrMax","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newTierIndex","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"newExpiry","type":"uint256"}],"name":"MemberNFTUpgraded","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"userEOA","type":"address"},{"indexed":true,"internalType":"address","name":"acct","type":"address"},{"indexed":false,"internalType":"uint256","name":"points6","type":"uint256"}],"name":"PointsMintedByGateway","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"payerEOA","type":"address"},{"indexed":true,"internalType":"address","name":"beneficiaryAccount","type":"address"},{"indexed":true,"internalType":"address","name":"usdc","type":"address"},{"indexed":false,"internalType":"uint256","name":"usdcIn6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"pointsMinted6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"unitPointPriceUsdc6","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"nonce","type":"bytes32"}],"name":"PointsPurchasedWithUSDC","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"priceInCurrencyE6","type":"uint256"}],"name":"PointsUnitPriceUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":true,"internalType":"address","name":"admin","type":"address"}],"name":"ProposalApproved","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":true,"internalType":"bytes4","name":"selector","type":"bytes4"},{"indexed":true,"internalType":"address","name":"proposer","type":"address"}],"name":"ProposalCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"}],"name":"ProposalExecuted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"hash","type":"bytes32"}],"name":"RedeemCancelled","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"hash","type":"bytes32"},{"indexed":false,"internalType":"uint256","name":"points6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"}],"name":"RedeemCreated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"index","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"attr","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"}],"name":"TierAppended","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"count","type":"uint256"}],"name":"TiersUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"indexed":false,"internalType":"uint256[]","name":"values","type":"uint256[]"}],"name":"TransferBatch","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"id","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"TransferSingle","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"bool","name":"enabled","type":"bool"}],"name":"TransferWhitelistEnabledUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"string","name":"value","type":"string"},{"indexed":true,"internalType":"uint256","name":"id","type":"uint256"}],"name":"URI","type":"event"},{"stateMutability":"nonpayable","type":"fallback"},{"inputs":[],"name":"ISSUED_NFT_START_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"NFT_START_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"POINTS_DECIMALS","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"POINTS_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"VERSION","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"uint256","name":"","type":"uint256"}],"name":"_userOwnedNfts","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"activeMembershipCountByTierIndex","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"activeMembershipCountByTokenId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"activeMembershipId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"activeTierIndexOrMax","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"a","type":"address"}],"name":"adminParent","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"}],"name":"appendTier","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"approveProposal","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"address","name":"adminSigner","type":"address"}],"name":"approveProposalByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"attributes","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address[]","name":"accounts","type":"address[]"},{"internalType":"uint256[]","name":"ids","type":"uint256[]"}],"name":"balanceOfBatch","outputs":[{"internalType":"uint256[]","name":"","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"burnPointsByAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"subordinate","type":"address"},{"internalType":"address","name":"authorizer","type":"address"}],"name":"clearAdminMintCounterForSubordinate","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes4","name":"selector","type":"bytes4"},{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"v1","type":"uint256"},{"internalType":"uint256","name":"v2","type":"uint256"},{"internalType":"uint256","name":"v3","type":"uint256"}],"name":"createProposal","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"currency","outputs":[{"internalType":"enum BeamioCurrency.CurrencyType","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"debugGateway","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"defaultAttrWhenNoTiers","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"deployer","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"expiresAt","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"expirySeconds","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"factoryGateway","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"faucetByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"faucetConfig","outputs":[{"components":[{"internalType":"uint64","name":"validUntil","type":"uint64"},{"internalType":"uint64","name":"perClaimMax","type":"uint64"},{"internalType":"uint128","name":"maxPerUser","type":"uint128"},{"internalType":"uint128","name":"maxGlobal","type":"uint128"},{"internalType":"bool","name":"enabled","type":"bool"},{"internalType":"uint8","name":"currency","type":"uint8"},{"internalType":"uint8","name":"decimals","type":"uint8"},{"internalType":"uint128","name":"priceInCurrency6","type":"uint128"}],"internalType":"struct FaucetStorage.FaucetConfig","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"gateway","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getOwnership","outputs":[{"internalType":"uint256","name":"pt","type":"uint256"},{"components":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"attribute","type":"uint256"},{"internalType":"uint256","name":"tierIndexOrMax","type":"uint256"},{"internalType":"uint256","name":"expiry","type":"uint256"},{"internalType":"bool","name":"isExpired","type":"bool"}],"internalType":"struct BeamioUserCard.NFTDetail[]","name":"nfts","type":"tuple[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"}],"name":"getOwnershipByEOA","outputs":[{"internalType":"uint256","name":"pt","type":"uint256"},{"components":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"attribute","type":"uint256"},{"internalType":"uint256","name":"tierIndexOrMax","type":"uint256"},{"internalType":"uint256","name":"expiry","type":"uint256"},{"internalType":"bool","name":"isExpired","type":"bool"}],"internalType":"struct BeamioUserCard.NFTDetail[]","name":"nfts","type":"tuple[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"a","type":"address"}],"name":"isAdmin","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"},{"internalType":"address","name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"effectiveTo","type":"address"}],"name":"isPointsTransferRecipientAllowed","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftPriceInCurrency6","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"issuedNftSharedMetadataHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"metadataBaseURI","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"amount6","type":"uint256"}],"name":"mintFaucetByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"mintIssuedNftByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"mintIssuedNftByOwner","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"tokenId","type":"uint256"}],"name":"mintIssuedNftByUserSigClaim","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"tierIndex","type":"uint256"}],"name":"mintMemberCardByAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"points6","type":"uint256"}],"name":"mintPointsByAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"points6","type":"uint256"},{"internalType":"address","name":"operator","type":"address"}],"name":"mintPointsByAdminWithOperator","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"points6","type":"uint256"}],"name":"mintPointsByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"userEOA","type":"address"},{"internalType":"uint256","name":"points6","type":"uint256"},{"internalType":"address","name":"operator","type":"address"}],"name":"mintPointsByGatewayWithOperator","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"payerAA","type":"address"},{"internalType":"uint256","name":"points6","type":"uint256"},{"internalType":"address","name":"operatorForStats","type":"address"}],"name":"mintPointsOpenContainerRelay","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"pointsUnitPriceInCurrencyE6","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"recordAdminBurnForStats","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"admin","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"recordAdminMintForStats","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"code","type":"string"},{"internalType":"address","name":"to","type":"address"}],"name":"redeemAdminByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string[]","name":"codes","type":"string[]"},{"internalType":"address","name":"userEOA","type":"address"}],"name":"redeemBatchByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"code","type":"string"},{"internalType":"address","name":"userEOA","type":"address"}],"name":"redeemByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"code","type":"string"},{"internalType":"address","name":"userEOA","type":"address"}],"name":"redeemPoolByGateway","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"adminAddr","type":"address"}],"name":"resetAdminLimit","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"adminAddr","type":"address"},{"internalType":"address","name":"authorizer","type":"address"}],"name":"resetAdminLimitByAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256[]","name":"ids","type":"uint256[]"},{"internalType":"uint256[]","name":"values","type":"uint256[]"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeBatchTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"safeTransferFrom","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"operator","type":"address"},{"internalType":"bool","name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"attr","type":"uint256"}],"name":"setDefaultAttr","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"secs","type":"uint256"}],"name":"setExpirySeconds","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"priceInCurrencyE6","type":"uint256"}],"name":"setPointsUnitPrice","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"components":[{"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"}],"internalType":"struct Tier[]","name":"newTiers","type":"tuple[]"}],"name":"setTiers","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"bool","name":"allowed","type":"bool"}],"name":"setTransferWhitelist","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bool","name":"enabled","type":"bool"}],"name":"setTransferWhitelistEnabled","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes4","name":"interfaceId","type":"bytes4"}],"name":"supportsInterface","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"tiers","outputs":[{"internalType":"uint256","name":"minUsdc6","type":"uint256"},{"internalType":"uint256","name":"attr","type":"uint256"},{"internalType":"uint256","name":"tierExpirySeconds","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"tokenTierIndexOrMax","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalActiveMemberships","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalMembershipIssued","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"totalMembershipIssuedByTierIndex","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalMembershipUpgraded","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"id","type":"uint256"}],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"transferWhitelist","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"transferWhitelistEnabled","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"upgradeType","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"uri","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]
 
 export const BeamioCardFactoryAbi = [
   {
@@ -9111,6 +9111,17 @@ export const BeamioCardFactoryAbi = [
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      }
+    ],
+    "name": "UC_AdminDepthExceeded",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "UC_AmountZero",
     "type": "error"
@@ -9118,11 +9129,6 @@ export const BeamioCardFactoryAbi = [
   {
     "inputs": [],
     "name": "UC_FaucetNotEnabled",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "UC_InvalidProposal",
     "type": "error"
   },
   {
@@ -9163,6 +9169,17 @@ export const BeamioCardFactoryAbi = [
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "UC_IssuedNftInactive",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "UC_NonceUsed",
     "type": "error"
@@ -9190,6 +9207,11 @@ export const BeamioCardFactoryAbi = [
   {
     "inputs": [],
     "name": "UC_Slippage",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "UC_TierLenMismatch",
     "type": "error"
   },
   {
@@ -9296,94 +9318,43 @@ export const BeamioCardFactoryAbi = [
     "inputs": [
       {
         "indexed": true,
+        "internalType": "uint8",
+        "name": "kind",
+        "type": "uint8"
+      },
+      {
+        "indexed": true,
         "internalType": "address",
-        "name": "oldM",
+        "name": "oldModule",
         "type": "address"
       },
       {
         "indexed": true,
         "internalType": "address",
-        "name": "newM",
+        "name": "newModule",
         "type": "address"
       }
     ],
-    "name": "DefaultFaucetModuleUpdated",
+    "name": "DefaultModuleUpdated",
     "type": "event"
   },
   {
     "anonymous": false,
     "inputs": [
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "oldM",
-        "type": "address"
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "initCodeLength",
+        "type": "uint256"
       },
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newM",
-        "type": "address"
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "initCodeHash",
+        "type": "bytes32"
       }
     ],
-    "name": "DefaultGovernanceModuleUpdated",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "oldM",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newM",
-        "type": "address"
-      }
-    ],
-    "name": "DefaultIssuedNftModuleUpdated",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "oldM",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newM",
-        "type": "address"
-      }
-    ],
-    "name": "DefaultMembershipStatsModuleUpdated",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "oldM",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newM",
-        "type": "address"
-      }
-    ],
-    "name": "DefaultRedeemModuleUpdated",
+    "name": "DeployFailedCreateDebug",
     "type": "event"
   },
   {
@@ -9416,6 +9387,37 @@ export const BeamioCardFactoryAbi = [
       }
     ],
     "name": "DeployerChanged",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "card",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "userEOA",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "nonce",
+        "type": "bytes32"
+      }
+    ],
+    "name": "IssuedNftClaimedWithUserSig",
     "type": "event"
   },
   {
@@ -9638,6 +9640,32 @@ export const BeamioCardFactoryAbi = [
   },
   {
     "inputs": [],
+    "name": "CLAIM_ISSUED_NFT_TYPEHASH",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "CLEAR_ADMIN_MINT_COUNTER_TYPEHASH",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "DOMAIN_SEPARATOR",
     "outputs": [
       {
@@ -9748,11 +9776,6 @@ export const BeamioCardFactoryAbi = [
         "internalType": "uint256",
         "name": "tierExpirySeconds",
         "type": "uint256"
-      },
-      {
-        "internalType": "bool",
-        "name": "upgradeByBalance",
-        "type": "bool"
       }
     ],
     "name": "appendTierForCard",
@@ -9781,11 +9804,6 @@ export const BeamioCardFactoryAbi = [
         "internalType": "uint256",
         "name": "tierExpirySeconds",
         "type": "uint256"
-      },
-      {
-        "internalType": "bool",
-        "name": "upgradeByBalance",
-        "type": "bool"
       },
       {
         "internalType": "uint256",
@@ -9885,6 +9903,65 @@ export const BeamioCardFactoryAbi = [
     "inputs": [
       {
         "internalType": "address",
+        "name": "cardAddr",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "fromEOA",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "usdcAmount6",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "validAfter",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "validBefore",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "nonce",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "signature",
+        "type": "bytes"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minPointsOut6",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "recommender",
+        "type": "address"
+      }
+    ],
+    "name": "buyPointsForUser",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "pointsOut6",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
         "name": "cardOwner",
         "type": "address"
       }
@@ -9914,6 +9991,44 @@ export const BeamioCardFactoryAbi = [
       }
     ],
     "name": "changePaymasterStatus",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "cardAddr",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "userEOA",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "nonce",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "userSignature",
+        "type": "bytes"
+      }
+    ],
+    "name": "claimIssuedNftWithUserSig",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -9990,14 +10105,9 @@ export const BeamioCardFactoryAbi = [
             "internalType": "uint256",
             "name": "tierExpirySeconds",
             "type": "uint256"
-          },
-          {
-            "internalType": "bool",
-            "name": "upgradeByBalance",
-            "type": "bool"
           }
         ],
-        "internalType": "struct BeamioUserCard.Tier[]",
+        "internalType": "struct Tier[]",
         "name": "tiers",
         "type": "tuple[]"
       }
@@ -10011,6 +10121,32 @@ export const BeamioCardFactoryAbi = [
       }
     ],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "defaultAdminStatsQueryModule",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "defaultChargeRewardModule",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -10066,6 +10202,25 @@ export const BeamioCardFactoryAbi = [
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint8",
+        "name": "kind",
+        "type": "uint8"
+      }
+    ],
+    "name": "defaultModule",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "defaultRedeemModule",
     "outputs": [
@@ -10089,6 +10244,39 @@ export const BeamioCardFactoryAbi = [
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "cardAddr",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "subordinate",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "nonce",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "adminSignature",
+        "type": "bytes"
+      }
+    ],
+    "name": "executeClearAdminMintCounter",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -10498,6 +10686,29 @@ export const BeamioCardFactoryAbi = [
         "type": "address"
       },
       {
+        "internalType": "string",
+        "name": "code",
+        "type": "string"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "redeemAdminForUser",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "cardAddr",
+        "type": "address"
+      },
+      {
         "internalType": "string[]",
         "name": "codes",
         "type": "string[]"
@@ -10586,6 +10797,68 @@ export const BeamioCardFactoryAbi = [
       }
     ],
     "name": "setAAFactory",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "m",
+        "type": "address"
+      }
+    ],
+    "name": "setAdminStatsQueryModule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "m",
+        "type": "address"
+      }
+    ],
+    "name": "setChargeRewardModule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint8",
+        "name": "kind",
+        "type": "uint8"
+      },
+      {
+        "internalType": "address",
+        "name": "module",
+        "type": "address"
+      }
+    ],
+    "name": "setDefaultModule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint8[]",
+        "name": "kinds",
+        "type": "uint8[]"
+      },
+      {
+        "internalType": "address[]",
+        "name": "modules",
+        "type": "address[]"
+      }
+    ],
+    "name": "setDefaultModules",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -10740,6 +11013,44 @@ export const BeamioCardFactoryAbi = [
       }
     ],
     "name": "usedAdminExecuteNonces",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "usedClearAdminMintCounterNonces",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "usedIssuedNftClaimSigNonces",
     "outputs": [
       {
         "internalType": "bool",

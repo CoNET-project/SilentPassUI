@@ -10,6 +10,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import NavigateLeftButton from '@/components/navigate'
+import { collectDeepLinkSearchParams, isCouponOpenClaimDeepLink, isRedeemDeepLink } from '@/utils/beamioDeepLinkParams'
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -82,7 +83,7 @@ function formatUserDate(timestamp?: string | number): string {
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
 	({ closeWindow, select, showHistory, showBackIcon=true, focus = false, showError = false, showSideSlidePanel = true, dropdownDownward = false }: Props) => {
-		const { profiles, beamio, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setRedeemFromUrl, setScanData, setScanIntent, setVoucherPayFromScan } = useDaemonContext()
+		const { profiles, beamio, setPaymentLinkCode, setSecureCode, setRedeemCode, setPayMePayment, setNavigateLeftButtonArray, setShowFooter, setScanData, setScanIntent, setVoucherPayFromScan } = useDaemonContext()
 		const navigate = useNavigate()
 		const [query, setQuery] = useState('')
 		const [results, setResults] = useState<searchResult[]>([])
@@ -111,7 +112,7 @@ const SearchInputWithDropdown =
 			setLoading(true)
 			
 
-			const searchParams = url.searchParams
+			const searchParams = collectDeepLinkSearchParams(url.href)
 
 			// Vouchers 支付请求 URL：与扫码 QR workflow 相同，走 Smart Routing Analysis
 			if (isPaymentUrl(url.href)) {
@@ -147,16 +148,14 @@ const SearchInputWithDropdown =
 			const _couponId = decodeURIComponent((searchParams.get("couponId") || searchParams.get("couponid") || '').trim())
 			const _claim = (searchParams.get("claim") || '').trim().toLowerCase()
 
-			// BeamioUserCard redeem URL → 打开 redeem 面板并预填
+			// BeamioUserCard redeem URL：与 coupon open-claim 相同，交由 App checkUrl 打开确认页
 			if (_redeemcode?.trim()) {
-				setRedeemFromUrl({
-					cardAddress: _beamiocard?.trim() || undefined,
-					redeemCode: decodeURIComponent(_redeemcode.trim()),
-				})
+				setScanData(url.href)
 				setLoading(false)
 				setShowDropdown(false)
 				closeWindow('/History')
-				return navigate('/History')
+				navigate('/History')
+				return
 			}
 
 			// Coupon open-claim URL：交由 App checkUrl 打开 Claim 页面，再由用户点 Claim 执行 workflow
@@ -236,7 +235,9 @@ const SearchInputWithDropdown =
 				url = new URL(qq)
 			} catch {
 				// 智能对应：无协议时，尝试以 beamio.app 为 base 解析
-				if (/nftRedeemcode=|redeemcode=|beamiocard=/i.test(qq)) {
+				if (
+					/nftRedeemcode=|redeemcode=|beamiocard=|couponid=|couponId=/i.test(qq)
+				) {
 					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.app')
 				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.app/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
 					// Vouchers 支付 URL 无协议时补全（如 beamio.app/Vouchers?Amount=... 或 /Vouchers?Amount=...）
@@ -247,7 +248,12 @@ const SearchInputWithDropdown =
 					throw new Error('not url')
 				}
 			}
-			if (url.protocol === 'https:' || url.protocol === 'http:') {
+			if (
+				url.protocol === 'https:' ||
+				url.protocol === 'http:' ||
+				isRedeemDeepLink(url.href) ||
+				isCouponOpenClaimDeepLink(url.href)
+			) {
 				await requestUrl(url)
 				setLoading(false)
 				setShowDropdown(false)

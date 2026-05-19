@@ -76,11 +76,13 @@ import {
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
+  getRedeemStatusBatchFromChain,
   type CardMetadataFromUri,
   type CardTierMetadata,
   type TierMetadata,
   type UserCardInfo,
   type CardRedeemBatch,
+  type CardRedeemItem,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect } from '@/utils/constants';
@@ -8059,6 +8061,169 @@ function cardIssuanceCouponIconLooksLikeImageUrl(raw: string): boolean {
   return t.startsWith('http://') || t.startsWith('https://') || t.startsWith('ipfs://');
 }
 
+type CardIssuanceCouponRedeemItemView = CardRedeemItem & {
+  createdAt?: number;
+  redeemedAt?: number;
+};
+
+function formatProgramsCouponRedeemDate(ts: number | undefined): string {
+  if (ts == null || !Number.isFinite(ts) || ts <= 0) return '—';
+  return new Date(ts).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function chainHashForRedeemCode(code: string): string {
+  return ethers.keccak256(ethers.toUtf8Bytes(code));
+}
+
+function parseCardIssuanceCouponIssueLeftN(coupon: CardIssuanceCouponRow): number {
+  const leftRaw = String(coupon.issueLeft ?? '').replace(/,/g, '').trim();
+  const leftN = Number.parseInt(leftRaw, 10);
+  return Number.isFinite(leftN) && leftN >= 0 ? leftN : 0;
+}
+
+/** Max redeem codes registered per batch click (matches Wallet Top Up redeem form). */
+const CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX = 100;
+
+/** Redeem codes table: max rows per page in Programs coupon panel. */
+const CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE = 10;
+
+/** Keep freshly registered codes Available until chain confirms active or grace expires. */
+const CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS = 3 * 60_000;
+
+function resolveProgramsCouponRedeemDisplayStatus(args: {
+  chainStatus: 'pending' | 'redeemed' | 'cancelled' | 'not_found';
+  prevStatus: 'pending' | 'redeemed' | undefined;
+  row: CardIssuanceCouponRedeemItemView | undefined;
+  chainActiveConfirmed: boolean;
+}): { display: 'pending' | 'redeemed'; recordRedeemedAt: boolean } {
+  const { chainStatus, prevStatus, row, chainActiveConfirmed } = args;
+  if (chainStatus === 'pending') {
+    return { display: 'pending', recordRedeemedAt: false };
+  }
+  if (row?.redeemedAt) {
+    return { display: 'redeemed', recordRedeemedAt: false };
+  }
+  // Chain inactive (consumed / cancelled / not yet indexed). Require prior on-chain active confirmation.
+  if (chainActiveConfirmed) {
+    return {
+      display: 'redeemed',
+      recordRedeemedAt: prevStatus === 'pending',
+    };
+  }
+  const createdAt = row?.createdAt ?? 0;
+  const recentlyRegistered =
+    createdAt > 0 && Date.now() - createdAt < CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS;
+  if (recentlyRegistered) {
+    return { display: 'pending', recordRedeemedAt: false };
+  }
+  return { display: 'redeemed', recordRedeemedAt: false };
+}
+
+function resolveCardIssuanceCouponRedeemBatchCount(
+  requestedCount: number | undefined,
+  issueLeftN: number,
+  qtyDraft: string | undefined
+): number {
+  const leftCap = Math.min(Math.max(issueLeftN, 0), CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX);
+  if (leftCap <= 0) return 0;
+  if (requestedCount != null && Number.isFinite(requestedCount)) {
+    return Math.min(Math.max(1, Math.floor(requestedCount)), leftCap);
+  }
+  const raw = String(qtyDraft ?? '1').replace(/,/g, '').trim();
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return Math.min(1, leftCap);
+  return Math.min(parsed, leftCap);
+}
+
+function collectCouponRedeemRowsByCouponId(
+  cardAddress: string | undefined,
+  coupons: CardIssuanceCouponRow[]
+): Map<string, CardIssuanceCouponRedeemItemView[]> {
+  const map = new Map<string, CardIssuanceCouponRedeemItemView[]>();
+  const addr = cardAddress?.trim().toLowerCase();
+  if (!addr) return map;
+  const batches = ((CoNET_Data as { cardRedeems?: CardRedeemBatch[] } | null)?.cardRedeems ??
+    []) as CardRedeemBatch[];
+  const redeemCoupons = coupons.filter((c) => c.requiresRedeemCode && c.issued);
+  for (const coupon of redeemCoupons) {
+    const rows: CardIssuanceCouponRedeemItemView[] = [];
+    const tokenId = coupon.issuedTokenId?.trim() ?? '';
+    for (const batch of batches) {
+      if (batch.cardAddress.toLowerCase() !== addr) continue;
+      if (batch.kind !== 'issued_nft_coupon') continue;
+      const batchMatchesCoupon =
+        batch.couponId === coupon.id ||
+        (tokenId && batch.issuedNftTokenId?.trim() === tokenId && !batch.couponId);
+      if (!batchMatchesCoupon) continue;
+      for (const item of batch.items) {
+        rows.push({
+          ...item,
+          createdAt: (item as CardIssuanceCouponRedeemItemView).createdAt ?? batch.createdAt,
+          redeemedAt: (item as CardIssuanceCouponRedeemItemView).redeemedAt,
+        });
+      }
+    }
+    rows.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    map.set(coupon.id, rows);
+  }
+  return map;
+}
+
+async function persistCouponRedeemRedeemedTimestamps(
+  updates: { hash: string; redeemedAt: number }[]
+): Promise<boolean> {
+  if (updates.length === 0) return false;
+  const prev = CoNET_Data;
+  if (!prev?.cardRedeems?.length) return false;
+  const updateMap = new Map(updates.map((u) => [u.hash, u.redeemedAt]));
+  let changed = false;
+  const nextBatches = prev.cardRedeems.map((batch) => ({
+    ...batch,
+    items: batch.items.map((item) => {
+      const redeemedAt = updateMap.get(item.hash);
+      const existing = (item as CardIssuanceCouponRedeemItemView).redeemedAt;
+      if (redeemedAt && !existing) {
+        changed = true;
+        return { ...item, redeemedAt };
+      }
+      return item;
+    }),
+  }));
+  if (!changed) return false;
+  setCoNET_Data({ ...prev, cardRedeems: nextBatches });
+  await storeSystemData();
+  return true;
+}
+
+async function clearCouponRedeemRedeemedTimestamps(hashes: string[]): Promise<boolean> {
+  if (hashes.length === 0) return false;
+  const prev = CoNET_Data;
+  if (!prev?.cardRedeems?.length) return false;
+  const clearSet = new Set(hashes);
+  let changed = false;
+  const nextBatches = prev.cardRedeems.map((batch) => ({
+    ...batch,
+    items: batch.items.map((item) => {
+      if (!clearSet.has(item.hash)) return item;
+      const existing = (item as CardIssuanceCouponRedeemItemView).redeemedAt;
+      if (!existing) return item;
+      changed = true;
+      const { redeemedAt: _drop, ...rest } = item as CardIssuanceCouponRedeemItemView;
+      return rest;
+    }),
+  }));
+  if (!changed) return false;
+  setCoNET_Data({ ...prev, cardRedeems: nextBatches });
+  await storeSystemData();
+  return true;
+}
+
 function makeCardIssuanceBonusRuleRow(
   paymentAmount: number | string = CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT,
   bonusValue: number | string = CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT,
@@ -8860,6 +9025,7 @@ function getCardIssuanceTierCardVisual(preset: CardIssuanceTierPreset): {
 }
 
 const AUTO_APPROVE_KKK22_TAG_PREFIX = 'kkk22_';
+const AUTO_APPROVE_PENDING_TERMINAL_MERCHANT_EOA = '0x51AE9c1FAf57E39F0A0A58Ac799D1f1DC6aB71ff'.toLowerCase();
 
 function plainBeamioTagForKkk22AutoApprove(tag: string): string {
   return tag.trim().replace(/^@+/, '');
@@ -8871,6 +9037,11 @@ function isAutoApproveKkk22PosTerminalBeamioTag(tag: string): boolean {
   if (!plain.startsWith(AUTO_APPROVE_KKK22_TAG_PREFIX)) return false;
   const after = plain.slice(AUTO_APPROVE_KKK22_TAG_PREFIX.length);
   return after.toLowerCase().startsWith('pos_');
+}
+
+function isAutoApprovePendingTerminalMerchantEoa(eoa: string | undefined | null): boolean {
+  const raw = (eoa ?? '').trim();
+  return ethers.isAddress(raw) && ethers.getAddress(raw).toLowerCase() === AUTO_APPROVE_PENDING_TERMINAL_MERCHANT_EOA;
 }
 
 export default function MerchantOS() {
@@ -8946,6 +9117,26 @@ const [cardIssuanceCouponImageUploading, setCardIssuanceCouponImageUploading] = 
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
 const [cardIssuanceCouponShareOpenId, setCardIssuanceCouponShareOpenId] = useState<string | null>(null);
 const [cardIssuanceCouponShareUrlCopied, setCardIssuanceCouponShareUrlCopied] = useState(false);
+const [cardIssuanceCouponRedeemStatuses, setCardIssuanceCouponRedeemStatuses] = useState<
+  Record<string, 'pending' | 'redeemed'>
+>({});
+const [cardIssuanceCouponRedeemsVersion, setCardIssuanceCouponRedeemsVersion] = useState(0);
+const [cardIssuanceCouponRedeemStatusLoading, setCardIssuanceCouponRedeemStatusLoading] = useState(false);
+const [cardIssuanceCouponRedeemCopiedHash, setCardIssuanceCouponRedeemCopiedHash] = useState<string | null>(null);
+const [cardIssuanceCouponRedeemRegisteringId, setCardIssuanceCouponRedeemRegisteringId] = useState<string | null>(
+  null
+);
+const [cardIssuanceCouponRedeemBatchQty, setCardIssuanceCouponRedeemBatchQty] = useState<Record<string, string>>({});
+const [cardIssuanceCouponRedeemPageByCouponId, setCardIssuanceCouponRedeemPageByCouponId] = useState<
+  Record<string, number>
+>({});
+const cardIssuanceCouponRedeemStatusesRef = useRef<Record<string, 'pending' | 'redeemed'>>({});
+const cardIssuanceCouponRedeemStatusHasLoadedRef = useRef(false);
+/** Hashes that returned active=true on chain at least once this session. */
+const cardIssuanceCouponRedeemChainActiveConfirmedRef = useRef<Set<string>>(new Set());
+useEffect(() => {
+  cardIssuanceCouponRedeemStatusesRef.current = cardIssuanceCouponRedeemStatuses;
+}, [cardIssuanceCouponRedeemStatuses]);
 const cardIssuanceEditingCouponRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null,
   [cardIssuanceCoupons, cardIssuanceEditingCouponId]
@@ -9070,6 +9261,13 @@ const cardIssuanceCouponShareUrl = useMemo(() => {
     ethers.getAddress(cardAddress)
   )}&couponId=${encodeURIComponent(couponId)}&claim=open`;
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponShareRow?.id]);
+
+useEffect(() => {
+  if (!cardIssuanceCouponRedeemCopiedHash) return;
+  const t = setTimeout(() => setCardIssuanceCouponRedeemCopiedHash(null), 2000);
+  return () => clearTimeout(t);
+}, [cardIssuanceCouponRedeemCopiedHash]);
+
  const [cardIssuanceOnChainRefreshNonce, setCardIssuanceOnChainRefreshNonce] = useState(0);
  const [cardIssuanceConfiguratorPreviewMode, setCardIssuanceConfiguratorPreviewMode] = useState<'app' | 'physical'>(
    'app'
@@ -9225,6 +9423,127 @@ const cardIssuanceCouponShareUrl = useMemo(() => {
  useEffect(() => {
    ketNoCardProgramsEligibleRef.current = ketNoCardProgramsEligible;
  }, [ketNoCardProgramsEligible]);
+
+const cardIssuanceRedeemCouponIdsKey = useMemo(
+  () =>
+    cardIssuanceCoupons
+      .filter((c) => c.requiresRedeemCode && c.issued)
+      .map((c) => `${c.id}:${c.issuedTokenId?.trim() ?? ''}`)
+      .join('|'),
+  [cardIssuanceCoupons]
+);
+
+const cardIssuanceCouponRedeemRowsByCouponId = useMemo(
+  () => collectCouponRedeemRowsByCouponId(cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons),
+  [
+    cardIssuanceExistingCard?.cardAddress,
+    cardIssuanceRedeemCouponIdsKey,
+    cardIssuanceCouponRedeemsVersion,
+  ]
+);
+
+const cardIssuanceCouponRedeemStatusQueryItems = useMemo(() => {
+  const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+  if (!cardAddress) return [];
+  const items: { cardAddress: string; hash: string; code: string }[] = [];
+  for (const rows of cardIssuanceCouponRedeemRowsByCouponId.values()) {
+    for (const row of rows) {
+      items.push({ cardAddress, hash: row.hash, code: row.code });
+    }
+  }
+  return items;
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponRedeemRowsByCouponId]);
+
+const cardIssuanceCouponRedeemStatusQueryKey = useMemo(
+  () => cardIssuanceCouponRedeemStatusQueryItems.map((item) => item.hash).join(','),
+  [cardIssuanceCouponRedeemStatusQueryItems]
+);
+
+useEffect(() => {
+  cardIssuanceCouponRedeemStatusHasLoadedRef.current = false;
+  cardIssuanceCouponRedeemChainActiveConfirmedRef.current = new Set();
+}, [cardIssuanceExistingCard?.cardAddress]);
+
+useEffect(() => {
+  const programsVisible =
+    activeTab === 'Card Issuance Setup' || (activeTab === 'Overview' && ketNoCardProgramsEligible);
+  if (!programsVisible || cardIssuanceCouponRedeemStatusQueryItems.length === 0) return;
+
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const refreshCouponRedeemStatuses = async () => {
+    const showPanelLoading = !cardIssuanceCouponRedeemStatusHasLoadedRef.current;
+    if (showPanelLoading) setCardIssuanceCouponRedeemStatusLoading(true);
+    try {
+      const chainStatuses = await getRedeemStatusBatchFromChain(cardIssuanceCouponRedeemStatusQueryItems);
+      if (cancelled) return;
+      const nextStatuses: Record<string, 'pending' | 'redeemed'> = {};
+      const redeemedUpdates: { hash: string; redeemedAt: number }[] = [];
+      const mistakenRedeemedClears: string[] = [];
+      const now = Date.now();
+      const prevStatuses = cardIssuanceCouponRedeemStatusesRef.current;
+      const chainActiveConfirmedRef = cardIssuanceCouponRedeemChainActiveConfirmedRef.current;
+      for (const item of cardIssuanceCouponRedeemStatusQueryItems) {
+        const chainStatus = chainStatuses[item.hash] ?? 'pending';
+        const prevStatus = prevStatuses[item.hash];
+        const row = [...cardIssuanceCouponRedeemRowsByCouponId.values()]
+          .flat()
+          .find((r) => r.hash === item.hash);
+        if (chainStatus === 'pending') {
+          chainActiveConfirmedRef.add(item.hash);
+        }
+        const chainActiveConfirmed = chainActiveConfirmedRef.has(item.hash);
+        const resolved = resolveProgramsCouponRedeemDisplayStatus({
+          chainStatus,
+          prevStatus,
+          row,
+          chainActiveConfirmed,
+        });
+        nextStatuses[item.hash] = resolved.display;
+        if (resolved.recordRedeemedAt && !row?.redeemedAt) {
+          redeemedUpdates.push({ hash: item.hash, redeemedAt: now });
+        } else if (resolved.display === 'pending' && row?.redeemedAt) {
+          mistakenRedeemedClears.push(item.hash);
+        }
+      }
+      setCardIssuanceCouponRedeemStatuses((prev) => ({ ...prev, ...nextStatuses }));
+      cardIssuanceCouponRedeemStatusHasLoadedRef.current = true;
+      let persistedMeta = false;
+      if (redeemedUpdates.length > 0) {
+        persistedMeta = (await persistCouponRedeemRedeemedTimestamps(redeemedUpdates)) || persistedMeta;
+      }
+      if (mistakenRedeemedClears.length > 0) {
+        persistedMeta = (await clearCouponRedeemRedeemedTimestamps(mistakenRedeemedClears)) || persistedMeta;
+      }
+      if (persistedMeta && !cancelled) {
+        setCardIssuanceCouponRedeemsVersion((v) => v + 1);
+      }
+      const hasPending = cardIssuanceCouponRedeemStatusQueryItems.some(
+        (item) => (nextStatuses[item.hash] ?? prevStatuses[item.hash] ?? 'pending') === 'pending'
+      );
+      if (!cancelled && hasPending) {
+        timer = setTimeout(() => {
+          void refreshCouponRedeemStatuses();
+        }, 30_000);
+      }
+    } finally {
+      if (!cancelled && showPanelLoading) setCardIssuanceCouponRedeemStatusLoading(false);
+    }
+  };
+
+  void refreshCouponRedeemStatuses();
+
+  return () => {
+    cancelled = true;
+    if (timer !== undefined) clearTimeout(timer);
+  };
+}, [
+  activeTab,
+  ketNoCardProgramsEligible,
+  cardIssuanceCouponRedeemStatusQueryKey,
+]);
+
  /** Logged-in wallet present but factory/Ket gates not settled — avoid one frame of Dashboard before Programs */
  const profileAwaitingIssuanceGate = useMemo(() => {
    const p0 = profiles?.[0];
@@ -10701,8 +11020,16 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     let redeemErr: string | undefined;
     if (cardIssuanceCouponRequiresRedeemCode) {
       const codes: string[] = [];
+      const redeemItems: CardIssuanceCouponRedeemItemView[] = [];
+      const generatedAt = Date.now();
       for (let i = 0; i < issueTotalN; i++) {
-        codes.push(generateCODE('').code);
+        const { code } = generateCODE('');
+        codes.push(code);
+        redeemItems.push({
+          code,
+          hash: chainHashForRedeemCode(code),
+          createdAt: generatedAt,
+        });
       }
       const { validAfter, validBefore } = redeemValidityForCoupon(dr, vfStore, vtStore);
       const rDeadline = Math.floor(Date.now() / 1000) + 3600;
@@ -10732,14 +11059,11 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
           cardAddress: cardAddr,
           points6: '0',
           pointsHuman: '1 NFT',
-          createdAt: Date.now(),
+          createdAt: generatedAt,
           kind: 'issued_nft_coupon',
           issuedNftTokenId: tokenIdStr,
           couponId: couponRowDraft.id,
-          items: redeemRes.codes.map((code) => ({
-            code,
-            hash: ethers.keccak256(ethers.toUtf8Bytes(code)),
-          })),
+          items: redeemItems,
         };
         const prev = CoNET_Data;
         if (prev) {
@@ -10749,6 +11073,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
           ];
           setCoNET_Data({ ...prev, cardRedeems: updatedList } as typeof prev);
           await storeSystemData();
+          setCardIssuanceCouponRedeemsVersion((v) => v + 1);
         }
       }
     }
@@ -10822,6 +11147,174 @@ const issueCardIssuanceCoupon = useCallback(async (couponId: string) => {
     });
   }
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons]);
+
+const registerCardIssuanceCouponRedeemCodes = useCallback(
+  async (couponId: string, requestedCount?: number) => {
+    const coupon = cardIssuanceCoupons.find((item) => item.id === couponId);
+    if (!coupon?.issued || !coupon.requiresRedeemCode) return;
+    const issueLeftN = parseCardIssuanceCouponIssueLeftN(coupon);
+    const batchCount = resolveCardIssuanceCouponRedeemBatchCount(
+      requestedCount,
+      issueLeftN,
+      cardIssuanceCouponRedeemBatchQty[couponId]
+    );
+    if (batchCount <= 0) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'No remaining issuance left for this coupon.',
+      });
+      return;
+    }
+    const tokenIdStr = coupon.issuedTokenId?.trim() ?? '';
+    if (!tokenIdStr) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Coupon series id is not loaded yet. Wait for program data to finish loading, then try again.',
+      });
+      return;
+    }
+    const cardAddrRaw = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+    if (!cardAddrRaw || !ethers.isAddress(cardAddrRaw)) return;
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor?.trim()) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Unlock your wallet; program owner key is required to register redeem codes.',
+      });
+      return;
+    }
+
+    setCardIssuanceCouponRedeemRegisteringId(couponId);
+    try {
+      const cardAddr = ethers.getAddress(cardAddrRaw);
+      const wallet = new ethers.Wallet(p0.privateKeyArmor.trim());
+      const chainOwner = ethers.getAddress(
+        await withPromiseTimeout(getCardOwner(cardAddr), 20_000, 'card.owner()')
+      );
+      if (chainOwner !== ethers.getAddress(wallet.address)) {
+        setCardIssuanceOwnerAdminNotice({
+          kind: 'warn',
+          text: 'Registering redeem codes requires the Beamio program card owner wallet. Switch to owner in Wallet, then retry.',
+        });
+        return;
+      }
+
+      const codes: string[] = [];
+      const redeemItems: CardIssuanceCouponRedeemItemView[] = [];
+      const generatedAt = Date.now();
+      for (let i = 0; i < batchCount; i++) {
+        const { code } = generateCODE('');
+        codes.push(code);
+        redeemItems.push({
+          code,
+          hash: chainHashForRedeemCode(code),
+          createdAt: generatedAt,
+        });
+      }
+      const dr = coupon.couponDateRestriction === 'range' ? 'range' : 'none';
+      const vfStore =
+        dr === 'range' && parseCouponYmd(coupon.couponValidFromYmd)
+          ? parseCouponYmd(coupon.couponValidFromYmd) ?? ''
+          : '';
+      const vtStore =
+        dr === 'range' && parseCouponYmd(coupon.couponValidToYmd)
+          ? parseCouponYmd(coupon.couponValidToYmd) ?? ''
+          : '';
+      const { validAfter, validBefore } = redeemValidityForCoupon(dr, vfStore, vtStore);
+      const rDeadline = Math.floor(Date.now() / 1000) + 3600;
+      const rNonce = ethers.hexlify(ethers.randomBytes(32));
+      const redeemData = encodeCreateRedeemBatchBundle(
+        codes,
+        0n,
+        0,
+        validAfter,
+        validBefore,
+        [BigInt(tokenIdStr)],
+        [1n]
+      );
+      const redeemSig = await signExecuteForOwner(
+        p0.privateKeyArmor.trim(),
+        cardAddr,
+        redeemData,
+        rDeadline,
+        rNonce
+      );
+      const redeemRes = await postCardCreateRedeem({
+        cardAddress: cardAddr,
+        codes,
+        points6: '0',
+        validAfter,
+        validBefore,
+        deadline: rDeadline,
+        nonce: rNonce,
+        ownerSignature: redeemSig,
+        tokenIds: [tokenIdStr],
+        amounts: ['1'],
+        attr: 0,
+      });
+      if (!redeemRes.success || !redeemRes.codes?.length) {
+        setCardIssuanceOwnerAdminNotice({
+          kind: 'warn',
+          text: redeemRes.error ?? 'Failed to register redeem codes on-chain.',
+        });
+        return;
+      }
+
+      const batch: CardRedeemBatch = {
+        batchId: `coupon-${coupon.id}-${Date.now()}`,
+        cardAddress: cardAddr,
+        points6: '0',
+        pointsHuman: '1 NFT',
+        createdAt: generatedAt,
+        kind: 'issued_nft_coupon',
+        issuedNftTokenId: tokenIdStr,
+        couponId: coupon.id,
+        items: redeemItems,
+      };
+      const prev = CoNET_Data;
+      if (prev) {
+        const updatedList: CardRedeemBatch[] = [
+          ...(((prev as { cardRedeems?: CardRedeemBatch[] }).cardRedeems ?? []) as CardRedeemBatch[]),
+          batch,
+        ];
+        setCoNET_Data({ ...prev, cardRedeems: updatedList } as typeof prev);
+        await storeSystemData();
+        setCardIssuanceCouponRedeemsVersion((v) => v + 1);
+      }
+
+      setCardIssuanceCoupons((prev) =>
+        prev.map((row) => {
+          if (row.id !== couponId) return row;
+          const leftN = parseCardIssuanceCouponIssueLeftN(row);
+          return { ...row, issueLeft: String(Math.max(0, leftN - batchCount)) };
+        })
+      );
+      setCardIssuanceCouponRedeemStatuses((prev) => {
+        const next = { ...prev };
+        for (const item of redeemItems) {
+          next[item.hash] = 'pending';
+        }
+        return next;
+      });
+      setCardIssuanceCouponRedeemPageByCouponId((prev) => ({ ...prev, [couponId]: 1 }));
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'ok',
+        text:
+          batchCount === 1
+            ? '1 redeem code registered on-chain.'
+            : `${batchCount.toLocaleString()} redeem codes registered on-chain in one batch.`,
+      });
+    } catch (e: unknown) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setCardIssuanceCouponRedeemRegisteringId(null);
+    }
+  },
+  [cardIssuanceCoupons, cardIssuanceExistingCard?.cardAddress, profiles, cardIssuanceCouponRedeemBatchQty]
+);
 
 const openCardIssuanceBonusRuleCreate = useCallback(() => {
   setCardIssuanceBonusRuleEditorServerError('');
@@ -13869,10 +14362,10 @@ useEffect(() => {
  const [deviceHandleError, setDeviceHandleError] = useState<string | null>(null);
  const [deviceHandleChecking, setDeviceHandleChecking] = useState(false);
  const deviceValidateAbortRef = useRef<boolean>(false);
- /** Pending POS 授权：`beamioTag` 以 `kkk22_` 开头且其后（忽略大小写）以 `pos_` 开头时自动按 Link New Terminal 默认项注册（每 `sendId` 仅尝试一次）。 */
- const autoKkk22PosTerminalRegStartedRef = useRef<Set<string>>(new Set());
+ /** Pending POS 授权：满足自动授权规则时按 Link New Terminal 默认项注册（每 `sendId` 仅尝试一次）。 */
+ const autoPendingPosTerminalRegStartedRef = useRef<Set<string>>(new Set());
  /** 自动注册失败后重新展示 Pending 面板，便于手动 Approve。 */
- const [autoKkk22PosRegFailedBySendId, setAutoKkk22PosRegFailedBySendId] = useState<Record<string, true>>({});
+ const [autoPendingPosRegFailedBySendId, setAutoPendingPosRegFailedBySendId] = useState<Record<string, true>>({});
 
  const validateDeviceHandle = useCallback(async (raw: string) => {
    const trimmed = raw.trim().replace(/^@/, '');
@@ -17203,20 +17696,34 @@ useEffect(() => {
  const showStaffTerminalsManagement =
    isAdminForUI || (profileOwnsIssuedBeamioCardFetched && profileOwnsIssuedBeamioCard);
 
- const autoKkk22PosTerminalEligibleNow =
+ const autoPendingTerminalRegistrationEligibleNow =
    showStaffTerminalsManagement && Boolean(profiles?.[0]?.privateKeyArmor);
+ const merchantEoaForPendingTerminalAutoApprove = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+ const autoPendingTerminalMerchantEligibleNow =
+   autoPendingTerminalRegistrationEligibleNow &&
+   isAutoApprovePendingTerminalMerchantEoa(merchantEoaForPendingTerminalAutoApprove);
+ const shouldAutoApprovePendingTerminalPermission = useCallback(
+   (row: PosTerminalPermissionPendingV1) =>
+     isAutoApproveKkk22PosTerminalBeamioTag(row.childBeamioTag) || autoPendingTerminalMerchantEligibleNow,
+   [autoPendingTerminalMerchantEligibleNow],
+ );
  /** 满足自动授权条件时从 UI 隐藏对应 pending（自动失败则重新显示）。 */
  const staffPendingPosPermissionsForUi = useMemo(() => {
-   if (!autoKkk22PosTerminalEligibleNow) return staffPendingPosPermissions;
+   if (!autoPendingTerminalRegistrationEligibleNow) return staffPendingPosPermissions;
    return staffPendingPosPermissions.filter((row) => {
-     if (!isAutoApproveKkk22PosTerminalBeamioTag(row.childBeamioTag)) return true;
-     if (autoKkk22PosRegFailedBySendId[row.sendId]) return true;
+     if (!shouldAutoApprovePendingTerminalPermission(row)) return true;
+     if (autoPendingPosRegFailedBySendId[row.sendId]) return true;
      return false;
    });
- }, [staffPendingPosPermissions, autoKkk22PosTerminalEligibleNow, autoKkk22PosRegFailedBySendId]);
+ }, [
+   staffPendingPosPermissions,
+   autoPendingTerminalRegistrationEligibleNow,
+   shouldAutoApprovePendingTerminalPermission,
+   autoPendingPosRegFailedBySendId,
+ ]);
 
  useEffect(() => {
-   setAutoKkk22PosRegFailedBySendId((prev) => {
+   setAutoPendingPosRegFailedBySendId((prev) => {
      if (Object.keys(prev).length === 0) return prev;
      const alive = new Set(staffPendingPosPermissions.map((r) => r.sendId));
      let next: Record<string, true> | null = null;
@@ -19000,52 +19507,53 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
    if (linkTerminalLoading) return;
    if (!profiles?.[0]?.privateKeyArmor) return;
 
-   const row = staffPendingPosPermissions.find(
-     (p) =>
-       isAutoApproveKkk22PosTerminalBeamioTag(p.childBeamioTag) && !autoKkk22PosRegFailedBySendId[p.sendId],
-   );
-   if (!row) return;
-   if (autoKkk22PosTerminalRegStartedRef.current.has(row.sendId)) return;
+  const row = staffPendingPosPermissions.find(
+    (p) => shouldAutoApprovePendingTerminalPermission(p) && !autoPendingPosRegFailedBySendId[p.sendId],
+  );
+  if (!row) return;
+  if (autoPendingPosTerminalRegStartedRef.current.has(row.sendId)) return;
 
-   let addr: string;
-   try {
-     addr = ethers.getAddress(row.childEoa);
-   } catch {
-     return;
-   }
-   const tagPlain = row.childBeamioTag.trim().replace(/^@+/, '');
+  let addr: string;
+  try {
+    addr = ethers.getAddress(row.childEoa);
+  } catch {
+    setAutoPendingPosRegFailedBySendId((prev) => (prev[row.sendId] ? prev : { ...prev, [row.sendId]: true }));
+    return;
+  }
+  const tagPlain = row.childBeamioTag.trim().replace(/^@+/, '');
 
-   autoKkk22PosTerminalRegStartedRef.current.add(row.sendId);
+  autoPendingPosTerminalRegStartedRef.current.add(row.sendId);
 
-   void handleLinkTerminalRegistration('modal', {
-     deviceHandleResolved: {
-       username: tagPlain,
-       address: addr,
-     },
-     newTerminalTag: `@${tagPlain}`,
-     newDeviceName: `POS ${tagPlain}`,
-     newTerminalMintLimit: '1000',
-     terminalOnboardingReloadUnlimited: true,
+  void handleLinkTerminalRegistration('modal', {
+    deviceHandleResolved: {
+      username: tagPlain,
+      address: addr,
+    },
+    newTerminalTag: `@${tagPlain}`,
+    newDeviceName: `POS ${tagPlain}`,
+    newTerminalMintLimit: '1000',
+    terminalOnboardingReloadUnlimited: true,
     terminalOnboardingTopupMethods: { cash: true, bankCard: true, usdc: false, cadd: false, airdrop: false },
-     terminalOnboardingEditing: null,
-   }).then((res) => {
-     if (!res.ok && res.error) {
-       console.warn('[biz] Auto kkk22_pos_ terminal registration:', res.error);
-       setAutoKkk22PosRegFailedBySendId((prev) => (prev[row.sendId] ? prev : { ...prev, [row.sendId]: true }));
-       try {
-         window.alert(`Automatic terminal registration failed.\n\n${res.error}`);
-       } catch {
-         /* ignore */
-       }
-     }
-   });
+    terminalOnboardingEditing: null,
+  }).then((res) => {
+    if (!res.ok && res.error) {
+      console.warn('[biz] Auto pending terminal registration:', res.error);
+      setAutoPendingPosRegFailedBySendId((prev) => (prev[row.sendId] ? prev : { ...prev, [row.sendId]: true }));
+      try {
+        window.alert(`Automatic terminal registration failed.\n\n${res.error}`);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
  }, [
    staffPendingPosPermissions,
    showStaffTerminalsManagement,
    linkTerminalLoading,
    profiles,
    handleLinkTerminalRegistration,
-   autoKkk22PosRegFailedBySendId,
+  shouldAutoApprovePendingTerminalPermission,
+  autoPendingPosRegFailedBySendId,
  ]);
 
  const renderDashboardPendingTerminalAuthorizationSection = (
@@ -26701,11 +27209,40 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             No coupons yet. Press + to add a coupon for this program.
                           </div>
                         ) : (
-                          cardIssuanceCoupons.map((coupon) => (
+                          cardIssuanceCoupons.map((coupon) => {
+                            const redeemRows =
+                              coupon.requiresRedeemCode && coupon.issued
+                                ? cardIssuanceCouponRedeemRowsByCouponId.get(coupon.id) ?? []
+                                : [];
+                            const couponIssueLeftN =
+                              coupon.requiresRedeemCode && coupon.issued
+                                ? parseCardIssuanceCouponIssueLeftN(coupon)
+                                : 0;
+                            const canRegisterCouponRedeemCode = couponIssueLeftN > 0;
+                            const couponRedeemRegistering =
+                              cardIssuanceCouponRedeemRegisteringId === coupon.id;
+                            const couponRedeemBatchMax = Math.min(
+                              couponIssueLeftN,
+                              CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX
+                            );
+                            const couponRedeemBatchQtyRaw =
+                              cardIssuanceCouponRedeemBatchQty[coupon.id] ?? '1';
+                            const redeemPageCount = Math.max(
+                              1,
+                              Math.ceil(redeemRows.length / CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE)
+                            );
+                            const redeemPageRaw = cardIssuanceCouponRedeemPageByCouponId[coupon.id] ?? 1;
+                            const redeemPage = Math.min(Math.max(1, redeemPageRaw), redeemPageCount);
+                            const redeemRowsPage = redeemRows.slice(
+                              (redeemPage - 1) * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE,
+                              redeemPage * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE
+                            );
+                            return (
                             <div
                               key={coupon.id}
-                              className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-[#f8fbff] p-3 sm:rounded-xl sm:p-4"
+                              className="overflow-hidden rounded-lg border border-[#1562f0]/10 bg-[#f8fbff] sm:rounded-xl"
                             >
+                              <div className="flex items-center justify-between gap-3 p-3 sm:p-4">
                               <div className="min-w-0">
                                 <div className="mb-1 flex min-w-0 items-center gap-2">
                                   <span
@@ -26800,8 +27337,189 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   </button>
                                 )}
                               </div>
+                              </div>
+                              {coupon.requiresRedeemCode && coupon.issued ? (
+                                <div className="border-t border-[#1562f0]/10 bg-white/70 px-3 py-3 sm:px-4 sm:py-3.5">
+                                  <div className="mb-2 flex items-center justify-between gap-2">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
+                                      Redeem codes
+                                    </p>
+                                    <div className="flex items-center gap-1.5">
+                                      {cardIssuanceCouponRedeemStatusLoading && redeemRows.length > 0 ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1562f0]" aria-hidden />
+                                      ) : null}
+                                      {canRegisterCouponRedeemCode ? (
+                                        <>
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            max={couponRedeemBatchMax}
+                                            inputMode="numeric"
+                                            autoComplete="off"
+                                            enterKeyHint="done"
+                                            value={couponRedeemBatchQtyRaw}
+                                            disabled={couponRedeemRegistering}
+                                            onChange={(e) => {
+                                              setCardIssuanceCouponRedeemBatchQty((prev) => ({
+                                                ...prev,
+                                                [coupon.id]: e.target.value,
+                                              }));
+                                            }}
+                                            onKeyDown={preventNumericInputStepKeys}
+                                            onWheel={preventNumericInputWheelStep}
+                                            className="h-7 w-12 rounded-lg border border-[#1562f0]/20 bg-white px-1.5 text-center text-[11px] font-semibold text-[#2c2f31] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none disabled:opacity-60"
+                                            aria-label={`Batch count for ${coupon.name} redeem registration`}
+                                            title={`Register up to ${couponRedeemBatchMax.toLocaleString()} codes per batch`}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => void registerCardIssuanceCouponRedeemCodes(coupon.id)}
+                                            disabled={couponRedeemRegistering}
+                                            className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:opacity-60 ${bizFocusRingClass}`}
+                                            aria-label={`Register redeem codes for ${coupon.name}`}
+                                            title="Register redeem codes (batch)"
+                                          >
+                                            {couponRedeemRegistering ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.4} aria-hidden />
+                                            ) : (
+                                              <Plus className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden />
+                                            )}
+                                          </button>
+                                        </>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  {redeemRows.length === 0 ? (
+                                    <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
+                                      {canRegisterCouponRedeemCode
+                                        ? 'No redeem codes stored on this device yet. Enter a batch count and press + to register redeem codes while issuance remains.'
+                                        : 'No redeem codes stored on this device. Codes are saved locally when this coupon is published with redeem registration.'}
+                                    </p>
+                                  ) : (
+                                    <>
+                                    <div className="overflow-x-auto rounded-lg border border-[#1562f0]/10">
+                                      <table className="min-w-full text-left text-[11px]">
+                                        <thead className="bg-[#f0f4fb] text-[9px] font-bold uppercase tracking-wider text-[#595c5e]">
+                                          <tr>
+                                            <th className="px-2.5 py-2 sm:px-3">Code</th>
+                                            <th className="px-2.5 py-2 sm:px-3">Generated</th>
+                                            <th className="px-2.5 py-2 sm:px-3">Status</th>
+                                            <th className="px-2.5 py-2 sm:px-3">Redeemed</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[#1562f0]/8 bg-white">
+                                          {redeemRowsPage.map((row) => {
+                                            const status =
+                                              cardIssuanceCouponRedeemStatuses[row.hash] ??
+                                              (row.redeemedAt &&
+                                              (!row.createdAt ||
+                                                Date.now() - row.createdAt >=
+                                                  CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS)
+                                                ? 'redeemed'
+                                                : 'pending');
+                                            const statusLabel = status === 'pending' ? 'Available' : 'Redeemed';
+                                            const statusClass =
+                                              status === 'pending'
+                                                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                                                : 'bg-slate-100 text-slate-600 ring-slate-200';
+                                            return (
+                                              <tr key={row.hash}>
+                                                <td className="px-2.5 py-2 sm:px-3">
+                                                  <div className="flex min-w-[9rem] items-center gap-1.5">
+                                                    <span className="truncate font-mono text-[10px] text-[#2c2f31] sm:text-[11px]">
+                                                      {row.code}
+                                                    </span>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        void navigator.clipboard.writeText(row.code).then(() => {
+                                                          setCardIssuanceCouponRedeemCopiedHash(row.hash);
+                                                        });
+                                                      }}
+                                                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                                      aria-label={`Copy redeem code ${row.code}`}
+                                                      title="Copy code"
+                                                    >
+                                                      {cardIssuanceCouponRedeemCopiedHash === row.hash ? (
+                                                        <Check className="h-3 w-3 text-emerald-500" strokeWidth={2.5} aria-hidden />
+                                                      ) : (
+                                                        <Copy className="h-3 w-3 opacity-70" strokeWidth={2} aria-hidden />
+                                                      )}
+                                                    </button>
+                                                  </div>
+                                                </td>
+                                                <td className="whitespace-nowrap px-2.5 py-2 text-[#595c5e] sm:px-3">
+                                                  {formatProgramsCouponRedeemDate(row.createdAt)}
+                                                </td>
+                                                <td className="px-2.5 py-2 sm:px-3">
+                                                  <span
+                                                    className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ${statusClass}`}
+                                                  >
+                                                    {statusLabel}
+                                                  </span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-2.5 py-2 text-[#595c5e] sm:px-3">
+                                                  {status === 'redeemed'
+                                                    ? formatProgramsCouponRedeemDate(row.redeemedAt)
+                                                    : '—'}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    {redeemRows.length > CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE ? (
+                                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                        <button
+                                          type="button"
+                                          disabled={redeemPage <= 1}
+                                          onClick={() =>
+                                            setCardIssuanceCouponRedeemPageByCouponId((prev) => ({
+                                              ...prev,
+                                              [coupon.id]: Math.max(1, redeemPage - 1),
+                                            }))
+                                          }
+                                          className={`inline-flex items-center gap-1 rounded-full border border-[#1562f0]/15 bg-white px-2.5 py-1 text-[10px] font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
+                                        >
+                                          <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                                          Previous
+                                        </button>
+                                        <span className="text-[10px] font-semibold text-[#595c5e]">
+                                          Page {redeemPage} of {redeemPageCount}
+                                          <span className="text-[#747779]">
+                                            {' '}
+                                            · {(redeemPage - 1) * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE + 1}–
+                                            {Math.min(
+                                              redeemPage * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE,
+                                              redeemRows.length
+                                            )}{' '}
+                                            of {redeemRows.length.toLocaleString()}
+                                          </span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          disabled={redeemPage >= redeemPageCount}
+                                          onClick={() =>
+                                            setCardIssuanceCouponRedeemPageByCouponId((prev) => ({
+                                              ...prev,
+                                              [coupon.id]: Math.min(redeemPageCount, redeemPage + 1),
+                                            }))
+                                          }
+                                          className={`inline-flex items-center gap-1 rounded-full border border-[#1562f0]/15 bg-white px-2.5 py-1 text-[10px] font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
+                                        >
+                                          Next
+                                          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                    </>
+                                  )}
+                                </div>
+                              ) : null}
                             </div>
-                          ))
+                            );
+                          })
                         )}
                        </div>
                      </div>

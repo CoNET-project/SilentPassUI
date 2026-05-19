@@ -438,6 +438,7 @@ function logCreateCardRequestBody(endpoint: string, body: string): void {
 const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
+const cardRedeemPreCheckEndpoint = `${beamioApi}/api/cardRedeemPreCheck`
 const cardCouponOpenClaimEndpoint = `${beamioApi}/api/cardCouponOpenClaim`
 const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
@@ -524,6 +525,77 @@ export const fetchPosTerminalMetadataFromApi = async (
 		}
 	} catch {
 		return { ok: false, error: 'Could not load terminal metadata.' }
+	}
+}
+
+/** SilentPassUI / beamio.app deep link for BeamioUserCard redeem codes. */
+export const buildBeamioUserCardRedeemShareUrl = (cardAddress: string, redeemCode: string): string => {
+	if (!cardAddress || !redeemCode?.trim() || !ethers.isAddress(cardAddress)) return ''
+	const card = ethers.getAddress(cardAddress)
+	return `https://beamio.app/app/?beamiocard=${encodeURIComponent(card)}&redeemcode=${encodeURIComponent(redeemCode.trim())}`
+}
+
+/** 客户端兑换前预检：链上 redeem 是否仍可用（Cluster 直读，不消耗码）。 */
+export const postCardRedeemPreCheck = async (
+	cardAddress: string,
+	redeemCode: string,
+	toUserEOA: string
+): Promise<{
+	success: boolean
+	redeemable?: boolean
+	shareUrl?: string
+	hash?: string
+	error?: string
+	status?: number
+}> => {
+	if (!cardAddress || !redeemCode?.trim() || !toUserEOA || !ethers.isAddress(toUserEOA) || !ethers.isAddress(cardAddress)) {
+		return { success: false, redeemable: false, error: 'Invalid cardAddress, redeemCode, or toUserEOA' }
+	}
+	const trimmedCode = redeemCode.trim()
+	try {
+		const res = await fetch(cardRedeemPreCheckEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ cardAddress, redeemCode: trimmedCode, toUserEOA }),
+		})
+		let data: {
+			success?: boolean
+			redeemable?: boolean
+			shareUrl?: string
+			hash?: string
+			error?: string
+		} = {}
+		try {
+			const text = await res.text()
+			if (text) data = JSON.parse(text) as typeof data
+		} catch {
+			// response might be HTML
+		}
+		if (!res.ok) {
+			return {
+				success: false,
+				redeemable: false,
+				error: data.error ?? `HTTP ${res.status}`,
+				status: res.status,
+			}
+		}
+		if (data.success && data.redeemable) {
+			return {
+				success: true,
+				redeemable: true,
+				shareUrl: data.shareUrl ?? buildBeamioUserCardRedeemShareUrl(cardAddress, trimmedCode),
+				hash: data.hash,
+			}
+		}
+		return {
+			success: false,
+			redeemable: false,
+			error: data.error ?? 'Redeem pre-check failed',
+			status: res.status,
+		}
+	} catch (e) {
+		const msg = (e as Error)?.message ?? 'Redeem pre-check request failed'
+		return { success: false, redeemable: false, error: msg }
 	}
 }
 

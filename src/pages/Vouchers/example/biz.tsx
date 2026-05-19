@@ -8093,6 +8093,15 @@ const CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX = 100;
 /** Redeem codes table: max rows per page in Programs coupon panel. */
 const CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE = 10;
 
+function buildProgramsCouponRedeemShareUrl(cardAddress: string, redeemCode: string): string {
+  const addr = cardAddress?.trim() ?? '';
+  const code = redeemCode?.trim() ?? '';
+  if (!addr || !code || !ethers.isAddress(addr)) return '';
+  return `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+    ethers.getAddress(addr)
+  )}&redeemcode=${encodeURIComponent(code)}`;
+}
+
 /** Keep freshly registered codes Available until chain confirms active or grace expires. */
 const CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS = 3 * 60_000;
 
@@ -9117,6 +9126,12 @@ const [cardIssuanceCouponImageUploading, setCardIssuanceCouponImageUploading] = 
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
 const [cardIssuanceCouponShareOpenId, setCardIssuanceCouponShareOpenId] = useState<string | null>(null);
 const [cardIssuanceCouponShareUrlCopied, setCardIssuanceCouponShareUrlCopied] = useState(false);
+const [cardIssuanceCouponRedeemShareOpen, setCardIssuanceCouponRedeemShareOpen] = useState<{
+  couponId: string;
+  hash: string;
+  code: string;
+} | null>(null);
+const [cardIssuanceCouponRedeemShareUrlCopied, setCardIssuanceCouponRedeemShareUrlCopied] = useState(false);
 const [cardIssuanceCouponRedeemStatuses, setCardIssuanceCouponRedeemStatuses] = useState<
   Record<string, 'pending' | 'redeemed'>
 >({});
@@ -9261,6 +9276,15 @@ const cardIssuanceCouponShareUrl = useMemo(() => {
     ethers.getAddress(cardAddress)
   )}&couponId=${encodeURIComponent(couponId)}&claim=open`;
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponShareRow?.id]);
+const cardIssuanceCouponRedeemShareRow = useMemo(
+  () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponRedeemShareOpen?.couponId) ?? null,
+  [cardIssuanceCoupons, cardIssuanceCouponRedeemShareOpen?.couponId]
+);
+const cardIssuanceCouponRedeemShareUrl = useMemo(() => {
+  const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+  const code = cardIssuanceCouponRedeemShareOpen?.code?.trim() ?? '';
+  return buildProgramsCouponRedeemShareUrl(cardAddress, code);
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponRedeemShareOpen?.code]);
 
 useEffect(() => {
   if (!cardIssuanceCouponRedeemCopiedHash) return;
@@ -10722,6 +10746,35 @@ const closeCardIssuanceCouponShare = useCallback(() => {
   setCardIssuanceCouponShareOpenId(null);
   setCardIssuanceCouponShareUrlCopied(false);
 }, []);
+
+const openCardIssuanceCouponRedeemShare = useCallback(
+  (couponId: string, row: { hash: string; code: string }) => {
+    if (!row.code?.trim()) return;
+    setCardIssuanceCouponRedeemShareUrlCopied(false);
+    setCardIssuanceCouponRedeemShareOpen({
+      couponId,
+      hash: row.hash,
+      code: row.code.trim(),
+    });
+  },
+  []
+);
+
+const closeCardIssuanceCouponRedeemShare = useCallback(() => {
+  setCardIssuanceCouponRedeemShareOpen(null);
+  setCardIssuanceCouponRedeemShareUrlCopied(false);
+}, []);
+
+const copyCardIssuanceCouponRedeemShareUrl = useCallback(async () => {
+  if (!cardIssuanceCouponRedeemShareUrl) return;
+  try {
+    await navigator.clipboard.writeText(cardIssuanceCouponRedeemShareUrl);
+    setCardIssuanceCouponRedeemShareUrlCopied(true);
+    setTimeout(() => setCardIssuanceCouponRedeemShareUrlCopied(false), 2000);
+  } catch {
+    // ignore
+  }
+}, [cardIssuanceCouponRedeemShareUrl]);
 
 const copyCardIssuanceCouponShareUrl = useCallback(async () => {
   if (!cardIssuanceCouponShareUrl) return;
@@ -27423,7 +27476,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                                 ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
                                                 : 'bg-slate-100 text-slate-600 ring-slate-200';
                                             return (
-                                              <tr key={row.hash}>
+                                              <tr
+                                                key={row.hash}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() => openCardIssuanceCouponRedeemShare(coupon.id, row)}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    openCardIssuanceCouponRedeemShare(coupon.id, row);
+                                                  }
+                                                }}
+                                                className="cursor-pointer transition-colors hover:bg-[#1562f0]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1562f0]/35"
+                                                aria-label={`Show redeem URL and QR for code ${row.code}`}
+                                              >
                                                 <td className="px-2.5 py-2 sm:px-3">
                                                   <div className="flex min-w-[9rem] items-center gap-1.5">
                                                     <span className="truncate font-mono text-[10px] text-[#2c2f31] sm:text-[11px]">
@@ -27431,7 +27497,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                                     </span>
                                                     <button
                                                       type="button"
-                                                      onClick={() => {
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
                                                         void navigator.clipboard.writeText(row.code).then(() => {
                                                           setCardIssuanceCouponRedeemCopiedHash(row.hash);
                                                         });
@@ -32015,6 +32082,105 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 </button>
                 <a
                   href={cardIssuanceCouponShareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-3 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/15 ${bizFocusRingClass}`}
+                >
+                  Open link
+                  <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
+
+    {cardIssuanceCouponRedeemShareOpen &&
+    cardIssuanceCouponRedeemShareRow &&
+    cardIssuanceCouponRedeemShareUrl ? (
+      <div
+        className="fixed inset-0 z-[95] flex items-center justify-center p-4 sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="coupon-redeem-share-qr-title"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+          onClick={closeCardIssuanceCouponRedeemShare}
+          aria-label="Close redeem share dialog"
+        />
+        <div
+          className="relative z-10 w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Redeem Code Distribution</p>
+              <h2
+                id="coupon-redeem-share-qr-title"
+                className="mt-1 truncate font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31]"
+              >
+                {cardIssuanceCouponRedeemShareRow.name}
+              </h2>
+              <p className="mt-1 text-xs font-medium text-[#595c5e]">
+                Share this URL or QR with the recipient. They can open it in the Beamio app to redeem this coupon.
+              </p>
+              <p className="mt-2 font-mono text-[11px] text-[#747779]">{cardIssuanceCouponRedeemShareOpen.code}</p>
+            </div>
+            <button
+              type="button"
+              onClick={closeCardIssuanceCouponRedeemShare}
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+          <div className="grid gap-5 px-5 py-5 sm:grid-cols-[auto_1fr] sm:items-start sm:px-6 sm:py-6">
+            <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <QRCodeCanvas
+                value={cardIssuanceCouponRedeemShareUrl}
+                size={176}
+                level="H"
+                includeMargin
+                bgColor="#ffffff"
+                fgColor="#000000"
+                imageSettings={{
+                  src: `${process.env.PUBLIC_URL || ''}/logo512.png`,
+                  height: 40,
+                  width: 40,
+                  excavate: true,
+                }}
+                className="rounded-lg"
+              />
+            </div>
+            <div className="min-w-0 space-y-3">
+              {cardIssuanceCouponRedeemStatuses[cardIssuanceCouponRedeemShareOpen.hash] === 'redeemed' ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                  This code is already redeemed. The link may no longer work for new claims.
+                </p>
+              ) : null}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Redeem URL</p>
+                <p className="break-all font-mono text-[11px] text-slate-700">{cardIssuanceCouponRedeemShareUrl}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={copyCardIssuanceCouponRedeemShareUrl}
+                  className={`inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
+                >
+                  {cardIssuanceCouponRedeemShareUrlCopied ? (
+                    <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+                  ) : (
+                    <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                  )}
+                  {cardIssuanceCouponRedeemShareUrlCopied ? 'Copied' : 'Copy URL'}
+                </button>
+                <a
+                  href={cardIssuanceCouponRedeemShareUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`inline-flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-3 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/15 ${bizFocusRingClass}`}

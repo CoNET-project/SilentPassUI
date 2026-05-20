@@ -1051,6 +1051,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 							bg-white dark:bg-slate-900
 							flex flex-col
 						"
+						style={{ height: "var(--beamio-native-viewport-height, 100dvh)" }}
 						
 						initial={{ x: "100%" }}
 						animate={{ x: 0 }}

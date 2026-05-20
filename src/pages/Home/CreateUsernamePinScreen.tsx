@@ -170,16 +170,22 @@ const CreateUsernamePinScreen = forwardRef<
 		if (typeof window === "undefined") return
 
 		const syncViewportHeight = () => {
-			setViewportHeight(Math.round(window.visualViewport?.height ?? window.innerHeight))
+			const nextHeight = Math.round(window.visualViewport?.height ?? window.innerHeight)
+			setViewportHeight(nextHeight)
+			if (nextHeight > 0) {
+				document.documentElement.style.setProperty("--beamio-native-viewport-height", `${nextHeight}px`)
+			}
 		}
 
 		syncViewportHeight()
 		window.addEventListener("resize", syncViewportHeight)
 		window.visualViewport?.addEventListener("resize", syncViewportHeight)
+		window.visualViewport?.addEventListener("scroll", syncViewportHeight)
 
 		return () => {
 			window.removeEventListener("resize", syncViewportHeight)
 			window.visualViewport?.removeEventListener("resize", syncViewportHeight)
+			window.visualViewport?.removeEventListener("scroll", syncViewportHeight)
 		}
 	}, [])
 

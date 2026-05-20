@@ -26,10 +26,13 @@
 html,
 body,
 #root {
-  height: 100dvh;
   height: 100vh;
-  /* Android WebView 兼容：-webkit-fill-available 确保正确视口高度 */
+  height: 100dvh;
+  height: var(--beamio-native-viewport-height, 100dvh);
+  /* WebView 兼容：由 native / visualViewport 写入真实可见高度，避免 iOS 100vh 过高 */
   min-height: -webkit-fill-available;
+  min-height: 100dvh;
+  min-height: var(--beamio-native-viewport-height, 100dvh);
   margin: 0;
   padding: 0;
   /* 禁用弹力下拉（rubber-band / overscroll bounce） */

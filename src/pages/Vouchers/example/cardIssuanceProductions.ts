@@ -1,0 +1,684 @@
+import { ethers } from 'ethers';
+
+/** Legacy issued-series kind label (read compat only). */
+export const CARD_ISSUANCE_PRODUCTION_NFT_CATEGORY = 'productions' as const;
+
+/** Catalog item global category — stored on metadata root `category` (same level as coupon `Coupon`). */
+export const CATALOG_GLOBAL_CATEGORY_OPTIONS = [
+  { id: 'Product', label: 'Product' },
+  { id: 'Service', label: 'Service' },
+  { id: 'Menu', label: 'Menu' },
+] as const;
+
+export type CatalogGlobalCategoryId = (typeof CATALOG_GLOBAL_CATEGORY_OPTIONS)[number]['id'];
+
+export const DEFAULT_CATALOG_GLOBAL_CATEGORY: CatalogGlobalCategoryId = 'Service';
+
+export function isCatalogGlobalCategoryId(value: unknown): value is CatalogGlobalCategoryId {
+  return (
+    typeof value === 'string' &&
+    CATALOG_GLOBAL_CATEGORY_OPTIONS.some((opt) => opt.id === value.trim())
+  );
+}
+
+export function normalizeCatalogGlobalCategory(raw: unknown): CatalogGlobalCategoryId {
+  if (isCatalogGlobalCategoryId(raw)) return raw.trim() as CatalogGlobalCategoryId;
+  const legacy = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (legacy === CARD_ISSUANCE_PRODUCTION_NFT_CATEGORY) return DEFAULT_CATALOG_GLOBAL_CATEGORY;
+  return DEFAULT_CATALOG_GLOBAL_CATEGORY;
+}
+
+export function catalogGlobalCategoryLabel(id: CatalogGlobalCategoryId): string {
+  return CATALOG_GLOBAL_CATEGORY_OPTIONS.find((opt) => opt.id === id)?.label ?? id;
+}
+
+export const NEW_PRODUCTION_SERVICE_CATEGORY_DEFAULT_LABEL = 'New Category';
+
+export const DRAFT_SERVICE_CATEGORY_ID_PREFIX = 'draft-';
+
+export function isDraftServiceCategoryId(id: string): boolean {
+  return id.startsWith(DRAFT_SERVICE_CATEGORY_ID_PREFIX);
+}
+
+export type ProductionServiceCategoryOption = {
+  id: string;
+  label: string;
+};
+
+export const DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS: ProductionServiceCategoryOption[] = [
+  { id: 'tcm-services', label: 'TCM Services' },
+  { id: 'maintenance', label: 'Maintenance' },
+  { id: 'anti-aging', label: 'Anti-Aging' },
+];
+
+/** @deprecated Prefer `DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS` */
+export const PRODUCTION_SERVICE_CATEGORY_OPTIONS = DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS;
+
+export type ProductionServiceCategoryId = string;
+
+export const CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT = 10_000;
+export const CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX = 9_999_999;
+
+/** Max redeem codes per `createRedeemBatch` tx (contract calldata limit). */
+export const CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX = 500;
+
+/** @deprecated Use CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX */
+export const CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX = CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX;
+
+export function resolveRedeemRegisterBatchCount(
+  issueLeftN: number,
+  requestedCount?: number,
+  qtyDraft?: string
+): number {
+  const leftCap = Math.min(Math.max(issueLeftN, 0), CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX);
+  if (leftCap <= 0) return 0;
+  if (requestedCount != null && Number.isFinite(requestedCount)) {
+    return Math.min(Math.max(1, Math.floor(requestedCount)), leftCap);
+  }
+  const raw = String(qtyDraft ?? '1').replace(/,/g, '').trim();
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return Math.min(1, leftCap);
+  return Math.min(parsed, leftCap);
+}
+
+/** First on-chain redeem registration after issue: at most one batch (500). */
+export function initialRedeemRegisterBatchCount(issueTotalN: number): number {
+  const cap = Number.isFinite(issueTotalN) && issueTotalN >= 1 ? Math.floor(issueTotalN) : 0;
+  return Math.min(cap, CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX);
+}
+
+/** Editor / draft shape for a package deal linked to a base catalog item. */
+export type CatalogPackageDealDraft = {
+  id: string;
+  packageSessions: string;
+  packageBonusSessions: string;
+  packageTotalPrice: string;
+  issued?: boolean;
+  issuedTokenId?: string;
+};
+
+export type CardIssuanceProductionRow = {
+  id: string;
+  name: string;
+  subtitle: string;
+  /** Root metadata `category` — Product | Service | Menu. */
+  globalCategory: CatalogGlobalCategoryId;
+  /** Second-level metadata `itemCategory` (chip id). */
+  itemCategory: ProductionServiceCategoryId;
+  singleSessionPrice: string;
+  packageDealEnabled: boolean;
+  packageSessions: string;
+  packageBonusSessions: string;
+  packageTotalPrice: string;
+  /** On-chain base item tokenId — metadata field `Package`. */
+  packageParentTokenId?: string;
+  /** Draft-only link before base item is issued. */
+  packageParentProductionId?: string;
+  issueTotal: string;
+  /** When true, on-chain/metadata cap uses ISSUE_TOTAL_MAX; UI shows Unlimited. */
+  issueTotalUnlimited: boolean;
+  /** Open claim vs redeem code — only applies when effective price is 0. */
+  requiresRedeemCode: boolean;
+  issueLeft?: string;
+  icon: string;
+  backgroundColor: string;
+  productionImage: string;
+  description: string;
+  issued: boolean;
+  issuedTokenId?: string;
+};
+
+export type CardIssuanceProductionMetadataPayload = {
+  id: string;
+  name: string;
+  subtitle?: string;
+  itemCategory?: ProductionServiceCategoryId;
+  singleSessionPrice?: number;
+  packageDealEnabled?: boolean;
+  packageSessions?: number;
+  packageBonusSessions?: number;
+  packageTotalPrice?: number;
+  /** Base catalog item issued NFT tokenId. */
+  Package?: string;
+  packageParentTokenId?: string;
+  issueTotal: number;
+  issueTotalUnlimited?: boolean;
+  requiresRedeemCode?: boolean;
+  category: CatalogGlobalCategoryId;
+  icon?: string;
+  backgroundColor?: string;
+  productionImage?: string;
+  description?: string;
+  issued?: boolean;
+  issuedTokenId?: string;
+};
+
+export function makeCardIssuanceProductionRow(
+  partial?: Partial<CardIssuanceProductionRow> & { id?: string }
+): CardIssuanceProductionRow {
+  return {
+    id: partial?.id?.trim() || `production-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: String(partial?.name ?? ''),
+    subtitle: String(partial?.subtitle ?? ''),
+    globalCategory: normalizeCatalogGlobalCategory(partial?.globalCategory),
+    itemCategory:
+      partial?.itemCategory ??
+      (partial as { serviceCategory?: ProductionServiceCategoryId })?.serviceCategory ??
+      DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id,
+    singleSessionPrice: String(partial?.singleSessionPrice ?? '0'),
+    packageDealEnabled: partial?.packageDealEnabled === true,
+    packageSessions: String(partial?.packageSessions ?? '10'),
+    packageBonusSessions: String(partial?.packageBonusSessions ?? '1'),
+    packageTotalPrice: String(partial?.packageTotalPrice ?? '0'),
+    issueTotal: String(partial?.issueTotal ?? CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT),
+    issueTotalUnlimited: partial?.issueTotalUnlimited === true,
+    requiresRedeemCode: partial?.requiresRedeemCode === true,
+    icon: String(partial?.icon ?? ''),
+    backgroundColor: String(partial?.backgroundColor ?? '#ea580c'),
+    productionImage: String(partial?.productionImage ?? '').trim(),
+    description: String(partial?.description ?? ''),
+    issued: partial?.issued === true,
+    ...(partial?.issuedTokenId?.trim() ? { issuedTokenId: partial.issuedTokenId.trim() } : {}),
+    ...(partial?.issueLeft != null && String(partial.issueLeft).trim()
+      ? { issueLeft: String(partial.issueLeft).trim() }
+      : {}),
+    ...(partial?.packageParentTokenId?.trim()
+      ? { packageParentTokenId: partial.packageParentTokenId.trim() }
+      : {}),
+    ...(partial?.packageParentProductionId?.trim()
+      ? { packageParentProductionId: partial.packageParentProductionId.trim() }
+      : {}),
+  };
+}
+
+export function makeCatalogPackageDealDraftId(): string {
+  return `pkg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function packageDealDraftFromProductionRow(row: CardIssuanceProductionRow): CatalogPackageDealDraft {
+  return {
+    id: row.id,
+    packageSessions: row.packageSessions,
+    packageBonusSessions: row.packageBonusSessions,
+    packageTotalPrice: row.packageTotalPrice,
+    issued: row.issued,
+    ...(row.issuedTokenId?.trim() ? { issuedTokenId: row.issuedTokenId.trim() } : {}),
+  };
+}
+
+export function isCatalogPackageDealRow(
+  row: Pick<
+    CardIssuanceProductionRow,
+    'packageDealEnabled' | 'packageParentTokenId' | 'packageParentProductionId'
+  >
+): boolean {
+  return (
+    row.packageDealEnabled === true ||
+    Boolean(row.packageParentTokenId?.trim()) ||
+    Boolean(row.packageParentProductionId?.trim())
+  );
+}
+
+export function isCatalogBaseProductionRow(
+  row: Pick<
+    CardIssuanceProductionRow,
+    'packageDealEnabled' | 'packageParentTokenId' | 'packageParentProductionId'
+  >
+): boolean {
+  return !isCatalogPackageDealRow(row);
+}
+
+export function catalogPackageDealsForBase(
+  rows: CardIssuanceProductionRow[],
+  base: CardIssuanceProductionRow
+): CardIssuanceProductionRow[] {
+  const baseToken = base.issuedTokenId?.trim() ?? '';
+  const baseId = base.id;
+  return rows.filter((row) => {
+    if (!isCatalogPackageDealRow(row)) return false;
+    const parentToken = row.packageParentTokenId?.trim() ?? '';
+    const parentId = row.packageParentProductionId?.trim() ?? '';
+    if (baseToken && parentToken && parentToken === baseToken) return true;
+    if (parentId && parentId === baseId) return true;
+    return false;
+  });
+}
+
+export function resolvePackageParentTokenIdFromMeta(meta: Record<string, unknown>): string {
+  const fromPackage = meta.Package;
+  if (typeof fromPackage === 'string' && fromPackage.trim()) return fromPackage.trim();
+  if (typeof fromPackage === 'number' && Number.isFinite(fromPackage)) return String(fromPackage);
+  const fromSnake = meta.packageParentTokenId;
+  if (typeof fromSnake === 'string' && fromSnake.trim()) return fromSnake.trim();
+  if (typeof fromSnake === 'number' && Number.isFinite(fromSnake)) return String(fromSnake);
+  return '';
+}
+
+export function computePackagePerSessionPrice(draft: CatalogPackageDealDraft): number | null {
+  const sessionsN = Number.parseInt(String(draft.packageSessions).replace(/,/g, ''), 10);
+  const totalN = parseProductionMoney(draft.packageTotalPrice);
+  if (!Number.isFinite(sessionsN) || sessionsN <= 0 || totalN == null || totalN <= 0) return null;
+  return totalN / sessionsN;
+}
+
+export function validateCatalogPackageDealDraft(draft: CatalogPackageDealDraft): string | null {
+  if (draft.issued) return null;
+  const totalN = parseProductionMoney(draft.packageTotalPrice);
+  if (totalN == null || totalN <= 0) return 'Each package deal must have a total price greater than 0.';
+  const sessionsN = Number.parseInt(String(draft.packageSessions).replace(/,/g, ''), 10);
+  if (!Number.isFinite(sessionsN) || sessionsN < 1) {
+    return 'Each package deal must include at least 1 session.';
+  }
+  const bonusRaw = String(draft.packageBonusSessions).replace(/,/g, '').trim();
+  const bonusN = bonusRaw === '' ? 0 : Number.parseInt(bonusRaw, 10);
+  if (!Number.isFinite(bonusN) || bonusN < 0) {
+    return 'Package bonus sessions must be 0 or greater.';
+  }
+  return null;
+}
+
+export function buildPackageProductionRowFromBase(
+  base: CardIssuanceProductionRow,
+  draft: CatalogPackageDealDraft,
+  parentTokenId: string
+): CardIssuanceProductionRow {
+  return makeCardIssuanceProductionRow({
+    id: draft.id,
+    name: base.name,
+    subtitle: base.subtitle,
+    globalCategory: base.globalCategory,
+    itemCategory: base.itemCategory,
+    singleSessionPrice: '0',
+    packageDealEnabled: true,
+    packageSessions: draft.packageSessions,
+    packageBonusSessions: draft.packageBonusSessions,
+    packageTotalPrice: draft.packageTotalPrice,
+    packageParentTokenId: parentTokenId,
+    issueTotal: base.issueTotal,
+    issueTotalUnlimited: base.issueTotalUnlimited,
+    icon: base.icon,
+    backgroundColor: base.backgroundColor,
+    productionImage: base.productionImage,
+    description: base.description,
+    issued: draft.issued === true,
+    ...(draft.issuedTokenId?.trim() ? { issuedTokenId: draft.issuedTokenId.trim() } : {}),
+  });
+}
+
+export function buildPackageProductionDraftRowFromBase(
+  base: CardIssuanceProductionRow,
+  draft: CatalogPackageDealDraft
+): CardIssuanceProductionRow {
+  return makeCardIssuanceProductionRow({
+    id: draft.id,
+    name: base.name,
+    subtitle: base.subtitle,
+    globalCategory: base.globalCategory,
+    itemCategory: base.itemCategory,
+    singleSessionPrice: '0',
+    packageDealEnabled: true,
+    packageSessions: draft.packageSessions,
+    packageBonusSessions: draft.packageBonusSessions,
+    packageTotalPrice: draft.packageTotalPrice,
+    packageParentProductionId: base.id,
+    issueTotal: base.issueTotal,
+    issueTotalUnlimited: base.issueTotalUnlimited,
+    icon: base.icon,
+    backgroundColor: base.backgroundColor,
+    productionImage: base.productionImage,
+    description: base.description,
+    issued: false,
+  });
+}
+
+export function parseProductionMoney(raw: unknown): number | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw !== 'string') return null;
+  const t = raw.replace(/,/g, '').trim();
+  if (!t) return null;
+  const n = Number.parseFloat(t);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+export function productionEffectiveChargeAmount(
+  row: Pick<CardIssuanceProductionRow, 'packageDealEnabled' | 'singleSessionPrice' | 'packageTotalPrice'>
+): number {
+  if (row.packageDealEnabled) {
+    return parseProductionMoney(row.packageTotalPrice) ?? 0;
+  }
+  return parseProductionMoney(row.singleSessionPrice) ?? 0;
+}
+
+/** Catalog list / editor display amount (legacy package rows use package total). */
+export function catalogProductionDisplayPrice(
+  row: Pick<CardIssuanceProductionRow, 'packageDealEnabled' | 'singleSessionPrice' | 'packageTotalPrice'>
+): number | null {
+  if (row.packageDealEnabled) {
+    return parseProductionMoney(row.packageTotalPrice);
+  }
+  return parseProductionMoney(row.singleSessionPrice);
+}
+
+/** Free catalog items (price 0) may use open claim or redeem code; paid items cannot be claimed. */
+export function productionClaimEligible(
+  row: Pick<CardIssuanceProductionRow, 'packageDealEnabled' | 'singleSessionPrice' | 'packageTotalPrice'>
+): boolean {
+  return productionEffectiveChargeAmount(row) === 0;
+}
+
+export function isProductionIssueTotalUnlimited(raw: unknown): boolean {
+  return raw === true || raw === 1 || raw === '1' || raw === 'true';
+}
+
+export function resolveProductionIssueTotalUnlimitedFromHydration(
+  meta: Record<string, unknown>,
+  issueTotalFromChain?: string
+): boolean {
+  if (isProductionIssueTotalUnlimited(meta.issueTotalUnlimited)) return true;
+  const chainRaw = String(issueTotalFromChain ?? '')
+    .replace(/,/g, '')
+    .trim();
+  const chainN = chainRaw ? Number.parseInt(chainRaw, 10) : Number.NaN;
+  return Number.isFinite(chainN) && chainN >= CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX;
+}
+
+export function productionIssueTotalDisplayLabel(
+  row: Pick<CardIssuanceProductionRow, 'issueTotal' | 'issueTotalUnlimited'>
+): string {
+  if (row.issueTotalUnlimited) return 'Unlimited';
+  const issueN = Number.parseInt(String(row.issueTotal).replace(/,/g, ''), 10);
+  return Number.isFinite(issueN) ? issueN.toLocaleString() : String(row.issueTotal);
+}
+
+export function computeProductionIssueTotalN(
+  row: Pick<CardIssuanceProductionRow, 'issueTotal' | 'issueTotalUnlimited'>
+): number {
+  if (row.issueTotalUnlimited) return CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX;
+  const issueRaw = String(row.issueTotal).replace(/,/g, '').trim();
+  const issueN = Number.parseInt(issueRaw, 10);
+  if (Number.isFinite(issueN) && issueN >= 1 && issueN <= CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX) {
+    return issueN;
+  }
+  return CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT;
+}
+
+export function computeProductionPackageSavingsPerSession(args: {
+  singleSessionPrice: number;
+  packageSessions: number;
+  packageTotalPrice: number;
+}): number | null {
+  const { singleSessionPrice, packageSessions, packageTotalPrice } = args;
+  if (!(singleSessionPrice > 0 && packageSessions > 0 && packageTotalPrice > 0)) return null;
+  const perSession = packageTotalPrice / packageSessions;
+  const savings = singleSessionPrice - perSession;
+  return Number.isFinite(savings) && savings > 0 ? savings : null;
+}
+
+export function buildCardIssuanceProductionMetadataPayload(
+  rows: CardIssuanceProductionRow[]
+): CardIssuanceProductionMetadataPayload[] | undefined {
+  const out = rows
+    .map((row): CardIssuanceProductionMetadataPayload | null => {
+      const id = row.id.trim();
+      const name = row.name.trim();
+      if (!id || !name) return null;
+      const issueTotalN = computeProductionIssueTotalN(row);
+      const single = parseProductionMoney(row.singleSessionPrice);
+      const pkgTotal = parseProductionMoney(row.packageTotalPrice);
+      const pkgSessions = Number.parseInt(String(row.packageSessions).replace(/,/g, ''), 10);
+      const pkgBonus = Number.parseInt(String(row.packageBonusSessions).replace(/,/g, ''), 10);
+      const tileBg = effectiveTileBackgroundColorForMetadata({
+        photo: row.productionImage,
+        backgroundColor: row.backgroundColor,
+      });
+      const parentToken = row.packageParentTokenId?.trim() ?? '';
+      const payload: CardIssuanceProductionMetadataPayload = {
+        id,
+        name,
+        issueTotal: issueTotalN,
+        ...(row.issueTotalUnlimited ? { issueTotalUnlimited: true } : {}),
+        category: normalizeCatalogGlobalCategory(row.globalCategory),
+        ...(row.subtitle.trim() ? { subtitle: row.subtitle.trim() } : {}),
+        ...(row.itemCategory ? { itemCategory: row.itemCategory } : {}),
+        ...(!row.packageDealEnabled && single != null ? { singleSessionPrice: single } : {}),
+        ...(row.packageDealEnabled ? { packageDealEnabled: true } : {}),
+        ...(row.packageDealEnabled && Number.isFinite(pkgSessions) ? { packageSessions: pkgSessions } : {}),
+        ...(row.packageDealEnabled && Number.isFinite(pkgBonus) ? { packageBonusSessions: pkgBonus } : {}),
+        ...(row.packageDealEnabled && pkgTotal != null ? { packageTotalPrice: pkgTotal } : {}),
+        ...(parentToken ? { Package: parentToken, packageParentTokenId: parentToken } : {}),
+        ...(row.icon.trim() ? { icon: row.icon.trim() } : {}),
+        ...(tileBg ? { backgroundColor: tileBg } : {}),
+        ...(row.productionImage.trim() ? { productionImage: row.productionImage.trim() } : {}),
+        ...(row.description.trim() ? { description: row.description.trim() } : {}),
+      };
+      if (row.issued) payload.issued = true;
+      const it = row.issuedTokenId?.trim();
+      if (it) payload.issuedTokenId = it;
+      return payload;
+    })
+    .filter((row): row is CardIssuanceProductionMetadataPayload => row != null);
+  return out.length > 0 ? out : undefined;
+}
+
+export function buildProductionIssuedNftMetaProps(row: CardIssuanceProductionRow): Record<string, unknown> {
+  const issueTotalN = computeProductionIssueTotalN(row);
+  const single = parseProductionMoney(row.singleSessionPrice);
+  const pkgTotal = parseProductionMoney(row.packageTotalPrice);
+  const pkgSessions = Number.parseInt(String(row.packageSessions).replace(/,/g, ''), 10);
+  const pkgBonus = Number.parseInt(String(row.packageBonusSessions).replace(/,/g, ''), 10);
+  const tileBg = effectiveTileBackgroundColorForMetadata({
+    photo: row.productionImage,
+    backgroundColor: row.backgroundColor,
+  });
+  const parentToken = row.packageParentTokenId?.trim() ?? '';
+  return {
+    category: normalizeCatalogGlobalCategory(row.globalCategory),
+    beamioProduction: {
+      productionId: row.id,
+      name: row.name.trim(),
+      ...(row.subtitle.trim() ? { subtitle: row.subtitle.trim() } : {}),
+      itemCategory: row.itemCategory,
+      issueTotal: issueTotalN,
+      ...(row.issueTotalUnlimited ? { issueTotalUnlimited: true } : {}),
+      ...(!row.packageDealEnabled && single != null ? { singleSessionPrice: single } : {}),
+      ...(row.packageDealEnabled ? { packageDealEnabled: true } : {}),
+      ...(row.packageDealEnabled && Number.isFinite(pkgSessions) ? { packageSessions: pkgSessions } : {}),
+      ...(row.packageDealEnabled && Number.isFinite(pkgBonus) ? { packageBonusSessions: pkgBonus } : {}),
+      ...(row.packageDealEnabled && pkgTotal != null ? { packageTotalPrice: pkgTotal } : {}),
+      ...(parentToken ? { Package: parentToken, packageParentTokenId: parentToken } : {}),
+      ...(row.icon.trim() ? { icon: row.icon.trim() } : {}),
+      ...(tileBg ? { backgroundColor: tileBg } : {}),
+      ...(row.productionImage.trim() ? { productionImage: row.productionImage.trim() } : {}),
+      ...(row.description.trim() ? { description: row.description.trim() } : {}),
+    },
+  };
+}
+
+export function normalizeServiceCategoryLabelForHash(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Stable id derived from normalized category label (dedupe key). */
+export function serviceCategoryHashIdFromLabel(label: string): string {
+  const key = normalizeServiceCategoryLabelForHash(label);
+  if (!key) return '';
+  return ethers
+    .keccak256(ethers.toUtf8Bytes(`beamio:serviceCategory:${key}`))
+    .slice(2, 18);
+}
+
+export type FinalizeServiceCategoriesResult =
+  | {
+      ok: true;
+      categories: ProductionServiceCategoryOption[];
+      idMap: Map<string, string>;
+    }
+  | { ok: false; error: string };
+
+/** Re-hash every category id from its label and reject duplicate names. */
+export function finalizeServiceCategoriesByLabelHash(
+  rows: ProductionServiceCategoryOption[]
+): FinalizeServiceCategoriesResult {
+  const hashKeysSeen = new Set<string>();
+  const idSeen = new Set<string>();
+  const categories: ProductionServiceCategoryOption[] = [];
+  const idMap = new Map<string, string>();
+
+  for (const row of rows) {
+    const label = row.label.trim();
+    if (!label) {
+      return { ok: false, error: 'Category name is required.' };
+    }
+    const hashKey = normalizeServiceCategoryLabelForHash(label);
+    if (hashKeysSeen.has(hashKey)) {
+      return { ok: false, error: 'Duplicate category name is not allowed.' };
+    }
+    const newId = serviceCategoryHashIdFromLabel(label);
+    if (!newId) {
+      return { ok: false, error: 'Category name is invalid.' };
+    }
+    if (idSeen.has(newId)) {
+      return { ok: false, error: 'Duplicate category is not allowed.' };
+    }
+    hashKeysSeen.add(hashKey);
+    idSeen.add(newId);
+    idMap.set(row.id, newId);
+    categories.push({ id: newId, label });
+  }
+
+  return { ok: true, categories, idMap };
+}
+
+export function uniqueDefaultNewServiceCategoryLabel(
+  existing: ProductionServiceCategoryOption[]
+): string {
+  const keys = new Set(existing.map((row) => normalizeServiceCategoryLabelForHash(row.label)));
+  let label = NEW_PRODUCTION_SERVICE_CATEGORY_DEFAULT_LABEL;
+  let n = 2;
+  while (keys.has(normalizeServiceCategoryLabelForHash(label))) {
+    label = `${NEW_PRODUCTION_SERVICE_CATEGORY_DEFAULT_LABEL} ${n}`;
+    n += 1;
+  }
+  return label;
+}
+
+export function remapProductionRowsItemCategoryIds(
+  rows: CardIssuanceProductionRow[],
+  idMap: Map<string, string>
+): CardIssuanceProductionRow[] {
+  if (idMap.size === 0) return rows;
+  let changed = false;
+  const next = rows.map((row) => {
+    const mapped = idMap.get(row.itemCategory);
+    if (mapped && mapped !== row.itemCategory) {
+      changed = true;
+      return { ...row, itemCategory: mapped };
+    }
+    return row;
+  });
+  return changed ? next : rows;
+}
+
+/** @deprecated Use `remapProductionRowsItemCategoryIds`. */
+export const remapProductionRowsServiceCategoryIds = remapProductionRowsItemCategoryIds;
+
+/** Compare two category lists by normalized label set (order-independent). */
+export function serviceCategoryListsEquivalent(
+  a: ProductionServiceCategoryOption[],
+  b: ProductionServiceCategoryOption[]
+): boolean {
+  if (a.length !== b.length) return false;
+  const keysA = a.map((row) => normalizeServiceCategoryLabelForHash(row.label)).sort();
+  const keysB = b.map((row) => normalizeServiceCategoryLabelForHash(row.label)).sort();
+  return keysA.every((key, idx) => key === keysB[idx]);
+}
+
+export function normalizeItemCategoryList(raw: unknown): ProductionServiceCategoryOption[] {
+  return normalizeServiceCategoryList(raw);
+}
+
+export function normalizeServiceCategoryList(raw: unknown): ProductionServiceCategoryOption[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const out: ProductionServiceCategoryOption[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as Record<string, unknown>;
+    const id = typeof row.id === 'string' ? row.id.trim() : '';
+    const label = typeof row.label === 'string' ? row.label.trim() : '';
+    if (!id || !label || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, label });
+  }
+  return out;
+}
+
+export function resolveProductionItemCategoryId(
+  raw: unknown,
+  options: ProductionServiceCategoryOption[]
+): string {
+  return resolveProductionServiceCategoryId(raw, options);
+}
+
+export function resolveProductionServiceCategoryId(
+  raw: unknown,
+  options: ProductionServiceCategoryOption[]
+): string {
+  const id = typeof raw === 'string' ? raw.trim() : '';
+  if (options.some((opt) => opt.id === id)) return id;
+  return options[0]?.id ?? DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id;
+}
+
+export function productionItemCategoryLabel(
+  id: string,
+  options: ProductionServiceCategoryOption[]
+): string {
+  return productionServiceCategoryLabel(id, options);
+}
+
+export function productionServiceCategoryLabel(
+  id: string,
+  options: ProductionServiceCategoryOption[]
+): string {
+  return options.find((o) => o.id === id)?.label ?? id;
+}
+
+export function productionIconLooksLikeImageUrl(raw: string): boolean {
+  const t = raw.trim().toLowerCase();
+  return (
+    t.startsWith('http://') ||
+    t.startsWith('https://') ||
+    t.startsWith('ipfs://') ||
+    t.startsWith('data:image')
+  );
+}
+
+export const PRODUCTION_ITEM_COLOR_PRESETS = [
+  '#ea580c',
+  '#94a3b8',
+  '#f59e0b',
+  '#6366f1',
+  '#0051d1',
+  '#9333ea',
+  '#059669',
+  '#ec4899',
+] as const;
+
+/** @see beamio-tile-background-photo-protocol.mdc */
+export function hasTileBackgroundPhoto(photo: unknown): boolean {
+  return typeof photo === 'string' && photo.trim().length > 0;
+}
+
+/** True when solid `backgroundColor` applies (no wide background photo). */
+export function tileBackgroundColorApplies(photo: unknown): boolean {
+  return !hasTileBackgroundPhoto(photo);
+}
+
+export function effectiveTileBackgroundColorForMetadata(args: {
+  photo: unknown;
+  backgroundColor: unknown;
+}): string | undefined {
+  if (!tileBackgroundColorApplies(args.photo)) return undefined;
+  const raw = typeof args.backgroundColor === 'string' ? args.backgroundColor.trim() : '';
+  return raw || undefined;
+}

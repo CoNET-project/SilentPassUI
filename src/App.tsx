@@ -1077,6 +1077,7 @@ function AppShell() {
 					<Route path="/transfertion" element={<BeamioTransactions />} />
 					<Route path="/native-pos" element={<MerchantOS />} />
 					<Route path="/Terminals" element={<MerchantOS />} />
+					<Route path="/Business" element={<MerchantOS />} />
 					<Route path="/cardManager" element={<CardManager />} />
 				</Route>
 				</Routes>

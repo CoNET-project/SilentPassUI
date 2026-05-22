@@ -1,6 +1,6 @@
 /**
- * Global (per logged-in wallet partition) EOA/AA → Beamio profile metadata for Merchant OS capsules.
- * Local-first: persist to localStorage; remote refresh is driven by DaemonProvider (≈1 min, setTimeout chain).
+ * Beamio address profile persistence (localStorage rows).
+ * Orchestration API: `@/utils/beamioTagDatabase` + `BeamioTagDatabaseProvider`.
  */
 
 import { ethers } from 'ethers';

@@ -13,6 +13,7 @@ import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
+import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { setWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock';
 import {
@@ -31,7 +32,7 @@ import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
 import BeamioMeMainScreen from '@/components/Setting';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
-import { searchUsername, getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
+import { getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
 import { formatAmount, displayFiatPrefixFromCode, type ICurrency } from '@/services/currency';
 import contracts from '@/utils/contracts';
 import {
@@ -51,6 +52,8 @@ import {
   postCardTerminalSettlementClear,
   signExecuteForOwner,
   encodeCreateIssuedNft,
+  encodeSetChargeRewardRatio,
+  postExecuteForOwner,
   postCardCreateIssuedNft,
   encodeCreateRedeemBatchBundle,
   postCardCreateRedeem,
@@ -76,6 +79,7 @@ import {
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
+  fetchCardActiveIssuedProductionSeries,
   getRedeemStatusBatchFromChain,
   type CardMetadataFromUri,
   type CardTierMetadata,
@@ -107,6 +111,49 @@ import {
   saveCardConfiguratorDraftForEoa,
 } from '@/utils/cardConfiguratorDraftLocal';
 import {
+  CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT,
+  CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX,
+  CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX,
+  DEFAULT_CATALOG_GLOBAL_CATEGORY,
+  initialRedeemRegisterBatchCount,
+  resolveRedeemRegisterBatchCount,
+  DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS,
+  buildCardIssuanceProductionMetadataPayload,
+  buildPackageProductionDraftRowFromBase,
+  buildPackageProductionRowFromBase,
+  buildProductionIssuedNftMetaProps,
+  catalogPackageDealsForBase,
+  catalogProductionDisplayPrice,
+  computeProductionIssueTotalN,
+  finalizeServiceCategoriesByLabelHash,
+  isCatalogPackageDealRow,
+  makeCatalogPackageDealDraftId,
+  packageDealDraftFromProductionRow,
+  productionEffectiveChargeAmount,
+  resolvePackageParentTokenIdFromMeta,
+  resolveProductionIssueTotalUnlimitedFromHydration,
+  validateCatalogPackageDealDraft,
+  isDraftServiceCategoryId,
+  makeCardIssuanceProductionRow,
+  DRAFT_SERVICE_CATEGORY_ID_PREFIX,
+  normalizeCatalogGlobalCategory,
+  normalizeItemCategoryList,
+  normalizeServiceCategoryList,
+  serviceCategoryListsEquivalent,
+  parseProductionMoney,
+  remapProductionRowsItemCategoryIds,
+  resolveProductionItemCategoryId,
+  effectiveTileBackgroundColorForMetadata,
+  tileBackgroundColorApplies,
+  uniqueDefaultNewServiceCategoryLabel,
+  type CardIssuanceProductionRow,
+  type CatalogGlobalCategoryId,
+  type CatalogPackageDealDraft,
+  type ProductionServiceCategoryId,
+  type ProductionServiceCategoryOption,
+} from './cardIssuanceProductions';
+import { ProgramsProductionsPanel } from './programsProductionsPanel';
+import {
   CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT,
   CARD_PREVIEW_LOGO_ICON_TIER_CLASSES,
   CARD_PREVIEW_LOGO_IMG_TIER_CLASSES,
@@ -116,12 +163,8 @@ import {
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions';
 import {
   beamioTagFromRecord,
-  loadAddressProfileMap,
-  mergeProfileMap,
   normalizeAddressKey,
-  pickPeerFromSearchUsernameResponse,
-  recordFromSearchPeer,
-  saveAddressProfileMap,
+  toBeamioCapsuleItem,
   type BeamioAddressProfileRecord,
 } from '@/utils/beamioAddressProfileRegistry';
 import {
@@ -253,8 +296,9 @@ import {
  GraduationCap,
  HeartPulse,
  Dumbbell,
- BarChart3,
- Megaphone,
+  BarChart3,
+  Briefcase,
+  Megaphone,
   Download,
   ListTodo,
  ShoppingCart,
@@ -305,8 +349,52 @@ import {
   CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS,
 } from './CardConfiguratorMobileShell';
 
-const getImg = (avatarSeed: string | undefined) =>
-  `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio')}`;
+function isWalletAddressLike(value: string | undefined): boolean {
+  const v = (value ?? '').trim();
+  return /^0x[a-fA-F0-9]{40}$/.test(v);
+}
+
+function plainBeamioTagSeed(raw: string | undefined): string {
+  return (raw ?? '').trim().replace(/^@+/, '');
+}
+
+function avatarSeedFromAddressProfileMap(
+  address: string | undefined,
+  profileMap: Record<string, BeamioAddressProfileRecord> | undefined,
+): string {
+  const addr = (address ?? '').trim();
+  if (!addr || !profileMap) return '';
+  const key = normalizeAddressKey(addr);
+  if (!key) return '';
+  return plainBeamioTagSeed(beamioTagFromRecord(profileMap[key]));
+}
+
+/** DiceBear seed must be @beamioTag — never raw EOA/AA wallet address. */
+function resolveAvatarSeed(
+  preferred: string | undefined,
+  opts?: { address?: string; profileMap?: Record<string, BeamioAddressProfileRecord> },
+): string {
+  const preferredPlain = plainBeamioTagSeed(preferred);
+  if (preferredPlain && !isWalletAddressLike(preferredPlain)) return preferredPlain;
+
+  const addressCandidates = [opts?.address, isWalletAddressLike(preferredPlain) ? preferredPlain : undefined].filter(
+    Boolean,
+  ) as string[];
+  for (const addr of addressCandidates) {
+    const tag = avatarSeedFromAddressProfileMap(addr, opts?.profileMap);
+    if (tag) return tag;
+  }
+  return '@Beamio';
+}
+
+function getAvatarImgUrl(
+  preferred: string | undefined,
+  opts?: { address?: string; profileMap?: Record<string, BeamioAddressProfileRecord> },
+): string {
+  return `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(resolveAvatarSeed(preferred, opts))}`;
+}
+
+const getImg = (avatarSeed: string | undefined) => getAvatarImgUrl(avatarSeed);
 
 const MOBILE_FLOATING_BAR_THRESHOLD = 40;
 const MOBILE_FLOATING_BAR_FADE_RANGE = 100;
@@ -3140,6 +3228,7 @@ function WalletSendUsdcSheet(props: {
   setVoucherPayFromScan: (v: boolean) => void;
   navigate: (to: string, options?: { state?: unknown }) => void;
 }) {
+  const { searchRemoteAndIngest } = useBeamioTagDatabase();
   const {
     open,
     onClose,
@@ -3205,8 +3294,8 @@ function WalletSendUsdcSheet(props: {
       try {
         const isAddr = ethers.isAddress(q);
         const searchKey = isAddr ? ethers.getAddress(q) : q;
-        const res = await searchUsername(searchKey);
-        setResults(Array.isArray(res?.results) ? res.results : []);
+        const res = await searchRemoteAndIngest(searchKey);
+        setResults(Array.isArray((res as { results?: searchResult[] } | null)?.results) ? (res as { results: searchResult[] }).results : []);
       } catch {
         setResults([]);
         setSendError('Search failed. Try again.');
@@ -3217,7 +3306,7 @@ function WalletSendUsdcSheet(props: {
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [normalizedQuery, open, selected]);
+  }, [normalizedQuery, open, selected, searchRemoteAndIngest]);
 
   const pickRecipient = useCallback((row: searchResult) => {
     setSelected(row);
@@ -3439,7 +3528,7 @@ function WalletSendUsdcSheet(props: {
                       {selected.image ? (
                         <img src={selected.image} alt="" className="size-full object-cover" />
                       ) : (
-                        <img src={getImg(selected.username || selected.address)} alt="" className="size-full object-cover" />
+                        <img src={getImg(selected.username)} alt="" className="size-full object-cover" />
                       )}
                     </div>
                   </div>
@@ -3490,7 +3579,7 @@ function WalletSendUsdcSheet(props: {
                               {row.image ? (
                                 <img src={row.image} alt="" className="size-full object-cover" />
                               ) : (
-                                <img src={getImg(row.username || row.address)} alt="" className="size-full object-cover" />
+                                <img src={getImg(row.username)} alt="" className="size-full object-cover" />
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -3971,13 +4060,14 @@ type MemberDirectoryProfileDrawerProps = {
   hasRewardTier: boolean;
   tierBadgeLabel: string | null;
   cadPerUsdcOracle: number;
+  profileMap?: Record<string, BeamioAddressProfileRecord>;
   onClose: () => void;
   onSendGift: () => void;
 };
 
 /** Returns motion layers for `AnimatePresence` (multiple direct children). */
 function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileDrawerProps): React.ReactElement[] {
-  const { row, segment, hasRewardTier, tierBadgeLabel, cadPerUsdcOracle, onClose, onSendGift } = props;
+  const { row, segment, hasRewardTier, tierBadgeLabel, cadPerUsdcOracle, profileMap, onClose, onSendGift } = props;
   const pts = directoryMemberPointsHuman(row);
   const tagRaw = row.beamioTag.replace(/^@/, '').trim();
   const displayTitle = tagRaw ? formatDirectoryMemberDisplayName(row.beamioTag) : segment === 'app' ? 'App user' : 'NFC user';
@@ -3989,7 +4079,7 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
         ? `@${tagRaw}`
         : `@${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`
       : `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
-  const avatarSeed = segment === 'app' ? tagRaw || row.memberAddress : row.memberAddress;
+  const avatarSrc = getAvatarImgUrl(tagRaw || undefined, { address: row.memberAddress, profileMap });
 
   const tierProgressPct = Math.min(100, Math.round((pts / 500) * 100));
   const toNextLabel =
@@ -4040,7 +4130,7 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
           <div className="mb-8 flex flex-col items-center">
             <div className="mb-4 rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] p-1">
               <div className="size-24 overflow-hidden rounded-full border-4 border-white bg-[#dfe3e6]">
-                <img src={getImg(avatarSeed)} alt="" className="size-full object-cover" />
+                <img src={avatarSrc} alt="" className="size-full object-cover" />
               </div>
             </div>
             <h3 id="member-profile-drawer-title" className="text-center font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
@@ -7749,8 +7839,10 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
 
 /** Fixed to `BeamioCurrency.CurrencyType.CAD` (enum index 0). See `src/BeamioUserCard/BeamioCurrency.sol`. */
 const CARD_ISSUANCE_BEAMIO_CURRENCY = 'CAD' as const;
-const CARD_ISSUANCE_MIN_TOPUP_MIN = 5;
-const CARD_ISSUANCE_MAX_TOPUP_MAX = 999;
+/** Minimum reload floor expressed in USDC; UI converts it to the card currency. */
+const CARD_ISSUANCE_MIN_TOPUP_USDC_MIN = 3;
+/** Maximum reload cap expressed in USDC; UI converts it to the card currency. */
+const CARD_ISSUANCE_MAX_TOPUP_MAX = 10000;
 /** Default maximum top-up (whole dollars only, no decimals). */
 const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = 100;
 /** Default minimum top-up (whole dollars only, no decimals). */
@@ -7762,6 +7854,8 @@ const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
 /** Default max number of times a program coupon can be issued (metadata). */
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT = 100;
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX = 9_999_999;
+/** Issued coupon NFT metadata category — distinguishes coupon series from membership / tier NFTs. */
+const CARD_ISSUANCE_COUPON_NFT_CATEGORY = 'Coupon';
 
 type CardIssuanceCouponMetaHydrationShape = {
   issueTotal?: number | string;
@@ -7912,10 +8006,83 @@ function parseCouponRequiresRedeemFromHydration(meta: CardIssuanceCouponMetaHydr
 const CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX = 20;
 const CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT = 100;
 const CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT = 10;
+const CARD_ISSUANCE_POINT_REWARD_TOKEN_ID = 2;
+const CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 = '1000000';
+const CARD_ISSUANCE_POINT_RATIO_MAX = 1000;
 /** Short Name (program points ticker): max length, derived from Card Unit Name unless edited. */
 const CARD_ISSUANCE_SHORT_NAME_MAX_LEN = 4;
 /** Card Configurator · Visual Identity: default Card Unit Name (program name on-chain / metadata). */
 const CARD_ISSUANCE_DEFAULT_UNIT_NAME = 'beamio';
+
+function cardIssuanceMaxTopupCapForCurrency(
+  currencyRaw: string | undefined | null,
+  oracleUsdcPerCad: number | null | undefined
+): number {
+  const c = (currencyRaw ?? CARD_ISSUANCE_BEAMIO_CURRENCY).trim().toUpperCase();
+  if (c === 'CAD') {
+    const rate =
+      Number.isFinite(oracleUsdcPerCad ?? NaN) && (oracleUsdcPerCad ?? 0) > 0
+        ? Number(oracleUsdcPerCad)
+        : ORACLE_CAD_USDC_FALLBACK;
+    return Math.max(cardIssuanceMinTopupFloorForCurrency(c, oracleUsdcPerCad), Math.floor(CARD_ISSUANCE_MAX_TOPUP_MAX / rate));
+  }
+  return CARD_ISSUANCE_MAX_TOPUP_MAX;
+}
+
+function cardIssuanceMinTopupFloorForCurrency(
+  currencyRaw: string | undefined | null,
+  oracleUsdcPerCad: number | null | undefined
+): number {
+  const c = (currencyRaw ?? CARD_ISSUANCE_BEAMIO_CURRENCY).trim().toUpperCase();
+  if (c === 'CAD') {
+    const rate =
+      Number.isFinite(oracleUsdcPerCad ?? NaN) && (oracleUsdcPerCad ?? 0) > 0
+        ? Number(oracleUsdcPerCad)
+        : ORACLE_CAD_USDC_FALLBACK;
+    return Math.max(1, Math.ceil(CARD_ISSUANCE_MIN_TOPUP_USDC_MIN / rate));
+  }
+  return CARD_ISSUANCE_MIN_TOPUP_USDC_MIN;
+}
+
+type CardIssuancePointSystemMetadata = {
+  enabled: boolean;
+  chargeRewardRatioE6: string;
+  rewardTokenId: number;
+};
+
+function parsePointRatioHumanToE6(raw: string): bigint | null {
+  const t = raw.replace(/,/g, '').trim();
+  if (!/^\d*(?:\.\d*)?$/.test(t) || t === '' || t === '.') return null;
+  const [wholeRaw, fracRaw = ''] = t.split('.');
+  const whole = wholeRaw === '' ? '0' : wholeRaw;
+  if (!/^\d+$/.test(whole)) return null;
+  const frac = (fracRaw.slice(0, 6) + '000000').slice(0, 6);
+  return BigInt(whole) * 1_000_000n + BigInt(frac);
+}
+
+function formatPointRatioE6ToHuman(raw: string | number | bigint | undefined | null): string {
+  try {
+    const v =
+      typeof raw === 'bigint'
+        ? raw
+        : typeof raw === 'number'
+          ? BigInt(Math.max(0, Math.trunc(raw)))
+          : typeof raw === 'string' && /^\d+$/.test(raw.trim())
+            ? BigInt(raw.trim())
+            : BigInt(CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6);
+    const whole = v / 1_000_000n;
+    const frac = (v % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '');
+    return frac ? `${whole.toString()}.${frac}` : whole.toString();
+  } catch {
+    return '1';
+  }
+}
+
+function formatPointRatioE6Display(raw: string | number | bigint | undefined | null): string {
+  const human = Number(formatPointRatioE6ToHuman(raw));
+  if (!Number.isFinite(human)) return '1.00';
+  return human.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 type CardIssuanceBonusRuleRow = {
   id: string;
@@ -7988,6 +8155,8 @@ type CardIssuanceCouponMetadataPayload = {
   id: string;
   name: string;
   issueTotal: number;
+  /** NFT kind label for coupon definitions (shareTokenMetadata + issued series). */
+  category: typeof CARD_ISSUANCE_COUPON_NFT_CATEGORY;
   requiresRedeemCode?: boolean;
   /** Inclusive local calendar start (YYYY-MM-DD); only with validTo. */
   validFrom?: string;
@@ -8028,14 +8197,19 @@ function buildCardIssuanceCouponMetadataPayload(
       const backgroundColor = tierBackgroundColorForPayload(row.backgroundColor);
       const icon = row.icon.trim();
       const couponImg = row.couponImage.trim();
+      const tileBg = effectiveTileBackgroundColorForMetadata({
+        photo: couponImg,
+        backgroundColor,
+      });
       const description = row.description.trim();
       const payload: CardIssuanceCouponMetadataPayload = {
         id,
         name,
         issueTotal: issueTotalN,
+        category: CARD_ISSUANCE_COUPON_NFT_CATEGORY,
         ...(row.requiresRedeemCode ? { requiresRedeemCode: true } : {}),
         ...(icon ? { icon } : {}),
-        ...(backgroundColor ? { backgroundColor } : {}),
+        ...(tileBg ? { backgroundColor: tileBg } : {}),
         ...(couponImg ? { couponImage: couponImg } : {}),
         ...(description ? { description } : {}),
       };
@@ -8059,6 +8233,27 @@ function buildCardIssuanceCouponMetadataPayload(
 function cardIssuanceCouponIconLooksLikeImageUrl(raw: string): boolean {
   const t = raw.trim().toLowerCase();
   return t.startsWith('http://') || t.startsWith('https://') || t.startsWith('ipfs://');
+}
+
+/** Remember last non-empty catalog item icon input for the next Add item form. */
+function rememberCardIssuanceProductionLastIconInput(raw: string, ref: React.MutableRefObject<string>): void {
+  const trimmed = raw.trim();
+  if (trimmed) ref.current = trimmed;
+}
+
+function resolveDefaultCardIssuanceProductionIcon(args: {
+  lastProductionIconRef: React.MutableRefObject<string>;
+  couponIcon: string;
+  cardShareImageUrl: string;
+  publishedCardImage: string;
+}): string {
+  const last = args.lastProductionIconRef.current.trim();
+  if (last) return last;
+  const coupon = args.couponIcon.trim();
+  if (coupon) return coupon;
+  const cardIcon = args.cardShareImageUrl.trim() || args.publishedCardImage.trim();
+  if (cardIcon) return cardIcon;
+  return '';
 }
 
 type CardIssuanceCouponRedeemItemView = CardRedeemItem & {
@@ -8086,9 +8281,6 @@ function parseCardIssuanceCouponIssueLeftN(coupon: CardIssuanceCouponRow): numbe
   const leftN = Number.parseInt(leftRaw, 10);
   return Number.isFinite(leftN) && leftN >= 0 ? leftN : 0;
 }
-
-/** Max redeem codes registered per batch click (matches Wallet Top Up redeem form). */
-const CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX = 100;
 
 /** Redeem codes table: max rows per page in Programs coupon panel. */
 const CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE = 10;
@@ -8132,22 +8324,6 @@ function resolveProgramsCouponRedeemDisplayStatus(args: {
     return { display: 'pending', recordRedeemedAt: false };
   }
   return { display: 'redeemed', recordRedeemedAt: false };
-}
-
-function resolveCardIssuanceCouponRedeemBatchCount(
-  requestedCount: number | undefined,
-  issueLeftN: number,
-  qtyDraft: string | undefined
-): number {
-  const leftCap = Math.min(Math.max(issueLeftN, 0), CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX);
-  if (leftCap <= 0) return 0;
-  if (requestedCount != null && Number.isFinite(requestedCount)) {
-    return Math.min(Math.max(1, Math.floor(requestedCount)), leftCap);
-  }
-  const raw = String(qtyDraft ?? '1').replace(/,/g, '').trim();
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return Math.min(1, leftCap);
-  return Math.min(parsed, leftCap);
 }
 
 function collectCouponRedeemRowsByCouponId(
@@ -8435,7 +8611,8 @@ function nextCardIssuanceTierTemplate(
   tiers: CardIssuanceTierRow[],
   minTopupStr: string
 ): CardIssuanceTierRow {
-  const topupN = Math.max(CARD_ISSUANCE_MIN_TOPUP_DEFAULT, cardIssuanceTierThresholdToInt(minTopupStr));
+  const parsedMinTopup = cardIssuanceTierThresholdToInt(minTopupStr);
+  const topupN = parsedMinTopup > 0 ? parsedMinTopup : CARD_ISSUANCE_MIN_TOPUP_DEFAULT;
   const extraCount = tiers.filter((tier) => tier.id !== CARD_ISSUANCE_SINGLE_TIER_ID).length;
   if (extraCount === 0) {
     return makeCardIssuanceTierRow({
@@ -9058,6 +9235,8 @@ export default function MerchantOS() {
  const location = useLocation();
  const isTerminalsMarketRoute =
    location.pathname === '/Terminals' || location.pathname.endsWith('/Terminals');
+ const isBusinessRoute =
+   location.pathname === '/Business' || location.pathname.endsWith('/Business');
  const {
    beamio,
    setBeamio,
@@ -9077,8 +9256,18 @@ export default function MerchantOS() {
    registerMerchantOsBuintBalanceBackgroundWork,
    registerAddressMetadataMinuteWork,
  } = useDaemonContext();
+ const {
+   profileMap: addressProfileByLower,
+   profileMapRef: addressProfileByLowerRef,
+   ingestSearchResponse,
+   searchRemoteAndIngest,
+   ensureProfilesForAddresses,
+   toCapsuleItem,
+   avatarImgUrl: beamioAvatarImgUrl,
+ } = useBeamioTagDatabase();
  const [walletSendUsdcOpen, setWalletSendUsdcOpen] = useState(false);
  const [activeTab, setActiveTab] = useState('Overview');
+ const [oracleCadUsdc, setOracleCadUsdc] = useState<number | null>(null);
  /** Bumps when Lite onboarding form saves so `hasVerraLiteBusinessRequiredFields` is re-evaluated. */
  const [liteBusinessFormRevision, setLiteBusinessFormRevision] = useState(0);
  const [liteChainAckRevision, setLiteChainAckRevision] = useState(0);
@@ -9152,6 +9341,55 @@ const cardIssuanceCouponRedeemChainActiveConfirmedRef = useRef<Set<string>>(new 
 useEffect(() => {
   cardIssuanceCouponRedeemStatusesRef.current = cardIssuanceCouponRedeemStatuses;
 }, [cardIssuanceCouponRedeemStatuses]);
+
+const [cardIssuanceProductions, setCardIssuanceProductions] = useState<CardIssuanceProductionRow[]>([]);
+const [cardIssuanceProductionsPanelOpen, setCardIssuanceProductionsPanelOpen] = useState(false);
+const [cardIssuanceProductionEditorOpen, setCardIssuanceProductionEditorOpen] = useState(false);
+const cardIssuanceProductionEditorOpenRef = useRef(false);
+useEffect(() => {
+  cardIssuanceProductionEditorOpenRef.current = cardIssuanceProductionEditorOpen;
+}, [cardIssuanceProductionEditorOpen]);
+const [cardIssuanceEditingProductionId, setCardIssuanceEditingProductionId] = useState<string | null>(null);
+const [cardIssuanceProductionName, setCardIssuanceProductionName] = useState('');
+const [cardIssuanceProductionSubtitle, setCardIssuanceProductionSubtitle] = useState('');
+const [cardIssuanceProductionGlobalCategory, setCardIssuanceProductionGlobalCategory] =
+  useState<CatalogGlobalCategoryId>(DEFAULT_CATALOG_GLOBAL_CATEGORY);
+const [cardIssuanceProductionItemCategory, setCardIssuanceProductionItemCategory] =
+  useState<ProductionServiceCategoryId>(DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id);
+const [cardIssuanceProductionPrice, setCardIssuanceProductionPrice] = useState('0');
+const [cardIssuanceProductionPackageDeals, setCardIssuanceProductionPackageDeals] = useState<
+  CatalogPackageDealDraft[]
+>([]);
+const [cardIssuanceProductionIssueTotal, setCardIssuanceProductionIssueTotal] = useState(
+  String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT)
+);
+const [cardIssuanceProductionIssueTotalUnlimited, setCardIssuanceProductionIssueTotalUnlimited] =
+  useState(false);
+const [cardIssuanceProductionDescription, setCardIssuanceProductionDescription] = useState('');
+const [cardIssuanceProductionIcon, setCardIssuanceProductionIcon] = useState('');
+const [cardIssuanceProductionImage, setCardIssuanceProductionImage] = useState('');
+const [cardIssuanceProductionBackgroundColor, setCardIssuanceProductionBackgroundColor] = useState('#ea580c');
+const [cardIssuanceProductionIconUploading, setCardIssuanceProductionIconUploading] = useState(false);
+const [cardIssuanceProductionImageUploading, setCardIssuanceProductionImageUploading] = useState(false);
+/** Last catalog item icon entered (upload/save) — prefills the next Add item form. */
+const cardIssuanceProductionLastIconRef = useRef('');
+const [cardIssuanceProductionEditorError, setCardIssuanceProductionEditorError] = useState('');
+const [cardIssuanceProductionEditorPublishing, setCardIssuanceProductionEditorPublishing] = useState(false);
+const [cardIssuanceServiceCategories, setCardIssuanceServiceCategories] = useState<
+  ProductionServiceCategoryOption[]
+>(() => [...DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS]);
+const [cardIssuanceServiceCategoryEditError, setCardIssuanceServiceCategoryEditError] = useState('');
+const [cardIssuanceServiceCategorySavingId, setCardIssuanceServiceCategorySavingId] = useState<string | null>(
+  null
+);
+/** Last successfully published service categories — guards hydration until API metadata catches up. */
+const cardIssuanceServiceCategoriesCommittedRef = useRef<ProductionServiceCategoryOption[] | null>(null);
+const cardIssuanceEditingProductionRow = useMemo(
+  () => cardIssuanceProductions.find((item) => item.id === cardIssuanceEditingProductionId) ?? null,
+  [cardIssuanceProductions, cardIssuanceEditingProductionId]
+);
+const cardIssuanceProductionEditingIssued = Boolean(cardIssuanceEditingProductionRow?.issued);
+
 const cardIssuanceEditingCouponRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null,
   [cardIssuanceCoupons, cardIssuanceEditingCouponId]
@@ -9163,6 +9401,9 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  );
  /** When true, Payment Amount + Bonus Value define a ratio for variable top-ups (stored as shareTokenMetadata.bonusProportional). */
  const [cardIssuanceBonusRuleBonusProportional, setCardIssuanceBonusRuleBonusProportional] = useState(false);
+ const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(true);
+ const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('1');
+ const [cardIssuancePointSystemSaving, setCardIssuancePointSystemSaving] = useState(false);
  const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
  const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
  /** `{ passive: false }` wheel listeners — React `onWheel` alone may not block number input step (Chromium). */
@@ -9170,6 +9411,7 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const cardIssuanceReloadMaxTopupWheelRefMobile = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceReloadMinTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceReloadMaxTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuancePointRatioWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceBonusRulePaymentWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceBonusRuleBonusWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
@@ -9185,6 +9427,14 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
    () => tiersByLoyaltyRule[cardIssuanceTierRule],
    [tiersByLoyaltyRule, cardIssuanceTierRule]
  );
+const cardIssuanceNewCardMaxTopupCap = useMemo(
+  () => cardIssuanceMaxTopupCapForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY, oracleCadUsdc),
+  [oracleCadUsdc]
+);
+const cardIssuanceNewCardMinTopupFloor = useMemo(
+  () => cardIssuanceMinTopupFloorForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY, oracleCadUsdc),
+  [oracleCadUsdc]
+);
  const setCardIssuanceTiers = useCallback((updater: SetStateAction<CardIssuanceTierRow[]>) => {
    setTiersByLoyaltyRule((prev) => {
      const rule = cardIssuanceTierRuleRef.current;
@@ -9196,8 +9446,8 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
    });
  }, []);
  const applyCardIssuanceQuickDefaultRewardsProgram = useCallback(() => {
-   const minS = String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT);
-   const maxS = String(CARD_ISSUANCE_MAX_TOPUP_MAX);
+  const minS = String(cardIssuanceNewCardMinTopupFloor);
+  const maxS = String(cardIssuanceNewCardMaxTopupCap);
    setCardIssuanceMinTopup(minS);
    setCardIssuanceMaxTopup(maxS);
    setCardIssuanceTierRule('single');
@@ -9218,9 +9468,14 @@ const handlePublishCardIssuanceRef = useRef<
   (opts?: {
     bonusRulesOverride?: CardIssuanceBonusRuleRow[];
     couponsOverride?: CardIssuanceCouponRow[];
+    productionsOverride?: CardIssuanceProductionRow[];
+    itemCategoryOverride?: ProductionServiceCategoryOption[];
     tiersOverride?: CardIssuanceTierRow[];
     minTopupOverride?: string;
+    pointSystemOverride?: CardIssuancePointSystemMetadata;
+    metadataOnly?: boolean;
     loadingScope?: 'default' | 'bonusEditor';
+    skipOnChainRefresh?: boolean;
   }) => Promise<boolean>
 >(async () => false);
  const [cardIssuanceShareImageUrl, setCardIssuanceShareImageUrl] = useState('');
@@ -9263,6 +9518,8 @@ const handlePublishCardIssuanceRef = useRef<
    meta: CardMetadataFromUri | null;
    /** On-chain `upgradeType`: 0 | 1 | 2 */
    upgradeType: number;
+   /** On-chain token #2 charge reward ratio; 1_000_000 = 1 point per 1 card-currency unit spent. */
+   chargeRewardRatioE6: string | null;
  } | null>(null);
 const cardIssuanceCouponShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
@@ -9448,6 +9705,11 @@ useEffect(() => {
    ketNoCardProgramsEligibleRef.current = ketNoCardProgramsEligible;
  }, [ketNoCardProgramsEligible]);
 
+ const cardIssuanceProgramsOrBusinessActive =
+   activeTab === 'Card Issuance Setup' ||
+   activeTab === 'Business' ||
+   (activeTab === 'Overview' && ketNoCardProgramsEligible);
+
 const cardIssuanceRedeemCouponIdsKey = useMemo(
   () =>
     cardIssuanceCoupons
@@ -9586,10 +9848,16 @@ useEffect(() => {
    activeTab === 'Overview' && ketNoCardProgramsEligible ? 'Card Issuance Setup' : activeTab;
 
  useEffect(() => {
-   if (activeTab !== 'Card Issuance Setup' && !ketNoCardProgramsEligible) {
+   if (activeTab !== 'Card Issuance Setup' && !ketNoCardProgramsEligible && activeTab !== 'Business') {
      setCardIssuanceActiveProgramView('overview');
    }
  }, [activeTab, ketNoCardProgramsEligible]);
+
+ useEffect(() => {
+   if (!isBusinessRoute) return;
+   setActiveTab('Business');
+   setCardIssuanceProductionsPanelOpen(true);
+ }, [isBusinessRoute]);
 
  const cardIssuancePreviewProgram =
    cardIssuanceStoreDisplayName.trim() ||
@@ -9697,8 +9965,8 @@ useEffect(() => {
    if (cad != null && Number.isFinite(cad)) {
      return String(Math.round(cad));
    }
-   return cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT);
- }, [cardIssuanceExistingCard?.meta?.minimumTopupCad, cardIssuanceMinTopup]);
+  return cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT);
+}, [cardIssuanceExistingCard?.meta?.minimumTopupCad, cardIssuanceMinTopup]);
 
  /** Money symbol prefix from `@/services/currency` `fiatPrefix` / `displayFiatPrefixFromCode` (e.g. CA$, $). */
  const cardIssuanceDisplayMoneyPrefix = useMemo(
@@ -9708,6 +9976,28 @@ useEffect(() => {
        CARD_ISSUANCE_BEAMIO_CURRENCY as ICurrency
      ),
    [cardIssuanceExistingCard?.userCard?.currency]
+ );
+ const cardIssuanceCurrencyCode = useMemo(
+   () => (cardIssuanceExistingCard?.userCard?.currency ?? CARD_ISSUANCE_BEAMIO_CURRENCY).trim().toUpperCase(),
+   [cardIssuanceExistingCard?.userCard?.currency]
+ );
+ const cardIssuanceMaxTopupCurrencyCap = useMemo(
+   () => cardIssuanceMaxTopupCapForCurrency(cardIssuanceCurrencyCode, oracleCadUsdc),
+   [cardIssuanceCurrencyCode, oracleCadUsdc]
+ );
+ const cardIssuanceMinTopupCurrencyFloor = useMemo(
+   () => cardIssuanceMinTopupFloorForCurrency(cardIssuanceCurrencyCode, oracleCadUsdc),
+   [cardIssuanceCurrencyCode, oracleCadUsdc]
+ );
+ const cardIssuanceMinTopupFloorLabel = useMemo(
+   () =>
+     `${cardIssuanceDisplayMoneyPrefix}${cardIssuanceMinTopupCurrencyFloor.toLocaleString('en-US')} (${CARD_ISSUANCE_MIN_TOPUP_USDC_MIN.toLocaleString('en-US')} USDC equivalent)`,
+   [cardIssuanceDisplayMoneyPrefix, cardIssuanceMinTopupCurrencyFloor]
+ );
+ const cardIssuanceMaxTopupCapLabel = useMemo(
+   () =>
+     `${cardIssuanceDisplayMoneyPrefix}${cardIssuanceMaxTopupCurrencyCap.toLocaleString('en-US')} (${CARD_ISSUANCE_MAX_TOPUP_MAX.toLocaleString('en-US')} USDC equivalent)`,
+   [cardIssuanceDisplayMoneyPrefix, cardIssuanceMaxTopupCurrencyCap]
  );
 
  const programsOverviewDisplayName = useMemo(() => {
@@ -9771,16 +10061,18 @@ useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
   const metaMin = cardIssuanceExistingCard.meta.minimumTopupCad;
   if (metaMin != null && Number.isFinite(metaMin)) {
-    setCardIssuanceMinTopup(String(Math.round(Number(metaMin))));
+    setCardIssuanceMinTopup(String(Math.max(Math.round(Number(metaMin)), cardIssuanceMinTopupCurrencyFloor)));
   }
   const metaMax = cardIssuanceExistingCard.meta.maximumTopupCad;
   if (metaMax != null && Number.isFinite(metaMax)) {
-    setCardIssuanceMaxTopup(String(Math.round(Number(metaMax))));
+    setCardIssuanceMaxTopup(String(Math.min(Math.round(Number(metaMax)), cardIssuanceMaxTopupCurrencyCap)));
   }
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.minimumTopupCad,
   cardIssuanceExistingCard?.meta?.maximumTopupCad,
+  cardIssuanceMinTopupCurrencyFloor,
+  cardIssuanceMaxTopupCurrencyCap,
 ]);
 
 useEffect(() => {
@@ -9809,6 +10101,37 @@ useEffect(() => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
   cardIssuanceExistingCard?.meta?.bonusRule,
+]);
+
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress) return;
+  const metaPointSystem = cardIssuanceExistingCard.meta?.pointSystem;
+  const chainRatio = cardIssuanceExistingCard.chargeRewardRatioE6;
+  const ratioE6 =
+    metaPointSystem?.chargeRewardRatioE6 && /^\d+$/.test(metaPointSystem.chargeRewardRatioE6)
+      ? metaPointSystem.chargeRewardRatioE6
+      : chainRatio && /^\d+$/.test(chainRatio)
+        ? chainRatio
+        : CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6;
+  let enabled =
+    typeof metaPointSystem?.enabled === 'boolean'
+      ? metaPointSystem.enabled
+      : (() => {
+          try {
+            return BigInt(ratioE6) > 0n;
+          } catch {
+            return true;
+          }
+        })();
+  if (chainRatio && /^\d+$/.test(chainRatio) && BigInt(chainRatio) === 0n) {
+    enabled = false;
+  }
+  setCardIssuancePointSystemEnabled(enabled);
+  setCardIssuancePointRatioInput(formatPointRatioE6ToHuman(ratioE6 === '0' ? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 : ratioE6));
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta?.pointSystem,
+  cardIssuanceExistingCard?.chargeRewardRatioE6,
 ]);
 
 useEffect(() => {
@@ -9998,6 +10321,249 @@ useEffect(() => {
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta,
+]);
+
+useEffect(() => {
+  const meta = cardIssuanceExistingCard?.meta as CardMetadataFromUri | undefined;
+  const metaRecord = meta as CardMetadataFromUri & { itemCategory?: unknown; serviceCategory?: unknown };
+  const parsed = normalizeItemCategoryList(metaRecord?.itemCategory ?? metaRecord?.serviceCategory);
+  const committed = cardIssuanceServiceCategoriesCommittedRef.current;
+  setCardIssuanceServiceCategories((prev) => {
+    const drafts = prev.filter((row) => isDraftServiceCategoryId(row.id));
+    if (committed && committed.length > 0) {
+      if (!serviceCategoryListsEquivalent(parsed, committed)) {
+        return [...committed, ...drafts];
+      }
+    }
+    if (parsed.length > 0) {
+      return [...parsed, ...drafts];
+    }
+    if (!cardIssuanceExistingCard?.cardAddress) {
+      return [...DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS, ...drafts];
+    }
+    return prev;
+  });
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta]);
+
+function hydrateCardIssuanceProductionRowFromShareMeta(
+  production: Record<string, unknown>,
+  idx: number,
+  categoryOptions: ProductionServiceCategoryOption[]
+): CardIssuanceProductionRow {
+  const id =
+    typeof production.id === 'string' && production.id.trim() ? production.id.trim() : undefined;
+  const name =
+    typeof production.name === 'string' && production.name.trim()
+      ? production.name.trim()
+      : `Service ${idx + 1}`;
+  const issuedTokenIdRaw = production.issuedTokenId;
+  const issuedTokenId =
+    typeof issuedTokenIdRaw === 'string' || typeof issuedTokenIdRaw === 'number'
+      ? String(issuedTokenIdRaw).trim()
+      : '';
+  const parentToken = resolvePackageParentTokenIdFromMeta(production);
+  const packageDealEnabled = production.packageDealEnabled === true || Boolean(parentToken);
+  return makeCardIssuanceProductionRow({
+    id,
+    name,
+    subtitle: typeof production.subtitle === 'string' ? production.subtitle : '',
+    globalCategory: normalizeCatalogGlobalCategory(production.category),
+    itemCategory: resolveProductionItemCategoryId(
+      production.itemCategory ?? production.serviceCategory,
+      categoryOptions
+    ),
+    singleSessionPrice:
+      production.singleSessionPrice != null ? String(production.singleSessionPrice) : '0',
+    packageDealEnabled,
+    packageSessions:
+      production.packageSessions != null ? String(production.packageSessions) : '10',
+    packageBonusSessions:
+      production.packageBonusSessions != null ? String(production.packageBonusSessions) : '1',
+    packageTotalPrice:
+      production.packageTotalPrice != null ? String(production.packageTotalPrice) : '0',
+    ...(parentToken ? { packageParentTokenId: parentToken } : {}),
+    issueTotal:
+      production.issueTotal != null
+        ? String(production.issueTotal)
+        : String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT),
+    issueTotalUnlimited: resolveProductionIssueTotalUnlimitedFromHydration(production),
+    icon: typeof production.icon === 'string' ? production.icon : '',
+    backgroundColor: typeof production.backgroundColor === 'string' ? production.backgroundColor : '#ea580c',
+    productionImage: typeof production.productionImage === 'string' ? production.productionImage : '',
+    description: typeof production.description === 'string' ? production.description : '',
+    issued: production.issued === true || Boolean(issuedTokenId),
+    ...(issuedTokenId ? { issuedTokenId } : {}),
+  });
+}
+
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  let cancelled = false;
+  const cardAddressForProductions = cardIssuanceExistingCard.cardAddress;
+  const categoryOptions =
+    cardIssuanceServiceCategories.length > 0
+      ? cardIssuanceServiceCategories
+      : DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS;
+  const metaProductionsRaw =
+    (
+      cardIssuanceExistingCard.meta as CardMetadataFromUri & {
+        productions?: Array<Record<string, unknown>>;
+      }
+    ).productions ?? [];
+  const rowsFromMetadata = metaProductionsRaw.map((production, idx) =>
+    hydrateCardIssuanceProductionRowFromShareMeta(production, idx, categoryOptions)
+  );
+  void (async () => {
+    let rowsFromSeries: CardIssuanceProductionRow[] = [];
+    try {
+      const activeSeries = await fetchCardActiveIssuedProductionSeries(cardAddressForProductions, 50);
+      if (!cancelled && activeSeries.length > 0) {
+        rowsFromSeries = activeSeries.map((item, idx) => {
+          const rootMeta =
+            item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+              ? (item.metadata as Record<string, unknown>)
+              : {};
+          const props =
+            rootMeta.properties && typeof rootMeta.properties === 'object' && !Array.isArray(rootMeta.properties)
+              ? (rootMeta.properties as Record<string, unknown>)
+              : {};
+          const beamioProduction =
+            props.beamioProduction &&
+            typeof props.beamioProduction === 'object' &&
+            !Array.isArray(props.beamioProduction)
+              ? (props.beamioProduction as Record<string, unknown>)
+              : {};
+          const mergedMeta: Record<string, unknown> = {
+            ...rootMeta,
+            ...beamioProduction,
+            issued: true,
+            issuedTokenId: item.tokenId,
+          };
+          const idRaw =
+            (typeof mergedMeta.productionId === 'string' && mergedMeta.productionId.trim()
+              ? mergedMeta.productionId
+              : typeof mergedMeta.id === 'string' && mergedMeta.id.trim()
+                ? mergedMeta.id
+                : '') || '';
+          const tokenId = String(item.tokenId).trim();
+          const issueTotalFromChainRaw = String(
+            (item as { issuedNftMaxSupply?: string }).issuedNftMaxSupply ?? ''
+          ).trim();
+          const issueLeftFromChainRaw = String(
+            (item as { issuedNftRemainingSupply?: string }).issuedNftRemainingSupply ?? ''
+          ).trim();
+          const issueTotalFromChain =
+            issueTotalFromChainRaw && /^\d+$/.test(issueTotalFromChainRaw) ? issueTotalFromChainRaw : '';
+          const issueLeftFromChain =
+            issueLeftFromChainRaw && /^\d+$/.test(issueLeftFromChainRaw) ? issueLeftFromChainRaw : '';
+          const title =
+            typeof mergedMeta.name === 'string' && mergedMeta.name.trim()
+              ? mergedMeta.name
+              : `Service ${idx + 1}`;
+          const parentToken = resolvePackageParentTokenIdFromMeta(mergedMeta);
+          const packageDealEnabled = mergedMeta.packageDealEnabled === true || Boolean(parentToken);
+          return makeCardIssuanceProductionRow({
+            id: idRaw || undefined,
+            name: title,
+            subtitle: typeof mergedMeta.subtitle === 'string' ? mergedMeta.subtitle : '',
+            globalCategory: normalizeCatalogGlobalCategory(mergedMeta.category),
+            itemCategory: resolveProductionItemCategoryId(
+              mergedMeta.itemCategory ?? mergedMeta.serviceCategory,
+              categoryOptions
+            ),
+            singleSessionPrice:
+              mergedMeta.singleSessionPrice != null ? String(mergedMeta.singleSessionPrice) : '0',
+            packageDealEnabled,
+            packageSessions:
+              mergedMeta.packageSessions != null ? String(mergedMeta.packageSessions) : '10',
+            packageBonusSessions:
+              mergedMeta.packageBonusSessions != null ? String(mergedMeta.packageBonusSessions) : '1',
+            packageTotalPrice:
+              mergedMeta.packageTotalPrice != null ? String(mergedMeta.packageTotalPrice) : '0',
+            ...(parentToken ? { packageParentTokenId: parentToken } : {}),
+            issueTotal:
+              issueTotalFromChain ||
+              (mergedMeta.issueTotal != null
+                ? String(mergedMeta.issueTotal)
+                : String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT)),
+            issueTotalUnlimited: resolveProductionIssueTotalUnlimitedFromHydration(
+              mergedMeta,
+              issueTotalFromChain
+            ),
+            icon: typeof mergedMeta.icon === 'string' ? mergedMeta.icon : '',
+            backgroundColor:
+              typeof mergedMeta.backgroundColor === 'string' ? mergedMeta.backgroundColor : '#ea580c',
+            productionImage:
+              typeof mergedMeta.productionImage === 'string' ? mergedMeta.productionImage : '',
+            description: typeof mergedMeta.description === 'string' ? mergedMeta.description : '',
+            issued: true,
+            issuedTokenId: tokenId,
+            ...(issueLeftFromChain ? { issueLeft: issueLeftFromChain } : {}),
+          });
+        });
+      }
+    } catch {
+      /* series channel is best-effort; keep metadata channel */
+    }
+    if (cancelled) return;
+    const rows = [...rowsFromMetadata];
+    for (const sRow of rowsFromSeries) {
+      const idx = rows.findIndex(
+        (row) =>
+          (sRow.issuedTokenId && row.issuedTokenId && sRow.issuedTokenId === row.issuedTokenId) ||
+          row.id === sRow.id
+      );
+      if (idx < 0) {
+        rows.push(sRow);
+      } else {
+        rows[idx] = {
+          ...rows[idx],
+          ...sRow,
+          issued: true,
+          issuedTokenId: sRow.issuedTokenId ?? rows[idx].issuedTokenId,
+          issueLeft: sRow.issueLeft ?? rows[idx].issueLeft,
+        };
+      }
+    }
+    setCardIssuanceProductions((prev) => {
+      if (rows.length === 0 && prev.length > 0) {
+        return prev;
+      }
+      const merged: CardIssuanceProductionRow[] = [];
+      const prevById = new Map(prev.map((item) => [item.id, item] as const));
+      for (const row of rows) {
+        const old = prevById.get(row.id);
+        if (!old) {
+          merged.push(row);
+          continue;
+        }
+        merged.push({
+          ...row,
+          productionImage: row.productionImage ?? old.productionImage ?? '',
+          issued: row.issued || old.issued,
+          issuedTokenId: row.issuedTokenId ?? old.issuedTokenId,
+        });
+      }
+      const mergedIds = new Set(merged.map((item) => item.id));
+      for (const old of prev) {
+        if (old.issued && !mergedIds.has(old.id)) {
+          merged.push(old);
+        }
+      }
+      return merged;
+    });
+    if (!cardIssuanceProductionEditorOpenRef.current) {
+      setCardIssuanceEditingProductionId(null);
+      setCardIssuanceProductionEditorOpen(false);
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta,
+  cardIssuanceServiceCategories,
 ]);
 
  const programsOverviewShareImage = useMemo(() => {
@@ -10283,7 +10849,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    const metaMax = cardIssuanceExistingCard?.meta?.maximumTopupCad;
    let maxVal: number | null = null;
    if (metaMax != null && Number.isFinite(metaMax)) {
-     maxVal = Math.round(Number(metaMax));
+    maxVal = Math.min(Math.round(Number(metaMax)), cardIssuanceMaxTopupCurrencyCap);
    } else {
      const raw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
      const n = raw === '' ? NaN : Number.parseInt(raw, 10);
@@ -10297,6 +10863,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceExistingCard?.userCard?.currency,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
+  cardIssuanceMaxTopupCurrencyCap,
  ]);
 
  const bizNumericNoSpinnerClass =
@@ -10310,6 +10877,15 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    const minRaw = cardIssuanceMinTopup.replace(/,/g, '').trim();
    const formMaxN = maxRaw === '' ? NaN : Number.parseInt(maxRaw, 10);
    const formMinN = minRaw === '' ? NaN : Number.parseInt(minRaw, 10);
+  if (Number.isFinite(formMinN) && formMinN < cardIssuanceMinTopupCurrencyFloor) {
+    return `Minimum top-up must be at least ${cardIssuanceMinTopupFloorLabel}.`;
+  }
+  if (Number.isFinite(formMaxN) && formMaxN > cardIssuanceMaxTopupCurrencyCap) {
+    return `Maximum top-up cannot exceed ${cardIssuanceMaxTopupCapLabel}.`;
+  }
+  if (Number.isFinite(formMinN) && formMinN > cardIssuanceMaxTopupCurrencyCap) {
+    return `Minimum top-up cannot exceed ${cardIssuanceMaxTopupCapLabel}.`;
+  }
    if (metaCap != null && Number.isFinite(metaCap)) {
      if (Number.isFinite(formMaxN) && formMaxN > metaCap) {
        return `Maximum top-up cannot exceed ${metaCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`;
@@ -10340,6 +10916,10 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardIssuanceMaxTopup,
    cardIssuanceMinTopup,
+  cardIssuanceMinTopupCurrencyFloor,
+  cardIssuanceMinTopupFloorLabel,
+  cardIssuanceMaxTopupCapLabel,
+  cardIssuanceMaxTopupCurrencyCap,
   cardIssuanceTierRule,
    cardIssuanceTiers,
  ]);
@@ -10560,8 +11140,8 @@ const cardIssuanceTierEditorValidationError = useMemo(() => {
   }
   const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
   const editingBaseTier = cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID;
-  if (editingBaseTier && cardIssuanceTierEditorThresholdInt < CARD_ISSUANCE_MIN_TOPUP_MIN) {
-    return `Base Tier must be at least ${CARD_ISSUANCE_MIN_TOPUP_MIN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`;
+  if (editingBaseTier && cardIssuanceTierEditorThresholdInt < cardIssuanceMinTopupCurrencyFloor) {
+    return `Base Tier must be at least ${cardIssuanceMinTopupFloorLabel}.`;
   }
   if (!editingBaseTier && cardIssuanceTierEditorThresholdInt <= minTopupN) {
     return 'Reward tiers must be above the Base minimum spending amount.';
@@ -10576,6 +11156,8 @@ const cardIssuanceTierEditorValidationError = useMemo(() => {
 }, [
   cardIssuanceEditingTierId,
   cardIssuanceMinTopup,
+  cardIssuanceMinTopupCurrencyFloor,
+  cardIssuanceMinTopupFloorLabel,
   cardIssuanceTierEditorDiscountNumber,
   cardIssuanceTierEditorName,
   cardIssuanceTierEditorThresholdInt,
@@ -10620,7 +11202,7 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
   if (cardIssuanceCreateLoading) return;
   const nextMinTopup =
     cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
-      ? String(cardIssuanceTierEditorThresholdInt ?? CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
+      ? String(cardIssuanceTierEditorThresholdInt ?? cardIssuanceMinTopupCurrencyFloor)
       : cardIssuanceMinTopup;
   const nextRow = makeCardIssuanceTierRow({
     id: cardIssuanceEditingTierId ?? undefined,
@@ -10660,6 +11242,7 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
   cardIssuanceEditingTierId,
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceMinTopup,
+  cardIssuanceMinTopupCurrencyFloor,
   cardIssuanceTiers,
   cardIssuanceTierEditorBackgroundColor,
   cardIssuanceTierEditorDescription,
@@ -10896,7 +11479,11 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
               couponId: nextRow.id,
               issuedTokenId,
               icon: nextRow.icon,
-              backgroundColor: nextRow.backgroundColor,
+              backgroundColor:
+                effectiveTileBackgroundColorForMetadata({
+                  photo: nextRow.couponImage,
+                  backgroundColor: nextRow.backgroundColor,
+                }) ?? '',
               description: nextRow.description,
               couponImage: nextRow.couponImage ?? '',
             });
@@ -11011,7 +11598,12 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       undefined
     );
 
+    const couponTileBg = effectiveTileBackgroundColorForMetadata({
+      photo: couponImageTrim,
+      backgroundColor,
+    });
     const metaProps = {
+      category: CARD_ISSUANCE_COUPON_NFT_CATEGORY,
       beamioCoupon: {
         couponId: couponRowDraft.id,
         name,
@@ -11019,7 +11611,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
         requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
         ...(dr === 'range' && vfStore && vtStore ? { validFrom: vfStore, validTo: vtStore } : {}),
         ...(icon ? { icon } : {}),
-        ...(backgroundColor ? { backgroundColor } : {}),
+        ...(couponTileBg ? { backgroundColor: couponTileBg } : {}),
         ...(couponImageTrim ? { couponImage: couponImageTrim } : {}),
         ...(description ? { description } : {}),
       },
@@ -11067,15 +11659,21 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     void postRegisterIssuedNftSeries({
       cardAddress: cardAddr,
       tokenId: tokenIdStr,
-      metadata: { ...metaProps.beamioCoupon, issuedTokenId: tokenIdStr },
+      metadata: {
+        category: CARD_ISSUANCE_COUPON_NFT_CATEGORY,
+        ...metaProps.beamioCoupon,
+        issuedTokenId: tokenIdStr,
+      },
     }).catch(() => {});
 
     let redeemErr: string | undefined;
+    let redeemInitialBatch = 0;
     if (cardIssuanceCouponRequiresRedeemCode) {
+      redeemInitialBatch = initialRedeemRegisterBatchCount(issueTotalN);
       const codes: string[] = [];
       const redeemItems: CardIssuanceCouponRedeemItemView[] = [];
       const generatedAt = Date.now();
-      for (let i = 0; i < issueTotalN; i++) {
+      for (let i = 0; i < redeemInitialBatch; i++) {
         const { code } = generateCODE('');
         codes.push(code);
         redeemItems.push({
@@ -11155,6 +11753,15 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     }
     if (redeemErr) {
       setCardIssuanceOwnerAdminNotice({ kind: 'warn', text: redeemErr });
+    } else if (
+      cardIssuanceCouponRequiresRedeemCode &&
+      redeemInitialBatch > 0 &&
+      issueTotalN > redeemInitialBatch
+    ) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'ok',
+        text: `Coupon issued. Registered ${redeemInitialBatch.toLocaleString()} redeem codes (max ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} per on-chain batch). Use + in the Coupons list to register more while issuance remains.`,
+      });
     }
   } catch (e: unknown) {
     setCardIssuanceCouponEditorError(e instanceof Error ? e.message : String(e));
@@ -11190,6 +11797,649 @@ const removeCardIssuanceCouponDraft = useCallback(async (couponId: string) => {
   }
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons]);
 
+const resetCardIssuanceProductionEditorFields = useCallback(() => {
+  setCardIssuanceProductionName('');
+  setCardIssuanceProductionSubtitle('');
+  setCardIssuanceProductionGlobalCategory(DEFAULT_CATALOG_GLOBAL_CATEGORY);
+  setCardIssuanceProductionItemCategory(
+    cardIssuanceServiceCategories[0]?.id ?? DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id
+  );
+  setCardIssuanceProductionPrice('0');
+  setCardIssuanceProductionPackageDeals([]);
+  setCardIssuanceProductionIssueTotal(String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT));
+  setCardIssuanceProductionIssueTotalUnlimited(false);
+  setCardIssuanceProductionDescription('');
+  setCardIssuanceProductionIcon(
+    resolveDefaultCardIssuanceProductionIcon({
+      lastProductionIconRef: cardIssuanceProductionLastIconRef,
+      couponIcon: cardIssuanceCouponIcon,
+      cardShareImageUrl: cardIssuanceShareImageUrl,
+      publishedCardImage: cardIssuanceExistingCard?.meta?.image ?? '',
+    })
+  );
+  setCardIssuanceProductionImage('');
+  setCardIssuanceProductionBackgroundColor('#ea580c');
+}, [
+  cardIssuanceServiceCategories,
+  cardIssuanceCouponIcon,
+  cardIssuanceShareImageUrl,
+  cardIssuanceExistingCard?.meta?.image,
+]);
+
+const commitCardIssuanceServiceCategories = useCallback(
+  async (
+    draftRows: ProductionServiceCategoryOption[],
+    focusCategoryId?: string
+  ): Promise<{ ok: true; focusId: string } | { ok: false }> => {
+    const finalized = finalizeServiceCategoriesByLabelHash(draftRows);
+    if (!finalized.ok) {
+      setCardIssuanceServiceCategoryEditError(finalized.error);
+      return { ok: false };
+    }
+    const { categories, idMap } = finalized;
+    const prevCategories = cardIssuanceServiceCategories;
+    const prevProductions = cardIssuanceProductions;
+    const nextProductions = remapProductionRowsItemCategoryIds(prevProductions, idMap);
+    const productionsChanged = nextProductions !== prevProductions;
+    const focusId = focusCategoryId
+      ? idMap.get(focusCategoryId) ?? focusCategoryId
+      : categories[0]?.id ?? '';
+    setCardIssuanceServiceCategoryEditError('');
+    setCardIssuanceServiceCategories(categories);
+    if (productionsChanged) {
+      setCardIssuanceProductions(nextProductions);
+    }
+    if (focusId) {
+      setCardIssuanceProductionItemCategory(focusId);
+    }
+    if (!cardIssuanceExistingCard?.cardAddress) {
+      return { ok: true, focusId };
+    }
+    cardIssuanceServiceCategoriesCommittedRef.current = categories;
+    setCardIssuanceServiceCategorySavingId(focusId || '__commit__');
+    try {
+      const ok = await handlePublishCardIssuanceRef.current({
+        itemCategoryOverride: categories,
+        ...(productionsChanged ? { productionsOverride: nextProductions } : {}),
+        loadingScope: 'bonusEditor',
+        skipOnChainRefresh: true,
+      });
+      if (!ok) {
+        cardIssuanceServiceCategoriesCommittedRef.current = null;
+        setCardIssuanceServiceCategories(prevCategories);
+        setCardIssuanceProductions(prevProductions);
+        setCardIssuanceServiceCategoryEditError(
+          'Could not save category changes to program metadata. Please try again.'
+        );
+        return { ok: false };
+      }
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev?.meta) return prev;
+        const productionsMeta = productionsChanged
+          ? buildCardIssuanceProductionMetadataPayload(nextProductions) ?? []
+          : prev.meta.productions;
+        return {
+          ...prev,
+          meta: {
+            ...prev.meta,
+            itemCategory: categories,
+            ...(productionsChanged ? { productions: productionsMeta } : {}),
+          },
+        };
+      });
+      cardIssuanceServiceCategoriesCommittedRef.current = null;
+      return { ok: true, focusId };
+    } catch (e: unknown) {
+      setCardIssuanceServiceCategories(prevCategories);
+      setCardIssuanceProductions(prevProductions);
+      setCardIssuanceServiceCategoryEditError(e instanceof Error ? e.message : String(e));
+      return { ok: false };
+    } finally {
+      setCardIssuanceServiceCategorySavingId(null);
+    }
+  },
+  [cardIssuanceExistingCard?.cardAddress, cardIssuanceProductions, cardIssuanceServiceCategories]
+);
+
+const updateCardIssuanceServiceCategoryLabel = useCallback(
+  async (categoryId: string, label: string): Promise<boolean> => {
+    const trimmed = label.trim();
+    if (!trimmed) {
+      setCardIssuanceServiceCategoryEditError('Category name is required.');
+      return false;
+    }
+    const exists = cardIssuanceServiceCategories.some((item) => item.id === categoryId);
+    if (!exists) {
+      setCardIssuanceServiceCategoryEditError('Category not found.');
+      return false;
+    }
+    const draftRows = cardIssuanceServiceCategories.map((item) =>
+      item.id === categoryId ? { ...item, label: trimmed } : item
+    );
+    const result = await commitCardIssuanceServiceCategories(draftRows, categoryId);
+    return result.ok;
+  },
+  [cardIssuanceServiceCategories, commitCardIssuanceServiceCategories]
+);
+
+const addCardIssuanceServiceCategory = useCallback((): { id: string; label: string } => {
+  setCardIssuanceServiceCategoryEditError('');
+  const label = uniqueDefaultNewServiceCategoryLabel(cardIssuanceServiceCategories);
+  const draftId = `${DRAFT_SERVICE_CATEGORY_ID_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  setCardIssuanceServiceCategories((prev) => [...prev, { id: draftId, label }]);
+  setCardIssuanceProductionItemCategory(draftId);
+  return { id: draftId, label };
+}, [cardIssuanceServiceCategories]);
+
+const discardDraftCardIssuanceServiceCategory = useCallback((categoryId: string) => {
+  if (!isDraftServiceCategoryId(categoryId)) return;
+  setCardIssuanceServiceCategories((prev) => {
+    const next = prev.filter((item) => item.id !== categoryId);
+    if (next.length === prev.length) return prev;
+    setCardIssuanceProductionItemCategory((selected) => {
+      if (selected !== categoryId) return selected;
+      return next[0]?.id ?? DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id;
+    });
+    return next.length > 0 ? next : prev;
+  });
+  setCardIssuanceServiceCategoryEditError('');
+}, []);
+
+const closeCardIssuanceProductionsCatalog = useCallback(() => {
+  if (activeTab === 'Business' || isBusinessRoute) {
+    navigate('/native-pos');
+    setActiveTab('Overview');
+  }
+  setCardIssuanceProductionsPanelOpen(false);
+  setCardIssuanceProductionEditorOpen(false);
+  setCardIssuanceEditingProductionId(null);
+  resetCardIssuanceProductionEditorFields();
+  setCardIssuanceProductionEditorError('');
+}, [activeTab, isBusinessRoute, navigate, resetCardIssuanceProductionEditorFields]);
+
+const addCardIssuanceProductionPackageDeal = useCallback(() => {
+  setCardIssuanceProductionPackageDeals((prev) => [
+    ...prev,
+    {
+      id: makeCatalogPackageDealDraftId(),
+      packageSessions: '10',
+      packageBonusSessions: '1',
+      packageTotalPrice: '0',
+    },
+  ]);
+}, []);
+
+const updateCardIssuanceProductionPackageDeal = useCallback(
+  (
+    dealId: string,
+    patch: Partial<Pick<CatalogPackageDealDraft, 'packageSessions' | 'packageBonusSessions' | 'packageTotalPrice'>>
+  ) => {
+    setCardIssuanceProductionPackageDeals((prev) =>
+      prev.map((deal) => (deal.id === dealId ? { ...deal, ...patch } : deal))
+    );
+  },
+  []
+);
+
+const removeCardIssuanceProductionPackageDeal = useCallback((dealId: string) => {
+  setCardIssuanceProductionPackageDeals((prev) => prev.filter((deal) => deal.id !== dealId));
+}, []);
+
+const openCardIssuanceProductionCreate = useCallback(() => {
+  setCardIssuanceProductionEditorError('');
+  setCardIssuanceServiceCategoryEditError('');
+  setCardIssuanceEditingProductionId(null);
+  resetCardIssuanceProductionEditorFields();
+  setCardIssuanceProductionEditorOpen(true);
+}, [resetCardIssuanceProductionEditorFields]);
+
+const openCardIssuanceProductionEdit = useCallback(
+  (productionId: string) => {
+    let row = cardIssuanceProductions.find((item) => item.id === productionId);
+    if (!row) return;
+    if (isCatalogPackageDealRow(row)) {
+      const parentToken = row.packageParentTokenId?.trim();
+      const parentProductionId = row.packageParentProductionId?.trim();
+      const parent =
+        (parentToken
+          ? cardIssuanceProductions.find((item) => item.issuedTokenId?.trim() === parentToken)
+          : undefined) ??
+        (parentProductionId
+          ? cardIssuanceProductions.find((item) => item.id === parentProductionId)
+          : undefined);
+      if (!parent) return;
+      row = parent;
+      productionId = parent.id;
+    }
+    setCardIssuanceProductionEditorError('');
+    setCardIssuanceEditingProductionId(productionId);
+    setCardIssuanceProductionName(row.name);
+    setCardIssuanceProductionSubtitle(row.subtitle);
+    setCardIssuanceProductionGlobalCategory(row.globalCategory);
+    setCardIssuanceProductionItemCategory(row.itemCategory);
+    const displayPrice = catalogProductionDisplayPrice(row);
+    setCardIssuanceProductionPrice(
+      displayPrice != null ? String(displayPrice) : row.singleSessionPrice || '0'
+    );
+    setCardIssuanceProductionIssueTotal(
+      row.issueTotal || String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT)
+    );
+    setCardIssuanceProductionIssueTotalUnlimited(row.issueTotalUnlimited === true);
+    setCardIssuanceProductionDescription(row.description);
+    setCardIssuanceProductionIcon(row.icon || '');
+    setCardIssuanceProductionImage((row.productionImage ?? '').trim());
+    setCardIssuanceProductionBackgroundColor(
+      tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#ea580c')
+    );
+    setCardIssuanceProductionPackageDeals(
+      catalogPackageDealsForBase(cardIssuanceProductions, row).map(packageDealDraftFromProductionRow)
+    );
+    setCardIssuanceProductionEditorOpen(true);
+  },
+  [cardIssuanceProductions]
+);
+
+const closeCardIssuanceProductionEditor = useCallback(() => {
+  setCardIssuanceProductionEditorOpen(false);
+  setCardIssuanceEditingProductionId(null);
+  resetCardIssuanceProductionEditorFields();
+  setCardIssuanceProductionEditorError('');
+}, [resetCardIssuanceProductionEditorFields]);
+
+const removeCardIssuanceProductionDraft = useCallback(
+  async (productionId: string) => {
+    const nextProductions = cardIssuanceProductions.filter((item) => {
+      if (item.id === productionId && !item.issued) return false;
+      if (!item.issued && item.packageParentProductionId?.trim() === productionId) return false;
+      return true;
+    });
+    setCardIssuanceProductions(nextProductions);
+    if (cardIssuanceExistingCard?.cardAddress) {
+      await handlePublishCardIssuanceRef.current({
+        productionsOverride: nextProductions,
+        loadingScope: 'default',
+      });
+    }
+  },
+  [cardIssuanceExistingCard?.cardAddress, cardIssuanceProductions]
+);
+
+const submitCardIssuanceProductionEditor = useCallback(async () => {
+  const editingExistingRow = cardIssuanceEditingProductionId
+    ? cardIssuanceProductions.find((item) => item.id === cardIssuanceEditingProductionId) ?? null
+    : null;
+  const lockIssuedOnChainFields = Boolean(editingExistingRow?.issued);
+  const name = lockIssuedOnChainFields
+    ? (editingExistingRow?.name?.trim() ?? '')
+    : cardIssuanceProductionName.trim();
+  const subtitle = lockIssuedOnChainFields
+    ? (editingExistingRow?.subtitle ?? '')
+    : cardIssuanceProductionSubtitle.trim();
+  const globalCategory = lockIssuedOnChainFields
+    ? editingExistingRow?.globalCategory ?? DEFAULT_CATALOG_GLOBAL_CATEGORY
+    : cardIssuanceProductionGlobalCategory;
+  const itemCategory = lockIssuedOnChainFields
+    ? editingExistingRow?.itemCategory ?? DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id
+    : cardIssuanceProductionItemCategory;
+  const singleSessionPrice = lockIssuedOnChainFields
+    ? (editingExistingRow?.singleSessionPrice ?? '0')
+    : cardIssuanceProductionPrice.trim() || '0';
+  const issueTotalUnlimited = lockIssuedOnChainFields
+    ? editingExistingRow?.issueTotalUnlimited === true
+    : cardIssuanceProductionIssueTotalUnlimited;
+  const issueTotal = lockIssuedOnChainFields
+    ? (editingExistingRow?.issueTotal ?? String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT))
+    : cardIssuanceProductionIssueTotal.trim();
+  const description = cardIssuanceProductionDescription.trim();
+  const icon = cardIssuanceProductionIcon.trim();
+  const productionImage = cardIssuanceProductionImage.trim();
+  const backgroundColor =
+    tierBackgroundColorForPayload(cardIssuanceProductionBackgroundColor.trim()) ?? '#ea580c';
+  rememberCardIssuanceProductionLastIconInput(icon, cardIssuanceProductionLastIconRef);
+
+  if (!name) {
+    setCardIssuanceProductionEditorError('Service name is required.');
+    return;
+  }
+  if (!lockIssuedOnChainFields) {
+    const chargeAmount = productionEffectiveChargeAmount({
+      packageDealEnabled: false,
+      singleSessionPrice,
+      packageTotalPrice: '0',
+    });
+    if (chargeAmount <= 0) {
+      setCardIssuanceProductionEditorError('Price must be greater than 0.');
+      return;
+    }
+  }
+  for (const deal of cardIssuanceProductionPackageDeals) {
+    const packageErr = validateCatalogPackageDealDraft(deal);
+    if (packageErr) {
+      setCardIssuanceProductionEditorError(packageErr);
+      return;
+    }
+  }
+  if (!issueTotalUnlimited) {
+    const issueTotalRaw = issueTotal.replace(/,/g, '').trim();
+    const issueTotalN = Number.parseInt(issueTotalRaw, 10);
+    const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
+    if (
+      !issueTotalRaw ||
+      !Number.isFinite(issueTotalAsFloat) ||
+      !Number.isFinite(issueTotalN) ||
+      issueTotalAsFloat !== issueTotalN ||
+      issueTotalN < 1 ||
+      issueTotalN > CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX
+    ) {
+      setCardIssuanceProductionEditorError(
+        `Total issuance must be a whole number from 1 to ${CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX.toLocaleString()}.`
+      );
+      return;
+    }
+  }
+  setCardIssuanceProductionEditorError('');
+
+  const issueTotalFixed = issueTotalUnlimited
+    ? String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX)
+    : String(Number.parseInt(issueTotal.replace(/,/g, '').trim(), 10));
+
+  const baseRow = makeCardIssuanceProductionRow({
+    id: editingExistingRow?.id,
+    name,
+    subtitle,
+    globalCategory,
+    itemCategory,
+    singleSessionPrice,
+    packageDealEnabled: false,
+    packageSessions: '10',
+    packageBonusSessions: '1',
+    packageTotalPrice: '0',
+    issueTotal: issueTotalFixed,
+    issueTotalUnlimited,
+    icon,
+    backgroundColor,
+    productionImage,
+    description,
+    issued: editingExistingRow?.issued === true,
+    ...(editingExistingRow?.issuedTokenId ? { issuedTokenId: editingExistingRow.issuedTokenId } : {}),
+  });
+
+  const buildPackageRowsForBase = (parent: CardIssuanceProductionRow): CardIssuanceProductionRow[] =>
+    cardIssuanceProductionPackageDeals.map((deal) => {
+      if (deal.issued) {
+        const existing = cardIssuanceProductions.find((item) => item.id === deal.id);
+        if (existing) {
+          return {
+            ...existing,
+            name: parent.name,
+            subtitle: parent.subtitle,
+            globalCategory: parent.globalCategory,
+            itemCategory: parent.itemCategory,
+            icon: parent.icon,
+            backgroundColor: parent.backgroundColor,
+            productionImage: parent.productionImage,
+            description: parent.description,
+            issueTotal: parent.issueTotal,
+            issueTotalUnlimited: parent.issueTotalUnlimited,
+          };
+        }
+      }
+      const parentToken = parent.issuedTokenId?.trim() ?? '';
+      if (parentToken) {
+        return buildPackageProductionRowFromBase(parent, deal, parentToken);
+      }
+      return buildPackageProductionDraftRowFromBase(parent, deal);
+    });
+
+  const mergeCatalogBaseAndPackageRows = (
+    prev: CardIssuanceProductionRow[],
+    parent: CardIssuanceProductionRow,
+    packageRows: CardIssuanceProductionRow[]
+  ): CardIssuanceProductionRow[] => {
+    const withoutLinked = prev.filter((item) => {
+      if (item.id === parent.id) return false;
+      if (!isCatalogPackageDealRow(item)) return true;
+      if (item.packageParentProductionId?.trim() === parent.id) return false;
+      const parentToken = parent.issuedTokenId?.trim();
+      if (parentToken && item.packageParentTokenId?.trim() === parentToken) return false;
+      return true;
+    });
+    return [...withoutLinked, parent, ...packageRows];
+  };
+
+  const issueCatalogProductionNftOnChain = async (
+    row: CardIssuanceProductionRow,
+    cardAddr: string,
+    ownerKey: string
+  ): Promise<CardIssuanceProductionRow | null> => {
+    const issueTotalForRow = computeProductionIssueTotalN(row);
+    const metaProps = buildProductionIssuedNftMetaProps(row);
+    const nftData = encodeCreateIssuedNft(row.name.trim(), 0, 0, issueTotalForRow, 0, '0');
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const ownerSig = await signExecuteForOwner(ownerKey, cardAddr, nftData, deadline, nonce);
+    const descFirst =
+      row.description.trim() ||
+      (row.packageDealEnabled
+        ? `Program package: ${row.name.trim()}`
+        : `Program service: ${row.name.trim()}`);
+    const createRes = await postCardCreateIssuedNft({
+      cardAddress: cardAddr,
+      data: nftData,
+      deadline,
+      nonce,
+      ownerSignature: ownerSig,
+      description: descFirst,
+      background_color: row.backgroundColor.trim() || '#ea580c',
+      metadata_extra_properties: metaProps,
+    });
+    if (!createRes.success) {
+      setCardIssuanceProductionEditorError(createRes.error ?? 'Failed to create catalog NFT on-chain.');
+      return null;
+    }
+    const issuedRaw = createRes.issuedNftTokenId?.trim();
+    if (!issuedRaw) {
+      setCardIssuanceProductionEditorError(
+        'Catalog NFT was submitted but the server did not return issuedNftTokenId. Please retry.'
+      );
+      return null;
+    }
+    let newTokenId: bigint;
+    try {
+      newTokenId = BigInt(issuedRaw);
+    } catch {
+      setCardIssuanceProductionEditorError('Server returned an invalid issuedNftTokenId. Please retry.');
+      return null;
+    }
+    const tokenIdStr = String(newTokenId);
+    void postRegisterIssuedNftSeries({
+      cardAddress: cardAddr,
+      tokenId: tokenIdStr,
+      metadata: {
+        ...metaProps,
+        productionId: row.id,
+        issuedTokenId: tokenIdStr,
+      },
+    }).catch(() => {});
+    return {
+      ...row,
+      issued: true,
+      issuedTokenId: tokenIdStr,
+    };
+  };
+
+  const packageRowsDraft = buildPackageRowsForBase(baseRow);
+
+  if (cardIssuanceEditingProductionId) {
+    let nextProductions = mergeCatalogBaseAndPackageRows(
+      cardIssuanceProductions,
+      baseRow,
+      packageRowsDraft
+    );
+    setCardIssuanceProductions(nextProductions);
+
+    if (cardIssuanceExistingCard?.cardAddress) {
+      const p0 = profiles?.[0];
+      if (!p0?.privateKeyArmor?.trim()) {
+        setCardIssuanceProductionEditorError(
+          'Unlock your wallet; program owner key is required to issue package deals.'
+        );
+        return;
+      }
+      setCardIssuanceProductionEditorPublishing(true);
+      try {
+        const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+        const wallet = new ethers.Wallet(p0.privateKeyArmor.trim());
+        const chainOwner = ethers.getAddress(
+          await withPromiseTimeout(getCardOwner(cardAddr), 20_000, 'card.owner()')
+        );
+        if (chainOwner !== ethers.getAddress(wallet.address)) {
+          setCardIssuanceProductionEditorError(
+            'Package issuance requires the Beamio program card owner wallet. Switch to owner in Wallet, then retry.'
+          );
+          return;
+        }
+
+        if (baseRow.issued && baseRow.issuedTokenId?.trim()) {
+          const issuedPackages: CardIssuanceProductionRow[] = [];
+          for (const pkgRow of packageRowsDraft) {
+            if (pkgRow.issued) {
+              issuedPackages.push(pkgRow);
+              continue;
+            }
+            const issuedPkg = await issueCatalogProductionNftOnChain(
+              pkgRow,
+              cardAddr,
+              p0.privateKeyArmor.trim()
+            );
+            if (!issuedPkg) return;
+            issuedPackages.push(issuedPkg);
+          }
+          nextProductions = mergeCatalogBaseAndPackageRows(nextProductions, baseRow, issuedPackages);
+          setCardIssuanceProductions(nextProductions);
+        }
+
+        const ok = await handlePublishCardIssuanceRef.current({
+          productionsOverride: nextProductions,
+          loadingScope: 'bonusEditor',
+        });
+        if (!ok) {
+          setCardIssuanceProductionEditorError(
+            'Could not save service changes. Fix any publish validation errors and try again.'
+          );
+        } else {
+          setCardIssuanceProductionEditorOpen(false);
+          setCardIssuanceEditingProductionId(null);
+          resetCardIssuanceProductionEditorFields();
+        }
+      } catch (e: unknown) {
+        setCardIssuanceProductionEditorError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setCardIssuanceProductionEditorPublishing(false);
+      }
+    } else {
+      setCardIssuanceProductionEditorOpen(false);
+      setCardIssuanceEditingProductionId(null);
+      resetCardIssuanceProductionEditorFields();
+    }
+    return;
+  }
+
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    let nextProductions: CardIssuanceProductionRow[] = [];
+    setCardIssuanceProductions((prev) => {
+      nextProductions = mergeCatalogBaseAndPackageRows(prev, baseRow, packageRowsDraft);
+      return nextProductions;
+    });
+    setCardIssuanceProductionEditorOpen(false);
+    setCardIssuanceEditingProductionId(null);
+    resetCardIssuanceProductionEditorFields();
+    return;
+  }
+
+  const p0 = profiles?.[0];
+  if (!p0?.privateKeyArmor?.trim()) {
+    setCardIssuanceProductionEditorError('Unlock your wallet; program owner key is required to issue services.');
+    return;
+  }
+
+  setCardIssuanceProductionEditorPublishing(true);
+  try {
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const wallet = new ethers.Wallet(p0.privateKeyArmor.trim());
+    const chainOwner = ethers.getAddress(
+      await withPromiseTimeout(getCardOwner(cardAddr), 20_000, 'card.owner()')
+    );
+    if (chainOwner !== ethers.getAddress(wallet.address)) {
+      setCardIssuanceProductionEditorError(
+        'Service issuance requires the Beamio program card owner wallet. Switch to owner in Wallet, then retry.'
+      );
+      return;
+    }
+
+    const issuedBase = await issueCatalogProductionNftOnChain(
+      baseRow,
+      cardAddr,
+      p0.privateKeyArmor.trim()
+    );
+    if (!issuedBase) return;
+
+    const parentToken = issuedBase.issuedTokenId?.trim() ?? '';
+    const issuedPackages: CardIssuanceProductionRow[] = [];
+    for (const deal of cardIssuanceProductionPackageDeals) {
+      const pkgRow = buildPackageProductionRowFromBase(issuedBase, deal, parentToken);
+      const issuedPkg = await issueCatalogProductionNftOnChain(
+        pkgRow,
+        cardAddr,
+        p0.privateKeyArmor.trim()
+      );
+      if (!issuedPkg) return;
+      issuedPackages.push(issuedPkg);
+    }
+
+    let nextProductions: CardIssuanceProductionRow[] = [];
+    setCardIssuanceProductions((prev) => {
+      nextProductions = mergeCatalogBaseAndPackageRows(prev, issuedBase, issuedPackages);
+      return nextProductions;
+    });
+    const metadataOk = await handlePublishCardIssuanceRef.current({
+      productionsOverride: nextProductions,
+      loadingScope: 'bonusEditor',
+    });
+    if (metadataOk) {
+      setCardIssuanceProductionEditorOpen(false);
+      setCardIssuanceEditingProductionId(null);
+      resetCardIssuanceProductionEditorFields();
+    } else {
+      setCardIssuanceProductionEditorError(
+        'Service was saved on-chain, but updating share metadata failed. Try Publish again.'
+      );
+    }
+  } catch (e: unknown) {
+    setCardIssuanceProductionEditorError(e instanceof Error ? e.message : String(e));
+  } finally {
+    setCardIssuanceProductionEditorPublishing(false);
+  }
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceProductionDescription,
+  cardIssuanceProductionIcon,
+  cardIssuanceProductionImage,
+  cardIssuanceProductionBackgroundColor,
+  cardIssuanceProductionName,
+  cardIssuanceProductionPackageDeals,
+  cardIssuanceProductionPrice,
+  cardIssuanceProductionIssueTotal,
+  cardIssuanceProductionIssueTotalUnlimited,
+  cardIssuanceProductionGlobalCategory,
+  cardIssuanceProductionItemCategory,
+  cardIssuanceProductionSubtitle,
+  cardIssuanceEditingProductionId,
+  cardIssuanceProductions,
+  profiles,
+  resetCardIssuanceProductionEditorFields,
+]);
+
 const issueCardIssuanceCoupon = useCallback(async (couponId: string) => {
   const nextCoupons = cardIssuanceCoupons.map((item) => (item.id === couponId ? { ...item, issued: true } : item));
   setCardIssuanceCoupons(nextCoupons);
@@ -11206,9 +12456,9 @@ const registerCardIssuanceCouponRedeemCodes = useCallback(
     const coupon = cardIssuanceCoupons.find((item) => item.id === couponId);
     if (!coupon?.issued || !coupon.requiresRedeemCode) return;
     const issueLeftN = parseCardIssuanceCouponIssueLeftN(coupon);
-    const batchCount = resolveCardIssuanceCouponRedeemBatchCount(
-      requestedCount,
+    const batchCount = resolveRedeemRegisterBatchCount(
       issueLeftN,
+      requestedCount,
       cardIssuanceCouponRedeemBatchQty[couponId]
     );
     if (batchCount <= 0) {
@@ -11355,7 +12605,7 @@ const registerCardIssuanceCouponRedeemCodes = useCallback(
         text:
           batchCount === 1
             ? '1 redeem code registered on-chain.'
-            : `${batchCount.toLocaleString()} redeem codes registered on-chain in one batch.`,
+            : `${batchCount.toLocaleString()} redeem codes registered on-chain in one batch (max ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} per batch).`,
       });
     } catch (e: unknown) {
       setCardIssuanceOwnerAdminNotice({
@@ -11525,7 +12775,10 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
              setCardIssuanceMerchantImageUrl('');
              return;
            }
-           setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+           setCardIssuanceExistingCard((prev) => {
+             if (!prev?.meta) return prev;
+             return { ...prev, meta: { ...prev.meta, merchantImage: url } };
+           });
          }
        } else {
          setCardIssuanceCreateError('Merchant image upload failed.');
@@ -11553,6 +12806,10 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
          setCardIssuanceCreateError(r.error ?? 'Failed to remove merchant image on server.');
          return;
        }
+       setCardIssuanceExistingCard((prev) => {
+         if (!prev?.meta) return prev;
+         return { ...prev, meta: { ...prev.meta, merchantImage: '' } };
+       });
        setCardIssuanceMerchantImageUrl('');
        setCardIssuanceMerchantImageClearPending(false);
        if (cardIssuanceMerchantImageFileRef.current) {
@@ -11561,7 +12818,6 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        if (cardIssuanceMerchantImageIssuedPanelFileRef.current) {
          cardIssuanceMerchantImageIssuedPanelFileRef.current.value = '';
        }
-       setCardIssuanceOnChainRefreshNonce((n) => n + 1);
      } finally {
        setCardIssuanceMerchantImageUploading(false);
      }
@@ -11576,6 +12832,80 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      cardIssuanceMerchantImageIssuedPanelFileRef.current.value = '';
    }
  }, [cardIssuanceExistingCard?.cardAddress]);
+
+const handleCardIssuanceProductionIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  async (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceProductionEditorError(
+        'Profile not available for upload. Open Settings and ensure your wallet is ready.'
+      );
+      return;
+    }
+    setCardIssuanceProductionEditorError('');
+    setCardIssuanceProductionIconUploading(true);
+    try {
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      if (hash) {
+        const nextIcon = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+        setCardIssuanceProductionIcon(nextIcon);
+        rememberCardIssuanceProductionLastIconInput(nextIcon, cardIssuanceProductionLastIconRef);
+      } else {
+        setCardIssuanceProductionEditorError('Item icon upload failed.');
+      }
+    } catch (err: unknown) {
+      setCardIssuanceProductionEditorError(err instanceof Error ? err.message : 'Item icon upload failed.');
+    } finally {
+      setCardIssuanceProductionIconUploading(false);
+    }
+  },
+  [profiles]
+);
+
+const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  async (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceProductionEditorError(
+        'Profile not available for upload. Open Settings and ensure your wallet is ready.'
+      );
+      return;
+    }
+    setCardIssuanceProductionEditorError('');
+    setCardIssuanceProductionImageUploading(true);
+    try {
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      if (hash) {
+        setCardIssuanceProductionImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+      } else {
+        setCardIssuanceProductionEditorError('Background photo upload failed.');
+      }
+    } catch (err: unknown) {
+      setCardIssuanceProductionEditorError(
+        err instanceof Error ? err.message : 'Background photo upload failed.'
+      );
+    } finally {
+      setCardIssuanceProductionImageUploading(false);
+    }
+  },
+  [profiles]
+);
+
+const clearCardIssuanceProductionIcon = useCallback(() => {
+  setCardIssuanceProductionIcon('');
+}, []);
+
+const clearCardIssuanceProductionImage = useCallback(() => {
+  setCardIssuanceProductionImage('');
+}, []);
 
 const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
@@ -11730,9 +13060,15 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      opts?: {
        bonusRulesOverride?: CardIssuanceBonusRuleRow[];
       couponsOverride?: CardIssuanceCouponRow[];
+      productionsOverride?: CardIssuanceProductionRow[];
+      itemCategoryOverride?: ProductionServiceCategoryOption[];
       tiersOverride?: CardIssuanceTierRow[];
       minTopupOverride?: string;
+      pointSystemOverride?: CardIssuancePointSystemMetadata;
+      metadataOnly?: boolean;
        loadingScope?: 'default' | 'bonusEditor';
+      /** Metadata-only publish that already patches local card meta (e.g. itemCategory chips). */
+      skipOnChainRefresh?: boolean;
      }
    ): Promise<boolean> => {
    const loadingScope = opts?.loadingScope ?? 'default';
@@ -11765,7 +13101,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
   const tiersRowsForPublish = opts?.tiersOverride ??
     (useQuickDefaultRewardsNewCard
-     ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT))
+     ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(cardIssuanceNewCardMinTopupFloor))
       : cardIssuanceTiers);
    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish);
    if (tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
@@ -11795,7 +13131,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      }
    }
    const minTopupRaw = (
-    opts?.minTopupOverride ?? (useQuickDefaultRewardsNewCard ? String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT) : cardIssuanceMinTopup)
+    opts?.minTopupOverride ?? (useQuickDefaultRewardsNewCard ? String(cardIssuanceNewCardMinTopupFloor) : cardIssuanceMinTopup)
    ).replace(/,/g, '').trim();
    if (minTopupRaw === '') {
      setCardIssuanceCreateError('Minimum top-up is required.');
@@ -11812,7 +13148,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      return false;
    }
    const maxTopupRaw = (
-     useQuickDefaultRewardsNewCard ? String(CARD_ISSUANCE_MAX_TOPUP_MAX) : cardIssuanceMaxTopup
+    useQuickDefaultRewardsNewCard ? String(cardIssuanceNewCardMaxTopupCap) : cardIssuanceMaxTopup
    ).replace(/,/g, '').trim();
    if (maxTopupRaw === '') {
      setCardIssuanceCreateError('Maximum top-up is required.');
@@ -11820,9 +13156,9 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    }
    const maxTopupN = Number.parseInt(maxTopupRaw, 10);
    const maxTopupAsFloat = parseFloat(maxTopupRaw);
-   if (minTopupN < CARD_ISSUANCE_MIN_TOPUP_MIN) {
+  if (minTopupN < cardIssuanceMinTopupCurrencyFloor) {
      setCardIssuanceCreateError(
-       `Minimum top-up must be at least ${CARD_ISSUANCE_MIN_TOPUP_MIN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`
+      `Minimum top-up must be at least ${cardIssuanceMinTopupFloorLabel}.`
      );
      return false;
    }
@@ -11834,12 +13170,18 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      setCardIssuanceCreateError('Maximum top-up must be a whole number (no decimals).');
      return false;
    }
-   if (maxTopupN > CARD_ISSUANCE_MAX_TOPUP_MAX) {
+  if (maxTopupN > cardIssuanceMaxTopupCurrencyCap) {
      setCardIssuanceCreateError(
-       `Maximum top-up must not exceed ${CARD_ISSUANCE_MAX_TOPUP_MAX} ${CARD_ISSUANCE_BEAMIO_CURRENCY}.`
+      `Maximum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
      );
      return false;
    }
+  if (minTopupN > cardIssuanceMaxTopupCurrencyCap) {
+    setCardIssuanceCreateError(
+      `Minimum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
+    );
+    return false;
+  }
    if (minTopupN > maxTopupN) {
      setCardIssuanceCreateError('Minimum top-up cannot be greater than maximum top-up.');
      return false;
@@ -11902,6 +13244,20 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
        );
     const couponsRowsForPublish = opts?.couponsOverride ?? cardIssuanceCoupons;
     const couponsPayloadForPublish = buildCardIssuanceCouponMetadataPayload(couponsRowsForPublish);
+    const productionsRowsForPublish = opts?.productionsOverride ?? cardIssuanceProductions;
+    const productionsPayloadForPublish = buildCardIssuanceProductionMetadataPayload(productionsRowsForPublish);
+    const itemCategoryRowsForPublish = (
+      opts?.itemCategoryOverride ?? cardIssuanceServiceCategories
+    ).filter((row) => !isDraftServiceCategoryId(row.id));
+    const pointSystemForPublish: CardIssuancePointSystemMetadata =
+      opts?.pointSystemOverride ?? {
+        enabled: cardIssuancePointSystemEnabled,
+        chargeRewardRatioE6:
+          parsePointRatioHumanToE6(cardIssuancePointRatioInput)?.toString() ??
+          cardIssuanceExistingCard?.chargeRewardRatioE6 ??
+          CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
+        rewardTokenId: CARD_ISSUANCE_POINT_REWARD_TOKEN_ID,
+      };
      const shareTokenMetadataForPublish = {
        name: metaName,
        minimumTopup: minTopupN,
@@ -11917,7 +13273,12 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
              bonusRules: bonusPayloadForPublish,
            }
          : {}),
+       pointSystem: pointSystemForPublish,
       coupons: couponsPayloadForPublish ?? [],
+      productions: productionsPayloadForPublish ?? [],
+      ...(itemCategoryRowsForPublish.length > 0
+        ? { itemCategory: itemCategoryRowsForPublish }
+        : {}),
        ...(cardIssuanceCurrencySymbol.trim() ? { Symbol: cardIssuanceCurrencySymbol.trim() } : {}),
        ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
        ...(cardIssuanceMerchantImageUrl.trim() ? { merchantImage: cardIssuanceMerchantImageUrl.trim() } : {}),
@@ -11934,7 +13295,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
 
      let res: { success: boolean; cardAddress?: string; hash?: string; error?: string };
      if (cardIssuanceExistingCard?.cardAddress) {
-       if (tiersPayload && tiersPayload.length > 0) {
+      if (!opts?.metadataOnly && tiersPayload && tiersPayload.length > 0) {
          const pk = profiles?.[0]?.privateKeyArmor;
          if (!pk) {
            setCardIssuanceCreateError('Wallet key not available. Unlock your wallet to update tiers on-chain.');
@@ -11990,7 +13351,9 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
          ? ethers.getAddress(cardIssuanceExistingCard.cardAddress)
          : undefined);
     if (res.success && resolvedPublishCardAddr) {
-       setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+       if (!opts?.skipOnChainRefresh) {
+         setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+       }
        const metadataOnlyPublish = Boolean(cardIssuanceExistingCard);
        const txHashFromRes =
          !metadataOnlyPublish && 'hash' in res
@@ -12109,7 +13472,11 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    cardIssuanceStoreDisplayName,
    cardIssuanceBonusRules,
   cardIssuanceCoupons,
+  cardIssuanceProductions,
+  cardIssuanceServiceCategories,
    cardIssuanceBonusRulesPayload,
+   cardIssuancePointSystemEnabled,
+   cardIssuancePointRatioInput,
    cardIssuanceTiers,
    cardIssuanceTierRule,
    cardIssuanceShareImageUrl,
@@ -12119,6 +13486,12 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    cardIssuanceDescription,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
+  cardIssuanceMinTopupCurrencyFloor,
+  cardIssuanceMinTopupFloorLabel,
+  cardIssuanceMaxTopupCapLabel,
+  cardIssuanceMaxTopupCurrencyCap,
+  cardIssuanceNewCardMinTopupFloor,
+  cardIssuanceNewCardMaxTopupCap,
    cardIssuanceExistingCard,
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardConfiguratorDraftEoaKey,
@@ -12130,6 +13503,96 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
 useEffect(() => {
   handlePublishCardIssuanceRef.current = handlePublishCardIssuance;
 }, [handlePublishCardIssuance]);
+
+ const handleSaveCardIssuancePointSystem = useCallback(async () => {
+   const cardAddress = cardIssuanceExistingCard?.cardAddress;
+   if (!cardAddress) return;
+   setCardIssuanceCreateError('');
+   setCardIssuanceOwnerAdminNotice(null);
+   const ratioParsed = parsePointRatioHumanToE6(cardIssuancePointRatioInput);
+   if (cardIssuancePointSystemEnabled && (ratioParsed == null || ratioParsed <= 0n)) {
+     setCardIssuanceCreateError('Point ratio must be greater than 0 when the point system is on.');
+     return;
+   }
+   const ratioMaxE6 = BigInt(CARD_ISSUANCE_POINT_RATIO_MAX) * 1_000_000n;
+   if (ratioParsed != null && ratioParsed > ratioMaxE6) {
+     setCardIssuanceCreateError(`Point ratio cannot exceed ${CARD_ISSUANCE_POINT_RATIO_MAX} points per sale unit.`);
+     return;
+   }
+   const nextRatioE6 = cardIssuancePointSystemEnabled ? ratioParsed ?? 0n : 0n;
+   const pointSystemPayload: CardIssuancePointSystemMetadata = {
+     enabled: cardIssuancePointSystemEnabled,
+     chargeRewardRatioE6: nextRatioE6.toString(),
+     rewardTokenId: CARD_ISSUANCE_POINT_REWARD_TOKEN_ID,
+   };
+   const pk = profiles?.[0]?.privateKeyArmor;
+   if (!pk) {
+     setCardIssuanceCreateError('Wallet key not available. Unlock the owner wallet to update point settings.');
+     return;
+   }
+   setCardIssuancePointSystemSaving(true);
+   try {
+     const cardAddrNorm = ethers.getAddress(cardAddress);
+     const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+     const chainOwner = await getCardOwner(cardAddrNorm);
+     if (ethers.getAddress(chainOwner) !== signerAddr) {
+       setCardIssuanceCreateError('Point settings require the card owner wallet. Switch to the owner wallet and try again.');
+       return;
+     }
+     const currentRatio = cardIssuanceExistingCard?.chargeRewardRatioE6;
+     if (!currentRatio || BigInt(currentRatio) !== nextRatioE6) {
+       const data = encodeSetChargeRewardRatio(nextRatioE6);
+       const deadline = Math.floor(Date.now() / 1000) + 3600;
+       const nonce = ethers.hexlify(ethers.randomBytes(32));
+       const ownerSignature = await signExecuteForOwner(pk, cardAddrNorm, data, deadline, nonce);
+       const txRes = await postExecuteForOwner({
+         cardAddress: cardAddrNorm,
+         data,
+         deadline,
+         nonce,
+         ownerSignature,
+       });
+       if (!txRes.success) {
+         setCardIssuanceCreateError(txRes.error ?? 'Could not update on-chain point ratio.');
+         return;
+       }
+     }
+     const metadataOk = await handlePublishCardIssuanceRef.current({
+       pointSystemOverride: pointSystemPayload,
+       metadataOnly: true,
+       loadingScope: 'bonusEditor',
+     });
+     if (!metadataOk) return;
+     setCardIssuanceExistingCard((prev) =>
+       prev
+         ? {
+             ...prev,
+             chargeRewardRatioE6: nextRatioE6.toString(),
+             meta: prev.meta
+               ? { ...prev.meta, pointSystem: pointSystemPayload }
+               : ({ pointSystem: pointSystemPayload } as CardMetadataFromUri),
+           }
+         : prev
+     );
+     setCardIssuancePointRatioInput(
+       formatPointRatioE6ToHuman(nextRatioE6 === 0n ? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 : nextRatioE6)
+     );
+     setCardIssuanceOwnerAdminNotice({
+       kind: 'ok',
+       text: 'Point settings published. POS and client apps can use card metadata pointSystem.enabled before showing reward points.',
+     });
+   } catch (e: unknown) {
+     setCardIssuanceCreateError(e instanceof Error ? e.message : 'Could not update point settings.');
+   } finally {
+     setCardIssuancePointSystemSaving(false);
+   }
+ }, [
+   cardIssuanceExistingCard?.cardAddress,
+   cardIssuanceExistingCard?.chargeRewardRatioE6,
+   cardIssuancePointRatioInput,
+   cardIssuancePointSystemEnabled,
+   profiles,
+ ]);
 
  const submitCardIssuanceBonusRuleEditor = useCallback(async () => {
    if (!cardIssuanceBonusRuleEditorPayload || cardIssuanceBonusRuleEditorValidationError) return;
@@ -12190,8 +13653,7 @@ useEffect(() => {
  ]);
 
  useEffect(() => {
-   const shouldFetchIssuanceOnChain =
-     activeTab === 'Card Issuance Setup' || (activeTab === 'Overview' && ketNoCardProgramsEligible);
+   const shouldFetchIssuanceOnChain = cardIssuanceProgramsOrBusinessActive;
    if (!shouldFetchIssuanceOnChain) {
      return;
    }
@@ -12224,20 +13686,68 @@ useEffect(() => {
          (await getCardMetadataFrom1155Json(primary)) ??
          (await getCardMetadataFromUri(primary));
        if (cancelled) return;
-       let upgradeType = -1;
+      let upgradeType = -1;
+      let chargeRewardRatioE6: string | null = null;
        try {
          const card = new ethers.Contract(
            primary,
-           ['function upgradeType() view returns (uint8)'],
+          [
+            'function upgradeType() view returns (uint8)',
+            'function chargeRewardRatioE6() view returns (uint256)',
+          ],
            baseRpcProviderDirect
          );
-         const raw = await card.upgradeType();
+        const [raw, ratioRaw] = await Promise.all([
+          card.upgradeType(),
+          card.chargeRewardRatioE6().catch(() => null),
+        ]);
          upgradeType = Number(raw);
+        if (ratioRaw != null) {
+          chargeRewardRatioE6 = BigInt(ratioRaw.toString()).toString();
+        }
        } catch {
          upgradeType = -1;
        }
        if (cancelled) return;
-       setCardIssuanceExistingCard({ cardAddress: primary, userCard, meta, upgradeType });
+      setCardIssuanceExistingCard((prev) => {
+        const committedCategories = cardIssuanceServiceCategoriesCommittedRef.current;
+        let mergedMeta = meta;
+        if (committedCategories && committedCategories.length > 0 && meta) {
+          const parsedCategories = normalizeItemCategoryList(
+            meta.itemCategory ?? meta.serviceCategory
+          );
+          if (!serviceCategoryListsEquivalent(parsedCategories, committedCategories)) {
+            mergedMeta = { ...meta, itemCategory: committedCategories };
+          } else {
+            cardIssuanceServiceCategoriesCommittedRef.current = null;
+          }
+        } else if (
+          prev?.cardAddress?.toLowerCase() === primary.toLowerCase() &&
+          (prev.meta?.itemCategory ?? prev.meta?.serviceCategory) &&
+          meta
+        ) {
+          const fetchedCategories = normalizeItemCategoryList(
+            meta.itemCategory ?? meta.serviceCategory
+          );
+          const prevCategories = normalizeItemCategoryList(
+            prev.meta.itemCategory ?? prev.meta.serviceCategory
+          );
+          if (
+            fetchedCategories.length > 0 &&
+            prevCategories.length > 0 &&
+            !serviceCategoryListsEquivalent(fetchedCategories, prevCategories)
+          ) {
+            mergedMeta = { ...meta, itemCategory: prevCategories };
+          }
+        }
+        return {
+          cardAddress: primary,
+          userCard,
+          meta: mergedMeta,
+          upgradeType,
+          chargeRewardRatioE6,
+        };
+      });
      } catch {
        if (!cancelled) setCardIssuanceExistingCard(null);
      } finally {
@@ -12382,14 +13892,14 @@ useEffect(() => {
      }
     if (draft.rewardsPreset === 'default') {
        setCardIssuanceRewardsPreset('default');
-       setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
-       setCardIssuanceMaxTopup(String(CARD_ISSUANCE_MAX_TOPUP_MAX));
+       setCardIssuanceMinTopup(String(cardIssuanceNewCardMinTopupFloor));
+      setCardIssuanceMaxTopup(String(cardIssuanceNewCardMaxTopupCap));
        setCardIssuanceTierRule('single');
        setTiersByLoyaltyRule((prev) => ({
          ...prev,
          single: reconcileTierThresholdsWithMinTopup(
            defaultCardIssuanceTiers(),
-           String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)
+          String(cardIssuanceNewCardMinTopupFloor)
          ),
        }));
        setCardIssuanceMobileStep(1);
@@ -12404,6 +13914,8 @@ useEffect(() => {
    cardConfiguratorDraftEoaKey,
    cardIssuanceOnchainFetch,
    cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceNewCardMinTopupFloor,
+  cardIssuanceNewCardMaxTopupCap,
  ]);
 
  const persistCardConfiguratorDraftNow = useCallback(() => {
@@ -12592,7 +14104,6 @@ useEffect(() => {
  }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress, profiles?.[0]?.privateKeyArmor, cardIssuanceOnChainRefreshNonce]);
 
  const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('Today');
- const [oracleCadUsdc, setOracleCadUsdc] = useState<number | null>(null);
  /** Ledger scope toggle removed from Transactions UI; table always uses combined ledger (was `All`). */
  const activeLedger = 'All' as const;
  const [txSearchTerm, setTxSearchTerm] = useState('');
@@ -12701,19 +14212,7 @@ useEffect(() => {
    () => bizWalletStoragePartitionLower(profiles?.[0]?.keyID, myAddress),
    [profiles?.[0]?.keyID, myAddress],
  );
- /** EOA/AA → Beamio profile（本地 LS 优先；远程由 Daemon 约 1 分钟 searchUsername 补全） */
- const [addressProfileByLower, setAddressProfileByLower] = useState<Record<string, BeamioAddressProfileRecord>>({});
- useEffect(() => {
-   if (!walletStoragePartitionLower) {
-     setAddressProfileByLower({});
-     return;
-   }
-   setAddressProfileByLower(loadAddressProfileMap(walletStoragePartitionLower));
- }, [walletStoragePartitionLower]);
- const addressProfileByLowerRef = useRef(addressProfileByLower);
- useEffect(() => {
-   addressProfileByLowerRef.current = addressProfileByLower;
- }, [addressProfileByLower]);
+ /** EOA/AA → Beamio profile：`BeamioTagDatabaseProvider` 本地 DB；远程仅 Daemon 分钟任务补全缺失/过期 tag。 */
  /** Staff / POS / Overview: user-issued program BeamioUserCard only (no CCSA / infrastructure fallback). */
  const staffProgramBeamioCardAddress = useMemo((): string | null => {
    if (merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)) {
@@ -13968,12 +15467,25 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
   if (isTerminalsMarketRoute && tab !== 'Staff') {
     navigate('/native-pos');
   }
+   if (tab === 'Business') {
+     navigate('/Business');
+     setActiveTab('Business');
+     setCardIssuanceProductionsPanelOpen(true);
+     setIsMobileMenuOpen(false);
+     return;
+   }
+   if (isBusinessRoute) {
+     navigate('/native-pos');
+   }
    setActiveTab(tab);
    setIsMobileMenuOpen(false);
+   if (tab !== 'Business') {
+     setCardIssuanceProductionsPanelOpen(false);
+   }
    if (tab === 'Transactions') {
      setTransactionsSidebarAccent(opts?.transactionsSidebar ?? 'transactions');
    }
-}, [isTerminalsMarketRoute, navigate]);
+}, [isTerminalsMarketRoute, isBusinessRoute, navigate]);
 
  const mobileHeaderBeamioTag = useMemo(() => {
    const raw =
@@ -13990,8 +15502,9 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
  const mobileHeaderAvatarSrc = useMemo(() => {
    const img = (beamio?.image ?? '').trim();
    if (img) return img;
-   return getImg(mobileHeaderBeamioTag || myAddress || '@Beamio');
- }, [beamio?.image, mobileHeaderBeamioTag, myAddress]);
+   const tag = mobileHeaderBeamioTag !== 'BeamioTag' ? mobileHeaderBeamioTag : undefined;
+   return beamioAvatarImgUrl(tag, profiles?.[0]?.keyID ?? myAddress ?? undefined);
+ }, [beamio?.image, mobileHeaderBeamioTag, profiles?.[0]?.keyID, myAddress, beamioAvatarImgUrl]);
 
 const [mobileFloatingBarOpacity, setMobileFloatingBarOpacity] = useState(1);
 const mobileScrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -14085,15 +15598,15 @@ useEffect(() => {
    try {
      const isAddr = ethers.isAddress(raw);
      const searchKey = isAddr ? ethers.getAddress(raw) : raw;
-     const res = await searchUsername(searchKey);
-     setMessagesNewResults(res?.results ?? []);
+     const res = await searchRemoteAndIngest(searchKey);
+     setMessagesNewResults((res as { results?: searchResult[] } | null | undefined)?.results ?? []);
    } catch {
      setMessagesNewError('Search failed. Try again.');
      setMessagesNewResults([]);
    } finally {
      setMessagesNewLoading(false);
    }
- }, [messagesNewQuery]);
+ }, [messagesNewQuery, searchRemoteAndIngest]);
 
  const startChatWithSearchUser = useCallback(
    async (beamioer: searchResult) => {
@@ -14240,14 +15753,8 @@ useEffect(() => {
    terminals,
  };
  useEffect(() => {
-   const ADDRESS_METADATA_MAX_PER_TICK = 28;
    const run = async (): Promise<void> => {
      const b = addressMetadataMinuteBundleRef.current;
-     const partition = b.partition.trim();
-     if (!partition) return;
-     const disk = loadAddressProfileMap(partition);
-     const mem = addressProfileByLowerRef.current;
-     const lookup = (lower: string) => mem[lower] ?? disk[lower];
      const candidates = new Set<string>();
      for (const tx of b.txs) {
        const raw = tx.raw as Record<string, unknown>;
@@ -14282,31 +15789,12 @@ useEffect(() => {
      for (const t of b.terminals) {
        if (t.eoa && ethers.isAddress(t.eoa)) candidates.add(ethers.getAddress(t.eoa).toLowerCase());
      }
-     const need: string[] = [];
-     for (const lower of candidates) {
-       const r = lookup(lower);
-       if (!r || !beamioTagFromRecord(r)) need.push(lower);
-     }
-     const chunk = need.slice(0, ADDRESS_METADATA_MAX_PER_TICK);
-     const incoming: Record<string, BeamioAddressProfileRecord | null | undefined> = {};
-     for (const lower of chunk) {
-       try {
-         const res = await searchUsername(ethers.getAddress(lower));
-         const peer = pickPeerFromSearchUsernameResponse(res, lower);
-         const rec = recordFromSearchPeer(lower, peer);
-         if (rec) incoming[lower] = rec;
-       } catch {
-         /* untrusted: do not clear local */
-       }
-     }
-     if (Object.keys(incoming).length === 0) return;
-     const nextDisk = mergeProfileMap(disk, incoming);
-     saveAddressProfileMap(partition, nextDisk);
-     setAddressProfileByLower((prev) => mergeProfileMap(prev, incoming));
+     if (candidates.size === 0) return;
+     await ensureProfilesForAddresses([...candidates]);
    };
    registerAddressMetadataMinuteWork(() => run());
    return () => registerAddressMetadataMinuteWork(null);
- }, [registerAddressMetadataMinuteWork]);
+ }, [registerAddressMetadataMinuteWork, ensureProfilesForAddresses]);
  const [isAddTerminalOpen, setIsAddTerminalOpen] = useState(false);
  /** Active Devices → Edit：全屏 Terminal Onboarding，EOA 只读，保存即链上更新 metadata / mint limit。 */
  const [terminalOnboardingEditing, setTerminalOnboardingEditing] = useState<TerminalRecord | null>(null);
@@ -14434,22 +15922,24 @@ useEffect(() => {
    try {
      const isAddressSearch = ethers.isAddress(trimmed);
      const searchKey = isAddressSearch ? ethers.getAddress(trimmed) : trimmed;
-     const res = await searchUsername(searchKey);
+     const res = await searchRemoteAndIngest(searchKey);
      if (deviceValidateAbortRef.current) return;
-     const results = res?.results ?? [];
+     type DeviceHandlePeer = {
+       username?: string;
+       accountName?: string;
+       address?: string;
+       image?: string;
+       first_name?: string;
+       last_name?: string;
+       firstName?: string;
+       lastName?: string;
+     };
+     let results: DeviceHandlePeer[] = [];
+     if (res && typeof res === 'object' && Array.isArray((res as { results?: unknown }).results)) {
+       results = (res as { results: DeviceHandlePeer[] }).results;
+     }
      const norm = trimmed.toLowerCase();
-     let match:
-       | {
-           username?: string
-           accountName?: string
-           address?: string
-           image?: string
-           first_name?: string
-           last_name?: string
-           firstName?: string
-           lastName?: string
-         }
-       | undefined;
+     let match: DeviceHandlePeer | undefined;
      if (isAddressSearch) {
        match = results.find((r: { address?: string }) => {
          const a = (r?.address ?? '').toLowerCase();
@@ -14511,7 +16001,7 @@ useEffect(() => {
    } finally {
      if (!deviceValidateAbortRef.current) setDeviceHandleChecking(false);
    }
- }, []);
+ }, [searchRemoteAndIngest]);
 
  /** Resolved terminal EOA is a subordinate admin (`adminParent != 0`) on a known card — block registration. */
  const [terminalPosSubordinateBlock, setTerminalPosSubordinateBlock] = useState<string | null>(null);
@@ -15949,20 +17439,34 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      setMerchantOwnerProfile(null);
      return;
    }
+   const ownerLower = ethers.getAddress(owner).toLowerCase();
+   const localCapsule = toCapsuleItem(owner);
+   if (localCapsule && beamioTagFromRecord(addressProfileByLowerRef.current[ownerLower])) {
+     setMerchantOwnerProfile({
+       ...localCapsule,
+       username: localCapsule.username ?? localCapsule.accountName,
+       accountName: localCapsule.accountName ?? localCapsule.username,
+     });
+     return;
+   }
    let cancelled = false;
-   const load = async () => {
-     try {
-       const res = await searchUsername(owner);
-       const peer = res?.results?.[0];
-       if (cancelled) return;
-       setMerchantOwnerProfile(peer ?? null);
-     } catch {
-       if (!cancelled) setMerchantOwnerProfile(null);
+   void ensureProfilesForAddresses([owner], { maxPerTick: 1 }).then(() => {
+     if (cancelled) return;
+     const refreshed = toCapsuleItem(owner);
+     if (refreshed) {
+       setMerchantOwnerProfile({
+         ...refreshed,
+         username: refreshed.username ?? refreshed.accountName,
+         accountName: refreshed.accountName ?? refreshed.username,
+       });
+     } else {
+       setMerchantOwnerProfile(null);
      }
+   });
+   return () => {
+     cancelled = true;
    };
-   void load();
-   return () => { cancelled = true; };
- }, [fixedCardMetadata?.cardOwner]);
+ }, [fixedCardMetadata?.cardOwner, ensureProfilesForAddresses, toCapsuleItem]);
 
  /** Init: resolve EOA from same source as left menu (Owner EOA capsule), then start 6s feeder */
  const [feederEoa, setFeederEoa] = useState<string | null>(null);
@@ -16058,20 +17562,12 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
             let ownerDisplayName = '';
             let ownerAccountName = '';
             let ownerImage: string | undefined;
-            try {
-              const res = await searchUsername(ownerAddr);
-              const peer = res?.results?.[0] as Parameters<typeof displayName>[0] | undefined;
-              if (peer) {
-                ownerDisplayName = displayName(peer);
-                ownerAccountName = String(
-                  (peer as { accountName?: string; username?: string }).accountName ??
-                    (peer as { username?: string }).username ??
-                    ''
-                ).replace(/^@/, '');
-                ownerImage = typeof (peer as { image?: string }).image === 'string' ? (peer as { image: string }).image : undefined;
-              }
-            } catch {
-              /* ignore */
+            const ownerRec = addressProfileByLowerRef.current[ownerAddr.toLowerCase()];
+            const ownerCapsule = toBeamioCapsuleItem(ownerRec);
+            if (ownerCapsule) {
+              ownerDisplayName = displayName(ownerCapsule);
+              ownerAccountName = String(ownerCapsule.accountName ?? ownerCapsule.username ?? '').replace(/^@/, '');
+              ownerImage = ownerCapsule.image;
             }
             let issuedLifetime: number | null = null;
             try {
@@ -17952,6 +19448,7 @@ const programsMobileTopNavVisible =
    isTerminalsMarketRoute || (isCardConfiguratorMobileViewport && activeTab === 'Staff');
  const hideMobileFloatingBar =
  !showMobileMerchantFloatingBar ||
+ activeTab === 'Business' ||
  (showBizFirstMembershipOnboarding && activeTab !== 'Card Issuance Setup') ||
  settingsSecurityBackupOpen ||
  (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff');
@@ -18017,9 +19514,17 @@ const walletVaultUsdcBoldLine = useMemo(() => {
  const walletMerchantAvatarSrc = useMemo(() => {
    const img = merchantOwnerProfile?.image?.trim();
    if (img) return img;
-   const seed = merchantOwnerProfile?.username ?? merchantOwnerProfile?.accountName ?? profiles?.[0]?.keyID ?? 'beamio';
-   return getImg(seed);
- }, [merchantOwnerProfile?.image, merchantOwnerProfile?.username, merchantOwnerProfile?.accountName, profiles?.[0]?.keyID]);
+   return getAvatarImgUrl(merchantOwnerProfile?.username ?? merchantOwnerProfile?.accountName, {
+     address: fixedCardMetadata?.cardOwner,
+     profileMap: addressProfileByLower,
+   });
+ }, [
+   merchantOwnerProfile?.image,
+   merchantOwnerProfile?.username,
+   merchantOwnerProfile?.accountName,
+   fixedCardMetadata?.cardOwner,
+   addressProfileByLower,
+ ]);
  const topupMemberTableRowsAll = useMemo((): BizTopupMemberTableRow[] => {
    if (membersMobileDirectTopupRows.length === 0) return membersLoyaltyTopupRows;
    const byKey = new Map<string, BizTopupMemberTableRow>();
@@ -19366,8 +20871,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
        } else {
          const tagRaw = raw as string;
          const tag = tagRaw.startsWith('@') ? tagRaw.slice(1) : tagRaw;
-         const res = await searchUsername(tag);
-         const peer = res?.results?.[0];
+        const res = await searchRemoteAndIngest(tag);
+        const peer = (res as { results?: searchResult[] } | null | undefined)?.results?.[0];
          if (!peer?.address || !ethers.isAddress(peer.address)) {
            throw new Error(`Could not resolve @${tag} to an address. Check the Beamio Tag.`);
          }
@@ -19803,6 +21308,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            Assets
          </NavSectionLabel>
          <NavItem icon={Award} label="Programs" isActive={navChromeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Briefcase} label="Business" isActive={activeTab === 'Business'} onClick={() => handleTabChange('Business')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={ShoppingBag} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            Operations
@@ -19957,7 +21463,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       navChromeTab === 'Market' ||
                       navChromeTab === 'Transactions' ||
                       navChromeTab === 'Settings' ||
-                      navChromeTab === 'Card Issuance Setup'
+                      navChromeTab === 'Card Issuance Setup' ||
+                      activeTab === 'Business'
                     ? 'font-extrabold tracking-tight text-[#0051d1] normal-case'
                     : 'font-extrabold tracking-tighter text-slate-900 normal-case'
             }`}
@@ -19966,8 +21473,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              ? 'Business OS'
               : navChromeTab === 'Overview'
                ? 'Beamio Merchant'
-                : navChromeTab === 'Card Issuance Setup'
+                  : navChromeTab === 'Card Issuance Setup'
                   ? 'Programs'
+                : activeTab === 'Business'
+                  ? 'Business'
                 : activeTab === 'Wallets'
                   ? 'Wallet'
                   : activeTab === 'MembersLoyalty'
@@ -20776,7 +22285,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     {topupMemberTableRowsAll.slice(0, 3).map((row, avi) => (
                       <img
                         key={`${row.memberAddress}-${avi}`}
-                        src={getImg(row.beamioTag?.replace(/^@/, '') || row.memberAddress)}
+                        src={getAvatarImgUrl(row.beamioTag?.replace(/^@/, ''), {
+                          address: row.memberAddress,
+                          profileMap: addressProfileByLower,
+                        })}
                         alt=""
                         className="h-8 w-8 rounded-full border-2 border-white object-cover"
                       />
@@ -23092,7 +24604,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 isHighestRewardTier ? 'bg-white/10 ring-white/30' : 'bg-[#eef1f3] ring-black/[0.04]'
                               }`}>
                                  <img
-                                   src={getImg(tagRaw || row.memberAddress)}
+                                   src={getAvatarImgUrl(tagRaw, { address: row.memberAddress, profileMap: addressProfileByLower })}
                                    alt=""
                                    className="size-full object-cover"
                                  />
@@ -23405,7 +24917,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          >
                            <div className="relative shrink-0">
                              <img
-                               src={getImg(tagRaw || row.memberAddress)}
+                               src={getAvatarImgUrl(tagRaw, { address: row.memberAddress, profileMap: addressProfileByLower })}
                                alt=""
                                className="size-14 rounded-full object-cover"
                              />
@@ -23486,6 +24998,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         membersDirectoryDetailRow.currentCardToken0Balance
                       ),
                        cadPerUsdcOracle: oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK,
+                       profileMap: addressProfileByLower,
                        onClose: () => setMembersDirectoryDetailRow(null),
                        onSendGift: () => {
                          setMembersDirectoryDetailRow(null);
@@ -23512,10 +25025,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                setMessagesChatData(undefined);
                setMessagesNewError(null);
              }}
-             headerAvatarSrc={getImg(
+             headerAvatarSrc={getAvatarImgUrl(
                (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ??
                  (profiles?.[0] as { accountName?: string } | undefined)?.accountName ??
-                 profiles?.[0]?.keyID
+                 beamio?.accountName,
+               {
+                 address: profiles?.[0]?.keyID ?? myAddress ?? undefined,
+                 profileMap: addressProfileByLower,
+               },
              )}
              eoaShortEncrypt={(() => {
 				
@@ -24852,7 +26369,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                                    >
                                      Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
-                                     {cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}
+                                     {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
                                    </p>
                                    {cardIssuancePrimaryBonusRule ? (
                                      <p
@@ -25104,8 +26621,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                Min reload
                              </p>
                              <p className="mt-2 font-manrope text-xl font-bold text-[#1a1a1a]">
-                               C$
-                               {cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}
+                              {cardIssuanceDisplayMoneyPrefix}
+                              {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
                              </p>
                            </div>
                            <div className="h-10 w-px shrink-0 self-center bg-[#dfe3e6]" aria-hidden />
@@ -25241,7 +26758,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                                  >
                                    Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
-                                   {cardIssuanceMinTopup.trim() || String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT)}
+                                   {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
                                  </p>
                                  {cardIssuancePrimaryBonusRule ? (
                                    <p
@@ -25286,9 +26803,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                >
                                  Min. Reload Amount
                                </label>
-                               <span className="text-[9px] font-medium text-[#595c5e]">
-                                 System minimum is C${CARD_ISSUANCE_MIN_TOPUP_MIN}
-                               </span>
+                              <span className="text-[9px] font-medium text-[#595c5e]">
+                                Minimum is {cardIssuanceMinTopupFloorLabel}
+                              </span>
                              </div>
                              <div className="relative">
                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#595c5e]">
@@ -25300,8 +26817,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  type="number"
                                  inputMode="numeric"
                                  autoComplete="off"
-                                 min={CARD_ISSUANCE_MIN_TOPUP_MIN}
-                                 max={CARD_ISSUANCE_MAX_TOPUP_MAX}
+                                 min={cardIssuanceMinTopupCurrencyFloor}
+                                max={cardIssuanceMaxTopupCurrencyCap}
                                  step={1}
                                  value={cardIssuanceMinTopup}
                                  onKeyDown={preventNumericInputStepKeys}
@@ -25320,12 +26837,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    const raw = cardIssuanceMinTopup.replace(/,/g, '').trim();
                                    let v = raw === '' ? NaN : Number.parseInt(raw, 10);
                                    if (!Number.isFinite(v)) {
-                                     setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
+                                     setCardIssuanceMinTopup(String(cardIssuanceMinTopupCurrencyFloor));
                                      return;
                                    }
                                    v = Math.min(
-                                     CARD_ISSUANCE_MAX_TOPUP_MAX,
-                                     Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                                    cardIssuanceMaxTopupCurrencyCap,
+                                     Math.max(cardIssuanceMinTopupCurrencyFloor, v)
                                    );
                                    setCardIssuanceMinTopup(String(v));
                                  }}
@@ -25342,9 +26859,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                >
                                  Max. Reload Amount
                                </label>
-                               <span className="text-right text-[9px] font-medium text-[#595c5e]">
-                                 Locked at $C{CARD_ISSUANCE_MAX_TOPUP_MAX} for simplified Compliance
-                               </span>
+                              <span className="text-right text-[9px] font-medium text-[#595c5e]">
+                                Up to {cardIssuanceMaxTopupCapLabel}
+                              </span>
                              </div>
                              <div className="relative">
                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#595c5e]">
@@ -25356,8 +26873,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  type="number"
                                  inputMode="numeric"
                                  autoComplete="off"
-                                 min={CARD_ISSUANCE_MIN_TOPUP_MIN}
-                                 max={CARD_ISSUANCE_MAX_TOPUP_MAX}
+                                 min={cardIssuanceMinTopupCurrencyFloor}
+                                max={cardIssuanceMaxTopupCurrencyCap}
                                  step={1}
                                  value={cardIssuanceMaxTopup}
                                  onKeyDown={preventNumericInputStepKeys}
@@ -25380,8 +26897,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      return;
                                    }
                                    v = Math.min(
-                                     CARD_ISSUANCE_MAX_TOPUP_MAX,
-                                     Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                                    cardIssuanceMaxTopupCurrencyCap,
+                                     Math.max(cardIssuanceMinTopupCurrencyFloor, v)
                                    );
                                    setCardIssuanceMaxTopup(String(v));
                                  }}
@@ -25578,7 +27095,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </label>
                        <div className="relative">
                              <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-[#1562f0]">
-                               $
+                              {cardIssuanceDisplayMoneyPrefix}
                              </span>
                          <input
                            id="card-issuance-min-topup-desktop"
@@ -25586,8 +27103,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            type="number"
                            inputMode="numeric"
                            autoComplete="off"
-                           min={CARD_ISSUANCE_MIN_TOPUP_MIN}
-                           max={CARD_ISSUANCE_MAX_TOPUP_MAX}
+                           min={cardIssuanceMinTopupCurrencyFloor}
+                          max={cardIssuanceMaxTopupCurrencyCap}
                            step={1}
                            value={cardIssuanceMinTopup}
                            onKeyDown={preventNumericInputStepKeys}
@@ -25606,12 +27123,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             const raw = cardIssuanceMinTopup.replace(/,/g, '').trim();
                             let v = raw === '' ? NaN : Number.parseInt(raw, 10);
                             if (!Number.isFinite(v)) {
-                              setCardIssuanceMinTopup(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
+                              setCardIssuanceMinTopup(String(cardIssuanceMinTopupCurrencyFloor));
                               return;
                             }
                             v = Math.min(
-                              CARD_ISSUANCE_MAX_TOPUP_MAX,
-                              Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                              cardIssuanceMaxTopupCurrencyCap,
+                              Math.max(cardIssuanceMinTopupCurrencyFloor, v)
                             );
                             setCardIssuanceMinTopup(String(v));
                           }}
@@ -25627,9 +27144,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        >
                          Maximum Top-up
                        </label>
+                      <p className="ml-1 text-[10px] font-semibold text-[#595c5e]">
+                        Up to {cardIssuanceMaxTopupCapLabel}
+                      </p>
                        <div className="relative">
                              <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-[#1562f0]">
-                               $
+                              {cardIssuanceDisplayMoneyPrefix}
                              </span>
                          <input
                            id="card-issuance-max-topup-desktop"
@@ -25637,8 +27157,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            type="number"
                            inputMode="numeric"
                            autoComplete="off"
-                           min={CARD_ISSUANCE_MIN_TOPUP_MIN}
-                           max={CARD_ISSUANCE_MAX_TOPUP_MAX}
+                           min={cardIssuanceMinTopupCurrencyFloor}
+                          max={cardIssuanceMaxTopupCurrencyCap}
                            step={1}
                            value={cardIssuanceMaxTopup}
                            onKeyDown={preventNumericInputStepKeys}
@@ -25661,8 +27181,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               return;
                             }
                             v = Math.min(
-                              CARD_ISSUANCE_MAX_TOPUP_MAX,
-                              Math.max(CARD_ISSUANCE_MIN_TOPUP_MIN, v)
+                              cardIssuanceMaxTopupCurrencyCap,
+                              Math.max(cardIssuanceMinTopupCurrencyFloor, v)
                             );
                             setCardIssuanceMaxTopup(String(v));
                           }}
@@ -26290,7 +27810,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <h5 className="text-xl font-black tracking-tight text-[#2c2f31]">Your Rewards</h5>
                            </div>
                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#e5e9eb]">
-                             <img src={getImg(profiles?.[0]?.keyID || 'merchant')} alt="" className="h-full w-full object-cover" />
+                             <img
+                               src={getAvatarImgUrl(
+                                 beamio?.accountName ??
+                                   (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ??
+                                   (profiles?.[0] as { accountName?: string } | undefined)?.accountName,
+                                 {
+                                   address: profiles?.[0]?.keyID ?? myAddress ?? undefined,
+                                   profileMap: addressProfileByLower,
+                                 },
+                               )}
+                               alt=""
+                               className="h-full w-full object-cover"
+                             />
                            </div>
                          </div>
 
@@ -26735,7 +28267,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             </label>
                             <div className="relative">
                               <span className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
-                                C$
+                                {cardIssuanceDisplayMoneyPrefix}
                               </span>
                               <input
                                 id="card-issuance-tier-threshold"
@@ -26743,7 +28275,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 type="number"
                                 inputMode="numeric"
                                 autoComplete="off"
-                                min={CARD_ISSUANCE_MIN_TOPUP_MIN}
+                                min={cardIssuanceMinTopupCurrencyFloor}
                                 value={cardIssuanceTierEditorThreshold}
                                 onKeyDown={preventNumericInputStepKeys}
                                 onKeyDownCapture={preventNumericInputStepKeys}
@@ -26758,7 +28290,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 }}
                                 placeholder={
                                   cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
-                                    ? String(CARD_ISSUANCE_MIN_TOPUP_MIN)
+                                    ? String(cardIssuanceMinTopupCurrencyFloor)
                                     : "800"
                                 }
                                 className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
@@ -27240,6 +28772,146 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
                         aria-hidden
                       />
+                      <header className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
+                            Token #2
+                          </span>
+                          <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">
+                            Point system
+                          </h3>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={cardIssuancePointSystemEnabled}
+                          onClick={() => setCardIssuancePointSystemEnabled((v) => !v)}
+                          disabled={cardIssuancePointSystemSaving}
+                          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                            cardIssuancePointSystemEnabled ? 'bg-[#1562f0]' : 'bg-slate-300'
+                          } ${bizFocusRingClass}`}
+                        >
+                          <span
+                            className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                              cardIssuancePointSystemEnabled ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                            aria-hidden
+                          />
+                        </button>
+                      </header>
+                      <div className="rounded-xl border border-[#1562f0]/10 bg-[#f8fbff] p-3 sm:p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#595c5e]">
+                              Current ratio
+                            </p>
+                            <p className="mt-1 font-manrope text-sm font-extrabold text-[#2c2f31] sm:text-base">
+                              {cardIssuancePointSystemEnabled
+                                ? `${formatPointRatioE6Display(
+                                    parsePointRatioHumanToE6(cardIssuancePointRatioInput)?.toString() ??
+                                      cardIssuanceExistingCard.chargeRewardRatioE6 ??
+                                      CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6
+                                  )} point per ${cardIssuanceDisplayMoneyPrefix}1 spent`
+                                : 'Point display is off'}
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${
+                              cardIssuancePointSystemEnabled
+                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {cardIssuancePointSystemEnabled ? 'ON' : 'OFF'}
+                          </span>
+                        </div>
+                        {cardIssuancePointSystemEnabled ? (
+                          <div className="mt-4 space-y-2">
+                            <label
+                              htmlFor="programs-point-ratio"
+                              className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                            >
+                              Points per {cardIssuanceDisplayMoneyPrefix}1 spent
+                            </label>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <input
+                                ref={cardIssuancePointRatioWheelRef}
+                                id="programs-point-ratio"
+                                type="number"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                enterKeyHint="done"
+                                min={0}
+                                max={CARD_ISSUANCE_POINT_RATIO_MAX}
+                                step="0.01"
+                                value={cardIssuancePointRatioInput}
+                                onKeyDown={preventNumericInputStepKeys}
+                                onKeyDownCapture={preventNumericInputStepKeys}
+                                onWheel={preventNumericInputWheelStep}
+                                onChange={(e) =>
+                                  setCardIssuancePointRatioInput(normalizeCardIssuanceBonusRuleInput(e.target.value))
+                                }
+                                onBlur={() => {
+                                  const parsed = parsePointRatioHumanToE6(cardIssuancePointRatioInput);
+                                  if (parsed == null || parsed <= 0n) {
+                                    setCardIssuancePointRatioInput('1');
+                                    return;
+                                  }
+                                  const max = BigInt(CARD_ISSUANCE_POINT_RATIO_MAX) * 1_000_000n;
+                                  setCardIssuancePointRatioInput(
+                                    formatPointRatioE6ToHuman(parsed > max ? max : parsed)
+                                  );
+                                }}
+                                placeholder="1.00"
+                                disabled={cardIssuancePointSystemSaving}
+                                className={`min-w-0 flex-1 rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-bold text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveCardIssuancePointSystem()}
+                                disabled={cardIssuancePointSystemSaving}
+                                className={`inline-flex items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                              >
+                                {cardIssuancePointSystemSaving ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
+                                ) : (
+                                  <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                                )}
+                                Save
+                              </button>
+                            </div>
+                            <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
+                              Saving updates metadata for clients and the on-chain ratio used after successful charges.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] font-medium leading-relaxed text-[#595c5e]">
+                              POS and client apps should hide point balances while this metadata switch is off.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveCardIssuancePointSystem()}
+                              disabled={cardIssuancePointSystemSaving}
+                              className={`inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                            >
+                              {cardIssuancePointSystemSaving ? (
+                                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
+                              ) : (
+                                <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                              )}
+                              Save off
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
+                      <div
+                        className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
+                        aria-hidden
+                      />
                       <header className="mb-3 flex items-center justify-between gap-2">
                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Coupons</h3>
                         <div className="flex items-center gap-2">
@@ -27276,7 +28948,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               cardIssuanceCouponRedeemRegisteringId === coupon.id;
                             const couponRedeemBatchMax = Math.min(
                               couponIssueLeftN,
-                              CARD_ISSUANCE_COUPON_REDEEM_BATCH_MAX
+                              CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX
                             );
                             const couponRedeemBatchQtyRaw =
                               cardIssuanceCouponRedeemBatchQty[coupon.id] ?? '1';
@@ -27445,7 +29117,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   {redeemRows.length === 0 ? (
                                     <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
                                       {canRegisterCouponRedeemCode
-                                        ? 'No redeem codes stored on this device yet. Enter a batch count and press + to register redeem codes while issuance remains.'
+                                        ? `No redeem codes stored on this device yet. Enter a batch count (max ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} per on-chain batch) and press + to register more while issuance remains.`
                                         : 'No redeem codes stored on this device. Codes are saved locally when this coupon is published with redeem registration.'}
                                     </p>
                                   ) : (
@@ -27981,8 +29653,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     {cardIssuanceCouponEditingIssued ? (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-medium text-sky-900">
                         This coupon has already been issued on-chain. Coupon name, claim method, total issuance, and validity
-                        period are locked. You can still update the coupon icon, optional wide background photo, description,
-                        and background color metadata.
+                        period are locked. You can still update the coupon icon, optional wide background photo (hides tile
+                        background color), description, and tile background color when no photo is set.
                       </div>
                     ) : null}
                     <div>
@@ -28035,7 +29707,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       </div>
                       <p className="mt-1 text-[11px] text-[#abadaf]">
                         {cardIssuanceCouponRequiresRedeemCode
-                          ? 'Members enter a redeem code to claim this coupon (create codes in Redeem tools).'
+                          ? `Members enter a redeem code to claim. Codes are registered on-chain in batches of up to ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} (contract limit); register more from the Coupons list as needed.`
                           : 'Members can claim without entering a secret redeem code, within your issuance cap.'}
                       </p>
                     </div>
@@ -28071,8 +29743,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                       />
                       <p className="mt-1 text-[11px] text-[#abadaf]">
-                        Maximum redemptions issued for this coupon (whole number, 1–
-                        {CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX.toLocaleString()}).
+                        Maximum redemptions for this coupon (1–
+                        {CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX.toLocaleString()}). With Redeem code, only up to{' '}
+                        {CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} codes are registered per on-chain
+                        batch at issue; add more later from the Coupons list.
                       </p>
                     </div>
                     <div>
@@ -28129,6 +29803,58 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         className={`block w-full resize-none rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                       />
                     </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                        Coupon background image (optional)
+                      </label>
+                      <input
+                        ref={cardIssuanceCouponImageFileRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCardIssuanceCouponImagePick}
+                      />
+                      {!cardIssuanceCouponImage ? (
+                        <button
+                          type="button"
+                          onClick={() => cardIssuanceCouponImageFileRef.current?.click()}
+                          disabled={cardIssuanceCouponImageUploading}
+                          className={`flex min-h-[96px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          {cardIssuanceCouponImageUploading ? (
+                            <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                          ) : (
+                            <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
+                          )}
+                          <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
+                            {cardIssuanceCouponImageUploading
+                              ? 'Uploading…'
+                              : 'Upload wide banner (PNG or JPEG). Default: solid color below.'}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="relative h-[120px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#0f172a]/90">
+                          <img src={cardIssuanceCouponImage} alt="" className="h-full w-full object-cover opacity-95" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCardIssuanceCouponImage('');
+                              if (cardIssuanceCouponImageFileRef.current) {
+                                cardIssuanceCouponImageFileRef.current.value = '';
+                              }
+                            }}
+                            className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
+                            aria-label="Remove coupon background image"
+                          >
+                            <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                          </button>
+                        </div>
+                      )}
+                      <p className="mt-1 text-[11px] text-[#abadaf]">
+                        Applies only to this coupon ticket. Your program-wide merchant banner is not used here.
+                      </p>
+                    </div>
+                    {tileBackgroundColorApplies(cardIssuanceCouponImage) ? (
                     <div className="space-y-2">
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon background color</label>
                       <div className="flex flex-wrap gap-2">
@@ -28167,57 +29893,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         />
                       </div>
                     </div>
-                    <div>
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                        Coupon background image (optional)
-                      </label>
-                      <input
-                        ref={cardIssuanceCouponImageFileRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleCardIssuanceCouponImagePick}
-                      />
-                      {!cardIssuanceCouponImage ? (
-                        <button
-                          type="button"
-                          onClick={() => cardIssuanceCouponImageFileRef.current?.click()}
-                          disabled={cardIssuanceCouponImageUploading}
-                          className={`flex min-h-[96px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                        >
-                          {cardIssuanceCouponImageUploading ? (
-                            <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
-                          ) : (
-                            <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
-                          )}
-                          <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
-                            {cardIssuanceCouponImageUploading
-                              ? 'Uploading…'
-                              : 'Upload wide banner (PNG or JPEG). Default: no image — only solid color below.'}
-                          </span>
-                        </button>
-                      ) : (
-                        <div className="relative h-[120px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#0f172a]/90">
-                          <img src={cardIssuanceCouponImage} alt="" className="h-full w-full object-cover opacity-95" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCardIssuanceCouponImage('');
-                              if (cardIssuanceCouponImageFileRef.current) {
-                                cardIssuanceCouponImageFileRef.current.value = '';
-                              }
-                            }}
-                            className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                            aria-label="Remove coupon background image"
-                          >
-                            <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                          </button>
-                        </div>
-                      )}
-                      <p className="mt-1 text-[11px] text-[#abadaf]">
-                        Applies only to this coupon ticket. Your program-wide merchant banner is not used here.
-                      </p>
-                    </div>
+                    ) : null}
                     <div>
                       <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                         Validity period
@@ -28411,14 +30087,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </label>
                           <div className="relative">
                             <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
-                              C$
+                                 {cardIssuanceDisplayMoneyPrefix}
                             </span>
                             <input
                               id="programs-overview-tier-threshold"
                               type="number"
                               inputMode="numeric"
                               autoComplete="off"
-                              min={CARD_ISSUANCE_MIN_TOPUP_MIN}
+                              min={cardIssuanceMinTopupCurrencyFloor}
                               value={cardIssuanceTierEditorThreshold}
                               onKeyDown={preventNumericInputStepKeys}
                               onKeyDownCapture={preventNumericInputStepKeys}
@@ -32194,6 +33870,64 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         </div>
       </div>
     ) : null}
+
+    <ProgramsProductionsPanel
+      catalogOpen={activeTab === 'Business' || cardIssuanceProductionsPanelOpen}
+      sectionKicker="Business"
+      onCloseCatalog={closeCardIssuanceProductionsCatalog}
+      editorOpen={cardIssuanceProductionEditorOpen}
+      editingId={cardIssuanceEditingProductionId}
+      onCloseEditor={closeCardIssuanceProductionEditor}
+      onOpenCreate={openCardIssuanceProductionCreate}
+      onOpenEdit={openCardIssuanceProductionEdit}
+      productions={cardIssuanceProductions}
+      serviceCategories={cardIssuanceServiceCategories}
+      onUpdateServiceCategoryLabel={updateCardIssuanceServiceCategoryLabel}
+      onAddServiceCategory={addCardIssuanceServiceCategory}
+      onDiscardDraftServiceCategory={discardDraftCardIssuanceServiceCategory}
+      serviceCategoryEditError={cardIssuanceServiceCategoryEditError}
+      serviceCategorySavingId={cardIssuanceServiceCategorySavingId}
+      globalCategory={cardIssuanceProductionGlobalCategory}
+      setGlobalCategory={setCardIssuanceProductionGlobalCategory}
+      icon={cardIssuanceProductionIcon}
+      iconUploading={cardIssuanceProductionIconUploading}
+      onIconFileChange={handleCardIssuanceProductionIconPick}
+      onClearIcon={clearCardIssuanceProductionIcon}
+      productionImage={cardIssuanceProductionImage}
+      productionImageUploading={cardIssuanceProductionImageUploading}
+      onProductionImageFileChange={handleCardIssuanceProductionImagePick}
+      onClearProductionImage={clearCardIssuanceProductionImage}
+      backgroundColor={cardIssuanceProductionBackgroundColor}
+      setBackgroundColor={setCardIssuanceProductionBackgroundColor}
+      moneyPrefix={cardIssuanceDisplayMoneyPrefix}
+      name={cardIssuanceProductionName}
+      setName={setCardIssuanceProductionName}
+      subtitle={cardIssuanceProductionSubtitle}
+      setSubtitle={setCardIssuanceProductionSubtitle}
+      itemCategory={cardIssuanceProductionItemCategory}
+      setItemCategory={setCardIssuanceProductionItemCategory}
+      price={cardIssuanceProductionPrice}
+      setPrice={setCardIssuanceProductionPrice}
+      packageDeals={cardIssuanceProductionPackageDeals}
+      onAddPackageDeal={addCardIssuanceProductionPackageDeal}
+      onUpdatePackageDeal={updateCardIssuanceProductionPackageDeal}
+      onRemovePackageDeal={removeCardIssuanceProductionPackageDeal}
+      issueTotal={cardIssuanceProductionIssueTotal}
+      setIssueTotal={setCardIssuanceProductionIssueTotal}
+      issueTotalUnlimited={cardIssuanceProductionIssueTotalUnlimited}
+      setIssueTotalUnlimited={setCardIssuanceProductionIssueTotalUnlimited}
+      description={cardIssuanceProductionDescription}
+      setDescription={setCardIssuanceProductionDescription}
+      editorError={cardIssuanceProductionEditorError}
+      publishing={
+        cardIssuanceProductionEditorPublishing ||
+        cardIssuanceProductionIconUploading ||
+        cardIssuanceProductionImageUploading
+      }
+      editingIssued={cardIssuanceProductionEditingIssued}
+      onSubmit={() => void submitCardIssuanceProductionEditor()}
+      onDeleteDraft={(id) => void removeCardIssuanceProductionDraft(id)}
+    />
 
      {/* TxDisplayRow JSON modal (`raw` = full indexer Transaction + mapped UI fields) */}
      {rawTxJsonModal && (

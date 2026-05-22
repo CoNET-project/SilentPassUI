@@ -682,6 +682,26 @@ export async function fetchCardActiveIssuedCouponSeries(
 	}
 }
 
+export type CardActiveIssuedProductionSeriesItem = CardActiveIssuedCouponSeriesItem
+
+export async function fetchCardActiveIssuedProductionSeries(
+	cardAddress: string,
+	limit = 50
+): Promise<CardActiveIssuedProductionSeriesItem[]> {
+	if (!cardAddress || !ethers.isAddress(cardAddress)) return []
+	const lim = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 50) : 50
+	try {
+		const res = await fetch(
+			`${beamioApi}/api/cardActiveIssuedProductionSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=${lim}`
+		)
+		if (!res.ok) return []
+		const json = (await res.json().catch(() => ({}))) as { items?: CardActiveIssuedProductionSeriesItem[] }
+		return Array.isArray(json.items) ? json.items : []
+	} catch {
+		return []
+	}
+}
+
 async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
 	const wanted = couponId.trim()
 	if (!wanted) return null
@@ -1047,11 +1067,20 @@ export type ShareTokenMetadataBonusRule = {
 	bonusProportional?: boolean
 }
 
+export type ShareTokenMetadataPointSystem = {
+	enabled: boolean
+	/** E6 ratio: 1_000_000 means 1 reward point per 1 card-currency unit spent. */
+	chargeRewardRatioE6?: string
+	rewardTokenId?: number
+}
+
 export type ShareTokenMetadataCoupon = {
 	id?: string
 	name?: string
 	/** Maximum number of coupons that can be issued for this coupon definition. */
 	issueTotal?: number
+	/** NFT kind label; coupon definitions use `"Coupon"` to distinguish from other issued series. */
+	category?: string
 	/**
 	 * When true, members must use a redeem code to claim this coupon; when false/omitted, open claim (no secret code).
 	 * @since merchant Programs UI — persisted in shareTokenMetadata.coupons[]
@@ -1068,6 +1097,35 @@ export type ShareTokenMetadataCoupon = {
 	description?: string
 	issued?: boolean
 	/** On-chain issued NFT `tokenId` after createIssuedNft (coupon series) */
+	issuedTokenId?: string | number
+}
+
+export type ShareTokenMetadataServiceCategoryEntry = {
+	id: string
+	label: string
+}
+
+export type ShareTokenMetadataProduction = {
+	id?: string
+	name?: string
+	subtitle?: string
+	/** Second-level catalog chip id (legacy `serviceCategory`). */
+	itemCategory?: string
+	/** @deprecated Read compat only — prefer `itemCategory`. */
+	serviceCategory?: string
+	singleSessionPrice?: number
+	packageDealEnabled?: boolean
+	packageSessions?: number
+	packageBonusSessions?: number
+	packageTotalPrice?: number
+	issueTotal?: number
+	/** Global catalog category: Product | Service | Menu. */
+	category?: string
+	icon?: string
+	backgroundColor?: string
+	productionImage?: string
+	description?: string
+	issued?: boolean
 	issuedTokenId?: string | number
 }
 
@@ -1096,8 +1154,16 @@ export type ShareTokenMetadata = {
 	bonusRule?: ShareTokenMetadataBonusRule
 	/** Multiple recharge bonus rules previewed in configurator; optional */
 	bonusRules?: ShareTokenMetadataBonusRule[]
+	/** Client-facing switch for displaying charge reward points (ERC-1155 token #2). */
+	pointSystem?: ShareTokenMetadataPointSystem
 	/** Program coupons metadata (icon can be an IPFS URL). */
 	coupons?: ShareTokenMetadataCoupon[]
+	/** Program service catalog / productions (global category Product | Service | Menu). */
+	productions?: ShareTokenMetadataProduction[]
+	/** Item category chip definitions for catalog UI (legacy `serviceCategory`). */
+	itemCategory?: ShareTokenMetadataServiceCategoryEntry[]
+	/** @deprecated Read compat only — prefer `itemCategory`. */
+	serviceCategory?: ShareTokenMetadataServiceCategoryEntry[]
 	/** Hero program logo scale on card surfaces (0–3). Optional; clients default to 0. */
 	logoDisplayTier?: number
 }
@@ -1209,6 +1275,7 @@ export const updateBeamioCardShareMetadata = async (
 		})
 		const data = await response.json()
 		if (response.ok && data.success) {
+			invalidateBeamioCardMetadataCache(params.cardAddress)
 			return { success: true, cardAddress: data.cardAddress as string | undefined }
 		}
 		return { success: false, error: data.error ?? 'Update metadata failed' }
@@ -1738,6 +1805,14 @@ export const encodeSetTiers = (
 		})),
 	])
 
+const setChargeRewardRatioInterface = new ethers.Interface([
+	'function setChargeRewardRatio(uint256 ratioE6)',
+])
+
+/** Build calldata for owner-gateway updates to token #2 charge reward ratio. */
+export const encodeSetChargeRewardRatio = (ratioE6: string | number | bigint): string =>
+	setChargeRewardRatioInterface.encodeFunctionData('setChargeRewardRatio', [BigInt(ratioE6)])
+
 const addAdminInterface = new ethers.Interface([
     'function addAdmin(address newAdmin, uint256 newThreshold)',
 ])
@@ -2067,9 +2142,10 @@ export type CardRedeemBatch = {
 	createdAt: number
 	items: CardRedeemItem[]
 	/** When set, batch mints issued NFT via redeem bundle (not plain points) */
-	kind?: 'points' | 'issued_nft_coupon'
+	kind?: 'points' | 'issued_nft_coupon' | 'issued_nft_production'
 	issuedNftTokenId?: string
 	couponId?: string
+	productionId?: string
 }
 
 /** 从 CoNET_Data.cardRedeems 中移除合约返回 not_found 的 redeem，并持久化 */
@@ -2574,7 +2650,12 @@ export type CardMetadataFromUri = {
 	categories?: string[]
 	bonusRule?: ShareTokenMetadataBonusRule
 	bonusRules?: ShareTokenMetadataBonusRule[]
+	pointSystem?: ShareTokenMetadataPointSystem
 	coupons?: ShareTokenMetadataCoupon[]
+	productions?: ShareTokenMetadataProduction[]
+	itemCategory?: ShareTokenMetadataServiceCategoryEntry[]
+	/** @deprecated Read compat only — prefer `itemCategory`. */
+	serviceCategory?: ShareTokenMetadataServiceCategoryEntry[]
 	/** Parsed from shareTokenMetadata.minimumTopup (whole currency units) */
 	minimumTopupCad?: number
 	/** Parsed from shareTokenMetadata.maximumTopup (whole currency units) */
@@ -2599,7 +2680,11 @@ const cardMetadataCache = new Map<
 		categories?: string[]
 		bonusRule?: ShareTokenMetadataBonusRule
 		bonusRules?: ShareTokenMetadataBonusRule[]
+		pointSystem?: ShareTokenMetadataPointSystem
 		coupons?: ShareTokenMetadataCoupon[]
+		productions?: ShareTokenMetadataProduction[]
+		itemCategory?: ShareTokenMetadataServiceCategoryEntry[]
+		serviceCategory?: ShareTokenMetadataServiceCategoryEntry[]
 		minimumTopupCad?: number
 		maximumTopupCad?: number
 		logoDisplayTier?: CardPreviewLogoDisplayTier
@@ -2677,6 +2762,67 @@ function shareTokenLogoDisplayTierFromUnknown(
 	if (!share || typeof share !== 'object') return undefined
 	const raw = share.logoDisplayTier ?? share.logoSizeTier
 	return normalizeCardPreviewLogoDisplayTier(raw)
+}
+
+function shareTokenBooleanFromUnknown(raw: unknown): boolean | undefined {
+	if (typeof raw === 'boolean') return raw
+	if (typeof raw === 'number' && Number.isFinite(raw)) return raw !== 0
+	if (typeof raw === 'string') {
+		const t = raw.trim().toLowerCase()
+		if (['true', '1', 'yes', 'on', 'enabled'].includes(t)) return true
+		if (['false', '0', 'no', 'off', 'disabled'].includes(t)) return false
+	}
+	return undefined
+}
+
+function shareTokenRatioE6FromUnknown(raw: unknown): string | undefined {
+	if (typeof raw === 'bigint') return raw >= 0n ? raw.toString() : undefined
+	if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
+		return String(Math.trunc(raw))
+	}
+	if (typeof raw === 'string') {
+		const t = raw.replace(/,/g, '').trim()
+		if (/^\d+$/.test(t)) return t
+	}
+	return undefined
+}
+
+function shareTokenPointSystemFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): ShareTokenMetadataPointSystem | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw =
+		share.pointSystem && typeof share.pointSystem === 'object' && !Array.isArray(share.pointSystem)
+			? (share.pointSystem as Record<string, unknown>)
+			: undefined
+	const enabledRaw =
+		raw?.enabled ??
+		raw?.pointSystemEnabled ??
+		raw?.pointsEnabled ??
+		share.pointSystemEnabled ??
+		share.pointsEnabled
+	const ratioRaw =
+		raw?.chargeRewardRatioE6 ??
+		raw?.pointRewardRatioE6 ??
+		raw?.consumptionRewardRatioE6 ??
+		share.chargeRewardRatioE6 ??
+		share.pointRewardRatioE6 ??
+		share.consumptionRewardRatioE6
+	const enabled = shareTokenBooleanFromUnknown(enabledRaw)
+	const chargeRewardRatioE6 = shareTokenRatioE6FromUnknown(ratioRaw)
+	let rewardTokenId: number | undefined
+	const tokenRaw = raw?.rewardTokenId ?? share.pointRewardTokenId
+	if (typeof tokenRaw === 'number' && Number.isFinite(tokenRaw) && tokenRaw >= 0) {
+		rewardTokenId = Math.trunc(tokenRaw)
+	} else if (typeof tokenRaw === 'string' && /^\d+$/.test(tokenRaw.trim())) {
+		rewardTokenId = Number.parseInt(tokenRaw.trim(), 10)
+	}
+	if (enabled == null && chargeRewardRatioE6 == null && rewardTokenId == null) return undefined
+	return {
+		enabled: enabled ?? (chargeRewardRatioE6 != null ? BigInt(chargeRewardRatioE6) > 0n : true),
+		...(chargeRewardRatioE6 != null ? { chargeRewardRatioE6 } : {}),
+		...(rewardTokenId != null ? { rewardTokenId } : {}),
+	}
 }
 
 function shareTokenBonusRuleNumber(raw: unknown): number | undefined {
@@ -2800,6 +2946,118 @@ function shareTokenCouponsFromUnknown(
 	return out.length > 0 ? out : undefined
 }
 
+function shareTokenItemCategoryFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): ShareTokenMetadataServiceCategoryEntry[] | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.itemCategory ?? share.serviceCategory
+	if (!Array.isArray(raw) || raw.length === 0) return undefined
+	const out: ShareTokenMetadataServiceCategoryEntry[] = []
+	const seen = new Set<string>()
+	for (const entry of raw) {
+		if (!entry || typeof entry !== 'object') continue
+		const obj = entry as Record<string, unknown>
+		const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+		const label = typeof obj.label === 'string' ? obj.label.trim() : ''
+		if (!id || !label || seen.has(id)) continue
+		seen.add(id)
+		out.push({ id, label })
+	}
+	return out.length > 0 ? out : undefined
+}
+
+/** @deprecated Use `shareTokenItemCategoryFromUnknown`. */
+function shareTokenServiceCategoryFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): ShareTokenMetadataServiceCategoryEntry[] | undefined {
+	return shareTokenItemCategoryFromUnknown(share)
+}
+
+function shareTokenProductionsFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): ShareTokenMetadataProduction[] | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.productions
+	if (!Array.isArray(raw) || raw.length === 0) return undefined
+	const out: ShareTokenMetadataProduction[] = []
+	for (const entry of raw) {
+		if (!entry || typeof entry !== 'object') continue
+		const obj = entry as Record<string, unknown>
+		const id = typeof obj.id === 'string' ? obj.id.trim() : ''
+		const name = typeof obj.name === 'string' ? obj.name.trim() : ''
+		if (!name) continue
+		const subtitle = typeof obj.subtitle === 'string' ? obj.subtitle.trim() : ''
+		const itemCategoryChip =
+			typeof obj.itemCategory === 'string'
+				? obj.itemCategory.trim()
+				: typeof obj.serviceCategory === 'string'
+					? obj.serviceCategory.trim()
+					: ''
+		const singleSessionPrice =
+			typeof obj.singleSessionPrice === 'number' && Number.isFinite(obj.singleSessionPrice)
+				? obj.singleSessionPrice
+				: undefined
+		const packageDealEnabled =
+			obj.packageDealEnabled === true ||
+			obj.packageDealEnabled === 1 ||
+			obj.packageDealEnabled === '1' ||
+			obj.packageDealEnabled === 'true'
+		const packageSessions =
+			typeof obj.packageSessions === 'number' && Number.isFinite(obj.packageSessions)
+				? Math.trunc(obj.packageSessions)
+				: undefined
+		const packageBonusSessions =
+			typeof obj.packageBonusSessions === 'number' && Number.isFinite(obj.packageBonusSessions)
+				? Math.trunc(obj.packageBonusSessions)
+				: undefined
+		const packageTotalPrice =
+			typeof obj.packageTotalPrice === 'number' && Number.isFinite(obj.packageTotalPrice)
+				? obj.packageTotalPrice
+				: undefined
+		let issueTotal: number | undefined
+		const itRaw = obj.issueTotal
+		if (typeof itRaw === 'number' && Number.isFinite(itRaw)) {
+			const n = Math.trunc(itRaw)
+			if (n >= 1) issueTotal = n
+		} else if (typeof itRaw === 'string') {
+			const n = Number.parseInt(itRaw.replace(/,/g, '').trim(), 10)
+			if (Number.isFinite(n) && n >= 1) issueTotal = n
+		}
+		const category = typeof obj.category === 'string' ? obj.category.trim() : ''
+		const icon = typeof obj.icon === 'string' ? obj.icon.trim() : ''
+		const backgroundColor = typeof obj.backgroundColor === 'string' ? obj.backgroundColor.trim() : ''
+		const productionImage = typeof obj.productionImage === 'string' ? obj.productionImage.trim() : ''
+		const description = typeof obj.description === 'string' ? obj.description.trim() : ''
+		const issued =
+			obj.issued === true || obj.issued === 1 || obj.issued === '1' || obj.issued === 'true'
+		const issuedTokenIdRaw = obj.issuedTokenId
+		const issuedTokenId =
+			typeof issuedTokenIdRaw === 'string' || typeof issuedTokenIdRaw === 'number'
+				? String(issuedTokenIdRaw).trim()
+				: ''
+		out.push({
+			...(id ? { id } : {}),
+			name,
+			...(subtitle ? { subtitle } : {}),
+			...(itemCategoryChip ? { itemCategory: itemCategoryChip } : {}),
+			...(singleSessionPrice != null ? { singleSessionPrice } : {}),
+			...(packageDealEnabled ? { packageDealEnabled: true } : {}),
+			...(packageSessions != null ? { packageSessions } : {}),
+			...(packageBonusSessions != null ? { packageBonusSessions } : {}),
+			...(packageTotalPrice != null ? { packageTotalPrice } : {}),
+			...(issueTotal != null ? { issueTotal } : {}),
+			...(category ? { category } : {}),
+			...(icon ? { icon } : {}),
+			...(backgroundColor ? { backgroundColor } : {}),
+			...(productionImage ? { productionImage } : {}),
+			...(description ? { description } : {}),
+			...(issued ? { issued: true } : {}),
+			...(issuedTokenId ? { issuedTokenId } : {}),
+		})
+	}
+	return out.length > 0 ? out : undefined
+}
+
 /** per-NFT metadata 缓存：cardOwner_tokenId -> { name?, description?, image?, timestamp }，TTL 5 分钟 */
 const nftMetadataCache = new Map<string, { name?: string; description?: string; image?: string; timestamp: number }>()
 const NFT_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
@@ -2833,7 +3091,10 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
+		const productions = shareTokenProductionsFromUnknown(share)
+		const itemCategory = shareTokenItemCategoryFromUnknown(share)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
 		const merchantImage =
 			shareTokenMerchantImageFromUnknown(share) ??
@@ -2845,7 +3106,10 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
+			...(productions && { productions }),
+			...(itemCategory && { itemCategory }),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,
@@ -2878,7 +3142,10 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
+		const productions = shareTokenProductionsFromUnknown(share)
+		const itemCategory = shareTokenItemCategoryFromUnknown(share)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(share)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
 		const merchantImage =
@@ -2893,7 +3160,10 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
+			...(productions && { productions }),
+			...(itemCategory && { itemCategory }),
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
 			...(categories && { categories }),
@@ -2994,7 +3264,10 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const displayName = shareTokenDisplayNameFromUnknown(shareObj)
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
+		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
 		const coupons = shareTokenCouponsFromUnknown(shareObj)
+		const productions = shareTokenProductionsFromUnknown(shareObj)
+		const itemCategory = shareTokenItemCategoryFromUnknown(shareObj)
 		const logoDisplayTier = shareTokenLogoDisplayTierFromUnknown(shareObj)
 		const merchantImage =
 			shareTokenMerchantImageFromUnknown(shareObj) ??
@@ -3006,7 +3279,10 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
+			...(productions && { productions }),
+			...(itemCategory && { itemCategory }),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,

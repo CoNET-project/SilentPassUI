@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react"
+import { Fragment, useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -34,6 +34,7 @@ import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
 import ActiveCouponsScreen, { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
+import { resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
 import RedeemVoucherScreen from '@/pages/Home/RedeemVoucherScreen'
 import { buildRedeemVoucherHistoryPath } from '@/pages/Home/redeemVoucherPath'
 
@@ -2349,17 +2350,24 @@ const Home = (_props: HomeProps) => {
 												const subtitleFallback = `${uc.currency} merchant card`
 												const subtitle = tierPres.tierName.trim() || subtitleFallback
 												const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
-												const ownedCoupon = detail?.claimableCoupons?.firstCoupon as ActiveCouponListItem | null | undefined
-												if (couponCount > 0 && ownedCoupon) {
+												const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
+													uc.cardAddress,
+													detail?.claimableCoupons
+												) as ActiveCouponListItem[]
+												if (couponCount > 0 && ownedCoupons.length > 0) {
 													return (
-														<ActiveCouponTicketItem
-															key={uc.cardAddress}
-															row={ownedCoupon}
-															actionLabel="Owned"
-															disabled
-															aria-label={`Owned coupon ${ownedCoupon.title}`}
-															punchBgClassName="bg-white dark:bg-slate-900"
-														/>
+														<Fragment key={uc.cardAddress}>
+															{ownedCoupons.map((ownedCoupon) => (
+																<ActiveCouponTicketItem
+																	key={ownedCoupon.id}
+																	row={ownedCoupon}
+																	actionLabel="Owned"
+																	disabled
+																	aria-label={`Owned coupon ${ownedCoupon.title}`}
+																	punchBgClassName="bg-white dark:bg-slate-900"
+																/>
+															))}
+														</Fragment>
 													)
 												}
 												const imgUrl = resolveCardImageUrl(detail?.meta?.image)

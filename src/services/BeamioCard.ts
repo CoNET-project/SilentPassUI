@@ -471,7 +471,7 @@ const OPEN_CLAIM_ONCHAIN_READ_ABI = [
 ] as const
 
 /** Same semantics as x402sdk `readCouponRequiresRedeemCode`. */
-function readCouponRequiresRedeemCode(meta: Record<string, unknown> | null | undefined): boolean {
+export function readCouponRequiresRedeemCode(meta: Record<string, unknown> | null | undefined): boolean {
 	if (!meta || typeof meta !== 'object') return false
 	const root = meta as Record<string, unknown>
 	const toBool = (v: unknown): boolean =>
@@ -598,6 +598,39 @@ export async function getCardActiveIssuedCouponSeries(cardAddress: string, limit
 	return trusted ?? []
 }
 
+/** 从全站 recent 系列 API 拉取完整行（含 metadata），供 My Brands 已持有券检测 */
+async function fetchRecentIssuedCouponSeriesTrusted(
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	try {
+		const res = await fetch(`${beamioApi}/api/recentIssuedCouponSeries?limit=${normalizedLimit}`)
+		if (!res.ok) return null
+		const json = (await res.json().catch(() => ({}))) as {
+			items?: Array<CardActiveIssuedCouponSeriesItem & { cardAddress?: string; tokenId?: string }>
+		}
+		if (!Array.isArray(json.items)) return []
+		const out: CardActiveIssuedCouponSeriesItem[] = []
+		for (const row of json.items) {
+			const raw = row.cardAddress?.trim()
+			if (!raw || !ethers.isAddress(raw)) continue
+			const cardAddress = ethers.getAddress(raw)
+			const tokenId = String(row.tokenId ?? '').trim()
+			if (!tokenId) continue
+			out.push({
+				...row,
+				cardAddress,
+				tokenId,
+				metadata: row.metadata ?? null,
+				issuedNftValidBefore: row.issuedNftValidBefore,
+			})
+		}
+		return out
+	} catch {
+		return null
+	}
+}
+
 /** 从全站最近登记的优惠券系列提取卡地址（用于 onboarding 列表，避免只扫基础设施卡） */
 async function fetchRecentIssuedCouponCardAddresses(limit = 50): Promise<string[] | null> {
 	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
@@ -667,71 +700,42 @@ const MY_BRANDS_COUPON_BALANCE_ABI = [
 	'function balanceOf(address account,uint256 id) view returns (uint256)',
 ] as const
 
+/** 串行 balanceOf，避免浏览器 / RPC 并发过高导致整批失败 */
+const MY_BRANDS_COUPON_BALANCE_RPC_CONCURRENCY = 1
+
 /**
- * My Brands should only include coupon brands for issued coupon NFTs the user already owns.
- * Claimable-but-not-owned coupons belong in discovery/claim surfaces, not in My Brands.
+ * Redeem / open-claim mint to the user's Beamio AA (`cardSelfToAccount`), not EOA.
+ * Merge profile AA + factory-resolved AA so My Brands detects owned coupon NFTs.
  */
-export async function fetchMyBrandsCouponSeriesForUser(
-	limit = 50,
+async function resolveMyBrandsCouponHolderAccounts(
 	userEOA?: string | null,
-	userAA?: string | null
-): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
-	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
-	const cardSet = new Set<string>(
-		ASSET_CARD_ADDRESSES.filter((a) => ethers.isAddress(a)).map((a) => a.toLowerCase())
-	)
-	const recentCards = await fetchRecentIssuedCouponCardAddresses(normalizedLimit)
-	if (recentCards) {
-		for (const c of recentCards) cardSet.add(c)
+	userAA?: string | null,
+): Promise<string[]> {
+	const seen = new Set<string>()
+	const out: string[] = []
+	const push = (raw?: string | null) => {
+		const trimmed = raw?.trim() ?? ''
+		if (!trimmed || !ethers.isAddress(trimmed)) return
+		const addr = ethers.getAddress(trimmed)
+		const key = addr.toLowerCase()
+		if (seen.has(key)) return
+		seen.add(key)
+		out.push(addr)
 	}
-	if (cardSet.size === 0) return []
+	push(userAA)
+	push(userEOA)
+	const eoaNorm = userEOA?.trim()
+	if (eoaNorm && ethers.isAddress(eoaNorm)) {
+		const factoryAa = await resolveBeamioAaForEoaWithFallback(baseEndpoint, ethers.getAddress(eoaNorm)).catch(
+			() => null,
+		)
+		push(factoryAa)
+	}
+	return out
+}
 
-	const cardList = [...cardSet]
-	const responses = await Promise.all(
-		cardList.map((cardLower) => fetchCardActiveIssuedCouponSeriesTrusted(cardLower, normalizedLimit))
-	)
-	if (!responses.some((r) => r !== null)) return null
-
-	const userAccounts = [userEOA, userAA]
-		.map((a) => a?.trim())
-		.filter((a): a is string => Boolean(a && ethers.isAddress(a)))
-		.map((a) => ethers.getAddress(a))
-	const uniqueAccounts = [...new Set(userAccounts.map((a) => a.toLowerCase()))].map((a) => ethers.getAddress(a))
-	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
-
-	await Promise.all(
-		cardList.map(async (cardLower, i) => {
-			const rows = responses[i]
-			if (!rows) return
-			const cardAddress = ethers.getAddress(cardLower)
-			const cardRead = new ethers.Contract(cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, baseEndpoint)
-			await Promise.all(
-				rows.map(async (row) => {
-					const withCard = { ...row, cardAddress }
-					if (!uniqueAccounts.length) return
-					let tokenId: bigint
-					try {
-						tokenId = BigInt(row.tokenId)
-					} catch {
-						return
-					}
-					for (const account of uniqueAccounts) {
-						try {
-							const bal = await cardRead.balanceOf(account, tokenId) as bigint
-							if (bal > 0n) {
-								merged.set(`${cardLower}:${row.tokenId}`, withCard)
-								return
-							}
-						} catch {
-							/* Keep scanning other accounts/cards. */
-						}
-					}
-				})
-			)
-		})
-	)
-
-	return [...merged.values()].sort((a, b) => {
+function sortOwnedCouponSeriesRows(rows: CardActiveIssuedCouponSeriesItem[]): CardActiveIssuedCouponSeriesItem[] {
+	return [...rows].sort((a, b) => {
 		const av = Number(a.issuedNftValidBefore ?? 0)
 		const bv = Number(b.issuedNftValidBefore ?? 0)
 		const aFinite = Number.isFinite(av) && av > 0
@@ -740,6 +744,315 @@ export async function fetchMyBrandsCouponSeriesForUser(
 		if (aFinite && bFinite && av !== bv) return av - bv
 		return String(a.tokenId).localeCompare(String(b.tokenId), 'en')
 	})
+}
+
+async function scanOwnedCouponSeriesWithBalanceCheck(
+	cardList: string[],
+	normalizedLimit: number,
+	userEOA?: string | null,
+	userAA?: string | null
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	if (!cardList.length) return []
+
+	const responses = await Promise.all(
+		cardList.map((cardLower) => fetchCardActiveIssuedCouponSeriesTrusted(cardLower, normalizedLimit))
+	)
+	if (!responses.some((r) => r !== null)) return null
+
+	const uniqueAccounts = await resolveMyBrandsCouponHolderAccounts(userEOA, userAA)
+	if (!uniqueAccounts.length) return []
+
+	type BalanceCheckJob = {
+		cardLower: string
+		cardAddress: string
+		row: CardActiveIssuedCouponSeriesItem
+		tokenId: bigint
+	}
+	const jobs: BalanceCheckJob[] = []
+	for (let i = 0; i < cardList.length; i++) {
+		const rows = responses[i]
+		if (!rows) continue
+		const cardLower = cardList[i]!
+		const cardAddress = ethers.getAddress(cardLower)
+		for (const row of rows) {
+			let tokenId: bigint
+			try {
+				tokenId = BigInt(row.tokenId)
+			} catch {
+				continue
+			}
+			jobs.push({ cardLower, cardAddress, row: { ...row, cardAddress }, tokenId })
+		}
+	}
+	if (!jobs.length) return []
+
+	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
+	let balanceCheckFailures = 0
+	let balanceCheckSuccesses = 0
+	const contractByCard = new Map<string, ethers.Contract>()
+	for (const job of jobs) {
+		let cardRead = contractByCard.get(job.cardLower)
+		if (!cardRead) {
+			cardRead = new ethers.Contract(job.cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, baseEndpoint)
+			contractByCard.set(job.cardLower, cardRead)
+		}
+		for (const account of uniqueAccounts) {
+			try {
+				const bal = (await cardRead.balanceOf(account, job.tokenId)) as bigint
+				balanceCheckSuccesses++
+				if (bal > 0n) {
+					merged.set(`${job.cardLower}:${job.row.tokenId}`, job.row)
+					break
+				}
+			} catch {
+				balanceCheckFailures++
+			}
+		}
+	}
+
+	if (merged.size === 0 && balanceCheckSuccesses === 0 && balanceCheckFailures > 0) return null
+
+	return sortOwnedCouponSeriesRows([...merged.values()])
+}
+
+async function filterOwnedCouponRowsByBalance(
+	rows: CardActiveIssuedCouponSeriesItem[],
+	userEOA?: string | null,
+	userAA?: string | null
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	if (!rows.length) return []
+	const uniqueAccounts = await resolveMyBrandsCouponHolderAccounts(userEOA, userAA)
+	if (!uniqueAccounts.length) return []
+
+	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
+	let balanceCheckFailures = 0
+	let balanceCheckSuccesses = 0
+	const contractByCard = new Map<string, ethers.Contract>()
+	for (const row of rows) {
+		const raw = row.cardAddress?.trim()
+		if (!raw || !ethers.isAddress(raw)) continue
+		const cardAddress = ethers.getAddress(raw)
+		const cardLower = cardAddress.toLowerCase()
+		let tokenId: bigint
+		try {
+			tokenId = BigInt(row.tokenId)
+		} catch {
+			continue
+		}
+		let cardRead = contractByCard.get(cardLower)
+		if (!cardRead) {
+			cardRead = new ethers.Contract(cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, baseEndpoint)
+			contractByCard.set(cardLower, cardRead)
+		}
+		for (const account of uniqueAccounts) {
+			try {
+				const bal = (await cardRead.balanceOf(account, tokenId)) as bigint
+				balanceCheckSuccesses++
+				if (bal > 0n) {
+					merged.set(`${cardLower}:${row.tokenId}`, { ...row, cardAddress })
+					break
+				}
+			} catch {
+				balanceCheckFailures++
+			}
+		}
+	}
+
+	if (merged.size === 0 && balanceCheckSuccesses === 0 && balanceCheckFailures > 0) return null
+
+	return sortOwnedCouponSeriesRows([...merged.values()])
+}
+
+/**
+ * My Brands primary path: one recentIssuedCouponSeries request (includes metadata), then serial balanceOf.
+ * Redeem mints to AA — resolveMyBrandsCouponHolderAccounts checks AA before EOA.
+ */
+export async function fetchOwnedCouponsFromRecentSeriesForUser(
+	userEOA?: string | null,
+	userAA?: string | null,
+	cardAddresses?: string[] | null,
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const recent = await fetchRecentIssuedCouponSeriesTrusted(limit)
+	if (recent === null) return null
+	let rows = recent
+	if (cardAddresses?.length) {
+		const filter = new Set(
+			cardAddresses
+				.map((a) => a?.trim())
+				.filter((a): a is string => Boolean(a && ethers.isAddress(a)))
+				.map((a) => ethers.getAddress(a).toLowerCase())
+		)
+		if (filter.size > 0) {
+			rows = rows.filter((r) => filter.has(r.cardAddress.toLowerCase()))
+		}
+	}
+	return filterOwnedCouponRowsByBalance(rows, userEOA, userAA)
+}
+
+type WalletAssetsCouponBalanceRow = {
+	cardAddress?: string
+	couponId?: string
+	tokenId?: string
+	title?: string
+	balance?: string
+	requiresRedeemCode?: boolean
+}
+
+/**
+ * Server-side trusted path for My Brands coupons.
+ * `/api/getWalletAssets` can query a merchant card via `merchantInfraCard` and returns
+ * `merchantCouponBalances`, avoiding browser-side RPC failures on `balanceOf`.
+ */
+export async function fetchOwnedCouponsFromWalletAssetsForCards(
+	wallet?: string | null,
+	cardAddresses?: string[] | null,
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const walletRaw = wallet?.trim() ?? ''
+	if (!walletRaw || !ethers.isAddress(walletRaw)) return []
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	const recent = await fetchRecentIssuedCouponSeriesTrusted(normalizedLimit)
+	if (recent === null) return null
+
+	const cardSet = new Set<string>()
+	for (const raw of cardAddresses ?? []) {
+		const trimmed = raw?.trim() ?? ''
+		if (trimmed && ethers.isAddress(trimmed)) cardSet.add(ethers.getAddress(trimmed).toLowerCase())
+	}
+	if (cardSet.size === 0) {
+		for (const row of recent) {
+			if (row.cardAddress && ethers.isAddress(row.cardAddress)) {
+				cardSet.add(ethers.getAddress(row.cardAddress).toLowerCase())
+			}
+		}
+	}
+	if (cardSet.size === 0) return []
+
+	const recentByKey = new Map<string, CardActiveIssuedCouponSeriesItem>()
+	for (const row of recent) {
+		if (!row.cardAddress || !ethers.isAddress(row.cardAddress)) continue
+		recentByKey.set(`${ethers.getAddress(row.cardAddress).toLowerCase()}:${row.tokenId}`, row)
+	}
+
+	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
+	let trustedResponses = 0
+	for (const cardLower of cardSet) {
+		try {
+			const cardAddress = ethers.getAddress(cardLower)
+			const res = await fetch(`${beamioApi}/api/getWalletAssets`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					wallet: ethers.getAddress(walletRaw),
+					merchantInfraCard: cardAddress,
+				}),
+			})
+			if (!res.ok) continue
+			const json = (await res.json().catch(() => ({}))) as {
+				ok?: boolean
+				merchantCouponBalances?: WalletAssetsCouponBalanceRow[]
+			}
+			if (json.ok !== true || !Array.isArray(json.merchantCouponBalances)) continue
+			trustedResponses++
+			for (const row of json.merchantCouponBalances) {
+				const tokenId = String(row.tokenId ?? '').trim()
+				if (!tokenId) continue
+				const balance = Number(row.balance ?? 0)
+				if (!Number.isFinite(balance) || balance <= 0) continue
+				const key = `${cardLower}:${tokenId}`
+				const fromRecent = recentByKey.get(key)
+				merged.set(key, {
+					...(fromRecent ?? {}),
+					cardAddress,
+					tokenId,
+					metadata:
+						fromRecent?.metadata ??
+						({
+							name: String(row.title ?? 'Coupon').trim() || 'Coupon',
+							title: String(row.title ?? 'Coupon').trim() || 'Coupon',
+							couponId: String(row.couponId ?? tokenId).trim() || tokenId,
+							requiresRedeemCode: row.requiresRedeemCode === true,
+						} satisfies Record<string, unknown>),
+					issuedNftValidBefore: fromRecent?.issuedNftValidBefore,
+				})
+			}
+		} catch {
+			/* try next card */
+		}
+	}
+
+	if (trustedResponses === 0) return null
+	return sortOwnedCouponSeriesRows([...merged.values()])
+}
+
+/** Fast path: only scan cards the user already holds (holder / owner list). */
+export async function fetchOwnedCouponsForKnownCards(
+	cardAddresses: string[],
+	userEOA?: string | null,
+	userAA?: string | null,
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	const cardSet = new Set<string>()
+	for (const raw of cardAddresses ?? []) {
+		const trimmed = raw?.trim() ?? ''
+		if (trimmed && ethers.isAddress(trimmed)) cardSet.add(ethers.getAddress(trimmed).toLowerCase())
+	}
+	if (cardSet.size === 0) return []
+	const fromRecent = await fetchOwnedCouponsFromRecentSeriesForUser(
+		userEOA,
+		userAA,
+		[...cardSet].map((c) => ethers.getAddress(c)),
+		normalizedLimit
+	)
+	if (fromRecent?.length) return fromRecent
+	if (fromRecent === null) {
+		return scanOwnedCouponSeriesWithBalanceCheck([...cardSet], normalizedLimit, userEOA, userAA)
+	}
+	return scanOwnedCouponSeriesWithBalanceCheck([...cardSet], normalizedLimit, userEOA, userAA)
+}
+
+/**
+ * My Brands should only include coupon brands for issued coupon NFTs the user already owns.
+ * Claimable-but-not-owned coupons belong in discovery/claim surfaces, not in My Brands.
+ */
+export async function fetchMyBrandsCouponSeriesForUser(
+	limit = 50,
+	userEOA?: string | null,
+	userAA?: string | null,
+	extraCardAddresses?: string[] | null
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	const prioritySet = new Set<string>()
+	for (const raw of extraCardAddresses ?? []) {
+		const trimmed = raw?.trim() ?? ''
+		if (trimmed && ethers.isAddress(trimmed)) prioritySet.add(ethers.getAddress(trimmed).toLowerCase())
+	}
+
+	const cardSet = new Set<string>(prioritySet)
+	const recentCards = await fetchRecentIssuedCouponCardAddresses(normalizedLimit)
+	if (recentCards) {
+		for (const c of recentCards) cardSet.add(c)
+	}
+	if (cardSet.size === 0) {
+		for (const a of ASSET_CARD_ADDRESSES) {
+			if (ethers.isAddress(a)) cardSet.add(a.toLowerCase())
+		}
+	}
+	if (cardSet.size === 0) return []
+
+	if (prioritySet.size > 0) {
+		const priorityResult = await scanOwnedCouponSeriesWithBalanceCheck(
+			[...prioritySet],
+			normalizedLimit,
+			userEOA,
+			userAA
+		)
+		if (priorityResult && priorityResult.length > 0) return priorityResult
+	}
+
+	return scanOwnedCouponSeriesWithBalanceCheck([...cardSet], normalizedLimit, userEOA, userAA)
 }
 
 async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
@@ -997,8 +1310,8 @@ async function fetchHeldCardsFromLatestForEOA(
 			'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
 		]
 
-		const accountsToCheck = [eoa]
-		if (aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa.toLowerCase()) accountsToCheck.push(aa)
+		/** Card resolves EOA → AA internally; passing AA directly reverts on many cards. */
+		const holderAccountsForCoupons = await resolveMyBrandsCouponHolderAccounts(eoa, aa)
 		const checks = await mapPool(items, HOLDER_SCAN_RPC_CONCURRENCY, async (it) => {
 			const rawAddr = String(it?.cardAddress ?? '').trim()
 			if (!rawAddr || !ethers.isAddress(rawAddr)) return null
@@ -1009,13 +1322,45 @@ async function fetchHeldCardsFromLatestForEOA(
 				const card = new ethers.Contract(addr, ownershipAbi, baseEndpoint)
 				let hasPoints = false
 				let hasNft = false
-				for (const acct of accountsToCheck) {
-					const [pt, nftsRaw] = await card.getOwnershipByEOA(acct) as [bigint, Array<{ tokenId: bigint }>]
-					hasPoints = hasPoints || (pt ?? 0n) > 0n
-					hasNft = hasNft || (Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0))
-					if (hasPoints || hasNft) break
+				try {
+					const [pt, nftsRaw] = (await card.getOwnershipByEOA(eoa)) as [
+						bigint,
+						Array<{ tokenId: bigint }>,
+					]
+					hasPoints = (pt ?? 0n) > 0n
+					hasNft =
+						Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0)
+				} catch {
+					/* fall through to issued-coupon balance scan */
 				}
-				if (!hasPoints && !hasNft) return null
+				let hasIssuedCoupon = false
+				if (!hasPoints && !hasNft) {
+					const series = await fetchCardActiveIssuedCouponSeriesTrusted(addr, 10)
+					if (series?.length) {
+						const balContract = new ethers.Contract(addr, MY_BRANDS_COUPON_BALANCE_ABI, baseEndpoint)
+						for (const row of series) {
+							let tokenId: bigint
+							try {
+								tokenId = BigInt(row.tokenId)
+							} catch {
+								continue
+							}
+							for (const acct of holderAccountsForCoupons) {
+								try {
+									const bal = (await balContract.balanceOf(acct, tokenId)) as bigint
+									if (bal > 0n) {
+										hasIssuedCoupon = true
+										break
+									}
+								} catch {
+									/* keep scanning */
+								}
+							}
+							if (hasIssuedCoupon) break
+						}
+					}
+				}
+				if (!hasPoints && !hasNft && !hasIssuedCoupon) return null
 
 				const currency = String(it?.currency ?? 'CAD').toUpperCase()
 				const priceNum = Number(it?.priceInCurrencyE6 ?? 0)
@@ -1214,6 +1559,7 @@ export type ShareTokenMetadata = {
 	name: string
 	description?: string
 	image?: string
+	pointSystem?: CardPointSystemMetadata
 }
 
 /** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。升级模式由卡级 upgradeType（链上）决定。 */
@@ -1809,6 +2155,47 @@ export const getRedeemStatusFromChain = async (
     }
 }
 
+/** RedeemStorage.layout().redeems — verified against BeamioUserCard delegatecall storage. */
+const REDEEM_STORAGE_LAYOUT_SLOT = ethers.keccak256(ethers.toUtf8Bytes('beamio.usercard.redeem.storage.v1'))
+/** Redeem struct field offset for `tokenIds.length` (slot base + 2). */
+const REDEEM_TOKEN_IDS_FIELD_OFFSET = 2n
+const REDEEM_BUNDLE_TOKEN_IDS_MAX = 32
+
+/**
+ * Read one-time redeem bundle tokenIds from card storage (preview only; does not consume).
+ * Returns `null` when RPC/storage read is untrusted; `[]` when redeem exists but bundle is empty.
+ */
+export async function fetchRedeemBundleTokenIdsFromChain(
+	cardAddress: string,
+	redeemCode: string,
+): Promise<string[] | null> {
+	const cardNorm = cardAddress?.trim() ?? ''
+	const code = redeemCode?.trim() ?? ''
+	if (!cardNorm || !code || !ethers.isAddress(cardNorm)) return null
+	try {
+		const hash = ethers.keccak256(ethers.toUtf8Bytes(code))
+		const baseSlot = ethers.keccak256(
+			ethers.AbiCoder.defaultAbiCoder().encode(['bytes32', 'bytes32'], [hash, REDEEM_STORAGE_LAYOUT_SLOT]),
+		)
+		const tokenIdsArrSlot = ethers.toBeHex(BigInt(baseSlot) + REDEEM_TOKEN_IDS_FIELD_OFFSET, 32)
+		const lenHex = await baseEndpoint.getStorage(cardNorm, tokenIdsArrSlot)
+		const len = BigInt(lenHex)
+		if (len <= 0n) return []
+		if (len > BigInt(REDEEM_BUNDLE_TOKEN_IDS_MAX)) return []
+		const dataBase = BigInt(ethers.keccak256(tokenIdsArrSlot))
+		const tokenIds: string[] = []
+		for (let i = 0n; i < len; i++) {
+			const slot = ethers.toBeHex(dataBase + i, 32)
+			const v = await baseEndpoint.getStorage(cardNorm, slot)
+			tokenIds.push(BigInt(v).toString())
+		}
+		return tokenIds
+	} catch (e) {
+		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+		return null
+	}
+}
+
 /** Redeem 详情（用于 Redeem 窗口展示）：status、points、card 信息、owner 的 beamio 档案 */
 export type RedeemDetailsForDisplay = {
     status: RedeemStatusChain
@@ -2169,6 +2556,7 @@ export const getMyAssets = async (
             [
                 'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, (uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
                 'function currency() view returns (uint8)',
+                'function balanceOf(address account, uint256 id) view returns (uint256)',
             ],
             baseEndpoint
         );
@@ -2189,7 +2577,10 @@ export const getMyAssets = async (
         }
         const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint);
         const balanceAddress = profile.aaAccount ?? eoa;
-        const usdcBalanceRaw = await usdcContract.balanceOf(balanceAddress);
+        const [usdcBalanceRaw, chargeRewardBalance] = await Promise.all([
+            usdcContract.balanceOf(balanceAddress),
+            cardContract.balanceOf(balanceAddress, 2),
+        ]);
         const usdcBalance = ethers.formatUnits(usdcBalanceRaw, 6);
 
         // 4. 格式化数据并返回
@@ -2199,6 +2590,8 @@ export const getMyAssets = async (
 			cardOwner: await getCardOwnerByCardAddress(cardAddress),
             // 积分余额（从 1e6 格式化回人类可读数值）
             points: ethers.formatUnits(pointsBalance, 6),
+            chargeRewardPoints: ethers.formatUnits(chargeRewardBalance, 6),
+            chargeRewardPoints6: chargeRewardBalance.toString(),
 
             // NFT 列表处理
             nfts: nfts.map((nft: any) => ({
@@ -2261,6 +2654,12 @@ export type CardBonusRuleMetadata = {
 	bonusProportional?: boolean
 }
 
+export type CardPointSystemMetadata = {
+	enabled: boolean
+	chargeRewardRatioE6?: string
+	rewardTokenId?: number
+}
+
 /** 卡 metadata 中的 tier 项（创建卡时由 cardManager 提交，存于 0x{owner}.json） */
 export type CardTierMetadata = { index: number; minUsdc6?: string; attr?: number; name?: string; description?: string; image?: string; backgroundColor?: string }
 
@@ -2298,6 +2697,27 @@ function normalizeCardBonusRulesMetadata(raw: unknown): CardBonusRuleMetadata[] 
 	return rules.length > 0 ? rules : undefined
 }
 
+function parseMetadataBoolean(raw: unknown): boolean | undefined {
+	if (typeof raw === 'boolean') return raw
+	if (typeof raw === 'number' && Number.isFinite(raw)) return raw !== 0
+	if (typeof raw === 'string') {
+		const t = raw.trim().toLowerCase()
+		if (['true', '1', 'yes', 'on', 'enabled'].includes(t)) return true
+		if (['false', '0', 'no', 'off', 'disabled'].includes(t)) return false
+	}
+	return undefined
+}
+
+function parseMetadataRatioE6(raw: unknown): string | undefined {
+	if (typeof raw === 'bigint') return raw >= 0n ? raw.toString() : undefined
+	if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return String(Math.trunc(raw))
+	if (typeof raw === 'string') {
+		const t = raw.replace(/,/g, '').trim()
+		if (/^\d+$/.test(t)) return t
+	}
+	return undefined
+}
+
 function recordFromUnknown(raw: unknown): Record<string, unknown> | null {
 	if (!raw) return null
 	if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>
@@ -2314,18 +2734,60 @@ function recordFromUnknown(raw: unknown): Record<string, unknown> | null {
 	return null
 }
 
+function normalizeCardPointSystemMetadata(raw: unknown): CardPointSystemMetadata | undefined {
+	const direct = recordFromUnknown(raw)
+	const share = recordFromUnknown(direct?.shareTokenMetadata)
+	const pointSystem = recordFromUnknown(share?.pointSystem) ?? recordFromUnknown(direct?.pointSystem)
+	const enabledRaw =
+		pointSystem?.enabled ??
+		pointSystem?.pointSystemEnabled ??
+		pointSystem?.pointsEnabled ??
+		share?.pointSystemEnabled ??
+		share?.pointsEnabled ??
+		direct?.pointSystemEnabled ??
+		direct?.pointsEnabled
+	const ratioRaw =
+		pointSystem?.chargeRewardRatioE6 ??
+		pointSystem?.pointRewardRatioE6 ??
+		pointSystem?.consumptionRewardRatioE6 ??
+		share?.chargeRewardRatioE6 ??
+		share?.pointRewardRatioE6 ??
+		share?.consumptionRewardRatioE6 ??
+		direct?.chargeRewardRatioE6 ??
+		direct?.pointRewardRatioE6 ??
+		direct?.consumptionRewardRatioE6
+	const enabled = parseMetadataBoolean(enabledRaw)
+	const chargeRewardRatioE6 = parseMetadataRatioE6(ratioRaw)
+	const tokenRaw = pointSystem?.rewardTokenId ?? share?.pointRewardTokenId ?? direct?.pointRewardTokenId
+	let rewardTokenId: number | undefined
+	if (typeof tokenRaw === 'number' && Number.isFinite(tokenRaw) && tokenRaw >= 0) {
+		rewardTokenId = Math.trunc(tokenRaw)
+	} else if (typeof tokenRaw === 'string' && /^\d+$/.test(tokenRaw.trim())) {
+		rewardTokenId = Number.parseInt(tokenRaw.trim(), 10)
+	}
+	if (enabled == null && chargeRewardRatioE6 == null && rewardTokenId == null) return undefined
+	return {
+		enabled: enabled ?? (chargeRewardRatioE6 != null ? BigInt(chargeRewardRatioE6) > 0n : true),
+		...(chargeRewardRatioE6 != null ? { chargeRewardRatioE6 } : {}),
+		...(rewardTokenId != null ? { rewardTokenId } : {}),
+	}
+}
+
 function bonusFieldsFromMetadataRoot(raw: unknown): {
 	bonusRule?: CardBonusRuleMetadata
 	bonusRules?: CardBonusRuleMetadata[]
+	pointSystem?: CardPointSystemMetadata
 } {
 	const direct = recordFromUnknown(raw)
 	const share = recordFromUnknown(direct?.shareTokenMetadata)
+	const pointSystem = normalizeCardPointSystemMetadata(raw)
 	const directRules = normalizeCardBonusRulesMetadata(direct?.bonusRules)
 	const directRule = normalizeCardBonusRuleMetadata(direct?.bonusRule) ?? directRules?.[0]
 	if (directRule || directRules) {
 		return {
 			...(directRule && { bonusRule: directRule }),
 			...(directRules && { bonusRules: directRules }),
+			...(pointSystem && { pointSystem }),
 		}
 	}
 	const shareRules = normalizeCardBonusRulesMetadata(share?.bonusRules)
@@ -2333,6 +2795,7 @@ function bonusFieldsFromMetadataRoot(raw: unknown): {
 	return {
 		...(shareRule && { bonusRule: shareRule }),
 		...(shareRules && { bonusRules: shareRules }),
+		...(pointSystem && { pointSystem }),
 	}
 }
 
@@ -2399,6 +2862,7 @@ export type CardMetadataFromUri = {
 	cardOwner?: string
 	bonusRule?: CardBonusRuleMetadata
 	bonusRules?: CardBonusRuleMetadata[]
+	pointSystem?: CardPointSystemMetadata
 }
 
 /** 单张成员 NFT 的 tier metadata（GET /metadata/0x{owner}{NFT#}.json） */

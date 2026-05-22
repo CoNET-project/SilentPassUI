@@ -1,6 +1,6 @@
-import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
-import { Search, ChevronLeft} from 'lucide-react'
-import { searchUsername, storeSystemData, handleNfcLinkAppDeepLinkScan } from '@/services/beamio'
+import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
+import { Search, ChevronLeft, QrCode, Loader2 } from 'lucide-react'
+import { searchUsername, storeSystemData, handleNfcLinkAppDeepLinkScan, emitWalletEvent } from '@/services/beamio'
 import { Toast } from 'antd-mobile'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -11,6 +11,8 @@ import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import NavigateLeftButton from '@/components/navigate'
 import { collectDeepLinkSearchParams, isCouponOpenClaimDeepLink, isRedeemDeepLink } from '@/utils/beamioDeepLinkParams'
+import ScanButton, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
+import { isCashTreesNativeWebView, scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -89,6 +91,8 @@ const SearchInputWithDropdown =
 		const [results, setResults] = useState<searchResult[]>([])
 		const [loading, setLoading] = useState(false)
 		const inputRef = useRef<HTMLInputElement>(null)
+		const scanBtnRef = useRef<ScanButtonHandle>(null)
+		const [qrScanBusy, setQrScanBusy] = useState(false)
 		const [userPreviewItem, setUserPreviewItem] = useState<searchResult | null>()
 		const [myAddress, setMyAddress] = useState('')
 		const [sideSlide, setSideSlide] = useState<'' | 'BeamioContactProfilePreview'>('')
@@ -148,8 +152,9 @@ const SearchInputWithDropdown =
 			const _couponId = decodeURIComponent((searchParams.get("couponId") || searchParams.get("couponid") || '').trim())
 			const _claim = (searchParams.get("claim") || '').trim().toLowerCase()
 
-			// BeamioUserCard redeem URL：与 coupon open-claim 相同，交由 App checkUrl 打开确认页
+			// BeamioUserCard redeem URL：交由 App scanData workflow 打开 Redeem 确认页
 			if (_redeemcode?.trim()) {
+				setScanIntent('')
 				setScanData(url.href)
 				setLoading(false)
 				setShowDropdown(false)
@@ -158,8 +163,9 @@ const SearchInputWithDropdown =
 				return
 			}
 
-			// Coupon open-claim URL：交由 App checkUrl 打开 Claim 页面，再由用户点 Claim 执行 workflow
+			// Coupon open-claim URL：交由 App scanData workflow 打开 Claim 确认页
 			if (_beamiocard?.trim() && _couponId && (!_claim || _claim === 'open' || _claim === '1' || _claim === 'true')) {
+				setScanIntent('')
 				setScanData(url.href)
 				setLoading(false)
 				setShowDropdown(false)
@@ -321,6 +327,60 @@ const SearchInputWithDropdown =
 				? "ring-1 ring-red-500 focus-within:ring-2 focus-within:ring-red-500"
 				: "ring-1 ring-transparent focus-within:ring-slate-300",
 		].join(" ")
+
+		const handleQrScanClick = useCallback(async () => {
+			if (qrScanBusy || scanBtnRef.current?.isScanning()) return
+
+			if (isCashTreesNativeWebView()) {
+				setQrScanBusy(true)
+				try {
+					const result = await scanQrViaCashTreesNative()
+					if (result.ok) {
+						setScanData(result.text)
+						emitWalletEvent('scan:url', result.text)
+						closeWindow('/')
+						return
+					}
+					if (!result.cancelled) {
+						Toast.show({ icon: 'fail', content: 'QR scan failed' })
+					}
+				} finally {
+					setQrScanBusy(false)
+				}
+				return
+			}
+
+			scanBtnRef.current?.start({ hideModeSwitcher: true })
+		}, [qrScanBusy, setScanData, closeWindow])
+
+		const renderQrScanButton = () => (
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation()
+					void handleQrScanClick()
+				}}
+				disabled={qrScanBusy}
+				aria-label="Scan QR code"
+				className="
+					w-7 h-7
+					ml-1
+					flex items-center justify-center
+					rounded-full
+					hover:bg-slate-200
+					active:scale-95
+					transition
+					flex-shrink-0
+					disabled:opacity-50 disabled:pointer-events-none
+				"
+			>
+				{qrScanBusy ? (
+					<Loader2 className="w-4 h-4 text-slate-500 animate-spin" strokeWidth={2} />
+				) : (
+					<QrCode className="w-4 h-4 text-slate-600" strokeWidth={2} />
+				)}
+			</button>
+		)
 
 		useEffect(() => {
 			if (!profiles?.length || !CoNET_Data||readonly) return
@@ -543,6 +603,12 @@ const SearchInputWithDropdown =
 
 		return (
 			<>
+				<ScanButton
+					ref={scanBtnRef}
+					hidden
+					hideModeSwitcher
+					onAfterScan={() => closeWindow('/')}
+				/>
 				{/** Search List */}
 				{/* ✅ FIX 3: 增加 z-50 确保层级
                    ✅ FIX 4: 增加 pt-[env(safe-area-inset-top)] 确保不会被刘海遮挡
@@ -637,6 +703,7 @@ const SearchInputWithDropdown =
 									onChange={e => setQuery(e.currentTarget.value)}
 								/>
 							)}
+							{renderQrScanButton()}
 						</div>
 						
 							{!readonly && showHistory && (
@@ -723,6 +790,7 @@ const SearchInputWithDropdown =
 										// ✅ FIX 7: 下拉模式下的 Input 也要绑定
 										onFocus={handleInputFocus}
 									/>
+								{renderQrScanButton()}
 							</div>
 
 							{/* 下方：search 行 + 结果列表 */}

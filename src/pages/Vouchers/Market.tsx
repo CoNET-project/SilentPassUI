@@ -93,13 +93,13 @@ const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
 
 /** All-filter list: pinned to top first (in array order). */
 const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
-	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694",
+	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4",
 ] as const
 
 /** Featured Brands subtitle override by card address (lowercased). */
 const DISCOVER_CARD_SUBTITLE_OVERRIDES: Record<string, string> = {
 	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": "Shanghai Cuisine",
-	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694": "Health and Beauty",
+	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4": "Health and Beauty",
 }
 
 function orderDiscoverAllWithPinnedTop(cards: DiscoverFeaturedCard[]): DiscoverFeaturedCard[] {
@@ -151,7 +151,7 @@ const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> =
 		contact: "+1 (604) 285-1818",
 		location: "8053 Alexandra Rd,\nRichmond, BC V6X 3A6",
 	},
-	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694": {
+	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4": {
 		welcomeTitle: "Welcome to STT Inner Circle",
 		welcomeText:
 			"Unlock your journey to holistic wellness and natural beauty. Join our exclusive digital membership to access premium treatments, tailored rewards, and seamless payment experiences.",
@@ -194,7 +194,7 @@ type DiscoverMerchantWellnessPointsPanel = {
 
 /** Wellness points loyalty summary (Discover detail Available Offers footer). */
 const DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS: Record<string, DiscoverMerchantWellnessPointsPanel> = {
-	"0x5c5376edabbf0f0bd52d5f7a93828606a5051694": {
+	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4": {
 		title: "Wellness Points",
 		memberSinceLabel: "Member since 2024",
 		currentTierLabel: "BASE WELLNESS TIER",

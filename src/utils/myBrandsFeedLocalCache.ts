@@ -25,7 +25,12 @@ export type MyBrandsFeedDetailsSnapshot = Record<
 	{
 		meta: CardMetadataFromUri | null
 		assets: MyCardAssets | null
-		claimableCoupons?: { count: number; firstTitle?: string; firstCoupon?: MyBrandsOwnedCouponSnapshot | null } | null
+		claimableCoupons?: {
+			count: number
+			firstTitle?: string
+			firstCoupon?: MyBrandsOwnedCouponSnapshot | null
+			coupons?: MyBrandsOwnedCouponSnapshot[]
+		} | null
 	}
 >
 

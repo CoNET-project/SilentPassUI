@@ -17,7 +17,7 @@ type Props = {
 
 function WalletMerchantPassStackCardInner({ display, stackIdx, topPx }: Props) {
 	const FooterIcon: LucideIcon = FOOTER_ICONS[stackIdx % FOOTER_ICONS.length]!
-	const { tierTheme, tierGradient, title, tierLbl, balanceLine, imgUrl } = display
+	const { tierTheme, tierGradient, title, tierLbl, balanceLine, balanceSubtitle, imgUrl } = display
 
 	return (
 		<div
@@ -83,6 +83,11 @@ function WalletMerchantPassStackCardInner({ display, stackIdx, topPx }: Props) {
 						>
 							{balanceLine}
 						</p>
+						{balanceSubtitle ? (
+							<p className="text-[11px] font-semibold tabular-nums" style={{ color: tierTheme.secondary }}>
+								{balanceSubtitle}
+							</p>
+						) : null}
 					</div>
 				</div>
 				<div className="mt-auto flex items-end justify-between" style={{ color: tierTheme.accent }}>

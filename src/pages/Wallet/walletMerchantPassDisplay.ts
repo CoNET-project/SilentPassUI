@@ -8,9 +8,17 @@ export type WalletMerchantPassStackDisplay = {
 	title: string
 	tierLbl: string
 	balanceLine: string
+	balanceSubtitle: string
 	imgUrl: string
 	tierGradient: string
 	tierTheme: ReturnType<typeof cardTierGradientTheme>
+}
+
+function formatPointSubtitle(raw: unknown): string {
+	if (raw == null || String(raw).trim() === '') return ''
+	const n = Number(raw)
+	if (!Number.isFinite(n)) return ''
+	return `${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} Point`
 }
 
 export function buildWalletMerchantPassStackDisplay(
@@ -30,6 +38,8 @@ export function buildWalletMerchantPassStackDisplay(
 		: detail === undefined
 			? '…'
 			: '—'
+	const pointSystemOn = detail?.meta?.pointSystem?.enabled === true
+	const balanceSubtitle = pointSystemOn ? formatPointSubtitle(detail?.assets?.chargeRewardPoints) : ''
 	const balanceSig = Number.isFinite(ptsNum) ? ptsNum.toFixed(2) : balanceLine
 	const tierGradient = cardTierGradientCss(tierPres.accentColor)
 	const tierTheme = cardTierGradientTheme(tierPres.accentColor)
@@ -37,6 +47,7 @@ export function buildWalletMerchantPassStackDisplay(
 		title,
 		tierLbl,
 		balance: balanceSig,
+		balanceSubtitle,
 		imgUrl,
 		accent: tierPres.accentColor ?? '',
 		border: tierTheme.cardBorder,
@@ -46,6 +57,7 @@ export function buildWalletMerchantPassStackDisplay(
 		title,
 		tierLbl,
 		balanceLine,
+		balanceSubtitle,
 		imgUrl,
 		tierGradient,
 		tierTheme,

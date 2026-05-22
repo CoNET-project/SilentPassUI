@@ -21,9 +21,11 @@ interface Props {
   iconSize?: number
   hidden?: boolean // ✅ 新增：让它可以“看不见但常驻”
   hideModeSwitcher?: boolean
+  /** Called after scan text is written to DaemonProvider scanData */
+  onAfterScan?: (text: string) => void
 }
 
-const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden, hideModeSwitcher = false }, ref) => {
+const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden, hideModeSwitcher = false, onAfterScan }, ref) => {
   const [scanning, setScanning] = useState(false)
   const [loading, setLoading] = useState(false)
   const [runtimeHideModeSwitcher, setRuntimeHideModeSwitcher] = useState(false)
@@ -86,6 +88,7 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden,
   const handleScanSuccess = (text: string) => {
     setScanData(text)
     emitWalletEvent("scan:url", text)
+    onAfterScan?.(text)
   }
 
   return (

@@ -6,6 +6,9 @@ import { ethers } from 'ethers'
 import {
 	getCardsOfOwnerWithDetailsForProfile,
 	fetchMyBrandsCouponSeriesForUser,
+	fetchOwnedCouponsForKnownCards,
+	fetchOwnedCouponsFromRecentSeriesForUser,
+	fetchOwnedCouponsFromWalletAssetsForCards,
 	isCardExcludedFromDisplay,
 	getMyAssets,
 	getCardBasicMetadataStaleWhileRevalidate,
@@ -47,7 +50,12 @@ const CONET_MAINNET_RPC_HTTP = 'https://rpc1.conet.network'
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
 
-type ClaimableCouponSummary = { count: number; firstTitle?: string; firstCoupon?: MyBrandsOwnedCouponSnapshot | null }
+type ClaimableCouponSummary = {
+  count: number
+  firstTitle?: string
+  firstCoupon?: MyBrandsOwnedCouponSnapshot | null
+  coupons?: MyBrandsOwnedCouponSnapshot[]
+}
 
 const couponMetaAsRecord = (v: unknown): Record<string, unknown> | null =>
   v && typeof v === 'object' ? (v as Record<string, unknown>) : null
@@ -164,14 +172,30 @@ function summarizeClaimableCouponCards(
 		const key = cardAddress.toLowerCase()
 		const prev = out.get(key)
 		const title = readMyBrandsCouponTitle(row.metadata ?? null)
-		const firstCoupon = prev?.firstCoupon ?? mapMyBrandsOwnedCoupon(row, cardAddress)
+		const mapped = mapMyBrandsOwnedCoupon(row, cardAddress)
+		const coupons = [...(prev?.coupons ?? [])]
+		if (mapped && !coupons.some((c) => c.id === mapped.id)) coupons.push(mapped)
+		const firstCoupon = prev?.firstCoupon ?? mapped ?? null
 		out.set(key, {
 			count: (prev?.count ?? 0) + 1,
-			firstTitle: prev?.firstTitle || title || undefined,
+			firstTitle: prev?.firstTitle || title || mapped?.title || undefined,
 			firstCoupon,
+			coupons,
 		})
 	}
 	return out
+}
+
+function resolveClaimableCouponsForCard(
+	cardKey: string,
+	couponSummaries: Map<string, ClaimableCouponSummary> | null,
+	couponRows: CardActiveIssuedCouponSeriesItem[] | null,
+	prevRow: MyBrandCardFeedDetailsMap[string] | undefined
+): ClaimableCouponSummary | null {
+	if (couponSummaries === null || couponRows === null) {
+		return prevRow?.claimableCoupons ?? null
+	}
+	return couponSummaries.get(cardKey) ?? null
 }
 
 function couponFallbackCardInfo(cardAddressLower: string, summary: ClaimableCouponSummary): UserCardInfo {
@@ -743,20 +767,44 @@ export function DaemonProvider({ children }: DaemonProps) {
       setMyBrandsFeedLastConetBlock(conetBlockRef.current)
       const eoaSave = profile.keyID?.trim().toLowerCase() ?? ''
       const eoaForCoupons = profile.keyID?.trim()
-      const aaForCoupons =
+      let aaForCoupons: string | null =
         profile.aaAccount && ethers.isAddress(profile.aaAccount)
           ? ethers.getAddress(profile.aaAccount)
-          : eoaForCoupons && ethers.isAddress(eoaForCoupons)
-            ? await getAAAccount(profile).catch(() => null)
-            : null
-      const couponRows =
-        eoaForCoupons && ethers.isAddress(eoaForCoupons)
-          ? await fetchMyBrandsCouponSeriesForUser(
-              50,
-              ethers.getAddress(eoaForCoupons),
-              aaForCoupons && ethers.isAddress(aaForCoupons) ? ethers.getAddress(aaForCoupons) : null
-            ).catch(() => null)
-          : []
+          : null
+      if (eoaForCoupons && ethers.isAddress(eoaForCoupons)) {
+        const resolvedAa = await getAAAccount(profile).catch(() => null)
+        if (resolvedAa && ethers.isAddress(resolvedAa)) {
+          aaForCoupons = ethers.getAddress(resolvedAa)
+        }
+      }
+      const knownCouponCardAddresses = [...ownerCards, ...holderCards].map((c) => c.cardAddress)
+      const holderOnlyAddresses = holderCards.map((c) => c.cardAddress)
+      let couponRows: CardActiveIssuedCouponSeriesItem[] | null = null
+      if (eoaForCoupons && ethers.isAddress(eoaForCoupons)) {
+        const eoaNorm = ethers.getAddress(eoaForCoupons)
+        const aaNorm =
+          aaForCoupons && ethers.isAddress(aaForCoupons) ? ethers.getAddress(aaForCoupons) : null
+        couponRows = await fetchOwnedCouponsFromWalletAssetsForCards(eoaNorm, null, 50).catch(
+          () => null
+        )
+        if (!couponRows?.length) {
+          couponRows = await fetchOwnedCouponsFromRecentSeriesForUser(eoaNorm, aaNorm, null, 50).catch(
+            () => null
+          )
+        }
+        if (!couponRows?.length) {
+          if (holderOnlyAddresses.length > 0) {
+            couponRows = await fetchOwnedCouponsForKnownCards(holderOnlyAddresses, eoaNorm, aaNorm, 50).catch(
+              () => null
+            )
+          }
+        }
+        if (!couponRows?.length) {
+          couponRows = await fetchMyBrandsCouponSeriesForUser(50, eoaNorm, aaNorm, knownCouponCardAddresses).catch(
+            () => null
+          )
+        }
+      }
       const couponSummaries = summarizeClaimableCouponCards(couponRows)
       const nextHolderUnionMap = new Map<string, UserCardInfo>()
       for (const c of myBrandHolderUnionCardsRef.current) {
@@ -825,42 +873,91 @@ export function DaemonProvider({ children }: DaemonProps) {
       for (const k of allowed) {
         if (prevDetails[k]) next[k] = prevDetails[k]!
       }
+      const eoaNormForCoupons =
+        eoaForCoupons && ethers.isAddress(eoaForCoupons) ? ethers.getAddress(eoaForCoupons) : null
+      const aaNormForCoupons =
+        aaForCoupons && ethers.isAddress(aaForCoupons) ? ethers.getAddress(aaForCoupons) : null
+
+      const resolveCouponsForCardKey = async (
+        key: string,
+        cardAddress: string,
+        prevRow: MyBrandCardFeedDetailsMap[string] | undefined
+      ): Promise<ClaimableCouponSummary | null> => {
+        const batch = resolveClaimableCouponsForCard(key, couponSummaries, couponRows, prevRow)
+        if (batch?.count) return batch
+        if (!eoaNormForCoupons) return batch ?? prevRow?.claimableCoupons ?? null
+        const fromWalletAssets = await fetchOwnedCouponsFromWalletAssetsForCards(
+          eoaNormForCoupons,
+          [cardAddress],
+          50
+        ).catch(() => null)
+        if (fromWalletAssets?.length) {
+          return summarizeClaimableCouponCards(fromWalletAssets)?.get(key) ?? batch ?? null
+        }
+        const fromRecent = await fetchOwnedCouponsFromRecentSeriesForUser(
+          eoaNormForCoupons,
+          aaNormForCoupons,
+          [cardAddress],
+          50
+        ).catch(() => null)
+        if (fromRecent?.length) {
+          return summarizeClaimableCouponCards(fromRecent)?.get(key) ?? batch ?? null
+        }
+        if (fromRecent === null) {
+          const cardOwned = await fetchOwnedCouponsForKnownCards(
+            [cardAddress],
+            eoaNormForCoupons,
+            aaNormForCoupons,
+            50
+          ).catch(() => null)
+          if (cardOwned?.length) {
+            return summarizeClaimableCouponCards(cardOwned)?.get(key) ?? batch ?? null
+          }
+          return batch ?? prevRow?.claimableCoupons ?? null
+        }
+        return batch ?? null
+      }
+
+      const claimableByCardKey = new Map<string, ClaimableCouponSummary | null>()
+      for (const uc of cards) {
+        const key = uc.cardAddress.toLowerCase()
+        claimableByCardKey.set(key, await resolveCouponsForCardKey(key, uc.cardAddress, prevDetails[key]))
+      }
+
       await Promise.all(
         cards.map(async (uc) => {
           const key = uc.cardAddress.toLowerCase()
           const prevRow = prevDetails[key]
-          try {
-            const [assets, meta] = await Promise.all([
-              getMyAssets(profile, uc.cardAddress),
-              getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress),
-            ])
-            next[key] = {
-              meta: meta ?? prevRow?.meta ?? null,
-              assets: assets ?? prevRow?.assets ?? null,
-              claimableCoupons: couponSummaries
-                ? couponSummaries.get(key) ?? null
-                : prevRow?.claimableCoupons ?? null,
-            }
-            if (meta) rememberCardBasicMetadataTrusted(uc.cardAddress, meta)
-          } catch {
-            if (prevRow) {
-              next[key] = {
-                ...prevRow,
-                claimableCoupons: couponSummaries
-                  ? couponSummaries.get(key) ?? null
-                  : prevRow.claimableCoupons ?? null,
-              }
-            }
-            else {
-              next[key] = {
-                meta: null,
-                assets: null,
-                claimableCoupons: couponSummaries
-                  ? couponSummaries.get(key) ?? null
-                  : null,
-              }
-            }
+          const claimableCoupons = claimableByCardKey.get(key) ?? null
+          const [assets, meta] = await Promise.all([
+            getMyAssets(profile, uc.cardAddress).catch(() => prevRow?.assets ?? null),
+            getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress).catch(() => prevRow?.meta ?? null),
+          ])
+          let couponsForRow = claimableCoupons ?? prevRow?.claimableCoupons ?? null
+          if (!couponsForRow?.count && assets && eoaNormForCoupons) {
+            const lateOwned =
+              (await fetchOwnedCouponsFromWalletAssetsForCards(
+                eoaNormForCoupons,
+                [uc.cardAddress],
+                50
+              ).catch(() => null)) ??
+              (await fetchOwnedCouponsFromRecentSeriesForUser(
+                eoaNormForCoupons,
+                aaNormForCoupons,
+                [uc.cardAddress],
+                50
+              ).catch(() => null))
+            const lateSummary = lateOwned?.length
+              ? summarizeClaimableCouponCards(lateOwned)?.get(key) ?? null
+              : null
+            if (lateSummary?.count) couponsForRow = lateSummary
           }
+          next[key] = {
+            meta: meta ?? prevRow?.meta ?? null,
+            assets: assets ?? prevRow?.assets ?? null,
+            claimableCoupons: couponsForRow,
+          }
+          if (meta) rememberCardBasicMetadataTrusted(uc.cardAddress, meta)
         })
       )
       if (!areMyBrandDetailsMapsEqual(prevDetails, next)) {

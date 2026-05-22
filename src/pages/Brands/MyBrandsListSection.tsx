@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { CreditCard, Store } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
+import { resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -46,7 +47,12 @@ export type MyBrandCardDetailLike = {
 		cardCurrency?: string
 		nfts?: Array<{ tokenId: string; tier?: string; isExpired?: boolean }>
 	} | null
-		claimableCoupons?: { count: number; firstTitle?: string } | null
+		claimableCoupons?: {
+			count: number
+			firstTitle?: string
+			firstCoupon?: ActiveCouponListItem | null
+			coupons?: ActiveCouponListItem[]
+		} | null
 }
 
 export type MyBrandBonusRuleRow = {
@@ -441,17 +447,24 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 							const activePasses =
 								assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired).length ?? 0
 							const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
-							const ownedCoupon = detail?.claimableCoupons?.firstCoupon as ActiveCouponListItem | null | undefined
-							if (couponCount > 0 && ownedCoupon) {
+							const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
+								uc.cardAddress,
+								detail?.claimableCoupons
+							) as ActiveCouponListItem[]
+							if (couponCount > 0 && ownedCoupons.length > 0) {
 								return (
-									<ActiveCouponTicketItem
-										key={uc.cardAddress}
-										row={ownedCoupon}
-										actionLabel="Owned"
-										disabled
-										aria-label={`Owned coupon ${ownedCoupon.title}`}
-										punchBgClassName="bg-[#f3f4f5] dark:bg-slate-800"
-									/>
+									<React.Fragment key={uc.cardAddress}>
+										{ownedCoupons.map((ownedCoupon) => (
+											<ActiveCouponTicketItem
+												key={ownedCoupon.id}
+												row={ownedCoupon}
+												actionLabel="Owned"
+												disabled
+												aria-label={`Owned coupon ${ownedCoupon.title}`}
+												punchBgClassName="bg-[#f3f4f5] dark:bg-slate-800"
+											/>
+										))}
+									</React.Fragment>
 								)
 							}
 							const passLine =

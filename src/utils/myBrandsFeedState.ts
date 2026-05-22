@@ -1,7 +1,68 @@
 import type { UserCardInfo } from '@/services/BeamioCard'
-import type { MyBrandsFeedDetailsSnapshot } from '@/utils/myBrandsFeedLocalCache'
+import type { MyBrandsFeedDetailsSnapshot, MyBrandsOwnedCouponSnapshot } from '@/utils/myBrandsFeedLocalCache'
 
 export type MyBrandCardFeedDetailsMap = MyBrandsFeedDetailsSnapshot
+
+/** Home / My Brands list: render owned coupon ticket when count > 0 even if firstCoupon mapping missed. */
+export function resolveMyBrandsOwnedCouponDisplay(
+	cardAddress: string,
+	claimable:
+		| {
+				count: number
+				firstTitle?: string
+				firstCoupon?: MyBrandsOwnedCouponSnapshot | null
+				coupons?: MyBrandsOwnedCouponSnapshot[]
+		  }
+		| null
+		| undefined
+): MyBrandsOwnedCouponSnapshot | null {
+	if (!claimable || claimable.count <= 0) return null
+	if (claimable.firstCoupon) return claimable.firstCoupon
+	if (claimable.firstTitle) {
+		return {
+			id: `${cardAddress.toLowerCase()}:owned`,
+			cardAddress,
+			tokenId: '',
+			couponId: claimable.firstTitle,
+			title: claimable.firstTitle,
+			subtitle: 'Gift voucher',
+			iconUrl: '',
+			backgroundImage: '',
+			backgroundColorHex: '',
+			validBeforeSec: null,
+		}
+	}
+	return null
+}
+
+export function resolveMyBrandsOwnedCouponDisplays(
+	cardAddress: string,
+	claimable:
+		| {
+				count: number
+				firstTitle?: string
+				firstCoupon?: MyBrandsOwnedCouponSnapshot | null
+				coupons?: MyBrandsOwnedCouponSnapshot[]
+		  }
+		| null
+		| undefined
+): MyBrandsOwnedCouponSnapshot[] {
+	if (!claimable || claimable.count <= 0) return []
+	const seen = new Set<string>()
+	const out: MyBrandsOwnedCouponSnapshot[] = []
+	for (const coupon of claimable.coupons ?? []) {
+		const key = coupon.id || `${coupon.cardAddress.toLowerCase()}:${coupon.tokenId || coupon.couponId}`
+		if (seen.has(key)) continue
+		seen.add(key)
+		out.push(coupon)
+	}
+	const fallback = resolveMyBrandsOwnedCouponDisplay(cardAddress, claimable)
+	if (fallback) {
+		const key = fallback.id || `${fallback.cardAddress.toLowerCase()}:${fallback.tokenId || fallback.couponId}`
+		if (!seen.has(key)) out.push(fallback)
+	}
+	return out
+}
 
 /** 卡列表是否仅地址集合变化（忽略顺序） */
 export function myBrandCardListSignature(cards: UserCardInfo[]): string {
@@ -25,11 +86,27 @@ function detailRowDisplayKey(row: MyBrandCardFeedDetailsMap[string] | undefined)
 	const metaTiers = row.meta?.tiers
 	return JSON.stringify({
 		p: row.assets?.points ?? null,
+		cp: row.assets?.chargeRewardPoints ?? null,
+		cp6: row.assets?.chargeRewardPoints6 ?? null,
 		c: row.assets?.cardCurrency ?? null,
 		n: row.meta?.name ?? null,
 		i: row.meta?.image ?? null,
+		pointSystem: row.meta?.pointSystem ?? null,
 		coupons: row.claimableCoupons?.count ?? 0,
 		couponTitle: row.claimableCoupons?.firstTitle ?? null,
+		couponItems: (row.claimableCoupons?.coupons ?? [])
+			.map((coupon) =>
+				[
+					coupon.id,
+					coupon.title,
+					coupon.subtitle,
+					coupon.iconUrl,
+					coupon.backgroundImage,
+					coupon.backgroundColorHex,
+					coupon.validBeforeSec,
+				].join('|')
+			)
+			.join('||'),
 		couponItem: row.claimableCoupons?.firstCoupon
 			? [
 				row.claimableCoupons.firstCoupon.id,

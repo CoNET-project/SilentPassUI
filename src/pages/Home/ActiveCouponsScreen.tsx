@@ -4,10 +4,16 @@ import { ethers } from 'ethers'
 import { Toast } from 'antd-mobile'
 import {
 	type CardActiveIssuedCouponSeriesItem,
+	fetchCardActiveIssuedCouponSeriesTrusted,
+	fetchRedeemBundleTokenIdsFromChain,
+	readCouponRequiresRedeemCode,
 	fetchOngoingClaimableCouponSeries,
 	isCardExcludedFromDisplay,
 	postCardCouponOpenClaimWithCurrentWallet,
 } from '@/services/BeamioCard'
+
+/** Align `cardCouponOpenClaimPreCheck` / issued NFT series tokenId floor. */
+const ISSUED_NFT_START_ID_MEMBER = 100_000_000_000n
 
 export type ActiveCouponListItem = {
 	id: string
@@ -163,6 +169,95 @@ export function mapActiveCouponRow(cardAddress: string, row: CardActiveIssuedCou
 		backgroundImage: readMetadataBackgroundImage(meta),
 		backgroundColorHex: readMetadataBackgroundColor(meta),
 		validBeforeSec: Number.isFinite(validBeforeNum) && validBeforeNum > 0 ? validBeforeNum : null,
+	}
+}
+
+/** Trusted coupon row for deep-link claim preview. `undefined` = fetch untrusted; `null` = not found. */
+export async function resolveActiveCouponListItemByCouponId(
+	cardAddress: string,
+	couponId: string,
+): Promise<ActiveCouponListItem | null | undefined> {
+	const cardNorm = cardAddress?.trim() ?? ''
+	const wanted = couponId?.trim() ?? ''
+	if (!cardNorm || !wanted || !ethers.isAddress(cardNorm)) return null
+	const rows = await fetchCardActiveIssuedCouponSeriesTrusted(ethers.getAddress(cardNorm), 50)
+	if (rows === null) return undefined
+	for (const row of rows) {
+		const mapped = mapActiveCouponRow(ethers.getAddress(cardNorm), row)
+		if (mapped && mapped.couponId === wanted) return mapped
+	}
+	return null
+}
+
+export function buildFallbackActiveCouponListItem(cardAddress: string, couponId: string): ActiveCouponListItem {
+	const cardNorm = ethers.isAddress(cardAddress) ? ethers.getAddress(cardAddress) : cardAddress
+	return {
+		id: `${cardNorm.toLowerCase()}:${couponId}`,
+		cardAddress: cardNorm,
+		tokenId: '',
+		couponId,
+		title: 'Coupon',
+		subtitle: 'Gift voucher',
+		iconUrl: '',
+		backgroundImage: '',
+		backgroundColorHex: '',
+		validBeforeSec: null,
+	}
+}
+
+/** Trusted coupon row for redeem-code deep links. `undefined` = fetch untrusted; `null` = not found. */
+export async function resolveActiveCouponListItemByRedeemCode(
+	cardAddress: string,
+	redeemCode: string,
+): Promise<ActiveCouponListItem | null | undefined> {
+	const cardNorm = cardAddress?.trim() ?? ''
+	const code = redeemCode?.trim() ?? ''
+	if (!cardNorm || !code || !ethers.isAddress(cardNorm)) return null
+	const checksum = ethers.getAddress(cardNorm)
+	const rows = await fetchCardActiveIssuedCouponSeriesTrusted(checksum, 50)
+	if (rows === null) return undefined
+
+	const bundleTokenIds = await fetchRedeemBundleTokenIdsFromChain(checksum, code)
+	if (bundleTokenIds === null) return undefined
+
+	for (const rawId of bundleTokenIds) {
+		let tid: bigint
+		try {
+			tid = BigInt(rawId)
+		} catch {
+			continue
+		}
+		if (tid < ISSUED_NFT_START_ID_MEMBER) continue
+		for (const row of rows) {
+			if (String(row.tokenId) !== String(rawId)) continue
+			return mapActiveCouponRow(checksum, row)
+		}
+	}
+
+	const redeemRequiredRows = rows.filter((row) => readCouponRequiresRedeemCode(row.metadata ?? null))
+	if (redeemRequiredRows.length === 1) {
+		return mapActiveCouponRow(checksum, redeemRequiredRows[0]!)
+	}
+
+	return null
+}
+
+export function buildFallbackActiveCouponListItemForRedeem(
+	cardAddress: string,
+	redeemCode: string,
+): ActiveCouponListItem {
+	const cardNorm = ethers.isAddress(cardAddress) ? ethers.getAddress(cardAddress) : cardAddress
+	return {
+		id: `${cardNorm.toLowerCase()}:redeem:${redeemCode.trim()}`,
+		cardAddress: cardNorm,
+		tokenId: '',
+		couponId: '',
+		title: 'Program reward',
+		subtitle: 'Redeem code',
+		iconUrl: '',
+		backgroundImage: '',
+		backgroundColorHex: '',
+		validBeforeSec: null,
 	}
 }
 

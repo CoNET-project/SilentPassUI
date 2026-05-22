@@ -1,25 +1,9 @@
 import React from "react"
-
-declare global {
-	interface Window {
-		CashTreesIOS?: unknown
-	}
-}
-
-const isEmbeddedNativeWebView = () => {
-	if (typeof window === "undefined") return false
-	if (window.CashTreesIOS) return true
-	const webkitBridge = (window as Window & {
-		webkit?: {
-			messageHandlers?: Record<string, unknown>
-		}
-	}).webkit
-	return !!webkitBridge?.messageHandlers?.CashTreesIOS
-}
+import { isEmbeddedCashTreesWebView } from "@/utils/cashTreesIOSBridge"
 
 /** init 期间全屏居中显示 logo，等 init 完成后再显示具体页面 */
 const SplashScreen: React.FC = () => {
-	const hideLogo = isEmbeddedNativeWebView()
+	const hideLogo = isEmbeddedCashTreesWebView()
 
 	return (
 		<div

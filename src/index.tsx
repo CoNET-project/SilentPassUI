@@ -6,6 +6,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'
+import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider'
 import { HashRouter as Router } from 'react-router-dom'
 
 const root = ReactDOM.createRoot(
@@ -16,7 +17,9 @@ root.render(
 	<React.StrictMode>
 		<Router>
 			<DaemonProvider>
-				<App />
+				<BeamioTagDatabaseProvider>
+					<App />
+				</BeamioTagDatabaseProvider>
 			</DaemonProvider>
 		</Router>
 	</React.StrictMode>

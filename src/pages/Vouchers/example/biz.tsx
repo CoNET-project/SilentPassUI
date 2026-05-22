@@ -13408,20 +13408,19 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
                  const deadline = nowSec + 3600;
                  const nonce = ethers.hexlify(ethers.randomBytes(32));
                  const data = encodeAdminManagerAdd(chainOwner, 1, 'program-owner');
-                 /** Factory executeForAdmin rewrites adminManager calldata to adminManagerByAdmin(..., signer). */
-                 const adminSignature = await signExecuteForAdmin(pk, cardAddrNorm, data, deadline, nonce);
-                 const addRes = await postCardAddAdminByAdmin({
+                 const ownerSignature = await signExecuteForOwner(pk, cardAddrNorm, data, deadline, nonce);
+                 const addRes = await postCardAddAdmin({
                    cardAddress: cardAddrNorm,
                    data,
                    deadline,
                    nonce,
-                   adminSignature,
+                   ownerSignature,
                    adminEOA: chainOwner,
                  });
                  if (addRes.success) {
                    setCardIssuanceOwnerAdminNotice({
                      kind: 'ok',
-                     text: 'Owner EOA registered as card admin (executeForAdmin → adminManagerByAdmin on-chain).',
+                     text: 'Owner EOA registered as card admin.',
                    });
                  } else {
                    setCardIssuanceOwnerAdminNotice({
@@ -20932,7 +20931,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            'Card owner is a smart account. Add your EOA as a top-level admin first (e.g. redeem), then register the device.',
          );
        }
-       if (ownerIsSigningEoa && !effEditing) {
+       if (ownerIsSigningEoa && !isAdminUser && !effEditing) {
          const merchantSelfMetadata = JSON.stringify({
            role: 'merchant',
            label: 'Program owner (top-level admin)',

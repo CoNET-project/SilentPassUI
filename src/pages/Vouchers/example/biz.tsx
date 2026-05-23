@@ -8498,6 +8498,33 @@ const CARD_ISSUANCE_CATEGORY_OPTIONS: CardIssuanceCategoryOption[] = LITE_MOBILE
   }
 );
 
+const CARD_ISSUANCE_CATEGORY_IDS = new Set(CARD_ISSUANCE_CATEGORY_OPTIONS.map((o) => o.id));
+
+function normalizeCardIssuanceCategoryId(raw: unknown): string {
+  const candidates = Array.isArray(raw) ? raw : [raw];
+  for (const value of candidates) {
+    if (typeof value !== 'string') continue;
+    const id = value.trim();
+    if (id && CARD_ISSUANCE_CATEGORY_IDS.has(id)) return id;
+  }
+  return '';
+}
+
+function cardIssuanceCategoryIdFromMetadata(raw: unknown): string {
+  if (!raw || typeof raw !== 'object') return '';
+  const meta = raw as {
+    category?: unknown;
+    categories?: unknown;
+    shareTokenMetadata?: { category?: unknown; categories?: unknown };
+  };
+  return (
+    normalizeCardIssuanceCategoryId(meta.categories) ||
+    normalizeCardIssuanceCategoryId(meta.category) ||
+    normalizeCardIssuanceCategoryId(meta.shareTokenMetadata?.categories) ||
+    normalizeCardIssuanceCategoryId(meta.shareTokenMetadata?.category)
+  );
+}
+
 type CardIssuanceTierRule = 'single' | 'cumulative' | 'balance';
 type CardIssuanceTierPreset = 'silver' | 'gold' | 'platinum' | 'custom';
 const CARD_ISSUANCE_TIER_RULE_OPTIONS: Array<{
@@ -9384,6 +9411,8 @@ const [cardIssuanceServiceCategorySavingId, setCardIssuanceServiceCategorySaving
 );
 /** Last successfully published service categories — guards hydration until API metadata catches up. */
 const cardIssuanceServiceCategoriesCommittedRef = useRef<ProductionServiceCategoryOption[] | null>(null);
+/** Last successfully published program category — guards hydration until API metadata catches up. */
+const cardIssuanceCategoryCommittedRef = useRef<string | null>(null);
 const cardIssuanceEditingProductionRow = useMemo(
   () => cardIssuanceProductions.find((item) => item.id === cardIssuanceEditingProductionId) ?? null,
   [cardIssuanceProductions, cardIssuanceEditingProductionId]
@@ -9529,9 +9558,10 @@ const cardIssuanceCouponShareUrl = useMemo(() => {
   const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
   const couponId = cardIssuanceCouponShareRow?.id?.trim() ?? '';
   if (!cardAddress || !couponId || !ethers.isAddress(cardAddress)) return '';
-  return `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+  const claimUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
     ethers.getAddress(cardAddress)
   )}&couponId=${encodeURIComponent(couponId)}&claim=open`;
+  return `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`;
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponShareRow?.id]);
 const cardIssuanceCouponRedeemShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponRedeemShareOpen?.couponId) ?? null,
@@ -9661,7 +9691,7 @@ useEffect(() => {
    setCardIssuanceCurrencySymbol(deriveCardIssuanceShortNameFromUnitName(cardIssuanceProgramName));
  }, [cardIssuanceProgramName]);
 
- /** Program category chips: selected id first (read-only row; edit in Business Category / lite onboarding). */
+ /** Program category chips: selected id first; saved in card-level shareTokenMetadata.categories on Publish. */
  const cardIssuanceProgramCategoryOptionsOrdered = useMemo((): CardIssuanceCategoryOption[] => {
    const sel = cardIssuanceCategoryId.trim();
    if (!sel) return CARD_ISSUANCE_CATEGORY_OPTIONS;
@@ -9669,6 +9699,14 @@ useEffect(() => {
    if (!selected) return CARD_ISSUANCE_CATEGORY_OPTIONS;
    return [selected, ...CARD_ISSUANCE_CATEGORY_OPTIONS.filter((o) => o.id !== sel)];
  }, [cardIssuanceCategoryId]);
+ const selectCardIssuanceCategory = useCallback(
+   (categoryId: string) => {
+     const next = normalizeCardIssuanceCategoryId(categoryId);
+     if (!next) return;
+     setCardIssuanceCategoryId(next);
+   },
+   []
+ );
 
  /** Profile is owner of ≥1 BeamioUserCard (via factory / cardsOfOwner); Staff tab hides «Smart Terminal Locked» for issuers. */
  const [profileOwnsIssuedBeamioCard, setProfileOwnsIssuedBeamioCard] = useState(false);
@@ -10017,6 +10055,12 @@ useEffect(() => {
    const dn = (cardIssuanceExistingCard.meta.displayName ?? '').trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX);
    setCardIssuanceStoreDisplayName(dn);
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.displayName]);
+
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  const next = cardIssuanceCategoryIdFromMetadata(cardIssuanceExistingCard.meta);
+  if (next) setCardIssuanceCategoryId(next);
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta]);
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta?.tiers?.length) return;
@@ -11379,6 +11423,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     ? (editingCouponExistingRow?.name?.trim() ?? '')
     : cardIssuanceCouponName.trim();
   const icon = cardIssuanceCouponIcon.trim();
+  const couponIconForMetadata = icon || cardIssuanceEffectiveMerchantLogo.trim();
   const couponImageTrim = cardIssuanceCouponImage.trim();
   const backgroundColorRaw = cardIssuanceCouponBackgroundColor.trim();
   const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw);
@@ -11533,7 +11578,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
         ...prev,
         makeCardIssuanceCouponRow(
           name,
-          icon,
+          couponIconForMetadata,
           backgroundColor ?? '#0051d1',
           description,
           couponImageTrim,
@@ -11584,7 +11629,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
 
     const couponRowDraft = makeCardIssuanceCouponRow(
       name,
-      icon,
+      couponIconForMetadata,
       backgroundColor ?? '#0051d1',
       description,
       couponImageTrim,
@@ -11610,7 +11655,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
         issueTotal: issueTotalN,
         requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
         ...(dr === 'range' && vfStore && vtStore ? { validFrom: vfStore, validTo: vtStore } : {}),
-        ...(icon ? { icon } : {}),
+        ...(couponIconForMetadata ? { icon: couponIconForMetadata } : {}),
         ...(couponTileBg ? { backgroundColor: couponTileBg } : {}),
         ...(couponImageTrim ? { couponImage: couponImageTrim } : {}),
         ...(description ? { description } : {}),
@@ -11631,7 +11676,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       nonce,
       ownerSignature: ownerSig,
       description: descFirst,
-      ...(icon.trim() ? { image: icon.trim() } : {}),
+      ...(couponIconForMetadata ? { image: couponIconForMetadata } : {}),
       background_color: (backgroundColor ?? '#0051d1').trim(),
       metadata_extra_properties: metaProps,
     });
@@ -11780,6 +11825,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   cardIssuanceCouponValidFromYmd,
   cardIssuanceCouponValidToYmd,
   cardIssuanceCouponName,
+  cardIssuanceEffectiveMerchantLogo,
   cardIssuanceEditingCouponId,
   cardIssuanceCoupons,
   profiles,
@@ -13351,6 +13397,10 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
          ? ethers.getAddress(cardIssuanceExistingCard.cardAddress)
          : undefined);
     if (res.success && resolvedPublishCardAddr) {
+      const categoryIdForIndex = normalizeCardIssuanceCategoryId(cardIssuanceCategoryId);
+      if (categoryIdForIndex) {
+        cardIssuanceCategoryCommittedRef.current = categoryIdForIndex;
+      }
        if (!opts?.skipOnChainRefresh) {
          setCardIssuanceOnChainRefreshNonce((n) => n + 1);
        }
@@ -13379,7 +13429,6 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
          });
        }
 
-       const categoryIdForIndex = cardIssuanceCategoryId.trim();
        const profileForPost = profiles?.[0];
        void (async () => {
          const createdAddr = resolvedPublishCardAddr;
@@ -13710,6 +13759,7 @@ useEffect(() => {
        if (cancelled) return;
       setCardIssuanceExistingCard((prev) => {
         const committedCategories = cardIssuanceServiceCategoriesCommittedRef.current;
+        const committedProgramCategory = cardIssuanceCategoryCommittedRef.current;
         let mergedMeta = meta;
         if (committedCategories && committedCategories.length > 0 && meta) {
           const parsedCategories = normalizeItemCategoryList(
@@ -13737,6 +13787,14 @@ useEffect(() => {
             !serviceCategoryListsEquivalent(fetchedCategories, prevCategories)
           ) {
             mergedMeta = { ...meta, itemCategory: prevCategories };
+          }
+        }
+        if (committedProgramCategory && meta) {
+          const fetchedProgramCategory = cardIssuanceCategoryIdFromMetadata(meta);
+          if (fetchedProgramCategory === committedProgramCategory) {
+            cardIssuanceCategoryCommittedRef.current = null;
+          } else {
+            mergedMeta = { ...(mergedMeta ?? meta), categories: [committedProgramCategory] };
           }
         }
         return {
@@ -14142,14 +14200,16 @@ useEffect(() => {
 
  /** Program category chips ↔ lite commerce Business Category (same ids as `LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS`). */
  useEffect(() => {
+   if (cardIssuanceExistingCard?.cardAddress) return;
    if (!businessProfileEoaResolved) return;
    const fromForm = (businessProfileForm.category ?? '').trim();
    const fromDraft = (loadBusinessProfileDraftForEoa(businessProfileEoaResolved)?.category ?? '').trim();
    const cat = fromForm || fromDraft;
    if (!cat) return;
-   if (!LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS.some((o) => o.value === cat)) return;
-   setCardIssuanceCategoryId(cat);
- }, [businessProfileEoaResolved, businessProfileForm.category, liteBusinessFormRevision]);
+   const normalized = normalizeCardIssuanceCategoryId(cat);
+   if (!normalized) return;
+   setCardIssuanceCategoryId(normalized);
+ }, [businessProfileEoaResolved, businessProfileForm.category, liteBusinessFormRevision, cardIssuanceExistingCard?.cardAddress]);
  useEffect(() => {
    if (activeTab !== 'Settings') {
      setSettingsBusinessProfileOverlayOpen(false);
@@ -26141,22 +26201,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            Program category
                          </span>
                          <div
-                           role="list"
+                           role="radiogroup"
+                           aria-label="Program category"
                            className="flex overflow-x-auto gap-3 py-1 pl-1 -mx-1 px-1 scrollbar-hide"
                          >
                            {cardIssuanceProgramCategoryOptionsOrdered.map((opt) => {
                              const selected = cardIssuanceCategoryId === opt.id;
                              const Icon = opt.Icon;
                              return (
-                               <div
+                               <button
                                  key={opt.id}
-                                 role="listitem"
-                                 aria-current={selected ? 'true' : undefined}
-                                 aria-label={`${opt.label}${selected ? ', selected' : ''}`}
-                                 className={`flex flex-shrink-0 flex-col items-center gap-2 min-w-[4.5rem] rounded-2xl p-1.5 ${
+                                 type="button"
+                                 role="radio"
+                                 aria-checked={selected}
+                                 onClick={() => selectCardIssuanceCategory(opt.id)}
+                                 className={`flex flex-shrink-0 flex-col items-center gap-2 min-w-[4.5rem] rounded-2xl p-1.5 transition ${bizFocusRingClass} ${
                                    selected
                                      ? 'ring-2 ring-inset ring-[#1562f0] bg-blue-50/50 shadow-sm'
-                                     : 'opacity-80'
+                                     : 'opacity-80 hover:bg-[#eef1f3]/80 hover:opacity-100'
                                  }`}
                                >
                                  <div
@@ -26169,7 +26231,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  <span className="max-w-[5rem] text-center text-[11px] font-bold leading-tight tracking-tight text-slate-600">
                                    {opt.label}
                                  </span>
-                               </div>
+                               </button>
                              );
                            })}
                          </div>

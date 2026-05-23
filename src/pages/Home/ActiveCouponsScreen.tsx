@@ -80,14 +80,21 @@ const readMetadataIconUrl = (meta: Record<string, unknown> | null): string => {
 	if (!meta) return ''
 	const props = asRecord(meta.properties)
 	const beamioCoupon = asRecord(props?.beamioCoupon)
+	const shareTokenMetadata = asRecord(props?.shareTokenMetadata)
 	const imageObj = asRecord(meta.image)
 	return (
 		readString(meta.iconUrl) ||
 		readString(meta.icon) ||
-		readString(imageObj?.url) ||
-		readString(meta.image) ||
+		readString(meta.logoUrl) ||
+		readString(meta.logo) ||
 		readString(beamioCoupon?.iconUrl) ||
-		readString(beamioCoupon?.icon)
+		readString(beamioCoupon?.icon) ||
+		readString(beamioCoupon?.logoUrl) ||
+		readString(beamioCoupon?.logo) ||
+		readString(shareTokenMetadata?.logoUrl) ||
+		readString(shareTokenMetadata?.logo) ||
+		readString(imageObj?.url) ||
+		readString(meta.image)
 	)
 }
 
@@ -286,7 +293,7 @@ export function ActiveCouponTicketItem({
 	const actionDisabled = disabled || actionStatus !== 'idle' || !onAction
 	const expiryBgStyle = expiryUrgent
 		? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
-		: 'border border-white/35 bg-white/18 text-white backdrop-blur-md'
+		: 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md'
 	const ExpiryIcon = expiryUrgent ? Clock : Calendar
 	const interactive = Boolean(onAction)
 
@@ -355,8 +362,6 @@ export function ActiveCouponTicketItem({
 					<div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
 						{row.iconUrl ? (
 							<img src={row.iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
-						) : row.backgroundImage ? (
-							<img src={row.backgroundImage} alt="" className="h-full w-full object-cover" draggable={false} />
 						) : (
 							<div className="font-manrope flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg">
 								{row.title.charAt(0).toUpperCase()}

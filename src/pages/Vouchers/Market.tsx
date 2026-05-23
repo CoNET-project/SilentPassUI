@@ -88,17 +88,18 @@ const DISCOVER_FEATURE_FALLBACK_IMAGES = [
 
 /** Bundled hero overrides when on-chain metadata has no `merchantImage`. Key: card address lowercased. */
 const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
-	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": longdhangStoreCardBg,
+	"0x7334a7c7fe867538018fcc4cea8b266e47600911": longdhangStoreCardBg,
 }
 
 /** All-filter list: pinned to top first (in array order). */
 const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
+	"0x7334a7c7fe867538018fcc4cea8b266e47600911",
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4",
 ] as const
 
 /** Featured Brands subtitle override by card address (lowercased). */
 const DISCOVER_CARD_SUBTITLE_OVERRIDES: Record<string, string> = {
-	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": "Shanghai Cuisine",
+	"0x7334a7c7fe867538018fcc4cea8b266e47600911": "Shanghai Cuisine",
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4": "Health and Beauty",
 }
 
@@ -140,7 +141,7 @@ function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolea
 
 /** Per-card About / hours / contact / location for Discover detail (when metadata lacks these fields). */
 const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> = {
-	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": {
+	"0x7334a7c7fe867538018fcc4cea8b266e47600911": {
 		welcomeTitle: "Welcome to LongDhang Inner Circle",
 		welcomeText:
 			"Unlock seamless dining and exclusive digital privileges. Top up your LongDhang Pass to enjoy instant bonus rewards.",
@@ -174,7 +175,7 @@ type DiscoverMerchantPromoRewardTier = {
 
 /** Curated VIP reward tier promo cards (Discover detail). Key: card address lowercased. */
 const DISCOVER_MERCHANT_PROMO_REWARD_TIERS: Record<string, DiscoverMerchantPromoRewardTier> = {
-	"0x7cd467e658205b3875f6b65e68bea9d54f30c0db": {
+	"0x7334a7c7fe867538018fcc4cea8b266e47600911": {
 		badge: "VIP Privilege",
 		title: "10% Bonus on Every Top-Up!",
 		description:

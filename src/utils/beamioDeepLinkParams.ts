@@ -12,19 +12,44 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 		})
 	}
 
+	const appendWrappedTargetParams = (sp: URLSearchParams) => {
+		const target = sp.get('target')?.trim() ?? ''
+		if (!target) return
+		try {
+			const targetUrl = new URL(target)
+			if (targetUrl.origin !== 'https://beamio.app') return
+			if (targetUrl.pathname !== '/app/' && targetUrl.pathname !== '/app' && !targetUrl.pathname.startsWith('/app/')) return
+			appendParams(targetUrl.searchParams)
+			const hash = targetUrl.hash || ''
+			if (hash.includes('?')) {
+				const hashQuery = hash.slice(hash.indexOf('?') + 1)
+				if (hashQuery) appendParams(new URLSearchParams(hashQuery))
+			}
+		} catch {
+			// Ignore invalid or non-Beamio target wrappers.
+		}
+	}
+
 	try {
 		const u = input.startsWith('http') ? new URL(input) : new URL(input, 'https://beamio.app')
 		appendParams(u.searchParams)
+		appendWrappedTargetParams(u.searchParams)
 		const hash = u.hash || ''
 		if (hash.includes('?')) {
 			const hashQuery = hash.slice(hash.indexOf('?') + 1)
-			if (hashQuery) appendParams(new URLSearchParams(hashQuery))
+			if (hashQuery) {
+				const hashParams = new URLSearchParams(hashQuery)
+				appendParams(hashParams)
+				appendWrappedTargetParams(hashParams)
+			}
 		}
 		return merged
 	} catch {
 		// Fallback: raw query string
 		const q = input.startsWith('?') ? input.slice(1) : input
-		appendParams(new URLSearchParams(q))
+		const params = new URLSearchParams(q)
+		appendParams(params)
+		appendWrappedTargetParams(params)
 		return merged
 	}
 }

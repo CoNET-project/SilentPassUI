@@ -52,7 +52,6 @@ import {
 	postListLinkedNfcCards,
 	postNfcCardLinkStateSigned,
 } from '@/services/BeamioCard'
-import { BEAMIO_USER_CARD_ASSET_ADDRESS } from '@/config/chainAddresses'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import { resolveCardImageUrl, resolveHeldTierPresentation } from '@/pages/Brands/MyBrandsListSection'
@@ -158,6 +157,7 @@ type CashTreesNfcOverlayPhase = 'hidden' | 'scanning' | 'fetch' | 'result' | 'er
 
 type CashTreesNfcLinkOverlayResult = {
 	redeemTxHash?: string | null
+	migrationEoaSweepTxHashes?: string[]
 	address?: string
 }
 
@@ -281,7 +281,7 @@ const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
 	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-amber-900 to-stone-900', borderColor: 'border-amber-950/50', iconColor: 'text-amber-200', bgColor: 'bg-amber-950/30', icon: CreditCard, balanceCad: 10.0, backgroundImage: LUMINA_STORE_CARD_ART_URL },
 ]
 
-/** CashTrees 大卡：EOA / AA 两侧 USDC（链上 balanceOf）+ 基础设施卡 points（与 getMyAssets 同源）；CAD 合计在 UI 内按 Oracle 折算 */
+/** CashTrees 大卡：EOA / AA 两侧 USDC（链上 balanceOf）+ 程序卡 points（与 getMyAssetsAggregated 同源）；CAD 合计在 UI 内按 Oracle 折算 */
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
 async function loadCashTreesWalletSnapshot(profile: Parameters<typeof getMyAssets>[0]): Promise<{
@@ -290,7 +290,7 @@ async function loadCashTreesWalletSnapshot(profile: Parameters<typeof getMyAsset
 	points0: string
 	pointsCurrency: string
 }> {
-	const res = await getMyAssets(profile, BEAMIO_USER_CARD_ASSET_ADDRESS)
+	const res = await getMyAssetsAggregated(profile)
 	const points0 = res?.points ?? '0'
 	const pointsCurrency = res?.cardCurrency ?? 'CAD'
 	const eoa = profile.keyID
@@ -1569,7 +1569,6 @@ const Home = (_props: HomeProps) => {
 					e,
 					c,
 					m,
-					cardAddress: BEAMIO_USER_CARD_ASSET_ADDRESS,
 				})
 				if (rid !== cashTreesNfcReq.current) return
 				if (!link.ok) {
@@ -1605,6 +1604,7 @@ const Home = (_props: HomeProps) => {
 					linkResult: {
 						address: claim.address,
 						redeemTxHash: claim.redeemTxHash,
+						migrationEoaSweepTxHashes: claim.migrationEoaSweepTxHashes,
 					},
 					...base,
 				})
@@ -2770,8 +2770,15 @@ const Home = (_props: HomeProps) => {
 												Physical card linked
 											</h3>
 											<p className="text-xs text-gray-500 dark:text-slate-400 text-center mt-2 leading-relaxed px-1">
-												This NFC tag is now bound to your CashTrees wallet. Your home balance will refresh
-												shortly.
+												This NFC tag is now bound to your CashTrees wallet.
+												{(cashTreesNfcOverlay.linkResult.redeemTxHash ||
+													(cashTreesNfcOverlay.linkResult.migrationEoaSweepTxHashes?.length ?? 0) > 0) ? (
+													<>
+														{' '}
+														USDC, CADD, Beamio card balances, and membership NFTs from the tag wallet were moved to your app wallet.
+													</>
+												) : null}{' '}
+												Your home balance will refresh shortly.
 											</p>
 											<p className="text-[11px] text-gray-500 dark:text-slate-400 mt-3 font-mono text-center">
 												{shortNfcId(cashTreesNfcOverlay.tagUidHex || '—', 6, 4)}

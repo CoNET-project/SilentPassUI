@@ -27,8 +27,10 @@ export type Icard = { cardAddress: string, userSignature: string, nonce: string,
 	const validAfter = now - BigInt(60)
 	const validBefore = now + BigInt(60)   
  */
-/** 用户拥有的卡片列表中不显示的卡地址（基础设施/系统卡） */
+/** 用户拥有的卡片列表中不显示的卡地址（与 x402sdk apiExcludedUserCards 对齐） */
 const USER_CARD_DISPLAY_EXCLUDED = new Set([
+	'0xbccfa50d2a5917c7a8662177f5f4b7a175787270',
+	'0x2032a363bb2cf331142391fc0dad21d6504922c7',
 	'0x02bae511632354584b198951b42ec73bacbc4e98',
 	'0xf99018dffdb0c5657c93ca14db2900cebe1168a7',
 	'0xa86a8406b06bd6c332b4b380a0eaced822218eff',
@@ -60,7 +62,7 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0x70399f0854f32553d7fe14a43fd6ab925d39c0b4',
 	'0xfb4d0546b90a8f353f7c479392a1ba40a1185b9d',
 	'0x4c66b36ba059b2f05ef3d5f383c67533f19c6219',
-	'0x9cda8477c9f03b8759ac64e21941e578908fd750', // BEAMIO_USER_CARD_ASSET_ADDRESS (infra)
+	'0x9cda8477c9f03b8759ac64e21941e578908fd750',
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
@@ -1439,63 +1441,6 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 				merged.push(c)
 			}
 		}
-		// Fallback: 若用户 EOA 为 CCSA owner，但 cardsOfOwner 未返回 CCSA，则显式加入
-		if (CCSA_Card_Address && eoa && ethers.isAddress(eoa)) {
-			try {
-				const ccsaLower = CCSA_Card_Address.toLowerCase()
-				if (!seen.has(ccsaLower)) {
-					const owner = await BeamioCardFactorySC.beamioUserCardOwner(CCSA_Card_Address)
-					if (owner && ethers.getAddress(owner).toLowerCase() === ethers.getAddress(eoa).toLowerCase()) {
-						const card = new ethers.Contract(CCSA_Card_Address, cardAbiSlice, baseEndpoint)
-						const [currencyNum, priceE6Raw] = await Promise.all([
-							card.currency(),
-							card.pointsUnitPriceInCurrencyE6(),
-						])
-						const currency = getICurrency(BigInt(currencyNum))
-						const priceE6 = Number(priceE6Raw)
-						const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
-						merged.unshift({
-							cardAddress: CCSA_Card_Address,
-							name: 'CCSA',
-							currency,
-							priceE6: String(priceE6),
-							ptsPer1Currency: String(ptsPer1Currency),
-						})
-						seen.add(ccsaLower)
-					}
-				}
-			} catch (_) {}
-		}
-		// Fallback: 若用户 EOA 为基础设施卡 owner，但 cardsOfOwner 未返回该卡，则显式加入（便于 owner 创建 redeem）
-		if (BEAMIO_USER_CARD_ASSET_ADDRESS && eoa && ethers.isAddress(eoa)) {
-			try {
-				const infraLower = BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()
-				if (!seen.has(infraLower)) {
-					const owner = await BeamioCardFactorySC.beamioUserCardOwner(BEAMIO_USER_CARD_ASSET_ADDRESS)
-					if (owner && ethers.getAddress(owner).toLowerCase() === ethers.getAddress(eoa).toLowerCase()) {
-						const card = new ethers.Contract(BEAMIO_USER_CARD_ASSET_ADDRESS, cardAbiSlice, baseEndpoint)
-						const [currencyNum, priceE6Raw] = await Promise.all([
-							card.currency(),
-							card.pointsUnitPriceInCurrencyE6(),
-						])
-						const currency = getICurrency(BigInt(currencyNum))
-						const priceE6 = Number(priceE6Raw)
-						const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
-						merged.push({
-							cardAddress: BEAMIO_USER_CARD_ASSET_ADDRESS,
-							name: 'CashTrees Card',
-							currency,
-							priceE6: String(priceE6),
-							ptsPer1Currency: String(ptsPer1Currency),
-						})
-						seen.add(infraLower)
-					}
-				}
-			} catch (_) {}
-		}
-		if (merged.length === 0 && typeof console !== 'undefined' && console.warn) {
-			console.warn('[getCardsOfOwnerWithDetailsForProfile] 0 cards for owners:', uniqueOwners, '(EOA/keyID 须与创建卡时的 cardOwner 一致)')
-		}
 		// 补充：持有者视角（购买/领取）卡片。cardsOfOwner 仅覆盖 cardOwner，不覆盖持卡用户。
 		const ownerCards = filterExcludedUserCards([...merged])
 		const holderCards: UserCardInfo[] = []
@@ -2622,7 +2567,7 @@ export const getMyAssets = async (
 	return p
 }
 
-/** 聚合查询 CCSA + beamioUserCard（基础设施卡）的资产，与 CCSA 同等对待。 */
+/** 聚合查询用户程序卡资产（废弃全局 CCSA 已 exclude）。 */
 export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAssets | null> => {
 	const key = `aggregated-${profile.keyID ?? ''}`
 	const cached = getMyAssetsCache.get(key)
@@ -2639,7 +2584,7 @@ export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAss
 	const mergedNfts = valid.flatMap((r) => r.nfts)
 	const result: MyCardAssets = {
 		...first,
-		cardAddress: CCSA_Card_Address,
+		cardAddress: first.cardAddress,
 		points: String(totalPoints),
 		nfts: mergedNfts,
 	}
@@ -3756,7 +3701,7 @@ export async function postNfcLinkApp(body: {
 
 /** App 端认领：用当前钱包私钥完成换绑与可选链上迁移（HTTPS；勿记录私钥） */
 export type NfcLinkAppClaimApiResult =
-	| { ok: true; address?: string; redeemTxHash?: string | null }
+	| { ok: true; address?: string; redeemTxHash?: string | null; migrationEoaSweepTxHashes?: string[] }
 	| { ok: false; error: string }
 
 export async function postNfcLinkAppClaimWithKey(body: {
@@ -3796,6 +3741,9 @@ export async function postNfcLinkAppClaimWithKey(body: {
 			ok: true,
 			address: json.address != null ? String(json.address) : undefined,
 			redeemTxHash: json.redeemTxHash != null ? String(json.redeemTxHash) : null,
+			migrationEoaSweepTxHashes: Array.isArray(json.migrationEoaSweepTxHashes)
+				? json.migrationEoaSweepTxHashes.map((h) => String(h))
+				: undefined,
 		}
 	} catch (e: unknown) {
 		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }

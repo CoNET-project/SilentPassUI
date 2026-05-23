@@ -37,12 +37,12 @@ const stripe_pay_Annual ='https://buy.stripe.com/test_eVa2af5zqdmJ2Ri14b?client_
 const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
 const CCSA_Card_Address = contracts.BeamioCardCCSA.address.toLowerCase()
-/** 与 CCSA 同等对待的资产卡：用户查询资产时同时查找此卡与 CCSA（基础设施卡，新创建卡合约地址） */
+/** @deprecated 废弃全局卡；API/display 已 exclude，勿在新功能中使用 */
 const BEAMIO_USER_CARD_ASSET_ADDRESS = BEAMIO_USER_CARD_ASSET.toLowerCase()
-/** CashTrees 卡（Alliance FIXED_USER_CARD）：用户持有 $CTree 时需拉取并展示 */
+/** CashTrees 程序卡（Alliance FIXED_USER_CARD） */
 const CASH_TREES_CARD_ADDRESS = '0x82ceE96dB45933fE4b71D36fa8904508f929027C'.toLowerCase()
-/** 资产卡列表：用于 getMyAssetsAggregated 聚合查询。UI 展示的卡一览改为从 api/latestCards 拉取 */
-const ASSET_CARD_ADDRESSES = [CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, CASH_TREES_CARD_ADDRESS]
+/** 用户程序卡资产聚合（不含废弃全局 CCSA / infra 卡） */
+const ASSET_CARD_ADDRESSES = [CASH_TREES_CARD_ADDRESS]
 
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
 const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);

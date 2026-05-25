@@ -4,6 +4,7 @@ import { fiatPrefix, formatAmount } from "@/services/currency"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData } from "@/services/beamio"
 import { useNavigate } from "react-router-dom"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 
 type MessageSendReceiveCardProps = {
 	variant: "sent" | "received" | "cashcode" | "membershipActivated"
@@ -51,7 +52,7 @@ export function MessageSendReceiveCard({
 
 	const openCashcode = () => {
 		if (!cashcodeUrl) return
-		window.open(cashcodeUrl, "_blank", "noopener,noreferrer")
+		openExternalUrl(cashcodeUrl)
 	}
 	const { setSecureCode, setRedeemCode } = useDaemonContext()
 

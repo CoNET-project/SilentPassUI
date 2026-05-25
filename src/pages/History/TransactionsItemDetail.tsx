@@ -26,6 +26,7 @@ import bIcon from '@/components/assets/logo512.png'
 import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
 import PaymentReceipt from '@/pages/Pay/components/paymentReceipt'
 import FXDetail from './components/FXDetail'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type Mode = "pay" | "request" | 'cashcode'
 
@@ -829,7 +830,7 @@ export function TransactionsItemDetail({
 													type="button"
 													onClick={() => {
 														if (!tx.hash) return
-														window.open(`https://basescan.org/tx/${tx.hash}`, '_blank', 'noopener,noreferrer')
+														openExternalUrl(`https://basescan.org/tx/${tx.hash}`)
 														
 													}}
 													className="

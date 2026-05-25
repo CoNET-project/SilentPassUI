@@ -4,6 +4,7 @@ import { Copy, Check, Printer, Share2, Clock } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { ethers } from "ethers"
 import { formatAmount } from "@/services/currency"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 
 const displayName = (item: beamio | null) => {
 	if (!item) return ""
@@ -130,7 +131,7 @@ export default function ShowPayQR({
 	}
 	const onShare = () => {
 		if (qrValue) return
-		window.open(successUrl, "_blank")
+		openExternalUrl(successUrl)
 	}
 
 	useEffect(() => {

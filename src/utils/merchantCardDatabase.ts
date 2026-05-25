@@ -80,7 +80,7 @@ export function pickMerchantChargeListTitle(opts: {
   return pickMerchantProgramDisplayName(opts);
 }
 
-/** Recent Activity Top-up list title — `Top-up {merchant name}` (same name source as Charge). */
+/** Recent Activity Top-up list title — `Top-up: {merchant name}` (same name source as Charge). */
 export function pickMerchantTopupListTitle(opts: {
   displayNameFromDb?: string;
   directoryName?: string;
@@ -92,12 +92,12 @@ export function pickMerchantTopupListTitle(opts: {
     directoryName: opts.directoryName,
     displayJsonCardName: opts.displayJsonCardName,
   });
-  if (program) return `Top-up ${program}`;
+  if (program) return `Top-up: ${program}`;
   const m = String(opts.fallbackTitle ?? '').match(
-    /^(?:Buy|Upgrade to|Reload|Top-up)\s+(.+?)(?:\s+Card(?:\s*·.*)?)?$/i,
+    /^(?:Buy|Upgrade to|Reload|Top-up:?)\s+(.+?)(?:\s+Card(?:\s*·.*)?)?$/i,
   );
   const fromTitle = m?.[1]?.replace(/\s*·.*$/, '').trim() ?? '';
-  if (fromTitle && !isGenericMerchantCardDisplayName(fromTitle)) return `Top-up ${fromTitle}`;
+  if (fromTitle && !isGenericMerchantCardDisplayName(fromTitle)) return `Top-up: ${fromTitle}`;
   return '';
 }
 

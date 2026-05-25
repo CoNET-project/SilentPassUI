@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { ethers } from "ethers"
 import { Check, ExternalLink, RefreshCw } from "lucide-react"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {
 	getCardMetadataFromApi,
@@ -544,15 +545,14 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 						</div>
 						<p className="text-base font-bold text-emerald-600">Success</p>
 						{topupSuccessTxHash.startsWith("0x") ? (
-							<a
-								href={`https://basescan.org/tx/${topupSuccessTxHash}`}
-								target="_blank"
-								rel="noopener noreferrer"
+							<button
+								type="button"
+								onClick={() => openExternalUrl(`https://basescan.org/tx/${topupSuccessTxHash}`)}
 								className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-mono text-[#1D5BFF] hover:bg-slate-100"
 							>
 								{topupSuccessTxHash.slice(0, 10)}...{topupSuccessTxHash.slice(-8)}
 								<ExternalLink size={14} strokeWidth={2.5} />
-							</a>
+							</button>
 						) : null}
 						<button
 							onClick={resetTopupState}

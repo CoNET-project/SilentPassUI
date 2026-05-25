@@ -30,6 +30,7 @@ import {
 	ChevronLeft,
 	Zap,
 	Plus,
+	Gift,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import {
@@ -61,9 +62,11 @@ import { searchUsername } from '@/services/beamio'
 import { conetDepinProvider, beamioApi, baseEndpoint } from '@/utils/constants'
 import contracts from '@/utils/contracts'
 import { formatAmount, formatAmountWithCurrencyProtocol, fiatPrefix, getDecimals } from '@/services/currency'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
+import { MyBrandCardAddressCapsule } from '@/pages/Brands/MyBrandsListSection'
 import { QRCodeCanvas } from 'qrcode.react'
 import bIcon from '@/components/assets/logo512.png'
 import usdcIcon from '@/components/assets/usdc.png'
@@ -136,12 +139,26 @@ function formatTopupListAmountPositive(amountFiat: number, currencyCode: string)
 	return `+${prefix}${formatted}`
 }
 
+function formatTopupBonusSubtitleAmount(amountFiat: number, currencyCode: string): string {
+	const ccy = (currencyCode || 'USD') as ICurrency
+	const prefix = ccy === 'USDC' ? '$' : fiatPrefix(ccy)
+	const formatted = formatAmount(Math.abs(amountFiat), ccy)
+	return `+${prefix}${formatted}`
+}
+
 /** Merchant charge list row: prefix glued to amount, e.g. -CA$24.00 */
 function formatMerchantChargeListAmountNegative(amountFiat: number, currencyCode: string): string {
 	const ccy = (currencyCode || 'USD') as ICurrency
 	const prefix = ccy === 'USDC' ? '$' : fiatPrefix(ccy)
 	const formatted = formatAmount(Math.abs(amountFiat), ccy)
 	return `-${prefix}${formatted}`
+}
+
+function formatMerchantChargeTipSubtitleAmount(amountFiat: number, currencyCode: string): string {
+	const ccy = (currencyCode || 'USD') as ICurrency
+	const prefix = ccy === 'USDC' ? '$' : fiatPrefix(ccy)
+	const formatted = formatAmount(Math.abs(amountFiat), ccy)
+	return `${prefix} ${formatted}`
 }
 
 const FEE_INFO_KEYS = ['gasChainType', 'gasWei', 'gasUSDC6', 'serviceUSDC6', 'bServiceUSDC6', 'bServiceUnits6', 'feePayer'] as const
@@ -394,7 +411,7 @@ const ActiveHistoryPannelNew = ({
 		recentActivityNoAaError,
 		refreshRecentActivityNoAa,
 	} = useDaemonContext()
-	const { resolveDisplayName, fetchCardMetadata, registerCardAddresses, peekMetadata, cardMap } = useMerchantCardDatabase()
+	const { resolveDisplayName, resolveImage, fetchCardMetadata, registerCardAddresses, peekMetadata, cardMap } = useMerchantCardDatabase()
 	const navigate = useNavigate()
 
 	const eoa = profiles?.[0]?.keyID?.trim()
@@ -558,7 +575,7 @@ const ActiveHistoryPannelNew = ({
 			displayJsonCardName: parsed.cardName,
 		})
 		if (fromDb) return fromDb
-		const m = String(selectedTx.title ?? '').match(/^(?:Buy|Upgrade to|Reload|Top-up)\s+(.+?)(?:\s+Card(?:\s*·.*)?)?$/i)
+		const m = String(selectedTx.title ?? '').match(/^(?:Buy|Upgrade to|Reload|Top-up:?)\s+(.+?)(?:\s+Card(?:\s*·.*)?)?$/i)
 		return (m?.[1] ?? '').trim()
 	}, [selectedTx, resolveDisplayName, cardMap, recentActivityCardNameDirectory])
 	const selectedCardUnitLabel = selectedCardName ? `$${selectedCardName}` : 'Card Voucher'
@@ -566,6 +583,8 @@ const ActiveHistoryPannelNew = ({
 		() => (selectedTx ? topupCardAddressFromTxView(selectedTx) : ''),
 		[selectedTx],
 	)
+	const selectedCardImage = selectedCardAddress ? resolveImage(selectedCardAddress) : ''
+	const selectedCardMetadataName = selectedCardAddress ? String(peekMetadata(selectedCardAddress)?.name ?? '').trim() : ''
 	const selectedMergedUnitLabel = useMemo(() => {
 		if (!selectedCardName) return 'Merged Voucher'
 		const base = selectedCardName.split('-')[0]?.trim() || selectedCardName
@@ -781,6 +800,10 @@ const ActiveHistoryPannelNew = ({
 		},
 		[selectedTx, selectedIsCardTopupKind, selectedTopupDisplayJson, resolveDisplayName, cardMap, recentActivityCardNameDirectory],
 	)
+	const selectedTopupDetailProgramTitle = selectedTopupDetailTitle.replace(/^Top-up:?\s*/i, '').trim()
+	const selectedCardDisplayLabel = selectedCardName || selectedTopupDetailProgramTitle || 'Card Voucher'
+	const selectedCardDisplayInitial = (selectedCardDisplayLabel.trim().match(/[A-Za-z0-9]/)?.[0] ?? 'B').toUpperCase()
+	const selectedTopupBonusFiat = selectedIsCardTopupKind ? Math.max(0, Number(selectedTx?.topupBonusFiat ?? 0)) : 0
 	const selectedTopupDetailSubtitle = useMemo(
 		() =>
 			selectedTx && selectedIsCardTopupKind
@@ -1213,6 +1236,8 @@ const ActiveHistoryPannelNew = ({
 		const chargeRewardPoint6 = isMerchantChargeLedgerTx
 			? parseChargeRewardPoint6FromAfterNotePayer(rawTxAfterNotePayer(rawTx))
 			: null
+		const merchantChargeTipFiat = isMerchantChargeLedgerTx ? Math.max(0, Number(tx.merchantChargeTipFiat ?? 0)) : 0
+		const merchantChargeTipCurrencyCode = tx.merchantChargeTipCurrencyCode || merchantChargeCurrencyCode
 		const topupListTitle = useMemo(() => {
 			if (!isCardTopupLedgerTx) return ''
 			const addrKey = topupCardAddr.toLowerCase()
@@ -1291,7 +1316,7 @@ const ActiveHistoryPannelNew = ({
 		const iconBg = isMerchantChargeLedgerTx
 			? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
 			: isCardTopupLedgerTx
-			? 'bg-[#F5F2FF] text-[#A855F7] dark:bg-[#A855F7]/20 dark:text-[#C084FC]'
+			? 'bg-[#34C759]/10 text-[#34C759] dark:bg-[#34C759]/20 dark:text-[#5EDB7B]'
 			: tx.type === 'fuel_yield'
 			? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
 			: isInternalTransfer
@@ -1319,6 +1344,7 @@ const ActiveHistoryPannelNew = ({
 				? vouchersInternalAmount.green
 				: !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
 		const fuelYieldSpentUsdc = tx.amountUSDC > 0 ? tx.amountUSDC : Math.abs(tx.amountFiat) / 100
+		const topupBonusFiat = isCardTopupLedgerTx ? Math.max(0, Number(tx.topupBonusFiat ?? 0)) : 0
 
 		return (
 			<div
@@ -1346,7 +1372,7 @@ const ActiveHistoryPannelNew = ({
 						) : isMerchantChargeLedgerTx ? (
 							<CreditCard size={16} strokeWidth={2.2} />
 						) : isCardTopupLedgerTx ? (
-							<CreditCard size={16} strokeWidth={2.2} />
+							<Plus size={17} strokeWidth={2.6} />
 						) : (isEoaReceived && tx.type !== 'request_fulfilled') ? (
 							<ArrowDownLeft size={16} strokeWidth={2} />
 						) : (isEoaSent || isAASent) ? (
@@ -1421,6 +1447,18 @@ const ActiveHistoryPannelNew = ({
 					</div>
 					{tx.type === 'fuel_yield' ? (
 						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">USDC</span>
+					) : isCardTopupLedgerTx && topupBonusFiat > 0 ? (
+						<span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-semibold text-[#FF9500]">
+							<span>Incl</span>
+							<span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
+								<Gift size={9} strokeWidth={2.5} />
+							</span>
+							<span>{formatTopupBonusSubtitleAmount(topupBonusFiat, tx.currencyCode)}</span>
+						</span>
+					) : isMerchantChargeLedgerTx && merchantChargeTipFiat > 0 ? (
+						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
+							incl {formatMerchantChargeTipSubtitleAmount(merchantChargeTipFiat, merchantChargeTipCurrencyCode)} tip
+						</span>
 					) : isMerchantChargeLedgerTx && chargeRewardPoint6 !== null && chargeRewardPoint6 > 0n ? (
 						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
 							{(Number(chargeRewardPoint6) / 1e6).toFixed(2)} pts
@@ -1732,7 +1770,7 @@ const ActiveHistoryPannelNew = ({
 								// 自己是收款方时，与列表对齐：request_fulfilled 用 QrCode，transfer_in 用 ArrowDownLeft
 								const isReceiver = selectedTx.isInbound && selectedTx.type !== 'internal_transfer'
 								const detailIcon = selectedIsCardTopupKind
-									? <CreditCard size={36} strokeWidth={2.2} />
+									? <Plus size={40} strokeWidth={2.6} />
 									: selectedTx.type === 'fuel_yield'
 									? <ArrowUpRight size={36} strokeWidth={2} />
 									: isReceiver && selectedTx.type === 'request_fulfilled'
@@ -1742,7 +1780,7 @@ const ActiveHistoryPannelNew = ({
 										: iconForType(selectedTx.type, 36, selectedTx)
 								// AA→EOA 蓝色背景白色 icon；EOA→AA 紫色背景白色 icon；Request Expired / Canceled 使用灰色
 								const capsuleBg = selectedIsCardTopupKind
-									? 'bg-[#A855F7] text-white dark:bg-[#A855F7] dark:text-white'
+									? 'bg-[#34C759] text-white dark:bg-[#34C759] dark:text-white shadow-[0_18px_38px_rgba(52,199,89,0.3)]'
 									: selectedTx.type === 'fuel_yield'
 									? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-300'
 									: isInternalToEoa
@@ -1806,8 +1844,8 @@ const ActiveHistoryPannelNew = ({
 								</h2>
 									)
 								})()}
-								{selectedIsCardTopupKind && selectedTopupDetailTitle ? (
-									<p className="text-[17px] font-semibold text-black dark:text-white mt-2">{selectedTopupDetailTitle}</p>
+								{selectedIsCardTopupKind && selectedTopupDetailProgramTitle ? (
+									<p className="text-[17px] font-semibold text-black dark:text-white mt-2">{selectedTopupDetailProgramTitle}</p>
 								) : null}
 								{selectedIsCardTopupKind && selectedTopupDetailSubtitle ? (
 									<p className="text-[14px] font-medium text-gray-500 dark:text-slate-400 mt-1">{selectedTopupDetailSubtitle}</p>
@@ -2099,29 +2137,39 @@ const ActiveHistoryPannelNew = ({
 								: (txWithRoute?.finalRequestAmountUSDC6 as bigint | undefined) ?? 0n)
 							return (
 								<div className="rounded-2xl bg-white dark:bg-slate-800/80 border border-gray-100 dark:border-slate-600/50 p-4 shadow-sm mb-6">
-									<div className="flex items-center justify-between mb-4">
-										<h3 className="flex items-center gap-2 text-[14px] font-bold text-black dark:text-white">
-											{selectedIsUpgradeNewCard ? (
-												<span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F3E8FF] dark:bg-[#A855F7]/20">
-													<ArrowRightLeft size={14} className="text-[#A855F7] dark:text-[#C084FC]" />
-												</span>
-											) : selectedIsCardTopupKind ? (
-												<span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F5F2FF] dark:bg-[#A855F7]/20">
-													<CreditCard size={14} className="text-[#A855F7] dark:text-[#C084FC]" />
-												</span>
-											) : (
-												<Zap size={16} className="text-[#1562f0]" />
-											)}
-											{selectedIsUpgradeNewCard ? 'Asset Merge & Upgrade' : selectedIsCardTopupKind ? 'Top-up Details' : 'Smart Routing'}
-										</h3>
-										<span className="text-[11px] font-bold text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded-md tracking-wide">AUTO</span>
-									</div>
+									{(!selectedIsCardTopupKind || selectedIsUpgradeNewCard) ? (
+										<div className="flex items-center justify-between mb-4">
+											<h3 className="flex items-center gap-2 text-[14px] font-bold text-black dark:text-white">
+												{selectedIsUpgradeNewCard ? (
+													<span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F3E8FF] dark:bg-[#A855F7]/20">
+														<ArrowRightLeft size={14} className="text-[#A855F7] dark:text-[#C084FC]" />
+													</span>
+												) : (
+													<Zap size={16} className="text-[#1562f0]" />
+												)}
+												{selectedIsUpgradeNewCard ? 'Asset Merge & Upgrade' : 'Smart Routing'}
+											</h3>
+											<span className="text-[11px] font-bold text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded-md tracking-wide">AUTO</span>
+										</div>
+									) : null}
 									<div className="space-y-4 relative">
 										<div className="absolute left-[9px] top-3 bottom-3 w-[2px] bg-gray-100 dark:bg-slate-600 -z-10" />
-										{useSyntheticRouting && syntheticRows.map((row) => (
+										{useSyntheticRouting && syntheticRows
+											.filter((row) => !selectedIsCardTopupKind || row.isVoucher)
+											.map((row) => (
 											<div key={row.key} className="flex justify-between items-center">
 												<div className="flex items-center gap-3">
-													{row.isVoucher ? (
+													{selectedIsCardTopupKind && row.isVoucher ? (
+														<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 overflow-hidden bg-white dark:bg-slate-700">
+															{selectedCardImage ? (
+																<img src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
+															) : (
+																<div className="w-full h-full flex items-center justify-center bg-[#34C759]/10 text-[#34C759] text-[10px] font-bold">
+																	{selectedCardDisplayInitial}
+																</div>
+															)}
+														</div>
+													) : row.isVoucher ? (
 														<div
 															className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 w-6 h-6"
 															style={{
@@ -2135,14 +2183,24 @@ const ActiveHistoryPannelNew = ({
 														<UsdcBaseCompositeIcon className="w-6 h-6" />
 													)}
 													<div className="flex flex-col">
-														<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">{row.primary}</span>
-														<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{row.secondary}</span>
+														<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">
+															{selectedIsCardTopupKind && row.isVoucher ? selectedCardDisplayLabel : row.primary}
+														</span>
+														{!(selectedIsCardTopupKind && row.isVoucher) ? (
+															<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{row.secondary}</span>
+														) : null}
 													</div>
 												</div>
 												<span className={`text-[15px] font-semibold ${row.amountClass}`}>{row.amountText}</span>
 											</div>
 										))}
-										{!useSyntheticRouting && routeArr.map((item, idx) => {
+										{!useSyntheticRouting && routeArr
+											.filter((item) => {
+												if (!selectedIsCardTopupKind) return true
+												const src = Number(item.source ?? 0)
+												return src >= 1 && src <= 3
+											})
+											.map((item, idx) => {
 											const amtE6 = BigInt(item.amountE6 ?? item.offsetInRequestCurrencyE6 ?? '0')
 											const amt = Number(amtE6) / 1e6
 											const src = Number(item.source ?? 0)
@@ -2156,7 +2214,17 @@ const ActiveHistoryPannelNew = ({
 											return (
 												<div key={idx} className="flex justify-between items-center">
 													<div className="flex items-center gap-3">
-														{isVoucher ? (
+														{selectedIsCardTopupKind && isVoucher ? (
+															<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 overflow-hidden bg-white dark:bg-slate-700">
+																{selectedCardImage ? (
+																	<img src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
+																) : (
+																	<div className="w-full h-full flex items-center justify-center bg-[#34C759]/10 text-[#34C759] text-[10px] font-bold">
+																		{selectedCardDisplayInitial}
+																	</div>
+																)}
+															</div>
+														) : isVoucher ? (
 															<div
 																className={`rounded-full border-2 border-white dark:border-slate-800 shadow-sm flex items-center justify-center text-[9px] font-bold z-10 ${
 																	selectedIsCardTopupKind ? 'w-6 h-6' : 'w-5 h-5'
@@ -2181,18 +2249,35 @@ const ActiveHistoryPannelNew = ({
 														))}
 														<div className="flex flex-col">
 															<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">
-																{isTopupCreditLine && selectedCardName ? selectedCardUnitLabel : primary}
+																{isTopupCreditLine ? selectedCardDisplayLabel : primary}
 															</span>
-															<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{secondary}</span>
+															{!isTopupCreditLine ? (
+																<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{secondary}</span>
+															) : null}
 														</div>
 													</div>
 													<span className={`text-[15px] font-semibold ${routeAmountClass}`}>{routeAmountText}</span>
 												</div>
 											)
 										})}
+										{selectedIsCardTopupKind && selectedTopupBonusFiat > 0 ? (
+											<div className="flex justify-between items-center">
+												<div className="flex items-center gap-3">
+													<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 flex items-center justify-center bg-[#FF9500]/15 text-[#FF9500]">
+														<Gift size={13} strokeWidth={2.6} />
+													</div>
+													<div className="flex flex-col">
+														<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">Bonus</span>
+													</div>
+												</div>
+												<span className="text-[15px] font-semibold text-[#FF9500]">
+													{formatTopupBonusSubtitleAmount(selectedTopupBonusFiat, selectedTx.currencyCode)}
+												</span>
+											</div>
+										) : null}
 										<div className="border-t border-dashed border-gray-200 dark:border-slate-600 mt-4 pt-4 flex justify-between items-center">
 											<span className="text-[13px] font-medium text-gray-400 dark:text-slate-500 pl-9">
-												{selectedIsCardTopupKind ? 'Total Top-up' : 'Total Paid'}
+												{selectedIsCardTopupKind ? 'Total' : 'Total Paid'}
 											</span>
 											<span className={`text-[16px] font-bold ${selectedIsCardTopupKind ? 'text-[#34C759]' : 'text-black dark:text-white'}`}>
 												{selectedIsCardTopupKind
@@ -2227,7 +2312,14 @@ const ActiveHistoryPannelNew = ({
 								<>
 									<div className="flex justify-between items-center text-[14px]">
 										<span className="text-gray-500 dark:text-slate-400 font-medium">Program Card</span>
-										<span className="font-semibold text-black dark:text-white">{selectedCardName || selectedTopupDetailTitle.replace(/^Top-up\s+/i, '') || '—'}</span>
+										<span className="flex min-w-0 items-center justify-end gap-1.5 font-semibold text-black dark:text-white">
+											{selectedCardAddress ? (
+												<MyBrandCardAddressCapsule address={selectedCardAddress} className="max-w-[112px]" />
+											) : null}
+											<span className="max-w-[150px] truncate text-right">
+												{selectedCardMetadataName || selectedCardName || selectedTopupDetailProgramTitle || '—'}
+											</span>
+										</span>
 									</div>
 									<div className="flex justify-between items-center text-[14px]">
 										<span className="text-gray-500 dark:text-slate-400 font-medium">Payment Method</span>
@@ -2315,11 +2407,10 @@ const ActiveHistoryPannelNew = ({
 								{baseScanTxHash ? 'Settlement Proof' : 'Creation Proof'}
 							</h4>
 							{baseScanTxHash ? (
-								<a
-									href={`https://basescan.org/tx/${baseScanTxHash}`}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="flex items-center justify-between p-3.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-[16px] shadow-sm active:bg-gray-50 dark:active:bg-slate-700 transition-colors cursor-pointer"
+								<button
+									type="button"
+									onClick={() => openExternalUrl(`https://basescan.org/tx/${baseScanTxHash}`)}
+									className="flex w-full items-center justify-between p-3.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-[16px] shadow-sm active:bg-gray-50 dark:active:bg-slate-700 transition-colors cursor-pointer text-left"
 								>
 									<div className="flex items-center gap-2.5">
 										<div className="w-2.5 h-2.5 bg-[#1562f0] rounded-full shadow-[0_0_8px_rgba(21,98,240,0.5)]" />
@@ -2328,7 +2419,7 @@ const ActiveHistoryPannelNew = ({
 									<div className="flex items-center gap-2 text-[12px] font-mono text-[#1562f0]">
 										{baseScanTxHash.substring(0, 7)}...{baseScanTxHash.slice(-5)} <ExternalLink size={12} />
 									</div>
-								</a>
+								</button>
 							) : (
 								<div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-600 rounded-[16px] border-dashed opacity-70">
 									<div className="flex items-center gap-2.5">

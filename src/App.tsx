@@ -4,6 +4,7 @@ import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import AppEntryGate from "@/components/AppEntryGate"
 import Home from "@/components/Home/Home"
@@ -1689,14 +1690,13 @@ function AppShell() {
 											</div>
 										</div>
 										{redeemResult.tx && (
-											<a
-												href={`https://basescan.org/tx/${redeemResult.tx}`}
-												target="_blank"
-												rel="noopener noreferrer"
+											<button
+												type="button"
+												onClick={() => openExternalUrl(`https://basescan.org/tx/${redeemResult.tx}`)}
 												className="block mb-4 text-sm text-[#1652f0] underline"
 											>
 												View transaction
-											</a>
+											</button>
 										)}
 									</>
 								) : (

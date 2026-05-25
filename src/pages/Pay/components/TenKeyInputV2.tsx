@@ -15,6 +15,7 @@ import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC
 import { AuthorizationSign, checkRequestStatus, searchUsername, fetchNfcCardStatus, payByNfcUid, nfcTopup } from '@/services/beamio'
 import { useNfcRead } from '@/hooks/useNfcRead'
 import { formatAmount, fiatPrefix } from '@/services/currency'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const shortAddr = (addr: string) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
@@ -306,14 +307,13 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 								{successTxHash.slice(0, 10)}…{successTxHash.slice(-8)}
 							</span>
 							{' · '}
-							<a
-								href={`${BASE_EXPLORER_TX}${successTxHash}`}
-								target="_blank"
-								rel="noopener noreferrer"
+							<button
+								type="button"
+								onClick={() => openExternalUrl(`${BASE_EXPLORER_TX}${successTxHash}`)}
 								className="text-blue-600 dark:text-blue-400 hover:underline"
 							>
 								View on BaseScan
-							</a>
+							</button>
 						</p>
 					)}
 					<button
@@ -692,9 +692,9 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 									{h.slice(0, 6)}…{h.slice(-4)}
 									<Copy className="w-3.5 h-3.5 flex-shrink-0" />
 								</button>
-								<a href={`${BASE_EXPLORER_TX}${h}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600" title="View on BaseScan">
+								<button type="button" onClick={() => openExternalUrl(`${BASE_EXPLORER_TX}${h}`)} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600" title="View on BaseScan">
 									<ExternalLink className="w-4 h-4" />
-								</a>
+								</button>
 							</div>
 						</div>
 					))}
@@ -757,15 +757,14 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 						)}
 					</button>
 					{data.txHash && (
-						<a
-							href={`${BASE_EXPLORER_TX}${data.txHash}`}
-							target="_blank"
-							rel="noopener noreferrer"
+						<button
+							type="button"
+							onClick={() => openExternalUrl(`${BASE_EXPLORER_TX}${data.txHash}`)}
 							className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
 							title="View on BaseScan"
 						>
 							<ExternalLink className="w-4 h-4" />
-						</a>
+						</button>
 					)}
 				</div>
 			</div>
@@ -913,9 +912,9 @@ function NfcTopupBottomSheet({
 								<Check className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
 								<p className="font-semibold text-emerald-600 dark:text-emerald-400">Topup 成功</p>
 								{txHash && (
-									<a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 mt-2 block">
+									<button type="button" onClick={() => openExternalUrl(`https://basescan.org/tx/${txHash}`)} className="text-sm text-blue-600 mt-2 block">
 										{txHash.slice(0, 10)}…{txHash.slice(-8)}
-									</a>
+									</button>
 								)}
 								<button type="button" onClick={handleClose} className="mt-4 w-full py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
 									完成

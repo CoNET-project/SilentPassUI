@@ -11,6 +11,7 @@ import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/
 import baseIcon from '@/components/assets/base-logo.png'
 import { formatMyBrandNft2PointsSubtitle, resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
 import { resolveMyBrandMerchantCategoryLabel } from '@/utils/discoverMerchantCategory'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -42,7 +43,7 @@ export function MyBrandCardAddressCapsule({
 		}
 	})()
 	const openBaseScan = () => {
-		window.open(`https://basescan.org/address/${normalized}`, '_blank', 'noopener,noreferrer')
+		openExternalUrl(`https://basescan.org/address/${normalized}`)
 	}
 	return (
 		<button

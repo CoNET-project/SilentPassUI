@@ -1,5 +1,6 @@
 import { X, Shield, Info, Globe2, FileText } from "lucide-react";
 import {AppButton} from '@/components/button/AppButton'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type prof = {
 	colse: () => void
@@ -104,7 +105,7 @@ export default function BeamioPrivacySettingsScreen({colse}:prof) {
             <div className="space-y-2 text-sm">
               <button
                 type="button"
-                onClick={() => window.open("https://beamio.app/privacy", "_blank", "noopener,noreferrer")}
+                onClick={() => openExternalUrl("https://beamio.app/privacy")}
                 className="w-full h-10 px-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between text-slate-700"
               >
                 <span className="inline-flex items-center gap-2">
@@ -116,7 +117,7 @@ export default function BeamioPrivacySettingsScreen({colse}:prof) {
 
               <button
                 type="button"
-                onClick={() => window.open("https://beamio.app/terms", "_blank", "noopener,noreferrer")}
+                onClick={() => openExternalUrl("https://beamio.app/terms")}
                 className="w-full h-10 px-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between text-slate-700"
               >
                 <span className="inline-flex items-center gap-2">

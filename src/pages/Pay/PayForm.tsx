@@ -11,6 +11,7 @@ import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign, searchUsername, postBeamio, storeSystemData} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrencyV2'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 
 
@@ -570,7 +571,7 @@ const PayForm = ({code, closeWin}: Props) => {
 						fullWidth
 						variant='secondary'
 						onClick={() => {
-							window.open(`https://basescan.org/tx/${successPayLink}`, '_blank', 'noopener,noreferrer')
+							openExternalUrl(`https://basescan.org/tx/${successPayLink}`)
 						}}
 						>
 						View transaction

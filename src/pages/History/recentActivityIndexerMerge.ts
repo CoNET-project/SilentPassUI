@@ -57,6 +57,8 @@ const TX_BONUS_CARD = ethers.keccak256(ethers.toUtf8Bytes('bonusCard'))
 const TX_USDC_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcNewCard'))
 const TX_USDC_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcTopupCard'))
 const TX_USDC_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcUpgradeNewCard'))
+const TX_TIP = ethers.keccak256(ethers.toUtf8Bytes('TX_TIP'))
+const TX_MERCHANT_PAY_TIP_UPDATED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:tip_updated'))
 
 const RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER = new Set(
 	[
@@ -109,6 +111,10 @@ export function parseRecentActivityTopupDisplayJson(displayJson: string): Recent
 	}
 }
 
+function recentActivityTopupPaymentLeg(displayJson: string): string {
+	return parseRecentActivityTopupDisplayJson(displayJson).topupPaymentLeg
+}
+
 export function recentActivityTopupProgramName(displayJson: string, fallbackTitle?: string): string {
 	const parsed = parseRecentActivityTopupDisplayJson(displayJson)
 	const fromCard = parsed.cardName.replace(/\s*card\s*$/i, '').trim()
@@ -119,7 +125,7 @@ export function recentActivityTopupProgramName(displayJson: string, fallbackTitl
 }
 
 export function recentActivityTopupListTitle(displayJson: string, fallbackTitle?: string): string {
-	return `Top-up ${recentActivityTopupProgramName(displayJson, fallbackTitle)}`
+	return `Top-up: ${recentActivityTopupProgramName(displayJson, fallbackTitle)}`
 }
 
 export function recentActivityTopupPaymentLegLabel(txCategory: string, displayJson: string): string {
@@ -204,6 +210,18 @@ export function isRecentActivityMerchantChargeTx(raw: RawTxRecord | undefined): 
 	if (!parsed) return false
 	if (/^tip$/i.test(parsed.title)) return false
 	return true
+}
+
+function isRecentActivityTipTx(raw: RawTxRecord | undefined): boolean {
+	if (!raw) return false
+	const cat = String(raw.txCategory ?? '').toLowerCase()
+	if (cat === TX_TIP.toLowerCase() || cat === TX_MERCHANT_PAY_TIP_UPDATED.toLowerCase()) return true
+	try {
+		const j = JSON.parse(raw.displayJson ?? '{}') as { title?: string; handle?: string }
+		return /^tip$/i.test(String(j.title ?? '').trim()) || /\btip\b/i.test(String(j.handle ?? '').trim())
+	} catch {
+		return false
+	}
 }
 
 /** List row / local cache may omit rawTransaction — use persisted TxView flags as fallback. */
@@ -450,6 +468,27 @@ export function rawTxAfterNotePayer(raw: RawTxRecord | undefined): string {
 	return ''
 }
 
+export type TopupRechargeBonusNote = {
+	actualPaymentCurrencyFiat6: bigint
+	rechargeBonusCurrencyFiat6: bigint
+}
+
+export function parseTopupRechargeBonusAfterNotePayer(afterNotePayer: unknown): TopupRechargeBonusNote | null {
+	if (typeof afterNotePayer !== 'string' || !afterNotePayer.trim()) return null
+	try {
+		const j = JSON.parse(afterNotePayer) as {
+			actualPaymentCurrencyFiat6?: string | number
+			rechargeBonusCurrencyFiat6?: string | number
+		}
+		const actual = BigInt(String(j.actualPaymentCurrencyFiat6 ?? '0'))
+		const bonus = BigInt(String(j.rechargeBonusCurrencyFiat6 ?? '0'))
+		if (actual < 0n || bonus <= 0n) return null
+		return { actualPaymentCurrencyFiat6: actual, rechargeBonusCurrencyFiat6: bonus }
+	} catch {
+		return null
+	}
+}
+
 /** Charge reward points (E6) from indexer meta.afterNotePayer JSON */
 export function parseChargeRewardPoint6FromAfterNotePayer(afterNotePayer: unknown): bigint | null {
 	if (typeof afterNotePayer !== 'string' || !afterNotePayer.trim()) return null
@@ -653,6 +692,12 @@ export interface TxView {
 	isMerchantCharge?: boolean
 	/** Merchant program card from route / displayJson — persisted for metadata prefetch */
 	merchantCardAddress?: string
+	/** Split top-up display: actual customer payment leg plus Recharge Bonus leg merged into one row. */
+	topupActualPaymentFiat?: number
+	topupBonusFiat?: number
+	/** Charge display: standalone tip row merged into the parent charge row by finished/base tx hash. */
+	merchantChargeTipFiat?: number
+	merchantChargeTipCurrencyCode?: string
 	rawTransaction?: RawTxRecord
 	card?: { title?: string; detail?: string; image?: string }
 }
@@ -795,6 +840,104 @@ function appendIndexerPage(
 	}
 }
 
+function mergeRecentActivityTopupBonusLegs(items: TxView[]): TxView[] {
+	const byTxHash = new Map<string, TxView[]>()
+	for (const tx of items) {
+		const raw = tx.rawTransaction
+		const cat = String(raw?.txCategory ?? '').toLowerCase()
+		if (!isRecentActivityCardTopupCategory(cat)) continue
+		const key = (tx.txHash || resolveRawTxBaseScanTxHash(raw, tx.id)).toLowerCase()
+		if (!key || key === ethers.ZeroHash.toLowerCase()) continue
+		const arr = byTxHash.get(key) ?? []
+		arr.push(tx)
+		byTxHash.set(key, arr)
+	}
+
+	const replacement = new Map<string, TxView>()
+	const suppressed = new Set<string>()
+	for (const [, group] of byTxHash) {
+		if (group.length < 2) continue
+		const bonusRows = group.filter((tx) => recentActivityTopupPaymentLeg(tx.rawTransaction?.displayJson ?? '') === 'bonus')
+		if (bonusRows.length === 0) continue
+		const primary = group.find((tx) => recentActivityTopupPaymentLeg(tx.rawTransaction?.displayJson ?? '') !== 'bonus')
+		if (!primary) continue
+		const note =
+			group
+				.map((tx) => parseTopupRechargeBonusAfterNotePayer(rawTxAfterNotePayer(tx.rawTransaction)))
+				.find((v): v is TopupRechargeBonusNote => v != null) ?? null
+		const bonusFiat =
+			note != null
+				? Number(note.rechargeBonusCurrencyFiat6) / 1e6
+				: bonusRows.reduce((sum, row) => sum + Math.abs(row.amountFiat), 0)
+		if (!(bonusFiat > 0)) continue
+		const actualFiat =
+			note != null
+				? Number(note.actualPaymentCurrencyFiat6) / 1e6
+				: Math.abs(primary.amountFiat)
+		const totalFiat = actualFiat + bonusFiat
+		const totalUSDC = group.reduce((sum, row) => sum + Math.abs(row.amountUSDC), 0)
+		const timestampMs = Math.max(...group.map((row) => row.timestampMs || 0), primary.timestampMs)
+		replacement.set(primary.id, {
+			...primary,
+			timestampMs,
+			timestamp: formatBeamioTransactionTimeLabel(timestampMs),
+			amountFiat: totalFiat,
+			amountUSDC: totalUSDC > 0 ? totalUSDC : primary.amountUSDC,
+			topupActualPaymentFiat: actualFiat,
+			topupBonusFiat: bonusFiat,
+		})
+		for (const row of bonusRows) {
+			if (row.id !== primary.id) suppressed.add(row.id)
+		}
+	}
+
+	if (replacement.size === 0 && suppressed.size === 0) return items
+	return items
+		.filter((tx) => !suppressed.has(tx.id))
+		.map((tx) => replacement.get(tx.id) ?? tx)
+}
+
+function mergeRecentActivityTipRowsIntoCharges(items: TxView[]): TxView[] {
+	const groups = new Map<string, TxView[]>()
+	for (const tx of items) {
+		const raw = tx.rawTransaction
+		if (!raw) continue
+		if (!isMerchantChargeTxView(tx) && !isRecentActivityTipTx(raw)) continue
+		const key = (tx.txHash || resolveRawTxBaseScanTxHash(raw, tx.id)).toLowerCase()
+		if (!key || key === ethers.ZeroHash.toLowerCase()) continue
+		const arr = groups.get(key) ?? []
+		arr.push(tx)
+		groups.set(key, arr)
+	}
+
+	const replacement = new Map<string, TxView>()
+	const suppressed = new Set<string>()
+	for (const [, group] of groups) {
+		if (group.length < 2) continue
+		const charge = group.find((tx) => isMerchantChargeTxView(tx))
+		if (!charge) continue
+		const tips = group.filter((tx) => tx.id !== charge.id && isRecentActivityTipTx(tx.rawTransaction))
+		if (tips.length === 0) continue
+		const tipFiat = tips.reduce((sum, row) => sum + Math.abs(Number(row.amountFiat) || 0), 0)
+		if (!(tipFiat > 0)) continue
+		const tipCurrency = tips.find((row) => String(row.currencyCode ?? '').trim())?.currencyCode || charge.currencyCode
+		const timestampMs = Math.max(charge.timestampMs || 0, ...tips.map((row) => row.timestampMs || 0))
+		replacement.set(charge.id, {
+			...charge,
+			timestampMs,
+			timestamp: formatBeamioTransactionTimeLabel(timestampMs),
+			merchantChargeTipFiat: tipFiat,
+			merchantChargeTipCurrencyCode: tipCurrency,
+		})
+		for (const row of tips) suppressed.add(row.id)
+	}
+
+	if (replacement.size === 0 && suppressed.size === 0) return items
+	return items
+		.filter((tx) => !suppressed.has(tx.id))
+		.map((tx) => replacement.get(tx.id) ?? tx)
+}
+
 /**
  * 合并多地址、多自然月 indexer 记账，去重后按时间降序截取「全局最近」若干条（不限于当月）。
  */
@@ -853,7 +996,10 @@ export async function fetchMergedRecentActivityFromIndexer(
 		}
 
 		merged.sort((a, b) => b.timestampMs - a.timestampMs)
-		const sliced = merged.slice(0, maxReturn)
+		const topupMerged = mergeRecentActivityTopupBonusLegs(merged)
+		const chargeTipMerged = mergeRecentActivityTipRowsIntoCharges(topupMerged)
+		chargeTipMerged.sort((a, b) => b.timestampMs - a.timestampMs)
+		const sliced = chargeTipMerged.slice(0, maxReturn)
 		const enriched = await enrichMerchantChargeItemsWithIndexerRoutes(sliced)
 		return { items: enriched, error: null, trusted: true }
 	} catch (e: unknown) {

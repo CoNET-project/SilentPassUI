@@ -46,6 +46,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, type CardActiveIssuedCouponSeriesItem } from "@/services/BeamioCard"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
@@ -312,7 +313,7 @@ function shortDiscoverContractAddress(address: string): string {
 
 function DiscoverMerchantCardAddressCapsule({ address }: { address: string }) {
 	const openBaseScan = () => {
-		window.open(`https://basescan.org/address/${address}`, "_blank", "noopener,noreferrer")
+		openExternalUrl(`https://basescan.org/address/${address}`)
 	}
 	return (
 		<button

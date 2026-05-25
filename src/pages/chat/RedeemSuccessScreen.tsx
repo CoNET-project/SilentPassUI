@@ -3,6 +3,7 @@ import base_ex_dark from '@/components/assets/base-ex-dark.svg'
 import base_ex from '@/components/assets/base-ex.svg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import {AppButton} from '@/components/button/AppButton'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type Prof = {
 	amount: string
@@ -94,10 +95,9 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							Cashcode contract · {fmtAddr(BeamioBaseAddress)}
 							</span>
 
-							<a
-							href={`https://basescan.org/address/${BeamioBaseAddress}`}
-							target="_blank"
-							rel="noreferrer"
+							<button
+							type="button"
+							onClick={() => openExternalUrl(`https://basescan.org/address/${BeamioBaseAddress}`)}
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
 							aria-label="View on BaseScan"
 							title="View on BaseScan"
@@ -108,7 +108,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 								className="w-4 h-4"
 							/>
 							<span className="sr-only">View on BaseScan</span>
-							</a>
+							</button>
 						</div>
 						</div>
 					<div className="flex items-center justify-between text-xs text-slate-500">
@@ -122,10 +122,9 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							Your wallet · {fmtAddr(myAddress)}
 							</span>
 
-							<a
-							href={`https://basescan.org/address/${myAddress}`}
-							target="_blank"
-							rel="noreferrer"
+							<button
+							type="button"
+							onClick={() => openExternalUrl(`https://basescan.org/address/${myAddress}`)}
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
 							aria-label="View on BaseScan"
 							title="View on BaseScan"
@@ -136,7 +135,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 								className="w-4 h-4"
 							/>
 							<span className="sr-only">View on BaseScan</span>
-							</a>
+							</button>
 						</div>
 
 						</div>
@@ -157,10 +156,9 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 					<div className="flex items-center gap-1">
 						<span className="font-mono text-[11px] text-slate-800">{fmtAddr(hash)}</span>
 
-						<a
-						href={`https://basescan.org/tx/${hash}`}
-						target="_blank"
-						rel="noreferrer"
+						<button
+						type="button"
+						onClick={() => openExternalUrl(`https://basescan.org/tx/${hash}`)}
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
 						aria-label="View on BaseScan"
 						title="View on BaseScan"
@@ -171,7 +169,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							className="w-4 h-4"
 						/>
 						<span className="sr-only">View on BaseScan</span>
-						</a>
+						</button>
 					</div>
 
 					</div>

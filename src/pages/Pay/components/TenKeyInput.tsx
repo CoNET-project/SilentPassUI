@@ -12,6 +12,7 @@ import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC
 import { searchUsername, fetchNfcCardStatus, payByNfcUid } from '@/services/beamio'
 import { useNfcRead } from '@/hooks/useNfcRead'
 import { formatAmount } from '@/services/currency'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 
 //		
@@ -277,14 +278,13 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 								{successTxHash.slice(0, 10)}…{successTxHash.slice(-8)}
 							</span>
 							{' · '}
-							<a
-								href={`${BASE_EXPLORER_TX}${successTxHash}`}
-								target="_blank"
-								rel="noopener noreferrer"
+							<button
+								type="button"
+								onClick={() => openExternalUrl(`${BASE_EXPLORER_TX}${successTxHash}`)}
 								className="text-blue-600 dark:text-blue-400 hover:underline"
 							>
 								View on BaseScan
-							</a>
+							</button>
 						</p>
 					)}
 					<button
@@ -608,15 +608,14 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 						)}
 					</button>
 					{data.txHash && (
-						<a
-							href={`${BASE_EXPLORER_TX}${data.txHash}`}
-							target="_blank"
-							rel="noopener noreferrer"
+						<button
+							type="button"
+							onClick={() => openExternalUrl(`${BASE_EXPLORER_TX}${data.txHash}`)}
 							className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
 							title="View on BaseScan"
 						>
 							<ExternalLink className="w-4 h-4" />
-						</a>
+						</button>
 					)}
 				</div>
 			</div>

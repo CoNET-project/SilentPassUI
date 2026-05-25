@@ -1,6 +1,7 @@
 import { initOnRamp } from '@coinbase/cbpay-js'
 import { useEffect, useRef, useState } from 'react'
 import { AppButton } from '../button/AppButton'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 const remote = 'https://api.settleonbase.xyz'
 type Prof = {
   myAddress: string
@@ -44,7 +45,7 @@ export const BuyWithCoinbaseButton = ({ myAddress }: Prof) => {
 			}
 
 			// ⭐ 直接打开 Coinbase 返回的安全 URL（已包含 sessionToken）
-			window.open(onrampUrl, '_blank', 'noopener,noreferrer')
+			openExternalUrl(onrampUrl)
 		} catch (e) {
 			console.error('open coinbase onramp error', e)
 		} finally {

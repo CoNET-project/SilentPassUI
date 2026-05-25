@@ -13,6 +13,7 @@ import DiceBearCard, {ClosePayload} from '@/components/card/CreateCard'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import { X, Check, Plus, Camera, ArrowRight, ArrowLeft, Wallet, CreditCard, Zap, Fuel, XCircle } from "lucide-react"
 import NetworkFeeGas from '../components/networkFee'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import ShowTotal from '../components/ShowTotal_send'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNodes} from '@/services/chat'
@@ -346,7 +347,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 							flex items-center justify-center gap-2
 						"
 						onClick={() => {
-							window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
+							openExternalUrl(`https://basescan.org/tx/${successHash}`)
 						}}
 						>
 						<img

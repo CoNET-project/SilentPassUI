@@ -10,6 +10,7 @@ import { getBUnitBalanceOnConet } from "@/services/BeamioCard"
 import type { UINode, BeamioUI } from "./uiCatalog"
 import { isValidBeamioUI, isValidUINode, UI_CATALOG_SCHEMA } from "./uiCatalog"
 import type { BeamioAction } from "./types"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 
 /** True when ui has schema+root but root is empty/invalid (e.g. root: {}) */
 function hasSchemaButInvalidRoot(ui: unknown): boolean {
@@ -103,7 +104,7 @@ function renderUINode(
         if (action && onActionClick) {
           onActionClick({ type: action, params: btnActionParams } as BeamioAction)
         } else if (href) {
-          window.open(href, "_blank")
+          openExternalUrl(href)
         }
       }
       return (

@@ -6,6 +6,7 @@ import { X } from 'lucide-react'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import base_ex from '@/components/assets/base-ex.svg'
 import IOSBounceCloseButton from '@/components/button/CloseButton'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 type RedeemOrLinkCardProps = {
 	valueUSDCAmount: string                  // 金额（用于 Redeem 侧显示）
 	valueCurrencyAmount: string
@@ -261,7 +262,7 @@ const SuccessShow = ({
 						flex items-center justify-center gap-2
 					"
 					onClick={() => {
-						window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
+						openExternalUrl(`https://basescan.org/tx/${successHash}`)
 					}}
 					>
 					<img

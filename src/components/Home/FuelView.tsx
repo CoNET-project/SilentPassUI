@@ -3,6 +3,7 @@ import { Fuel, Plus, ChevronRight, RefreshCw, Filter, X, Check, ExternalLink, Co
 import { getBUnitLedgerFromIndexer, signBUnitRefuel3009, type BUnitLedgerEntry } from '@/services/BeamioCard'
 import { purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import VscodeJsonBlock from '@/components/VscodeJsonBlock'
 
 const MIN_PURCHASE_USD = 1  // Minimum $1, no purchase below $1
@@ -344,15 +345,14 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
               </div>
               <p className="text-[18px] font-black text-green-600 dark:text-green-400">Success</p>
               {refuelSuccess.startsWith('0x') && (
-                <a
-                  href={`https://basescan.org/tx/${refuelSuccess}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => openExternalUrl(`https://basescan.org/tx/${refuelSuccess}`)}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[12px] font-mono text-[#1562f0] hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                 >
                   {refuelSuccess.slice(0, 10)}...{refuelSuccess.slice(-8)}
                   <ExternalLink size={14} strokeWidth={2.5} />
-                </a>
+                </button>
               )}
               <button
                 onClick={resetRefuelState}
@@ -632,15 +632,14 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                 {hasBaseTxHash(selectedDetail) && (
                 <div className="flex justify-between items-center px-4 py-3">
                   <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">TxHash</span>
-                  <a
-                    href={`https://basescan.org/tx/${(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(`https://basescan.org/tx/${(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash}`)}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-mono font-semibold text-[#1562f0] hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                   >
                     {(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash!.slice(0, 10)}...{(selectedDetail as LogEntry & { baseTxHash: string }).baseTxHash!.slice(-8)}
                     <ExternalLink size={12} strokeWidth={2.5} />
-                  </a>
+                  </button>
                 </div>
                 )}
                 {hasOriginalPaymentHash(selectedDetail) && !hasBaseTxHash(selectedDetail) && (

@@ -6,6 +6,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from "@/services/AAaccount"
 import type { OpenContainerRelayPayload } from "@/services/AAaccount"
 import bIcon from "@/components/assets/logo512.png"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 
 const QR_SIZE = 320
 const QR_LOGO_SIZE = 64
@@ -119,7 +120,7 @@ export default function QrOperationPage() {
         url: urlOrValue.startsWith("http") ? urlOrValue : undefined,
       }).catch(() => {})
     } else {
-      window.open(urlOrValue.startsWith("http") ? urlOrValue : "#", "_blank")
+      if (urlOrValue.startsWith("http")) openExternalUrl(urlOrValue)
     }
   }
 

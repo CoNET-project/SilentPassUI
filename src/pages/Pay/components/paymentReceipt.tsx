@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import { CURRENCY_META, formatAmount, fiatPrefix } from "@/services/currency"
 import NetworkFeeGas from "./networkFee"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 
 type PaymentReceiptProps = {
   open: boolean
@@ -449,15 +450,14 @@ export default function PaymentReceipt({
                 <div className="text-[14px] font-semibold text-slate-700">Explorer</div>
 
                 {explorerUrl ? (
-                  <a
-                    href={explorerUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(explorerUrl)}
                     className="inline-flex items-center gap-2 text-[14px] font-extrabold text-blue-600 hover:text-blue-700"
                   >
                     View on Basescan
                     <ExternalLink className="h-4 w-4" />
-                  </a>
+                  </button>
                 ) : (
                   <span className="text-[14px] text-slate-400">—</span>
                 )}

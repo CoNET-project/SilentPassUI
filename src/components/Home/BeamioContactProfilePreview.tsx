@@ -11,6 +11,7 @@ import baseIcon from '@/components/assets/base-logo.png'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import PayScreen from '@/pages/Pay/send/index'
 import ChatHome from '@/pages/chat/index'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type Props = {
   	item: searchResult
@@ -312,7 +313,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 							flex items-center justify-center gap-2
 						"
 						onClick={() => {
-							window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
+							openExternalUrl(`https://basescan.org/tx/${successHash}`)
 						}}
 						>
 						<img

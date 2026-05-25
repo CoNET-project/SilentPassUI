@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link2, Layers, Copy, X } from 'lucide-react'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import { CCSA_Card_Address } from '@/utils/constants'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const TOKEN_MINT = 1
 const TOKEN_TRANSFER = 3
@@ -287,14 +288,13 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           <span className="text-[13px] text-slate-500">Transaction ID</span>
           <div className="inline-flex items-center gap-1.5">
             {txIdFull ? (
-              <a
-                href={`${BASESCAN_TX_URL}${txIdFull}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => openExternalUrl(`${BASESCAN_TX_URL}${txIdFull}`)}
                 className="text-[14px] font-medium text-blue-600 hover:underline"
               >
                 {txId}
-              </a>
+              </button>
             ) : (
               <span className="text-[14px] font-medium text-slate-900">{txId}</span>
             )}

@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ethers } from 'ethers'
 import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import {
 	Sparkles,
@@ -3680,14 +3681,13 @@ export default function MyWalletDashboardNew() {
 										</div>
 										<div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
 											<span className="text-xs text-slate-500 dark:text-slate-400"># REF</span>
-											<a
-												href={`https://basescan.org/tx/${redeemSuccessTx}`}
-												target="_blank"
-												rel="noopener noreferrer"
+											<button
+												type="button"
+												onClick={() => openExternalUrl(`https://basescan.org/tx/${redeemSuccessTx}`)}
 												className="text-xs font-mono text-slate-900 dark:text-slate-100 hover:underline"
 											>
 												{`${redeemSuccessTx.slice(0, 6)}...${redeemSuccessTx.slice(-4)}`}
-											</a>
+											</button>
 										</div>
 									</div>
 

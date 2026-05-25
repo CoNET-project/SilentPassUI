@@ -40,6 +40,7 @@ import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { getCashcodeData, searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -1281,7 +1282,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 																		<div className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2 py-1 mt-2">
 																			<code className="flex-1 text-[10px] text-slate-600 truncate" title={hash}>{hash.slice(0, 10)}…{hash.slice(-8)}</code>
 																			<button type="button" onClick={() => navigator.clipboard.writeText(hash)} className="p-1 text-slate-500 hover:text-slate-700" aria-label="Copy"><Copy className="w-3.5 h-3.5" /></button>
-																			<button type="button" onClick={() => window.open(baseExplorerTxUrl(hash), '_blank')} className="p-1 text-slate-500 hover:text-slate-700" aria-label="Open explorer"><ExternalLink className="w-3.5 h-3.5" /></button>
+																			<button type="button" onClick={() => openExternalUrl(baseExplorerTxUrl(hash))} className="p-1 text-slate-500 hover:text-slate-700" aria-label="Open explorer"><ExternalLink className="w-3.5 h-3.5" /></button>
 																		</div>
 																	)}
 																</>

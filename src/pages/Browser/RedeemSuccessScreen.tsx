@@ -3,6 +3,7 @@ import base_ex_dark from '@/components/assets/base-ex-dark.svg'
 import base_ex from '@/components/assets/base-ex.svg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import {AppButton} from '@/components/button/AppButton'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type Prof = {
 	amount: string
@@ -128,7 +129,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 						flex items-center justify-center gap-2
 					"
 					onClick={() => {
-						window.open(`https://basescan.org/tx/${hash}`, '_blank', 'noopener,noreferrer')
+						openExternalUrl(`https://basescan.org/tx/${hash}`)
 					}}
 					>
 					<img

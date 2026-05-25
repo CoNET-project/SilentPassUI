@@ -8,6 +8,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import base_ex_dark from '@/components/assets/base-ex-dark.svg'
 import {ethers} from 'ethers'
 import styles from './send.module.scss'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type ShowSignInfoProps = {
 	originUrl: string                             
@@ -162,10 +163,9 @@ export function ConformSignInfo({
 						{fmtAddr(messageData?.showPayToAddress || messageData?.payTo)}
 					</span>
 
-					<a
-						href={`https://basescan.org/address/${messageData?.showPayToAddress || messageData?.payTo}`}
-						target="_blank"
-						rel="noreferrer"
+					<button
+						type="button"
+						onClick={() => openExternalUrl(`https://basescan.org/address/${messageData?.showPayToAddress || messageData?.payTo}`)}
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
 						aria-label="View on BaseScan"
 						title="View on BaseScan"
@@ -176,7 +176,7 @@ export function ConformSignInfo({
 							className="w-4 h-4"
 						/>
 						<span className="sr-only">View on BaseScan</span>
-					</a>
+					</button>
 				</div>
 
 			</div>

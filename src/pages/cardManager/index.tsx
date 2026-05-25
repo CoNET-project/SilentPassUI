@@ -10,6 +10,7 @@ import { Toast } from "antd-mobile"
 import CurrencyPicker from "@/components/input/SelectCurrent"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
+import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 
 const CURRENCY_META: Record<CreateBeamioCardParams["currency"], { flag: string; sym: string }> = {
 	USD: { flag: "🇺🇸", sym: "$" },
@@ -682,14 +683,13 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 							<p className="text-emerald-300 font-medium mb-1">✅ Card created</p>
 							<p className="text-sm text-white/80 font-mono break-all">{result.cardAddress}</p>
 							{result.hash && (
-								<a
-									href={`https://basescan.org/tx/${result.hash}`}
-									target="_blank"
-									rel="noopener noreferrer"
+								<button
+									type="button"
+									onClick={() => openExternalUrl(`https://basescan.org/tx/${result.hash}`)}
 									className="mt-2 inline-block text-sm text-emerald-400 hover:underline"
 								>
 									View transaction on Basescan →
-								</a>
+								</button>
 							)}
 						</div>
 					)}

@@ -6,6 +6,7 @@ import {useState, useMemo} from 'react'
 
 import { ethers } from "ethers"
 import {AppButton} from '@/components/button/AppButton'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const capitalize = (str: string) => {
   if (!str) return ''
@@ -146,7 +147,7 @@ export const RedeemOrLinkCard = ({
 
 	const handleOpenLink = () => {
 		if (!successUrl) return
-		window.open(successUrl, '_blank')
+		openExternalUrl(successUrl)
 	}
 
 	const requestGross = amt + tip; // payer will pay
@@ -649,7 +650,7 @@ export const RedeemOrLinkCard = ({
 						fullWidth
 						variant='secondary'
 						onClick={() => {
-							window.open(`https://basescan.org/tx/${hash}`, '_blank', 'noopener,noreferrer')
+							openExternalUrl(`https://basescan.org/tx/${hash}`)
 						}}
 					>
 						View on explorer

@@ -1,5 +1,6 @@
 import { X, HelpCircle, Info, Mail, MessageSquare, Bug, ExternalLink } from "lucide-react";
 import {AppButton} from '@/components/button/AppButton'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type prof = {
 	colse: () => void
@@ -51,7 +52,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
             <button
               type="button"
               onClick={() =>
-                window.open("https://beamio.app/help", "_blank", "noopener,noreferrer")
+                openExternalUrl("https://beamio.app/help")
               }
               className="w-full h-11 px-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between text-slate-800"
             >

@@ -14,6 +14,7 @@ import {
     type UserCardInfo,
 } from '@/services/BeamioCard'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const BASE_EXPLORER = 'https://basescan.org/tx/'
 
@@ -129,15 +130,14 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
                     </p>
                     <div className="w-full max-w-[320px] mb-6">
                         <p className="text-[11px] font-semibold tracking-wider uppercase text-slate-500 dark:text-slate-400 mb-1">Tx Hash</p>
-                        <a
-                            href={`${BASE_EXPLORER}${txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-xs break-all hover:bg-slate-200 dark:hover:bg-slate-700"
+                        <button
+                            type="button"
+                            onClick={() => openExternalUrl(`${BASE_EXPLORER}${txHash}`)}
+                            className="flex items-center gap-2 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-xs break-all hover:bg-slate-200 dark:hover:bg-slate-700 w-full text-left"
                         >
                             <span className="truncate">{txHash}</span>
                             <ExternalLink className="w-4 h-4 shrink-0" />
-                        </a>
+                        </button>
                     </div>
                     <button
                         type="button"

@@ -4,6 +4,7 @@ import bIcon from '@/components/assets/32x32.svg'
 import { X } from 'lucide-react'
 import {useState} from 'react'
 import AmountCurrency from '@/components/input/AmountCurrency'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 type RedeemOrLinkCardProps = {
   isPay: boolean                     // true = Redeem code 模式, false = Payment link 模式
@@ -70,7 +71,7 @@ export const RedeemOrLinkCard = ({
 
   const handleOpenLink = () => {
     if (!successUrl) return
-    window.open(successUrl, '_blank')
+    openExternalUrl(successUrl)
   }
     const requestGross = amt + tip; // payer will pay
 	const feeBase = isPay ? amt : amt + tip;

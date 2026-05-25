@@ -1438,7 +1438,7 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x4afaca09cf8307070a83836223Ae129073eC92e5',
+	address: '0x26626a515EDFb5DF9547ac1A32Ec1785352211Ba',
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
 	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),

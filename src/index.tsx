@@ -6,6 +6,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'
+import { MerchantCardDatabaseProvider } from './providers/MerchantCardDatabaseProvider'
 import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider'
 import { HashRouter as Router } from 'react-router-dom'
 
@@ -17,9 +18,11 @@ root.render(
 	<React.StrictMode>
 		<Router>
 			<DaemonProvider>
-				<BeamioTagDatabaseProvider>
-					<App />
-				</BeamioTagDatabaseProvider>
+				<MerchantCardDatabaseProvider>
+					<BeamioTagDatabaseProvider>
+						<App />
+					</BeamioTagDatabaseProvider>
+				</MerchantCardDatabaseProvider>
 			</DaemonProvider>
 		</Router>
 	</React.StrictMode>

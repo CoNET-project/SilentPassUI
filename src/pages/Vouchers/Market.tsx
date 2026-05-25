@@ -39,14 +39,30 @@ import {
 	Loader2,
 	Medal,
 	ExternalLink,
+	Gift,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
-import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, getCardMetadataFromApi, getCardMetadataFromUri, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, type CardActiveIssuedCouponSeriesItem } from "@/services/BeamioCard"
+import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, type CardActiveIssuedCouponSeriesItem } from "@/services/BeamioCard"
+import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
+import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
 import { fiatPrefix, formatAmount } from "@/services/currency"
+import {
+	formatDiscoverRechargeBonusDisplayString,
+	formatDiscoverRechargeBonusSidePillText,
+	parseDiscoverRechargeBonusRules,
+	pickPrimaryDiscoverRechargeBonusRule,
+	type DiscoverRechargeBonusRule,
+} from "@/utils/discoverRechargeBonus"
+import {
+	classifyDiscoverMerchantCategory,
+	discoverCategoryLabel,
+	parseDiscoverPrimaryCategoryId,
+	type DiscoverCategoryTab,
+} from "@/utils/discoverMerchantCategory"
 import { mapActiveCouponRow, ActiveCouponTicketItem, type ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
@@ -64,21 +80,10 @@ const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
 const DISCOVER_LATEST_CARDS_LIMIT = 20
 /** 进入 Market 页面立即展示已 cache 的 Trending Now，避免 API 504 / 超时时永远 loading */
-const TRENDING_CACHE_VERSION = 3
+const TRENDING_CACHE_VERSION = 5
 const TRENDING_CACHE_KEY = `beamio:trending:latestCards:v${TRENDING_CACHE_VERSION}:limit${DISCOVER_LATEST_CARDS_LIMIT}`
 /** /api/latestCards 实测可能 504 / 60s+ 挂起，给出明确超时；超时按 untrusted 处理，不清空已显示的 trusted rows */
 const TRENDING_FETCH_TIMEOUT_MS = 12_000
-
-/**
- * Discover merchant visibility:
- * - Cards with DB `created_at` **before** this instant (legacy): only show if `card_owner` is `DISCOVER_LEGACY_ALLOWED_CARD_OWNER`.
- * - Cards with `created_at` **at or after** this instant: show (new registrations not subject to legacy mask).
- * **Keep in sync with** `src/x402sdk/src/endpoint/latestCardsShared.ts` (`DISCOVER_NEW_MERCHANTS_UNFILTERED_SINCE_MS` + same EOA).
- */
-const DISCOVER_NEW_MERCHANTS_UNFILTERED_SINCE_MS = Date.parse("2026-05-14T00:00:00.000Z")
-const DISCOVER_LEGACY_ALLOWED_CARD_OWNER_LOWER = ethers.getAddress(
-	"0xda2c9e028d7df4338763e1e14b081ae7316b803a"
-).toLowerCase()
 
 /** When `merchantImage` is absent in metadata, Discover row hero uses alternating stock photos. */
 const DISCOVER_FEATURE_FALLBACK_IMAGES = [
@@ -96,6 +101,45 @@ const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
 	"0x7334a7c7fe867538018fcc4cea8b266e47600911",
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4",
 ] as const
+
+/** Fallback recharge bonus when metadata has not synced yet (address lowercased). */
+const DISCOVER_RECHARGE_BONUS_FALLBACKS: Record<string, DiscoverRechargeBonusRule> = {
+	"0x7334a7c7fe867538018fcc4cea8b266e47600911": {
+		paymentAmount: 100,
+		bonusValue: 10,
+		bonusProportional: true,
+	},
+}
+
+function resolveDiscoverPrimaryRechargeBonus(
+	cardAddress: string,
+	meta: Record<string, unknown> | null
+): DiscoverRechargeBonusRule | null {
+	const fromMeta = pickPrimaryDiscoverRechargeBonusRule(parseDiscoverRechargeBonusRules(meta))
+	if (fromMeta) return fromMeta
+	return DISCOVER_RECHARGE_BONUS_FALLBACKS[cardAddress.toLowerCase()] ?? null
+}
+
+const DISCOVER_RECHARGE_BONUS_HERO_CHIP_CLASS =
+	"max-w-[min(72%,220px)] rounded-full bg-[#f797ef]/90 px-2.5 py-1 text-center text-[10px] font-bold leading-tight text-[#610e62] shadow-[0_4px_12px_rgba(247,151,239,0.35)] backdrop-blur-sm"
+
+function DiscoverRechargeBonusHeroChip({
+	label,
+	className = "",
+}: {
+	label: string
+	className?: string
+}) {
+	return <span className={`${DISCOVER_RECHARGE_BONUS_HERO_CHIP_CLASS} ${className}`.trim()}>{label}</span>
+}
+
+function discoverFeaturedRechargeBonusSidePill(item: Pick<DiscoverFeaturedCard, "rechargeBonusSidePill" | "primaryRechargeBonus" | "currency">): string | null {
+	if (item.rechargeBonusSidePill) return item.rechargeBonusSidePill
+	if (item.primaryRechargeBonus) {
+		return formatDiscoverRechargeBonusSidePillText(item.primaryRechargeBonus, item.currency)
+	}
+	return null
+}
 
 /** Featured Brands subtitle override by card address (lowercased). */
 const DISCOVER_CARD_SUBTITLE_OVERRIDES: Record<string, string> = {
@@ -231,17 +275,8 @@ type DiscoverLatestCardRow = {
 	symbol: string | null
 	/** bizSite Define your brand — `merchantImage` (wide hero), not square program logo. */
 	merchantImage: string | null
+	primaryRechargeBonus: DiscoverRechargeBonusRule | null
 }
-
-type DiscoverCategoryTab =
-	| "food-beverage"
-	| "grocery-convenience"
-	| "retail-shopping"
-	| "education-training"
-	| "health-beauty"
-	| "fitness-wellness"
-	| "entertainment-leisure"
-	| "local-services"
 
 /** Discover filter chip: category tab or show all merchants. */
 type DiscoverFilterTab = DiscoverCategoryTab | "all"
@@ -255,14 +290,14 @@ const DISCOVER_ALL_OPTION: DiscoverCategoryOption = {
 }
 
 const DISCOVER_CATEGORY_OPTIONS: DiscoverCategoryOption[] = [
-	{ id: "food-beverage", label: "Food & Beverage", Icon: UtensilsCrossed },
-	{ id: "grocery-convenience", label: "Grocery & Convenience", Icon: ShoppingCart },
-	{ id: "retail-shopping", label: "Retail & Shopping", Icon: ShoppingBag },
-	{ id: "education-training", label: "Education & Training", Icon: GraduationCap },
-	{ id: "health-beauty", label: "Health & Beauty", Icon: HeartPulse },
-	{ id: "fitness-wellness", label: "Fitness & Wellness", Icon: Dumbbell },
-	{ id: "entertainment-leisure", label: "Entertainment & Leisure", Icon: Clapperboard },
-	{ id: "local-services", label: "Local Services", Icon: Building2 },
+	{ id: "food-beverage", label: discoverCategoryLabel("food-beverage"), Icon: UtensilsCrossed },
+	{ id: "grocery-convenience", label: discoverCategoryLabel("grocery-convenience"), Icon: ShoppingCart },
+	{ id: "retail-shopping", label: discoverCategoryLabel("retail-shopping"), Icon: ShoppingBag },
+	{ id: "education-training", label: discoverCategoryLabel("education-training"), Icon: GraduationCap },
+	{ id: "health-beauty", label: discoverCategoryLabel("health-beauty"), Icon: HeartPulse },
+	{ id: "fitness-wellness", label: discoverCategoryLabel("fitness-wellness"), Icon: Dumbbell },
+	{ id: "entertainment-leisure", label: discoverCategoryLabel("entertainment-leisure"), Icon: Clapperboard },
+	{ id: "local-services", label: discoverCategoryLabel("local-services"), Icon: Building2 },
 ]
 
 function discoverCategoryIconForTab(category: DiscoverCategoryTab): typeof Building2 {
@@ -306,52 +341,9 @@ type DiscoverFeaturedCard = {
 	logo: string | null
 	/** Card program currency (from latestCards row). */
 	currency: string
-}
-
-function classifyDiscoverCardCategory(card: DiscoverLatestCardRow): DiscoverCategoryTab {
-	const name = card.name.toLowerCase()
-	const description = card.programDescription.toLowerCase()
-	const category = (card.categoryId ?? "").toLowerCase()
-	if (category === "food-beverage") return "food-beverage"
-	if (category === "grocery-convenience") return "grocery-convenience"
-	if (category === "retail-shopping" || category === "shopping") return "retail-shopping"
-	if (category === "education-training") return "education-training"
-	if (category === "health-beauty") return "health-beauty"
-	if (category === "fitness-wellness") return "fitness-wellness"
-	if (category === "entertainment-leisure" || category === "movies") return "entertainment-leisure"
-	if (category === "local-services") return "local-services"
-	if (/grocery|supermarket|mart|convenience|store/.test(name) || /grocery|supermarket|mart|convenience|store/.test(description)) {
-		return "grocery-convenience"
-	}
-	if (/retail|shopping|fashion|boutique|mall/.test(name) || /retail|shopping|fashion|boutique|mall/.test(description)) {
-		return "retail-shopping"
-	}
-	if (/education|school|academy|training|course|lesson/.test(name) || /education|school|academy|training|course|lesson/.test(description)) {
-		return "education-training"
-	}
-	if (/beauty|spa|salon|health|clinic|wellness/.test(name) || /beauty|spa|salon|health|clinic|wellness/.test(description)) {
-		return "health-beauty"
-	}
-	if (/gym|fitness|yoga|pilates|workout/.test(name) || /gym|fitness|yoga|pilates|workout/.test(description)) {
-		return "fitness-wellness"
-	}
-	if (/movie|cinema|game|gaming|theater|entertainment|leisure/.test(name) || /movie|cinema|game|gaming|theater|entertainment|leisure/.test(description)) {
-		return "entertainment-leisure"
-	}
-	if (
-		category === "food" ||
-		/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(name) ||
-		/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(description)
-	) {
-		return "food-beverage"
-	}
-	if (
-		/cof|cafe|roast|espresso|latte/.test(name) ||
-		/cof|cafe|roast|espresso|latte/.test(description)
-	) {
-		return "food-beverage"
-	}
-	return "local-services"
+	primaryRechargeBonus: DiscoverRechargeBonusRule | null
+	rechargeBonusSidePill: string | null
+	rechargeBonusDisplay: string | null
 }
 
 /** Only allow safe inline style colors (hex / rgb / rgba). */
@@ -695,21 +687,6 @@ function DiscoverMerchantWellnessPointsCard({
 	)
 }
 
-/** Align x402sdk `shareTokenMetadata.categories` + biz `CARD_ISSUANCE_CATEGORY_OPTIONS` ids. */
-function parseDiscoverPrimaryCategoryId(meta: Record<string, unknown> | null): string | null {
-	if (meta == null) return null
-	const share =
-		meta.shareTokenMetadata != null && typeof meta.shareTokenMetadata === "object"
-			? (meta.shareTokenMetadata as Record<string, unknown>)
-			: null
-	const raw = share?.categories
-	if (!Array.isArray(raw) || raw.length === 0) return null
-	for (const c of raw) {
-		if (typeof c === "string" && c.trim()) return c.trim().toLowerCase()
-	}
-	return null
-}
-
 /** Align biz `parseFixedUserCardMetadata` currencySymbol sources. */
 function parseDiscoverCardSymbol(meta: Record<string, unknown> | null): string | null {
 	if (meta == null) return null
@@ -793,24 +770,6 @@ function formatDiscoverHoldersCount(n: number): string {
 	return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.trunc(n))
 }
 
-function discoverCreatedAtMs(iso: string | null | undefined): number | null {
-	if (iso == null || typeof iso !== "string") return null
-	const t = Date.parse(iso.trim())
-	return Number.isFinite(t) ? t : null
-}
-
-/** Legacy rows (created before cutover) only if owned by the allowed EOA; newer rows always pass. */
-function passDiscoverMerchantOwnerPolicy(row: DiscoverLatestCardRow): boolean {
-	const createdMs = discoverCreatedAtMs(row.createdAt)
-	if (createdMs != null && createdMs >= DISCOVER_NEW_MERCHANTS_UNFILTERED_SINCE_MS) return true
-	if (!row.cardOwner) return false
-	return row.cardOwner.toLowerCase() === DISCOVER_LEGACY_ALLOWED_CARD_OWNER_LOWER
-}
-
-function applyDiscoverMerchantOwnerFilter(rows: DiscoverLatestCardRow[]): DiscoverLatestCardRow[] {
-	return rows.filter(passDiscoverMerchantOwnerPolicy)
-}
-
 function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null {
 	if (raw == null || typeof raw !== "object") return null
 	const r = raw as Record<string, unknown>
@@ -844,6 +803,7 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 	const symbol = parseDiscoverCardSymbol(meta)
 	const businessName = parseDiscoverBusinessName(meta)
 	const merchantImage = parseDiscoverMerchantImage(meta)
+	const primaryRechargeBonus = resolveDiscoverPrimaryRechargeBonus(addr, meta)
 	const ownerRaw = r.cardOwner ?? r.card_owner
 	let cardOwner: string | null = null
 	if (typeof ownerRaw === "string" && ownerRaw.trim() && ethers.isAddress(ownerRaw.trim())) {
@@ -876,6 +836,7 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 		categoryId,
 		symbol,
 		merchantImage,
+		primaryRechargeBonus,
 	}
 }
 
@@ -900,8 +861,8 @@ function loadCachedTrendingRows(): DiscoverLatestCardRow[] | null {
 				typeof o.name === "string"
 			)
 		})
-		const gated = applyDiscoverMerchantOwnerFilter(safe)
-		return gated.length > 0 ? gated : null
+		// Rows written after trusted `/api/latestCards` success; server applies Featured Brands gate only.
+		return safe.length > 0 ? safe : null
 	} catch {
 		return null
 	}
@@ -1457,6 +1418,7 @@ const PurchaseCreditsSheet = ({
   onClose: () => void
   onSuccess?: (assets?: unknown) => void
 }) => {
+  const { fetchCardMetadata, registerCardAddresses } = useMerchantCardDatabase()
   const [amountText, setAmountText] = useState("")
   const [upgradeCapsule, setUpgradeCapsule] = useState<{ amountNeededCad: number; nextTierName: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -1484,12 +1446,13 @@ const PurchaseCreditsSheet = ({
       setUpgradeCapsule(null)
       return
     }
+    registerCardAddresses([cardAddress])
     let cancelled = false
     const run = async () => {
       try {
         const [contractTiers, meta, assets, upgradeType] = await Promise.all([
           getCardTiersFromContract(cardAddress),
-          getCardMetadataFromApi(cardAddress).then((m) => m ?? getCardMetadataFromUri(cardAddress)),
+          fetchCardMetadata(cardAddress),
           getMyAssets(profile as Parameters<typeof getMyAssets>[0], cardAddress),
           getCardUpgradeTypeFromContract(cardAddress),
         ])
@@ -1540,7 +1503,7 @@ const PurchaseCreditsSheet = ({
     }
     run()
     return () => { cancelled = true }
-  }, [open, ownsCard, cardAddress, profile?.keyID, item])
+  }, [open, ownsCard, cardAddress, profile?.keyID, item, fetchCardMetadata, registerCardAddresses])
 
   const handleConfirm = async () => {
     if (!profile?.privateKeyArmor || !cardAddress || !item) return
@@ -1741,6 +1704,7 @@ function DiscoverMerchantDetailFullScreen({
 	onClose: () => void
 	profile?: Parameters<typeof getMyAssets>[0] | null
 }) {
+	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName } = useMerchantCardDatabase()
 	const [favorited, setFavorited] = useState(false)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
@@ -1752,7 +1716,7 @@ function DiscoverMerchantDetailFullScreen({
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_INFO_PANELS[item.cardAddress.toLowerCase()]
 			: undefined
-	const passTitle = item.programName.trim() || item.title
+	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
 	const displayCurrency = (merchantAssets?.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
 	const balancePrefix = fiatPrefix(displayCurrency)
 	const balanceAmount = formatAmount(Number(merchantAssets?.points ?? 0), displayCurrency)
@@ -1784,6 +1748,7 @@ function DiscoverMerchantDetailFullScreen({
 		? null
 		: Number(merchantAssets?.points ?? 0)
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
+	const heroRechargeBonusPill = discoverFeaturedRechargeBonusSidePill(item)
 
 	useEffect(() => {
 		if (!profile?.keyID || !item.cardAddress) {
@@ -1819,9 +1784,10 @@ function DiscoverMerchantDetailFullScreen({
 		let cancelled = false
 		setMerchantOffersLoading(true)
 		const cardAddress = item.cardAddress
+		registerCardAddresses([cardAddress])
 		Promise.all([
 			fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, 50),
-			getCardMetadataFromApi(cardAddress).then((m) => m ?? getCardMetadataFromUri(cardAddress)),
+			fetchCardMetadata(cardAddress),
 		])
 			.then(([couponRows, meta]) => {
 				if (cancelled) return
@@ -1863,7 +1829,7 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, ccy])
+	}, [item.cardAddress, ccy, fetchCardMetadata, registerCardAddresses])
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -1879,6 +1845,12 @@ function DiscoverMerchantDetailFullScreen({
 				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
 					<img src={item.image} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 					<div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30" />
+					{heroRechargeBonusPill ? (
+						<DiscoverRechargeBonusHeroChip
+							label={heroRechargeBonusPill}
+							className="absolute bottom-4 right-4 z-[15]"
+						/>
+					) : null}
 					<div
 						className="absolute left-0 right-0 z-20 flex items-start justify-between px-4"
 						style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
@@ -2048,6 +2020,7 @@ export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, myAddress, setShowFooter, chatSearchOpen, setChatSearchOpen, beamio } = useDaemonContext()
+	const { registerCardAddresses, mergeTrustedCards, resolveDisplayName, resolveImage } = useMerchantCardDatabase()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
@@ -2131,11 +2104,17 @@ export default function Market() {
 				const rows = items
 					.map(parseDiscoverLatestCardItem)
 					.filter((x): x is DiscoverLatestCardRow => x != null)
-				const visible = applyDiscoverMerchantOwnerFilter(rows)
-				// Trusted success + 非空 raw：写入过滤后列表；若过滤后为空仍更新 UI 为 empty（不写入 cache）
+				// Visibility: server `/api/latestCards` applies Featured Brands gate only (`latestCardsShared.ts`).
 				if (rows.length > 0) {
-					setLatestCardsRows(visible)
-					if (visible.length > 0) saveCachedTrendingRows(visible)
+					setLatestCardsRows(rows)
+					if (rows.length > 0) saveCachedTrendingRows(rows)
+					const incoming: Record<string, ReturnType<typeof merchantCardRecordFromLatestCardsRaw>> = {}
+					for (const rawItem of items) {
+						const rec = merchantCardRecordFromLatestCardsRaw(rawItem)
+						if (rec) incoming[rec.addressLower] = rec
+					}
+					mergeTrustedCards(incoming)
+					registerCardAddresses(rows.map((r) => r.cardAddress))
 				}
 				// Trusted success + 空：windowed-scan 不可作为负向删除依据 → 保留旧 trusted rows
 			})
@@ -2161,7 +2140,12 @@ export default function Market() {
 			clearTimeout(timeoutId)
 			try { controller.abort("unmount") } catch { /* noop */ }
 		}
-	}, [])
+	}, [mergeTrustedCards, registerCardAddresses])
+
+	useEffect(() => {
+		if (latestCardsRows.length === 0) return
+		registerCardAddresses(latestCardsRows.map((r) => r.cardAddress))
+	}, [latestCardsRows, registerCardAddresses])
 
 	useEffect(() => {
 		const state = location.state as { openCardDetail?: boolean } | null
@@ -2229,20 +2213,35 @@ export default function Market() {
 
 	const discoverFeaturedCards = useMemo<DiscoverFeaturedCard[]>(() => {
 		const rows: DiscoverFeaturedCard[] = latestCardsRows.map((card, idx) => {
-			const category = classifyDiscoverCardCategory(card)
+			const dbDisplayName = resolveDisplayName(card.cardAddress)
+			const dbImage = resolveImage(card.cardAddress)
+			const category = classifyDiscoverMerchantCategory({
+				name: card.name,
+				programDescription: card.programDescription,
+				categoryId: card.categoryId,
+			})
 			const isFood = category === "food-beverage"
-			const hero = card.merchantImage?.trim()
+			const hero = card.merchantImage?.trim() || dbImage
 			const cardHeroOverride =
 				DISCOVER_CARD_HERO_OVERRIDES[card.cardAddress.toLowerCase()]
 			const fallback =
 				DISCOVER_FEATURE_FALLBACK_IMAGES[idx % DISCOVER_FEATURE_FALLBACK_IMAGES.length]
 			const subtitleOverride =
 				DISCOVER_CARD_SUBTITLE_OVERRIDES[card.cardAddress.toLowerCase()]
+			const primaryBonus =
+				card.primaryRechargeBonus ??
+				resolveDiscoverPrimaryRechargeBonus(card.cardAddress, null)
+			const rechargeBonusSidePill = primaryBonus
+				? formatDiscoverRechargeBonusSidePillText(primaryBonus, card.currency)
+				: null
+			const rechargeBonusDisplay = primaryBonus
+				? formatDiscoverRechargeBonusDisplayString(primaryBonus, card.currency)
+				: null
 			return {
 				id: card.cardAddress,
 				cardAddress: card.cardAddress,
 				category,
-				title: card.businessName ?? card.name,
+				title: card.businessName ?? dbDisplayName ?? card.name,
 				programName: card.name,
 				subtitle:
 					subtitleOverride ||
@@ -2254,14 +2253,17 @@ export default function Market() {
 						: card.topTierName ?? card.topTierMinDisplay ?? "Member Benefits",
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
 				image: hero || cardHeroOverride || fallback,
-				logo: card.logoUrl,
+				logo: card.logoUrl ?? (dbImage || null),
 				currency: card.currency,
+				primaryRechargeBonus: primaryBonus,
+				rechargeBonusSidePill,
+				rechargeBonusDisplay,
 			}
 		})
 		if (rows.length > 0) return [...rows].reverse()
 		// No placeholder brands when API list is empty (Discover is driven by real `latestCards` only).
 		return []
-	}, [latestCardsRows])
+	}, [latestCardsRows, resolveDisplayName, resolveImage])
 
 	const filteredFeaturedCards = useMemo(
 		() => {
@@ -2357,6 +2359,12 @@ export default function Market() {
 								className="w-full aspect-[16/9] object-cover"
 								draggable={false}
 							/>
+							{item.rechargeBonusSidePill ? (
+								<DiscoverRechargeBonusHeroChip
+									label={item.rechargeBonusSidePill}
+									className="absolute bottom-3 right-3 z-10"
+								/>
+							) : null}
 							<div className="absolute -bottom-8 left-6">
 								<div className="w-16 h-16 rounded-2xl bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] flex items-center justify-center border border-slate-100">
 									{item.logo ? (
@@ -2388,6 +2396,17 @@ export default function Market() {
 							<p className="text-[#4b5361] dark:text-slate-300 text-[15px] leading-tight line-clamp-2">
 								{item.subtitle}
 							</p>
+							{item.rechargeBonusDisplay && item.rechargeBonusSidePill ? (
+								<div className="mt-3 flex items-start gap-2.5">
+									<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f797ef]/20 sm:h-9 sm:w-9">
+										<Gift className="h-4 w-4 text-[#8d3a8b] sm:h-[1.05rem] sm:w-[1.05rem]" strokeWidth={2} aria-hidden />
+									</div>
+									<div className="min-w-0">
+										<p className="text-[12px] font-bold text-[#2c2f31] dark:text-slate-100 sm:text-sm">Recharge Bonus</p>
+										<p className="text-[11px] leading-snug text-[#595c5e] dark:text-slate-400">{item.rechargeBonusDisplay}</p>
+									</div>
+								</div>
+							) : null}
 						</div>
 					</button>
 					)

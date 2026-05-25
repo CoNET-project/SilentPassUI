@@ -23,6 +23,7 @@ import {
  Loader2,
  Route
 } from 'lucide-react';
+import VscodeJsonBlock from '@/components/VscodeJsonBlock';
 
 type RouteItem = {
 	asset: string
@@ -1191,11 +1192,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                   <Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
                 </button>
                 {showJson && (
-                  <div className="mt-4 bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto shadow-inner">
-                    <pre className="text-[11px] text-[#34C759] font-mono leading-relaxed">
-                      {JSON.stringify(selectedTx, null, 2)}
-                    </pre>
-                  </div>
+                  <VscodeJsonBlock className="mt-4" data={selectedTx} />
                 )}
              </div>
 

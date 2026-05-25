@@ -4,16 +4,58 @@
 
 import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CreditCard, Store } from 'lucide-react'
+import { CreditCard, ExternalLink, Store } from 'lucide-react'
+import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
-import { resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
+import baseIcon from '@/components/assets/base-logo.png'
+import { formatMyBrandNft2PointsSubtitle, resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
+import { resolveMyBrandMerchantCategoryLabel } from '@/utils/discoverMerchantCategory'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
 	const u = url.trim()
 	if (/^ipfs:\/\//i.test(u)) return `https://ipfs.io/ipfs/${u.replace(/^ipfs:\/\//i, '')}`
 	return u
+}
+
+function shortMyBrandCardAddress(address: string): string {
+	const trimmed = address.trim()
+	if (trimmed.length < 12) return trimmed
+	return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`
+}
+
+/** BeamioUserCard 合约地址胶囊：Base 图标 + 短地址，点击打开 BaseScan。 */
+export function MyBrandCardAddressCapsule({
+	address,
+	className = '',
+}: {
+	address: string
+	className?: string
+}) {
+	const normalized = (() => {
+		const raw = String(address ?? '').trim()
+		try {
+			return ethers.isAddress(raw) ? ethers.getAddress(raw) : raw
+		} catch {
+			return raw
+		}
+	})()
+	const openBaseScan = () => {
+		window.open(`https://basescan.org/address/${normalized}`, '_blank', 'noopener,noreferrer')
+	}
+	return (
+		<button
+			type="button"
+			onClick={openBaseScan}
+			className={`inline-flex max-w-full shrink-0 items-center gap-1 rounded-full border border-[#c3c6d8]/40 bg-white/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#424655] transition hover:border-[#1562f0]/35 hover:bg-[#1562f0]/5 hover:text-[#1562f0] dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-400 dark:hover:border-[#6ba3ff]/40 dark:hover:bg-[#6ba3ff]/10 dark:hover:text-[#8db8ff] ${className}`}
+			aria-label={`View contract on BaseScan: ${normalized}`}
+		>
+			<img src={baseIcon} alt="Base" className="h-3.5 w-3.5 shrink-0 rounded-full object-contain" />
+			<span className="truncate">{shortMyBrandCardAddress(normalized)}</span>
+			<ExternalLink className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2} aria-hidden />
+		</button>
+	)
 }
 
 /** 与 Home / Drawer 列表一致的最小 detail 形状（所持 Pass 对应 tier 的 metadata 颜色与 discount） */
@@ -41,9 +83,12 @@ export type MyBrandCardDetailLike = {
 		tiers?: MyBrandTierMetaRow[]
 		bonusRule?: MyBrandBonusRuleRow | null
 		bonusRules?: MyBrandBonusRuleRow[] | null
+		categoryId?: string | null
+		programDescription?: string
 	} | null
 	assets?: {
 		points?: string
+		chargeRewardPoints?: string
 		cardCurrency?: string
 		nfts?: Array<{ tokenId: string; tier?: string; isExpired?: boolean }>
 	} | null
@@ -425,7 +470,6 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 							const title =
 								(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
 							const tierPres = resolveHeldTierPresentation(detail)
-							const subtitleFallback = `${uc.currency} merchant card`
 							const imgUrl = resolveCardImageUrl(detail?.meta?.image)
 							const assets = detail?.assets ?? null
 							const ptsRaw = assets?.points
@@ -444,9 +488,8 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 										: Number.isFinite(ptsNum)
 											? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
 											: '—'
-							const activePasses =
-								assets?.nfts?.filter((n) => Number(n.tokenId) > 0 && !n.isExpired).length ?? 0
 							const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
+							const nft2PointsLine = formatMyBrandNft2PointsSubtitle(detail)
 							const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
 								uc.cardAddress,
 								detail?.claimableCoupons
@@ -467,17 +510,7 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 									</React.Fragment>
 								)
 							}
-							const passLine =
-								detail === undefined
-									? '…'
-									: activePasses > 0
-										? `${activePasses} active Pass${activePasses !== 1 ? 'es' : ''}`
-										: couponCount > 0
-											? `${couponCount} active Coupon${couponCount !== 1 ? 's' : ''}`
-											: 'No active Passes'
-							const displaySubtitle =
-								tierPres.tierName.trim() ||
-								(couponCount > 0 ? 'Coupon available' : subtitleFallback)
+							const categorySubtitle = resolveMyBrandMerchantCategoryLabel(detail, title)
 							return (
 								<div
 									key={uc.cardAddress}
@@ -501,16 +534,16 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 										)}
 									</div>
 									<div className="min-w-0 flex-1">
-										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{title}</p>
-										<p
-											className="text-[11px] leading-tight text-[#424655] dark:text-slate-400"
-											style={
-												tierPres.accentColor
-													? { color: tierPres.accentColor }
-													: undefined
-											}
-										>
-											{displaySubtitle}
+										<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+											<p className="min-w-0 truncate text-sm font-bold text-[#191c1d] dark:text-slate-100">
+												{title}
+											</p>
+											{uc.cardAddress ? (
+												<MyBrandCardAddressCapsule address={uc.cardAddress} />
+											) : null}
+										</div>
+										<p className="mt-0.5 text-[11px] leading-tight text-[#424655] dark:text-slate-400">
+											{categorySubtitle}
 										</p>
 										{tierPres.bonusPill || tierPres.discountLabel ? (
 											<div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -538,16 +571,8 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 									</div>
 									<div className="shrink-0 text-right">
 										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{pointsLine}</p>
-										<p
-											className={
-												activePasses > 0
-													? 'text-[10px] font-medium text-emerald-600 dark:text-emerald-400'
-													: couponCount > 0
-														? 'text-[10px] font-medium text-amber-600 dark:text-amber-400'
-													: 'text-[10px] font-medium text-[#424655] dark:text-slate-500'
-											}
-										>
-											{passLine}
+										<p className="text-[10px] font-medium text-[#424655] dark:text-slate-500">
+											{nft2PointsLine}
 										</p>
 									</div>
 								</div>

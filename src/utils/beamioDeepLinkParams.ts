@@ -57,6 +57,8 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 export function parseCouponOpenClaimFromParams(
 	sp: URLSearchParams
 ): { cardAddress: string; couponId: string } | null {
+	const redeemcode = (sp.get('redeemcode') ?? sp.get('Redeemcode') ?? '').trim()
+	if (redeemcode) return null
 	const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
 	const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
 	const claim = (sp.get('claim') ?? '').trim().toLowerCase()

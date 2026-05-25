@@ -14,6 +14,7 @@ import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import BeamioPayMe from './BeamioPayMe'
 import PaymentWithNfc from './PaymentWithNfc'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
+import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 
 const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
@@ -22,6 +23,7 @@ const beamioConetContract = {
 	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
+const PAY_FLOATING_TOP_CONTROLS_FALLBACK_SPACE = 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 12rem)'
 
 const Pay = ({}) => {
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<
@@ -37,6 +39,12 @@ const Pay = ({}) => {
 	} = useDaemonContext()
 	const [openSearch, setOpenSearch] = useState(false)
 	const navigate = useNavigate()
+	const {
+		opacity: topControlsOpacity,
+		onScroll: onPayScroll,
+		setRef: setPayScrollRef,
+	} = useScrollCapsuleOpacity(!openSearch)
+	const [topControlsSpacePx, setTopControlsSpacePx] = useState(0)
 
 	const checkUrl = async (url: string) => {
 		let searchParams: URLSearchParams
@@ -108,18 +116,25 @@ const Pay = ({}) => {
 		<div className="flex h-full min-h-0 flex-1 flex-col bg-[#F2F2F7] dark:bg-slate-950">
 			{/* 与 Home「View all」同内容的完整 Recent Activity */}
 			<div
+				ref={setPayScrollRef}
+				onScroll={onPayScroll}
 				className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-28"
 				style={{ WebkitOverflowScrolling: 'touch', flex: '1 1 0%', minHeight: 0 }}
 			>
 				<div
 					className="shrink-0"
-					style={{ minHeight: 'max(1rem, env(safe-area-inset-top, 0px))' }}
+					style={{ minHeight: topControlsSpacePx > 0 ? `${topControlsSpacePx}px` : PAY_FLOATING_TOP_CONTROLS_FALLBACK_SPACE }}
 				/>
 				<div className="px-4 pb-6">
 					<ActiveHistoryPannelNew
 						title="Recent Activity"
 						compact={false}
 						bare
+						hideAccountScopeCapsule
+						floatingTopControlsOpacity={topControlsOpacity}
+						onFloatingTopControlsSpaceChange={(spacePx) => {
+							setTopControlsSpacePx((prev) => (Math.abs(prev - spacePx) > 1 ? spacePx : prev))
+						}}
 						sectionTitleClassName="text-lg font-bold tracking-tight text-[#0F172A] dark:text-slate-100"
 					/>
 				</div>

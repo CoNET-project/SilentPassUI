@@ -3,12 +3,30 @@
  */
 import { ethers } from 'ethers'
 import { conetDepinProvider } from '@/utils/constants'
+import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
 import contracts from '@/utils/contracts'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
 
+const TX_RECORD_TUPLE =
+	'(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)'
+
+const TX_FULL_TUPLE =
+	'(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, address topAdmin, address subordinate, (address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta)'
+
 const INDEXER_ABI = [
-	'function getAccountTransactionsByMonthOffsetPaged(address account, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, (bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
+	`function getAccountTransactionsByMonthOffsetPaged(address account, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_RECORD_TUPLE}[] page)`,
+	`function getTransactionFullByTxId(bytes32 txId) view returns (${TX_FULL_TUPLE})`,
+] as const
+
+const ROUTE_ITEM_KEYS = [
+	'asset',
+	'amountE6',
+	'assetType',
+	'source',
+	'tokenId',
+	'itemCurrencyType',
+	'offsetInRequestCurrencyE6',
 ] as const
 
 const TX_TRANSFER_OUT = ethers.keccak256(ethers.toUtf8Bytes('transfer_out:confirmed'))
@@ -25,6 +43,427 @@ const TX_CARDMINT = ethers.keccak256(ethers.toUtf8Bytes('cardmint:confirmed'))
 const TX_ISSUE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('iuuseNewCard'))
 const TX_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('upgradeNewCard'))
 const TX_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('topupCard'))
+const TX_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('newCard'))
+const TX_REDEEM_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('redeemNewCard'))
+const TX_REDEEM_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('redeemUpgradeNewCard'))
+const TX_REDEEM_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('redeemTopupCard'))
+const TX_CREDIT_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('creditTopupCard'))
+const TX_CASH_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('cashTopupCard'))
+const TX_CREDIT_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('creditUpgradeNewCard'))
+const TX_CASH_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('cashUpgradeNewCard'))
+const TX_CREDIT_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('creditNewCard'))
+const TX_CASH_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('cashNewCard'))
+const TX_BONUS_CARD = ethers.keccak256(ethers.toUtf8Bytes('bonusCard'))
+const TX_USDC_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcNewCard'))
+const TX_USDC_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcTopupCard'))
+const TX_USDC_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcUpgradeNewCard'))
+
+const RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER = new Set(
+	[
+		TX_ISSUE_NEW_CARD,
+		TX_UPGRADE_NEW_CARD,
+		TX_TOPUP_CARD,
+		TX_NEW_CARD,
+		TX_REDEEM_NEW_CARD,
+		TX_REDEEM_UPGRADE_NEW_CARD,
+		TX_REDEEM_TOPUP_CARD,
+		TX_CREDIT_TOPUP_CARD,
+		TX_CASH_TOPUP_CARD,
+		TX_CREDIT_UPGRADE_NEW_CARD,
+		TX_CASH_UPGRADE_NEW_CARD,
+		TX_CREDIT_NEW_CARD,
+		TX_CASH_NEW_CARD,
+		TX_BONUS_CARD,
+		TX_USDC_NEW_CARD,
+		TX_USDC_TOPUP_CARD,
+		TX_USDC_UPGRADE_NEW_CARD,
+	].map((h) => h.toLowerCase())
+)
+
+export function isRecentActivityCardTopupCategory(txCategory: string): boolean {
+	const cat = String(txCategory ?? '').toLowerCase()
+	return cat !== '' && RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER.has(cat)
+}
+
+export type RecentActivityTopupDisplay = {
+	cardName: string
+	topupPaymentLeg: string
+	source: string
+}
+
+export function parseRecentActivityTopupDisplayJson(displayJson: string): RecentActivityTopupDisplay {
+	try {
+		const j = JSON.parse(displayJson || '{}') as {
+			cardName?: string
+			topupPaymentLeg?: string
+			source?: string
+			title?: string
+		}
+		return {
+			cardName: String(j.cardName ?? '').trim(),
+			topupPaymentLeg: String(j.topupPaymentLeg ?? '').trim().toLowerCase(),
+			source: String(j.source ?? '').trim(),
+		}
+	} catch {
+		return { cardName: '', topupPaymentLeg: '', source: '' }
+	}
+}
+
+export function recentActivityTopupProgramName(displayJson: string, fallbackTitle?: string): string {
+	const parsed = parseRecentActivityTopupDisplayJson(displayJson)
+	const fromCard = parsed.cardName.replace(/\s*card\s*$/i, '').trim()
+	if (fromCard) return fromCard
+	const m = String(fallbackTitle ?? '').match(/^(?:Buy|Upgrade to|Reload|Top-up)\s+(.+?)(?:\s+Card(?:\s*·.*)?)?$/i)
+	if (m?.[1]) return m[1].replace(/\s*·.*$/, '').trim()
+	return 'Membership'
+}
+
+export function recentActivityTopupListTitle(displayJson: string, fallbackTitle?: string): string {
+	return `Top-up ${recentActivityTopupProgramName(displayJson, fallbackTitle)}`
+}
+
+export function recentActivityTopupPaymentLegLabel(txCategory: string, displayJson: string): string {
+	const cat = String(txCategory ?? '').toLowerCase()
+	const leg = parseRecentActivityTopupDisplayJson(displayJson).topupPaymentLeg
+	if (leg === 'credit') return 'Card'
+	if (leg === 'cash') return 'Cash'
+	if (leg === 'bonus') return 'Bonus'
+	if (leg === 'usdc') return 'USDC'
+	if (cat === TX_CASH_NEW_CARD.toLowerCase() || cat === TX_CASH_TOPUP_CARD.toLowerCase() || cat === TX_CASH_UPGRADE_NEW_CARD.toLowerCase()) {
+		return 'Cash'
+	}
+	if (cat === TX_BONUS_CARD.toLowerCase()) return 'Bonus'
+	if (
+		cat === TX_USDC_NEW_CARD.toLowerCase() ||
+		cat === TX_USDC_TOPUP_CARD.toLowerCase() ||
+		cat === TX_USDC_UPGRADE_NEW_CARD.toLowerCase()
+	) {
+		return 'USDC'
+	}
+	if (
+		cat === TX_CREDIT_NEW_CARD.toLowerCase() ||
+		cat === TX_CREDIT_TOPUP_CARD.toLowerCase() ||
+		cat === TX_CREDIT_UPGRADE_NEW_CARD.toLowerCase()
+	) {
+		return 'Card'
+	}
+	return 'Card'
+}
+
+export type MerchantChargeDisplayParsed = {
+	source: string
+	title: string
+	cardName: string
+	cardAddress: string
+	requestCurrency: string
+	chargeBreakdown?: {
+		requestCurrency?: string
+		subtotalCurrencyAmount?: string
+		tipCurrencyAmount?: string
+	}
+}
+
+export function parseMerchantChargeDisplayJson(displayJson: string): MerchantChargeDisplayParsed | null {
+	try {
+		const j = JSON.parse(displayJson || '{}') as Record<string, unknown>
+		const source = String(j.source ?? '').trim()
+		const title = String(j.title ?? '').trim()
+		const chargeBreakdownRaw = j.chargeBreakdown
+		const hasChargeBreakdown =
+			chargeBreakdownRaw !== null && typeof chargeBreakdownRaw === 'object' && !Array.isArray(chargeBreakdownRaw)
+		const isChargeSource = source === 'open-container' || source === 'container'
+		const isMerchantTitle = /merchant payment/i.test(title)
+		if (!isChargeSource && !hasChargeBreakdown && !isMerchantTitle) return null
+		if (!hasChargeBreakdown && !isMerchantTitle) return null
+		const chargeBreakdown = hasChargeBreakdown
+			? (chargeBreakdownRaw as Record<string, unknown>)
+			: undefined
+		return {
+			source,
+			title,
+			cardName: String(j.cardName ?? '').trim(),
+			cardAddress: String(j.cardAddress ?? '').trim(),
+			requestCurrency: String(chargeBreakdown?.requestCurrency ?? j.requestCurrency ?? '').trim().toUpperCase(),
+			chargeBreakdown: chargeBreakdown
+				? {
+						requestCurrency: String(chargeBreakdown.requestCurrency ?? '').trim(),
+						subtotalCurrencyAmount: String(chargeBreakdown.subtotalCurrencyAmount ?? '').trim(),
+						tipCurrencyAmount: String(chargeBreakdown.tipCurrencyAmount ?? '0').trim(),
+					}
+				: undefined,
+		}
+	} catch {
+		return null
+	}
+}
+
+/** Charge / open-container 商户付款行（排除 Tip 子行） */
+export function isRecentActivityMerchantChargeTx(raw: RawTxRecord | undefined): boolean {
+	if (!raw) return false
+	const parsed = parseMerchantChargeDisplayJson(raw.displayJson ?? '')
+	if (!parsed) return false
+	if (/^tip$/i.test(parsed.title)) return false
+	return true
+}
+
+/** List row / local cache may omit rawTransaction — use persisted TxView flags as fallback. */
+export function isMerchantChargeTxView(tx: TxView | undefined): boolean {
+	if (!tx) return false
+	if (tx.isMerchantCharge) return true
+	if (tx.type === 'merchant_pay' && tx.isAA && !tx.isInbound) return true
+	if (isRecentActivityMerchantChargeTx(tx.rawTransaction)) return true
+	/** Legacy cache rows: stripped rawTransaction but title still from open-container displayJson */
+	if (!tx.rawTransaction) {
+		const t = String(tx.title ?? '').trim()
+		if (/^(?:qr\s+)?merchant\s+payment$/i.test(t)) return true
+	}
+	return false
+}
+
+/** Card address from enriched raw or persisted TxView field (survives local cache without raw). */
+export function merchantChargeCardAddressFromTxView(tx: TxView | undefined): string {
+	if (!tx) return ''
+	const fromPersisted = String(tx.merchantCardAddress ?? '').trim()
+	if (fromPersisted && ethers.isAddress(fromPersisted)) return ethers.getAddress(fromPersisted)
+	const raw = tx.rawTransaction
+	return raw ? merchantChargeCardAddressFromRaw(raw) : ''
+}
+
+/** Top-up rows embed cardAddress in displayJson; also persisted on TxView.merchantCardAddress. */
+export function topupCardAddressFromTxView(tx: TxView | undefined): string {
+	if (!tx) return ''
+	const fromPersisted = String(tx.merchantCardAddress ?? '').trim()
+	if (fromPersisted && ethers.isAddress(fromPersisted)) return ethers.getAddress(fromPersisted)
+	return parseDisplayJsonCardIdentity(tx.rawTransaction?.displayJson ?? '').cardAddress
+}
+
+/** Top-up / issue rows embed cardAddress + cardName in displayJson; Charge historically did not. */
+export function parseDisplayJsonCardIdentity(displayJson: string): { cardAddress: string; cardName: string } {
+	try {
+		const j = JSON.parse(displayJson || '{}') as { cardAddress?: string; cardName?: string }
+		const cardAddressRaw = String(j.cardAddress ?? '').trim()
+		const cardAddress =
+			cardAddressRaw && ethers.isAddress(cardAddressRaw) ? ethers.getAddress(cardAddressRaw) : ''
+		const cardName = String(j.cardName ?? '').trim()
+		return { cardAddress, cardName }
+	} catch {
+		return { cardAddress: '', cardName: '' }
+	}
+}
+
+/** Same-list top-up rows → cardAddress → program name (fallback before merchant card DB). */
+export function buildRecentActivityCardNameDirectory(items: TxView[]): Map<string, string> {
+	const out = new Map<string, string>()
+	for (const tx of items) {
+		const { cardAddress, cardName } = parseDisplayJsonCardIdentity(tx.rawTransaction?.displayJson ?? '')
+		if (!cardAddress || !cardName) continue
+		const key = cardAddress.toLowerCase()
+		const cleaned = cardName.replace(/\s*card\s*$/i, '').trim()
+		if (cleaned) out.set(key, cleaned)
+	}
+	return out
+}
+
+export function merchantChargeCardAddressFromRaw(raw: RawTxRecord): string {
+	const fromDisplayJson = parseDisplayJsonCardIdentity(raw.displayJson ?? '').cardAddress
+	if (fromDisplayJson) return fromDisplayJson
+	for (const r of raw.route ?? []) {
+		const assetType = Number(r.assetType ?? NaN)
+		const tokenId = String(r.tokenId ?? '0')
+		if (assetType === 1 && tokenId === '0') {
+			const asset = String(r.asset ?? '').trim()
+			if (asset && ethers.isAddress(asset)) return ethers.getAddress(asset)
+		}
+	}
+	return ''
+}
+
+function indexerValueToPlain(v: unknown): unknown {
+	if (typeof v === 'bigint') return v.toString()
+	if (Array.isArray(v)) return v.map(indexerValueToPlain)
+	if (v && typeof v === 'object' && !(v instanceof Date)) {
+		const o: Record<string, unknown> = {}
+		for (const [k, v2] of Object.entries(v)) o[k] = indexerValueToPlain(v2)
+		return o
+	}
+	return v
+}
+
+function parseRouteItemsFromIndexerFull(full: unknown): RouteItemRecord[] {
+	const keys = [
+		'id',
+		'originalPaymentHash',
+		'chainId',
+		'txCategory',
+		'displayJson',
+		'timestamp',
+		'payer',
+		'payee',
+		'finalRequestAmountFiat6',
+		'finalRequestAmountUSDC6',
+		'isAAAccount',
+		'topAdmin',
+		'subordinate',
+		'route',
+	] as const
+	const arr = Array.isArray(full) ? full : null
+	const routeRaw = arr && arr.length >= 14 ? arr[13] : (full as { route?: unknown })?.route
+	if (!Array.isArray(routeRaw)) return []
+	return routeRaw
+		.map((row) => {
+			if (!Array.isArray(row) || row.length < 7) return null
+			const named: RouteItemRecord = {}
+			for (let i = 0; i < ROUTE_ITEM_KEYS.length; i++) {
+				const val = indexerValueToPlain(row[i])
+				if (val !== undefined && val !== null) {
+					;(named as Record<string, unknown>)[ROUTE_ITEM_KEYS[i]!] = val
+				}
+			}
+			return named
+		})
+		.filter((r): r is RouteItemRecord => r != null)
+}
+
+const chargeRouteEnrichInflight = new Map<string, Promise<RouteItemRecord[] | null>>()
+
+async function fetchMerchantChargeRouteByTxId(txId: string): Promise<RouteItemRecord[] | null> {
+	const key = txId.trim().toLowerCase()
+	if (!key) return null
+	const existing = chargeRouteEnrichInflight.get(key)
+	if (existing) return existing
+
+	const task = (async () => {
+		try {
+			const indexer = new ethers.Contract(BEAMIO_INDEXER, INDEXER_ABI, conetDepinProvider)
+			const full = await indexer.getTransactionFullByTxId(ethers.hexlify(ethers.getBytes(txId)))
+			const route = parseRouteItemsFromIndexerFull(full)
+			return route.length > 0 ? route : null
+		} catch {
+			return null
+		} finally {
+			chargeRouteEnrichInflight.delete(key)
+		}
+	})()
+
+	chargeRouteEnrichInflight.set(key, task)
+	return task
+}
+
+/** Paged indexer rows omit route[]; Charge displayJson often lacks cardAddress — enrich from full tx. */
+export async function enrichMerchantChargeItemsWithIndexerRoutes(items: TxView[]): Promise<TxView[]> {
+	const need = items.filter((tx) => {
+		const raw = tx.rawTransaction
+		if (!raw || !isRecentActivityMerchantChargeTx(raw)) return false
+		return !merchantChargeCardAddressFromRaw(raw)
+	})
+	if (need.length === 0) return items
+
+	const routeByTxId = new Map<string, RouteItemRecord[]>()
+	await Promise.all(
+		need.map(async (tx) => {
+			const route = await fetchMerchantChargeRouteByTxId(tx.id)
+			if (route?.length) routeByTxId.set(tx.id, route)
+		}),
+	)
+
+	if (routeByTxId.size === 0) return items
+
+	return items.map((tx) => {
+		const route = routeByTxId.get(tx.id)
+		const raw = tx.rawTransaction
+		if (!raw) return tx
+		const mergedRaw: RawTxRecord = route?.length ? { ...raw, route } : raw
+		const isCharge = isMerchantChargeTxView(tx) || isRecentActivityMerchantChargeTx(mergedRaw)
+		if (!isCharge && !route?.length) return tx
+		const cardAddr = merchantChargeCardAddressFromRaw(mergedRaw) || tx.merchantCardAddress || ''
+		return {
+			...tx,
+			isMerchantCharge: isCharge || tx.isMerchantCharge,
+			merchantCardAddress: cardAddr || tx.merchantCardAddress,
+			type: isCharge ? 'merchant_pay' : tx.type,
+			rawTransaction: mergedRaw,
+		}
+	})
+}
+
+/** Indexer `subordinate` 为有效非零地址 ⇒ POS 终端 Charge（In-store）；否则 Online。 */
+export function merchantChargeHasValidSubordinate(raw: RawTxRecord | undefined): boolean {
+	if (!raw?.subordinate) return false
+	const sub =
+		typeof raw.subordinate === 'string'
+			? raw.subordinate.trim()
+			: String(raw.subordinate ?? '').trim()
+	if (!sub || sub === ethers.ZeroAddress || /^0x0+$/i.test(sub)) return false
+	return ethers.isAddress(sub)
+}
+
+export function merchantChargeChannelLabel(raw: RawTxRecord | undefined): string {
+	return merchantChargeHasValidSubordinate(raw) ? 'In-store payment' : 'Online shopping'
+}
+
+export function merchantChargeListCurrencyCode(raw: RawTxRecord, txCurrencyCode: string): string {
+	const parsed = parseMerchantChargeDisplayJson(raw.displayJson ?? '')
+	const fromBreakdown = parsed?.chargeBreakdown?.requestCurrency?.trim().toUpperCase()
+	if (fromBreakdown) return fromBreakdown
+	if (parsed?.requestCurrency) return parsed.requestCurrency
+	return (txCurrencyCode || 'USD').toUpperCase()
+}
+
+/** 列表行展示金额：优先 route 点数腿合计，否则 subtotal + tip */
+export function merchantChargeDisplayFiatAmount(raw: RawTxRecord): number {
+	const routes = raw.route ?? []
+	if (routes.length > 0) {
+		let totalE6 = 0n
+		for (const r of routes) {
+			const source = Number(r.source ?? NaN)
+			const assetType = Number(r.assetType ?? NaN)
+			const isPointsLeg = source === 1 || (assetType === 1 && String(r.tokenId ?? '0') === '0')
+			if (!isPointsLeg) continue
+			try {
+				const off = r.offsetInRequestCurrencyE6 ?? r.amountE6 ?? '0'
+				totalE6 += BigInt(String(off))
+			} catch {
+				/* skip bad leg */
+			}
+		}
+		if (totalE6 > 0n) return Number(totalE6) / 1e6
+	}
+	const parsed = parseMerchantChargeDisplayJson(raw.displayJson ?? '')
+	if (parsed?.chargeBreakdown) {
+		const sub = parseFloat(parsed.chargeBreakdown.subtotalCurrencyAmount ?? '0') || 0
+		const tip = parseFloat(parsed.chargeBreakdown.tipCurrencyAmount ?? '0') || 0
+		return sub + tip
+	}
+	const meta = raw.meta
+	let fiat6 = raw.finalRequestAmountFiat6 ?? 0n
+	if (meta && typeof meta === 'object' && !Array.isArray(meta) && meta.requestAmountFiat6 !== undefined) {
+		fiat6 = meta.requestAmountFiat6 ?? fiat6
+	}
+	return Number(fiat6) / 1e6
+}
+
+export function rawTxAfterNotePayer(raw: RawTxRecord | undefined): string {
+	const m = raw?.meta
+	if (!m) return ''
+	if (typeof m === 'object' && !Array.isArray(m)) return String(m.afterNotePayer ?? '').trim()
+	if (Array.isArray(m)) return String(m[7] ?? '').trim()
+	return ''
+}
+
+/** Charge reward points (E6) from indexer meta.afterNotePayer JSON */
+export function parseChargeRewardPoint6FromAfterNotePayer(afterNotePayer: unknown): bigint | null {
+	if (typeof afterNotePayer !== 'string' || !afterNotePayer.trim()) return null
+	try {
+		const j = JSON.parse(afterNotePayer) as { point?: string | number }
+		if (j.point === undefined || j.point === null) return null
+		return BigInt(String(j.point))
+	} catch {
+		return null
+	}
+}
+
+export { formatBeamioTransactionTimeLabel, formatRecentActivityItemTime } from '@/utils/beamioTransactionTimeLabel'
+
 const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
 const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes('buintUSDC'))
 const TX_REQUEST_ACCOUNTING = ethers.keccak256(ethers.toUtf8Bytes('requestAccounting'))
@@ -65,22 +504,65 @@ function txCategoryToType(txCategory: string): TxDisplayType {
 	if (cat === TX_VOUCHER_BURN.toLowerCase()) return 'voucher_burn'
 	if (cat === TX_REQUEST_CANCEL.toLowerCase()) return 'request_cancel'
 	if (cat === TX_BUINT_USDC.toLowerCase()) return 'fuel_yield'
+	if (RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER.has(cat)) return 'topup'
 	return 'unknown'
 }
 
 const CURRENCY_FIAT_MAP = ['CAD', 'USD', 'JPY', 'CNY', 'USDC', 'HKD', 'EUR', 'SGD', 'TWD'] as const
 const currencyFiatToCode = (n: number | undefined): string => CURRENCY_FIAT_MAP[n as number] ?? 'USD'
 
+function normalizeBytes32HexLower(h: unknown): string {
+	if (h == null) return ''
+	let s = typeof h === 'string' ? h.trim() : ''
+	if (!s) return ''
+	if (!s.startsWith('0x') && /^[0-9a-fA-F]{64}$/.test(s)) s = `0x${s}`
+	try {
+		if (!ethers.isHexString(s) || ethers.dataLength(s) !== 32) return ''
+		const lower = s.toLowerCase()
+		return lower === ethers.ZeroHash.toLowerCase() ? '' : lower
+	} catch {
+		return ''
+	}
+}
+
+/** BaseScan tx hash: split NFC top-up legs use synthetic indexer `id`; chain tx is in `displayJson.finishedHash`. */
+export function resolveRawTxBaseScanTxHash(tx: RawTxRecord | undefined, indexerTxId?: string): string {
+	const pickFirst = (...candidates: unknown[]): string => {
+		for (const c of candidates) {
+			const n = normalizeBytes32HexLower(c)
+			if (n) return n
+		}
+		return ''
+	}
+	if (tx) {
+		try {
+			const j = JSON.parse(tx.displayJson ?? '{}') as {
+				finishedHash?: string
+				baseRelayTxHash?: string
+				requestHash?: string
+			}
+			const fromDisplay = pickFirst(j?.finishedHash, j?.baseRelayTxHash, j?.requestHash)
+			if (fromDisplay) return fromDisplay
+		} catch {
+			/* ignore */
+		}
+		const oph = tx.originalPaymentHash
+		const ophStr =
+			typeof oph === 'string' ? oph : oph != null ? ethers.hexlify(oph as ethers.BytesLike) : ''
+		const fromLink = pickFirst(ophStr)
+		if (fromLink) return fromLink
+	}
+	const idNorm = pickFirst(indexerTxId, tx?.id)
+	return idNorm
+}
+
+export function resolveTxViewBaseScanTxHash(tx: TxView): string {
+	return resolveRawTxBaseScanTxHash(tx.rawTransaction, tx.id)
+}
+
 function formatTime(ts: bigint): string {
 	const ms = Number(ts) < 10_000_000_000 ? Number(ts) * 1000 : Number(ts)
-	const d = new Date(ms)
-	if (!isFinite(d.getTime())) return ''
-	return d.toLocaleString(undefined, {
-		month: 'short',
-		day: '2-digit',
-		hour: 'numeric',
-		minute: '2-digit',
-	})
+	return formatBeamioTransactionTimeLabel(ms)
 }
 
 function parseDisplayJson(displayJson: string): {
@@ -126,6 +608,8 @@ export interface RawTxRecord {
 	finalRequestAmountFiat6?: bigint
 	finalRequestAmountUSDC6?: bigint
 	isAAAccount?: boolean
+	topAdmin?: string
+	subordinate?: string
 	route?: RouteItemRecord[]
 	fees?: {
 		gasChainType?: number
@@ -165,6 +649,10 @@ export interface TxView {
 	isAA: boolean
 	txHash: string
 	counterpartyAddress?: string
+	/** Open-container / container Charge — persisted for local cache rows without rawTransaction */
+	isMerchantCharge?: boolean
+	/** Merchant program card from route / displayJson — persisted for metadata prefetch */
+	merchantCardAddress?: string
 	rawTransaction?: RawTxRecord
 	card?: { title?: string; detail?: string; image?: string }
 }
@@ -221,24 +709,12 @@ function appendIndexerPage(
 			handle = 'USDC Top-up'
 		}
 		const txCategoryLower = String(tx.txCategory ?? '').toLowerCase()
-		const isCardTopupLedgerTx =
-			txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase() ||
-			txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase() ||
-			txCategoryLower === TX_TOPUP_CARD.toLowerCase()
+		const isCardTopupLedgerTx = isRecentActivityCardTopupCategory(txCategoryLower)
+		const topupCardAddress = isCardTopupLedgerTx
+			? parseDisplayJsonCardIdentity(tx.displayJson ?? '').cardAddress
+			: ''
 		if (isCardTopupLedgerTx) {
-			let cardName = ''
-			try {
-				const j = JSON.parse(tx.displayJson ?? '{}')
-				cardName = String(j.cardName ?? '').trim()
-			} catch {}
-			const baseName = (cardName || title || 'Membership').replace(/\s*card\s*$/i, '').trim() || 'Membership'
-			if (txCategoryLower === TX_ISSUE_NEW_CARD.toLowerCase()) {
-				title = `Buy ${baseName} Card`
-			} else if (txCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase()) {
-				title = `Upgrade to ${baseName} Card`
-			} else {
-				title = `Reload ${baseName} Card`
-			}
+			title = recentActivityTopupListTitle(tx.displayJson ?? '', title)
 		}
 		const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 		const metaRaw = (tx as RawTxRecord).meta
@@ -276,12 +752,20 @@ function appendIndexerPage(
 		const counterparty = amPayee ? (tx.payer ?? '') : (tx.payee ?? '')
 		const payerAddr = (tx.payer ?? '').toLowerCase()
 		const payeeAddr = (tx.payee ?? '').toLowerCase()
+		const rawRecord = tx as RawTxRecord
+		const isMerchantCharge = isRecentActivityMerchantChargeTx(rawRecord)
+		const merchantCardAddress = isMerchantCharge ? merchantChargeCardAddressFromRaw(rawRecord) : ''
 		const isEoaAaInternal =
+			!isMerchantCharge &&
 			normalized.length >= 2 &&
 			normalized.some((a) => a.toLowerCase() === payerAddr) &&
 			normalized.some((a) => a.toLowerCase() === payeeAddr) &&
 			payerAddr !== payeeAddr
-		const resolvedType = isEoaAaInternal ? 'internal_transfer' : type
+		const resolvedType = isMerchantCharge
+			? 'merchant_pay'
+			: isEoaAaInternal
+				? 'internal_transfer'
+				: type
 		merged.push({
 			id,
 			type: resolvedType,
@@ -295,9 +779,17 @@ function appendIndexerPage(
 			currencyCode,
 			isInbound,
 			isAA: !!tx.isAAAccount,
-			txHash: id.startsWith('0x') && id.length === 66 ? id : '',
+			txHash: resolveRawTxBaseScanTxHash(tx as RawTxRecord, id),
 			counterpartyAddress: counterparty || undefined,
-			rawTransaction: tx as RawTxRecord,
+			...(isMerchantCharge
+				? {
+						isMerchantCharge: true as const,
+						...(merchantCardAddress ? { merchantCardAddress } : {}),
+					}
+				: topupCardAddress
+					? { merchantCardAddress: topupCardAddress }
+					: {}),
+			rawTransaction: rawRecord,
 			card: card?.image ? card : undefined,
 		})
 	}
@@ -361,7 +853,9 @@ export async function fetchMergedRecentActivityFromIndexer(
 		}
 
 		merged.sort((a, b) => b.timestampMs - a.timestampMs)
-		return { items: merged.slice(0, maxReturn), error: null, trusted: true }
+		const sliced = merged.slice(0, maxReturn)
+		const enriched = await enrichMerchantChargeItemsWithIndexerRoutes(sliced)
+		return { items: enriched, error: null, trusted: true }
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : String(e)
 		return { items: [], error: msg, trusted: false }

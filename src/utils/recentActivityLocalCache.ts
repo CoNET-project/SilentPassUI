@@ -6,7 +6,7 @@
 import { ethers } from 'ethers'
 import type { TxView } from '@/pages/History/recentActivityIndexerMerge'
 
-/** 持久化不含 rawTransaction（避免 bigint / 体积）；列表展示足够，详情页再链上补全 */
+/** 持久化不含 rawTransaction（避免 bigint / 体积）；保留 isMerchantCharge + merchantCardAddress 供 Charge 标题与 metadata 预拉 */
 export type RecentActivityCacheRow = Omit<TxView, 'rawTransaction'>
 
 type StoredPayload = {

@@ -3,6 +3,7 @@ import { Fuel, Plus, ChevronRight, RefreshCw, Filter, X, Check, ExternalLink, Co
 import { getBUnitLedgerFromIndexer, signBUnitRefuel3009, type BUnitLedgerEntry } from '@/services/BeamioCard'
 import { purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import VscodeJsonBlock from '@/components/VscodeJsonBlock'
 
 const MIN_PURCHASE_USD = 1  // Minimum $1, no purchase below $1
 
@@ -667,11 +668,10 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                   <Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
                 </button>
                 {showJson && (
-                  <div className="mt-4 bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto overflow-y-auto max-h-[32vh] shadow-inner">
-                    <pre className="text-[11px] text-[#34C759] font-mono leading-relaxed">
-                      {JSON.stringify((selectedDetail as LogEntry & { rawTx?: Record<string, unknown> }).rawTx ?? selectedDetail, null, 2)}
-                    </pre>
-                  </div>
+                  <VscodeJsonBlock
+                    className="mt-4"
+                    data={(selectedDetail as LogEntry & { rawTx?: Record<string, unknown> }).rawTx ?? selectedDetail}
+                  />
                 )}
               </div>
             </div>

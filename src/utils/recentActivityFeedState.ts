@@ -10,11 +10,14 @@ export function areRecentActivityListsEqual(a: TxView[], b: TxView[]): boolean {
 	return recentActivityListSignature(a) === recentActivityListSignature(b)
 }
 
-/** 展示字段未变但链上补全了 rawTransaction 时仍需更新（本地缓存无 raw） */
+/** 展示字段未变但链上补全了 rawTransaction / merchantCardAddress 时仍需更新（本地缓存无 raw） */
 export function shouldUpdateRecentActivityList(prev: TxView[], next: TxView[]): boolean {
 	if (!areRecentActivityListsEqual(prev, next)) return true
 	return next.some((n) => {
 		const p = prev.find((x) => x.id === n.id)
-		return Boolean(n.rawTransaction) && !p?.rawTransaction
+		if (Boolean(n.rawTransaction) && !p?.rawTransaction) return true
+		if (Boolean(n.merchantCardAddress) && !p?.merchantCardAddress) return true
+		if (n.isMerchantCharge && !p?.isMerchantCharge) return true
+		return false
 	})
 }

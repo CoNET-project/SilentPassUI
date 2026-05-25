@@ -3,6 +3,19 @@ import type { MyBrandsFeedDetailsSnapshot, MyBrandsOwnedCouponSnapshot } from '@
 
 export type MyBrandCardFeedDetailsMap = MyBrandsFeedDetailsSnapshot
 
+/** My Brands 右栏金额副标题：NFT#2（charge-reward）point 余额 + `pts`（数据来自 Daemon feeder → getMyAssets）。 */
+export function formatMyBrandNft2PointsSubtitle(
+	detail: { assets?: { chargeRewardPoints?: string } | null } | undefined
+): string {
+	if (detail === undefined) return '…'
+	const raw = detail.assets?.chargeRewardPoints
+	if (detail.assets == null) return '—'
+	if (raw == null || String(raw).trim() === '') return '—'
+	const n = Number(raw)
+	if (!Number.isFinite(n)) return '—'
+	return `${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} pts`
+}
+
 /** Home / My Brands list: render owned coupon ticket when count > 0 even if firstCoupon mapping missed. */
 export function resolveMyBrandsOwnedCouponDisplay(
 	cardAddress: string,
@@ -91,6 +104,8 @@ function detailRowDisplayKey(row: MyBrandCardFeedDetailsMap[string] | undefined)
 		c: row.assets?.cardCurrency ?? null,
 		n: row.meta?.name ?? null,
 		i: row.meta?.image ?? null,
+		cat: row.meta?.categoryId ?? null,
+		pdesc: row.meta?.programDescription ?? null,
 		pointSystem: row.meta?.pointSystem ?? null,
 		coupons: row.claimableCoupons?.count ?? 0,
 		couponTitle: row.claimableCoupons?.firstTitle ?? null,

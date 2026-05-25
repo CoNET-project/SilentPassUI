@@ -156,6 +156,7 @@ function AppShell() {
     const parsed = parseRedeemClaimFromParams(collectDeepLinkSearchParams(window.location.href))
     if (!parsed) return
     initialRedeemUrlProcessedRef.current = true
+    setCouponClaimIntent(null)
     setRedeemClaimIntent(parsed)
     setShowFooter(false)
     navigate('/History')
@@ -170,6 +171,7 @@ function AppShell() {
     if (!parsed) return
 
     initialOpenClaimUrlProcessedRef.current = true
+    setRedeemClaimIntent(null)
     setCouponClaimIntent(parsed)
     setShowFooter(false)
     navigate('/History')
@@ -1066,6 +1068,7 @@ function AppShell() {
         return
       }
       setRedeemClaimIntent(parsedRedeem)
+      setCouponClaimIntent(null)
       setShowFooter(false)
       navigate('/History')
       return
@@ -1080,6 +1083,7 @@ function AppShell() {
         return
       }
       setCouponClaimIntent(parsedCoupon)
+      setRedeemClaimIntent(null)
       setShowFooter(false)
       navigate("/History")
       return
@@ -1143,27 +1147,30 @@ function AppShell() {
 
     const run = async () => {
       // Coupon / redeem deep links must win over stale voucherPay scanIntent (global search paste after bill scan).
-      if (isCouponOpenClaimDeepLink(scanData)) {
-        const parsed = parseCouponOpenClaimFromParams(collectDeepLinkSearchParams(scanData))
-        setScanData('')
-        setScanIntent('')
-        if (parsed) {
-          setCouponClaimIntent(parsed)
-          setShowFooter(false)
-          navigate('/History')
-        } else {
-          Toast.show({ content: 'Coupon link is invalid or wallet is not ready', position: 'top' })
-        }
-        return
-      }
+      // Redeem deep links win when both redeemcode and couponId are present (redeem-required coupons).
       if (isRedeemUrl(scanData)) {
         const parsed = parseRedeemUrl(scanData)
         setScanData('')
         setScanIntent('')
         if (parsed) {
+          setCouponClaimIntent(null)
           setRedeemClaimIntent(parsed)
           setShowFooter(false)
           navigate('/History')
+        }
+        return
+      }
+      if (isCouponOpenClaimDeepLink(scanData)) {
+        const parsed = parseCouponOpenClaimFromParams(collectDeepLinkSearchParams(scanData))
+        setScanData('')
+        setScanIntent('')
+        if (parsed) {
+          setRedeemClaimIntent(null)
+          setCouponClaimIntent(parsed)
+          setShowFooter(false)
+          navigate('/History')
+        } else {
+          Toast.show({ content: 'Coupon link is invalid or wallet is not ready', position: 'top' })
         }
         return
       }

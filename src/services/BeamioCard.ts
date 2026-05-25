@@ -8,6 +8,7 @@ import {
 	peekCardBasicMetadata,
 	rememberCardBasicMetadataTrusted,
 } from "@/utils/cardBasicMetadataGlobalCache";
+import { discoverCategoryFieldsFromMetadataRoot } from "@/utils/discoverMerchantCategory";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
@@ -63,6 +64,8 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 	'0xfb4d0546b90a8f353f7c479392a1ba40a1185b9d',
 	'0x4c66b36ba059b2f05ef3d5f383c67533f19c6219',
 	'0x9cda8477c9f03b8759ac64e21941e578908fd750',
+	'0x5c5376edabbf0f0bd52d5f7a93828606a5051694',
+	'0xeacd6cb7e9e5b2a2652ad65840997aab37b828e1',
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
@@ -576,7 +579,7 @@ async function filterCouponSeriesForOpenClaim(
 	return out
 }
 
-/** null = 请求不可信；[] = 可信空 */
+/** null = 请求不可信；[] = 可信空。Discover 可见性由服务端 Featured Brands gate 统一过滤。 */
 export async function fetchCardActiveIssuedCouponSeriesTrusted(
 	cardAddress: string,
 	limit = 50
@@ -653,7 +656,7 @@ async function fetchRecentIssuedCouponCardAddresses(limit = 50): Promise<string[
 }
 
 /**
- * 进行中、可 open-claim 的优惠券：基础设施卡 + 全站 recent 系列所属商户卡，逐卡链上 isIssuedNftValid 过滤。
+ * 进行中、可 open-claim 的优惠券：全站 recent 系列所属商户卡，逐卡链上 isIssuedNftValid 过滤。
  * 若提供 `userEOA`，再按 Cluster `cardCouponOpenClaimPreCheck` 规则过滤（无 redeemCode、免费券、未领取）。
  * null = 全部卡请求均不可信。
  */
@@ -662,12 +665,10 @@ export async function fetchOngoingClaimableCouponSeries(
 	userEOA?: string | null
 ): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
 	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
-	const cardSet = new Set<string>(
-		ASSET_CARD_ADDRESSES.filter((a) => ethers.isAddress(a)).map((a) => a.toLowerCase())
-	)
+	const cardSet = new Set<string>()
 	const recentCards = await fetchRecentIssuedCouponCardAddresses(normalizedLimit)
 	if (recentCards) {
-		for (const c of recentCards) cardSet.add(c)
+		for (const c of recentCards) cardSet.add(c.toLowerCase())
 	}
 	if (cardSet.size === 0) return []
 
@@ -2522,9 +2523,16 @@ export const getMyAssets = async (
         }
         const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint);
         const balanceAddress = profile.aaAccount ?? eoa;
+        const metaPeek = peekCardBasicMetadata(cardAddress)
+        const rewardTokenId =
+            typeof metaPeek?.pointSystem?.rewardTokenId === 'number' &&
+            Number.isFinite(metaPeek.pointSystem.rewardTokenId) &&
+            metaPeek.pointSystem.rewardTokenId >= 0
+                ? Math.trunc(metaPeek.pointSystem.rewardTokenId)
+                : 2
         const [usdcBalanceRaw, chargeRewardBalance] = await Promise.all([
             usdcContract.balanceOf(balanceAddress),
-            cardContract.balanceOf(balanceAddress, 2),
+            cardContract.balanceOf(balanceAddress, rewardTokenId),
         ]);
         const usdcBalance = ethers.formatUnits(usdcBalanceRaw, 6);
 
@@ -2679,6 +2687,46 @@ function recordFromUnknown(raw: unknown): Record<string, unknown> | null {
 	return null
 }
 
+function readCardMetadataStringField(base: Record<string, unknown> | null, keys: string[]): string {
+	if (!base) return ''
+	for (const k of keys) {
+		const v = base[k]
+		if (typeof v === 'string' && v.trim()) return v.trim()
+	}
+	return ''
+}
+
+/** biz Business Name / storeName — 与 Discover Featured Brands `title: businessName ?? name` 一致 */
+export function merchantBusinessNameFromMetadataRoot(
+	metaJson: Record<string, unknown> | null | undefined
+): string {
+	if (!metaJson || typeof metaJson !== 'object') return ''
+	const share = recordFromUnknown(metaJson.shareTokenMetadata)
+	const businessMetadata = recordFromUnknown(metaJson.businessMetadata)
+	const businessProfile = recordFromUnknown(metaJson.businessProfile)
+	const ownerBusinessMetadata = recordFromUnknown(metaJson.ownerBusinessMetadata)
+	const cardBusiness = recordFromUnknown(metaJson.businessCard)
+	return (
+		readCardMetadataStringField(ownerBusinessMetadata, ['storeName', 'businessName']) ||
+		readCardMetadataStringField(businessMetadata, ['storeName', 'businessName']) ||
+		readCardMetadataStringField(businessProfile, ['storeName', 'businessName']) ||
+		readCardMetadataStringField(cardBusiness, ['storeName', 'businessName', 'merchantName', 'brandName']) ||
+		readCardMetadataStringField(share, ['storeName', 'businessName', 'merchantName', 'brandName', 'displayName']) ||
+		readCardMetadataStringField(metaJson, ['storeName', 'businessName', 'merchantName', 'brandName', 'displayName'])
+	)
+}
+
+/** BeamioUserCard 商户展示名：businessName 优先，否则 program `shareTokenMetadata.name` */
+export function merchantProgramCardDisplayNameFromMetadataRoot(
+	metaJson: Record<string, unknown> | null | undefined
+): string {
+	if (!metaJson || typeof metaJson !== 'object') return ''
+	const business = merchantBusinessNameFromMetadataRoot(metaJson)
+	if (business) return business
+	const share = recordFromUnknown(metaJson.shareTokenMetadata)
+	return String(share?.name ?? metaJson.name ?? '').trim()
+}
+
 function normalizeCardPointSystemMetadata(raw: unknown): CardPointSystemMetadata | undefined {
 	const direct = recordFromUnknown(raw)
 	const share = recordFromUnknown(direct?.shareTokenMetadata)
@@ -2808,6 +2856,9 @@ export type CardMetadataFromUri = {
 	bonusRule?: CardBonusRuleMetadata
 	bonusRules?: CardBonusRuleMetadata[]
 	pointSystem?: CardPointSystemMetadata
+	/** First id from `shareTokenMetadata.categories` (Discover / biz issuance). */
+	categoryId?: string | null
+	programDescription?: string
 }
 
 /** 单张成员 NFT 的 tier metadata（GET /metadata/0x{owner}{NFT#}.json） */
@@ -2860,6 +2911,37 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 	}
 }
 
+/** Recent Activity Charge 行 title：拉卡 metadata 解析商户名（businessName ?? programName） */
+export async function getMerchantProgramCardDisplayName(cardAddress: string): Promise<string> {
+	const raw = cardAddress?.trim()
+	if (!raw || !ethers.isAddress(raw)) return ''
+	const normalized = ethers.getAddress(raw)
+	try {
+		const res = await fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(normalized)}`)
+		if (res.ok) {
+			const data = (await res.json()) as { metadata?: Record<string, unknown> | null }
+			const name = merchantProgramCardDisplayNameFromMetadataRoot(data?.metadata ?? null)
+			if (name) return name
+		}
+	} catch {
+		/* ignore */
+	}
+	const from1155 = await getCardMetadataFrom1155Json(normalized)
+	if (from1155?.name) return String(from1155.name).trim()
+	try {
+		const filename = `0x${normalized.slice(2).toLowerCase()}0.json`
+		const res1155 = await fetch(`${beamioApi}/metadata/${filename}`)
+		if (res1155.ok) {
+			const json = (await res1155.json()) as Record<string, unknown>
+			const name = merchantProgramCardDisplayNameFromMetadataRoot(json)
+			if (name) return name
+		}
+	} catch {
+		/* ignore */
+	}
+	return ''
+}
+
 export type GetCardMetadataOptions = { bypassMemoryCache?: boolean }
 
 /** 从 beamioApi 拉取 card_owner + metadata_json，转为 CardMetadataFromUri。优先用此接口，不依赖链上 uri 与 RPC。 */
@@ -2885,12 +2967,15 @@ export const getCardMetadataFromApi = async (
 		const share = recordFromUnknown(metaJson.shareTokenMetadata)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
 		const bonusFields = bonusFieldsFromMetadataRoot(metaJson)
+		const categoryFields = discoverCategoryFieldsFromMetadataRoot(metaJson)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
 			image: (share?.image ?? metaJson.image) as string | undefined,
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
 			...bonusFields,
+			...(categoryFields.categoryId != null && { categoryId: categoryFields.categoryId }),
+			...(categoryFields.programDescription && { programDescription: categoryFields.programDescription }),
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -2977,22 +3062,18 @@ export const getCardMetadataFromUri = async (
 		const url = baseUri.includes('{id}') ? baseUri.replace(/{id}/gi, '0') : baseUri
 		const res = await fetch(url)
 		if (!res.ok) return null
-		const json = (await res.json()) as {
-			name?: string
-			image?: string
-			description?: string
-			shareTokenMetadata?: { name?: string; image?: string; description?: string }
-			tiers?: CardTierMetadata[]
-			bonusRule?: unknown
-			bonusRules?: unknown
-		}
+		const json = (await res.json()) as Record<string, unknown>
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
 		const bonusFields = bonusFieldsFromMetadataRoot(json)
+		const categoryFields = discoverCategoryFieldsFromMetadataRoot(json)
+		const share = recordFromUnknown(json.shareTokenMetadata)
 		const meta: CardMetadataFromUri = {
-			name: json?.name ?? json?.shareTokenMetadata?.name,
-			image: json?.image ?? json?.shareTokenMetadata?.image,
-			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
+			name: (json?.name ?? share?.name) as string | undefined,
+			image: (json?.image ?? share?.image) as string | undefined,
+			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers as CardTierMetadata[] }),
 			...bonusFields,
+			...(categoryFields.categoryId != null && { categoryId: categoryFields.categoryId }),
+			...(categoryFields.programDescription && { programDescription: categoryFields.programDescription }),
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta

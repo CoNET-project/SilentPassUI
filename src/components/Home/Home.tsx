@@ -34,7 +34,8 @@ import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
 import ActiveCouponsScreen, { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
-import { resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
+import { formatMyBrandNft2PointsSubtitle, resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
+import { resolveMyBrandMerchantCategoryLabel } from '@/utils/discoverMerchantCategory'
 import RedeemVoucherScreen from '@/pages/Home/RedeemVoucherScreen'
 import { buildRedeemVoucherHistoryPath } from '@/pages/Home/redeemVoucherPath'
 
@@ -54,7 +55,11 @@ import {
 } from '@/services/BeamioCard'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
-import { resolveCardImageUrl, resolveHeldTierPresentation } from '@/pages/Brands/MyBrandsListSection'
+import {
+	MyBrandCardAddressCapsule,
+	resolveCardImageUrl,
+	resolveHeldTierPresentation,
+} from '@/pages/Brands/MyBrandsListSection'
 import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
@@ -2347,8 +2352,6 @@ const Home = (_props: HomeProps) => {
 												const title =
 													(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
 												const tierPres = resolveHeldTierPresentation(detail as unknown)
-												const subtitleFallback = `${uc.currency} merchant card`
-												const subtitle = tierPres.tierName.trim() || subtitleFallback
 												const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
 												const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
 													uc.cardAddress,
@@ -2385,6 +2388,8 @@ const Home = (_props: HomeProps) => {
 													: detail === undefined
 														? '…'
 														: '—'
+												const nft2PointsLine = formatMyBrandNft2PointsSubtitle(detail)
+												const categorySubtitle = resolveMyBrandMerchantCategoryLabel(detail, title)
 												return (
 													<div
 														key={uc.cardAddress}
@@ -2408,16 +2413,16 @@ const Home = (_props: HomeProps) => {
 															)}
 														</div>
 														<div className="min-w-0 flex-1">
-															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{title}</p>
-															<p
-																className="text-[11px] leading-tight text-[#424655] dark:text-slate-400"
-																style={
-																	tierPres.accentColor
-																		? { color: tierPres.accentColor }
-																		: undefined
-																}
-															>
-																{subtitle}
+															<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+																<p className="min-w-0 truncate text-sm font-bold text-[#191c1d] dark:text-slate-100">
+																	{title}
+																</p>
+																{uc.cardAddress ? (
+																	<MyBrandCardAddressCapsule address={uc.cardAddress} />
+																) : null}
+															</div>
+															<p className="mt-0.5 text-[11px] leading-tight text-[#424655] dark:text-slate-400">
+																{categorySubtitle}
 															</p>
 															{tierPres.bonusPill || tierPres.discountLabel ? (
 																<div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -2445,6 +2450,9 @@ const Home = (_props: HomeProps) => {
 														</div>
 														<div className="shrink-0 text-right">
 															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{pointsLine}</p>
+															<p className="text-[10px] font-medium text-[#424655] dark:text-slate-500">
+																{nft2PointsLine}
+															</p>
 														</div>
 													</div>
 												)

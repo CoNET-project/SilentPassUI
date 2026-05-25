@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Gift, Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Copy, Gift, Loader2, RefreshCw } from 'lucide-react'
 import { ethers } from 'ethers'
 import { Toast } from 'antd-mobile'
 import {
@@ -8,7 +8,6 @@ import {
 	fetchRedeemBundleTokenIdsFromChain,
 	readCouponRequiresRedeemCode,
 	fetchOngoingClaimableCouponSeries,
-	isCardExcludedFromDisplay,
 	postCardCouponOpenClaimWithCurrentWallet,
 } from '@/services/BeamioCard'
 
@@ -146,6 +145,52 @@ const readMetadataBackgroundColor = (meta: Record<string, unknown> | null): stri
 	return c.startsWith('#') ? c : `#${c}`
 }
 
+const formatAddressCapsuleShort = (address: string): string => {
+	const trimmed = address.trim()
+	if (trimmed.length < 10) return trimmed
+	return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`
+}
+
+function CouponCardAddressCapsule({ address }: { address: string }) {
+	const [copied, setCopied] = useState(false)
+	const fullAddress = address.trim()
+	const short = formatAddressCapsuleShort(fullAddress)
+
+	const handleCopy = useCallback(
+		async (e: React.MouseEvent) => {
+			e.stopPropagation()
+			if (!fullAddress || fullAddress.length < 10) return
+			try {
+				await navigator.clipboard.writeText(fullAddress)
+				setCopied(true)
+				setTimeout(() => setCopied(false), 2000)
+			} catch {
+				// ignore
+			}
+		},
+		[fullAddress]
+	)
+
+	if (!fullAddress || !ethers.isAddress(fullAddress)) return null
+
+	return (
+		<button
+			type="button"
+			onClick={handleCopy}
+			className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/15 bg-white/10 py-1 pl-2.5 pr-2 font-mono text-[10px] font-semibold text-white/80 transition-colors hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+			title="Copy address"
+			aria-label={`Copy card address ${short}`}
+		>
+			<span className="truncate">{short}</span>
+			{copied ? (
+				<Check className="h-3 w-3 shrink-0 text-emerald-400" strokeWidth={2.4} aria-hidden />
+			) : (
+				<Copy className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2.2} aria-hidden />
+			)}
+		</button>
+	)
+}
+
 export const formatCouponExpiryPill = (validBeforeSec: number | null): string => {
 	if (!Number.isFinite(validBeforeSec ?? NaN) || (validBeforeSec ?? 0) <= 0) return 'VALID NOW'
 	const now = Math.floor(Date.now() / 1000)
@@ -277,6 +322,7 @@ export function ActiveCouponTicketItem({
 	disabled = false,
 	ariaLabel,
 	punchBgClassName = 'bg-[#f9f9fe]',
+	showCardAddress = false,
 }: {
 	row: ActiveCouponListItem
 	actionStatus?: ClaimButtonStatus
@@ -286,6 +332,7 @@ export function ActiveCouponTicketItem({
 	disabled?: boolean
 	ariaLabel?: string
 	punchBgClassName?: string
+	showCardAddress?: boolean
 }) {
 	const expires = formatCouponExpiryPill(row.validBeforeSec)
 	const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
@@ -376,6 +423,9 @@ export function ActiveCouponTicketItem({
 						<p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
 							{row.subtitle}
 						</p>
+						{showCardAddress && row.cardAddress ? (
+							<CouponCardAddressCapsule address={row.cardAddress} />
+						) : null}
 						<div
 							className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${expiryBgStyle}`}
 						>
@@ -489,7 +539,6 @@ export default function ActiveCouponsScreen({
 
 		const merged = new Map<string, ActiveCouponListItem>()
 		for (const row of rows) {
-			if (isCardExcludedFromDisplay(row.cardAddress)) continue
 			const mapped = mapActiveCouponRow(row.cardAddress, row)
 			if (mapped) merged.set(mapped.id, mapped)
 		}
@@ -645,6 +694,7 @@ export default function ActiveCouponsScreen({
 									<ActiveCouponTicketItem
 										key={row.id}
 										row={row}
+										showCardAddress
 										actionStatus={claimStatus}
 										actionError={claimErrorById[row.id]}
 										disabled={claimButtonDisabled}

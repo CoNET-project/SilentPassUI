@@ -697,6 +697,9 @@ type TxDisplayRowCore = {
   topAdmin?: string
   /** subordinate that processed this tx (admin topup flows) */
   subordinate?: string
+  /** Split NFC/QR top-up display: actual payment leg plus Recharge Bonus leg merged into one row. */
+  topupActualPaymentFiat?: number
+  topupBonusFiat?: number
   /**
    * Full indexer `Transaction` (readme-shaped JSON from `indexerPageTupleToTransactionJson`).
    * `route` is [] when not returned by paged facet ABI. Shown inside modal with the rest of this row.
@@ -5904,6 +5907,59 @@ function mobileTransactionsTopupSubtitle(tx: TxDisplayRow, timeStr: string): str
   return `${channel} • ${leg} • ${timeStr || '—'}`
 }
 
+function parseTopupDisplayJsonForMerge(raw: Record<string, unknown> | undefined): {
+  topupPaymentLeg: string
+  finishedHash: string
+} {
+  try {
+    const dj = raw?.displayJson
+    if (typeof dj !== 'string' || !dj.trim()) return { topupPaymentLeg: '', finishedHash: '' }
+    const o = JSON.parse(dj) as { topupPaymentLeg?: unknown; finishedHash?: unknown; baseRelayTxHash?: unknown }
+    const finishedRaw = String(o.finishedHash ?? o.baseRelayTxHash ?? '').trim()
+    return {
+      topupPaymentLeg: String(o.topupPaymentLeg ?? '').trim().toLowerCase(),
+      finishedHash:
+        finishedRaw && /^0x[0-9a-fA-F]{64}$/.test(finishedRaw)
+          ? finishedRaw.toLowerCase()
+          : '',
+    }
+  } catch {
+    return { topupPaymentLeg: '', finishedHash: '' }
+  }
+}
+
+function parseTopupRechargeBonusAfterNotePayer(raw: Record<string, unknown> | undefined): {
+  actualPaymentCurrencyFiat6: bigint
+  rechargeBonusCurrencyFiat6: bigint
+} | null {
+  try {
+    const meta = parseIndexerMetaTuple(raw?.meta)
+    const s = String(meta.afterNotePayer ?? '').trim()
+    if (!s) return null
+    const j = JSON.parse(s) as {
+      actualPaymentCurrencyFiat6?: string | number
+      rechargeBonusCurrencyFiat6?: string | number
+    }
+    const actual = BigInt(String(j.actualPaymentCurrencyFiat6 ?? '0'))
+    const bonus = BigInt(String(j.rechargeBonusCurrencyFiat6 ?? '0'))
+    if (actual < 0n || bonus <= 0n) return null
+    return { actualPaymentCurrencyFiat6: actual, rechargeBonusCurrencyFiat6: bonus }
+  } catch {
+    return null
+  }
+}
+
+function formatTopupBonusSubtitleAmount(amountFiat: number, currencyCode: string): string {
+  const ccy = (currencyCode || 'CAD') as ICurrency
+  const prefix = displayFiatPrefixFromCode(ccy, 'CAD')
+  return `+${prefix}${formatAmount(Math.abs(amountFiat), ccy)}`
+}
+
+function topupTxDisplayRowCurrencyCode(tx: TxDisplayRow): string {
+  const meta = parseIndexerMetaTuple((tx.raw as Record<string, unknown>).meta)
+  return beamioFiatCurrencyLabel(Number(meta.currencyFiat))
+}
+
 /** True when indexer `displayJson.terminal` matches a Staff POS tag (`@handle` optional). */
 function terminalTagEqualsTxTerminal(termTag: string, txTerminal: string): boolean {
   const rawA = termTag.trim().toLowerCase()
@@ -6293,6 +6349,75 @@ function mergeTipRowsIntoParentCharges(rows: TxDisplayRow[]): TxDisplayRow[] {
     return b.indexerTxId.localeCompare(a.indexerTxId)
   })
   return combined
+}
+
+function mergeTopupRechargeBonusRowsIntoTopups(rows: TxDisplayRow[]): TxDisplayRow[] {
+  const groups = new Map<string, TxDisplayRow[]>()
+  for (const row of rows) {
+    if (row.type !== 'In-Store Top-Up') continue
+    const parsed = parseTopupDisplayJsonForMerge(row.raw as Record<string, unknown>)
+    const key = parsed.finishedHash || resolveTxDisplayRowBaseScanTxHash(row)
+    if (!key || key === ethers.ZeroHash.toLowerCase() || key === row.indexerTxId.toLowerCase()) continue
+    const arr = groups.get(key) ?? []
+    arr.push(row)
+    groups.set(key, arr)
+  }
+
+  const replacement = new Map<string, TxDisplayRow>()
+  const suppressed = new Set<string>()
+  for (const [, group] of groups) {
+    if (group.length < 2) continue
+    const bonusRows = group.filter((row) => parseTopupDisplayJsonForMerge(row.raw as Record<string, unknown>).topupPaymentLeg === 'bonus')
+    if (bonusRows.length === 0) continue
+    const primary = group.find((row) => parseTopupDisplayJsonForMerge(row.raw as Record<string, unknown>).topupPaymentLeg !== 'bonus')
+    if (!primary) continue
+    const note =
+      group
+        .map((row) => parseTopupRechargeBonusAfterNotePayer(row.raw as Record<string, unknown>))
+        .find((v): v is { actualPaymentCurrencyFiat6: bigint; rechargeBonusCurrencyFiat6: bigint } => v != null) ?? null
+    const bonusFiat =
+      note != null
+        ? Number(note.rechargeBonusCurrencyFiat6) / 1_000_000
+        : bonusRows.reduce((sum, row) => sum + Math.abs(Number.isFinite(row.total) ? row.total : row.ctreeAmount), 0)
+    if (!(bonusFiat > 0)) continue
+    const actualFiat =
+      note != null
+        ? Number(note.actualPaymentCurrencyFiat6) / 1_000_000
+        : Math.abs(Number.isFinite(primary.total) ? primary.total : primary.ctreeAmount)
+    const totalFiat = actualFiat + bonusFiat
+    const usdcAmount = group.reduce((sum, row) => sum + (Number.isFinite(row.usdcAmount) ? Math.abs(row.usdcAmount) : 0), 0)
+    const bUnits = group.reduce((sum, row) => sum + (Number.isFinite(row.bUnits) ? row.bUnits : 0), 0)
+    const latest = [...group].sort((a, b) => txDisplayRowTimestampSec(b) - txDisplayRowTimestampSec(a))[0] ?? primary
+    replacement.set(primary.indexerTxId.toLowerCase(), {
+      ...primary,
+      dateStr: latest.dateStr || primary.dateStr,
+      time: latest.time || primary.time,
+      subtotal: totalFiat,
+      total: totalFiat,
+      ctreeAmount: totalFiat,
+      usdcAmount: usdcAmount > 0 ? usdcAmount : primary.usdcAmount,
+      bUnits,
+      topupActualPaymentFiat: actualFiat,
+      topupBonusFiat: bonusFiat,
+    })
+    for (const row of bonusRows) {
+      if (row.indexerTxId.toLowerCase() !== primary.indexerTxId.toLowerCase()) {
+        suppressed.add(row.indexerTxId.toLowerCase())
+      }
+    }
+  }
+
+  if (replacement.size === 0 && suppressed.size === 0) return rows
+  const merged = rows
+    .filter((row) => !suppressed.has(row.indexerTxId.toLowerCase()))
+    .map((row) => replacement.get(row.indexerTxId.toLowerCase()) ?? row)
+  merged.sort((a, b) => {
+    const ta = txDisplayRowTimestampSec(a)
+    const tb = txDisplayRowTimestampSec(b)
+    if (tb !== ta) return tb - ta
+    return b.indexerTxId.localeCompare(a.indexerTxId)
+  })
+  return merged
 }
 
 /** Merge standalone `nfcTopup:bunitService` / `usdcTopup:bunitService` indexer rows into parent In-Store Top-Up (same Base `originalPaymentHash`). */
@@ -7463,7 +7588,9 @@ function smartReceiptLedgerAmountPreviewColumn(
   }
   if (tx.type.includes('Top-Up')) {
     const meta = parseIndexerMetaTuple(tx.raw.meta);
-    const reqFiat = parseIndexerUintE6Field(meta.requestAmountFiat6);
+    const reqFiat = tx.topupBonusFiat && tx.topupBonusFiat > 0
+      ? tx.total
+      : parseIndexerUintE6Field(meta.requestAmountFiat6);
     return (
       <div className="flex items-start gap-2">
         <Ticket size={15} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -7472,6 +7599,15 @@ function smartReceiptLedgerAmountPreviewColumn(
             {reqFiat.toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">{pointsCurrencySymbol}</span>
           </div>
           <span className="text-[11px] text-slate-400 font-medium mt-0.5">≈ ${reqFiat.toFixed(2)} CAD</span>
+          {tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
+            <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold text-[#FF9500]">
+              <span>Incl</span>
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
+                <Gift size={10} strokeWidth={2.5} />
+              </span>
+              <span>{formatTopupBonusSubtitleAmount(tx.topupBonusFiat, topupTxDisplayRowCurrencyCode(tx))}</span>
+            </span>
+          ) : null}
         </div>
       </div>
     );
@@ -14864,6 +15000,7 @@ const todayTopupHourlyRollupRef = useRef<TodayTopupHourlyRollup | null>(null);
  }, [indexerTransactions, currentEoa])
 
  const [rawTxJsonModal, setRawTxJsonModal] = useState<TxDisplayRow | null>(null);
+ const [rawTxJsonCopied, setRawTxJsonCopied] = useState(false);
  /** Ledger row → Smart Receipt drawer (`newOnloading.html` pattern) */
  const [smartReceiptTx, setSmartReceiptTx] = useState<TxDisplayRow | null>(null);
 
@@ -19221,7 +19358,8 @@ const refreshIndexerTransactions = useCallback(
             )
           : [];
         const deduped = mergeRenumberTxDisplays(mapped, localBase);
-        const absorbedTips = mergeTipRowsIntoParentCharges(deduped);
+        const absorbedTopupBonus = mergeTopupRechargeBonusRowsIntoTopups(deduped);
+        const absorbedTips = mergeTipRowsIntoParentCharges(absorbedTopupBonus);
         const capped = absorbedTips.slice(0, 80);
         const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
         if (eoaKey) {
@@ -23090,6 +23228,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   >
                                     {isTopup ? '+' : '-'}C${Math.abs(cadAmtM).toFixed(2)}
                                   </span>
+                                  {isTopup && tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
+                                    <span className="mt-0.5 inline-flex items-center justify-end gap-1 text-[11px] font-bold leading-snug text-[#FF9500]">
+                                      <span>Incl</span>
+                                      <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
+                                        <Gift size={9} strokeWidth={2.5} />
+                                      </span>
+                                      <span>{formatTopupBonusSubtitleAmount(tx.topupBonusFiat, topupTxDisplayRowCurrencyCode(tx))}</span>
+                                    </span>
+                                  ) : null}
                                   {isCharge && tipCadM > 0.005 ? (
                                     <span className="mt-0.5 block max-w-[9rem] text-[11px] italic leading-snug text-slate-400">
                                       incl. C${tipCadM.toFixed(2)} tip
@@ -23462,9 +23609,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  )
                                })() : tx.type.includes('Top-Up') ? (
                                  (() => {
-                                   const rawTop = tx.raw as Record<string, unknown>
                                    const meta = parseIndexerMetaTuple(tx.raw.meta)
-                                   const reqFiat = parseIndexerUintE6Field(meta.requestAmountFiat6)
+                                   const reqFiat = tx.topupBonusFiat && tx.topupBonusFiat > 0
+                                     ? tx.total
+                                     : parseIndexerUintE6Field(meta.requestAmountFiat6)
                                    const pointsSuffixTop = dashboardPointsCurrencySymbol
                                    return (
                                      <div className="flex items-start gap-2">
@@ -23477,6 +23625,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                          <span className="text-[11px] text-slate-400 font-medium mt-0.5">
                                            ≈ ${reqFiat.toFixed(2)} CAD
                                          </span>
+                                         {tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
+                                           <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold text-[#FF9500]">
+                                             <span>Incl</span>
+                                             <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
+                                               <Gift size={10} strokeWidth={2.5} />
+                                             </span>
+                                             <span>{formatTopupBonusSubtitleAmount(tx.topupBonusFiat, topupTxDisplayRowCurrencyCode(tx))}</span>
+                                           </span>
+                                         ) : null}
                                        </div>
                                      </div>
                                    )
@@ -23629,6 +23786,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  }`}>
                                    {tx.type.includes('Top-Up') ? '+' : ''}${txTotalCAD.toFixed(2)}
                                  </div>
+                                 {tx.type.includes('Top-Up') && tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
+                                   <div className="mt-1 inline-flex items-center justify-end gap-1 text-[12px] font-bold text-[#FF9500] whitespace-nowrap tabular-nums">
+                                     <span>Incl</span>
+                                     <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
+                                       <Gift size={10} strokeWidth={2.5} />
+                                     </span>
+                                     <span>{formatTopupBonusSubtitleAmount(tx.topupBonusFiat, topupTxDisplayRowCurrencyCode(tx))}</span>
+                                   </div>
+                                 ) : null}
                                  {(() => {
                                    const sub =
                                      tx.status === 'Pending'
@@ -34158,7 +34324,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          <button
            type="button"
            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-           onClick={() => setRawTxJsonModal(null)}
+           onClick={() => {
+             setRawTxJsonModal(null);
+             setRawTxJsonCopied(false);
+           }}
            aria-label="Close"
          />
          <div
@@ -34173,14 +34342,42 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <Code size={18} className="text-emerald-800" />
                TxDisplayRow (raw + mapped)
              </h2>
-             <button
-               type="button"
-               onClick={() => setRawTxJsonModal(null)}
-               className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-               aria-label="Close"
-             >
-               <X size={20} />
-             </button>
+             <div className="flex items-center gap-1">
+               <button
+                 type="button"
+                 disabled={!rawTxJsonModal.raw}
+                 onClick={() => {
+                   if (!rawTxJsonModal.raw) return;
+                   void navigator.clipboard
+                     .writeText(JSON.stringify(rawTxJsonModal.raw, null, 2))
+                     .then(() => {
+                       setRawTxJsonCopied(true);
+                       setTimeout(() => setRawTxJsonCopied(false), 2000);
+                     })
+                     .catch(() => {});
+                 }}
+                 className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                 title="Copy raw Transaction JSON"
+                 aria-label="Copy raw Transaction JSON"
+               >
+                 {rawTxJsonCopied ? (
+                   <Check size={20} className="text-emerald-500" />
+                 ) : (
+                   <Copy size={20} />
+                 )}
+               </button>
+               <button
+                 type="button"
+                 onClick={() => {
+                   setRawTxJsonModal(null);
+                   setRawTxJsonCopied(false);
+                 }}
+                 className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                 aria-label="Close"
+               >
+                 <X size={20} />
+               </button>
+             </div>
            </div>
            <div className="p-4 overflow-auto flex-1 min-h-0">
              <VscodeJsonBlock data={rawTxJsonModal} maxHeightClassName="max-h-none" />

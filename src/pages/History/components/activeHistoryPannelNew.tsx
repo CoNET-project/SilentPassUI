@@ -43,13 +43,14 @@ import {
 	merchantChargeChannelLabel,
 	merchantChargeDisplayFiatAmount,
 	merchantChargeListCurrencyCode,
-	parseChargeRewardPoint6FromAfterNotePayer,
 	parseMerchantChargeDisplayJson,
-	rawTxAfterNotePayer,
+	resolveChargeRewardDisplayFromTxView,
+	formatChargeRewardPointValue,
 	recentActivityTopupPaymentLegLabel,
 	buildRecentActivityCardNameDirectory,
 	parseRecentActivityTopupDisplayJson,
 	topupCardAddressFromTxView,
+	resolveIndexerPayeeAddress,
 	type TxView,
 	type RawTxRecord,
 	type RouteItemRecord,
@@ -66,14 +67,18 @@ import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
-import { MyBrandCardAddressCapsule } from '@/pages/Brands/MyBrandsListSection'
+import {
+	MyBrandCardAddressCapsule,
+	MyBrandMerchantIcon,
+	resolveMyBrandCardIconUrl,
+} from '@/pages/Brands/MyBrandsListSection'
 import { QRCodeCanvas } from 'qrcode.react'
 import bIcon from '@/components/assets/logo512.png'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import VscodeJsonBlock from '@/components/VscodeJsonBlock'
 
-const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
+const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9'
 
 const TX_RECORD_TUPLE =
 	'(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)'
@@ -158,7 +163,19 @@ function formatMerchantChargeTipSubtitleAmount(amountFiat: number, currencyCode:
 	const ccy = (currencyCode || 'USD') as ICurrency
 	const prefix = ccy === 'USDC' ? '$' : fiatPrefix(ccy)
 	const formatted = formatAmount(Math.abs(amountFiat), ccy)
-	return `${prefix} ${formatted}`
+	return `${prefix}${formatted}`
+}
+
+/** Charge routing 商户行：有 tip 时展示 subtotal，使 商户行 + tip = Total */
+function resolveMerchantChargeRoutingLineFiat(
+	legFiat: number,
+	totalFiat: number,
+	tipFiat: number,
+	voucherLegCount: number,
+): number {
+	if (!(tipFiat > 0) || !(totalFiat > 0)) return legFiat
+	if (voucherLegCount === 1) return Math.max(0, totalFiat - tipFiat)
+	return Math.max(0, legFiat - (tipFiat * legFiat) / totalFiat)
 }
 
 const FEE_INFO_KEYS = ['gasChainType', 'gasWei', 'gasUSDC6', 'serviceUSDC6', 'bServiceUSDC6', 'bServiceUnits6', 'feePayer'] as const
@@ -464,6 +481,20 @@ const ActiveHistoryPannelNew = ({
 	const { fullName: detailFullName, beamioTag: detailBeamioTag } = useCounterpartyProfile(
 		selectedTxNeedsCounterparty ? selectedTx!.counterpartyAddress : undefined
 	)
+	const selectedMerchantPayeeAddress = useMemo(() => {
+		if (!selectedTx) return undefined
+		const cat = String((selectedTx.rawTransaction as RawTxRecord | undefined)?.txCategory ?? '').toLowerCase()
+		if (!isRecentActivityCardTopupCategory(cat) && !isMerchantChargeTxView(selectedTx)) return undefined
+		const raw = (fullTransactionFromChain ?? selectedTx.rawTransaction) as RawTxRecord | undefined
+		const fromRaw = resolveIndexerPayeeAddress(raw)
+		if (fromRaw) return fromRaw
+		if (selectedTx.merchantPayeeAddress && ethers.isAddress(selectedTx.merchantPayeeAddress)) {
+			return ethers.getAddress(selectedTx.merchantPayeeAddress)
+		}
+		return undefined
+	}, [selectedTx, fullTransactionFromChain])
+	const { fullName: merchantPayeeFullName, beamioTag: merchantPayeeBeamioTag } =
+		useCounterpartyProfile(selectedMerchantPayeeAddress)
 	const handleIsJson = (s: string | undefined) => !s || /^[\s]*\{/.test(s) || /"currency"/.test(s)
 	const recentActivityCardNameDirectory = useMemo(
 		() => buildRecentActivityCardNameDirectory(items),
@@ -547,6 +578,64 @@ const ActiveHistoryPannelNew = ({
 		}
 	}, [selectedTx, selectedTxCategoryLower, registerCardAddresses, fetchCardMetadata])
 	const selectedIsCardTopupKind = isRecentActivityCardTopupCategory(selectedTxCategoryLower)
+	const selectedIsMerchantChargeKind = selectedTx ? isMerchantChargeTxView(selectedTx) : false
+	const selectedIsProgramCardLedgerKind = selectedIsCardTopupKind || selectedIsMerchantChargeKind
+	const selectedChargeRaw = selectedTx?.rawTransaction as RawTxRecord | undefined
+	const selectedChargeParsed = useMemo(
+		() => (selectedChargeRaw ? parseMerchantChargeDisplayJson(selectedChargeRaw.displayJson ?? '') : null),
+		[selectedChargeRaw?.displayJson],
+	)
+	const selectedChargeDetailProgramTitle = useMemo(() => {
+		if (!selectedTx || !selectedIsMerchantChargeKind) return ''
+		const chargeAddr = merchantChargeCardAddressFromTxView(selectedTx)
+		return (
+			pickMerchantChargeListTitle({
+				displayNameFromDb: chargeAddr ? resolveDisplayName(chargeAddr) : '',
+				directoryName: chargeAddr
+					? recentActivityCardNameDirectory.get(chargeAddr.toLowerCase())
+					: undefined,
+				displayJsonCardName: selectedChargeParsed?.cardName,
+			}) || ''
+		)
+	}, [
+		selectedTx,
+		selectedIsMerchantChargeKind,
+		selectedChargeParsed?.cardName,
+		resolveDisplayName,
+		recentActivityCardNameDirectory,
+	])
+	const selectedChargeCurrencyCode =
+		selectedChargeRaw && selectedIsMerchantChargeKind
+			? merchantChargeListCurrencyCode(selectedChargeRaw, selectedTx?.currencyCode ?? 'USD')
+			: 'USD'
+	const selectedChargeFiatAmount =
+		selectedChargeRaw && selectedIsMerchantChargeKind ? merchantChargeDisplayFiatAmount(selectedChargeRaw) : 0
+	const selectedChargeTipFiat = selectedIsMerchantChargeKind
+		? Math.max(0, Number(selectedTx?.merchantChargeTipFiat ?? 0))
+		: 0
+	const selectedChargeTipCurrencyCode = selectedTx?.merchantChargeTipCurrencyCode || selectedChargeCurrencyCode
+	const selectedChargeRewardDisplay = useMemo(() => {
+		if (!selectedIsMerchantChargeKind || !selectedTx) return null
+		const raw =
+			(fullTransactionFromChain as RawTxRecord | null) ??
+			selectedChargeRaw ??
+			selectedTx.rawTransaction
+		return resolveChargeRewardDisplayFromTxView(selectedTx, raw)
+	}, [selectedIsMerchantChargeKind, selectedTx, selectedChargeRaw, fullTransactionFromChain])
+	const selectedChargeRewardValue = useMemo(
+		() => formatChargeRewardPointValue(selectedChargeRewardDisplay),
+		[selectedChargeRewardDisplay],
+	)
+	const selectedChargeChannelLabel = selectedIsMerchantChargeKind
+		? merchantChargeChannelLabel(selectedChargeRaw, selectedTx?.merchantChargeInStore)
+		: ''
+	const selectedChargeDetailSubtitle = useMemo(
+		() =>
+			selectedTx && selectedIsMerchantChargeKind
+				? `${selectedChargeChannelLabel} • ${formatBeamioTransactionTimeLabel(selectedTx.timestampMs)}`
+				: '',
+		[selectedTx, selectedIsMerchantChargeKind, selectedChargeChannelLabel],
+	)
 	const selectedIsUpgradeNewCard =
 		selectedTxCategoryLower === TX_UPGRADE_NEW_CARD.toLowerCase() ||
 		selectedTxCategoryLower === ethers.keccak256(ethers.toUtf8Bytes('creditUpgradeNewCard')).toLowerCase() ||
@@ -565,26 +654,43 @@ const ActiveHistoryPannelNew = ({
 		selectedTxCategoryLower === ethers.keccak256(ethers.toUtf8Bytes('usdcTopupCard')).toLowerCase()
 	const selectedCardName = useMemo(() => {
 		if (!selectedTx) return ''
-		const addr = topupCardAddressFromTxView(selectedTx)
-		const parsed = parseRecentActivityTopupDisplayJson(
-			(selectedTx.rawTransaction as RawTxRecord | undefined)?.displayJson ?? '',
-		)
+		const displayJson = (selectedTx.rawTransaction as RawTxRecord | undefined)?.displayJson ?? ''
+		const addr = selectedIsMerchantChargeKind
+			? merchantChargeCardAddressFromTxView(selectedTx)
+			: topupCardAddressFromTxView(selectedTx)
+		const displayJsonCardName = selectedIsMerchantChargeKind
+			? selectedChargeParsed?.cardName
+			: parseRecentActivityTopupDisplayJson(displayJson).cardName
 		const fromDb = pickMerchantProgramDisplayName({
 			displayNameFromDb: addr ? resolveDisplayName(addr) : '',
 			directoryName: addr ? recentActivityCardNameDirectory.get(addr.toLowerCase()) : undefined,
-			displayJsonCardName: parsed.cardName,
+			displayJsonCardName,
 		})
 		if (fromDb) return fromDb
+		if (selectedIsMerchantChargeKind) return selectedChargeDetailProgramTitle
 		const m = String(selectedTx.title ?? '').match(/^(?:Buy|Upgrade to|Reload|Top-up:?)\s+(.+?)(?:\s+Card(?:\s*·.*)?)?$/i)
 		return (m?.[1] ?? '').trim()
-	}, [selectedTx, resolveDisplayName, cardMap, recentActivityCardNameDirectory])
+	}, [
+		selectedTx,
+		selectedIsMerchantChargeKind,
+		selectedChargeParsed?.cardName,
+		selectedChargeDetailProgramTitle,
+		resolveDisplayName,
+		cardMap,
+		recentActivityCardNameDirectory,
+	])
 	const selectedCardUnitLabel = selectedCardName ? `$${selectedCardName}` : 'Card Voucher'
-	const selectedCardAddress = useMemo(
-		() => (selectedTx ? topupCardAddressFromTxView(selectedTx) : ''),
-		[selectedTx],
-	)
+	const selectedCardAddress = useMemo(() => {
+		if (!selectedTx) return ''
+		if (selectedIsMerchantChargeKind) return merchantChargeCardAddressFromTxView(selectedTx)
+		return topupCardAddressFromTxView(selectedTx)
+	}, [selectedTx, selectedIsMerchantChargeKind])
 	const selectedCardImage = selectedCardAddress ? resolveImage(selectedCardAddress) : ''
 	const selectedCardMetadataName = selectedCardAddress ? String(peekMetadata(selectedCardAddress)?.name ?? '').trim() : ''
+	const selectedChargeIconUrl = useMemo(() => {
+		if (!selectedIsMerchantChargeKind || !selectedCardAddress) return undefined
+		return resolveMyBrandCardIconUrl(peekMetadata(selectedCardAddress))
+	}, [selectedIsMerchantChargeKind, selectedCardAddress, cardMap, peekMetadata])
 	const selectedMergedUnitLabel = useMemo(() => {
 		if (!selectedCardName) return 'Merged Voucher'
 		const base = selectedCardName.split('-')[0]?.trim() || selectedCardName
@@ -765,16 +871,13 @@ const ActiveHistoryPannelNew = ({
 		myAddress,
 	])
 	const selectedPaidToLabel = useMemo(() => {
-		if (!selectedTx) return ''
-		const rawHandle = (selectedTx.handle ?? '').trim()
-		if (rawHandle && !handleIsJson(rawHandle)) return rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`
-		if (detailBeamioTag) return detailBeamioTag.startsWith('@') ? detailBeamioTag : `@${detailBeamioTag}`
-		if (detailFullName) return detailFullName
-		if (selectedTx.counterpartyAddress && selectedTx.counterpartyAddress.length >= 10) {
-			return `${selectedTx.counterpartyAddress.slice(0, 6)}…${selectedTx.counterpartyAddress.slice(-4)}`
+		if (!selectedMerchantPayeeAddress) return ''
+		if (merchantPayeeBeamioTag) {
+			return merchantPayeeBeamioTag.startsWith('@') ? merchantPayeeBeamioTag : `@${merchantPayeeBeamioTag}`
 		}
-		return 'Unknown'
-	}, [selectedTx, detailBeamioTag, detailFullName])
+		if (merchantPayeeFullName) return merchantPayeeFullName
+		return `${selectedMerchantPayeeAddress.slice(0, 6)}…${selectedMerchantPayeeAddress.slice(-4)}`
+	}, [selectedMerchantPayeeAddress, merchantPayeeBeamioTag, merchantPayeeFullName])
 	const selectedTopupDisplayJson = useMemo(
 		() => String((selectedTx?.rawTransaction as RawTxRecord | undefined)?.displayJson ?? ''),
 		[selectedTx]
@@ -801,7 +904,9 @@ const ActiveHistoryPannelNew = ({
 		[selectedTx, selectedIsCardTopupKind, selectedTopupDisplayJson, resolveDisplayName, cardMap, recentActivityCardNameDirectory],
 	)
 	const selectedTopupDetailProgramTitle = selectedTopupDetailTitle.replace(/^Top-up:?\s*/i, '').trim()
-	const selectedCardDisplayLabel = selectedCardName || selectedTopupDetailProgramTitle || 'Card Voucher'
+	const selectedProgramCardDetailTitle =
+		selectedTopupDetailProgramTitle || selectedChargeDetailProgramTitle
+	const selectedCardDisplayLabel = selectedCardName || selectedProgramCardDetailTitle || 'Card Voucher'
 	const selectedCardDisplayInitial = (selectedCardDisplayLabel.trim().match(/[A-Za-z0-9]/)?.[0] ?? 'B').toUpperCase()
 	const selectedTopupBonusFiat = selectedIsCardTopupKind ? Math.max(0, Number(selectedTx?.topupBonusFiat ?? 0)) : 0
 	const selectedTopupDetailSubtitle = useMemo(
@@ -811,6 +916,8 @@ const ActiveHistoryPannelNew = ({
 				: '',
 		[selectedTx, selectedIsCardTopupKind, selectedTopupPaymentLeg]
 	)
+	const selectedProgramCardDetailSubtitle =
+		selectedTopupDetailSubtitle || selectedChargeDetailSubtitle
 
 	const load = useCallback(async () => {
 		const accounts: string[] = []
@@ -1149,7 +1256,8 @@ const ActiveHistoryPannelNew = ({
 	const amountFiatSigned = (tx: TxView) => (tx.isInbound ? tx.amountFiat : -tx.amountFiat)
 
 	function TxItemRow({ tx, activeTab: rowActiveTab }: { tx: TxView; activeTab?: 'All' | 'Cash' | 'Vouchers' }) {
-		const { resolveDisplayName, registerCardAddresses, fetchCardMetadata, cardMap } = useMerchantCardDatabase()
+		const { resolveDisplayName, registerCardAddresses, fetchCardMetadata, cardMap, peekMetadata } =
+			useMerchantCardDatabase()
 		const isInternalTransfer = tx.type === 'internal_transfer' && !isMerchantChargeTxView(tx)
 		const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
 		const isReqCanceled = tx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(tx))
@@ -1209,6 +1317,10 @@ const ActiveHistoryPannelNew = ({
 			registerCardAddresses([addr])
 			void fetchCardMetadata(addr)
 		}, [merchantChargeCardAddr, topupCardAddr, registerCardAddresses, fetchCardMetadata])
+		const merchantChargeIconUrl = useMemo(() => {
+			if (!isMerchantChargeLedgerTx || !merchantChargeCardAddr) return undefined
+			return resolveMyBrandCardIconUrl(peekMetadata(merchantChargeCardAddr))
+		}, [isMerchantChargeLedgerTx, merchantChargeCardAddr, cardMap, peekMetadata])
 		const merchantCardName = useMemo(() => {
 			if (!isMerchantChargeLedgerTx) return ''
 			const addrKey = merchantChargeCardAddr.toLowerCase()
@@ -1233,9 +1345,10 @@ const ActiveHistoryPannelNew = ({
 				: tx.currencyCode
 		const merchantChargeFiatAmount =
 			rawTx && isMerchantChargeLedgerTx ? merchantChargeDisplayFiatAmount(rawTx) : 0
-		const chargeRewardPoint6 = isMerchantChargeLedgerTx
-			? parseChargeRewardPoint6FromAfterNotePayer(rawTxAfterNotePayer(rawTx))
+		const chargeRewardDisplay = isMerchantChargeLedgerTx
+			? resolveChargeRewardDisplayFromTxView(tx, rawTx)
 			: null
+		const chargeRewardValue = formatChargeRewardPointValue(chargeRewardDisplay)
 		const merchantChargeTipFiat = isMerchantChargeLedgerTx ? Math.max(0, Number(tx.merchantChargeTipFiat ?? 0)) : 0
 		const merchantChargeTipCurrencyCode = tx.merchantChargeTipCurrencyCode || merchantChargeCurrencyCode
 		const topupListTitle = useMemo(() => {
@@ -1290,7 +1403,7 @@ const ActiveHistoryPannelNew = ({
 										? internalTitle
 										: tx.title
 		const subtitleText = isMerchantChargeLedgerTx
-			? `${merchantChargeChannelLabel(rawTx)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+			? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 			: isCardTopupLedgerTx
 			? `${recentActivityTopupPaymentLegLabel(rowTxCategory, topupDisplayJson)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 			: tx.type === 'fuel_yield'
@@ -1364,13 +1477,19 @@ const ActiveHistoryPannelNew = ({
 				className="relative flex items-center justify-between py-2.5 px-3 bg-white dark:bg-slate-800/80 rounded-[15px] shadow-[0_2px_9px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-all duration-200 cursor-pointer border border-gray-100/50 dark:border-slate-700/50"
 			>
 				<div className="flex items-center gap-3">
+					{isMerchantChargeLedgerTx ? (
+						<MyBrandMerchantIcon
+							title={merchantCardName || 'Merchant'}
+							iconUrl={merchantChargeIconUrl}
+							sizeClassName="h-9 w-9 rounded-[10px] shadow-sm"
+							letterClassName="text-sm font-bold text-[#1562f0] dark:text-[#6ba3ff]"
+						/>
+					) : (
 					<div
 						className={`w-9 h-9 rounded-[10px] flex items-center justify-center shadow-sm shrink-0 ${iconBg}`}
 					>
 						{tx.type === 'fuel_yield' ? (
 							<ArrowUpRight size={16} strokeWidth={2} />
-						) : isMerchantChargeLedgerTx ? (
-							<CreditCard size={16} strokeWidth={2.2} />
 						) : isCardTopupLedgerTx ? (
 							<Plus size={17} strokeWidth={2.6} />
 						) : (isEoaReceived && tx.type !== 'request_fulfilled') ? (
@@ -1381,6 +1500,7 @@ const ActiveHistoryPannelNew = ({
 							iconForType(tx.type, 16, tx)
 						)}
 					</div>
+					)}
 					<div className="flex flex-col gap-0.5 min-w-0">
 						<h3
 							className={`text-[12px] font-semibold tracking-tight truncate ${
@@ -1455,14 +1575,23 @@ const ActiveHistoryPannelNew = ({
 							</span>
 							<span>{formatTopupBonusSubtitleAmount(topupBonusFiat, tx.currencyCode)}</span>
 						</span>
-					) : isMerchantChargeLedgerTx && merchantChargeTipFiat > 0 ? (
-						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
-							incl {formatMerchantChargeTipSubtitleAmount(merchantChargeTipFiat, merchantChargeTipCurrencyCode)} tip
-						</span>
-					) : isMerchantChargeLedgerTx && chargeRewardPoint6 !== null && chargeRewardPoint6 > 0n ? (
-						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
-							{(Number(chargeRewardPoint6) / 1e6).toFixed(2)} pts
-						</span>
+					) : isMerchantChargeLedgerTx ? (
+						<>
+							{chargeRewardValue ? (
+								<span className="mt-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
+									{chargeRewardValue}
+								</span>
+							) : null}
+							{merchantChargeTipFiat > 0 ? (
+								<span className="mt-0.5 text-[9px] font-medium text-gray-500 dark:text-slate-400">
+									incl tip{' '}
+									{formatMerchantChargeTipSubtitleAmount(
+										merchantChargeTipFiat,
+										merchantChargeTipCurrencyCode,
+									)}
+								</span>
+							) : null}
+						</>
 					) : !isCardTopupLedgerTx && !isMerchantChargeLedgerTx && tx.amountUSDC !== 0 && tx.type !== 'request_create' && tx.type !== 'request_expired' ? (
 						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
 							{Math.abs(tx.amountUSDC).toFixed(2)} USDC
@@ -1790,6 +1919,16 @@ const ActiveHistoryPannelNew = ({
 										: (isReqExpiredDetail || isReqCanceledDetail)
 										? 'bg-gray-200 text-gray-500 dark:bg-slate-600 dark:text-slate-300'
 										: showGreenArrow ? 'bg-[#34C759] text-white shadow-[0_18px_38px_rgba(52,199,89,0.3)]' : colorForTypeSolid(selectedTx.type)
+								if (selectedIsMerchantChargeKind) {
+									return (
+										<MyBrandMerchantIcon
+											title={selectedCardName || selectedCardMetadataName || 'Merchant'}
+											iconUrl={selectedChargeIconUrl}
+											sizeClassName="h-[72px] w-[72px] rounded-[24px] shadow-lg mb-5 mx-auto"
+											letterClassName="text-3xl font-bold text-[#1562f0] dark:text-[#6ba3ff]"
+										/>
+									)
+								}
 								return (
 							<div
 								className={`w-[72px] h-[72px] mx-auto rounded-[24px] flex items-center justify-center shadow-lg mb-5 ${capsuleBg}`}
@@ -1818,6 +1957,8 @@ const ActiveHistoryPannelNew = ({
 										? 'text-gray-400 dark:text-slate-500'
 										: selectedIsCardTopupKind
 											? 'text-[#34C759]'
+											: selectedIsMerchantChargeKind
+											? 'text-black dark:text-white'
 											: selectedTx.type === 'fuel_yield'
 											? 'text-black dark:text-white'
 											: activeTab === 'Vouchers' && selectedTx.type === 'internal_transfer'
@@ -1838,17 +1979,19 @@ const ActiveHistoryPannelNew = ({
 										? `Requesting ${formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)} ${selectedTx.currencyCode}`
 										: selectedIsCardTopupKind
 											? formatTopupListAmountPositive(selectedTx.amountFiat, selectedTx.currencyCode)
+										: selectedIsMerchantChargeKind
+											? formatMerchantChargeListAmountNegative(selectedChargeFiatAmount, selectedChargeCurrencyCode)
 										: selectedTx.amountUSDC === 0
 											? 'Redeemed'
 											: formatCurrencySigned(detailAmt, selectedTx.currencyCode)}
 								</h2>
 									)
 								})()}
-								{selectedIsCardTopupKind && selectedTopupDetailProgramTitle ? (
-									<p className="text-[17px] font-semibold text-black dark:text-white mt-2">{selectedTopupDetailProgramTitle}</p>
+								{selectedIsProgramCardLedgerKind && selectedProgramCardDetailTitle ? (
+									<p className="text-[17px] font-semibold text-black dark:text-white mt-2">{selectedProgramCardDetailTitle}</p>
 								) : null}
-								{selectedIsCardTopupKind && selectedTopupDetailSubtitle ? (
-									<p className="text-[14px] font-medium text-gray-500 dark:text-slate-400 mt-1">{selectedTopupDetailSubtitle}</p>
+								{selectedIsProgramCardLedgerKind && selectedProgramCardDetailSubtitle ? (
+									<p className="text-[14px] font-medium text-gray-500 dark:text-slate-400 mt-1">{selectedProgramCardDetailSubtitle}</p>
 								) : null}
 								{((selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && (isRequestExpired(selectedTx) || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
 									<p className="text-[18px] font-semibold text-gray-500 dark:text-slate-400 mt-1">
@@ -1867,17 +2010,25 @@ const ActiveHistoryPannelNew = ({
 												? (selectedTopupIsUsdcPayment && selectedTx.amountUSDC !== 0
 													? `Paid ${formatAmount(selectedCardTopupUSDCAmount, 'USDC')} USDC`
 													: null)
-												: selectedTx.amountUSDC !== 0
-													? `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`
-													: null
+												: selectedIsMerchantChargeKind
+													? (selectedChargeCurrencyCode.toUpperCase() === 'USDC' && selectedTx.amountUSDC !== 0
+														? `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`
+														: null)
+													: selectedTx.amountUSDC !== 0
+														? `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`
+														: null
 								if (!detailSubline) return null
 								return (
-									<p className="text-[14px] font-medium text-blue-600 dark:text-blue-400 mt-0.5">
+									<p className={`text-[14px] font-medium mt-0.5 ${
+										selectedIsMerchantChargeKind
+											? 'text-gray-500 dark:text-slate-400'
+											: 'text-blue-600 dark:text-blue-400'
+									}`}>
 										{detailSubline}
 									</p>
 								)
 							})()}
-							{!selectedIsCardTopupKind ? (
+							{!selectedIsProgramCardLedgerKind ? (
 								<p className="text-[15px] font-medium text-gray-500 dark:text-slate-400 mt-1">
 									{formatBeamioTransactionTimeLabel(selectedTx.timestampMs)}
 								</p>
@@ -1901,7 +2052,7 @@ const ActiveHistoryPannelNew = ({
 						</div>
 
 						{/* displayJson 附带的 title / forText 等文字信息：Fuel Yield / Top-up detail 中不显示旧 indexer title 卡片 */}
-						{selectedTx.type !== 'fuel_yield' && !selectedIsCardTopupKind && (selectedTx.forText ?? selectedTx.handle) && (
+						{selectedTx.type !== 'fuel_yield' && !selectedIsProgramCardLedgerKind && (selectedTx.forText ?? selectedTx.handle) && (
 							<div className="mb-6 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 px-4 py-3">
 								{selectedTx.title !== 'Transaction' && selectedTx.title !== 'Beamio Transfer' && (
 									<p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedTx.title}</p>
@@ -2072,6 +2223,16 @@ const ActiveHistoryPannelNew = ({
 							const txWithRoute = fullTransactionFromChain ?? (selectedTx?.rawTransaction as unknown as Record<string, unknown>)
 							const routeArr = (txWithRoute?.route as RouteItemRecord[] | undefined) ?? []
 							const useSyntheticRouting = selectedIsCardTopupKind && selectedTopupIsUsdcPayment && routeArr.length === 0 && selectedTx.amountUSDC !== 0
+							const useSyntheticChargeRouting =
+								selectedIsMerchantChargeKind && routeArr.length === 0 && selectedChargeFiatAmount > 0
+							const chargeSubtotalFiat = Math.max(0, selectedChargeFiatAmount - selectedChargeTipFiat)
+							const chargeRouteVoucherLegCount =
+								selectedIsMerchantChargeKind && routeArr.length > 0
+									? routeArr.filter((item) => {
+											const src = Number(item.source ?? 0)
+											return src >= 1 && src <= 3
+										}).length
+									: 0
 							const syntheticRows = useSyntheticRouting
 								? (selectedIsUpgradeNewCard && selectedCardMetaAmounts.discountAmountFiat6 > 0n && selectedCardMetaAmounts.requestAmountFiat6 > 0n
 									? [
@@ -2125,7 +2286,20 @@ const ActiveHistoryPannelNew = ({
 										},
 									])
 								: []
-							if (routeArr.length === 0 && !useSyntheticRouting) return null
+							const syntheticChargeRows = useSyntheticChargeRouting
+								? [
+										{
+											key: 'voucher',
+											isVoucher: true,
+											amountText: formatMerchantChargeListAmountNegative(
+												chargeSubtotalFiat,
+												selectedChargeCurrencyCode,
+											),
+											amountClass: 'text-black dark:text-white',
+										},
+									]
+								: []
+							if (routeArr.length === 0 && !useSyntheticRouting && !useSyntheticChargeRouting) return null
 							// 付款时 payer 是我方，收款时 payer 是对方；route 的 source 0 表示资金来自 payer
 							const payerAddr = (extractAddr(txWithRoute?.payer) ?? '').toLowerCase()
 							const aaAddr = (aa ?? '').toLowerCase()
@@ -2137,7 +2311,7 @@ const ActiveHistoryPannelNew = ({
 								: (txWithRoute?.finalRequestAmountUSDC6 as bigint | undefined) ?? 0n)
 							return (
 								<div className="rounded-2xl bg-white dark:bg-slate-800/80 border border-gray-100 dark:border-slate-600/50 p-4 shadow-sm mb-6">
-									{(!selectedIsCardTopupKind || selectedIsUpgradeNewCard) ? (
+									{(!selectedIsProgramCardLedgerKind || selectedIsUpgradeNewCard) ? (
 										<div className="flex items-center justify-between mb-4">
 											<h3 className="flex items-center gap-2 text-[14px] font-bold text-black dark:text-white">
 												{selectedIsUpgradeNewCard ? (
@@ -2194,9 +2368,30 @@ const ActiveHistoryPannelNew = ({
 												<span className={`text-[15px] font-semibold ${row.amountClass}`}>{row.amountText}</span>
 											</div>
 										))}
-										{!useSyntheticRouting && routeArr
+										{useSyntheticChargeRouting && syntheticChargeRows.map((row) => (
+											<div key={row.key} className="flex justify-between items-center">
+												<div className="flex items-center gap-3">
+													<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 overflow-hidden bg-white dark:bg-slate-700">
+														{selectedCardImage ? (
+															<img src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
+														) : (
+															<div className="w-full h-full flex items-center justify-center bg-[#1562f0]/10 text-[#1562f0] text-[10px] font-bold">
+																{selectedCardDisplayInitial}
+															</div>
+														)}
+													</div>
+													<div className="flex flex-col">
+														<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">
+															{selectedCardDisplayLabel}
+														</span>
+													</div>
+												</div>
+												<span className={`text-[15px] font-semibold ${row.amountClass}`}>{row.amountText}</span>
+											</div>
+										))}
+										{!useSyntheticRouting && !useSyntheticChargeRouting && routeArr
 											.filter((item) => {
-												if (!selectedIsCardTopupKind) return true
+												if (!selectedIsProgramCardLedgerKind) return true
 												const src = Number(item.source ?? 0)
 												return src >= 1 && src <= 3
 											})
@@ -2207,19 +2402,35 @@ const ActiveHistoryPannelNew = ({
 											const { primary, secondary } = routeItemLabel(src, isAA)
 											const isVoucher = src >= 1 && src <= 3
 											const isTopupCreditLine = selectedIsCardTopupKind && isVoucher
+											const isChargeDebitLine = selectedIsMerchantChargeKind && isVoucher
+											const isProgramCardVoucherLine = isTopupCreditLine || isChargeDebitLine
+											const chargeLineFiat = isChargeDebitLine
+												? resolveMerchantChargeRoutingLineFiat(
+														amt,
+														selectedChargeFiatAmount,
+														selectedChargeTipFiat,
+														chargeRouteVoucherLegCount,
+													)
+												: amt
 											const routeAmountText = isTopupCreditLine
 												? formatTopupListAmountPositive(amt, selectedTx.currencyCode)
-												: `-${amt.toFixed(2)}`
+												: isChargeDebitLine
+													? formatMerchantChargeListAmountNegative(chargeLineFiat, selectedChargeCurrencyCode)
+													: `-${amt.toFixed(2)}`
 											const routeAmountClass = isTopupCreditLine ? 'text-[#34C759]' : 'text-black dark:text-white'
 											return (
 												<div key={idx} className="flex justify-between items-center">
 													<div className="flex items-center gap-3">
-														{selectedIsCardTopupKind && isVoucher ? (
+														{isProgramCardVoucherLine ? (
 															<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 overflow-hidden bg-white dark:bg-slate-700">
 																{selectedCardImage ? (
 																	<img src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
 																) : (
-																	<div className="w-full h-full flex items-center justify-center bg-[#34C759]/10 text-[#34C759] text-[10px] font-bold">
+																	<div className={`w-full h-full flex items-center justify-center text-[10px] font-bold ${
+																		isChargeDebitLine
+																			? 'bg-[#1562f0]/10 text-[#1562f0]'
+																			: 'bg-[#34C759]/10 text-[#34C759]'
+																	}`}>
 																		{selectedCardDisplayInitial}
 																	</div>
 																)}
@@ -2249,9 +2460,9 @@ const ActiveHistoryPannelNew = ({
 														))}
 														<div className="flex flex-col">
 															<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">
-																{isTopupCreditLine ? selectedCardDisplayLabel : primary}
+																{isProgramCardVoucherLine ? selectedCardDisplayLabel : primary}
 															</span>
-															{!isTopupCreditLine ? (
+															{!isProgramCardVoucherLine ? (
 																<span className="text-[12px] text-gray-400 dark:text-slate-400 font-medium">{secondary}</span>
 															) : null}
 														</div>
@@ -2275,16 +2486,45 @@ const ActiveHistoryPannelNew = ({
 												</span>
 											</div>
 										) : null}
+										{selectedIsMerchantChargeKind && selectedChargeTipFiat > 0 ? (
+											<div className="flex justify-between items-center">
+												<div className="flex items-center gap-3">
+													<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 flex items-center justify-center bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400">
+														<Coins size={13} strokeWidth={2.4} />
+													</div>
+													<div className="flex flex-col">
+														<span className="text-[15px] font-semibold text-black dark:text-white leading-tight">Tip</span>
+													</div>
+												</div>
+												<span className="text-[15px] font-semibold text-black dark:text-white">
+													{formatMerchantChargeListAmountNegative(selectedChargeTipFiat, selectedChargeTipCurrencyCode)}
+												</span>
+											</div>
+										) : null}
 										<div className="border-t border-dashed border-gray-200 dark:border-slate-600 mt-4 pt-4 flex justify-between items-center">
 											<span className="text-[13px] font-medium text-gray-400 dark:text-slate-500 pl-9">
-												{selectedIsCardTopupKind ? 'Total' : 'Total Paid'}
+												{selectedIsProgramCardLedgerKind ? 'Total' : 'Total Paid'}
 											</span>
-											<span className={`text-[16px] font-bold ${selectedIsCardTopupKind ? 'text-[#34C759]' : 'text-black dark:text-white'}`}>
+											<span className={`text-[16px] font-bold ${
+												selectedIsCardTopupKind ? 'text-[#34C759]' : 'text-black dark:text-white'
+											}`}>
 												{selectedIsCardTopupKind
 													? formatTopupListAmountPositive(selectedTx.amountFiat, selectedTx.currencyCode)
+													: selectedIsMerchantChargeKind
+														? formatMerchantChargeListAmountNegative(selectedChargeFiatAmount, selectedChargeCurrencyCode)
 													: `${(Number(totalUSDC6) / 1e6).toFixed(2)} USDC`}
 											</span>
 										</div>
+										{selectedIsMerchantChargeKind && selectedChargeRewardValue ? (
+											<div className="flex justify-between items-center pt-2">
+												<span className="text-[13px] font-medium text-gray-400 dark:text-slate-500 pl-9">
+													Point
+												</span>
+												<span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+													{selectedChargeRewardValue}
+												</span>
+											</div>
+										) : null}
 									</div>
 								</div>
 							)
@@ -2308,7 +2548,7 @@ const ActiveHistoryPannelNew = ({
 								)
 							})()}
 							{selectedTx.type !== 'internal_transfer' && !(getOriginalPaymentHash(selectedTx) && (getStatus(selectedTx) === 'Waiting' || getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
-							selectedIsCardTopupKind ? (
+							selectedIsProgramCardLedgerKind ? (
 								<>
 									<div className="flex justify-between items-center text-[14px]">
 										<span className="text-gray-500 dark:text-slate-400 font-medium">Program Card</span>
@@ -2317,24 +2557,29 @@ const ActiveHistoryPannelNew = ({
 												<MyBrandCardAddressCapsule address={selectedCardAddress} className="max-w-[112px]" />
 											) : null}
 											<span className="max-w-[150px] truncate text-right">
-												{selectedCardMetadataName || selectedCardName || selectedTopupDetailProgramTitle || '—'}
+												{selectedCardMetadataName || selectedCardName || selectedProgramCardDetailTitle || '—'}
 											</span>
 										</span>
 									</div>
 									<div className="flex justify-between items-center text-[14px]">
-										<span className="text-gray-500 dark:text-slate-400 font-medium">Payment Method</span>
-										<span className="font-semibold text-black dark:text-white">{selectedTopupPaymentLeg || '—'}</span>
+										<span className="text-gray-500 dark:text-slate-400 font-medium">
+											{selectedIsMerchantChargeKind ? 'Payment Channel' : 'Payment Method'}
+										</span>
+										<span className="font-semibold text-black dark:text-white">
+											{selectedIsMerchantChargeKind
+												? selectedChargeChannelLabel || '—'
+												: selectedTopupPaymentLeg || '—'}
+										</span>
 									</div>
-									{selectedPaidToLabel && selectedPaidToLabel !== 'Unknown' ? (
+									{selectedPaidToLabel ? (
 										<div className="flex justify-between items-center text-[14px]">
 											<span className="text-gray-500 dark:text-slate-400 font-medium">Merchant</span>
 											<span className="font-semibold text-black dark:text-white flex items-center gap-1.5">
-												{selectedPaidToLabel}
-												{selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
+												{selectedMerchantPayeeAddress && ethers.isAddress(selectedMerchantPayeeAddress) && (
 													<button
 														type="button"
 														onClick={() => {
-															const addr = selectedTx.counterpartyAddress
+															const addr = selectedMerchantPayeeAddress
 															if (!addr || !ethers.isAddress(addr)) return
 															const cached = beamioUsers?.find((u: searchResult) => (u?.address || '').toLowerCase() === addr.toLowerCase())
 															const item = buildSearchResultFromAddress(addr, cached)
@@ -2348,6 +2593,7 @@ const ActiveHistoryPannelNew = ({
 														<MessageCircle size={14} className="text-gray-400 dark:text-slate-500" />
 													</button>
 												)}
+												{selectedPaidToLabel}
 											</span>
 										</div>
 									) : null}

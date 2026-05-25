@@ -23,10 +23,8 @@ import { randomBytes } from '@noble/hashes/utils.js'
 import contracts from "../utils/contracts"
 import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
-import { parseNodeEX,ParsedNote } from "@/services/currency"
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
-import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
+import { BASE_MAINNET_FACTORIES, CONET_ACCOUNT_REGISTRY, CONET_BUNIT_AIRDROP_ADDRESS, CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 import {
@@ -136,10 +134,10 @@ const myFollowStatusUrl = `${beamioApi}/api/getMyFollowStatus`
 const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 
 /** CoNET 主网 chainId（BUnitAirdrop 部署链） */
-const CONET_CHAIN_ID = 224422
+const CONET_CHAIN_ID = CONET_MAINNET_CHAIN_ID
 
 /** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
-const CONET_BUNIT_AIRDROP_ADDRESS = '0x67d01e0E9c859A89def4098aC7803f04BF0d77af'
+const CONET_BUNIT_AIRDROP = CONET_BUNIT_AIRDROP_ADDRESS
 
 /** 检查是否可领取 BeamioBUnits */
 export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
@@ -173,7 +171,7 @@ export const signAndClaimBUnits = async (
 			name: 'BUnitAirdrop',
 			version: '1',
 			chainId: CONET_CHAIN_ID,
-			verifyingContract: CONET_BUNIT_AIRDROP_ADDRESS as `0x${string}`,
+			verifyingContract: CONET_BUNIT_AIRDROP as `0x${string}`,
 		}
 		const types = {
 			ClaimAirdrop: [
@@ -599,7 +597,7 @@ export const estimateGasUSDC = async (amount: number, to: string) => {
 	const _amount = ethers.parseUnits(amount.toFixed(2), 6)
 	try {
 		const [gas, price, oracle] = await Promise.all([
-			sc.transfer.estimateGas(to||contracts.beamioConet.address, _amount),
+			sc.transfer.estimateGas(to || ethers.ZeroAddress, _amount),
 			baseEndpoint.getFeeData(),
 			getOracle(),
 		])
@@ -1460,7 +1458,7 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x26626a515EDFb5DF9547ac1A32Ec1785352211Ba',
+	address: CONET_ACCOUNT_REGISTRY,
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
 	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
@@ -1469,7 +1467,127 @@ const beamioAccountContract = {
 
 const beamioAccountSC = new ethers.Contract(beamioAccountContract.address, beamioAccountContract.abi, beamioAccountContract.provider)
 
+/** 224422 迁移前 AccountRegistry（只读归档 RPC） */
+const LEGACY_ACCOUNT_REGISTRY_RPC = 'https://rpc-old.conet.network'
+const LEGACY_ACCOUNT_REGISTRY_ADDRESS = '0x4afaca09cf8307070a83836223Ae129073eC92e5'
 
+const legacyBeamioAccountSC = new ethers.Contract(
+	LEGACY_ACCOUNT_REGISTRY_ADDRESS,
+	beamioAccountABI,
+	new ethers.JsonRpcProvider(LEGACY_ACCOUNT_REGISTRY_RPC)
+)
+
+type RecoverStoragePayload = {
+	stored?: Argon2idHash
+	img?: string
+	recoverData?: unknown
+}
+
+type ValidRecoverStoragePayload = RecoverStoragePayload & {
+	stored: Argon2idHash
+	img: string
+}
+
+const decodeRecoverStoragePayload = (encoded: string): RecoverStoragePayload | null => {
+	try {
+		const obj = JSON.parse(fromBase64(encoded)) as RecoverStoragePayload
+		if (!obj || typeof obj !== 'object') return null
+		return {
+			stored: obj.stored,
+			img: typeof obj.img === 'string' ? obj.img : undefined,
+			recoverData: obj.recoverData,
+		}
+	} catch {
+		return null
+	}
+}
+
+const isValidRecoverStoragePayload = (obj: RecoverStoragePayload | null): obj is ValidRecoverStoragePayload =>
+	!!obj?.img && !!obj?.stored
+
+/** 从指定 AccountRegistry 读取 @tag 对应的 PIN recover blob */
+const fetchRecoverPayloadByAccountName = async (
+	accountName: string,
+	registry: ethers.Contract
+): Promise<{ encoded: string; payload: ValidRecoverStoragePayload } | null> => {
+	try {
+		const encoded: string = await registry.getBase64ByAccountName(accountName)
+		if (!encoded?.trim()) return null
+		const payload = decodeRecoverStoragePayload(encoded)
+		if (!isValidRecoverStoragePayload(payload)) return null
+		return { encoded, payload }
+	} catch {
+		return null
+	}
+}
+
+const buildMinimalBeamioFromAccountName = (accountName: string): beamio => ({
+	accountName,
+	firstName: '',
+	lastName: '',
+	image: '',
+	darkTheme: false,
+	isUSDCFaucet: false,
+	isETHFaucet: false,
+	initialLoading: true,
+	createdAt: Date.now(),
+	language: 'en',
+	currency: 'USD',
+	tax: '0',
+})
+
+const parseRegistryAccountToBeamio = (userInfo: {
+	accountName?: string
+	image?: string
+	darkTheme?: boolean
+	isUSDCFaucet?: boolean
+	isETHFaucet?: boolean
+	initialLoading?: boolean
+	firstName?: string
+	lastName?: string
+	createdAt?: bigint | number
+	exists?: boolean
+	pgpKeyID?: string
+	pgpKey?: string
+} | null): beamio | null => {
+	if (!userInfo?.exists || !userInfo.accountName?.trim()) return null
+	const lastNameArray: string = userInfo.lastName || ''
+	const lastNameParts = lastNameArray.split('\r\n')
+	let addedSetup: beamioAddedSetup = { language: 'en', currency: 'USD', tax: '0' }
+	try {
+		addedSetup = JSON.parse(lastNameParts[lastNameParts.length - 1])
+	} catch {
+		// keep defaults
+	}
+	return {
+		accountName: userInfo.accountName,
+		image: userInfo.image ?? '',
+		darkTheme: userInfo.darkTheme ?? false,
+		initialLoading: userInfo.initialLoading ?? false,
+		isUSDCFaucet: userInfo.isUSDCFaucet ?? false,
+		isETHFaucet: userInfo.isETHFaucet ?? false,
+		firstName: userInfo.firstName ?? '',
+		lastName: lastNameParts[0] ?? '',
+		createdAt: Number(userInfo.createdAt),
+		language: addedSetup.language,
+		currency: addedSetup.currency,
+		tax: addedSetup.tax || '0',
+		pgpPublicKeyID: userInfo.pgpKeyID ?? '',
+		pgpPublicKeyArmor: userInfo.pgpKey ?? '',
+	}
+}
+
+const getUserInfoFromRegistry = async (
+	registry: ethers.Contract,
+	keyID: string
+): Promise<beamio | null> => {
+	try {
+		const userInfo = await registry.getAccount(keyID)
+		return parseRegistryAccountToBeamio(userInfo)
+	} catch {
+		return null
+	}
+}
 
 const defaultBrowserParams: Argon2idParams = {
 	memoryKB: 32 * 1024, // 32 MB
@@ -1564,6 +1682,27 @@ const isValidEthersPrivateKey = (pk: unknown): pk is string => {
 	if (!pk || typeof pk !== 'string') return false
 	const s = String(pk).trim().replace(/^0x/i, '')
 	return /^[0-9a-fA-F]{64}$/.test(s)
+}
+
+const migrateLegacyRecoverToNewRegistry = async (
+	accountName: string,
+	encodedRecover: string,
+	privateKey: string,
+	wallet: string
+): Promise<{ ok: boolean; beamio: beamio }> => {
+	const nameHash = ethers.solidityPackedKeccak256(['string'], [accountName])
+	const recover: IAccountRecover[] = [{ hash: nameHash, encrypto: encodedRecover }]
+	const fallbackBeamio = buildMinimalBeamioFromAccountName(accountName)
+
+	const legacyProfile = await getUserInfoFromRegistry(legacyBeamioAccountSC, wallet)
+	const beamioForEnqueue = legacyProfile ?? fallbackBeamio
+	beamioForEnqueue.accountName = accountName
+
+	const ok = legacyProfile
+		? await RegenerateUser(beamioForEnqueue, recover, privateKey)
+		: await newUser(accountName, recover, privateKey)
+
+	return { ok, beamio: beamioForEnqueue }
 }
 
 export const postNfcLinkAppClaimWithKey = async (
@@ -1770,49 +1909,26 @@ export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 	}
 }
 
-export const getUserInfo = async (keyID: string) => {
-	
-	try {
-		const userInfo = await beamioAccountSC.getAccount(keyID)
-		const lastNameArray: string = (userInfo?.lastName||'')
-		const lastName = lastNameArray.split('\r\n')
-		let addedSetup: beamioAddedSetup = {language: 'en', currency: 'USD', tax: '0'}
-		try {
-			addedSetup = JSON.parse(lastName[lastName.length - 1])
-		} catch (ex) {
-			
-		}
-		
-
-		const bo: beamio = {
-			accountName: userInfo?.accountName,
-			image: userInfo?.image,
-			darkTheme: userInfo?.darkTheme,
-			initialLoading: userInfo?.initialLoading,
-			isUSDCFaucet: userInfo?.isUSDCFaucet,
-			isETHFaucet: userInfo?.isETHFaucet,
-			firstName: userInfo?.firstName,
-			lastName: lastName[0],
-			createdAt: Number(userInfo?.createdAt),
-			language: addedSetup.language,
-			currency: addedSetup.currency,
-			tax: addedSetup.tax ||'0'
-		}
-		return bo
-	} catch (ex: any) {
-		return null
-	}
-}
+export const getUserInfo = async (keyID: string) => getUserInfoFromRegistry(beamioAccountSC, keyID)
 
 export const restoreWithUserPin = async (username: string, pin: string, test = false) => {
 	try {
-		const hashedImg: string = await beamioAccountSC.getBase64ByAccountName(username)
-		const objStr = fromBase64(hashedImg)
-		const obj = JSON.parse(objStr)
+		const accountName = username.trim()
+		if (!accountName) return false
 
-		if (!obj?.img || !obj?.stored) {
-			return false
+		let recoverHit = await fetchRecoverPayloadByAccountName(accountName, beamioAccountSC)
+		let legacyEncodedForMigrate: string | undefined
+
+		if (!recoverHit) {
+			const legacyHit = await fetchRecoverPayloadByAccountName(accountName, legacyBeamioAccountSC)
+			if (!legacyHit) {
+				return false
+			}
+			recoverHit = legacyHit
+			legacyEncodedForMigrate = legacyHit.encoded
 		}
+
+		const obj = recoverHit.payload
 
 		const mnemonicPhrase = await aesGcmDecryptWithStored (obj.img, pin, obj.stored)
 		const mnemonicPhraseB = fromBase64(mnemonicPhrase)
@@ -1829,14 +1945,37 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 		if (!temp||!temp?.profiles?.length) {
 			return false
 		}
-		
 
 		const profile: profile = temp.profiles[0]
-		const beamio = await getUserInfo(profile.keyID)
-		if (beamio) {
-			temp.beamio = beamio
+
+		if (legacyEncodedForMigrate) {
+			const privateKey = temp.profiles[0].privateKeyArmor
+			if (isValidEthersPrivateKey(privateKey)) {
+				const { ok, beamio: migratedBeamio } = await migrateLegacyRecoverToNewRegistry(
+					accountName,
+					legacyEncodedForMigrate,
+					privateKey,
+					profile.keyID
+				)
+				temp.beamio = migratedBeamio
+				if (!ok) {
+					console.warn(`[restoreWithUserPin] legacy AccountRegistry migrate (addUser) failed for @${accountName}`)
+				}
+			} else if (!temp.beamio) {
+				temp.beamio = buildMinimalBeamioFromAccountName(accountName)
+			}
 		}
-		
+
+		const onchainBeamio = await getUserInfo(profile.keyID)
+		if (onchainBeamio) {
+			temp.beamio = onchainBeamio
+		} else if (!temp.beamio) {
+			temp.beamio = buildMinimalBeamioFromAccountName(accountName)
+		}
+		if (obj.recoverData) {
+			;(temp as any).recoveredBusinessDraft = obj.recoverData
+		}
+
 		return temp
 	} catch (ex: any) {
 		console.log(`checkBeamioAccount error ${ex.message}`)
@@ -2158,75 +2297,5 @@ export const postToIPFS = async (profile: profile, image: string): Promise<strin
 	} catch (err: any) {
 		console.error("postToIPFS error:", err)
 		throw err instanceof Error ? err : new Error(err?.message ?? "IPFS upload failed")
-	}
-}
-
-//			pgp workflow
-//			regiest node				keyID to node KeyID	{hash: ethers.solidityPackedKeccak256(['string'], [keyID]), encrypto: nodeKeyID} 
-//			regiest publicKey			keyID to pgpKey		{hash: ethers.solidityPackedKeccak256(['string'], [keyID + 'armor']), encrypto: pgpKeyArmor}
-//			regiest keyID in beamio	
-
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
-	
-}
-
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
-export const getCashcodeData = async (cashcodeUrl: string) => {	
-
-	
-		if (!cashcodeUrl || typeof cashcodeUrl !== "string") return
-	  
-		let searchParams: URLSearchParams
-	  
-		try {
-			// 尝试作为完整 URL 解析
-			const u = new URL(cashcodeUrl)
-			searchParams = u.searchParams
-		} catch {
-			// 再尝试作为 query string 解析
-			try {
-				searchParams = new URLSearchParams(cashcodeUrl)
-			} catch {
-				// 两种都失败 → 非 URL
-				return
-			}
-		}
-	  
-		const secureCode =
-		  searchParams.get("secureCode") ||""
-		const cashcode = searchParams.get("cashcode") || ""
-		
-		if (!secureCode || !cashcode) return 
-		
-	  
-	try {
-		const check: IGtCheckMemooo = await CoreContract.getCheckMemo(secureCode)
-
-		if (!check.payHash || check.from === ethers.ZeroAddress) {
-			
-			return 
-		}
-
-		const {noteText, card, payme}:ParsedNote = parseNodeEX(check.node)
-
-		
-	
-		
-		
-		if (check.depositHash !== ethers.ZeroHash && payme) {
-			payme.depositHash = check.depositHash
-		}
-		
-
-		return {card, payme}
-		
-		
-	} catch (ex: any) {
-		return
-		
 	}
 }

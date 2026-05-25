@@ -760,7 +760,8 @@ export function DaemonProvider({ children }: DaemonProps) {
       setMyBrandsFeedLoading(true)
     }
     try {
-      const { ownerCards, holderCards, trusted } = await getCardsOfOwnerWithDetailsForProfile(profile)
+      const { ownerCards, holderCards, trusted, walletAssetsByCardKey, walletResolvedAaAddress } =
+        await getCardsOfOwnerWithDetailsForProfile(profile)
       if (!trusted) {
         return null
       }
@@ -771,6 +772,13 @@ export function DaemonProvider({ children }: DaemonProps) {
         profile.aaAccount && ethers.isAddress(profile.aaAccount)
           ? ethers.getAddress(profile.aaAccount)
           : null
+      if (
+        !aaForCoupons &&
+        walletResolvedAaAddress &&
+        ethers.isAddress(walletResolvedAaAddress)
+      ) {
+        aaForCoupons = ethers.getAddress(walletResolvedAaAddress)
+      }
       if (eoaForCoupons && ethers.isAddress(eoaForCoupons)) {
         const resolvedAa = await getAAAccount(profile).catch(() => null)
         if (resolvedAa && ethers.isAddress(resolvedAa)) {
@@ -929,12 +937,13 @@ export function DaemonProvider({ children }: DaemonProps) {
           const key = uc.cardAddress.toLowerCase()
           const prevRow = prevDetails[key]
           const claimableCoupons = claimableByCardKey.get(key) ?? null
-          const [assets, meta] = await Promise.all([
-            getMyAssets(profile, uc.cardAddress).catch(() => prevRow?.assets ?? null),
+          const [assetsFromMyAssets, meta] = await Promise.all([
+            getMyAssets(profile, uc.cardAddress).catch(() => null),
             getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress).catch(() => prevRow?.meta ?? null),
           ])
+          const assetsFromWallet = walletAssetsByCardKey?.[key] ?? null
           let couponsForRow = claimableCoupons ?? prevRow?.claimableCoupons ?? null
-          if (!couponsForRow?.count && assets && eoaNormForCoupons) {
+          if (!couponsForRow?.count && assetsFromMyAssets && eoaNormForCoupons) {
             const lateOwned =
               (await fetchOwnedCouponsFromWalletAssetsForCards(
                 eoaNormForCoupons,
@@ -954,7 +963,7 @@ export function DaemonProvider({ children }: DaemonProps) {
           }
           next[key] = {
             meta: meta ?? prevRow?.meta ?? null,
-            assets: assets ?? prevRow?.assets ?? null,
+            assets: assetsFromMyAssets ?? assetsFromWallet ?? prevRow?.assets ?? null,
             claimableCoupons: couponsForRow,
           }
           if (meta) rememberCardBasicMetadataTrusted(uc.cardAddress, meta)

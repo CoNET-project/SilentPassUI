@@ -21,15 +21,20 @@ import {
 	cardAbi,
 	BeamioCardFactoryAbi
   } from "./abis"
-import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainAddresses'
+import {
+	BASE_MAINNET_FACTORIES,
+	BEAMIO_INDEXER_DIAMOND,
+	CONET_ADDRESS_PGP,
+	CONET_GB1155,
+	CONET_GB_TOTAL,
+	CONET_GUARDIAN_NODES_INFO_V6,
+} from '../config/chainAddresses'
 
-  import beamioConetABI from '@/services/ABI/beamioConetABI.json'
-  import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
   import CoNETPGP from '@/services/ABI/conetPgp.json'
   import ActionFacetAbi from '@/services/ABI/ActionFacetAbi.json'
   const contracts = {
 	GuardianNodesInfoV6: {
-	  address: "0x6d7a526BFD03E90ea8D19eDB986577395a139872",
+	  address: CONET_GUARDIAN_NODES_INFO_V6,
 	  abi: GuardianNodesInfoV6Abi,
 	  network: "CONET DePIN",
 	},
@@ -103,28 +108,17 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
 		abi: Duplicate
 	},
 	sGB: {
-		address: '0x84aAD9aD5BbdDfC0cCcb6A599DFadaEFaF6B497E',
+		address: CONET_GB1155,
 		network: 'CONET DePIN',
 		abi: sGB
 	},
 	sGB_Dashboard: {
-		address: '0x4b505F5Cf4926Da7375Ed7FB82f7111266908497',
+		address: CONET_GB_TOTAL,
 		network: 'CONET DePIN',
 		abi: sGB_Dashboard
 	},
-	beamioConet: {
-		address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-		network: 'CONET DePIN',
-		abi: beamioConetABI
-	},
-
-	beamioCoreConet: {
-		address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-		network: 'CONET DePIN',
-		abi: beamioConetCoreABI
-	},
 	constPgpManager: {
-		address: '0xb2aABe52f476356AE638839A786EAE425A0c1b66',
+		address: CONET_ADDRESS_PGP,
 		network: 'CONET DePIN',
 		abi: CoNETPGP
 	},
@@ -135,7 +129,6 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
 		abi: cardAbi
   },
 
-	// Base Mainnet：与 config/base-addresses.ts 保持一致（AA Factory 重部署后由该配置决定）
 	BeamioAAAcountFactory: {
 		address: BASE_MAINNET_FACTORIES.AA_FACTORY,
 		network: 'Base' as const,
@@ -164,7 +157,3 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
   }
   
   export default contracts;
-  
-
-  // Example usage:	3298414		0x4b505F5Cf4926Da7375Ed7FB82f7111266908497	
-  // 	3291544		0x866c4521797dd49d22B7566DF5D8c37E6B2b59bF		getDashboard 	getDaylyHistory

@@ -4,20 +4,223 @@
 
 import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CreditCard, ExternalLink, Store } from 'lucide-react'
+import { CreditCard, ExternalLink } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
 import baseIcon from '@/components/assets/base-logo.png'
-import { formatMyBrandNft2PointsSubtitle, resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
+import {
+	resolveMyBrandSecondarySubtitle,
+	resolveMyBrandsOwnedCouponDisplays,
+} from '@/utils/myBrandsFeedState'
 import { resolveMyBrandMerchantCategoryLabel } from '@/utils/discoverMerchantCategory'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { fiatPrefix } from '@/services/currency'
+import type { UserCardInfo } from '@/services/BeamioCard'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
 	const u = url.trim()
 	if (/^ipfs:\/\//i.test(u)) return `https://ipfs.io/ipfs/${u.replace(/^ipfs:\/\//i, '')}`
 	return u
+}
+
+/** Merchant program icon — metadata `icon` preferred; legacy issuance uses `image`. */
+export function resolveMyBrandCardIconUrl(
+	meta: { icon?: string; image?: string } | null | undefined
+): string | undefined {
+	const icon = resolveCardImageUrl(meta?.icon)
+	if (icon) return icon
+	return resolveCardImageUrl(meta?.image)
+}
+
+function merchantInitialLetter(title: string): string {
+	const trimmed = title.trim()
+	if (!trimmed) return 'M'
+	return trimmed.charAt(0).toUpperCase()
+}
+
+export function MyBrandMerchantIcon({
+	title,
+	iconUrl,
+	className = '',
+	sizeClassName = 'h-12 w-12 rounded-xl',
+	letterClassName = 'text-lg font-bold text-[#1562f0] dark:text-[#6ba3ff]',
+}: {
+	title: string
+	iconUrl?: string
+	className?: string
+	sizeClassName?: string
+	letterClassName?: string
+}) {
+	const resolved = resolveCardImageUrl(iconUrl)
+	const letter = merchantInitialLetter(title)
+	return (
+		<div
+			className={`flex shrink-0 items-center justify-center overflow-hidden border border-[#c3c6d8]/25 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900 ${sizeClassName} ${className}`}
+		>
+			{resolved ? (
+				<img src={resolved} alt={title} className="h-full w-full object-cover" draggable={false} />
+			) : (
+				<span className={letterClassName} aria-hidden>
+					{letter}
+				</span>
+			)}
+		</div>
+	)
+}
+
+export function formatMyBrandBalanceLine(
+	detail: MyBrandCardDetailLike | undefined,
+	fallbackCurrency: string
+): string {
+	if (detail === undefined) return '…'
+	const assets = detail.assets
+	if (assets == null) return '—'
+	const ptsRaw = assets.points
+	if (ptsRaw == null || String(ptsRaw).trim() === '') return '—'
+	const ptsNum = Number(ptsRaw)
+	if (!Number.isFinite(ptsNum)) return '—'
+	const currency = (assets.cardCurrency ?? fallbackCurrency ?? 'CAD').toUpperCase()
+	const prefix = fiatPrefix(currency as ICurrency) || currency
+	const amount = ptsNum.toLocaleString('en-US', {
+		maximumFractionDigits: 2,
+		minimumFractionDigits: 2,
+	})
+	return `${prefix} ${amount}`
+}
+
+export function MyBrandCardRow({
+	cardAddress,
+	title,
+	detail,
+	currencyFallback = 'CAD',
+}: {
+	cardAddress: string
+	title: string
+	detail: MyBrandCardDetailLike | undefined
+	currencyFallback?: string
+}) {
+	const tierPres = resolveHeldTierPresentation(detail)
+	const iconUrl = resolveMyBrandCardIconUrl(detail?.meta)
+	const categorySubtitle = resolveMyBrandMerchantCategoryLabel(detail, title)
+	const balanceLine = formatMyBrandBalanceLine(detail, currencyFallback)
+	const secondary = resolveMyBrandSecondarySubtitle(detail)
+
+	return (
+		<div
+			className="flex w-full items-center gap-4 rounded-lg border-l-[3px] border-transparent p-3 text-left"
+			style={tierPres.accentColor ? { borderLeftColor: tierPres.accentColor } : undefined}
+		>
+			<MyBrandMerchantIcon title={title} iconUrl={iconUrl} />
+			<div className="min-w-0 flex-1">
+				<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+					<p className="min-w-0 truncate text-sm font-bold text-[#191c1d] dark:text-slate-100">{title}</p>
+					{cardAddress ? <MyBrandCardAddressCapsule address={cardAddress} /> : null}
+				</div>
+				<p className="mt-0.5 text-[11px] leading-tight text-[#424655] dark:text-slate-400">
+					{categorySubtitle}
+				</p>
+				{tierPres.bonusPill || tierPres.discountLabel ? (
+					<div className="mt-1 flex flex-wrap items-center gap-1.5">
+						{tierPres.bonusPill ? (
+							<span
+								className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
+								style={
+									tierPres.accentColor
+										? { color: tierPres.accentColor, borderColor: tierPres.accentColor }
+										: undefined
+								}
+							>
+								{tierPres.bonusPill}
+							</span>
+						) : null}
+						{tierPres.discountLabel ? (
+							<span className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]">
+								{tierPres.discountLabel}
+							</span>
+						) : null}
+					</div>
+				) : null}
+			</div>
+			<div className="shrink-0 text-right">
+				<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{balanceLine}</p>
+				<p
+					className={`text-[10px] font-medium ${
+						secondary.tone === 'reward'
+							? 'text-emerald-600 dark:text-emerald-400'
+							: 'text-[#424655] dark:text-slate-500'
+					}`}
+				>
+					{secondary.text}
+				</p>
+			</div>
+		</div>
+	)
+}
+
+/** My Brands 列表排序 — 与 `/myBrands` 页一致（按商户名）。 */
+export function sortMyBrandCardsForList(cards: UserCardInfo[]): UserCardInfo[] {
+	return [...cards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en'))
+}
+
+/** My Brands 列表项：先展示全部商户卡行，再展示全部 owned 优惠券 ticket。 */
+export function MyBrandListEntries({
+	cards,
+	details,
+}: {
+	cards: UserCardInfo[]
+	details: Record<string, MyBrandCardDetailLike | undefined>
+}) {
+	const punchBgClassName = 'bg-[#f3f4f5] dark:bg-slate-800'
+
+	const allCoupons: ActiveCouponListItem[] = []
+	const seenCouponIds = new Set<string>()
+	for (const uc of cards) {
+		const detail = details[uc.cardAddress.toLowerCase()]
+		const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
+			uc.cardAddress,
+			detail?.claimableCoupons
+		) as ActiveCouponListItem[]
+		for (const ownedCoupon of ownedCoupons) {
+			const key =
+				ownedCoupon.id ||
+				`${ownedCoupon.cardAddress.toLowerCase()}:${ownedCoupon.tokenId || ownedCoupon.couponId}`
+			if (seenCouponIds.has(key)) continue
+			seenCouponIds.add(key)
+			allCoupons.push(ownedCoupon)
+		}
+	}
+
+	return (
+		<>
+			{cards.map((uc) => {
+				const addrKey = uc.cardAddress.toLowerCase()
+				const detail = details[addrKey]
+				const title =
+					(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
+				return (
+					<MyBrandCardRow
+						key={uc.cardAddress}
+						cardAddress={uc.cardAddress}
+						title={title}
+						detail={detail}
+						currencyFallback={uc.currency ?? 'CAD'}
+					/>
+				)
+			})}
+			{allCoupons.map((ownedCoupon) => (
+				<ActiveCouponTicketItem
+					key={ownedCoupon.id}
+					row={ownedCoupon}
+					actionLabel="Owned"
+					disabled
+					aria-label={`Owned coupon ${ownedCoupon.title}`}
+					punchBgClassName={punchBgClassName}
+				/>
+			))}
+		</>
+	)
 }
 
 function shortMyBrandCardAddress(address: string): string {
@@ -80,6 +283,7 @@ export type MyBrandTierMetaRow = {
 export type MyBrandCardDetailLike = {
 	meta?: {
 		name?: string
+		icon?: string
 		image?: string
 		tiers?: MyBrandTierMetaRow[]
 		bonusRule?: MyBrandBonusRuleRow | null
@@ -425,10 +629,7 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 		navigate('/myWallet')
 	}
 
-	const sorted = useMemo(
-		() => [...myBrandCards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en')),
-		[myBrandCards]
-	)
+	const sorted = useMemo(() => sortMyBrandCardsForList(myBrandCards), [myBrandCards])
 
 	return (
 		<>
@@ -465,120 +666,7 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 			) : (
 				<>
 					<div className="flex flex-col gap-2 rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
-						{sorted.map((uc) => {
-							const addrKey = uc.cardAddress.toLowerCase()
-							const detail = myBrandCardDetails[addrKey]
-							const title =
-								(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
-							const tierPres = resolveHeldTierPresentation(detail)
-							const imgUrl = resolveCardImageUrl(detail?.meta?.image)
-							const assets = detail?.assets ?? null
-							const ptsRaw = assets?.points
-							const ptsNum =
-								ptsRaw != null && String(ptsRaw).trim() !== ''
-									? Number(ptsRaw)
-									: NaN
-							const cardGlobalCurrency = (
-								assets?.cardCurrency ?? uc.currency ?? 'CAD'
-							).toUpperCase()
-							const pointsLine =
-								detail === undefined
-									? '…'
-									: assets == null
-										? '—'
-										: Number.isFinite(ptsNum)
-											? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
-											: '—'
-							const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
-							const nft2PointsLine = formatMyBrandNft2PointsSubtitle(detail)
-							const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
-								uc.cardAddress,
-								detail?.claimableCoupons
-							) as ActiveCouponListItem[]
-							if (couponCount > 0 && ownedCoupons.length > 0) {
-								return (
-									<React.Fragment key={uc.cardAddress}>
-										{ownedCoupons.map((ownedCoupon) => (
-											<ActiveCouponTicketItem
-												key={ownedCoupon.id}
-												row={ownedCoupon}
-												actionLabel="Owned"
-												disabled
-												aria-label={`Owned coupon ${ownedCoupon.title}`}
-												punchBgClassName="bg-[#f3f4f5] dark:bg-slate-800"
-											/>
-										))}
-									</React.Fragment>
-								)
-							}
-							const categorySubtitle = resolveMyBrandMerchantCategoryLabel(detail, title)
-							return (
-								<div
-									key={uc.cardAddress}
-									className="flex w-full items-center gap-4 rounded-lg border-l-[3px] border-transparent p-3 text-left"
-									style={
-										tierPres.accentColor
-											? { borderLeftColor: tierPres.accentColor }
-											: undefined
-									}
-								>
-									<div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[#c3c6d8]/25 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900">
-										{imgUrl ? (
-											<img
-												src={imgUrl}
-												alt={title}
-												className="h-full w-full object-cover"
-												draggable={false}
-											/>
-										) : (
-											<Store size={22} className="text-[#1562f0] dark:text-[#6ba3ff]" aria-hidden />
-										)}
-									</div>
-									<div className="min-w-0 flex-1">
-										<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-											<p className="min-w-0 truncate text-sm font-bold text-[#191c1d] dark:text-slate-100">
-												{title}
-											</p>
-											{uc.cardAddress ? (
-												<MyBrandCardAddressCapsule address={uc.cardAddress} />
-											) : null}
-										</div>
-										<p className="mt-0.5 text-[11px] leading-tight text-[#424655] dark:text-slate-400">
-											{categorySubtitle}
-										</p>
-										{tierPres.bonusPill || tierPres.discountLabel ? (
-											<div className="mt-1 flex flex-wrap items-center gap-1.5">
-												{tierPres.bonusPill ? (
-													<span
-														className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
-														style={
-															tierPres.accentColor
-																? { color: tierPres.accentColor, borderColor: tierPres.accentColor }
-																: undefined
-														}
-													>
-														{tierPres.bonusPill}
-													</span>
-												) : null}
-												{tierPres.discountLabel ? (
-													<span
-														className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
-													>
-														{tierPres.discountLabel}
-													</span>
-												) : null}
-											</div>
-										) : null}
-									</div>
-									<div className="shrink-0 text-right">
-										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{pointsLine}</p>
-										<p className="text-[10px] font-medium text-[#424655] dark:text-slate-500">
-											{nft2PointsLine}
-										</p>
-									</div>
-								</div>
-							)
-						})}
+						<MyBrandListEntries cards={sorted} details={myBrandCardDetails} />
 					</div>
 					<button
 						type="button"

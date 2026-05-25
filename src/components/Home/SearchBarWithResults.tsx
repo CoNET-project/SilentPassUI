@@ -8,7 +8,7 @@ import { CoNET_Data, setCoNET_Data, } from '@/utils/globals'
 import { Card, CardContent } from "@/components/ui/card"
 import { useNavigate, useLocation } from 'react-router-dom'
 import {ethers} from 'ethers'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import NavigateLeftButton from '@/components/navigate'
 import { collectDeepLinkSearchParams, isCouponOpenClaimDeepLink, isRedeemDeepLink } from '@/utils/beamioDeepLinkParams'
 import ScanButton, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
@@ -16,14 +16,6 @@ import { isCashTreesNativeWebView, scanQrViaCashTreesNative } from '@/utils/cash
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
-	
-}
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 type Props = {
 	closeWindow: (path: string | searchResult) => void
 	select?: boolean
@@ -203,7 +195,7 @@ const SearchInputWithDropdown =
 					
 				}
 				try {
-					const fx = await CoreContract.getLinkMemo(code)
+					const fx = await getDeprecatedBeamioConetLinkMemo(code)
 					if (fx.to !== ethers.ZeroAddress) {
 						setPaymentLinkCode(code)
 						return navigate('/browser')

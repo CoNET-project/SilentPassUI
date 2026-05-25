@@ -16,6 +16,27 @@ export function formatMyBrandNft2PointsSubtitle(
 	return `${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} pts`
 }
 
+export type MyBrandSecondarySubtitle = {
+	text: string
+	tone: 'reward' | 'muted'
+}
+
+/** Home / My Brands 右栏第二行：优先绿色 +pts，否则灰色 pts / — */
+export function resolveMyBrandSecondarySubtitle(
+	detail: { assets?: { chargeRewardPoints?: string } | null } | undefined
+): MyBrandSecondarySubtitle {
+	const base = formatMyBrandNft2PointsSubtitle(detail)
+	if (base === '…' || base === '—') {
+		return { text: base, tone: 'muted' }
+	}
+	const n = Number(detail?.assets?.chargeRewardPoints)
+	if (Number.isFinite(n) && n > 0) {
+		const formatted = n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })
+		return { text: `+${formatted} pts`, tone: 'reward' }
+	}
+	return { text: base, tone: 'muted' }
+}
+
 /** Home / My Brands list: render owned coupon ticket when count > 0 even if firstCoupon mapping missed. */
 export function resolveMyBrandsOwnedCouponDisplay(
 	cardAddress: string,
@@ -103,7 +124,7 @@ function detailRowDisplayKey(row: MyBrandCardFeedDetailsMap[string] | undefined)
 		cp6: row.assets?.chargeRewardPoints6 ?? null,
 		c: row.assets?.cardCurrency ?? null,
 		n: row.meta?.name ?? null,
-		i: row.meta?.image ?? null,
+		i: row.meta?.icon ?? row.meta?.image ?? null,
 		cat: row.meta?.categoryId ?? null,
 		pdesc: row.meta?.programDescription ?? null,
 		pointSystem: row.meta?.pointSystem ?? null,

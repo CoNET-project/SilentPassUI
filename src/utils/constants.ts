@@ -65,18 +65,6 @@ const sGB_Dashboard_ReadOnly = new ethers.Contract(
 	conetDepinProvider
 )
 
-const beamioConet = new ethers.Contract(
-	contracts.beamioConet.address,
-	contracts.beamioConet.abi,
-	conetDepinProvider
-)
-
-const beamioCoreConet = new ethers.Contract(
-	contracts.beamioCoreConet.address,
-	contracts.beamioCoreConet.abi,
-	conetDepinProvider
-)
-
 const pgpCoNET = new ethers.Contract(
 	contracts.constPgpManager.address,
 	contracts.constPgpManager.abi,
@@ -115,8 +103,6 @@ export {
 	Solana_SP,
 	sGB_ReadOnly,
 	sGB_Dashboard_ReadOnly,
-	beamioConet,
-	beamioCoreConet,
 	pgpCoNET,
 	GuardianNodesMainnet,
 	baseEndpoint,  // 来自 baseRpc，带自动切换免费 RPC

@@ -7,16 +7,8 @@ import {ethers} from 'ethers'
 import { useNavigate } from "react-router-dom"
 import RedeemScreen from './RedeemScreen'
 import ScanBtn from '@/components/scanBtn/ScanButton'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import PayMeLink from '@/pages/Pay/payPaymentLink'
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
-	
-}
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -82,7 +74,7 @@ const Browser = ({}) => {
 			return
 		}
 		try {
-			const fx = await CoreContract.getLinkMemo(paymentLinkCode)
+			const fx = await getDeprecatedBeamioConetLinkMemo(paymentLinkCode)
 			const amount = Number(ethers.formatUnits(fx.amount, 6))
 			setAmt(amount)
 			setNote(fx.node)
@@ -135,7 +127,7 @@ const Browser = ({}) => {
 			}
 			setCode(code)
 			try {
-				const fx = await CoreContract.getLinkMemo(code)
+				const fx = await getDeprecatedBeamioConetLinkMemo(code)
 				const amount = Number(ethers.formatUnits(fx.amount, 6))
 				setAmt(formatMoney(amount))
 				setNote(fx.node)

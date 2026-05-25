@@ -38,7 +38,7 @@ import {
 } from '@/services/chat'
 import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { getCashcodeData, searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
+import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
@@ -852,17 +852,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		flushSync(() => setText(""))
 
 		const mode = isUrl(t)
-		let cashcodeCard: ChatMessage | undefined
-		if (mode === 'cashcode') {
-			const cashcodeUrl = t
-			const res = await getCashcodeData(cashcodeUrl)
-			const { card, payme } = res ?? { card: undefined, payme: undefined }
-			if (!payme) return
-			cashcodeCard = emitReactionAsNewMessage(Number(payme.currencyAmount), payme.currency, card?.title || '',payme.usdcAmount||0, cashcodeUrl)
-
-			
-		}
-		
+		void mode
 
 
 		const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`
@@ -877,7 +867,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			text: t,
 			createdAt: now,
 			status: "sending",
-			paymentCard: cashcodeCard ? cashcodeCard.paymentCard : undefined
 		}
 
 		{
@@ -901,9 +890,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 
 		// ✅ 3) 发送：统一发 JSON 包，带 sendId，对方据此可 reply
-		const payload = cashcodeCard
-			? { ...cashcodeCard, sendId, from: 'me' as const, text: t, createdAt: now }
-			: { sendId, from: 'me' as const, text: t, createdAt: now }
+		const payload = { sendId, from: 'me' as const, text: t, createdAt: now }
 		let ok = false
 		try {
 			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))

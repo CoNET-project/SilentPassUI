@@ -8,7 +8,7 @@ import {formatAmountReadable, formatWithThousands, AuthorizationSign, redeemCode
 import RedeemSuccessScreen from '@/pages/Browser/RedeemSuccessScreen'
 import { useNavigate } from "react-router-dom"
 import {ethers} from 'ethers'
-import { beamioCoreConet } from "@/utils/constants"
+import { checkDeprecatedBeamioConetMemo } from "@/utils/deprecatedBeamioConet"
 // Beamio Receive screen: show wallet address & QR to receive USDC on Base
 // This is a standalone "Receive" UI, separate from the Payments (Send / Request / Check) screen.
 
@@ -104,7 +104,7 @@ export default function BeamioReceiveScreen() {
 
 		try {
 
-			const cashcode = await beamioCoreConet.checkMemo(hash)
+			const cashcode = await checkDeprecatedBeamioConetMemo(hash)
 			if (cashcode?.from === ethers.ZeroAddress) {
 				setProcessing(false)
 				return setProcessError(`The entered Cashcode and Security Code could not be validated. Please try again.`)

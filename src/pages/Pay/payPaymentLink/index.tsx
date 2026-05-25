@@ -5,7 +5,7 @@ import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {ethers} from 'ethers'
 import LockModeSegmented from '@/pages/Pay/PaymentLink/LockModeSegmented'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import SuccessShow from '../Cashcode/successShow'
 import Securitycode from '@/components/input/Securitycode'
 import ConformView from '@/pages/Pay/send/ConformView'
@@ -17,14 +17,6 @@ import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import NetworkFeeGas from '../components/networkFee'
 
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
-	
-}
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const showPaylinkSite = 'https://beamio.app'
@@ -272,7 +264,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 		try {
 
 			const [fx, item] = await Promise.all([
-				CoreContract.getLinkMemo(code),
+				getDeprecatedBeamioConetLinkMemo(code),
 				searchUsername(address)
 			])
 

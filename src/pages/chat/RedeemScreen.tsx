@@ -1,34 +1,15 @@
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useNavigate } from "react-router-dom"
 import { useState, useRef, useEffect } from 'react'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { getDeprecatedBeamioConetCheckMemo } from '@/utils/deprecatedBeamioConet'
 import {ethers} from 'ethers'
 import {redeemCodeHash} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import RedeemSuccessScreen from './RedeemSuccessScreen'
 
 
-type IGtCheckMemooo = {
-	payHash: string
-	from: string
-	amount: bigint
-	depositHash: string
-	chianID: bigint
-	erc3009Address: string
-	decimals: bigint
-	node: string
-	createTimestamp: bigint
-}
 type Prof = {
 	close: () => void
-}
-
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
-	
 }
 
 const isLocal = false
@@ -44,7 +25,6 @@ function calcFeeFromNumber(base: number) {
 	const clamped = Math.min(Math.max(raw, 0.02), 2);
 	return Number(clamped.toFixed(2));
 }
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtAddr = (a = "") => ((a && a !== ethers.ZeroAddress) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—")
@@ -76,7 +56,7 @@ const RedeemScreen = ({close}: Prof) => {
 
 	const getItem = async () => {
 		try {
-			const check: IGtCheckMemooo = await CoreContract.getCheckMemo(secureCode)
+			const check = await getDeprecatedBeamioConetCheckMemo(secureCode)
 
 			if (!check.payHash || check.depositHash != ethers.ZeroHash) {
 				setHashError(true)

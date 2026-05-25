@@ -11,7 +11,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { conetDepinProvider } from "@/utils/constants"
 import contracts from "@/utils/contracts"
 
-const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? "0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612"
+const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? "0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9"
 const INDEXER_ABI = [
   "function getAccountTransactionsByMonthOffsetPaged(address account, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, (bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)[] page)",
 ] as const

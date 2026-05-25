@@ -6,7 +6,7 @@ import { conetDepinProvider } from '@/utils/constants'
 import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
 import contracts from '@/utils/contracts'
 
-const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
+const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9'
 
 const TX_RECORD_TUPLE =
 	'(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)'
@@ -307,6 +307,24 @@ function indexerValueToPlain(v: unknown): unknown {
 	return v
 }
 
+function extractIndexerAddress(v: unknown): string {
+	if (typeof v === 'string') return v.trim()
+	if (Array.isArray(v) && typeof v[0] === 'string') return v[0].trim()
+	return String(v ?? '').trim()
+}
+
+/** Indexer `payee` — Merchant 行 beamioTag 须按此地址查 profile，勿用 subordinate / displayJson.handle。 */
+export function resolveIndexerPayeeAddress(raw: RawTxRecord | Record<string, unknown> | undefined): string {
+	if (!raw) return ''
+	const payeeRaw = extractIndexerAddress((raw as RawTxRecord).payee)
+	if (!payeeRaw || !ethers.isAddress(payeeRaw)) return ''
+	try {
+		return ethers.getAddress(payeeRaw)
+	} catch {
+		return payeeRaw
+	}
+}
+
 function parseRouteItemsFromIndexerFull(full: unknown): RouteItemRecord[] {
 	const keys = [
 		'id',
@@ -342,81 +360,132 @@ function parseRouteItemsFromIndexerFull(full: unknown): RouteItemRecord[] {
 		.filter((r): r is RouteItemRecord => r != null)
 }
 
-const chargeRouteEnrichInflight = new Map<string, Promise<RouteItemRecord[] | null>>()
+type MerchantChargeFullEnrichment = {
+	route: RouteItemRecord[] | null
+	subordinate: string | null
+}
 
-async function fetchMerchantChargeRouteByTxId(txId: string): Promise<RouteItemRecord[] | null> {
+function parseSubordinateFromIndexerFull(full: unknown): string | null {
+	const arr = Array.isArray(full) ? full : null
+	if (arr && arr.length >= 13) {
+		const sub = extractIndexerAddress(indexerValueToPlain(arr[12]))
+		return sub || null
+	}
+	const sub = extractIndexerAddress(indexerValueToPlain((full as { subordinate?: unknown })?.subordinate))
+	return sub || null
+}
+
+function parseMerchantChargeFullEnrichment(full: unknown): MerchantChargeFullEnrichment {
+	const route = parseRouteItemsFromIndexerFull(full)
+	return {
+		route: route.length > 0 ? route : null,
+		subordinate: parseSubordinateFromIndexerFull(full),
+	}
+}
+
+const chargeFullEnrichInflight = new Map<string, Promise<MerchantChargeFullEnrichment | null>>()
+
+async function fetchMerchantChargeFullEnrichmentByTxId(txId: string): Promise<MerchantChargeFullEnrichment | null> {
 	const key = txId.trim().toLowerCase()
 	if (!key) return null
-	const existing = chargeRouteEnrichInflight.get(key)
+	const existing = chargeFullEnrichInflight.get(key)
 	if (existing) return existing
 
 	const task = (async () => {
 		try {
 			const indexer = new ethers.Contract(BEAMIO_INDEXER, INDEXER_ABI, conetDepinProvider)
 			const full = await indexer.getTransactionFullByTxId(ethers.hexlify(ethers.getBytes(txId)))
-			const route = parseRouteItemsFromIndexerFull(full)
-			return route.length > 0 ? route : null
+			return parseMerchantChargeFullEnrichment(full)
 		} catch {
 			return null
 		} finally {
-			chargeRouteEnrichInflight.delete(key)
+			chargeFullEnrichInflight.delete(key)
 		}
 	})()
 
-	chargeRouteEnrichInflight.set(key, task)
+	chargeFullEnrichInflight.set(key, task)
 	return task
 }
 
-/** Paged indexer rows omit route[]; Charge displayJson often lacks cardAddress — enrich from full tx. */
-export async function enrichMerchantChargeItemsWithIndexerRoutes(items: TxView[]): Promise<TxView[]> {
-	const need = items.filter((tx) => {
-		const raw = tx.rawTransaction
-		if (!raw || !isRecentActivityMerchantChargeTx(raw)) return false
-		return !merchantChargeCardAddressFromRaw(raw)
-	})
-	if (need.length === 0) return items
-
-	const routeByTxId = new Map<string, RouteItemRecord[]>()
-	await Promise.all(
-		need.map(async (tx) => {
-			const route = await fetchMerchantChargeRouteByTxId(tx.id)
-			if (route?.length) routeByTxId.set(tx.id, route)
-		}),
-	)
-
-	if (routeByTxId.size === 0) return items
-
-	return items.map((tx) => {
-		const route = routeByTxId.get(tx.id)
-		const raw = tx.rawTransaction
-		if (!raw) return tx
-		const mergedRaw: RawTxRecord = route?.length ? { ...raw, route } : raw
-		const isCharge = isMerchantChargeTxView(tx) || isRecentActivityMerchantChargeTx(mergedRaw)
-		if (!isCharge && !route?.length) return tx
-		const cardAddr = merchantChargeCardAddressFromRaw(mergedRaw) || tx.merchantCardAddress || ''
-		return {
-			...tx,
-			isMerchantCharge: isCharge || tx.isMerchantCharge,
-			merchantCardAddress: cardAddr || tx.merchantCardAddress,
-			type: isCharge ? 'merchant_pay' : tx.type,
-			rawTransaction: mergedRaw,
-		}
-	})
+/** Indexer `subordinate` 为有效非零地址 ⇒ POS 终端 Charge（In-store）；否则 Online。 */
+export function merchantChargeHasExplicitSubordinate(raw: RawTxRecord | undefined): boolean {
+	if (!raw || raw.subordinate === undefined || raw.subordinate === null) return false
+	return extractIndexerAddress(raw.subordinate).length > 0
 }
 
 /** Indexer `subordinate` 为有效非零地址 ⇒ POS 终端 Charge（In-store）；否则 Online。 */
 export function merchantChargeHasValidSubordinate(raw: RawTxRecord | undefined): boolean {
-	if (!raw?.subordinate) return false
-	const sub =
-		typeof raw.subordinate === 'string'
-			? raw.subordinate.trim()
-			: String(raw.subordinate ?? '').trim()
+	if (!raw) return false
+	const sub = extractIndexerAddress(raw.subordinate)
 	if (!sub || sub === ethers.ZeroAddress || /^0x0+$/i.test(sub)) return false
 	return ethers.isAddress(sub)
 }
 
-export function merchantChargeChannelLabel(raw: RawTxRecord | undefined): string {
-	return merchantChargeHasValidSubordinate(raw) ? 'In-store payment' : 'Online shopping'
+export function resolveMerchantChargeInStore(
+	raw: RawTxRecord | undefined,
+	persistedInStore?: boolean,
+): boolean {
+	if (raw && merchantChargeHasExplicitSubordinate(raw)) {
+		return merchantChargeHasValidSubordinate(raw)
+	}
+	if (persistedInStore === true) return true
+	if (persistedInStore === false) return false
+	if (raw) return merchantChargeHasValidSubordinate(raw)
+	return false
+}
+
+export function merchantChargeChannelLabel(
+	raw: RawTxRecord | undefined,
+	persistedInStore?: boolean,
+): string {
+	return resolveMerchantChargeInStore(raw, persistedInStore)
+		? 'In-store payment'
+		: 'Online shopping'
+}
+
+/** Paged indexer rows omit route[] / subordinate; Charge displayJson often lacks cardAddress — enrich from full tx. */
+export async function enrichMerchantChargeItemsWithIndexerRoutes(items: TxView[]): Promise<TxView[]> {
+	const need = items.filter((tx) => {
+		const raw = tx.rawTransaction
+		if (!raw || !isRecentActivityMerchantChargeTx(raw)) return false
+		const missingCard = !merchantChargeCardAddressFromRaw(raw)
+		const missingSubordinate = !merchantChargeHasExplicitSubordinate(raw)
+		return missingCard || missingSubordinate
+	})
+	if (need.length === 0) return items
+
+	const enrichmentByTxId = new Map<string, MerchantChargeFullEnrichment>()
+	await Promise.all(
+		need.map(async (tx) => {
+			const enrichment = await fetchMerchantChargeFullEnrichmentByTxId(tx.id)
+			if (enrichment) enrichmentByTxId.set(tx.id, enrichment)
+		}),
+	)
+
+	if (enrichmentByTxId.size === 0) return items
+
+	return items.map((tx) => {
+		const enrichment = enrichmentByTxId.get(tx.id)
+		const raw = tx.rawTransaction
+		if (!raw || !enrichment) return tx
+		const mergedRaw: RawTxRecord = {
+			...raw,
+			...(enrichment.route?.length ? { route: enrichment.route } : {}),
+			...(enrichment.subordinate ? { subordinate: enrichment.subordinate } : {}),
+		}
+		const isCharge = isMerchantChargeTxView(tx) || isRecentActivityMerchantChargeTx(mergedRaw)
+		if (!isCharge && !enrichment.route?.length && !enrichment.subordinate) return tx
+		const cardAddr = merchantChargeCardAddressFromRaw(mergedRaw) || tx.merchantCardAddress || ''
+		const merchantChargeInStore = resolveMerchantChargeInStore(mergedRaw, tx.merchantChargeInStore)
+		return {
+			...tx,
+			isMerchantCharge: isCharge || tx.isMerchantCharge,
+			merchantCardAddress: cardAddr || tx.merchantCardAddress,
+			merchantChargeInStore,
+			type: isCharge ? 'merchant_pay' : tx.type,
+			rawTransaction: mergedRaw,
+		}
+	})
 }
 
 export function merchantChargeListCurrencyCode(raw: RawTxRecord, txCurrencyCode: string): string {
@@ -489,16 +558,84 @@ export function parseTopupRechargeBonusAfterNotePayer(afterNotePayer: unknown): 
 	}
 }
 
-/** Charge reward points (E6) from indexer meta.afterNotePayer JSON */
-export function parseChargeRewardPoint6FromAfterNotePayer(afterNotePayer: unknown): bigint | null {
+export type ChargeRewardAfterNoteParsed = {
+	point6: bigint
+	balance6?: bigint
+	chargeRewardRatioE6?: bigint
+}
+
+/** Charge reward (NFT#2 tokenId=2) from indexer meta.afterNotePayer JSON — point + optional post-charge balance. */
+export function parseChargeRewardAfterNotePayer(afterNotePayer: unknown): ChargeRewardAfterNoteParsed | null {
 	if (typeof afterNotePayer !== 'string' || !afterNotePayer.trim()) return null
 	try {
-		const j = JSON.parse(afterNotePayer) as { point?: string | number }
+		const j = JSON.parse(afterNotePayer) as {
+			point?: string | number
+			balance?: string | number
+			balanceE6?: string | number
+			chargeRewardRatioE6?: string | number
+		}
 		if (j.point === undefined || j.point === null) return null
-		return BigInt(String(j.point))
+		const point6 = BigInt(String(j.point))
+		const balRaw = j.balance ?? j.balanceE6
+		const balance6 =
+			balRaw !== undefined && balRaw !== null && String(balRaw).trim() !== ''
+				? BigInt(String(balRaw))
+				: undefined
+		const chargeRewardRatioE6 =
+			j.chargeRewardRatioE6 !== undefined && j.chargeRewardRatioE6 !== null
+				? BigInt(String(j.chargeRewardRatioE6))
+				: undefined
+		return {
+			point6,
+			...(balance6 !== undefined ? { balance6 } : {}),
+			...(chargeRewardRatioE6 !== undefined ? { chargeRewardRatioE6 } : {}),
+		}
 	} catch {
 		return null
 	}
+}
+
+/** Charge reward points (E6) from indexer meta.afterNotePayer JSON */
+export function parseChargeRewardPoint6FromAfterNotePayer(afterNotePayer: unknown): bigint | null {
+	return parseChargeRewardAfterNotePayer(afterNotePayer)?.point6 ?? null
+}
+
+/** Charge-reward point value text (no label) — balance (when indexed) + earned pts for this charge row. */
+export function formatChargeRewardPointValue(
+	reward: ChargeRewardAfterNoteParsed | null | undefined,
+): string | null {
+	if (!reward || reward.point6 <= 0n) return null
+	const earned = (Number(reward.point6) / 1e6).toFixed(2)
+	if (reward.balance6 !== undefined && reward.balance6 >= 0n) {
+		const bal = (Number(reward.balance6) / 1e6).toLocaleString('en-US', {
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2,
+		})
+		return `${bal} + ${earned} pts`
+	}
+	return `+${earned} pts`
+}
+
+export function resolveChargeRewardDisplayFromTxView(
+	tx: TxView,
+	rawOverride?: RawTxRecord | Record<string, unknown> | null,
+): ChargeRewardAfterNoteParsed | null {
+	const raw = (rawOverride ?? tx.rawTransaction) as RawTxRecord | undefined
+	const parsed = parseChargeRewardAfterNotePayer(rawTxAfterNotePayer(raw))
+	const mergedPointRaw = tx.merchantChargeRewardPoint6?.trim()
+	if (mergedPointRaw && /^\d+$/.test(mergedPointRaw)) {
+		const point6 = BigInt(mergedPointRaw)
+		if (point6 > 0n) {
+			return {
+				point6,
+				...(parsed?.balance6 !== undefined ? { balance6: parsed.balance6 } : {}),
+				...(parsed?.chargeRewardRatioE6 !== undefined
+					? { chargeRewardRatioE6: parsed.chargeRewardRatioE6 }
+					: {}),
+			}
+		}
+	}
+	return parsed
 }
 
 export { formatBeamioTransactionTimeLabel, formatRecentActivityItemTime } from '@/utils/beamioTransactionTimeLabel'
@@ -690,6 +827,8 @@ export interface TxView {
 	counterpartyAddress?: string
 	/** Open-container / container Charge — persisted for local cache rows without rawTransaction */
 	isMerchantCharge?: boolean
+	/** Indexer payee — Merchant 明细行 beamioTag 来源（非 subordinate） */
+	merchantPayeeAddress?: string
 	/** Merchant program card from route / displayJson — persisted for metadata prefetch */
 	merchantCardAddress?: string
 	/** Split top-up display: actual customer payment leg plus Recharge Bonus leg merged into one row. */
@@ -698,6 +837,10 @@ export interface TxView {
 	/** Charge display: standalone tip row merged into the parent charge row by finished/base tx hash. */
 	merchantChargeTipFiat?: number
 	merchantChargeTipCurrencyCode?: string
+	/** Charge channel: indexer subordinate valid ⇒ In-store; persisted for cache rows without rawTransaction. */
+	merchantChargeInStore?: boolean
+	/** Merged main + TX_TIP charge-reward points (E6 string) for NFT#2 subtitle. */
+	merchantChargeRewardPoint6?: string
 	rawTransaction?: RawTxRecord
 	card?: { title?: string; detail?: string; image?: string }
 }
@@ -798,6 +941,7 @@ function appendIndexerPage(
 		const payerAddr = (tx.payer ?? '').toLowerCase()
 		const payeeAddr = (tx.payee ?? '').toLowerCase()
 		const rawRecord = tx as RawTxRecord
+		const merchantPayeeAddress = resolveIndexerPayeeAddress(rawRecord)
 		const isMerchantCharge = isRecentActivityMerchantChargeTx(rawRecord)
 		const merchantCardAddress = isMerchantCharge ? merchantChargeCardAddressFromRaw(rawRecord) : ''
 		const isEoaAaInternal =
@@ -826,9 +970,13 @@ function appendIndexerPage(
 			isAA: !!tx.isAAAccount,
 			txHash: resolveRawTxBaseScanTxHash(tx as RawTxRecord, id),
 			counterpartyAddress: counterparty || undefined,
+			...(merchantPayeeAddress && (isMerchantCharge || isCardTopupLedgerTx)
+				? { merchantPayeeAddress }
+				: {}),
 			...(isMerchantCharge
 				? {
 						isMerchantCharge: true as const,
+						merchantChargeInStore: resolveMerchantChargeInStore(rawRecord),
 						...(merchantCardAddress ? { merchantCardAddress } : {}),
 					}
 				: topupCardAddress
@@ -922,12 +1070,20 @@ function mergeRecentActivityTipRowsIntoCharges(items: TxView[]): TxView[] {
 		if (!(tipFiat > 0)) continue
 		const tipCurrency = tips.find((row) => String(row.currencyCode ?? '').trim())?.currencyCode || charge.currencyCode
 		const timestampMs = Math.max(charge.timestampMs || 0, ...tips.map((row) => row.timestampMs || 0))
+		const chargePoint6 =
+			parseChargeRewardPoint6FromAfterNotePayer(rawTxAfterNotePayer(charge.rawTransaction)) ?? 0n
+		const tipPoint6 = tips.reduce((sum, row) => {
+			const p = parseChargeRewardPoint6FromAfterNotePayer(rawTxAfterNotePayer(row.rawTransaction))
+			return sum + (p ?? 0n)
+		}, 0n)
+		const totalRewardPoint6 = chargePoint6 + tipPoint6
 		replacement.set(charge.id, {
 			...charge,
 			timestampMs,
 			timestamp: formatBeamioTransactionTimeLabel(timestampMs),
 			merchantChargeTipFiat: tipFiat,
 			merchantChargeTipCurrencyCode: tipCurrency,
+			...(totalRewardPoint6 > 0n ? { merchantChargeRewardPoint6: totalRewardPoint6.toString() } : {}),
 		})
 		for (const row of tips) suppressed.add(row.id)
 	}

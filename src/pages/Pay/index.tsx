@@ -10,19 +10,12 @@ import PayScreen from '@/pages/Pay/send'
 import Cashcode from './Cashcode'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import BeamioPayMe from './BeamioPayMe'
 import PaymentWithNfc from './PaymentWithNfc'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
-}
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 const PAY_FLOATING_TOP_CONTROLS_FALLBACK_SPACE = 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 12rem)'
 
 const Pay = ({}) => {
@@ -85,7 +78,7 @@ const Pay = ({}) => {
 				code = ethers.solidityPackedKeccak256(['string'], [code])
 			}
 			try {
-				const fx = await CoreContract.getLinkMemo(code)
+				const fx = await getDeprecatedBeamioConetLinkMemo(code)
 				if (fx.to !== ethers.ZeroAddress && fx.amount > BigInt(0)) {
 					setPaymentLinkCode(code)
 					return navigate('/browser')

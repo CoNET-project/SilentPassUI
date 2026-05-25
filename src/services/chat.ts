@@ -173,14 +173,15 @@ const isPgpKeyComplete = (pgp: initBeamioPGPKeysRet | undefined): boolean => {
 let initChatInProgress = false
 
 export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
-	if (gossip) return
 	if (initChatInProgress) {
 		console.debug('[initChat] Skipped: already in progress')
 		return
 	}
+	if (gossip) return
+
 	initChatInProgress = true
-	setGossip(true)
 	try {
+		setGossip(true)
 		const allNodes = await getAllNodes()
 		setAllNodes(allNodes)
 		const temp = CoNET_Data
@@ -288,14 +289,13 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 			return
 		}
 	
-		connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
+		await connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
 	} catch (error) {
 		console.error('[initChat] Error:', error)
-	}
-	
-	finally {
+		setGossip(false)
+	} finally {
 		initChatInProgress = false
-	} 
+	}
 }
 
 export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGPKeysRet|null> => {

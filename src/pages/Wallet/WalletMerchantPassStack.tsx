@@ -1,21 +1,19 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { WalletMerchantPassStackCard } from '@/pages/Wallet/WalletMerchantPassStackCard'
 import { getStableWalletMerchantPassStackDisplay } from '@/pages/Wallet/walletMerchantPassDisplayCache'
 import { buildWalletMerchantPassStackDisplay } from '@/pages/Wallet/walletMerchantPassDisplay'
 import type { WalletMerchantPassesStickyView } from '@/pages/Wallet/useWalletMerchantPassesStickyDisplay'
-
-const STACK_CARD_OVERLAP_PX = 130
-const STACK_CARD_H = 200
-const STACK_STEP_PX = STACK_CARD_H - STACK_CARD_OVERLAP_PX
+import {
+	STACK_CARD_H,
+	STACK_STEP_PX,
+	stackCardExpandOffsetY,
+	stackLayoutHeight,
+	stackLayoutHeightExpanded,
+} from '@/pages/Wallet/walletMerchantPassStackLayout'
 
 type Props = {
 	view: WalletMerchantPassesStickyView
 	onSeeAll: () => void
-}
-
-function stackLayoutHeight(count: number): number {
-	if (count <= 0) return STACK_CARD_H
-	return STACK_CARD_H + (count - 1) * STACK_STEP_PX
 }
 
 function PassStackSkeleton({ cardCount }: { cardCount: number }) {
@@ -32,7 +30,14 @@ function PassStackSkeleton({ cardCount }: { cardCount: number }) {
 
 function WalletMerchantPassStackInner({ view, onSeeAll }: Props) {
 	const { stackCards, details, badgeCount, showEmpty, showSkeleton, showStack } = view
-	const stackHeight = stackLayoutHeight(stackCards.length)
+	const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
+	const stackAddrsKey = stackCards.map((c) => c.cardAddress.toLowerCase()).join('|')
+
+	useEffect(() => {
+		setExpandedIdx(null)
+	}, [stackAddrsKey])
+
+	const stackHeight = stackLayoutHeightExpanded(stackCards.length, expandedIdx)
 
 	const displays = useMemo(() => {
 		const out: {
@@ -48,6 +53,12 @@ function WalletMerchantPassStackInner({ view, onSeeAll }: Props) {
 		}
 		return out
 	}, [stackCards, details])
+
+	const stackRenderOrder = useMemo(() => {
+		const order = displays.map((_, stackIdx) => stackIdx)
+		if (expandedIdx === null) return order
+		return [...order.filter((idx) => idx !== expandedIdx), expandedIdx]
+	}, [displays, expandedIdx])
 
 	return (
 		<section className="space-y-4 pt-2">
@@ -75,22 +86,32 @@ function WalletMerchantPassStackInner({ view, onSeeAll }: Props) {
 				<PassStackSkeleton cardCount={Math.max(stackCards.length, badgeCount, 1)} />
 			) : showStack ? (
 				<div
-					className="wallet-merchant-pass-stack relative w-full"
+					className={`wallet-merchant-pass-stack relative w-full transition-[height] duration-300 ease-out ${
+						expandedIdx !== null ? 'overflow-visible z-20' : 'overflow-hidden'
+					}`}
 					style={{
 						height: stackHeight,
-						contain: 'layout style paint',
-						isolation: 'isolate',
 					}}
 				>
-					{displays.map(({ uc, display }, stackIdx) => (
-						<WalletMerchantPassStackCard
-							key={uc.cardAddress}
-							uc={uc}
-							display={display}
-							stackIdx={stackIdx}
-							topPx={stackIdx * STACK_STEP_PX}
-						/>
-					))}
+					{stackRenderOrder.map((stackIdx) => {
+						const { uc, display } = displays[stackIdx]!
+						return (
+							<WalletMerchantPassStackCard
+								key={uc.cardAddress}
+								uc={uc}
+								display={display}
+								stackIdx={stackIdx}
+								topPx={stackIdx * STACK_STEP_PX}
+								expandOffsetY={stackCardExpandOffsetY(stackIdx, expandedIdx)}
+								isExpanded={expandedIdx === stackIdx}
+								isStackExpanded={expandedIdx !== null}
+								stackCount={stackCards.length}
+								onToggleExpand={() =>
+									setExpandedIdx((prev) => (prev === stackIdx ? null : stackIdx))
+								}
+							/>
+						)
+					})}
 				</div>
 			) : (
 				<PassStackSkeleton cardCount={1} />

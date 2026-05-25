@@ -7,7 +7,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import bIcon from '@/components/assets/32x32.svg'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {ethers} from 'ethers'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
+import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import {formatAmountReadable, formatWithThousands, estimateGasUSDC, AuthorizationSign, searchUsername, postBeamio, storeSystemData} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrencyV2'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
@@ -31,13 +31,7 @@ type TipInputProps = {
 
 }
 
-const beamioConetContract = {
-	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
-	network: 'CONET DePIN',
-	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
-	
-}
+
 function formatAmount(v: number, c: ICurrency) {
 	if (!isFinite(v)) return `0 ${c}`
 	return `${c ==='TWD'||c==='JPY' ? v.toFixed(0) : c ==='USDC' ? v.toFixed(4) : v.toFixed(2)}`
@@ -45,7 +39,6 @@ function formatAmount(v: number, c: ICurrency) {
 
 
 
-const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const displayName = (item: searchResult) => {
@@ -485,7 +478,7 @@ const PayForm = ({code, closeWin}: Props) => {
 		setCurrency(beamio.currency)
 		try {
 			const [fx] = await Promise.all([
-				CoreContract.getLinkMemo(code)
+				getDeprecatedBeamioConetLinkMemo(code)
 			])
 			
 			const amount = Number(ethers.formatUnits(fx.amount, 6))

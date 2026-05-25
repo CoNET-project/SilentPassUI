@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { Fragment, useEffect, useRef, useState, useMemo, useCallback } from "react"
+import { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -33,9 +33,7 @@ import cashTreesHeroBg3 from '@/components/assets/cashTreesHeroBg3.png'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
-import ActiveCouponsScreen, { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
-import { formatMyBrandNft2PointsSubtitle, resolveMyBrandsOwnedCouponDisplays } from '@/utils/myBrandsFeedState'
-import { resolveMyBrandMerchantCategoryLabel } from '@/utils/discoverMerchantCategory'
+import ActiveCouponsScreen from '@/pages/Home/ActiveCouponsScreen'
 import RedeemVoucherScreen from '@/pages/Home/RedeemVoucherScreen'
 import { buildRedeemVoucherHistoryPath } from '@/pages/Home/redeemVoucherPath'
 
@@ -43,7 +41,6 @@ import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
 import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
-import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import {
 	getMyAssets,
 	getMyAssetsAggregated,
@@ -56,9 +53,8 @@ import {
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import {
-	MyBrandCardAddressCapsule,
-	resolveCardImageUrl,
-	resolveHeldTierPresentation,
+	MyBrandListEntries,
+	sortMyBrandCardsForList,
 } from '@/pages/Brands/MyBrandsListSection'
 import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
@@ -495,40 +491,9 @@ const Home = (_props: HomeProps) => {
 		}
 	}, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
 
-	const myBrandCardsSorted = useMemo(
-		() => {
-			// 用 detail.assets.points 作为金额；未知（未加载完成 / assets 为 null / 解析失败）记为 NaN
-			const getPts = (cardAddress: string): number => {
-				const detail = myBrandCardDetails[cardAddress.toLowerCase()]
-				const ptsRaw = detail?.assets?.points
-				if (ptsRaw == null || String(ptsRaw).trim() === '') return NaN
-				const n = Number(ptsRaw)
-				return Number.isFinite(n) ? n : NaN
-			}
-			return [...myBrandCards]
-				// 仅当已知 amount 为 0 时隐藏；未加载完成 / 未知金额保留以避免 flicker
-				.filter((c) => {
-					const detail = myBrandCardDetails[c.cardAddress.toLowerCase()]
-					const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
-					if (couponCount > 0) return true
-					const n = getPts(c.cardAddress)
-					return !(Number.isFinite(n) && n === 0)
-				})
-				.sort((a, b) => {
-					const na = getPts(a.cardAddress)
-					const nb = getPts(b.cardAddress)
-					const va = Number.isFinite(na) ? na : -Infinity
-					const vb = Number.isFinite(nb) ? nb : -Infinity
-					if (vb !== va) return vb - va
-					// 金额相等或都未知时按名称兜底，避免顺序抖动
-					return (a.name || '').localeCompare(b.name || '', 'en')
-				})
-		},
-		[myBrandCards, myBrandCardDetails]
-	)
 	const myBrandCardsPreview = useMemo(
-		() => myBrandCardsSorted.slice(0, 5),
-		[myBrandCardsSorted]
+		() => sortMyBrandCardsForList(myBrandCards).slice(0, 5),
+		[myBrandCards]
 	)
 
 	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
@@ -2340,123 +2305,25 @@ const Home = (_props: HomeProps) => {
 											<ChevronRight size={16} strokeWidth={2.5} />
 										</button>
 									</div>
-									<div className="flex flex-col gap-2 rounded-lg bg-white p-2 dark:bg-slate-900">
-										{myBrandCardsPreview.length === 0 ? (
+									<div className="flex flex-col gap-2 rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
+										{myBrandsFeedLoading && myBrandCardsPreview.length === 0 ? (
+											<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
+												<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
+												<div className="flex-1 space-y-2">
+													<div className="h-3.5 w-28 rounded bg-white/80 dark:bg-slate-700" />
+													<div className="h-3 w-36 rounded bg-white/60 dark:bg-slate-600" />
+												</div>
+												<div className="h-10 w-20 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
+											</div>
+										) : myBrandCardsPreview.length === 0 ? (
 											<div className="rounded-lg p-3 text-sm font-medium text-[#424655] dark:text-slate-400">
 												No merchant brands yet.
 											</div>
 										) : (
-											myBrandCardsPreview.map((uc) => {
-												const addrKey = uc.cardAddress.toLowerCase()
-												const detail = myBrandCardDetails[addrKey]
-												const title =
-													(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
-												const tierPres = resolveHeldTierPresentation(detail as unknown)
-												const couponCount = Math.max(0, Number(detail?.claimableCoupons?.count ?? 0) || 0)
-												const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
-													uc.cardAddress,
-													detail?.claimableCoupons
-												) as ActiveCouponListItem[]
-												if (couponCount > 0 && ownedCoupons.length > 0) {
-													return (
-														<Fragment key={uc.cardAddress}>
-															{ownedCoupons.map((ownedCoupon) => (
-																<ActiveCouponTicketItem
-																	key={ownedCoupon.id}
-																	row={ownedCoupon}
-																	actionLabel="Owned"
-																	disabled
-																	aria-label={`Owned coupon ${ownedCoupon.title}`}
-																	punchBgClassName="bg-white dark:bg-slate-900"
-																/>
-															))}
-														</Fragment>
-													)
-												}
-												const imgUrl = resolveCardImageUrl(detail?.meta?.image)
-												const assets = detail?.assets ?? null
-												const ptsRaw = assets?.points
-												const ptsNum =
-													ptsRaw != null && String(ptsRaw).trim() !== ''
-														? Number(ptsRaw)
-														: NaN
-												const cardGlobalCurrency = (
-													assets?.cardCurrency ?? uc.currency ?? 'CAD'
-												).toUpperCase()
-												const pointsLine = Number.isFinite(ptsNum)
-													? `${cardGlobalCurrency} ${ptsNum.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
-													: detail === undefined
-														? '…'
-														: '—'
-												const nft2PointsLine = formatMyBrandNft2PointsSubtitle(detail)
-												const categorySubtitle = resolveMyBrandMerchantCategoryLabel(detail, title)
-												return (
-													<div
-														key={uc.cardAddress}
-														className="flex w-full items-center gap-4 rounded-lg border-l-[3px] border-transparent p-3 text-left"
-														style={
-															tierPres.accentColor
-																? { borderLeftColor: tierPres.accentColor }
-																: undefined
-														}
-													>
-														<div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[#c3c6d8]/25 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900">
-															{imgUrl ? (
-																<img
-																	src={imgUrl}
-																	alt={title}
-																	className="h-full w-full object-cover"
-																	draggable={false}
-																/>
-															) : (
-																<Store size={22} className="text-[#1562f0] dark:text-[#6ba3ff]" aria-hidden />
-															)}
-														</div>
-														<div className="min-w-0 flex-1">
-															<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-																<p className="min-w-0 truncate text-sm font-bold text-[#191c1d] dark:text-slate-100">
-																	{title}
-																</p>
-																{uc.cardAddress ? (
-																	<MyBrandCardAddressCapsule address={uc.cardAddress} />
-																) : null}
-															</div>
-															<p className="mt-0.5 text-[11px] leading-tight text-[#424655] dark:text-slate-400">
-																{categorySubtitle}
-															</p>
-															{tierPres.bonusPill || tierPres.discountLabel ? (
-																<div className="mt-1 flex flex-wrap items-center gap-1.5">
-																	{tierPres.bonusPill ? (
-																		<span
-																			className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
-																			style={
-																				tierPres.accentColor
-																					? { color: tierPres.accentColor, borderColor: tierPres.accentColor }
-																					: undefined
-																			}
-																		>
-																			{tierPres.bonusPill}
-																		</span>
-																	) : null}
-																	{tierPres.discountLabel ? (
-																		<span
-																			className="rounded-full border border-[#1562f0]/20 bg-[#1562f0]/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] dark:border-[#6ba3ff]/30 dark:bg-[#6ba3ff]/10 dark:text-[#8db8ff]"
-																		>
-																			{tierPres.discountLabel}
-																		</span>
-																	) : null}
-																</div>
-															) : null}
-														</div>
-														<div className="shrink-0 text-right">
-															<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{pointsLine}</p>
-															<p className="text-[10px] font-medium text-[#424655] dark:text-slate-500">
-																{nft2PointsLine}
-															</p>
-														</div>
-													</div>
-												)
-											})
+											<MyBrandListEntries
+												cards={myBrandCardsPreview}
+												details={myBrandCardDetails}
+											/>
 										)}
 									</div>
 								</section>

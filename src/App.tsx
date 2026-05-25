@@ -23,7 +23,7 @@ import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
 import MyWallet from "@/pages/Settings/index"
 import { ethers } from "ethers"
-import beamioConetCoreABI from "@/services/ABI/beamioConetCoreABI.json"
+import { getDeprecatedBeamioConetLinkMemo } from "@/utils/deprecatedBeamioConet"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -62,25 +62,12 @@ import {
 
 global.Buffer = require("buffer").Buffer
 
-const beamioConetContract = {
-  address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
-  network: "CONET DePIN",
-  abi: beamioConetCoreABI,
-  provider: new ethers.JsonRpcProvider("https://rpc1.conet.network"),
-}
-
 type message = {
   from: string
   signMessage: string
   text: string
   timestamp: number
 }
-
-const CoreContract = new ethers.Contract(
-  beamioConetContract.address,
-  beamioConetContract.abi,
-  beamioConetContract.provider
-)
 
 // 你原来的 addNewMessage 保持不动（略）
 // ...
@@ -1130,7 +1117,7 @@ function AppShell() {
         code = ethers.solidityPackedKeccak256(["string"], [code])
       }
       try {
-        const fx = await CoreContract.getLinkMemo(code)
+        const fx = await getDeprecatedBeamioConetLinkMemo(code)
         if (fx.to !== ethers.ZeroAddress) {
           setPaymentLinkCode(code)
           navigate("/browser")

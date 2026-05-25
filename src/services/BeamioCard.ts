@@ -1253,6 +1253,10 @@ export type GetCardsResult = {
 	ownerCards: UserCardInfo[]
 	holderCards: UserCardInfo[]
 	trusted: boolean
+	/** getWalletAssets 同源余额快照（key = cardAddress lower） */
+	walletAssetsByCardKey?: Record<string, MyCardAssets>
+	/** getWalletAssets 解析出的 AA，profile 未写入时供 coupon / assets 使用 */
+	walletResolvedAaAddress?: string | null
 }
 
 type LatestCardApiItem = {
@@ -1263,6 +1267,186 @@ type LatestCardApiItem = {
 		shareTokenMetadata?: {
 			name?: string
 		}
+	}
+}
+
+type WalletAssetsCardRow = {
+	cardAddress?: string
+	cardName?: string
+	cardCurrency?: string
+	cardType?: string
+	points?: string
+	points6?: string
+	chargeRewardPoints?: string
+	chargeRewardPoints6?: string
+	nfts?: Array<{
+		tokenId?: string | number
+		attribute?: string | number
+		tier?: string | number
+		expiry?: string
+		isExpired?: boolean
+	}>
+}
+
+export type MyBrandsWalletAssetsSnapshot = {
+	holderCards: UserCardInfo[]
+	assetsByCardKey: Record<string, MyCardAssets>
+	aaAddress: string | null
+}
+
+type GetWalletAssetsResponse = {
+	ok?: boolean
+	aaAddress?: string
+	cards?: WalletAssetsCardRow[]
+	error?: string
+}
+
+const GET_WALLET_ASSETS_HOLDER_TIMEOUT_MS = 20_000
+const DEFAULT_CARD_PRICE_E6 = 1_000_000
+
+function walletAssetsRowHasHoldings(row: WalletAssetsCardRow): boolean {
+	const pts = Number(row.points ?? 0)
+	const crp = Number(row.chargeRewardPoints ?? 0)
+	if (Number.isFinite(pts) && pts > 0) return true
+	if (Number.isFinite(crp) && crp > 0) return true
+	const nfts = row.nfts ?? []
+	return nfts.some((n) => Number(n?.tokenId ?? 0) > 0)
+}
+
+function userCardInfoFromWalletAssetsRow(row: WalletAssetsCardRow): UserCardInfo | null {
+	const rawAddr = String(row.cardAddress ?? '').trim()
+	if (!rawAddr || !ethers.isAddress(rawAddr)) return null
+	if (isCardExcludedFromDisplay(rawAddr)) return null
+	const cardType = String(row.cardType ?? 'beamio-user-card').trim().toLowerCase()
+	if (cardType && cardType !== 'beamio-user-card') return null
+	if (!walletAssetsRowHasHoldings(row)) return null
+	const addr = ethers.getAddress(rawAddr)
+	const currency = String(row.cardCurrency ?? 'CAD').toUpperCase()
+	const priceE6 = DEFAULT_CARD_PRICE_E6
+	const ptsPer1Currency = priceE6 > 0 ? String(1_000_000 / priceE6) : '0'
+	const name = String(row.cardName ?? 'User Card').trim() || 'User Card'
+	return {
+		cardAddress: addr,
+		name,
+		currency,
+		priceE6: String(priceE6),
+		ptsPer1Currency,
+	}
+}
+
+function myCardAssetsFromWalletAssetsRow(
+	row: WalletAssetsCardRow,
+	cardAddress: string,
+	aaAddress?: string | null
+): MyCardAssets {
+	const addr = ethers.getAddress(cardAddress)
+	const aa =
+		aaAddress && ethers.isAddress(aaAddress) ? ethers.getAddress(aaAddress) : ''
+	const currency = String(row.cardCurrency ?? 'CAD').toUpperCase() as ICurrency
+	return {
+		address: aa,
+		cardAddress: addr,
+		points: String(row.points ?? '0'),
+		cardOwner: null,
+		cardCurrency: currency,
+		chargeRewardPoints: row.chargeRewardPoints,
+		chargeRewardPoints6: row.chargeRewardPoints6,
+		nfts: (row.nfts ?? []).map((n) => ({
+			tokenId: String(n?.tokenId ?? '0'),
+			attribute: String(n?.attribute ?? '0'),
+			tier: String(n?.tier ?? '0'),
+			expiry: String(n?.expiry ?? ''),
+			isExpired: Boolean(n?.isExpired),
+		})),
+	}
+}
+
+/**
+ * My Brands holder 卡 + 余额：服务端 getWalletAssets（与 getUIDAssets 同源）。
+ * null = 不可信失败（调用方应回退 latestCards 扫描）；holderCards=[] = 可信空。
+ */
+export async function fetchMyBrandsWalletAssetsSnapshot(
+	eoa: string,
+	existingCardAddresses: Set<string>
+): Promise<MyBrandsWalletAssetsSnapshot | null> {
+	if (!eoa || !ethers.isAddress(eoa)) {
+		return { holderCards: [], assetsByCardKey: {}, aaAddress: null }
+	}
+	const ac = new AbortController()
+	const to =
+		typeof window !== 'undefined'
+			? window.setTimeout(() => ac.abort(), GET_WALLET_ASSETS_HOLDER_TIMEOUT_MS)
+			: setTimeout(() => ac.abort(), GET_WALLET_ASSETS_HOLDER_TIMEOUT_MS)
+	try {
+		const res = await fetch(`${beamioApi}/api/getWalletAssets`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			signal: ac.signal,
+			body: JSON.stringify({
+				wallet: ethers.getAddress(eoa),
+				cardsScope: 'all',
+				includeZeroBalanceCards: true,
+			}),
+		})
+		if (!res.ok) return null
+		const json = (await res.json().catch(() => null)) as GetWalletAssetsResponse | null
+		if (!json || json.ok !== true || !Array.isArray(json.cards)) return null
+		const aaAddress =
+			json.aaAddress && ethers.isAddress(json.aaAddress)
+				? ethers.getAddress(json.aaAddress)
+				: null
+		const holderCards: UserCardInfo[] = []
+		const assetsByCardKey: Record<string, MyCardAssets> = {}
+		const seen = new Set(existingCardAddresses)
+		for (const row of json.cards) {
+			const rawAddr = String(row.cardAddress ?? '').trim()
+			if (!rawAddr || !ethers.isAddress(rawAddr)) continue
+			const addr = ethers.getAddress(rawAddr)
+			const key = addr.toLowerCase()
+			assetsByCardKey[key] = myCardAssetsFromWalletAssetsRow(row, addr, aaAddress)
+			const mapped = userCardInfoFromWalletAssetsRow(row)
+			if (!mapped) continue
+			if (seen.has(key)) continue
+			seen.add(key)
+			holderCards.push(mapped)
+		}
+		return { holderCards, assetsByCardKey, aaAddress }
+	} catch {
+		return null
+	} finally {
+		clearTimeout(to)
+	}
+}
+
+function mergeDiscoveredHolderCards(
+	discovered: UserCardInfo[],
+	seen: Set<string>,
+	merged: UserCardInfo[],
+	holderCards: UserCardInfo[]
+): void {
+	for (const c of discovered) {
+		const key = c.cardAddress.toLowerCase()
+		if (seen.has(key)) continue
+		seen.add(key)
+		holderCards.push(c)
+		merged.push(c)
+	}
+}
+
+/** Holder 卡：优先 getWalletAssets；不可信时回退 latestCards + 浏览器 RPC。 */
+async function discoverHolderCardsForEOA(
+	eoa: string,
+	seen: Set<string>,
+	aa?: string | null
+): Promise<{ holderCards: UserCardInfo[]; walletSnapshot: MyBrandsWalletAssetsSnapshot | null }> {
+	const eoaNorm = ethers.getAddress(eoa)
+	const walletSnapshot = await fetchMyBrandsWalletAssetsSnapshot(eoaNorm, seen)
+	if (walletSnapshot !== null) {
+		return { holderCards: walletSnapshot.holderCards, walletSnapshot }
+	}
+	return {
+		holderCards: await fetchHeldCardsFromLatestForEOA(eoaNorm, seen, aa),
+		walletSnapshot: null,
 	}
 }
 
@@ -1421,12 +1605,21 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		if (typeof console !== 'undefined' && console.warn) {
 			console.warn('[getCardsOfOwnerWithDetailsForProfile] 无有效 owner（keyID/aaAccount 均空）')
 		}
-		return { cards: [], ownerCards: [], holderCards: [], trusted: false }
+		return {
+			cards: [],
+			ownerCards: [],
+			holderCards: [],
+			trusted: false,
+			walletAssetsByCardKey: undefined,
+			walletResolvedAaAddress: null,
+		}
 	}
 
 	const cached = profile?.issuedCards ?? []
 	const seen = new Set<string>()
 	const merged: UserCardInfo[] = []
+	let walletAssetsByCardKey: Record<string, MyCardAssets> | undefined
+	let walletResolvedAaAddress: string | null = null
 
 	// 0. RPC 熔断期：跳过 RPC，不向 API 请求
 	// （withBaseRpc 内部会走 CoNET-only）
@@ -1446,20 +1639,24 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		const ownerCards = filterExcludedUserCards([...merged])
 		const holderCards: UserCardInfo[] = []
 		if (eoa && ethers.isAddress(eoa)) {
-			const discoveredHolderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), seen, aa)
-			for (const c of discoveredHolderCards) {
-				const key = c.cardAddress.toLowerCase()
-				if (seen.has(key)) continue
-				seen.add(key)
-				holderCards.push(c)
-				merged.push(c)
+			const { holderCards: discoveredHolderCards, walletSnapshot } = await discoverHolderCardsForEOA(
+				ethers.getAddress(eoa),
+				seen,
+				aa
+			)
+			if (walletSnapshot) {
+				walletAssetsByCardKey = walletSnapshot.assetsByCardKey
+				walletResolvedAaAddress = walletSnapshot.aaAddress
 			}
+			mergeDiscoveredHolderCards(discoveredHolderCards, seen, merged, holderCards)
 		}
 		return {
 			cards: filterExcludedUserCards(merged),
 			ownerCards,
 			holderCards: filterExcludedUserCards(holderCards),
 			trusted: true,
+			walletAssetsByCardKey,
+			walletResolvedAaAddress,
 		}
 	} catch (e) {
 		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
@@ -1472,7 +1669,15 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 			const apiSeen = new Set(apiItems.map((c) => c.cardAddress.toLowerCase()))
 			const holderCards: UserCardInfo[] = []
 			if (eoa && ethers.isAddress(eoa)) {
-				const discoveredHolderCards = await fetchHeldCardsFromLatestForEOA(ethers.getAddress(eoa), apiSeen, aa)
+				const { holderCards: discoveredHolderCards, walletSnapshot } = await discoverHolderCardsForEOA(
+					ethers.getAddress(eoa),
+					apiSeen,
+					aa
+				)
+				if (walletSnapshot) {
+					walletAssetsByCardKey = walletSnapshot.assetsByCardKey
+					walletResolvedAaAddress = walletSnapshot.aaAddress
+				}
 				for (const c of discoveredHolderCards) {
 					const key = c.cardAddress.toLowerCase()
 					if (apiSeen.has(key)) continue
@@ -1489,13 +1694,22 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 				ownerCards: filterExcludedUserCards(apiItems.filter((c) => !holderCards.some((h) => h.cardAddress.toLowerCase() === c.cardAddress.toLowerCase()))),
 				holderCards: filterExcludedUserCards(holderCards),
 				trusted: true,
+				walletAssetsByCardKey,
+				walletResolvedAaAddress,
 			}
 		} catch (apiErr) {
 			if (typeof console !== 'undefined' && console.warn) {
 				console.warn('[getCardsOfOwnerWithDetailsForProfile] RPC+API 均失败，返回缓存。owners:', uniqueOwners, 'cached:', cached.length, (apiErr as Error)?.message ?? apiErr)
 			}
 			// 3. RPC 与 API 均失败，返回 profile 缓存的卡，不信任空 []
-			return { cards: filterExcludedUserCards(cached), ownerCards: [], holderCards: [], trusted: false }
+			return {
+				cards: filterExcludedUserCards(cached),
+				ownerCards: [],
+				holderCards: [],
+				trusted: false,
+				walletAssetsByCardKey: undefined,
+				walletResolvedAaAddress: null,
+			}
 		}
 	}
 }
@@ -2696,6 +2910,19 @@ function readCardMetadataStringField(base: Record<string, unknown> | null, keys:
 	return ''
 }
 
+/** Merchant program icon — metadata `icon` first; legacy issuance stores logo as `image`. */
+function merchantIconUrlFromMetadataRoot(metaJson: Record<string, unknown>): string | undefined {
+	const share = recordFromUnknown(metaJson.shareTokenMetadata)
+	const icon =
+		readCardMetadataStringField(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']) ||
+		readCardMetadataStringField(share, ['icon', 'iconUrl', 'logoUrl', 'logo'])
+	if (icon) return icon
+	const image =
+		readCardMetadataStringField(metaJson, ['image', 'merchantImage']) ||
+		readCardMetadataStringField(share, ['image', 'merchantImage'])
+	return image || undefined
+}
+
 /** biz Business Name / storeName — 与 Discover Featured Brands `title: businessName ?? name` 一致 */
 export function merchantBusinessNameFromMetadataRoot(
 	metaJson: Record<string, unknown> | null | undefined
@@ -2850,6 +3077,8 @@ export const getTierIndexForRedeemAmount = (
 /** 卡级 metadata（getCardMetadataFromApi / getCardMetadataFromUri）；cardOwner 用于请求 per-NFT metadata */
 export type CardMetadataFromUri = {
 	name?: string
+	/** Merchant logo URL — metadata `icon` (preferred) or legacy `image`. */
+	icon?: string
 	image?: string
 	tiers?: CardTierMetadata[]
 	cardOwner?: string
@@ -2898,8 +3127,10 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		}
 		const bonusFields = bonusFieldsFromMetadataRoot(json)
 		const share = json?.shareTokenMetadata
+		const iconUrl = merchantIconUrlFromMetadataRoot(json)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
+			...(iconUrl ? { icon: iconUrl } : {}),
 			image: (share?.image ?? json?.image) as string | undefined,
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...bonusFields,
@@ -2968,8 +3199,10 @@ export const getCardMetadataFromApi = async (
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
 		const bonusFields = bonusFieldsFromMetadataRoot(metaJson)
 		const categoryFields = discoverCategoryFieldsFromMetadataRoot(metaJson)
+		const iconUrl = merchantIconUrlFromMetadataRoot(metaJson)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
+			...(iconUrl ? { icon: iconUrl } : {}),
 			image: (share?.image ?? metaJson.image) as string | undefined,
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
@@ -3067,8 +3300,10 @@ export const getCardMetadataFromUri = async (
 		const bonusFields = bonusFieldsFromMetadataRoot(json)
 		const categoryFields = discoverCategoryFieldsFromMetadataRoot(json)
 		const share = recordFromUnknown(json.shareTokenMetadata)
+		const iconUrl = merchantIconUrlFromMetadataRoot(json)
 		const meta: CardMetadataFromUri = {
 			name: (json?.name ?? share?.name) as string | undefined,
+			...(iconUrl ? { icon: iconUrl } : {}),
 			image: (json?.image ?? share?.image) as string | undefined,
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers as CardTierMetadata[] }),
 			...bonusFields,

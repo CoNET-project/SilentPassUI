@@ -43,7 +43,11 @@ import {
 	type VerraBusinessProfileDraft,
 } from '@/utils/verraBusinessProfileLocal'
 import type { VerraBusinessProfileBusinessType } from '@/utils/verraBusinessProfileLocal'
-import { isWorkspaceScreenLocked, setWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
+import {
+	isWorkspaceScreenLocked,
+	markWorkspaceSessionUnlocked,
+} from '@/utils/beamioWorkspaceLock'
+import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions'
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
@@ -259,7 +263,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
 		if (!opts?.dontClose) setSettingsOpen('')
-		setWorkspaceScreenLocked(false)
+		if (hasSessionPrivateKeyArmor()) {
+			markWorkspaceSessionUnlocked()
+		}
 		onInitComplete?.()
   	}
 

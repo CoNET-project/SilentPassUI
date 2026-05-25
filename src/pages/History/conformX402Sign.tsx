@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
-import {JsonViewer} from './JsonViewer'
+import VscodeJsonBlock from '@/components/VscodeJsonBlock'
 import base_ex from '@/components/assets/base-ex.svg'
 import { CoNET_Data } from '@/utils/globals'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -267,19 +267,7 @@ export function ConformSignInfo({
         {openMsg && (
           <div className="mt-3 text-sm opacity-80 break-words">
             {messageData ? (
-              typeof messageData === 'object' ? (
-                <JsonViewer data={messageData} />
-              ) : (
-				<pre className="
-					whitespace-pre-wrap font-mono text-[13px]
-					bg-slate-100 dark:bg-slate-900/40
-					rounded-lg p-2
-					border border-slate-200 dark:border-white/10
-					overflow-x-auto
-					">
-					{messageData}
-				</pre>
-              )
+				<VscodeJsonBlock data={messageData} />
             ) : (
 				<div className="italic opacity-70">
 					Show the raw payload or a summary to be signed here

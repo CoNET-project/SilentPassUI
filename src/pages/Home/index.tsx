@@ -17,7 +17,7 @@ const HomePage = ({}) => {
 			setShowBeamioOnboardingModal(false)
 			return
 		}
-		const CoNETData: encrypt_keys_object = await checkStorage(false)
+		const CoNETData: encrypt_keys_object | null = await checkStorage(false)
 		if (CoNETData && CoNETData?.beamio?.initialLoading) {
 			setSplashVisible(false)
 			return

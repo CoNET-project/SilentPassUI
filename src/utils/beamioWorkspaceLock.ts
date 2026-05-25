@@ -1,5 +1,10 @@
+import { wipeSessionSecrets } from '@/utils/beamioSessionSecrets'
+
 /** User chose "Lock Wallet": block protected routes until password unlock (localStorage so all tabs respect lock). */
 const WORKSPACE_SCREEN_LOCK_KEY = 'beamio_workspace_screen_lock_v1'
+
+/** Set after successful biz gateway password login this browser tab session only. */
+const WORKSPACE_SESSION_UNLOCK_KEY = 'beamio_workspace_session_unlock_v1'
 
 export function setWorkspaceScreenLocked(locked: boolean): void {
 	if (typeof window === 'undefined') return
@@ -21,4 +26,39 @@ export function isWorkspaceScreenLocked(): boolean {
 	} catch {
 		return false
 	}
+}
+
+export function markWorkspaceSessionUnlocked(): void {
+	if (typeof window === 'undefined') return
+	try {
+		sessionStorage.setItem(WORKSPACE_SESSION_UNLOCK_KEY, '1')
+	} catch {
+		// ignore quota / private mode
+	}
+	setWorkspaceScreenLocked(false)
+}
+
+export function clearWorkspaceSessionUnlock(): void {
+	if (typeof window === 'undefined') return
+	wipeSessionSecrets()
+	try {
+		sessionStorage.removeItem(WORKSPACE_SESSION_UNLOCK_KEY)
+	} catch {
+		// ignore quota / private mode
+	}
+	setWorkspaceScreenLocked(true)
+}
+
+export function isWorkspaceSessionUnlocked(): boolean {
+	if (typeof window === 'undefined') return false
+	try {
+		return sessionStorage.getItem(WORKSPACE_SESSION_UNLOCK_KEY) === '1'
+	} catch {
+		return false
+	}
+}
+
+/** Wallet on disk ≠ unlocked workspace; requires explicit session unlock (biz gateway login). */
+export function isWorkspaceAccessGranted(): boolean {
+	return !isWorkspaceScreenLocked() && isWorkspaceSessionUnlocked()
 }

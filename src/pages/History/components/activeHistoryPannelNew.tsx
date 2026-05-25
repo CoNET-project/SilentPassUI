@@ -41,13 +41,19 @@ import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
 import { QRCodeCanvas } from 'qrcode.react'
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
+import VscodeJsonBlock from '@/components/VscodeJsonBlock'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0x0DBDF27E71f9c89353bC5e4dC27c9C5dAe0cc612'
 
+const TX_RECORD_TUPLE =
+	'(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)'
+const TX_FULL_TUPLE =
+	'(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, address topAdmin, address subordinate, (address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta)'
+
 /** Indexer 合约 ABI：列表查询 + 完整 Transaction 查询（含 payer/payee/route） */
 const INDEXER_ABI = [
-	'function getAccountTransactionsByMonthOffsetPaged(address account, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, (bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)',
-	'function getTransactionFullByTxId(bytes32 txId) view returns ((bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta))',
+	`function getAccountTransactionsByMonthOffsetPaged(address account, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_RECORD_TUPLE}[] page)`,
+	`function getTransactionFullByTxId(bytes32 txId) view returns (${TX_FULL_TUPLE})`,
 ] as const
 
 /** txCategory 预设 hash（与 readme 一致） */
@@ -184,6 +190,8 @@ interface RawTxRecord {
 	finalRequestAmountFiat6?: bigint
 	finalRequestAmountUSDC6?: bigint
 	isAAAccount?: boolean
+	topAdmin?: string
+	subordinate?: string
 	route?: RouteItemRecord[]
 	fees?: {
 		gasChainType?: number
@@ -657,11 +665,11 @@ const ActiveHistoryPannelNew = ({
 					}
 					return v
 				}
-				// ethers 可能返回数组 [id,originalPaymentHash,...,payer,payee,...,route,fees,meta]，映射为具名字段
-				const keys = ['id','originalPaymentHash','chainId','txCategory','displayJson','timestamp','payer','payee','finalRequestAmountFiat6','finalRequestAmountUSDC6','isAAAccount','route','fees','meta']
+				// 当前 ActionFacet.TransactionFull 顺序：... isAAAccount, topAdmin, subordinate, route, fees, meta
+				const keys = ['id','originalPaymentHash','chainId','txCategory','displayJson','timestamp','payer','payee','finalRequestAmountFiat6','finalRequestAmountUSDC6','isAAAccount','topAdmin','subordinate','route','fees','meta']
 				const arr = Array.isArray(full) ? full : (full as Record<string, unknown>)
 				const raw: Record<string, unknown> = {}
-				if (Array.isArray(arr) && arr.length >= 14) {
+				if (Array.isArray(arr) && arr.length >= 16) {
 					for (let i = 0; i < keys.length && i < arr.length; i++) raw[keys[i]] = toStr(arr[i])
 				} else {
 					const r = (arr as Record<string, unknown>) || {}
@@ -1707,25 +1715,21 @@ const ActiveHistoryPannelNew = ({
 								<Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
 							</button>
 							{showJson && (
-								<div className="mt-4 bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto shadow-inner">
+								<div className="mt-4">
 									{fullTxLoading ? (
-										<div className="flex items-center justify-center gap-2 py-8 text-[#34C759]">
+										<div className="flex items-center justify-center gap-2 rounded-[16px] border border-[#d4d4d4] bg-white py-8 text-[#0451a5] shadow-inner dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#9cdcfe]">
 											<Loader size={20} className="animate-spin" />
 											<span className="text-[13px] font-medium">Loading full Transaction...</span>
 										</div>
 									) : (
-										<pre className="text-[11px] text-[#34C759] font-mono leading-relaxed">
-											{JSON.stringify(
-												toNamedTransactionJson(
-													fullTransactionFromChain ??
-														(selectedTx.rawTransaction
-															? selectedTx.rawTransaction
-															: selectedTx)
-												),
-												null,
-												2
+										<VscodeJsonBlock
+											data={toNamedTransactionJson(
+												fullTransactionFromChain ??
+													(selectedTx.rawTransaction
+														? selectedTx.rawTransaction
+														: selectedTx)
 											)}
-										</pre>
+										/>
 									)}
 								</div>
 							)}

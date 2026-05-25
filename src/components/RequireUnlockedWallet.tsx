@@ -6,7 +6,8 @@ import { initChat } from '@/services/chat'
 import { setCoNET_Data } from '@/utils/globals'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import SplashScreen from '@/components/SplashScreen'
-import { isWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
+import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
+import { getSessionPrivateKeyArmor, hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 
 /** Match `beamio.ts` `storeSystemData` flattening so `CoNET_Data.profiles` is always a flat `profile[]`. */
 function ensureFlatProfiles(p: unknown): profile[] {
@@ -17,27 +18,22 @@ function ensureFlatProfiles(p: unknown): profile[] {
 	return p as profile[]
 }
 
-function isUnlockedWalletPayload(data: unknown, flat: profile[]): boolean {
-	if (!data || flat.length === 0) return false
-	const p0 = flat[0] as { privateKeyArmor?: string; keyID?: string }
-	if (!p0) return false
-	const pk = p0.privateKeyArmor?.trim()
+function sessionKeyMatchesProfile(flat: profile[]): boolean {
+	const p0 = flat[0] as { keyID?: string } | undefined
+	if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return false
+	const pk = getSessionPrivateKeyArmor()?.trim()
 	if (!pk) return false
-	let derived: string
 	try {
-		derived = new ethers.Wallet(pk).address
+		const derived = new ethers.Wallet(pk).address
+		return derived.toLowerCase() === ethers.getAddress(p0.keyID).toLowerCase()
 	} catch {
 		return false
 	}
-	if (p0.keyID && ethers.isAddress(p0.keyID) && p0.keyID.toLowerCase() !== derived.toLowerCase()) {
-		return false
-	}
-	return true
 }
 
 /**
- * 深链进入受保护页面前：必须从本地存储恢复钱包并校验私钥可用，否则重定向到 `/` 走 Beamio 解锁 /创建流程。
- * 与 `LoadingPage` / `bizHome.assembleEncryptKeysObject` 一致地写入 `profiles`、`CoNET_Data`；在 gossip 未启动时补跑 `initChat`。
+ * 深链进入受保护页面前：必须完成本会话 biz gateway 密码解锁，且会话内存中持有私钥，否则重定向到 `/`。
+ * 磁盘 profile 元数据不含 privateKeyArmor（见 beamio-private-key-session-memory-only.mdc）。
  */
 export default function RequireUnlockedWallet() {
 	const location = useLocation()
@@ -56,36 +52,27 @@ export default function RequireUnlockedWallet() {
 	useEffect(() => {
 		let cancelled = false
 		;(async () => {
-			if (isWorkspaceScreenLocked()) {
+			if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) {
 				if (!cancelled) setGate('unauth')
 				return
 			}
 			const data = await checkStorage(false)
 			if (cancelled) return
 			const flat = ensureFlatProfiles((data as { profiles?: unknown } | null)?.profiles)
-			if (!isUnlockedWalletPayload(data, flat)) {
+			if (!data || flat.length === 0 || !sessionKeyMatchesProfile(flat)) {
 				setGate('unauth')
 				return
 			}
 			const merged = { ...(data as object), profiles: flat }
 			setCoNET_Data(merged as encrypt_keys_object)
 			setProfiles(flat)
-			const p0 = flat[0] as { keyID?: string; privateKeyArmor?: string }
+			const p0 = flat[0] as { keyID?: string }
 			const eoa = p0?.keyID?.trim()
 			if (eoa && ethers.isAddress(eoa)) {
 				setMyAddress(ethers.getAddress(eoa))
 			} else {
-				try {
-					const pk = p0?.privateKeyArmor?.trim()
-					if (!pk) {
-						setGate('unauth')
-						return
-					}
-					setMyAddress(ethers.getAddress(new ethers.Wallet(pk).address))
-				} catch {
-					setGate('unauth')
-					return
-				}
+				setGate('unauth')
+				return
 			}
 			const bo = (data as { beamio?: beamio })?.beamio
 			if (bo && typeof bo === 'object') {
@@ -100,7 +87,6 @@ export default function RequireUnlockedWallet() {
 		return () => {
 			cancelled = true
 		}
-		// Intentionally once per layout mount: avoid re-running when `gossip` flips after initChat.
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- setters stable; gossip read at mount is correct for deep-link bootstrap
 	}, [])
 

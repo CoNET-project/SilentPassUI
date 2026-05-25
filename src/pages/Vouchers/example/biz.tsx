@@ -11,11 +11,12 @@ import React, {
 import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
-import { setWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock';
+import { clearWorkspaceSessionUnlock, isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock';
+import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
 import {
   storeSystemData,
   generateCODE,
@@ -32,6 +33,7 @@ import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
 import BeamioMeMainScreen from '@/components/Setting';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
+import VscodeJsonBlock from '@/components/VscodeJsonBlock';
 import { getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
 import { formatAmount, displayFiatPrefixFromCode, type ICurrency } from '@/services/currency';
 import contracts from '@/utils/contracts';
@@ -6159,6 +6161,35 @@ function normalizeBytes32HexLower(h: unknown): string {
   }
 }
 
+/** BaseScan link target: split NFC top-up legs use synthetic `indexerTxId`; chain tx is in `displayJson.finishedHash`. */
+function resolveTxDisplayRowBaseScanTxHash(tx: TxDisplayRow): string {
+  const raw = tx.raw as Record<string, unknown>
+  const pickFirst = (...candidates: unknown[]): string => {
+    for (const c of candidates) {
+      const n = normalizeBytes32HexLower(c)
+      if (n) return n
+    }
+    return ''
+  }
+  try {
+    const dj = raw.displayJson
+    if (typeof dj === 'string' && dj) {
+      const o = JSON.parse(dj) as {
+        finishedHash?: string
+        baseRelayTxHash?: string
+        requestHash?: string
+      }
+      const fromDisplay = pickFirst(o?.finishedHash, o?.baseRelayTxHash, o?.requestHash)
+      if (fromDisplay) return fromDisplay
+    }
+  } catch {
+    /* ignore */
+  }
+  const fromParentLink = pickFirst(tx.originalPaymentHash, raw.originalPaymentHash)
+  if (fromParentLink) return fromParentLink
+  return pickFirst(tx.indexerTxId, raw.id)
+}
+
 /**
  * Indexer keys that identify a Charge row as the parent of a TX_TIP (`originalPaymentHash` may equal
  * Transaction.id, Base `finishedHash`, or legacy `requestHash` — not always strictly `indexerTxId`).
@@ -7573,6 +7604,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
     chargeTxNetValueColumnShowBreakdown,
     chargeMetaRequestAmountApproxCad,
   } = a;
+  const baseScanTxHash = resolveTxDisplayRowBaseScanTxHash(tx);
   const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
   const useNfcSubtitle = LEDGER_NFC_BEAMIO_TAG_RE.test(payerHandle);
   const tierPres =
@@ -7712,9 +7744,9 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
               {smartReceiptLedgerAmountPreviewColumn(tx, cadOracle, pointsCurrencySymbol)}
             </div>
             <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
-              {(tx.type.includes('Top-Up') || tx.type === 'Charge') && /^0x[0-9a-fA-F]{64}$/.test(tx.indexerTxId) ? (
+              {(tx.type.includes('Top-Up') || tx.type === 'Charge') && baseScanTxHash ? (
                 <a
-                  href={`https://basescan.org/tx/${tx.indexerTxId}`}
+                  href={`https://basescan.org/tx/${baseScanTxHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(ev) => ev.stopPropagation()}
@@ -7729,7 +7761,9 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
                       className={isVaultTerminalSr ? 'text-blue-500 shrink-0' : 'text-emerald-500 shrink-0'}
                     />
                   )}
-                  <span className="text-[12px] font-mono text-slate-500">{tx.hash}</span>
+                  <span className="text-[12px] font-mono text-slate-500">
+                    {baseScanTxHash.length >= 10 ? `${baseScanTxHash.slice(0, 6)}...${baseScanTxHash.slice(-4)}` : '—'}
+                  </span>
                 </a>
               ) : (
                 <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
@@ -8285,13 +8319,151 @@ function parseCardIssuanceCouponIssueLeftN(coupon: CardIssuanceCouponRow): numbe
 /** Redeem codes table: max rows per page in Programs coupon panel. */
 const CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE = 10;
 
-function buildProgramsCouponRedeemShareUrl(cardAddress: string, redeemCode: string): string {
+function buildProgramsCouponRedeemShareUrl(
+  cardAddress: string,
+  redeemCode: string,
+  couponId?: string
+): string {
   const addr = cardAddress?.trim() ?? '';
   const code = redeemCode?.trim() ?? '';
   if (!addr || !code || !ethers.isAddress(addr)) return '';
-  return `https://beamio.app/app/?beamiocard=${encodeURIComponent(
-    ethers.getAddress(addr)
-  )}&redeemcode=${encodeURIComponent(code)}`;
+  const params = new URLSearchParams();
+  params.set('beamiocard', ethers.getAddress(addr));
+  params.set('redeemcode', code);
+  const cid = couponId?.trim() ?? '';
+  if (cid) params.set('couponId', cid);
+  const redeemUrl = `https://beamio.app/app/?${params.toString()}`;
+  return `https://beamio.app/app-download?target=${encodeURIComponent(redeemUrl)}`;
+}
+
+function programsCouponShareExpiryUsesUrgentVariant(expiresLabel: string): boolean {
+  return expiresLabel === 'EXPIRED' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel);
+}
+
+function formatProgramsCouponShareExpiryLabel(coupon: CardIssuanceCouponRow): string {
+  if (coupon.couponDateRestriction !== 'range' || !coupon.couponValidToYmd.trim()) return 'VALID NOW';
+  const ymd = parseCouponYmd(coupon.couponValidToYmd);
+  if (!ymd) return 'VALID NOW';
+  const parts = ymd.split('-').map((p) => Number.parseInt(p, 10));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return 'VALID NOW';
+  const endSec = Math.floor(new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59).getTime() / 1000);
+  if (!Number.isFinite(endSec) || endSec <= 0) return 'VALID NOW';
+  const now = Math.floor(Date.now() / 1000);
+  if (endSec <= now) return 'EXPIRED';
+  const delta = endSec - now;
+  if (delta >= 86_400) return `EXPIRES IN ${Math.ceil(delta / 86_400)}D`;
+  if (delta >= 3_600) return `EXPIRES IN ${Math.ceil(delta / 3_600)}H`;
+  return `EXPIRES IN ${Math.max(1, Math.ceil(delta / 60))}M`;
+}
+
+function buildProgramsCouponShareHeadline(
+  merchantName: string,
+  shareKind: 'open_claim' | 'redeem'
+): string {
+  const verb = shareKind === 'redeem' ? 'Redeem' : 'Claim';
+  const name = merchantName.trim() || 'Beamio';
+  const trimmed = name.length > 28 ? `${name.slice(0, 27).trim()}…` : name;
+  return `${verb} a ${trimmed} Coupon`;
+}
+
+function ProgramsCouponShareCardPreview({
+  coupon,
+  shareUrl,
+  merchantName,
+  shareKind,
+}: {
+  coupon: CardIssuanceCouponRow;
+  shareUrl: string;
+  merchantName: string;
+  shareKind: 'open_claim' | 'redeem';
+}) {
+  const shareHeadline = buildProgramsCouponShareHeadline(merchantName, shareKind);
+  const title = coupon.name.trim() || 'Beamio Coupon';
+  const subtitle = coupon.description.trim() || 'Open in the Beamio app.';
+  const backgroundColorHex = tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#2B2E3A';
+  const backgroundImage = coupon.couponImage.trim();
+  const iconUrl = cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? coupon.icon.trim() : '';
+  const expiresLabel = formatProgramsCouponShareExpiryLabel(coupon);
+  const expiryUrgent = programsCouponShareExpiryUsesUrgentVariant(expiresLabel);
+  const ExpiryIcon = expiryUrgent ? Clock : Calendar;
+
+  return (
+    <div className="w-full text-left">
+      <p className="mb-3 text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg">
+        {shareHeadline}
+      </p>
+      <div className="relative w-full rounded-[1.75rem]">
+        <div
+          className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+          aria-hidden
+        />
+        <div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] ring-1 ring-black/[0.08]">
+          {backgroundImage ? (
+            <>
+              <img
+                src={backgroundImage}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                draggable={false}
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
+            </>
+          ) : (
+            <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }}>
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.12]"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+                }}
+                aria-hidden
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" />
+            </div>
+          )}
+
+          <div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-[6.25rem] sm:gap-4 sm:px-8 sm:py-5 sm:pr-[6.75rem]">
+            <div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
+              {iconUrl ? (
+                <img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg">
+                  {title.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+
+            <div className="min-w-0 flex-1 text-white">
+              <p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
+                {title}
+              </p>
+              <p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
+                {subtitle}
+              </p>
+              <div
+                className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                  expiryUrgent
+                    ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+                    : 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md'
+                }`}
+              >
+                <ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                <span className="truncate">{expiresLabel}</span>
+              </div>
+            </div>
+
+            <div className="absolute right-6 top-1/2 z-[2] -translate-y-1/2 rounded-2xl bg-white p-2 shadow-sm sm:right-8">
+              <QRCodeCanvas value={shareUrl} size={96} level="M" includeMargin={false} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Keep freshly registered codes Available until chain confirms active or grace expires. */
@@ -9238,7 +9410,10 @@ function getCardIssuanceTierCardVisual(preset: CardIssuanceTierPreset): {
 }
 
 const AUTO_APPROVE_KKK22_TAG_PREFIX = 'kkk22_';
-const AUTO_APPROVE_PENDING_TERMINAL_MERCHANT_EOA = '0x51AE9c1FAf57E39F0A0A58Ac799D1f1DC6aB71ff'.toLowerCase();
+const AUTO_APPROVE_PENDING_TERMINAL_MERCHANT_EOAS = new Set([
+  '0x51AE9c1FAf57E39F0A0A58Ac799D1f1DC6aB71ff'.toLowerCase(),
+  '0x42F0D08A7F25626A4A82DE2986cB5664635Ba9e2'.toLowerCase(),
+]);
 
 function plainBeamioTagForKkk22AutoApprove(tag: string): string {
   return tag.trim().replace(/^@+/, '');
@@ -9254,7 +9429,7 @@ function isAutoApproveKkk22PosTerminalBeamioTag(tag: string): boolean {
 
 function isAutoApprovePendingTerminalMerchantEoa(eoa: string | undefined | null): boolean {
   const raw = (eoa ?? '').trim();
-  return ethers.isAddress(raw) && ethers.getAddress(raw).toLowerCase() === AUTO_APPROVE_PENDING_TERMINAL_MERCHANT_EOA;
+  return ethers.isAddress(raw) && AUTO_APPROVE_PENDING_TERMINAL_MERCHANT_EOAS.has(ethers.getAddress(raw).toLowerCase());
 }
 
 export default function MerchantOS() {
@@ -9570,8 +9745,13 @@ const cardIssuanceCouponRedeemShareRow = useMemo(
 const cardIssuanceCouponRedeemShareUrl = useMemo(() => {
   const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
   const code = cardIssuanceCouponRedeemShareOpen?.code?.trim() ?? '';
-  return buildProgramsCouponRedeemShareUrl(cardAddress, code);
-}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponRedeemShareOpen?.code]);
+  const couponId = cardIssuanceCouponRedeemShareRow?.id?.trim() ?? '';
+  return buildProgramsCouponRedeemShareUrl(cardAddress, code, couponId);
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceCouponRedeemShareOpen?.code,
+  cardIssuanceCouponRedeemShareRow?.id,
+]);
 
 useEffect(() => {
   if (!cardIssuanceCouponRedeemCopiedHash) return;
@@ -21424,7 +21604,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          <button
            type="button"
            onClick={() => {
-             setWorkspaceScreenLocked(true);
+             clearWorkspaceSessionUnlock();
              window.location.href = '/';
            }}
            className={`mx-2 flex w-[calc(100%-1rem)] items-center rounded-full py-2.5 text-sm font-bold text-red-600 transition-all bg-red-50 hover:bg-red-100 ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'gap-2.5 px-4'}`}
@@ -22984,6 +23164,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         )
                       ) : (
                       filteredTx.map((tx, idx) => {
+                        const baseScanTxHash = resolveTxDisplayRowBaseScanTxHash(tx);
                         const isVaultTerminal = tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
                         const txTotalCAD = calculateTxNetValueCAD(tx);
                         const rowKey = String(tx.indexerTxId || tx.id || `idx-${idx}`);
@@ -23360,9 +23541,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                )}
                              </div>
                              <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
-                               {(tx.type.includes('Top-Up') || tx.type === 'Charge') && /^0x[0-9a-fA-F]{64}$/.test(tx.indexerTxId) ? (
+                               {(tx.type.includes('Top-Up') || tx.type === 'Charge') && baseScanTxHash ? (
                                  <a
-                                   href={`https://basescan.org/tx/${tx.indexerTxId}`}
+                                   href={`https://basescan.org/tx/${baseScanTxHash}`}
                                    target="_blank"
                                    rel="noopener noreferrer"
                                    onClick={(ev) => ev.stopPropagation()}
@@ -23374,7 +23555,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    ) : (
                                      <CheckCircle2 size={12} className={isVaultTerminal ? 'text-blue-500 shrink-0' : 'text-emerald-500 shrink-0'} />
                                    )}
-                                   <span className="text-[12px] font-mono text-slate-500">{tx.hash}</span>
+                                   <span className="text-[12px] font-mono text-slate-500">
+                                     {baseScanTxHash.length >= 10 ? `${baseScanTxHash.slice(0, 6)}...${baseScanTxHash.slice(-4)}` : '—'}
+                                   </span>
                                  </a>
                                ) : (
                                  <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
@@ -23523,6 +23706,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            <AnimatePresence>
            {smartReceiptTx ? (() => {
              const tx = smartReceiptTx;
+             const baseScanTxHash = resolveTxDisplayRowBaseScanTxHash(tx);
              const rawP = tx.raw as Record<string, unknown>;
              const payerAddr =
                typeof rawP.payer === 'string' && ethers.isAddress(rawP.payer)
@@ -23792,9 +23976,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        ) : null}
                      </div>
 
-                     {/^0x[0-9a-fA-F]{64}$/.test(tx.indexerTxId) ? (
+                     {baseScanTxHash ? (
                        <a
-                         href={`https://basescan.org/tx/${tx.indexerTxId}`}
+                         href={`https://basescan.org/tx/${baseScanTxHash}`}
                          target="_blank"
                          rel="noopener noreferrer"
                          className="mb-6 flex items-center justify-center gap-2 rounded-full border border-[#abadaf]/40 py-3 text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3]"
@@ -33781,24 +33965,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
           </div>
-          <div className="grid gap-5 px-5 py-5 sm:grid-cols-[auto_1fr] sm:items-start sm:px-6 sm:py-6">
-            <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <QRCodeCanvas
-                value={cardIssuanceCouponShareUrl}
-                size={176}
-                level="H"
-                includeMargin
-                bgColor="#ffffff"
-                fgColor="#000000"
-                imageSettings={{
-                  src: `${process.env.PUBLIC_URL || ''}/logo512.png`,
-                  height: 40,
-                  width: 40,
-                  excavate: true,
-                }}
-                className="rounded-lg"
-              />
-            </div>
+          <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
+            <ProgramsCouponShareCardPreview
+              coupon={cardIssuanceCouponShareRow}
+              shareUrl={cardIssuanceCouponShareUrl}
+              merchantName={programsOverviewDisplayName}
+              shareKind="open_claim"
+            />
             <div className="min-w-0 space-y-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Claim URL</p>
@@ -33875,24 +34048,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
           </div>
-          <div className="grid gap-5 px-5 py-5 sm:grid-cols-[auto_1fr] sm:items-start sm:px-6 sm:py-6">
-            <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <QRCodeCanvas
-                value={cardIssuanceCouponRedeemShareUrl}
-                size={176}
-                level="H"
-                includeMargin
-                bgColor="#ffffff"
-                fgColor="#000000"
-                imageSettings={{
-                  src: `${process.env.PUBLIC_URL || ''}/logo512.png`,
-                  height: 40,
-                  width: 40,
-                  excavate: true,
-                }}
-                className="rounded-lg"
-              />
-            </div>
+          <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
+            <ProgramsCouponShareCardPreview
+              coupon={cardIssuanceCouponRedeemShareRow}
+              shareUrl={cardIssuanceCouponRedeemShareUrl}
+              merchantName={programsOverviewDisplayName}
+              shareKind="redeem"
+            />
             <div className="min-w-0 space-y-3">
               {cardIssuanceCouponRedeemStatuses[cardIssuanceCouponRedeemShareOpen.hash] === 'redeemed' ? (
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
@@ -34021,11 +34183,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              </button>
            </div>
            <div className="p-4 overflow-auto flex-1 min-h-0">
-             <div className="bg-[#1C1C1E] rounded-[16px] p-5 overflow-x-auto shadow-inner">
-                 <pre className="break-all whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-sky-400">
-                 {JSON.stringify(rawTxJsonModal, null, 2)}
-               </pre>
-             </div>
+             <VscodeJsonBlock data={rawTxJsonModal} maxHeightClassName="max-h-none" />
            </div>
          </div>
        </div>
@@ -34033,6 +34191,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
    </div>
  );
 
+
+ if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) {
+   return <Navigate to="/" replace state={{ from: location.pathname }} />;
+ }
 
  return renderDashboard();
 }

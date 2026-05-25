@@ -14,7 +14,11 @@ import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { BEAMIO_TAG_ALLOWED_RE, BEAMIO_TAG_RULE_HINT, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 import RestoreAccessPage from '@/pages/Home/RestoreAccessPage'
-import { setWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
+import { markWorkspaceSessionUnlocked } from '@/utils/beamioWorkspaceLock'
+import {
+	hydrateProfilesWithSessionSecrets,
+	ingestSessionPrivateKeyFromProfiles,
+} from '@/utils/beamioSessionSecrets'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -36,6 +40,10 @@ const assembleEncryptKeysObject = async (
 ) => {
 	const profiles = temp?.profiles
 	if (!temp || !profiles?.length) return
+
+	if (!ingestSessionPrivateKeyFromProfiles(profiles)) return
+	const hydratedProfiles = hydrateProfilesWithSessionSecrets(profiles)
+	temp.profiles = hydratedProfiles
 
 	const loadUserInfo = (): Promise<beamio> =>
 		new Promise((resolve) => {
@@ -85,8 +93,8 @@ const assembleEncryptKeysObject = async (
 					}
 				}
 				if (changed) {
-					temp.profiles = nextProfiles
-					setProfiles(nextProfiles)
+					temp.profiles = hydrateProfilesWithSessionSecrets(nextProfiles)
+					setProfiles(temp.profiles)
 				}
 			}
 		}
@@ -103,11 +111,15 @@ const assembleEncryptKeysObject = async (
 	})
 
 	await storeSystemData()
-	const eoa = profiles[0]?.keyID?.trim()
+	const finalProfiles = hydrateProfilesWithSessionSecrets(temp.profiles)
+	temp.profiles = finalProfiles
+	setCoNET_Data(temp)
+	const eoa = finalProfiles[0]?.keyID?.trim()
 	if (eoa && ethers.isAddress(eoa)) {
 		setMyAddress(eoa)
 	}
-	setWorkspaceScreenLocked(false)
+	setProfiles(finalProfiles)
+	markWorkspaceSessionUnlocked()
 }
 
 /** Post-login signing-in screen — `marketExample.html` (Beamio Business OS - Signing In) */

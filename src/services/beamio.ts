@@ -1,6 +1,14 @@
 //			beamio.ts
 
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import {
+	hydrateProfilesWithSessionSecrets,
+	ingestSessionPrivateKeyFromProfiles,
+	loadedDataHadPersistedSecrets,
+	setSessionPrivateKeyArmor,
+	stripSecretsForPersistence,
+	stripSecretsFromLoadedData,
+} from '@/utils/beamioSessionSecrets'
 import {ethers, keccak256, toUtf8Bytes} from 'ethers' 
 import usdc_abi from './ABI/usdc_abi.json'
 import {
@@ -1117,20 +1125,15 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
 			webFilter: true
 		};
 
-		const data: any = {
-			mnemonicPhrase: acc?.mnemonic?.phrase,
+		setSessionPrivateKeyArmor(acc.signingKey.privateKey)
+
+		const data = {
 			profiles: [profile],
 			isReady: true,
 			ver: 0,
 			nonce: 0,
-		};
+		} as encrypt_keys_object
 
-		if (acc?.mnemonic?.phrase) {
-
-		}
-
-		
-		
 		setCoNET_Data(data)
 	}
 
@@ -1169,9 +1172,18 @@ export const checkStorage = async (checkcacheStorage = true) => {
   try {
     const database = PouchDB(localDatabaseName, { auto_compaction: true });
     const doc = await database.get("init", { latest: true });
-    const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
-    setCoNET_Data(data);
-    return data
+    const raw = JSON.parse(Buffer.from(doc.title, "base64").toString()) as encrypt_keys_object
+    const hadLegacySecrets = loadedDataHadPersistedSecrets(raw)
+    const stripped = stripSecretsFromLoadedData(raw)
+    const hydrated: encrypt_keys_object = {
+      ...stripped,
+      profiles: hydrateProfilesWithSessionSecrets(stripped.profiles),
+    }
+    setCoNET_Data(hydrated)
+    if (hadLegacySecrets) {
+      void flushStoreSystemData()
+    }
+    return hydrated
   } catch {
    
     return null
@@ -1254,7 +1266,8 @@ const ensureFlatProfiles = (p: any): profile[] => {
 let storeSystemDataTimer: ReturnType<typeof setTimeout> | null = null
 export const storeSystemData = async () => {
   if (!CoNET_Data) return
-  const temp = { ...CoNET_Data }
+  const temp = stripSecretsForPersistence(CoNET_Data)
+  if (!temp) return
   if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
   if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
   const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
@@ -1277,7 +1290,8 @@ export const flushStoreSystemData = async () => {
     storeSystemDataTimer = null
   }
   if (!CoNET_Data) return
-  const temp = { ...CoNET_Data }
+  const temp = stripSecretsForPersistence(CoNET_Data)
+  if (!temp) return
   if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
   if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
   const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
@@ -1886,6 +1900,10 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 		if (obj.recoverData) {
 			;(temp as any).recoveredBusinessDraft = obj.recoverData
 		}
+
+		ingestSessionPrivateKeyFromProfiles(temp.profiles)
+		temp.profiles = hydrateProfilesWithSessionSecrets(temp.profiles)
+		setCoNET_Data(temp)
 		
 		return temp
 	} catch (ex: any) {
@@ -2237,3 +2255,12 @@ export const getCashcodeData = async (cashcodeUrl: string) => {
 		
 	}
 }
+
+export {
+	wipeSessionSecrets,
+	hasSessionPrivateKeyArmor,
+	getSessionPrivateKeyArmor,
+	setSessionPrivateKeyArmor,
+	hydrateProfilesWithSessionSecrets,
+	ingestSessionPrivateKeyFromProfiles,
+} from '@/utils/beamioSessionSecrets'

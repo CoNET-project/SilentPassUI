@@ -1,6 +1,6 @@
 /**
  * beamio.app 是独立项目，发布/构建时不能跨项目相对引用 BeamioContract 根仓配置。
- * 本文件必须保持自包含，地址与根仓 config/base-addresses.json 对齐（手工或脚本更新）。
+ * 本文件必须保持自包含，地址与 deployments/conet-addresses.json 对齐（手工或脚本更新）。
  */
 export const BASE_MAINNET_CHAIN_ID = 8453
 
@@ -13,18 +13,22 @@ export const BASE_TREASURY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
 export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xA756F2E27a332d6Be2d399dA543E3Ce4C8455F14'
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
-// 与 deployments/conet-addresses.json 同步（CoNET 224422 重启后地址）。
-// 旧值：CONET_BUINT=0xC97CEbb4DF827cB2D1453A9Df7FEf6dADa1C16Ad，
-//       CONET_BUINT_REDEEM_AIRDROP=0x0DC615bAc14411CbDCd082fe59CBdDA8768615B0，
-//       CONET_BUSINESS_START_KET_REDEEM=0x0c15545f833CF4DF6C7F51F8D148cf7684e663ab，
-//       BEAMIO_INDEXER_DIAMOND=0xd990719B2f05ccab4Acdd5D7A3f7aDfd2Fc584Fe（链上均无代码）。
-export const CONET_BUINT = '0x1330297821814B06A6DafE3557Fa730F690D7007'
-/** B-Unit 兑换码空投管理合约（CoNET）；redeemAdmins 可 create/cancel */
-export const CONET_BUINT_REDEEM_AIRDROP = '0xdB877ec8572C669C533021764FC1Fecfe8dc6b4c'
-/** BusinessStartKet + B-Unit 联合兑换（CoNET）；redeemAdmins 经 EIP-712 + 后端代付 gas 创建/取消；与 deployments/conet-addresses.json 同步 */
-export const CONET_BUSINESS_START_KET_REDEEM = '0xE25deA33509c4466982942aBC3d062b08D3E840d'
+export const BEAMIO_INDEXER_DIAMOND = '0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9'
+/** CoNET BUint ERC20（balanceOfAll）；与 deployments/conet-addresses.json `BUint` 同步 */
+export const CONET_BUINT = '0x9149433F154C508d2a04454b8E527A479C6fd254'
+/** BuintRedeemAirdrop（CoNET）；与 x402sdk chainAddresses / 部署记录同步 */
+export const CONET_BUINT_REDEEM_AIRDROP = '0x05a19aA5100B9F6C22446cCD801F010Dc42D25E5'
+/** BusinessStartKet ERC1155（CoNET） */
+export const CONET_BUSINESS_START_KET = '0x61A206aD8fFdBA847fCB92eB8EE4bfAa2546249D'
+/** BusinessStartKetRedeem（CoNET）；Ket + B-Unit 兑换码 */
+export const CONET_BUSINESS_START_KET_REDEEM = '0x980340A8Eb23117b624b1f037b8a489F54C7b6a5'
+/** BeamioOracle on CoNET mainnet */
+export const BEAMIO_ORACLE_CONET = '0x102E9FBE87a28BaC10ADbc0E67a2b0385C8Bd0E9'
+/** CoNET 224422 — 与 deployments/conet-addresses.json 同步 */
+export const CONET_GUARDIAN_NODES_INFO_V6 = '0x359F781A5eEb17630A44e15Bc2aC57b248b81790'
+export const CONET_ADDRESS_PGP = '0xa5F64dd3c034442F5377c8F2Aa1A03ba378D685e'
+export const CONET_ACCOUNT_REGISTRY = '0x26626a515EDFb5DF9547ac1A32Ec1785352211Ba'
 export const CONET_MAINNET_CHAIN_ID = 224422
-export const BEAMIO_INDEXER_DIAMOND = '0x45D45de73465b8913B50974Fc188529dFFb7AfFA'
 
 export const BASE_MAINNET_FACTORIES = {
   AA_FACTORY: BASE_AA_FACTORY,
@@ -44,10 +48,14 @@ export const CONTRACT_ADDRESSES = {
     usdc: USDC_BASE,
   },
   conet: {
-    chainId: 224422,
-    buint: CONET_BUINT,
+    chainId: CONET_MAINNET_CHAIN_ID,
+    bUint: CONET_BUINT,
     buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
+    businessStartKet: CONET_BUSINESS_START_KET,
     businessStartKetRedeem: CONET_BUSINESS_START_KET_REDEEM,
     beamioIndexerDiamond: BEAMIO_INDEXER_DIAMOND,
+    guardianNodesInfoV6: CONET_GUARDIAN_NODES_INFO_V6,
+    addressPgp: CONET_ADDRESS_PGP,
+    accountRegistry: CONET_ACCOUNT_REGISTRY,
   },
 } as const

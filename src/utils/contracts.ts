@@ -96,12 +96,12 @@ import {
 	},
 
     CoNET_GB: {
-        address: '0x84aAD9aD5BbdDfC0cCcb6A599DFadaEFaF6B497E',
+        address: '0x4641Eb3055A891E6D3109e441aA8b931738A48b5',
         network: 'CONET DePIN',
         abi: CoNET_GB
     },
     CoNET_GBTotal: {
-        address: '0x866c4521797dd49d22B7566DF5D8c37E6B2b59bF',
+        address: '0x8FC4588431cFb915f27622198b9D0820403F4419',
         network: 'CONET DePIN',
         abi: CoNET_GB_Total
     },

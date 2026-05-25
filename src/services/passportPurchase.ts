@@ -105,7 +105,7 @@ const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q"
   
 	return "";
   };
-  const epoch_mining_info_cancun_addr = '0xbC713Fef0c7Bb178151cE45eFF1FD17d020a9ecD'.toLocaleLowerCase()
+  const epoch_mining_info_cancun_addr = '0x9163937cBBacf2F12C069eeEbD7c6A8b91b0e9BD'.toLocaleLowerCase()
   const epoch_mining_infoSC = new ethers.Contract(epoch_mining_info_cancun_addr, epoch_info_ABI, conetDepinProvider)
 
 export const checkCurrentRate = async (setMiningData: (response: nodeResponse) => void) => {

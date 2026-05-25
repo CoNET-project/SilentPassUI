@@ -62,6 +62,7 @@ export default function BusinessIdentityForm({
 	const [confirmPassword, setConfirmPassword] = useState("")
 	const [showPassword, setShowPassword] = useState(false)
 	const [loading, setLoading] = useState(false)
+	const [submitError, setSubmitError] = useState("")
 
 	const lastCheckedRef = useRef("")
 	const handleInputRef = useRef<HTMLInputElement>(null)
@@ -145,6 +146,7 @@ export default function BusinessIdentityForm({
 		const trimmedTag = normalizeBeamioTagInput(beamioName || "")
 		if (!trimmedTag) return
 
+		setSubmitError("")
 		onWorkspaceCreatingChange?.(true)
 		setLoading(true)
 		await new Promise<void>((resolve) => {
@@ -155,6 +157,7 @@ export default function BusinessIdentityForm({
 
 		if (!kks) {
 			onWorkspaceCreatingChange?.(false)
+			setSubmitError("Could not create your workspace. Check your connection and try again.")
 			return
 		}
 
@@ -402,6 +405,12 @@ export default function BusinessIdentityForm({
 				</div>
 
 				<div className="space-y-4 pt-4">
+					{submitError ? (
+						<div className="flex items-start gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-orange-800">
+							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+							<p className="text-[13px] font-semibold leading-snug">{submitError}</p>
+						</div>
+					) : null}
 					<AppButton
 						type="submit"
 						fullWidth

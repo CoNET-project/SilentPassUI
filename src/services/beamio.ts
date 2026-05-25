@@ -546,8 +546,6 @@ const timingSafeEqualUint8 = (a: Uint8Array, b: Uint8Array): boolean => {
 	return diff === 0
 }
 
-
-
 export function encodeStoredCBOR(obj: any): string {
 	const bytes = cborEncode(obj)  // 这里是 Uint8Array（真正的 CBOR 二进制）
   	return bytesToB64(bytes)       // 再转为 Base64 字符串
@@ -1127,7 +1125,12 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
 
 		setSessionPrivateKeyArmor(acc.signingKey.privateKey)
 
+		const mnemonicPhrase =
+			acc.mnemonic?.phrase ??
+			(secretPhrase && String(secretPhrase).trim() ? String(secretPhrase).trim() : undefined)
+
 		const data = {
+			...(mnemonicPhrase ? { mnemonicPhrase } : {}),
 			profiles: [profile],
 			isReady: true,
 			ver: 0,
@@ -1476,7 +1479,129 @@ const beamioAccountContract = {
 	
 }
 
+/** 224422 迁移前 AccountRegistry（只读归档 RPC） */
+const LEGACY_ACCOUNT_REGISTRY_RPC = 'https://rpc-old.conet.network'
+const LEGACY_ACCOUNT_REGISTRY_ADDRESS = '0x4afaca09cf8307070a83836223Ae129073eC92e5'
+
 const beamioAccountSC = new ethers.Contract(beamioAccountContract.address, beamioAccountContract.abi, beamioAccountContract.provider)
+const legacyBeamioAccountSC = new ethers.Contract(
+	LEGACY_ACCOUNT_REGISTRY_ADDRESS,
+	beamioAccountABI,
+	new ethers.JsonRpcProvider(LEGACY_ACCOUNT_REGISTRY_RPC)
+)
+
+type ValidRecoverStoragePayload = RecoverStoragePayload & {
+	stored: Argon2idHash
+	img: string
+}
+
+const isValidRecoverStoragePayload = (obj: RecoverStoragePayload | null): obj is ValidRecoverStoragePayload =>
+	!!obj?.img && !!obj?.stored
+
+/** 从指定 AccountRegistry 读取 @tag 对应的 PIN recover blob */
+const fetchRecoverPayloadByAccountName = async (
+	accountName: string,
+	registry: ethers.Contract
+): Promise<{ encoded: string; payload: ValidRecoverStoragePayload } | null> => {
+	try {
+		const encoded: string = await registry.getBase64ByAccountName(accountName)
+		if (!encoded?.trim()) return null
+		const payload = decodeRecoverStoragePayload(encoded)
+		if (!isValidRecoverStoragePayload(payload)) return null
+		return { encoded, payload }
+	} catch {
+		return null
+	}
+}
+
+const buildMinimalBeamioFromAccountName = (accountName: string): beamio => ({
+	accountName,
+	firstName: '',
+	lastName: '',
+	image: '',
+	darkTheme: false,
+	isUSDCFaucet: false,
+	isETHFaucet: false,
+	initialLoading: true,
+	createdAt: Date.now(),
+	language: 'en',
+	currency: 'USD',
+	tax: '0',
+})
+
+const parseRegistryAccountToBeamio = (userInfo: {
+	accountName?: string
+	image?: string
+	darkTheme?: boolean
+	isUSDCFaucet?: boolean
+	isETHFaucet?: boolean
+	initialLoading?: boolean
+	firstName?: string
+	lastName?: string
+	createdAt?: bigint | number
+	exists?: boolean
+	pgpKeyID?: string
+	pgpKey?: string
+} | null): beamio | null => {
+	if (!userInfo?.exists || !userInfo.accountName?.trim()) return null
+	const lastNameArray: string = userInfo.lastName || ''
+	const lastNameParts = lastNameArray.split('\r\n')
+	let addedSetup: beamioAddedSetup = { language: 'en', currency: 'USD', tax: '0' }
+	try {
+		addedSetup = JSON.parse(lastNameParts[lastNameParts.length - 1])
+	} catch {
+		// keep defaults
+	}
+	return {
+		accountName: userInfo.accountName,
+		image: userInfo.image ?? '',
+		darkTheme: userInfo.darkTheme ?? false,
+		initialLoading: userInfo.initialLoading ?? false,
+		isUSDCFaucet: userInfo.isUSDCFaucet ?? false,
+		isETHFaucet: userInfo.isETHFaucet ?? false,
+		firstName: userInfo.firstName ?? '',
+		lastName: lastNameParts[0] ?? '',
+		createdAt: Number(userInfo.createdAt),
+		language: addedSetup.language,
+		currency: addedSetup.currency,
+		tax: addedSetup.tax || '0',
+		pgpPublicKeyID: userInfo.pgpKeyID ?? '',
+		pgpPublicKeyArmor: userInfo.pgpKey ?? '',
+	}
+}
+
+export const getUserInfoFromRegistry = async (
+	registry: ethers.Contract,
+	keyID: string
+): Promise<beamio | null> => {
+	try {
+		const userInfo = await registry.getAccount(keyID)
+		return parseRegistryAccountToBeamio(userInfo)
+	} catch {
+		return null
+	}
+}
+
+const migrateLegacyRecoverToNewRegistry = async (
+	accountName: string,
+	encodedRecover: string,
+	privateKey: string,
+	wallet: string
+): Promise<{ ok: boolean; beamio: beamio }> => {
+	const nameHash = ethers.solidityPackedKeccak256(['string'], [accountName])
+	const recover: IAccountRecover[] = [{ hash: nameHash, encrypto: encodedRecover }]
+	const fallbackBeamio = buildMinimalBeamioFromAccountName(accountName)
+
+	const legacyProfile = await getUserInfoFromRegistry(legacyBeamioAccountSC, wallet)
+	const beamioForEnqueue = legacyProfile ?? fallbackBeamio
+	beamioForEnqueue.accountName = accountName
+
+	const ok = legacyProfile
+		? await RegenerateUser(beamioForEnqueue, recover, privateKey)
+		: await newUser(accountName, recover, privateKey)
+
+	return { ok, beamio: beamioForEnqueue }
+}
 
 
 
@@ -1769,8 +1894,8 @@ export const createRecover = async (
 	pin: string,
 	recoverData?: Partial<VerraBusinessProfileDraft> | null
 ) => {
-	const temp = await createOrGetWallet('')
-	if (!temp|| !temp?.mnemonicPhrase|| !temp?.profiles?.length) {
+	const temp = await createOrGetWallet('', true)
+	if (!temp || !temp?.mnemonicPhrase || !temp?.profiles?.length) {
 		return null
 	}
 	const wallet = temp.profiles[0].privateKeyArmor
@@ -1785,16 +1910,19 @@ export const createRecover = async (
 	const storageEncryptedImg = encodeRecoverStoragePayload(stored, img, recoverData)
 	temp.encryptedString = recoverCode.code
 	const obj = { pin, recoverCode: recoverCode.code, qrCode: recoverCode.code, temp}
-	// const kkk = decodeStoredCBOR(qrCode)
-	// const ks = verifyPasswordBrowser(passcode, stored)
 	const hash = ethers.solidityPackedKeccak256(['string'], [BeamioName])
 	const storageEncryptedImg1 = encodeRecoverStoragePayload(stored, img1, recoverData)
-	// const dddd = fromBase64(storageEncryptedImg)
-	// const kkk = JSON.parse(dddd)
-	// const mnemonicPhraseBase64 = await aesGcmDecryptWithStored (kkk.img, pin + recoverCode.code, kkk.stored)
-	// const mnemonicPhraseB = fromBase64(mnemonicPhraseBase64)
-	// console.log (mnemonicPhraseB)
-	await newUser(BeamioName, [{hash: recoverCode.hash, encrypto: storageEncryptedImg}, {hash, encrypto: storageEncryptedImg1}], wallet)
+	const registered = await newUser(
+		BeamioName,
+		[
+			{ hash: recoverCode.hash, encrypto: storageEncryptedImg },
+			{ hash, encrypto: storageEncryptedImg1 },
+		],
+		wallet,
+	)
+	if (!registered) {
+		return null
+	}
 
 	return obj
 }
@@ -1832,48 +1960,26 @@ export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 	}
 }
 
-export const getUserInfo = async (keyID: string) => {
-	
-	try {
-		const userInfo = await beamioAccountSC.getAccount(keyID)
-		const lastNameArray: string = (userInfo?.lastName||'')
-		const lastName = lastNameArray.split('\r\n')
-		let addedSetup: beamioAddedSetup = {language: 'en', currency: 'USD', tax: '0'}
-		try {
-			addedSetup = JSON.parse(lastName[lastName.length - 1])
-		} catch (ex) {
-			
-		}
-		
-
-		const bo: beamio = {
-			accountName: userInfo?.accountName,
-			image: userInfo?.image,
-			darkTheme: userInfo?.darkTheme,
-			initialLoading: userInfo?.initialLoading,
-			isUSDCFaucet: userInfo?.isUSDCFaucet,
-			isETHFaucet: userInfo?.isETHFaucet,
-			firstName: userInfo?.firstName,
-			lastName: lastName[0],
-			createdAt: Number(userInfo?.createdAt),
-			language: addedSetup.language,
-			currency: addedSetup.currency,
-			tax: addedSetup.tax ||'0'
-		}
-		return bo
-	} catch (ex: any) {
-		return null
-	}
-}
+export const getUserInfo = async (keyID: string) => getUserInfoFromRegistry(beamioAccountSC, keyID)
 
 export const restoreWithUserPin = async (username: string, pin: string, test = false) => {
 	try {
-		const hashedImg: string = await beamioAccountSC.getBase64ByAccountName(username)
-		const obj = decodeRecoverStoragePayload(hashedImg)
+		const accountName = username.trim()
+		if (!accountName) return false
 
-		if (!obj?.img || !obj?.stored) {
-			return false
+		let recoverHit = await fetchRecoverPayloadByAccountName(accountName, beamioAccountSC)
+		let legacyEncodedForMigrate: string | undefined
+
+		if (!recoverHit) {
+			const legacyHit = await fetchRecoverPayloadByAccountName(accountName, legacyBeamioAccountSC)
+			if (!legacyHit) {
+				return false
+			}
+			recoverHit = legacyHit
+			legacyEncodedForMigrate = legacyHit.encoded
 		}
+
+		const obj = recoverHit.payload
 
 		const mnemonicPhrase = await aesGcmDecryptWithStored (obj.img, pin, obj.stored)
 		const mnemonicPhraseB = fromBase64(mnemonicPhrase)
@@ -1890,12 +1996,32 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 		if (!temp||!temp?.profiles?.length) {
 			return false
 		}
-		
 
 		const profile: profile = temp.profiles[0]
-		const beamio = await getUserInfo(profile.keyID)
-		if (beamio) {
-			temp.beamio = beamio
+
+		if (legacyEncodedForMigrate) {
+			const privateKey = temp.profiles[0].privateKeyArmor
+			if (isValidEthersPrivateKey(privateKey)) {
+				const { ok, beamio: migratedBeamio } = await migrateLegacyRecoverToNewRegistry(
+					accountName,
+					legacyEncodedForMigrate,
+					privateKey,
+					profile.keyID
+				)
+				temp.beamio = migratedBeamio
+				if (!ok) {
+					console.warn(`[restoreWithUserPin] legacy AccountRegistry migrate (addUser) failed for @${accountName}`)
+				}
+			} else if (!temp.beamio) {
+				temp.beamio = buildMinimalBeamioFromAccountName(accountName)
+			}
+		}
+
+		const onchainBeamio = await getUserInfo(profile.keyID)
+		if (onchainBeamio) {
+			temp.beamio = onchainBeamio
+		} else if (!temp.beamio) {
+			temp.beamio = buildMinimalBeamioFromAccountName(accountName)
 		}
 		if (obj.recoverData) {
 			;(temp as any).recoveredBusinessDraft = obj.recoverData
@@ -2031,7 +2157,7 @@ export const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover
 	const signWallet = new ethers.Wallet(privateKey)
 	const signMessage = await signWallet.signMessage(signWallet.address)
 	const Url = storageNewUser
-	const lastName = `${beamio.lastName}\r\n${JSON.stringify({language: beamio.language, currency: beamio.currency})}`
+	const lastName = `${beamio.lastName}\r\n${JSON.stringify({ language: beamio.language, currency: beamio.currency, tax: beamio.tax ?? '0' })}`
 	try {
 		const body = {
 			accountName: beamio.accountName,

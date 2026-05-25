@@ -21,7 +21,7 @@ import {
 	cardAbi,
 	BeamioCardFactoryAbi
   } from "./abis"
-import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainAddresses'
+import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND, CONET_ADDRESS_PGP, CONET_GUARDIAN_NODES_INFO_V6 } from '../config/chainAddresses'
 
   import beamioConetABI from '@/services/ABI/beamioConetABI.json'
   import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
@@ -29,7 +29,7 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
   import ActionFacetAbi from '@/services/ABI/ActionFacetAbi.json'
   const contracts = {
 	GuardianNodesInfoV6: {
-	  address: "0x6d7a526BFD03E90ea8D19eDB986577395a139872",
+	  address: CONET_GUARDIAN_NODES_INFO_V6,
 	  abi: GuardianNodesInfoV6Abi,
 	  network: "CONET DePIN",
 	},
@@ -124,7 +124,7 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_INDEXER_DIAMOND } from '../config/chainA
 		abi: beamioConetCoreABI
 	},
 	constPgpManager: {
-		address: '0xb2aABe52f476356AE638839A786EAE425A0c1b66',
+		address: CONET_ADDRESS_PGP,
 		network: 'CONET DePIN',
 		abi: CoNETPGP
 	},

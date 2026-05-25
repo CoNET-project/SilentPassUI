@@ -130,35 +130,39 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 
 
 
-const getAllNodes = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
-	const Guardian_Nodes: nodeInfo[] = []
-    const _nodes1 = await GuardianNodesMainnet.getAllNodes(0, 400)
-    const _nodes2 = await GuardianNodesMainnet.getAllNodes(400, 800)
-    const _nodes = [..._nodes1, ..._nodes2]
+const getAllNodes = async (): Promise<nodeInfo[]> => {
+	try {
+		const Guardian_Nodes: nodeInfo[] = []
+		const _nodes1 = await GuardianNodesMainnet.getAllNodes(0, 400)
+		const _nodes2 = await GuardianNodesMainnet.getAllNodes(400, 800)
+		const _nodes = [..._nodes1, ..._nodes2]
 
-    for (let i = 0; i < _nodes.length; i ++) {
-        const node = _nodes[i]
-        const id = parseInt(node[0].toString())
-        const pgpString: string = Buffer.from( node[1], 'base64').toString()
-        const domain: string = node[2]
-        const ipAddr: string = node[3]
-        const region: string = node[4]
-        
-        
+		for (let i = 0; i < _nodes.length; i++) {
+			const node = _nodes[i]
+			const id = parseInt(node[0].toString())
+			const pgpString: string = Buffer.from(node[1], 'base64').toString()
+			const domain: string = node[2]
+			const ipAddr: string = node[3]
+			const region: string = node[4]
 
-        const itemNode: nodeInfo = {
-            ip_addr: ipAddr,
-            armoredPublicKey: pgpString,
-            domain: domain,
-            nftNumber: id,
-            region: region
-        }
-    
-        Guardian_Nodes.push(itemNode)
-    }
-    
-    resolve(Guardian_Nodes)
-})
+			const itemNode: nodeInfo = {
+				ip_addr: ipAddr,
+				armoredPublicKey: pgpString,
+				domain,
+				nftNumber: id,
+				region,
+			}
+
+			Guardian_Nodes.push(itemNode)
+		}
+
+		return Guardian_Nodes
+	} catch (ex: unknown) {
+		const msg = ex instanceof Error ? ex.message : String(ex)
+		console.warn('[getAllNodes] GuardianNodesInfoV6 fetch failed; continuing without gossip nodes:', msg)
+		return []
+	}
+}
 
 
 
@@ -288,6 +292,10 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	}
 	
 		connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
+	} catch (ex: unknown) {
+		setGossip(false)
+		const msg = ex instanceof Error ? ex.message : String(ex)
+		console.warn('[initChat] failed (login may continue without gossip):', msg)
 	} finally {
 		initChatInProgress = false
 	}

@@ -92,7 +92,12 @@ import {
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect } from '@/utils/constants';
-import { BASE_CARD_FACTORY, BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses';
+import {
+  BASE_CARD_FACTORY,
+  BEAMIO_INDEXER_DIAMOND,
+  CONET_BUINT,
+  CONET_BUNIT_AIRDROP_ADDRESS,
+} from '@/config/chainAddresses';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi';
@@ -909,11 +914,6 @@ const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
 
 const ISSUE_CARD_MIN_BUINTS = 200
 
-// CoNET 224422 重启后地址（来源 deployments/conet-addresses.json）。
-// 旧值：CONET_BUINT=0xC97CEbb4DF827cB2D1453A9Df7FEf6dADa1C16Ad、
-//       CONET_BUNIT_AIRDROP=0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264（链上均无代码）。
-const CONET_BUINT_ADDRESS = '0x1330297821814B06A6DafE3557Fa730F690D7007'
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xFd60936707cb4583c08D8AacBA19E4bfaEE446B8'
 const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
 const BUNIT_AIRDROP_BALANCE_ABI = ['function getBUnitBalance(address account) view returns (uint256)'] as const
 /** ERC-1155 `POINTS_ID` on BeamioUserCard is 0 — AA-held points balance for voucher display */
@@ -4563,7 +4563,7 @@ function isIndexerBuintLedgerCategory(cat: unknown): boolean {
 
 function isIndexerBuintConsumePayee(payee: unknown): boolean {
   const p = typeof payee === 'string' && ethers.isAddress(payee) ? ethers.getAddress(payee).toLowerCase() : ''
-  return p === CONET_BUINT_ADDRESS.toLowerCase()
+  return p === CONET_BUINT.toLowerCase()
 }
 
 /** Exclude from Merchant OS Transactions: B-Unit claim / USDC mint / consume (any registered kind). */
@@ -6825,6 +6825,12 @@ function topupTxDisplayRowIssuedAmount(tx: TxDisplayRow): number {
   if (tx.type !== 'In-Store Top-Up') return 0
   const raw = tx.raw as Record<string, unknown>
   const meta = parseIndexerMetaTuple(raw.meta)
+  /** Merged recharge bonus row: issued face = payment + bonus (matches Transactions column). */
+  if (tx.topupBonusFiat && tx.topupBonusFiat > 0) {
+    if (Number.isFinite(tx.total) && tx.total > 0) return tx.total
+    const actual = Number.isFinite(tx.topupActualPaymentFiat) ? tx.topupActualPaymentFiat! : 0
+    return actual + tx.topupBonusFiat
+  }
   const metaIssued = parseIndexerUintE6Field(meta.requestAmountFiat6)
   if (metaIssued > 0) return metaIssued
   const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
@@ -7398,7 +7404,7 @@ async function fetchConetBUnitBalanceDisplay(
 ): Promise<number> {
   const normalized = ethers.getAddress(account);
   try {
-    const buint = new ethers.Contract(CONET_BUINT_ADDRESS, ERC20_BALANCE_ABI, provider);
+    const buint = new ethers.Contract(CONET_BUINT, ERC20_BALANCE_ABI, provider);
     const raw = await buint.balanceOf(normalized);
     return amountE6ToDisplayNumber(BigInt(raw.toString()));
   } catch {
@@ -8012,7 +8018,7 @@ const CARD_ISSUANCE_BEAMIO_CURRENCY = 'CAD' as const;
 /** Minimum reload floor expressed in USDC; UI converts it to the card currency. */
 const CARD_ISSUANCE_MIN_TOPUP_USDC_MIN = 3;
 /** Maximum reload cap expressed in USDC; UI converts it to the card currency. */
-const CARD_ISSUANCE_MAX_TOPUP_MAX = 10000;
+const CARD_ISSUANCE_MAX_TOPUP_MAX = 50000;
 /** Default maximum top-up (whole dollars only, no decimals). */
 const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = 100;
 /** Default minimum top-up (whole dollars only, no decimals). */
@@ -16787,11 +16793,35 @@ const overviewActivityChargeDisplayTotal = useMemo(() => {
   }
   return sumCad
 }, [overviewDashboardActivityTxs, oracleCadUsdc, programCardBeamioCurrencyType])
-/** Same window + formulas as Top-ups / Charges KPI tiles: ledger Top-ups − Charges only. */
-const overviewCustomerBalanceFromActivity = useMemo(
-  () => overviewActivityTopupTotal - overviewActivityChargeDisplayTotal,
-  [overviewActivityTopupTotal, overviewActivityChargeDisplayTotal],
-)
+/** Customer Balance / Total capital retained: all-time ledger Top-ups − Charges (independent of header `timeFilter`). */
+const overviewCustomerBalanceFromActivity = useMemo(() => {
+  const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
+  let topupTotal = 0
+  let sumChargesCad = 0
+  for (const tx of indexerTransactions) {
+    if (!bizTxMatchesTransactionTableFilters(tx, overviewDashboardActivityFilterCtx)) continue
+    if (txDisplayRowTimestampSec(tx) <= 0) continue
+    if (tx.type === 'In-Store Top-Up') {
+      topupTotal += topupTxDisplayRowIssuedAmount(tx)
+    } else if (tx.type === 'Charge') {
+      sumChargesCad += chargeTxDisplayRowApproxCad(tx, cadOracle)
+    }
+  }
+  const chargeTotal =
+    programCardBeamioCurrencyType != null &&
+    programCardBeamioCurrencyType === BEAMIO_CURRENCY_TYPE_USDC &&
+    Number.isFinite(cadOracle) &&
+    cadOracle > 0
+      ? sumChargesCad / cadOracle
+      : sumChargesCad
+  return topupTotal - chargeTotal
+}, [
+  indexerTransactions,
+  overviewDashboardActivityFilterCtx,
+  overviewRefreshTrigger,
+  oracleCadUsdc,
+  programCardBeamioCurrencyType,
+])
  const overviewActivityChargeDisplayCount = overviewActivityChargeCount
  const overviewActivityTipsLedgerEntries = useMemo(
    () => buildTipsCollectedLedgerEntriesFromMerged(overviewDashboardActivityTxs),
@@ -26691,6 +26721,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             <p className="ml-1 text-xs font-medium leading-relaxed text-[#595c5e]">
                               Sales Management is designed for product-driven teams where staff earn points from sales
                               records.
+                            </p>
+                          ) : null}
+                          {cardIssuanceCreateError && cardIssuanceQuickDefaultRewardsFlow ? (
+                            <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+                              {cardIssuanceCreateError}
                             </p>
                           ) : null}
                          </div>

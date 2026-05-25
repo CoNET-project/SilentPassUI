@@ -45,19 +45,28 @@ const assembleEncryptKeysObject = async (
 	const hydratedProfiles = hydrateProfilesWithSessionSecrets(profiles)
 	temp.profiles = hydratedProfiles
 
-	const loadUserInfo = (): Promise<beamio> =>
-		new Promise((resolve) => {
-			getUserInfo(profiles[0].keyID).then((userInfo) => {
-				if (!userInfo) {
-					setTimeout(() => resolve(loadUserInfo()), 1000)
-				} else {
-					resolve(userInfo)
-				}
-			})
-		})
+	const USERINFO_POLL_MS = 1000
+	const USERINFO_MAX_POLLS = 60
+	const fallbackBeamio = temp.beamio?.accountName?.trim() ? temp.beamio : null
+
+	const loadUserInfo = async (): Promise<beamio | null> => {
+		if (fallbackBeamio) {
+			const fresh = await getUserInfo(profiles[0].keyID).catch(() => null)
+			if (fresh?.accountName?.trim()) return fresh
+			return fallbackBeamio
+		}
+		for (let attempt = 0; attempt < USERINFO_MAX_POLLS; attempt++) {
+			const userInfo = await getUserInfo(profiles[0].keyID).catch(() => null)
+			if (userInfo?.accountName?.trim()) return userInfo
+			if (attempt < USERINFO_MAX_POLLS - 1) {
+				await new Promise((resolve) => setTimeout(resolve, USERINFO_POLL_MS))
+			}
+		}
+		return null
+	}
 
 	const userInfo = await loadUserInfo()
-	if (!userInfo) return
+	if (!userInfo?.accountName?.trim()) return
 
 	const bo: beamio = userInfo
 	bo.initialLoading = true

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, searchUsername, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
@@ -71,6 +72,9 @@ const CASH_TREES_HERO_BG_FADE_MS = 480
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
+
+/** Mobile home CTAs: single-tap reliability (pairs with App.tsx touch-gesture guard). */
+const HOME_TOUCH_BUTTON_CLASS = RELIABLE_TAP_BUTTON_CLASS
 
 /** beamio 表示 name 的 protocol，与 ChatList displayName 一致。兼容 beamio 与 searchResult 两种类型 */
 const displayName = (item: beamio | searchResult | null | undefined) => {
@@ -883,6 +887,17 @@ const Home = (_props: HomeProps) => {
 		setShowFooter(false)
 	}
 
+	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
+	const openGiftSheetTap = useReliableTapHandler(() => {
+		setShowGiftSheet(true)
+		setShowFooter(false)
+	})
+	const openPayCodeSheetTap = useReliableTapHandler(() => {
+		setPayReceiveQrMode('pay')
+		setShowPayReceiveSheet(true)
+		setShowFooter(false)
+	})
+
 	const topUpReceiveDisplayTag = useMemo(() => {
 		const tag = (beamio?.accountName ?? '').trim()
 		if (tag) return `@${tag}`
@@ -1201,14 +1216,16 @@ const Home = (_props: HomeProps) => {
 							<div className="flex items-center gap-2 mt-1">
 								<button
 									type="button"
-									onClick={handleAddFunds}
-									className="
+									data-touch-priority="1"
+									{...openReceiveSheetTap}
+									className={`
 										flex-1 flex items-center justify-center gap-1.5
 										py-3 rounded-full
 										bg-white/15
 										text-[10px] font-medium text-white
-										hover:bg-white/20 transition
-									"
+										active:bg-white/20 transition
+										${HOME_TOUCH_BUTTON_CLASS}
+									`}
 								>
 									<PlusCircle className="h-4 w-4 text-white/90" />
 									<span>Add funds</span>
@@ -1773,13 +1790,15 @@ const Home = (_props: HomeProps) => {
 		}
 	}, [showCashTreesBalanceDetails, profiles?.[0]?.keyID])
 
-	const closePayReceiveSheet = () => {
+	const closePayReceiveSheet = useCallback(() => {
 		setShowPayReceiveSheet(false)
 		setPayReceiveQrMode('receive')
 		setPayRelayQRPayload(null)
 		setPayRelayQRLoading(false)
 		setShowFooter(true)
-	}
+	}, [setShowFooter])
+
+	const closePayReceiveSheetTap = useReliableTapHandler(closePayReceiveSheet)
 
 	const payRelayDeadlineUnix = useMemo(() => {
 		if (!payRelayQRPayload?.deadline) return NaN
@@ -2247,13 +2266,8 @@ const Home = (_props: HomeProps) => {
 												<button
 													type="button"
 													data-touch-priority="1"
-													onClick={() => {
-														setPayReceiveQrMode('pay')
-														setShowPayReceiveSheet(true)
-														setShowFooter(false)
-													}}
-													style={{ touchAction: 'manipulation' }}
-													className="relative z-10 flex w-full min-h-[48px] items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-[#1562f0] shadow-xl shadow-black/20 transition-all duration-300 hover:bg-slate-50 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1562f0]"
+													{...openPayCodeSheetTap}
+													className={`relative z-10 flex w-full min-h-[48px] items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-[#1562f0] shadow-xl shadow-black/20 transition-transform duration-300 active:scale-[0.98] active:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1562f0] ${HOME_TOUCH_BUTTON_CLASS}`}
 												>
 													<QrCode className="h-6 w-6 shrink-0" strokeWidth={2.2} aria-hidden />
 													<span className="text-base font-bold uppercase tracking-widest">Show Pay Code</span>
@@ -2267,8 +2281,9 @@ const Home = (_props: HomeProps) => {
 								<section className="shrink-0 flex gap-2 min-[480px]:gap-3 [@media(max-height:700px)]:gap-2">
 									<button
 										type="button"
-										onClick={handleAddFunds}
-										className="flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-all hover:bg-[#e7e8e9] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5"
+										data-touch-priority="1"
+										{...openReceiveSheetTap}
+										className={`flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
 									>
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
 										<Wallet size={22} strokeWidth={2} aria-hidden />
@@ -2279,7 +2294,9 @@ const Home = (_props: HomeProps) => {
 									</button>
 									<button
 										type="button"
-										className="flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-all hover:bg-[#e7e8e9] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5"
+										data-touch-priority="1"
+										{...openGiftSheetTap}
+										className={`flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
 									>
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
 										<Gift size={22} strokeWidth={2} aria-hidden />
@@ -2954,13 +2971,17 @@ const Home = (_props: HomeProps) => {
 								animate={{ opacity: 1 }}
 								exit={{ opacity: 0 }}
 								transition={{ duration: 0.2 }}
-								onClick={closePayReceiveSheet}
+								role="button"
+								tabIndex={-1}
+								aria-label="Close"
+								data-touch-priority="1"
+								{...closePayReceiveSheetTap}
 							/>
 							<motion.div
 								className={
 									payReceiveQrMode === 'pay'
 										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-20px_60px_rgba(0,0,0,0.1)] dark:bg-slate-900'
-										: 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[min(92dvh,900px)] flex-col items-center rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+3rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
+										: 'fixed bottom-0 left-0 right-0 z-[10021] flex flex-col items-center overflow-hidden overscroll-contain rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
 								}
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
@@ -2972,31 +2993,32 @@ const Home = (_props: HomeProps) => {
 									className={
 										payReceiveQrMode === 'pay'
 											? 'flex w-full shrink-0 items-center justify-between px-4 pb-2 pt-3'
-											: 'mx-auto mb-3 mt-3 shrink-0'
+											: 'flex w-full shrink-0 items-center justify-between px-4 pb-1 pt-2'
 									}
 								>
-									{payReceiveQrMode === 'pay' ? (
-										<>
-											<span className="w-10 shrink-0" aria-hidden />
-											<div className="h-1.5 w-12 shrink-0 rounded-full bg-[#e1e3e4] dark:bg-slate-600" />
-											<button
-												type="button"
-												onClick={closePayReceiveSheet}
-												className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#424655] transition-colors hover:bg-[#e7e8e9] dark:text-slate-400 dark:hover:bg-slate-800"
-												aria-label="Close"
-											>
-												<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
-											</button>
-										</>
-									) : (
-										<div className="mx-auto h-1.5 w-12 rounded-full bg-gray-300 dark:bg-slate-600" />
-									)}
+									<span className="w-10 shrink-0" aria-hidden />
+									<div
+										className={
+											payReceiveQrMode === 'pay'
+												? 'h-1.5 w-12 shrink-0 rounded-full bg-[#e1e3e4] dark:bg-slate-600'
+												: 'h-1.5 w-12 shrink-0 rounded-full bg-gray-200 dark:bg-slate-600'
+										}
+									/>
+									<button
+										type="button"
+										data-touch-priority="1"
+										{...closePayReceiveSheetTap}
+										className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors active:bg-gray-100 dark:text-slate-400 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`}
+										aria-label="Close"
+									>
+										<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
+									</button>
 								</div>
 								<div
 									className={
 										payReceiveQrMode === 'pay'
-											? 'mx-auto w-full max-w-lg shrink-0 overflow-hidden px-6 pb-4'
-											: 'min-h-0 w-full max-w-lg flex-1 overflow-y-auto overscroll-contain px-6 pb-4'
+											? 'mx-auto w-full max-w-lg shrink-0 overflow-hidden overscroll-none px-6 pb-4'
+											: 'mx-auto w-full max-w-lg shrink-0 overflow-hidden overscroll-none px-5 pb-3'
 									}
 								>
 									{payReceiveQrMode === 'pay' ? (
@@ -3093,7 +3115,7 @@ const Home = (_props: HomeProps) => {
 												)}
 											</div>
 
-											<div className="mx-auto w-full max-w-xs shrink-0 space-y-4 pb-1 min-[400px]:space-y-6 min-[400px]:pb-2">
+											<div className="mx-auto w-full max-w-xs shrink-0 pb-1 min-[400px]:pb-2">
 												{payRelayQRPayload && (
 													<div className="space-y-3">
 														<div className="flex items-end justify-between">
@@ -3121,82 +3143,65 @@ const Home = (_props: HomeProps) => {
 														</div>
 													</div>
 												)}
-												<button
-													type="button"
-													onClick={closePayReceiveSheet}
-													className="w-full py-2 text-sm font-bold text-[#424655] transition-colors hover:text-[#191c1d] dark:text-slate-400 dark:hover:text-slate-100"
-												>
-													Cancel Transaction
-												</button>
 											</div>
 										</div>
 									) : (
-										<div className="flex w-full flex-col items-center pt-2">
+										<div
+											className="flex w-full flex-col items-center overflow-hidden overscroll-none"
+											style={{ touchAction: 'manipulation' }}
+										>
 											{/* Receive：topupExample1.html — Add Funds at Store（可扫描 QR，不在码心叠加遮挡） */}
-											<div className="mb-8 w-full space-y-2 text-center">
-												<h3 className="text-[22px] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+											<div className="mb-3 w-full space-y-1 text-center">
+												<h3 className="text-lg font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
 													Add Funds at Store
 												</h3>
-												<p className="mx-auto max-w-md px-4 text-[15px] leading-relaxed text-[#424655] dark:text-slate-400">
+												<p className="mx-auto max-w-md px-2 text-sm leading-snug text-[#424655] dark:text-slate-400">
 													Show this code to the cashier to top up your balance.
 												</p>
 											</div>
-											<div className="relative flex w-full justify-center px-2">
+											<div className="relative flex w-full max-w-full justify-center overflow-hidden px-1">
 												<div
 													aria-hidden
-													className="pointer-events-none absolute -inset-8 rounded-xl opacity-90"
+													className="pointer-events-none absolute inset-0 rounded-xl opacity-90"
 													style={{
 														background:
 															'radial-gradient(circle, rgba(21, 98, 240, 0.1) 0%, rgba(21, 98, 240, 0) 70%)',
 													}}
 												/>
-												<div className="relative flex w-72 max-w-full flex-col items-center rounded-xl border-2 border-dashed border-[#c3c6d8] bg-[#f3f4f5] p-6 dark:border-slate-600 dark:bg-slate-800/90">
-													<div className="relative rounded-md bg-white p-3 shadow-sm dark:bg-slate-900">
+												<div className="relative flex w-64 max-w-full flex-col items-center rounded-xl border-2 border-dashed border-[#c3c6d8] bg-[#f3f4f5] p-4 dark:border-slate-600 dark:bg-slate-800/90">
+													<div className="relative rounded-md bg-white p-2 shadow-sm dark:bg-slate-900">
 														{topUpReceiveQrValue ? (
-															<div className="relative h-48 w-48">
+															<div className="relative h-40 w-40">
 																<QRCodeCanvas
 																	value={topUpReceiveQrValue}
-																	size={192}
+																	size={160}
 																	level="H"
 																	includeMargin={false}
 																	bgColor="#ffffff"
 																	fgColor="#000000"
 																	className="block rounded-sm"
 																/>
-																<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[18px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
+																<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[16px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
 																	<img
 																		src={APP_LOGO_SRC}
 																		alt="Beamio"
-																		className="h-full w-full rounded-[14px] object-contain"
+																		className="h-full w-full rounded-[12px] object-contain"
 																		draggable={false}
 																	/>
 																</div>
 															</div>
 														) : (
-															<div className="flex h-48 w-48 items-center justify-center text-center text-sm text-[#424655] dark:text-slate-400">
+															<div className="flex h-40 w-40 items-center justify-center text-center text-sm text-[#424655] dark:text-slate-400">
 																Loading code…
 															</div>
 														)}
 													</div>
-													<div className="mt-6 flex items-center gap-2 rounded-full border border-[#c3c6d8]/40 bg-white px-4 py-1.5 shadow-sm dark:border-slate-600 dark:bg-slate-900">
+													<div className="mt-3 flex items-center gap-2 rounded-full border border-[#c3c6d8]/40 bg-white px-3 py-1 shadow-sm dark:border-slate-600 dark:bg-slate-900">
 														<span className="text-sm font-semibold tracking-wide text-[#004bc3] dark:text-[#6ba3ff]">
 															{topUpReceiveDisplayTag}
 														</span>
 													</div>
-													<div className="mt-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#004bc3]/70 dark:text-[#6ba3ff]/80 motion-safe:animate-pulse">
-														<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#004bc3] dark:bg-[#6ba3ff]" />
-														Waiting for scan
-													</div>
 												</div>
-											</div>
-											<div className="mt-10 w-full max-w-md text-center">
-												<button
-													type="button"
-													onClick={closePayReceiveSheet}
-													className="w-full rounded-full bg-[#e7e8e9] py-4 font-bold text-[#191c1d] transition-colors hover:bg-[#e1e3e4] active:scale-[0.99] dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
-												>
-													Done
-												</button>
 											</div>
 										</div>
 									)}

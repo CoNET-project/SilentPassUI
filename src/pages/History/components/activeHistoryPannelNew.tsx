@@ -308,6 +308,35 @@ function parsePeerToDisplay(peer: searchResult) {
 	return { fullName: name, beamioTag: tag ? `@${tag}` : null }
 }
 
+/** 占位 title（地址缩略 / 空 / 通用名）— 异步数据就绪后只升级一次，避免 Recent Activity 列表抖动 */
+function isProvisionalRecentActivityTitle(text: string): boolean {
+	const t = String(text ?? '').trim()
+	if (!t) return true
+	if (t === 'Unknown') return true
+	if (t === 'Merchant Payment' || t === 'Top-up') return true
+	if (/^Top-up:\s*$/i.test(t)) return true
+	if (/0x[a-f0-9]{4}…[a-f0-9]{4}/i.test(t)) return true
+	return false
+}
+
+function useStableRecentActivityTitle(txId: string, candidate: string): string {
+	const ref = useRef<{ txId: string; title: string }>({ txId: '', title: '' })
+	if (ref.current.txId !== txId) {
+		ref.current = { txId, title: candidate }
+		return candidate
+	}
+	const prev = ref.current.title
+	if (!isProvisionalRecentActivityTitle(prev)) {
+		return prev
+	}
+	const next = candidate
+	if (!isProvisionalRecentActivityTitle(next) || next.length > prev.length) {
+		ref.current.title = next
+		return next
+	}
+	return prev || next
+}
+
 /** 通过地址获取对方 firstname+lastname 与 @beamioTag，用于 EOA Sent 展示；优先使用 beamioUsers 缓存 */
 function useCounterpartyProfile(address: string | undefined) {
 	const { beamioUsers, setbBeamioUsers } = useDaemonContext()
@@ -332,8 +361,7 @@ function useCounterpartyProfile(address: string | undefined) {
 		if (!address || !ethers.isAddress(address)) return
 		const addr = address.toLowerCase()
 
-		// 已有针对当前地址的数据则不再执行 find
-		if ((fullName || beamioTag) && dataForAddrRef.current === addr) return
+		if (dataForAddrRef.current === addr) return
 
 		// 优先从 beamioUsers 缓存读取（与 Chat 一致）
 		const cached = beamioUsers?.find((n) => (n?.address || '').toLowerCase() === addr)
@@ -345,9 +373,8 @@ function useCounterpartyProfile(address: string | undefined) {
 			return
 		}
 
-		
 		const find = async () => {
-			if (findingRef.current || (dataForAddrRef.current === addr && (fullName || beamioTag))) return
+			if (findingRef.current || dataForAddrRef.current === addr) return
 			findingRef.current = true
 			try {
 				const res = await searchUsername(addr)
@@ -369,9 +396,8 @@ function useCounterpartyProfile(address: string | undefined) {
 				findingRef.current = false
 			}
 		}
-		find()
-		
-	}, [address, beamioUsers, setbBeamioUsers, fullName, beamioTag])
+		void find()
+	}, [address, beamioUsers, setbBeamioUsers])
 
 	return { fullName, beamioTag }
 }
@@ -1377,10 +1403,10 @@ const ActiveHistoryPannelNew = ({
 		const paidToAA = payeeIsOther && !!beamioTag
 		// 无 originalPaymentHash 且为付款方时：Title = "Send to [beamio first lastname]"，subtitle = beamioTag
 		const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
-		const titleText = isMerchantChargeLedgerTx
-			? merchantCardName || ''
+		const rawTitleText = isMerchantChargeLedgerTx
+			? merchantCardName || tx.title || 'Merchant Payment'
 			: isCardTopupLedgerTx
-			? topupListTitle || ''
+			? topupListTitle || tx.title || 'Top-up'
 			: tx.type === 'fuel_yield'
 			? 'Fuel Yield (1:100)'
 			: isReqExpired
@@ -1394,7 +1420,7 @@ const ActiveHistoryPannelNew = ({
 						: sendToNoOph
 							? `Send to ${fullName || beamioTag || counterpartyLabel}`
 							: paidToAA
-								? `Paid to ${beamioTag}`
+								? `Paid to ${beamioTag || counterpartyLabel}`
 								: isEoaSent || isAASent
 								? `Sent to ${counterpartyLabel}`
 								: isEoaReceived
@@ -1402,6 +1428,7 @@ const ActiveHistoryPannelNew = ({
 									: isInternalTransfer
 										? internalTitle
 										: tx.title
+		const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
 		const subtitleText = isMerchantChargeLedgerTx
 			? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 			: isCardTopupLedgerTx
@@ -1503,7 +1530,7 @@ const ActiveHistoryPannelNew = ({
 					)}
 					<div className="flex flex-col gap-0.5 min-w-0">
 						<h3
-							className={`text-[12px] font-semibold tracking-tight truncate ${
+							className={`min-h-[15px] text-[12px] font-semibold leading-[15px] tracking-tight truncate ${
 								isReqExpired || isReqCanceled ? 'text-gray-400 dark:text-slate-500' : 'text-black dark:text-white'
 							}`}
 						>

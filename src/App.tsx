@@ -386,6 +386,10 @@ function AppShell() {
 		let touchStartX = 0
 		let touchStartY = 0
 		let edgeSwipeBlock = false
+		/** touch identifier(s) that began on an interactive control — skip scroll suppression for whole gesture */
+		const interactiveTouchIds = new Set<number>()
+		const TOUCH_INTERACTIVE_SELECTOR =
+			"button, a[href], input, textarea, select, [role='button'], label, summary, [data-touch-priority='1']"
 		const EDGE_GUARD_PX = 28
 		const captureOpts: AddEventListenerOptions = { capture: true }
 		const capturePassiveStart: AddEventListenerOptions = { capture: true, passive: true }
@@ -418,9 +422,7 @@ function AppShell() {
 
 		const stopEvent = (e: TouchEvent) => {
 			e.preventDefault()
-			e.stopPropagation()
-			const ie = e as TouchEvent & { stopImmediatePropagation?: () => void }
-			ie.stopImmediatePropagation?.()
+			// Do not stopImmediatePropagation — it can prevent synthesized click on buttons.
 		}
 
 		const canScroll = (el: HTMLElement) => {
@@ -430,16 +432,37 @@ function AppShell() {
 			return el.scrollHeight > el.clientHeight
 		}
 
+		const isTouchInteractiveTarget = (target: Element | null) =>
+			Boolean(target?.closest(TOUCH_INTERACTIVE_SELECTOR))
+
 		const handleTouchStart = (e: TouchEvent) => {
 			const t = e.touches[0]
 			if (!t) return
 			touchStartX = t.clientX
 			touchStartY = t.clientY
 			const targetEl = touchTargetToElement(e.target)
+			if (isTouchInteractiveTarget(targetEl)) {
+				for (let i = 0; i < e.touches.length; i++) {
+					interactiveTouchIds.add(e.touches[i].identifier)
+				}
+			}
 			const vw = window.innerWidth || document.documentElement.clientWidth || 0
 			const startedAtEdge = touchStartX <= EDGE_GUARD_PX || touchStartX >= vw - EDGE_GUARD_PX
 			// 保留可横向滚动容器（例如 Market 横向菜单）的手势，不拦截其内部 touch
 			edgeSwipeBlock = startedAtEdge && !hasHorizontalScrollableAncestor(targetEl)
+		}
+
+		const touchMoveIsOnInteractiveGesture = (e: TouchEvent) => {
+			for (let i = 0; i < e.touches.length; i++) {
+				if (interactiveTouchIds.has(e.touches[i].identifier)) return true
+			}
+			return false
+		}
+
+		const clearInteractiveTouchIds = (e: TouchEvent) => {
+			for (let i = 0; i < e.changedTouches.length; i++) {
+				interactiveTouchIds.delete(e.changedTouches[i].identifier)
+			}
 		}
 
 		const handleTouchMove = (e: TouchEvent) => {
@@ -447,6 +470,8 @@ function AppShell() {
 
 			const touch = e.touches[0]
 			if (!touch) return
+
+			if (touchMoveIsOnInteractiveGesture(e)) return
 
 			// 禁用 iOS/PWA 边缘左右滑动返回/前进手势
 			if (edgeSwipeBlock) {
@@ -464,11 +489,7 @@ function AppShell() {
 			if (!elHit) return
 
 			/** 可点击控件（含点在按钮内文字/SVG 子节点时）：勿对 touchmove preventDefault，否则会吞掉 tap */
-			if (
-				elHit.closest(
-					"button, a[href], input, textarea, select, [role='button'], label, summary, [data-touch-priority='1']"
-				)
-			) {
+			if (isTouchInteractiveTarget(elHit)) {
 				return
 			}
 
@@ -505,6 +526,7 @@ function AppShell() {
 
 		const handleTouchEnd = (e: TouchEvent) => {
 			edgeSwipeBlock = false
+			clearInteractiveTouchIds(e)
 			const elHit = touchTargetToElement(e.target)
 			if (!elHit) return
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react"
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import {
   ChevronRight,
   Server,
@@ -43,11 +43,12 @@ import {
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
+import { Toast } from "antd-mobile"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
-import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, type CardActiveIssuedCouponSeriesItem } from "@/services/BeamioCard"
+import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
 import { fiatPrefix, formatAmount } from "@/services/currency"
@@ -94,18 +95,18 @@ const DISCOVER_FEATURE_FALLBACK_IMAGES = [
 
 /** Bundled hero overrides when on-chain metadata has no `merchantImage`. Key: card address lowercased. */
 const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
-	"0x7334a7c7fe867538018fcc4cea8b266e47600911": longdhangStoreCardBg,
+	"0x30d80cd71fd1ffd346737b387da11c7412363eff": longdhangStoreCardBg,
 }
 
 /** All-filter list: pinned to top first (in array order). */
 const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
-	"0x7334a7c7fe867538018fcc4cea8b266e47600911",
+	"0x30d80cd71fd1ffd346737b387da11c7412363eff",
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4",
 ] as const
 
 /** Fallback recharge bonus when metadata has not synced yet (address lowercased). */
 const DISCOVER_RECHARGE_BONUS_FALLBACKS: Record<string, DiscoverRechargeBonusRule> = {
-	"0x7334a7c7fe867538018fcc4cea8b266e47600911": {
+	"0x30d80cd71fd1ffd346737b387da11c7412363eff": {
 		paymentAmount: 100,
 		bonusValue: 10,
 		bonusProportional: true,
@@ -144,7 +145,7 @@ function discoverFeaturedRechargeBonusSidePill(item: Pick<DiscoverFeaturedCard, 
 
 /** Featured Brands subtitle override by card address (lowercased). */
 const DISCOVER_CARD_SUBTITLE_OVERRIDES: Record<string, string> = {
-	"0x7334a7c7fe867538018fcc4cea8b266e47600911": "Shanghai Cuisine",
+	"0x30d80cd71fd1ffd346737b387da11c7412363eff": "Shanghai Cuisine",
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4": "Health and Beauty",
 }
 
@@ -186,7 +187,7 @@ function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolea
 
 /** Per-card About / hours / contact / location for Discover detail (when metadata lacks these fields). */
 const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> = {
-	"0x7334a7c7fe867538018fcc4cea8b266e47600911": {
+	"0x30d80cd71fd1ffd346737b387da11c7412363eff": {
 		welcomeTitle: "Welcome to LongDhang Inner Circle",
 		welcomeText:
 			"Unlock seamless dining and exclusive digital privileges. Top up your LongDhang Pass to enjoy instant bonus rewards.",
@@ -220,7 +221,7 @@ type DiscoverMerchantPromoRewardTier = {
 
 /** Curated VIP reward tier promo cards (Discover detail). Key: card address lowercased. */
 const DISCOVER_MERCHANT_PROMO_REWARD_TIERS: Record<string, DiscoverMerchantPromoRewardTier> = {
-	"0x7334a7c7fe867538018fcc4cea8b266e47600911": {
+	"0x30d80cd71fd1ffd346737b387da11c7412363eff": {
 		badge: "VIP Privilege",
 		title: "10% Bonus on Every Top-Up!",
 		description:
@@ -494,8 +495,11 @@ function parseDiscoverRewardTiersFromMeta(
 
 type DiscoverMerchantCouponOffer = {
 	coupon: ActiveCouponListItem
+	seriesRow: DiscoverCouponSeriesRow
 	supplySummary: string | null
 }
+
+type DiscoverCouponClaimButtonStatus = 'idle' | 'loading' | 'success' | 'error'
 
 type DiscoverCouponSeriesRow = CardActiveIssuedCouponSeriesItem & {
 	issuedNftMaxSupply?: string
@@ -518,10 +522,44 @@ function normalizeDiscoverCouponSubtitle(subtitle: string): string {
 }
 
 /** POS / iOS `POSBizCouponPreviewTicket` parity — ticket notches + expiry pill. */
-function DiscoverMerchantCouponOfferRow({ row }: { row: DiscoverMerchantCouponOffer }) {
+function DiscoverMerchantCouponOfferRow({
+	row,
+	claimEligibility,
+	claimStatus = 'idle',
+	claimError,
+	onClaim,
+}: {
+	row: DiscoverMerchantCouponOffer
+	claimEligibility: CouponOpenClaimEligibility | undefined
+	claimStatus?: DiscoverCouponClaimButtonStatus
+	claimError?: string
+	onClaim?: () => void
+}) {
+	const showClaimButton = claimEligibility != null && claimEligibility !== 'not_open_claim'
+	const isAlreadyClaimed = claimEligibility === 'already_claimed'
+	const canClaim =
+		claimEligibility === 'claimable' || claimEligibility === 'unknown'
+	const actionLabel = isAlreadyClaimed ? 'Already claimed' : 'Claim'
+	const claimDisabled = isAlreadyClaimed || !canClaim || claimStatus !== 'idle'
+
 	return (
 		<div className="space-y-1.5">
-			<ActiveCouponTicketItem row={row.coupon} punchBgClassName="bg-white dark:bg-slate-900" />
+			<ActiveCouponTicketItem
+				row={row.coupon}
+				punchBgClassName="bg-white dark:bg-slate-900"
+				metadataBelowBackgroundImage
+				showActionButton={showClaimButton}
+				actionLabel={actionLabel}
+				actionStatus={claimStatus}
+				actionError={claimError}
+				disabled={claimDisabled}
+				onAction={canClaim && !isAlreadyClaimed ? onClaim : undefined}
+				aria-label={
+					isAlreadyClaimed
+						? `Coupon ${row.coupon.title} already claimed`
+						: `Claim coupon ${row.coupon.title}`
+				}
+			/>
 			{row.supplySummary ? (
 				<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
 					{row.supplySummary}
@@ -1712,6 +1750,14 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
 	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
+	const [couponClaimEligibilityById, setCouponClaimEligibilityById] = useState<
+		Record<string, CouponOpenClaimEligibility>
+	>({})
+	const [couponClaimStatusById, setCouponClaimStatusById] = useState<
+		Record<string, DiscoverCouponClaimButtonStatus>
+	>({})
+	const [couponClaimErrorById, setCouponClaimErrorById] = useState<Record<string, string>>({})
+	const couponClaimStatusTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 	const ccy = (item.currency || "CAD").toUpperCase()
 	const merchantInfoPanel =
 		item.cardAddress != null
@@ -1751,6 +1797,99 @@ function DiscoverMerchantDetailFullScreen({
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
 	const heroRechargeBonusPill = discoverFeaturedRechargeBonusSidePill(item)
 
+	const resolveUserEoa = useCallback((): string | null => {
+		const privateKeyArmor = profile?.privateKeyArmor?.trim() ?? ''
+		if (!privateKeyArmor) return null
+		try {
+			return ethers.getAddress(new ethers.Wallet(privateKeyArmor).address)
+		} catch {
+			return null
+		}
+	}, [profile?.privateKeyArmor])
+
+	const scheduleCouponClaimStatusReset = useCallback((rowId: string) => {
+		const prev = couponClaimStatusTimersRef.current.get(rowId)
+		if (prev) clearTimeout(prev)
+		const timer = setTimeout(() => {
+			setCouponClaimStatusById((s) => {
+				if (!s[rowId]) return s
+				const next = { ...s }
+				delete next[rowId]
+				return next
+			})
+			setCouponClaimErrorById((s) => {
+				if (!s[rowId]) return s
+				const next = { ...s }
+				delete next[rowId]
+				return next
+			})
+			couponClaimStatusTimersRef.current.delete(rowId)
+		}, 3000)
+		couponClaimStatusTimersRef.current.set(rowId, timer)
+	}, [])
+
+	const handleDiscoverCouponClaim = useCallback(
+		async (offer: DiscoverMerchantCouponOffer) => {
+			const row = offer.coupon
+			const currentStatus = couponClaimStatusById[row.id] ?? 'idle'
+			if (currentStatus !== 'idle') return
+			const privateKeyArmor = profile?.privateKeyArmor?.trim() ?? ''
+			if (!privateKeyArmor) {
+				Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+				return
+			}
+			const cardAddress = row.cardAddress?.trim() ?? ''
+			const couponId = row.couponId?.trim() ?? ''
+			const tokenId = row.tokenId?.trim() ?? ''
+			if (!cardAddress || !couponId || !tokenId || !ethers.isAddress(cardAddress)) {
+				Toast.show({ content: 'Coupon claim parameters are invalid', position: 'top' })
+				return
+			}
+			setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'loading' }))
+			setCouponClaimErrorById((s) => {
+				if (!s[row.id]) return s
+				const next = { ...s }
+				delete next[row.id]
+				return next
+			})
+			try {
+				const ret = await postCardCouponOpenClaimWithCurrentWallet({
+					cardAddress: ethers.getAddress(cardAddress),
+					couponId,
+					tokenId,
+					privateKeyArmor,
+				})
+				if (ret.success) {
+					setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
+					setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
+					scheduleCouponClaimStatusReset(row.id)
+					Toast.show({
+						content: `Coupon claimed${ret.tokenId ? ` (token ${ret.tokenId})` : ''}!`,
+						position: 'top',
+					})
+				} else {
+					const err = ret.error ?? 'Coupon claim failed'
+					if (/already claimed/i.test(err)) {
+						setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
+						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
+					} else {
+						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
+						setCouponClaimErrorById((s) => ({ ...s, [row.id]: err }))
+						scheduleCouponClaimStatusReset(row.id)
+					}
+					Toast.show({ content: err, position: 'top' })
+				}
+			} catch (e: unknown) {
+				const err = e instanceof Error ? e.message : 'Coupon claim failed'
+				setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
+				setCouponClaimErrorById((s) => ({ ...s, [row.id]: err }))
+				scheduleCouponClaimStatusReset(row.id)
+				Toast.show({ content: err, position: 'top' })
+			}
+		},
+		[couponClaimStatusById, profile?.privateKeyArmor, scheduleCouponClaimStatusReset],
+	)
+
 	useEffect(() => {
 		if (!profile?.keyID || !item.cardAddress) {
 			setMerchantAssets(null)
@@ -1774,6 +1913,36 @@ function DiscoverMerchantDetailFullScreen({
 			cancelled = true
 		}
 	}, [profile?.keyID, item.cardAddress])
+
+	useEffect(() => {
+		if (!merchantCoupons?.length) {
+			setCouponClaimEligibilityById({})
+			return
+		}
+		let cancelled = false
+		const userEOA = resolveUserEoa()
+		void (async () => {
+			const entries = await Promise.all(
+				merchantCoupons.map(async (offer) => {
+					const eligibility = await resolveCouponOpenClaimEligibility(offer.seriesRow, userEOA)
+					return [offer.coupon.id, eligibility] as const
+				}),
+			)
+			if (cancelled) return
+			setCouponClaimEligibilityById(Object.fromEntries(entries))
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [merchantCoupons, resolveUserEoa])
+
+	useEffect(
+		() => () => {
+			for (const t of couponClaimStatusTimersRef.current.values()) clearTimeout(t)
+			couponClaimStatusTimersRef.current.clear()
+		},
+		[],
+	)
 
 	useEffect(() => {
 		if (!item.cardAddress) {
@@ -1803,6 +1972,7 @@ function DiscoverMerchantDetailFullScreen({
 									...coupon,
 									subtitle: normalizeDiscoverCouponSubtitle(coupon.subtitle),
 								},
+								seriesRow,
 								supplySummary: formatDiscoverCouponSupplySummary(seriesRow),
 							} satisfies DiscoverMerchantCouponOffer
 						})
@@ -1950,7 +2120,14 @@ function DiscoverMerchantDetailFullScreen({
 							) : merchantCoupons != null && merchantCoupons.length > 0 ? (
 								<div className="space-y-3">
 									{merchantCoupons.map((row) => (
-										<DiscoverMerchantCouponOfferRow key={row.coupon.id} row={row} />
+										<DiscoverMerchantCouponOfferRow
+											key={row.coupon.id}
+											row={row}
+											claimEligibility={couponClaimEligibilityById[row.coupon.id]}
+											claimStatus={couponClaimStatusById[row.coupon.id] ?? 'idle'}
+											claimError={couponClaimErrorById[row.coupon.id]}
+											onClaim={() => void handleDiscoverCouponClaim(row)}
+										/>
 									))}
 								</div>
 							) : (

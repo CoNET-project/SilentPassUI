@@ -508,6 +508,49 @@ function openClaimCardReadContract(cardAddress: string): ethers.Contract {
  * Does not require AA — Master `ensureAAForEOAOnCard` creates AA during claim if missing.
  * `false` = hide row; `true` = show; `null` = RPC uncertain — keep row (do not treat failure as non-claimable).
  */
+export type CouponOpenClaimEligibility = 'claimable' | 'already_claimed' | 'not_open_claim' | 'unknown'
+
+/**
+ * Discover / coupon list UI: whether the current wallet may use open-claim for this series row.
+ * `not_open_claim` = redeem-code or paid coupon (no Claim button).
+ */
+export async function resolveCouponOpenClaimEligibility(
+	row: CardActiveIssuedCouponSeriesItem,
+	userEOA: string | null | undefined,
+): Promise<CouponOpenClaimEligibility> {
+	if (readCouponRequiresRedeemCode(row.metadata ?? null)) return 'not_open_claim'
+	if (!readCouponIdFromMetadata(row.metadata ?? null)) return 'not_open_claim'
+	let tokenIdN: bigint
+	try {
+		tokenIdN = BigInt(row.tokenId)
+	} catch {
+		return 'not_open_claim'
+	}
+	if (tokenIdN < ISSUED_NFT_START_ID_MEMBER) return 'not_open_claim'
+	if (!row.cardAddress || !ethers.isAddress(row.cardAddress)) return 'not_open_claim'
+	const validBeforeNum = Number(row.issuedNftValidBefore ?? 0)
+	if (Number.isFinite(validBeforeNum) && validBeforeNum > 0 && validBeforeNum <= Math.floor(Date.now() / 1000)) {
+		return 'already_claimed'
+	}
+	if (!userEOA || !ethers.isAddress(userEOA)) return 'unknown'
+	try {
+		const cardRead = openClaimCardReadContract(row.cardAddress)
+		const userNorm = ethers.getAddress(userEOA)
+		const [priceInCurrency6, alreadyClaimed, maxSupply, mintedCount] = await Promise.all([
+			cardRead.issuedNftPriceInCurrency6(tokenIdN) as Promise<bigint>,
+			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
+			cardRead.issuedNftMaxSupply(tokenIdN) as Promise<bigint>,
+			cardRead.issuedNftMintedCount(tokenIdN) as Promise<bigint>,
+		])
+		if (alreadyClaimed) return 'already_claimed'
+		if (priceInCurrency6 !== 0n) return 'not_open_claim'
+		if (maxSupply > 0n && mintedCount >= maxSupply) return 'already_claimed'
+		return 'claimable'
+	} catch {
+		return 'unknown'
+	}
+}
+
 async function passesOpenClaimListFiltersForUser(
 	row: CardActiveIssuedCouponSeriesItem,
 	userEOA: string

@@ -201,6 +201,13 @@ export const formatCouponExpiryPill = (validBeforeSec: number | null): string =>
 	return `EXPIRES IN ${Math.max(1, Math.ceil(delta / 60))}M`
 }
 
+/** Hide non-actionable open-ended status pills on coupon ticket UI. */
+export const shouldShowCouponExpiryPill = (expiresLabel: string): boolean => {
+	const normalized = expiresLabel.trim().toUpperCase()
+	if (!normalized) return false
+	return normalized !== 'VALID NOW' && normalized !== 'NO EXPIRY'
+}
+
 /** Same urgency rule as biz `cardIssuanceCouponEditorLivePreview` (hours / expired → red Clock + solid bg). */
 export const couponExpiryUsesUrgentVariant = (expiresLabel: string): boolean =>
 	expiresLabel === 'EXPIRED' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel)
@@ -313,6 +320,29 @@ export function buildFallbackActiveCouponListItemForRedeem(
 	}
 }
 
+function CouponBannerImage({ src }: { src: string }) {
+	return (
+		<div className="absolute inset-0 overflow-hidden">
+			<div
+				className="absolute inset-y-0 left-0 w-1/2 scale-110 bg-cover bg-left bg-no-repeat blur-xl"
+				style={{ backgroundImage: `url("${src}")` }}
+				aria-hidden
+			/>
+			<div
+				className="absolute inset-y-0 right-0 w-1/2 scale-110 bg-cover bg-right bg-no-repeat blur-xl"
+				style={{ backgroundImage: `url("${src}")` }}
+				aria-hidden
+			/>
+			<img
+				src={src}
+				alt=""
+				className="absolute left-1/2 top-0 z-[1] h-full w-auto max-w-none -translate-x-1/2 object-contain"
+				draggable={false}
+			/>
+		</div>
+	)
+}
+
 export function ActiveCouponTicketItem({
 	row,
 	actionStatus = 'idle',
@@ -323,6 +353,9 @@ export function ActiveCouponTicketItem({
 	ariaLabel,
 	punchBgClassName = 'bg-[#f9f9fe]',
 	showCardAddress = false,
+	showActionButton = true,
+	/** biz Coupon preview parity: banner ticket shows icon only; title/subtitle/expiry below. */
+	metadataBelowBackgroundImage = false,
 }: {
 	row: ActiveCouponListItem
 	actionStatus?: ClaimButtonStatus
@@ -333,18 +366,77 @@ export function ActiveCouponTicketItem({
 	ariaLabel?: string
 	punchBgClassName?: string
 	showCardAddress?: boolean
+	showActionButton?: boolean
+	metadataBelowBackgroundImage?: boolean
 }) {
 	const expires = formatCouponExpiryPill(row.validBeforeSec)
+	const showExpiryPill = shouldShowCouponExpiryPill(expires)
 	const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
 	const isLoading = actionStatus === 'loading'
 	const actionDisabled = disabled || actionStatus !== 'idle' || !onAction
-	const expiryBgStyle = expiryUrgent
+	const innerExpiryBgStyle = expiryUrgent
 		? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
 		: 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md'
+	const externalExpiryBgStyle = expiryUrgent
+		? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+		: 'border border-[#abadaf]/35 bg-[#eef1f3] text-[#595c5e] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
 	const ExpiryIcon = expiryUrgent ? Clock : Calendar
 	const interactive = Boolean(onAction)
+	const hasBanner = Boolean(row.backgroundImage?.trim())
+	const copyBelowBanner = metadataBelowBackgroundImage && hasBanner
+	const title = row.title.trim()
+	const subtitle = row.subtitle.trim()
+	const iconUrl = row.iconUrl.trim()
 
-	return (
+	const renderExpiryPill = (placement: 'inner' | 'external') => {
+		const style = placement === 'external' ? externalExpiryBgStyle : innerExpiryBgStyle
+		return (
+			<div
+				className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${style}`}
+			>
+				{isLoading ? (
+					<Loader2 className="h-3 w-3 shrink-0 animate-spin" strokeWidth={2.5} aria-hidden />
+				) : (
+					<ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+				)}
+				<span className="truncate">{isLoading ? 'CLAIMING…' : expires}</span>
+			</div>
+		)
+	}
+
+	const claimButton = showActionButton ? (
+		<div className="pointer-events-auto absolute right-6 top-1/2 z-[2] -translate-y-1/2 sm:right-8">
+			<button
+				type="button"
+				disabled={actionDisabled}
+				onClick={(e) => {
+					e.stopPropagation()
+					onAction?.()
+				}}
+				className="font-manrope flex h-8 min-w-[4.25rem] max-w-[5.75rem] shrink-0 items-center justify-center gap-1 rounded-full bg-white px-2.5 text-[11px] font-semibold leading-tight text-[#1562f0] shadow-sm transition-all duration-200 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:max-w-none sm:px-3 sm:text-[13px]"
+				title={actionStatus === 'error' ? actionError : undefined}
+				aria-label={
+					actionStatus === 'success'
+						? 'Coupon claimed'
+						: actionStatus === 'error'
+							? actionError ?? 'Coupon action failed'
+							: actionLabel
+				}
+			>
+				{actionStatus === 'loading' ? (
+					<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+				) : actionStatus === 'success' ? (
+					<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+				) : actionStatus === 'error' ? (
+					<AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.4} aria-hidden />
+				) : (
+					actionLabel
+				)}
+			</button>
+		</div>
+	) : null
+
+	const ticketShell = (
 		<div
 			role={interactive ? 'button' : undefined}
 			tabIndex={interactive ? 0 : undefined}
@@ -372,24 +464,14 @@ export function ActiveCouponTicketItem({
 				aria-hidden
 			/>
 			<div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
-				{row.backgroundImage ? (
-					<>
-						<img
-							src={row.backgroundImage}
-							alt=""
-							className="absolute inset-0 h-full w-full object-cover"
-							draggable={false}
-						/>
-						<div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
-					</>
+				{hasBanner ? (
+					<CouponBannerImage src={row.backgroundImage} />
 				) : (
-					<div
-						className="absolute inset-0"
-						style={{ backgroundColor: row.backgroundColorHex || '#2B2E3A' }}
-					/>
-				)}
-				{!row.backgroundImage ? (
 					<>
+						<div
+							className="absolute inset-0"
+							style={{ backgroundColor: row.backgroundColorHex || '#2B2E3A' }}
+						/>
 						<div
 							className="pointer-events-none absolute inset-0 opacity-[0.12]"
 							style={{
@@ -403,71 +485,64 @@ export function ActiveCouponTicketItem({
 							aria-hidden
 						/>
 					</>
-				) : null}
+				)}
 
-				<div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-[6.25rem] sm:gap-4 sm:px-8 sm:py-5 sm:pr-[6.75rem]">
-					<div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
-						{row.iconUrl ? (
-							<img src={row.iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
-						) : (
-							<div className="font-manrope flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg">
-								{row.title.charAt(0).toUpperCase()}
-							</div>
-						)}
-					</div>
-
-					<div className="font-manrope min-w-0 flex-1 text-white">
-						<p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
-							{row.title}
-						</p>
-						<p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
-							{row.subtitle}
-						</p>
-						{showCardAddress && row.cardAddress ? (
-							<CouponCardAddressCapsule address={row.cardAddress} />
-						) : null}
-						<div
-							className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${expiryBgStyle}`}
-						>
-							{isLoading ? (
-								<Loader2 className="h-3 w-3 shrink-0 animate-spin" strokeWidth={2.5} aria-hidden />
-							) : (
-								<ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
-							)}
-							<span className="truncate">{isLoading ? 'CLAIMING…' : expires}</span>
+				<div
+					className={[
+						'relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 sm:gap-4 sm:px-8 sm:py-5',
+						showActionButton ? 'pr-[6.25rem] sm:pr-[6.75rem]' : 'pr-7 sm:pr-8',
+					].join(' ')}
+				>
+					{iconUrl ? (
+						<div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
+							<img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
 						</div>
-					</div>
+					) : null}
 
-					<div className="pointer-events-auto absolute right-6 top-1/2 z-[2] -translate-y-1/2 sm:right-8">
-						<button
-							type="button"
-							disabled={actionDisabled}
-							onClick={(e) => {
-								e.stopPropagation()
-								onAction?.()
-							}}
-							className="font-manrope flex h-8 min-w-[4.25rem] shrink-0 items-center justify-center gap-1 rounded-full bg-white px-3 text-[12px] font-semibold text-[#1562f0] shadow-sm transition-all duration-200 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:text-[13px]"
-							title={actionStatus === 'error' ? actionError : undefined}
-							aria-label={
-								actionStatus === 'success'
-									? 'Coupon claimed'
-									: actionStatus === 'error'
-										? actionError ?? 'Coupon action failed'
-										: actionLabel
-							}
-						>
-							{actionStatus === 'loading' ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-							) : actionStatus === 'success' ? (
-								<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
-							) : actionStatus === 'error' ? (
-								<AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.4} aria-hidden />
-							) : (
-								actionLabel
-							)}
-						</button>
-					</div>
+					{!copyBelowBanner ? (
+						<div className="font-manrope min-w-0 flex-1 text-white">
+							<p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
+								{row.title}
+							</p>
+							<p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
+								{row.subtitle}
+							</p>
+							{showCardAddress && row.cardAddress ? (
+								<CouponCardAddressCapsule address={row.cardAddress} />
+							) : null}
+							{showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
+						</div>
+					) : null}
+
+					{claimButton}
 				</div>
+			</div>
+		</div>
+	)
+
+	if (!copyBelowBanner) {
+		return ticketShell
+	}
+
+	return (
+		<div className="relative w-full">
+			{ticketShell}
+			<div className="mt-3 w-full">
+				{title ? (
+					<p className="truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight text-[#2c2f31] dark:text-slate-100 sm:text-lg">
+						{title}
+					</p>
+				) : null}
+				{subtitle ? (
+					<p
+						className={`truncate font-manrope text-sm font-semibold text-[#595c5e] dark:text-slate-400 ${
+							title ? 'mt-0.5' : ''
+						}`}
+					>
+						{subtitle}
+					</p>
+				) : null}
+				{showExpiryPill ? <div className={title || subtitle ? 'mt-2' : ''}>{renderExpiryPill('external')}</div> : null}
 			</div>
 		</div>
 	)

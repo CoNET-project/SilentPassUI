@@ -1,5 +1,7 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { useReliableTapHandler } from '../../../utils/reliableTap';
 
 export type CardConfiguratorMobileChromeProps = {
   step: number;
@@ -20,10 +22,20 @@ export type CardConfiguratorMobileChromeProps = {
   showTopBack?: boolean;
 };
 
+/** Touch-safe CTA: avoids sticky :hover on mobile and removes 300ms tap delay. */
+export const CARD_SETUP_MOBILE_CTA_TOUCH_CLASS =
+  'touch-manipulation select-none [-webkit-tap-highlight-color:transparent]';
+
+const CARD_SETUP_FIXED_CHROME_Z_CLASS = 'z-[100]';
+
+function CardConfiguratorMobileBodyPortal({ children }: { children: React.ReactNode }) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(children, document.body);
+}
+
 /**
  * Fixed top bar + fixed bottom action bar for Card Configurator on small viewports.
- * Visual language aligned with `marketExample.html` (glass header/footer, primary pill CTA).
- * Flow is typically 3 steps: brand → rewards/tiers → review → publish.
+ * Portaled to `document.body` so taps are not swallowed by the main scroll container.
  */
 export function CardConfiguratorMobileChrome({
   step,
@@ -38,17 +50,25 @@ export function CardConfiguratorMobileChrome({
   showTopBack = true,
 }: CardConfiguratorMobileChromeProps) {
   const brand = (trailingBrandLabel ?? 'Verra').trim() || 'Verra';
+  const backTap = useReliableTapHandler(onTopBack);
+  const primaryTap = useReliableTapHandler(() => {
+    if (primaryDisabled) return;
+    onPrimary();
+  });
 
   return (
-    <>
+    <CardConfiguratorMobileBodyPortal>
       {headerLayout === 'market' ? (
-               <header className="fixed left-0 right-0 top-0 z-[60] bg-white/70 pt-[env(safe-area-inset-top,0px)] shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
+        <header
+          className={`fixed left-0 right-0 top-0 ${CARD_SETUP_FIXED_CHROME_Z_CLASS} bg-white/70 pt-[env(safe-area-inset-top,0px)] shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl`}
+        >
           <div className="flex w-full items-center justify-between px-4 py-3">
             {showTopBack ? (
               <button
                 type="button"
-                onClick={onTopBack}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-transform hover:opacity-80 active:scale-95"
+                data-touch-priority="1"
+                {...backTap}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-transform active:scale-95 active:opacity-80 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
                 aria-label="Go back"
               >
                 <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -73,13 +93,16 @@ export function CardConfiguratorMobileChrome({
           </div>
         </header>
       ) : (
-        <header className="fixed left-0 right-0 top-0 z-[60] flex items-center justify-between bg-white/70 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top,0px))] shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
+        <header
+          className={`fixed left-0 right-0 top-0 ${CARD_SETUP_FIXED_CHROME_Z_CLASS} flex items-center justify-between bg-white/70 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top,0px))] shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl`}
+        >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {showTopBack ? (
               <button
                 type="button"
-                onClick={onTopBack}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-transform hover:opacity-80 active:scale-95"
+                data-touch-priority="1"
+                {...backTap}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-transform active:scale-95 active:opacity-80 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
                 aria-label="Go back"
               >
                 <ArrowLeft className="h-6 w-6" strokeWidth={2} aria-hidden />
@@ -96,16 +119,17 @@ export function CardConfiguratorMobileChrome({
       )}
 
       <div
-        className={`fixed bottom-0 left-0 right-0 z-[60] flex justify-center bg-white/70 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl ${
+        className={`fixed bottom-0 left-0 right-0 ${CARD_SETUP_FIXED_CHROME_Z_CLASS} flex justify-center bg-white/70 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl ${
           headerLayout === 'market' ? 'pt-3' : 'pt-4'
         }`}
       >
         <div className="flex w-full max-w-6xl items-center justify-center gap-2 px-1">
           <button
             type="button"
-            onClick={onPrimary}
+            data-touch-priority="1"
+            {...primaryTap}
             disabled={primaryDisabled}
-            className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] px-5 font-bold text-white shadow-[0_10px_30px_rgba(0,81,209,0.3)] transition-all hover:scale-[1.02] hover:shadow-[0_12px_34px_rgba(0,81,209,0.35)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-md sm:flex-initial sm:px-10 ${
+            className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] px-5 font-bold text-white shadow-[0_10px_30px_rgba(0,81,209,0.3)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-md sm:flex-initial sm:px-10 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${
               headerLayout === 'market' ? 'min-h-[44px] py-2.5 text-xs' : 'min-h-[48px] py-3 text-sm'
             }`}
           >
@@ -116,7 +140,26 @@ export function CardConfiguratorMobileChrome({
           </button>
         </div>
       </div>
-    </>
+    </CardConfiguratorMobileBodyPortal>
+  );
+}
+
+/** Portals a fixed bottom CTA bar outside the scroll container (Ket welcome, etc.). */
+export function CardConfiguratorMobileFixedFooterPortal({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <CardConfiguratorMobileBodyPortal>
+      <div
+        className={`fixed bottom-0 left-0 right-0 ${CARD_SETUP_FIXED_CHROME_Z_CLASS} ${className}`}
+      >
+        {children}
+      </div>
+    </CardConfiguratorMobileBodyPortal>
   );
 }
 

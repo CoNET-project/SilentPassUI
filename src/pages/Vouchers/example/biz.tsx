@@ -16,6 +16,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider';
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { clearWorkspaceSessionUnlock, isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock';
+import { useReliableTapHandler } from '@/utils/reliableTap';
 import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
 import {
   storeSystemData,
@@ -349,11 +350,13 @@ import { QRCodeCanvas } from 'qrcode.react';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
 import {
   CardConfiguratorMobileChrome,
+  CardConfiguratorMobileFixedFooterPortal,
   CARD_CONFIGURATOR_MOBILE_MAIN_PAD,
   CARD_CONFIGURATOR_MOBILE_MAIN_PAD_MARKET_HEADER,
   CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS,
   CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS,
   CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS,
+  CARD_SETUP_MOBILE_CTA_TOUCH_CLASS,
 } from './CardConfiguratorMobileShell';
 
 function isWalletAddressLike(value: string | undefined): boolean {
@@ -412,6 +415,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
   onStartDesigning: () => void
 }) {
   const { protocolFuelReserveBalance, onStartDesigning } = props
+  const startDesigningTap = useReliableTapHandler(onStartDesigning)
   const bUnitsLine =
     protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
       ? `${Number(protocolFuelReserveBalance).toFixed(2)} B-Units`
@@ -503,18 +507,19 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
           </p>
         </div>
       </main>
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#abadaf]/20 bg-white/80 p-4 backdrop-blur-md sm:left-[var(--biz-sidebar-offset,0px)]">
-                <div className="mx-auto w-full max-w-5xl">
+      <CardConfiguratorMobileFixedFooterPortal className="border-t border-[#abadaf]/20 bg-white/80 p-4 backdrop-blur-md sm:left-[var(--biz-sidebar-offset,0px)]">
+        <div className="mx-auto w-full max-w-5xl">
           <button
             type="button"
-            onClick={onStartDesigning}
-            className="group flex w-full items-center justify-center gap-3 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-[0_20px_40px_rgba(0,81,209,0.2)] transition-transform hover:bg-[#0047b8] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            data-touch-priority="1"
+            {...startDesigningTap}
+            className={`flex w-full items-center justify-center gap-3 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-[0_20px_40px_rgba(0,81,209,0.2)] transition-transform active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
           >
             Start Designing
-            <ArrowRight className="size-5 transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
+            <ArrowRight className="size-5" strokeWidth={2} aria-hidden />
           </button>
         </div>
-      </div>
+      </CardConfiguratorMobileFixedFooterPortal>
     </div>
   )
 }
@@ -8029,6 +8034,10 @@ const CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT = 10;
 const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
 /** Default max number of times a program coupon can be issued (metadata). */
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT = 100;
+/** Default coupon name shown in New Coupon editor. */
+const CARD_ISSUANCE_COUPON_NAME_DEFAULT = 'Your offer';
+/** Default coupon description shown in New Coupon editor. */
+const CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT = 'Add coupon details for members';
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX = 9_999_999;
 /** Issued coupon NFT metadata category — distinguishes coupon series from membership / tier NFTs. */
 const CARD_ISSUANCE_COUPON_NFT_CATEGORY = 'Coupon';
@@ -8358,7 +8367,8 @@ function buildCardIssuanceCouponMetadataPayload(
       const issueTotalRaw = row.issueTotal.replace(/,/g, '').trim();
       const issueTotalN = Number.parseInt(issueTotalRaw, 10);
       const issueTotalAsFloat = parseFloat(issueTotalRaw);
-      if (!id || !name) {
+      const couponImg = row.couponImage.trim();
+      if (!id || (!name && !couponImg)) {
         return null;
       }
       if (
@@ -8372,7 +8382,6 @@ function buildCardIssuanceCouponMetadataPayload(
       }
       const backgroundColor = tierBackgroundColorForPayload(row.backgroundColor);
       const icon = row.icon.trim();
-      const couponImg = row.couponImage.trim();
       const tileBg = effectiveTileBackgroundColorForMetadata({
         photo: couponImg,
         backgroundColor,
@@ -8482,6 +8491,12 @@ function programsCouponShareExpiryUsesUrgentVariant(expiresLabel: string): boole
   return expiresLabel === 'EXPIRED' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel);
 }
 
+function programsCouponShareShouldShowExpiryPill(expiresLabel: string): boolean {
+  const normalized = expiresLabel.trim().toUpperCase();
+  if (!normalized) return false;
+  return normalized !== 'VALID NOW' && normalized !== 'NO EXPIRY';
+}
+
 function formatProgramsCouponShareExpiryLabel(coupon: CardIssuanceCouponRow): string {
   if (coupon.couponDateRestriction !== 'range' || !coupon.couponValidToYmd.trim()) return 'VALID NOW';
   const ymd = parseCouponYmd(coupon.couponValidToYmd);
@@ -8508,6 +8523,29 @@ function buildProgramsCouponShareHeadline(
   return `${verb} a ${trimmed} Coupon`;
 }
 
+function ProgramsCouponBannerImage({ src }: { src: string }) {
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      <div
+        className="absolute inset-y-0 left-0 w-1/2 scale-110 bg-cover bg-left bg-no-repeat blur-xl"
+        style={{ backgroundImage: `url("${src}")` }}
+        aria-hidden
+      />
+      <div
+        className="absolute inset-y-0 right-0 w-1/2 scale-110 bg-cover bg-right bg-no-repeat blur-xl"
+        style={{ backgroundImage: `url("${src}")` }}
+        aria-hidden
+      />
+      <img
+        src={src}
+        alt=""
+        className="absolute left-1/2 top-0 z-[1] h-full w-auto max-w-none -translate-x-1/2 object-contain"
+        draggable={false}
+      />
+    </div>
+  );
+}
+
 function ProgramsCouponShareCardPreview({
   coupon,
   shareUrl,
@@ -8523,87 +8561,113 @@ function ProgramsCouponShareCardPreview({
   const title = coupon.name.trim() || 'Beamio Coupon';
   const subtitle = coupon.description.trim() || 'Open in the Beamio app.';
   const backgroundColorHex = tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#2B2E3A';
+  const hasBanner = Boolean(coupon.couponImage.trim());
   const backgroundImage = coupon.couponImage.trim();
   const iconUrl = cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? coupon.icon.trim() : '';
   const expiresLabel = formatProgramsCouponShareExpiryLabel(coupon);
+  const showExpiryPill = programsCouponShareShouldShowExpiryPill(expiresLabel);
   const expiryUrgent = programsCouponShareExpiryUsesUrgentVariant(expiresLabel);
   const ExpiryIcon = expiryUrgent ? Clock : Calendar;
+  const innerExpiryClass = expiryUrgent
+    ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+    : 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md';
+  const externalExpiryClass = expiryUrgent
+    ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+    : 'border border-[#abadaf]/35 bg-[#eef1f3] text-[#595c5e]';
 
-  return (
-    <div className="w-full text-left">
-      <p className="mb-3 text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg">
-        {shareHeadline}
-      </p>
-      <div className="relative w-full rounded-[1.75rem]">
-        <div
-          className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
-          aria-hidden
-        />
-        <div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] ring-1 ring-black/[0.08]">
-          {backgroundImage ? (
-            <>
-              <img
-                src={backgroundImage}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-                draggable={false}
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
-            </>
-          ) : (
-            <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }}>
-              <div
-                className="pointer-events-none absolute inset-0 opacity-[0.12]"
-                style={{
-                  backgroundImage:
-                    'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
-                }}
-                aria-hidden
-              />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" />
-            </div>
-          )}
+  const renderExpiryPill = (placement: 'inner' | 'external') => (
+    <div
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+        placement === 'external' ? externalExpiryClass : innerExpiryClass
+      }`}
+    >
+      <ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+      <span className="truncate">{expiresLabel}</span>
+    </div>
+  );
 
-          <div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-[6.25rem] sm:gap-4 sm:px-8 sm:py-5 sm:pr-[6.75rem]">
+  const ticketShell = (
+    <div className="relative w-full rounded-[1.75rem]">
+      <div
+        className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none"
+        aria-hidden
+      />
+      <div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
+        {hasBanner ? (
+          <ProgramsCouponBannerImage src={backgroundImage} />
+        ) : (
+          <>
+            <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }} />
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.12]"
+              style={{
+                backgroundImage:
+                  'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+              }}
+              aria-hidden
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" aria-hidden />
+          </>
+        )}
+
+        <div
+          className={[
+            'relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 sm:gap-4 sm:px-8 sm:py-5',
+            !hasBanner && shareUrl ? 'pr-[6.25rem] sm:pr-[6.75rem]' : 'pr-7 sm:pr-8',
+          ].join(' ')}
+        >
+          {iconUrl ? (
             <div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
-              {iconUrl ? (
-                <img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg">
-                  {title.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
             </div>
+          ) : null}
 
-            <div className="min-w-0 flex-1 text-white">
+          {!hasBanner ? (
+            <div className="font-manrope min-w-0 flex-1 text-white">
               <p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
                 {title}
               </p>
               <p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
                 {subtitle}
               </p>
-              <div
-                className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
-                  expiryUrgent
-                    ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
-                    : 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md'
-                }`}
-              >
-                <ExpiryIcon className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
-                <span className="truncate">{expiresLabel}</span>
-              </div>
+              {showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
             </div>
+          ) : null}
 
+          {!hasBanner && shareUrl ? (
             <div className="absolute right-6 top-1/2 z-[2] -translate-y-1/2 rounded-2xl bg-white p-2 shadow-sm sm:right-8">
               <QRCodeCanvas value={shareUrl} size={96} level="M" includeMargin={false} />
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="relative w-full text-left" role="region" aria-label="Coupon preview">
+      <p className="mb-3 text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg">
+        {shareHeadline}
+      </p>
+      {ticketShell}
+      {hasBanner ? (
+        <div className="mt-3 w-full">
+          <p className="truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-lg">
+            {title}
+          </p>
+          <p className="mt-0.5 truncate font-manrope text-sm font-semibold text-[#595c5e]">{subtitle}</p>
+          {showExpiryPill ? <div className="mt-2">{renderExpiryPill('external')}</div> : null}
+          {shareUrl ? (
+            <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
+              <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin={false} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -9640,11 +9704,13 @@ useEffect(() => {
   cardIssuanceCouponEditorOpenRef.current = cardIssuanceCouponEditorOpen;
 }, [cardIssuanceCouponEditorOpen]);
 const [cardIssuanceEditingCouponId, setCardIssuanceEditingCouponId] = useState<string | null>(null);
-const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState('');
+const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState(CARD_ISSUANCE_COUPON_NAME_DEFAULT);
 const [cardIssuanceCouponIcon, setCardIssuanceCouponIcon] = useState('');
 const [cardIssuanceCouponImage, setCardIssuanceCouponImage] = useState('');
 const [cardIssuanceCouponBackgroundColor, setCardIssuanceCouponBackgroundColor] = useState('#0051d1');
-const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState('');
+const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState(
+  CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT
+);
 const [cardIssuanceCouponIssueTotal, setCardIssuanceCouponIssueTotal] = useState(
   String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)
 );
@@ -10993,17 +11059,15 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
 
  /** Create / Edit Coupon slide-over: ticket-style live preview (member app–like). */
  const cardIssuanceCouponEditorLivePreview = useMemo(() => {
-   const offerTitle = cardIssuanceCouponName.trim() || 'Your offer';
-   const subtitle =
-     cardIssuanceCouponDescription.trim() || 'Add coupon details for members';
+   const offerTitle = cardIssuanceCouponName.trim();
+   const subtitle = cardIssuanceCouponDescription.trim();
    const couponIcon = cardIssuanceCouponIcon.trim();
    const hasRenderableCouponIcon =
      couponIcon.length > 0 &&
      (cardIssuanceCouponIconLooksLikeImageUrl(couponIcon) || couponIcon.startsWith('data:image'));
-   const logoUrl = hasRenderableCouponIcon ? couponIcon : cardIssuanceEffectiveMerchantLogo.trim();
+   const iconUrl = hasRenderableCouponIcon ? couponIcon : '';
    const hex =
      tierBackgroundColorForPayload(cardIssuanceCouponBackgroundColor) ?? '#0051d1';
-   const letter = (offerTitle.slice(0, 1) || '?').toUpperCase();
    const banner = cardIssuanceCouponImage.trim();
    let expiryVariant: 'none' | 'hours' | 'days' | 'expired' | 'incomplete';
    let expiryLabel: string;
@@ -11040,12 +11104,11 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
        }
      }
    }
-   return { offerTitle, subtitle, logoUrl, hex, banner, letter, expiryVariant, expiryLabel };
+   return { offerTitle, subtitle, iconUrl, hex, banner, expiryVariant, expiryLabel };
  }, [
    cardIssuanceCouponName,
    cardIssuanceCouponDescription,
    cardIssuanceCouponIcon,
-   cardIssuanceEffectiveMerchantLogo,
    cardIssuanceCouponBackgroundColor,
    cardIssuanceCouponImage,
    cardIssuanceCouponDateRestriction,
@@ -11647,11 +11710,11 @@ const removeCardIssuanceTierFromEditor = useCallback(async () => {
 const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponEditorError('');
   setCardIssuanceEditingCouponId(null);
-  setCardIssuanceCouponName('');
+  setCardIssuanceCouponName(CARD_ISSUANCE_COUPON_NAME_DEFAULT);
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage('');
   setCardIssuanceCouponBackgroundColor('#0051d1');
-  setCardIssuanceCouponDescription('');
+  setCardIssuanceCouponDescription(CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT);
   setCardIssuanceCouponIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceCouponRequiresRedeemCode(false);
   setCardIssuanceCouponDateRestriction('none');
@@ -11757,7 +11820,8 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   ).replace(/,/g, '').trim();
   const issueTotalN = Number.parseInt(issueTotalRaw, 10);
   const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
-  if (!name) {
+  const hasCouponBackgroundImage = couponImageTrim.length > 0;
+  if (!name && !hasCouponBackgroundImage) {
     setCardIssuanceCouponEditorError('Coupon name is required.');
     return;
   }
@@ -11973,7 +12037,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       category: CARD_ISSUANCE_COUPON_NFT_CATEGORY,
       beamioCoupon: {
         couponId: couponRowDraft.id,
-        name,
+        ...(name ? { name } : {}),
         issueTotal: issueTotalN,
         requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
         ...(dr === 'range' && vfStore && vtStore ? { validFrom: vfStore, validTo: vtStore } : {}),
@@ -11984,13 +12048,21 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       },
     };
 
-    const nftData = encodeCreateIssuedNft(name, validAfterChain, validBeforeChain, issueTotalN, 0, '0');
+    const nftSeriesNameForChain = name || (couponImageTrim ? 'Coupon' : '');
+    const nftData = encodeCreateIssuedNft(
+      nftSeriesNameForChain,
+      validAfterChain,
+      validBeforeChain,
+      issueTotalN,
+      0,
+      '0'
+    );
     const deadline = Math.floor(Date.now() / 1000) + 3600;
     const nonce = ethers.hexlify(ethers.randomBytes(32));
     const ownerSig = await signExecuteForOwner(p0.privateKeyArmor.trim(), cardAddr, nftData, deadline, nonce);
     const descFirst =
       description.trim() ||
-      `Program coupon: ${name}`;
+      (name.trim() ? `Program coupon: ${name.trim()}` : 'Program coupon');
     const createRes = await postCardCreateIssuedNft({
       cardAddress: cardAddr,
       data: nftData,
@@ -22052,7 +22124,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       <div
         ref={setMobileScrollContainerNode}
         onScroll={handleMobileContentScroll}
-        className={`flex-1 min-h-0 relative overflow-y-auto p-2 sm:p-4 ${
+        className={`flex-1 min-h-0 relative overflow-y-auto overscroll-y-contain p-2 sm:p-4 ${
           isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? 'bg-transparent' : ''
         }`}
       >
@@ -28857,7 +28929,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             type="button"
                             onClick={() => void applyCardIssuanceTierEditor()}
                             disabled={Boolean(cardIssuanceTierEditorValidationError) || cardIssuanceCreateLoading}
-                            className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                            className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                           >
                             {cardIssuanceCreateLoading ? (
                               <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
@@ -29416,17 +29488,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <div className="flex items-center justify-between gap-3 p-3 sm:p-4">
                               <div className="min-w-0">
                                 <div className="mb-1 flex min-w-0 items-center gap-2">
-                                  <span
-                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm text-white shadow-sm"
-                                    style={{ backgroundColor: tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#0051d1' }}
-                                    aria-hidden
-                                  >
-                                    {cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? (
+                                  {cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? (
+                                    <span
+                                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm text-white shadow-sm"
+                                      style={{ backgroundColor: tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#0051d1' }}
+                                      aria-hidden
+                                    >
                                       <img src={coupon.icon} alt="" className="h-6 w-6 rounded-full object-cover" />
-                                    ) : (
-                                      coupon.icon || '🎟️'
-                                    )}
-                                  </span>
+                                    </span>
+                                  ) : null}
                                   <p className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{coupon.name}</p>
                                 </div>
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
@@ -30014,88 +30084,138 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </button>
                         </div>
                       </div>
-                      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-5 sm:px-6">
-                  <div className="space-y-3 pb-24">
-                    <div className="rounded-2xl border border-[#e5e9eb] bg-white p-4 sm:p-5">
-                      <span className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                        Coupon preview
-                      </span>
-                      <div className="relative mx-auto w-full max-w-md px-3" role="region" aria-label="Coupon preview">
-                        <div className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
-                        <div className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
-                        <div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
-                          {cardIssuanceCouponEditorLivePreview.banner ? (
-                            <>
-                              <img
-                                src={cardIssuanceCouponEditorLivePreview.banner}
-                                alt=""
-                                className="absolute inset-0 h-full w-full object-cover"
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/52 to-black/35" />
-                            </>
-                          ) : (
-                            <div
-                              className="absolute inset-0"
-                              style={{ backgroundColor: cardIssuanceCouponEditorLivePreview.hex }}
-                            />
-                          )}
-                          {!cardIssuanceCouponEditorLivePreview.banner ? (
-                            <>
-                              <div
-                                className="pointer-events-none absolute inset-0 opacity-[0.12]"
-                                style={{
-                                  backgroundImage:
-                                    'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
-                                }}
-                                aria-hidden
-                              />
-                              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" aria-hidden />
-                            </>
-                          ) : null}
-                          <div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-5 py-4 sm:gap-4 sm:px-6 sm:py-5">
-                            <div className="relative h-[3.35rem] w-[3.35rem] shrink-0 overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
-                              {cardIssuanceCouponEditorLivePreview.logoUrl ? (
-                                <img
-                                  src={cardIssuanceCouponEditorLivePreview.logoUrl}
-                                  alt=""
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white to-slate-200 text-base font-black text-[#2c2f31]/75 sm:text-lg">
-                                  {cardIssuanceCouponEditorLivePreview.letter}
-                                </div>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1 text-white">
-                              <p className="truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
-                                {cardIssuanceCouponEditorLivePreview.offerTitle}
-                              </p>
-                              <p className="mt-0.5 truncate font-manrope text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
-                                {cardIssuanceCouponEditorLivePreview.subtitle}
-                              </p>
-                              <div
-                                className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
-                                  cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
-                                  cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired'
-                                    ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
-                                    : cardIssuanceCouponEditorLivePreview.expiryVariant === 'incomplete'
-                                      ? 'bg-amber-500 text-white shadow-sm'
-                                      : 'border border-white/35 bg-white/18 text-white backdrop-blur-md'
-                                }`}
-                              >
-                                {cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
-                                cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired' ? (
-                                  <Clock className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6">
+                        <div className="sticky top-0 z-30 -mx-4 mb-4 border-b border-[#abadaf]/15 bg-white/95 px-4 pb-4 pt-3 backdrop-blur-md supports-[backdrop-filter]:bg-white/80 sm:-mx-6 sm:px-6">
+                          <span className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                            Coupon preview
+                          </span>
+                          <div className="relative w-full" role="region" aria-label="Coupon preview">
+                            <div className="relative">
+                              <div className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
+                              <div className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
+                              <div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
+                                {cardIssuanceCouponEditorLivePreview.banner ? (
+                                  <ProgramsCouponBannerImage src={cardIssuanceCouponEditorLivePreview.banner} />
                                 ) : (
-                                  <Calendar className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                                  <>
+                                    <div
+                                      className="absolute inset-0"
+                                      style={{ backgroundColor: cardIssuanceCouponEditorLivePreview.hex }}
+                                    />
+                                    <div
+                                      className="pointer-events-none absolute inset-0 opacity-[0.12]"
+                                      style={{
+                                        backgroundImage:
+                                          'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+                                      }}
+                                      aria-hidden
+                                    />
+                                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" aria-hidden />
+                                  </>
                                 )}
-                                <span className="truncate">{cardIssuanceCouponEditorLivePreview.expiryLabel}</span>
+                                <div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-7 sm:gap-4 sm:px-8 sm:py-5 sm:pr-8">
+                                  {cardIssuanceCouponEditorLivePreview.iconUrl ? (
+                                    <div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
+                                      <img
+                                        src={cardIssuanceCouponEditorLivePreview.iconUrl}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                        draggable={false}
+                                      />
+                                    </div>
+                                  ) : null}
+                                  {!cardIssuanceCouponEditorLivePreview.banner ? (
+                                    <div className="font-manrope min-w-0 flex-1 text-white">
+                                      {cardIssuanceCouponEditorLivePreview.offerTitle ? (
+                                        <p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
+                                          {cardIssuanceCouponEditorLivePreview.offerTitle}
+                                        </p>
+                                      ) : null}
+                                      {cardIssuanceCouponEditorLivePreview.subtitle ? (
+                                        <p
+                                          className={`truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] ${
+                                            cardIssuanceCouponEditorLivePreview.offerTitle ? 'mt-0.5' : ''
+                                          }`}
+                                        >
+                                          {cardIssuanceCouponEditorLivePreview.subtitle}
+                                        </p>
+                                      ) : null}
+                                      {cardIssuanceCouponEditorLivePreview.expiryVariant !== 'none' ? (
+                                      <div
+                                        className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                                          cardIssuanceCouponEditorLivePreview.offerTitle ||
+                                          cardIssuanceCouponEditorLivePreview.subtitle
+                                            ? 'mt-2'
+                                            : ''
+                                        } ${
+                                          cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
+                                          cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired'
+                                            ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+                                            : cardIssuanceCouponEditorLivePreview.expiryVariant === 'incomplete'
+                                              ? 'bg-amber-500 text-white shadow-sm'
+                                              : 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md'
+                                        }`}
+                                      >
+                                        {cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
+                                        cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired' ? (
+                                          <Clock className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                                        ) : (
+                                          <Calendar className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                                        )}
+                                        <span className="truncate">{cardIssuanceCouponEditorLivePreview.expiryLabel}</span>
+                                      </div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
+                            {cardIssuanceCouponEditorLivePreview.banner ? (
+                              <div className="mt-3 w-full">
+                                {cardIssuanceCouponEditorLivePreview.offerTitle ? (
+                                  <p className="truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-lg">
+                                    {cardIssuanceCouponEditorLivePreview.offerTitle}
+                                  </p>
+                                ) : null}
+                                {cardIssuanceCouponEditorLivePreview.subtitle ? (
+                                  <p
+                                    className={`truncate font-manrope text-sm font-semibold text-[#595c5e] ${
+                                      cardIssuanceCouponEditorLivePreview.offerTitle ? 'mt-0.5' : ''
+                                    }`}
+                                  >
+                                    {cardIssuanceCouponEditorLivePreview.subtitle}
+                                  </p>
+                                ) : null}
+                                {cardIssuanceCouponEditorLivePreview.expiryVariant !== 'none' ? (
+                                <div
+                                  className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                                    cardIssuanceCouponEditorLivePreview.offerTitle ||
+                                    cardIssuanceCouponEditorLivePreview.subtitle
+                                      ? 'mt-2'
+                                      : ''
+                                  } ${
+                                    cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
+                                    cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired'
+                                      ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
+                                      : cardIssuanceCouponEditorLivePreview.expiryVariant === 'incomplete'
+                                        ? 'bg-amber-500 text-white shadow-sm'
+                                        : 'border border-[#abadaf]/35 bg-[#eef1f3] text-[#595c5e]'
+                                  }`}
+                                >
+                                  {cardIssuanceCouponEditorLivePreview.expiryVariant === 'hours' ||
+                                  cardIssuanceCouponEditorLivePreview.expiryVariant === 'expired' ? (
+                                    <Clock className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                                  ) : (
+                                    <Calendar className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+                                  )}
+                                  <span className="truncate">{cardIssuanceCouponEditorLivePreview.expiryLabel}</span>
+                                </div>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
-                      </div>
-                    </div>
+                        <div className="space-y-3 pb-24 pt-1">
                     {cardIssuanceCouponEditingIssued ? (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-medium text-sky-900">
                         This coupon has already been issued on-chain. Coupon name, claim method, total issuance, and validity
@@ -30113,6 +30233,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         placeholder="e.g., Welcome bonus"
                         autoComplete="off"
                         className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                        Description
+                      </label>
+                      <input
+                        type="text"
+                        value={cardIssuanceCouponDescription}
+                        onChange={(e) =>
+                          setCardIssuanceCouponDescription(e.target.value.replace(/\r?\n/g, ' '))
+                        }
+                        placeholder={CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT}
+                        autoComplete="off"
+                        className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                       />
                     </div>
                     <div>
@@ -30236,18 +30371,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </button>
                         </div>
                       )}
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                        Description
-                      </label>
-                      <textarea
-                        value={cardIssuanceCouponDescription}
-                        onChange={(e) => setCardIssuanceCouponDescription(e.target.value)}
-                        placeholder="Add coupon details for members"
-                        rows={3}
-                        className={`block w-full resize-none rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                      />
                     </div>
                     <div>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
@@ -30436,7 +30559,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       type="button"
                       onClick={submitCardIssuanceCouponEditor}
                       disabled={cardIssuanceCouponIconUploading || cardIssuanceCouponEditorPublishing}
-                      className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                      className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                     >
                       {cardIssuanceCouponIconUploading || cardIssuanceCouponEditorPublishing ? (
                         <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
@@ -30638,7 +30761,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           type="button"
                           onClick={() => void applyCardIssuanceTierEditor()}
                           disabled={Boolean(cardIssuanceTierEditorValidationError) || cardIssuanceCreateLoading}
-                          className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                          className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                         >
                           {cardIssuanceCreateLoading ? (
                             <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
@@ -30857,7 +30980,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              Boolean(cardIssuanceBonusRuleEditorValidationError) ||
                              cardIssuanceBonusRuleEditorPublishing
                            }
-                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-all disabled:cursor-not-allowed disabled:opacity-60 max-[420px]:active:scale-95 ${cardIssuanceBonusRuleEditorPublishing ? '' : 'hover:scale-[1.02] active:scale-95'} ${bizFocusRingClass}`}
+                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                          >
                            {cardIssuanceBonusRuleEditorPublishing ? (
                              <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />

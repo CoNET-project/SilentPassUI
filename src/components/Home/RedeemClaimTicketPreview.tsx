@@ -56,6 +56,8 @@ export default function RedeemClaimTicketPreview({
 			actionStatus={submitting ? 'loading' : 'idle'}
 			aria-label={`Redeem coupon ${row.title}`}
 			punchBgClassName="bg-[#f3f4f5] dark:bg-slate-800"
+			metadataBelowBackgroundImage
+			showActionButton={false}
 		/>
 	)
 }

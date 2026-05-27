@@ -56,6 +56,8 @@ export default function CouponClaimTicketPreview({
 			actionStatus={submitting ? 'loading' : 'idle'}
 			aria-label={`Open claim coupon ${row.title}`}
 			punchBgClassName="bg-white dark:bg-slate-900"
+			metadataBelowBackgroundImage
+			showActionButton={false}
 		/>
 	)
 }

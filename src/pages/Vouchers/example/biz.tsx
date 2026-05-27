@@ -30332,6 +30332,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     </div>
                     <div>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon icon</label>
+                      <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
+                        Recommended: square image, 512 × 512 px or larger, 1:1 ratio. Keep the artwork centered inside a
+                        circular safe area because the ticket displays this icon as a round crop.
+                      </p>
                       <input
                         ref={cardIssuanceCouponIconFileRef}
                         type="file"
@@ -30376,6 +30380,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                         Coupon background image (optional)
                       </label>
+                      <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
+                        Recommended: wide banner, 2048 × 480 px, about 4.27:1. Keep key text and faces near the center
+                        80%; previews fill blank edges with a blurred cover layer and may crop extra width.
+                      </p>
                       <input
                         ref={cardIssuanceCouponImageFileRef}
                         type="file"

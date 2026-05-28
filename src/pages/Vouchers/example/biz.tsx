@@ -8563,7 +8563,7 @@ function ProgramsCouponShareCardPreview({
   const backgroundColorHex = tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#2B2E3A';
   const hasBanner = Boolean(coupon.couponImage.trim());
   const backgroundImage = coupon.couponImage.trim();
-  const iconUrl = cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? coupon.icon.trim() : '';
+  const iconUrl = !hasBanner && cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? coupon.icon.trim() : '';
   const expiresLabel = formatProgramsCouponShareExpiryLabel(coupon);
   const showExpiryPill = programsCouponShareShouldShowExpiryPill(expiresLabel);
   const expiryUrgent = programsCouponShareExpiryUsesUrgentVariant(expiresLabel);
@@ -8620,7 +8620,7 @@ function ProgramsCouponShareCardPreview({
             !hasBanner && shareUrl ? 'pr-[6.25rem] sm:pr-[6.75rem]' : 'pr-7 sm:pr-8',
           ].join(' ')}
         >
-          {iconUrl ? (
+          {!hasBanner && iconUrl ? (
             <div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
               <img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
             </div>
@@ -30114,7 +30114,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   </>
                                 )}
                                 <div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-7 sm:gap-4 sm:px-8 sm:py-5 sm:pr-8">
-                                  {cardIssuanceCouponEditorLivePreview.iconUrl ? (
+                                  {!cardIssuanceCouponEditorLivePreview.banner && cardIssuanceCouponEditorLivePreview.iconUrl ? (
                                     <div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
                                       <img
                                         src={cardIssuanceCouponEditorLivePreview.iconUrl}

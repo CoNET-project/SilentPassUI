@@ -386,7 +386,7 @@ export function ActiveCouponTicketItem({
 	const copyBelowBanner = metadataBelowBackgroundImage && hasBanner
 	const title = row.title.trim()
 	const subtitle = row.subtitle.trim()
-	const iconUrl = row.iconUrl.trim()
+	const iconUrl = hasBanner ? '' : row.iconUrl.trim()
 
 	const renderExpiryPill = (placement: 'inner' | 'external') => {
 		const style = placement === 'external' ? externalExpiryBgStyle : innerExpiryBgStyle

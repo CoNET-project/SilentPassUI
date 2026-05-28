@@ -11,6 +11,7 @@ import React, {
 import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
+import html2canvas from 'html2canvas';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
@@ -8655,14 +8656,14 @@ function ProgramsCouponShareCardPreview({
       </p>
       {ticketShell}
       {hasBanner ? (
-        <div className="mt-3 w-full">
-          <p className="truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-lg">
+        <div className="mt-3 w-full py-2">
+          <p className="break-words font-manrope text-[1.05rem] font-extrabold leading-[2.1] tracking-tight text-[#2c2f31] sm:text-lg">
             {title}
           </p>
-          <p className="mt-0.5 truncate font-manrope text-sm font-semibold text-[#595c5e]">{subtitle}</p>
+          <p className="mt-1.5 break-words font-manrope text-sm font-semibold leading-[2.25] text-[#595c5e]">{subtitle}</p>
           {showExpiryPill ? <div className="mt-2">{renderExpiryPill('external')}</div> : null}
           {shareUrl ? (
-            <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
+            <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
               <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin={false} />
             </div>
           ) : null}
@@ -8670,6 +8671,52 @@ function ProgramsCouponShareCardPreview({
       ) : null}
     </div>
   );
+}
+
+type ProgramsCouponShareImageStatus = 'idle' | 'loading' | 'success' | 'error';
+
+function sanitizeProgramsCouponShareFilenamePart(raw: string): string {
+  const cleaned = raw
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned || 'beamio-coupon';
+}
+
+function programsCouponShareImageFilename(coupon: CardIssuanceCouponRow, shareKind: 'open_claim' | 'redeem'): string {
+  const kind = shareKind === 'redeem' ? 'redeem' : 'open-claim';
+  return `${sanitizeProgramsCouponShareFilenamePart(coupon.name || coupon.id)}-${kind}.png`;
+}
+
+function downloadProgramsCouponShareBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+async function captureProgramsCouponSharePng(element: HTMLElement, filename: string): Promise<void> {
+  const fontsReady = (document as unknown as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
+  if (fontsReady) await fontsReady.catch(() => undefined);
+
+  const canvas = await html2canvas(element, {
+    backgroundColor: '#ffffff',
+    useCORS: true,
+    allowTaint: false,
+    logging: false,
+    scale: Math.min(3, Math.max(2, window.devicePixelRatio || 2)),
+  });
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (result) resolve(result);
+      else reject(new Error('Unable to render coupon share image.'));
+    }, 'image/png');
+  });
+  downloadProgramsCouponShareBlob(blob, filename);
 }
 
 /** Keep freshly registered codes Available until chain confirms active or grace expires. */
@@ -9725,6 +9772,9 @@ const [cardIssuanceCouponImageUploading, setCardIssuanceCouponImageUploading] = 
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
 const [cardIssuanceCouponShareOpenId, setCardIssuanceCouponShareOpenId] = useState<string | null>(null);
 const [cardIssuanceCouponShareUrlCopied, setCardIssuanceCouponShareUrlCopied] = useState(false);
+const [cardIssuanceCouponShareImageStatus, setCardIssuanceCouponShareImageStatus] =
+  useState<ProgramsCouponShareImageStatus>('idle');
+const cardIssuanceCouponShareImageRef = useRef<HTMLDivElement>(null);
 const [cardIssuanceCouponRedeemShareOpen, setCardIssuanceCouponRedeemShareOpen] = useState<{
   couponId: string;
   hash: string;
@@ -11751,12 +11801,14 @@ const openCardIssuanceCouponShare = useCallback((couponId: string) => {
   const row = cardIssuanceCoupons.find((item) => item.id === couponId);
   if (!row || !row.issued || row.requiresRedeemCode) return;
   setCardIssuanceCouponShareUrlCopied(false);
+  setCardIssuanceCouponShareImageStatus('idle');
   setCardIssuanceCouponShareOpenId(couponId);
 }, [cardIssuanceCoupons]);
 
 const closeCardIssuanceCouponShare = useCallback(() => {
   setCardIssuanceCouponShareOpenId(null);
   setCardIssuanceCouponShareUrlCopied(false);
+  setCardIssuanceCouponShareImageStatus('idle');
 }, []);
 
 const openCardIssuanceCouponRedeemShare = useCallback(
@@ -11798,6 +11850,24 @@ const copyCardIssuanceCouponShareUrl = useCallback(async () => {
     // ignore
   }
 }, [cardIssuanceCouponShareUrl]);
+
+const downloadCardIssuanceCouponShareImage = useCallback(async () => {
+  const target = cardIssuanceCouponShareImageRef.current;
+  if (!target || !cardIssuanceCouponShareRow || !cardIssuanceCouponShareUrl) return;
+  setCardIssuanceCouponShareImageStatus('loading');
+  try {
+    await captureProgramsCouponSharePng(
+      target,
+      programsCouponShareImageFilename(cardIssuanceCouponShareRow, 'open_claim')
+    );
+    setCardIssuanceCouponShareImageStatus('success');
+    window.setTimeout(() => setCardIssuanceCouponShareImageStatus('idle'), 3000);
+  } catch (error) {
+    console.warn('Failed to download coupon share image', error);
+    setCardIssuanceCouponShareImageStatus('error');
+    window.setTimeout(() => setCardIssuanceCouponShareImageStatus('idle'), 3000);
+  }
+}, [cardIssuanceCouponShareRow, cardIssuanceCouponShareUrl]);
 
 const submitCardIssuanceCouponEditor = useCallback(async () => {
   const editingCouponExistingRow = cardIssuanceEditingCouponId
@@ -34298,12 +34368,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             </button>
           </div>
           <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
-            <ProgramsCouponShareCardPreview
-              coupon={cardIssuanceCouponShareRow}
-              shareUrl={cardIssuanceCouponShareUrl}
-              merchantName={programsOverviewDisplayName}
-              shareKind="open_claim"
-            />
+            <div ref={cardIssuanceCouponShareImageRef} className="rounded-[22px] bg-white px-5 py-4 sm:px-7 sm:py-5">
+              <ProgramsCouponShareCardPreview
+                coupon={cardIssuanceCouponShareRow}
+                shareUrl={cardIssuanceCouponShareUrl}
+                merchantName={programsOverviewDisplayName}
+                shareKind="open_claim"
+              />
+            </div>
             <div className="min-w-0 space-y-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Claim URL</p>
@@ -34331,6 +34403,30 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   Open link
                   <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
                 </a>
+                <button
+                  type="button"
+                  onClick={downloadCardIssuanceCouponShareImage}
+                  disabled={cardIssuanceCouponShareImageStatus !== 'idle'}
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full border px-0 text-xs font-bold transition-colors ${
+                    cardIssuanceCouponShareImageStatus === 'error'
+                      ? 'border-amber-200 bg-amber-50 text-amber-600'
+                      : cardIssuanceCouponShareImageStatus === 'success'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                  } ${cardIssuanceCouponShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
+                  aria-label="Download coupon share PNG"
+                  title="Download PNG for WeChat"
+                >
+                  {cardIssuanceCouponShareImageStatus === 'loading' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
+                  ) : cardIssuanceCouponShareImageStatus === 'success' ? (
+                    <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                  ) : cardIssuanceCouponShareImageStatus === 'error' ? (
+                    <AlertTriangle className="h-4 w-4" strokeWidth={2.3} aria-hidden />
+                  ) : (
+                    <Download className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                  )}
+                </button>
               </div>
             </div>
           </div>

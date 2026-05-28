@@ -8552,11 +8552,13 @@ function ProgramsCouponShareCardPreview({
   shareUrl,
   merchantName,
   shareKind,
+  punchBgClassName = 'bg-white',
 }: {
   coupon: CardIssuanceCouponRow;
   shareUrl: string;
   merchantName: string;
   shareKind: 'open_claim' | 'redeem';
+  punchBgClassName?: string;
 }) {
   const shareHeadline = buildProgramsCouponShareHeadline(merchantName, shareKind);
   const title = coupon.name.trim() || 'Beamio Coupon';
@@ -8569,6 +8571,8 @@ function ProgramsCouponShareCardPreview({
   const showExpiryPill = programsCouponShareShouldShowExpiryPill(expiresLabel);
   const expiryUrgent = programsCouponShareExpiryUsesUrgentVariant(expiresLabel);
   const ExpiryIcon = expiryUrgent ? Clock : Calendar;
+  const noBannerWithQr = !hasBanner && Boolean(shareUrl);
+  const ticketMinHeightClass = noBannerWithQr ? 'min-h-[10rem]' : 'min-h-[7.5rem]';
   const innerExpiryClass = expiryUrgent
     ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
     : 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md';
@@ -8589,50 +8593,52 @@ function ProgramsCouponShareCardPreview({
 
   const ticketShell = (
     <div className="relative w-full rounded-[1.75rem]">
-      <div
-        className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none"
-        aria-hidden
-      />
-      <div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
-        {hasBanner ? (
-          <ProgramsCouponBannerImage src={backgroundImage} />
-        ) : (
-          <>
-            <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }} />
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
-              }}
-              aria-hidden
-            />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" aria-hidden />
-          </>
-        )}
+      <div className={`relative ${ticketMinHeightClass} rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]`}>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.75rem]" aria-hidden>
+          {hasBanner ? (
+            <ProgramsCouponBannerImage src={backgroundImage} />
+          ) : (
+            <>
+              <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }} />
+              <div
+                className="absolute inset-0 opacity-[0.12]"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" />
+            </>
+          )}
+        </div>
+        <div
+          className={`pointer-events-none absolute left-0 top-1/2 z-[1] h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-none ring-0 outline-none ${punchBgClassName}`}
+          aria-hidden
+        />
+        <div
+          className={`pointer-events-none absolute right-0 top-1/2 z-[1] h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full shadow-none ring-0 outline-none ${punchBgClassName}`}
+          aria-hidden
+        />
 
         <div
           className={[
-            'relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 sm:gap-4 sm:px-8 sm:py-5',
-            !hasBanner && shareUrl ? 'pr-[6.25rem] sm:pr-[6.75rem]' : 'pr-7 sm:pr-8',
+            `relative z-[2] flex ${ticketMinHeightClass} items-center gap-3 px-8 py-6 sm:gap-4 sm:px-9 sm:py-7`,
+            !hasBanner && shareUrl ? 'pr-[6.75rem] sm:pr-[7.25rem]' : 'pr-8 sm:pr-9',
+            !hasBanner && iconUrl ? 'pl-9 sm:pl-10' : '',
           ].join(' ')}
         >
           {!hasBanner && iconUrl ? (
-            <div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
+            <div className="relative z-[2] flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
               <img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
             </div>
           ) : null}
 
           {!hasBanner ? (
-            <div className="font-manrope min-w-0 flex-1 text-white">
-              <p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
+            <div className="relative z-[2] min-w-0 flex-1 py-0.5 font-manrope text-white">
+              <p className="break-words text-[1.05rem] font-extrabold leading-[1.65] tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
                 {title}
               </p>
-              <p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
+              <p className="mt-1 break-words text-sm font-semibold leading-[2] text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
                 {subtitle}
               </p>
               {showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
@@ -8640,7 +8646,7 @@ function ProgramsCouponShareCardPreview({
           ) : null}
 
           {!hasBanner && shareUrl ? (
-            <div className="absolute right-6 top-1/2 z-[2] -translate-y-1/2 rounded-2xl bg-white p-2 shadow-sm sm:right-8">
+            <div className="absolute right-7 top-1/2 z-[2] -translate-y-1/2 rounded-2xl bg-white p-2 shadow-sm sm:right-8">
               <QRCodeCanvas value={shareUrl} size={96} level="M" includeMargin={false} />
             </div>
           ) : null}
@@ -9781,6 +9787,9 @@ const [cardIssuanceCouponRedeemShareOpen, setCardIssuanceCouponRedeemShareOpen] 
   code: string;
 } | null>(null);
 const [cardIssuanceCouponRedeemShareUrlCopied, setCardIssuanceCouponRedeemShareUrlCopied] = useState(false);
+const [cardIssuanceCouponRedeemShareImageStatus, setCardIssuanceCouponRedeemShareImageStatus] =
+  useState<ProgramsCouponShareImageStatus>('idle');
+const cardIssuanceCouponRedeemShareImageRef = useRef<HTMLDivElement>(null);
 const [cardIssuanceCouponRedeemStatuses, setCardIssuanceCouponRedeemStatuses] = useState<
   Record<string, 'pending' | 'redeemed'>
 >({});
@@ -11815,6 +11824,7 @@ const openCardIssuanceCouponRedeemShare = useCallback(
   (couponId: string, row: { hash: string; code: string }) => {
     if (!row.code?.trim()) return;
     setCardIssuanceCouponRedeemShareUrlCopied(false);
+    setCardIssuanceCouponRedeemShareImageStatus('idle');
     setCardIssuanceCouponRedeemShareOpen({
       couponId,
       hash: row.hash,
@@ -11827,6 +11837,7 @@ const openCardIssuanceCouponRedeemShare = useCallback(
 const closeCardIssuanceCouponRedeemShare = useCallback(() => {
   setCardIssuanceCouponRedeemShareOpen(null);
   setCardIssuanceCouponRedeemShareUrlCopied(false);
+  setCardIssuanceCouponRedeemShareImageStatus('idle');
 }, []);
 
 const copyCardIssuanceCouponRedeemShareUrl = useCallback(async () => {
@@ -11868,6 +11879,24 @@ const downloadCardIssuanceCouponShareImage = useCallback(async () => {
     window.setTimeout(() => setCardIssuanceCouponShareImageStatus('idle'), 3000);
   }
 }, [cardIssuanceCouponShareRow, cardIssuanceCouponShareUrl]);
+
+const downloadCardIssuanceCouponRedeemShareImage = useCallback(async () => {
+  const target = cardIssuanceCouponRedeemShareImageRef.current;
+  if (!target || !cardIssuanceCouponRedeemShareRow || !cardIssuanceCouponRedeemShareUrl) return;
+  setCardIssuanceCouponRedeemShareImageStatus('loading');
+  try {
+    await captureProgramsCouponSharePng(
+      target,
+      programsCouponShareImageFilename(cardIssuanceCouponRedeemShareRow, 'redeem')
+    );
+    setCardIssuanceCouponRedeemShareImageStatus('success');
+    window.setTimeout(() => setCardIssuanceCouponRedeemShareImageStatus('idle'), 3000);
+  } catch (error) {
+    console.warn('Failed to download coupon redeem share image', error);
+    setCardIssuanceCouponRedeemShareImageStatus('error');
+    window.setTimeout(() => setCardIssuanceCouponRedeemShareImageStatus('idle'), 3000);
+  }
+}, [cardIssuanceCouponRedeemShareRow, cardIssuanceCouponRedeemShareUrl]);
 
 const submitCardIssuanceCouponEditor = useCallback(async () => {
   const editingCouponExistingRow = cardIssuanceEditingCouponId
@@ -34477,12 +34506,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             </button>
           </div>
           <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
-            <ProgramsCouponShareCardPreview
-              coupon={cardIssuanceCouponRedeemShareRow}
-              shareUrl={cardIssuanceCouponRedeemShareUrl}
-              merchantName={programsOverviewDisplayName}
-              shareKind="redeem"
-            />
+            <div
+              ref={cardIssuanceCouponRedeemShareImageRef}
+              className="rounded-[22px] bg-[#f3f4f5] px-5 py-4 sm:px-7 sm:py-5"
+            >
+              <ProgramsCouponShareCardPreview
+                coupon={cardIssuanceCouponRedeemShareRow}
+                shareUrl={cardIssuanceCouponRedeemShareUrl}
+                merchantName={programsOverviewDisplayName}
+                shareKind="redeem"
+                punchBgClassName="bg-[#f3f4f5]"
+              />
+            </div>
             <div className="min-w-0 space-y-3">
               {cardIssuanceCouponRedeemStatuses[cardIssuanceCouponRedeemShareOpen.hash] === 'redeemed' ? (
                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
@@ -34515,6 +34550,30 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   Open link
                   <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
                 </a>
+                <button
+                  type="button"
+                  onClick={downloadCardIssuanceCouponRedeemShareImage}
+                  disabled={cardIssuanceCouponRedeemShareImageStatus !== 'idle'}
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full border px-0 text-xs font-bold transition-colors ${
+                    cardIssuanceCouponRedeemShareImageStatus === 'error'
+                      ? 'border-amber-200 bg-amber-50 text-amber-600'
+                      : cardIssuanceCouponRedeemShareImageStatus === 'success'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                  } ${cardIssuanceCouponRedeemShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
+                  aria-label="Download redeem coupon share PNG"
+                  title="Download PNG for WeChat"
+                >
+                  {cardIssuanceCouponRedeemShareImageStatus === 'loading' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
+                  ) : cardIssuanceCouponRedeemShareImageStatus === 'success' ? (
+                    <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                  ) : cardIssuanceCouponRedeemShareImageStatus === 'error' ? (
+                    <AlertTriangle className="h-4 w-4" strokeWidth={2.3} aria-hidden />
+                  ) : (
+                    <Download className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                  )}
+                </button>
               </div>
             </div>
           </div>

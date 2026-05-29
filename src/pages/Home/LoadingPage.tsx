@@ -35,7 +35,13 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { getUserInfo, storeSystemData, checkStorage, restoreWithRedeem } from "@/services/beamio"
+import { getUserInfo, storeSystemData, checkStorage, restoreWithRedeem, ensureProfilePrivateKeyArmorFromMnemonic } from "@/services/beamio"
+import {
+	beamioTagFromUrlSearch,
+	consumerAppNeedsWalletRecover,
+	hasLocalPlaintextMnemonic,
+	knownBeamioAccountNameFromStorage,
+} from '@/utils/consumerWalletGate'
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
@@ -364,6 +370,8 @@ function InitialEntrySplash({
 type Props = {
 	home: () => void
 	onInitComplete?: () => void
+	/** Account exists locally but plaintext mnemonic missing — force Restore (BeamioTag + password). */
+	requireWalletRecover?: boolean
 }
 
 const TOP_OFFSET = "calc(env(safe-area-inset-top) + 4rem)"
@@ -461,7 +469,7 @@ function parseRedeemFromUrl(): { cardAddress: string; redeemCode: string } | nul
 	}
 }
 
-export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
+export default function BeamioOnboardingModal({ home, onInitComplete, requireWalletRecover = false }: Props) {
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, 
 		setAllNodes, setGossip, gossip,
 		setIsInitialLoading, myAddress, setMyAddress, usdcbalance, setShowFooter, setCharts } = useDaemonContext()
@@ -518,15 +526,23 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			return
 		}
 
-		temp = temp||isAcc
-	
-		const profiles = temp?.profiles
-		
+		temp = temp || isAcc
+		temp = ensureProfilePrivateKeyArmorFromMnemonic(temp) ?? temp
 
-		
-		if (!temp || !profiles ) {
+		const profiles = temp?.profiles
+
+		if (!temp || !profiles) {
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
+			onInitComplete?.()
+			return
+		}
+
+		if (!hasLocalPlaintextMnemonic(temp)) {
+			setIsInitialLoading(true)
+			setIsInitialEntry(false)
+			setSettingsOpen('RestoreWalletScreen')
+			setHasCheckedUrl(true)
 			onInitComplete?.()
 			return
 		}
@@ -582,6 +598,16 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		if (!first) return
 		first = false
 		const run = async () => {
+			if (requireWalletRecover) {
+				const isAcc = await checkStorage()
+				if (isAcc && consumerAppNeedsWalletRecover(isAcc)) {
+					setIsInitialEntry(false)
+					setSettingsOpen('RestoreWalletScreen')
+					setHasCheckedUrl(true)
+					onInitComplete?.()
+					return
+				}
+			}
 			const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
 			const beamioTagParam = urlParams?.get('beamioTag')
 			const masterKeyParam = urlParams?.get('MasterKey')
@@ -660,6 +686,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	useEffect(() => {
 		if (isInitialEntry || !hasCheckedUrl || redeemFromUrl !== null || loading) return
 		if (settingsOpen && ONBOARDING_MODAL_SCREENS.has(settingsOpen)) return
+		if (consumerAppNeedsWalletRecover(CoNET_Data)) return
 		if (homeCalledRef.current) return
 		homeCalledRef.current = true
 		setIsInitialEntry(false)
@@ -1200,12 +1227,26 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								settingsOpen === 'RestoreWalletScreen' && (
 									<RestoreWalletUnifiedScreen
 										initialRecoveryCode={restoreFromUrlMasterKey}
+										initialBeamioTag={
+											beamioTagFromUrlSearch() ||
+											knownBeamioAccountNameFromStorage(CoNET_Data) ||
+											beamioTag.trim().replace(/^@+/, '')
+										}
 										onClose={() => {
+											if (requireWalletRecover || consumerAppNeedsWalletRecover(CoNET_Data)) return
 											setSettingsOpen('')
 											setRestoreFromUrlMasterKey('')
 										}}
-										onRestore={({ temp, qrDataUrl, recoveryCode, beamioTag }) => {
+										onRestore={async ({ temp, qrDataUrl, recoveryCode, beamioTag }) => {
 											setRestoreFromUrlMasterKey('')
+											if (!hasLocalPlaintextMnemonic(temp)) {
+												return
+											}
+											if (requireWalletRecover) {
+												await init(temp)
+												home()
+												return
+											}
 											setTemp(temp)
 											setQrDataUrl(qrDataUrl)
 											setRecoveryCode(recoveryCode)

@@ -16,8 +16,10 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
-import { checkStorage, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits, handleNfcLinkAppDeepLinkScan } from "@/services/beamio"
+import { checkStorage, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic } from "@/services/beamio"
+import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
@@ -172,10 +174,10 @@ function AppShell() {
       Toast.show({ content: 'Redeem link is missing a valid card address', position: 'top' })
       return
     }
-    const privateKeyArmor = (profiles?.[0] as { privateKeyArmor?: string } | undefined)?.privateKeyArmor?.trim() || ''
+    const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
     const toUserEOA = (profiles?.[0]?.keyID ?? '').trim()
     if (!privateKeyArmor || !toUserEOA || !ethers.isAddress(toUserEOA)) {
-      Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+      Toast.show({ content: 'Unlock your wallet with your access password to continue.', position: 'top' })
       return
     }
     setRedeemClaimSubmitting(true)
@@ -220,9 +222,9 @@ function AppShell() {
 
   const handleConfirmCouponClaim = async () => {
     if (!couponClaimIntent || couponClaimSubmitting) return
-    const privateKeyArmor = (profiles?.[0] as { privateKeyArmor?: string } | undefined)?.privateKeyArmor?.trim() || ''
+    const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
     if (!privateKeyArmor) {
-      Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+      Toast.show({ content: 'Unlock your wallet with your access password to claim coupons.', position: 'top' })
       return
     }
     setCouponClaimSubmitting(true)
@@ -639,17 +641,22 @@ function AppShell() {
 			return 
 		}
 
-		temp = temp||isAcc
-	
-		const profiles = temp?.profiles
-		
+		temp = temp || isAcc
+		temp = ensureProfilePrivateKeyArmorFromMnemonic(temp) ?? temp
 
-		
-		if (!temp || !profiles ) {
+		const profiles = temp?.profiles
+
+		if (!temp || !profiles) {
 			setIsInitialLoading(true)
 			return 
 		}
 
+		if (!hasLocalPlaintextMnemonic(temp)) {
+			setIsInitialLoading(true)
+			return
+		}
+
+		setCoNET_Data(temp)
 		setProfiles(profiles)
 
 		

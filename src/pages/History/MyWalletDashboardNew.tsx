@@ -2087,6 +2087,7 @@ export default function MyWalletDashboardNew() {
 			// 从 latestCards 拉取的资产卡：持有 NFT 或 points 时显示
 			latestCardsItems.forEach((item) => {
 				const addr = item.cardAddress.toLowerCase()
+				if (isCardExcludedFromDisplay(addr)) return
 				if (addr === CCSA_Card_Address.toLowerCase() || addr === CASH_TREES_CARD_ADDRESS.toLowerCase()) return // CCSA、CashTrees 已单独处理
 				if (addr === BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase()) return // 不在钱包展示基础设施合约卡
 				const details = assetCardDetails[addr]

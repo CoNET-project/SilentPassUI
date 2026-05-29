@@ -48,7 +48,9 @@ import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
-import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
+import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
+import { checkStorage } from "@/services/beamio"
+import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
 import { fiatPrefix, formatAmount } from "@/services/currency"
@@ -82,7 +84,7 @@ const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
 const DISCOVER_LATEST_CARDS_LIMIT = 20
 /** 进入 Market 页面立即展示已 cache 的 Trending Now，避免 API 504 / 超时时永远 loading */
-const TRENDING_CACHE_VERSION = 5
+const TRENDING_CACHE_VERSION = 10
 const TRENDING_CACHE_KEY = `beamio:trending:latestCards:v${TRENDING_CACHE_VERSION}:limit${DISCOVER_LATEST_CARDS_LIMIT}`
 /** /api/latestCards 实测可能 504 / 60s+ 挂起，给出明确超时；超时按 untrusted 处理，不清空已显示的 trusted rows */
 const TRENDING_FETCH_TIMEOUT_MS = 12_000
@@ -262,6 +264,10 @@ type DiscoverLatestCardRow = {
 	businessName: string | null
 	/** Share / brand image — shown as logo (top-left on card face). */
 	logoUrl: string | null
+	/** Program icon from metadata `icon` (preferred over `logoUrl` / share `image`). */
+	programIconUrl: string | null
+	/** Wide hero from metadata `background` / `backgroundImage` (preferred over `merchantImage`). */
+	programBackgroundImage: string | null
 	/** Highest tier (`minUsdc6` max) CSS background from metadata.tiers. */
 	tierTopBackground: string | null
 	programDescription: string
@@ -822,6 +828,8 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 	const name = String(share?.name ?? meta?.name ?? "User Card").trim() || "User Card"
 	const imageRaw = share?.image ?? meta?.image
 	const logoUrl = typeof imageRaw === "string" && imageRaw.trim() ? imageRaw.trim() : null
+	const programIconUrl = merchantIconUrlFromMetadataRoot(meta) ?? null
+	const programBackgroundImage = merchantBackgroundImageFromMetadataRoot(meta) ?? null
 	const currency = String(r.currency ?? "USD").toUpperCase()
 	const { tierTopBackground, topTierName, topTierMinUsdc6 } = parseDiscoverTiersFromMeta(meta)
 	const topTierMinDisplay =
@@ -866,6 +874,8 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 		name,
 		businessName,
 		logoUrl,
+		programIconUrl,
+		programBackgroundImage,
 		tierTopBackground,
 		programDescription,
 		currency,
@@ -1737,13 +1747,14 @@ function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoP
 function DiscoverMerchantDetailFullScreen({
 	item,
 	onClose,
-	profile,
 }: {
 	item: DiscoverFeaturedCard
 	onClose: () => void
-	profile?: Parameters<typeof getMyAssets>[0] | null
 }) {
+	const navigate = useNavigate()
+	const { profiles, setProfiles } = useDaemonContext()
 	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName } = useMerchantCardDatabase()
+	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
 	const [favorited, setFavorited] = useState(false)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
@@ -1798,14 +1809,14 @@ function DiscoverMerchantDetailFullScreen({
 	const heroRechargeBonusPill = discoverFeaturedRechargeBonusSidePill(item)
 
 	const resolveUserEoa = useCallback((): string | null => {
-		const privateKeyArmor = profile?.privateKeyArmor?.trim() ?? ''
+		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 		if (!privateKeyArmor) return null
 		try {
 			return ethers.getAddress(new ethers.Wallet(privateKeyArmor).address)
 		} catch {
 			return null
 		}
-	}, [profile?.privateKeyArmor])
+	}, [profile])
 
 	const scheduleCouponClaimStatusReset = useCallback((rowId: string) => {
 		const prev = couponClaimStatusTimersRef.current.get(rowId)
@@ -1833,9 +1844,20 @@ function DiscoverMerchantDetailFullScreen({
 			const row = offer.coupon
 			const currentStatus = couponClaimStatusById[row.id] ?? 'idle'
 			if (currentStatus !== 'idle') return
-			const privateKeyArmor = profile?.privateKeyArmor?.trim() ?? ''
+			let privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 			if (!privateKeyArmor) {
-				Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+				const stored = await checkStorage()
+				if (stored?.profiles?.length) {
+					setProfiles(stored.profiles)
+					privateKeyArmor = resolveSigningPrivateKeyArmor(stored.profiles[0])
+				}
+			}
+			if (!privateKeyArmor) {
+				Toast.show({
+					content: 'Unlock your wallet with your access password to claim coupons.',
+					position: 'top',
+				})
+				navigate('/settings')
 				return
 			}
 			const cardAddress = row.cardAddress?.trim() ?? ''
@@ -1887,7 +1909,7 @@ function DiscoverMerchantDetailFullScreen({
 				Toast.show({ content: err, position: 'top' })
 			}
 		},
-		[couponClaimStatusById, profile?.privateKeyArmor, scheduleCouponClaimStatusReset],
+		[couponClaimStatusById, profile, navigate, scheduleCouponClaimStatusReset, setProfiles],
 	)
 
 	useEffect(() => {
@@ -2282,7 +2304,7 @@ export default function Market() {
 				const rows = items
 					.map(parseDiscoverLatestCardItem)
 					.filter((x): x is DiscoverLatestCardRow => x != null)
-				// Visibility: server `/api/latestCards` applies Featured Brands gate only (`latestCardsShared.ts`).
+				// Visibility: server `/api/latestCards` applies Featured Brands + exclude gate only.
 				if (rows.length > 0) {
 					setLatestCardsRows(rows)
 					if (rows.length > 0) saveCachedTrendingRows(rows)
@@ -2399,7 +2421,10 @@ export default function Market() {
 				categoryId: card.categoryId,
 			})
 			const isFood = category === "food-beverage"
-			const hero = card.merchantImage?.trim() || dbImage
+			const hero =
+				card.programBackgroundImage?.trim() ||
+				card.merchantImage?.trim() ||
+				dbImage
 			const cardHeroOverride =
 				DISCOVER_CARD_HERO_OVERRIDES[card.cardAddress.toLowerCase()]
 			const fallback =
@@ -2431,7 +2456,7 @@ export default function Market() {
 						: card.topTierName ?? card.topTierMinDisplay ?? "Member Benefits",
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
 				image: hero || cardHeroOverride || fallback,
-				logo: card.logoUrl ?? (dbImage || null),
+				logo: card.programIconUrl ?? card.logoUrl ?? (dbImage || null),
 				currency: card.currency,
 				primaryRechargeBonus: primaryBonus,
 				rechargeBonusSidePill,
@@ -2616,7 +2641,6 @@ export default function Market() {
 					<DiscoverMerchantDetailFullScreen
 						item={discoverMerchantDetail}
 						onClose={closeDiscoverMerchantDetail}
-						profile={profiles?.[0]}
 					/>
 				</motion.div>
 			) : null}

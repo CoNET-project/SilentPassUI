@@ -73,10 +73,16 @@ export type RestoreWalletFlowPayload = {
 	beamioTag: string
 }
 
+function normalizeBeamioTagInput(raw: string): string {
+	return raw.trim().replace(/^@+/, '')
+}
+
 export type RestoreWalletUnifiedScreenProps = {
 	onClose: () => void
 	onRestore: (payload: RestoreWalletFlowPayload) => void | Promise<void>
 	initialRecoveryCode?: string
+	/** Prefill Beamio ID on Welcome Back when tag is known (local storage or URL). */
+	initialBeamioTag?: string
 }
 
 /** 单页：ID & Password + Recovery Key（recoverRestore.html），整页 flex 填满、禁止外层纵向滚动 */
@@ -84,8 +90,10 @@ export default function RestoreWalletUnifiedScreen({
 	onClose,
 	onRestore,
 	initialRecoveryCode = '',
+	initialBeamioTag = '',
 }: RestoreWalletUnifiedScreenProps) {
-	const [tab, setTab] = useState<RestoreTab>('recovery')
+	const prefillTag = normalizeBeamioTagInput(initialBeamioTag)
+	const [tab, setTab] = useState<RestoreTab>(prefillTag ? 'login' : 'recovery')
 	const { scanRef, scanData } = useDaemonContext()
 
 	// —— Recovery —
@@ -94,7 +102,7 @@ export default function RestoreWalletUnifiedScreen({
 	const [recoveryError, setRecoveryError] = useState('')
 
 	// —— Login —
-	const [username, setUsername] = useState('')
+	const [username, setUsername] = useState(prefillTag)
 	const [pin, setPin] = useState('')
 	const [peekPin, setPeekPin] = useState(false)
 	const [loginLoading, setLoginLoading] = useState(false)
@@ -106,6 +114,13 @@ export default function RestoreWalletUnifiedScreen({
 			setTab('recovery')
 		}
 	}, [initialRecoveryCode])
+
+	useEffect(() => {
+		const tag = normalizeBeamioTagInput(initialBeamioTag)
+		if (!tag) return
+		setUsername(tag)
+		if (!initialRecoveryCode) setTab('login')
+	}, [initialBeamioTag, initialRecoveryCode])
 
 	useEffect(() => {
 		const run = async () => {

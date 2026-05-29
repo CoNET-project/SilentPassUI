@@ -10,6 +10,7 @@ import {
 	fetchOwnedCouponsFromRecentSeriesForUser,
 	fetchOwnedCouponsFromWalletAssetsForCards,
 	isCardExcludedFromDisplay,
+	loadApiExcludedUserCards,
 	getMyAssets,
 	getCardBasicMetadataStaleWhileRevalidate,
 	getAAAccount,
@@ -1072,6 +1073,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 	useEffect(() => {
 		currencyDataRef.current = currencyData
 	}, [currencyData])
+
+	useEffect(() => {
+		void loadApiExcludedUserCards()
+	}, [])
 
   const noAaRecentActivityInFlight = useRef(false)
   const [recentActivityNoAaItems, setRecentActivityNoAaItems] = useState<TxView[]>([])

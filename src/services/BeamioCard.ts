@@ -9,6 +9,7 @@ import {
 	rememberCardBasicMetadataTrusted,
 } from "@/utils/cardBasicMetadataGlobalCache";
 import { discoverCategoryFieldsFromMetadataRoot } from "@/utils/discoverMerchantCategory";
+import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
 import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
@@ -28,52 +29,15 @@ export type Icard = { cardAddress: string, userSignature: string, nonce: string,
 	const validAfter = now - BigInt(60)
 	const validBefore = now + BigInt(60)   
  */
-/** 用户拥有的卡片列表中不显示的卡地址（与 x402sdk apiExcludedUserCards 对齐） */
-const USER_CARD_DISPLAY_EXCLUDED = new Set([
-	'0xbccfa50d2a5917c7a8662177f5f4b7a175787270',
-	'0x2032a363bb2cf331142391fc0dad21d6504922c7',
-	'0x02bae511632354584b198951b42ec73bacbc4e98',
-	'0xf99018dffdb0c5657c93ca14db2900cebe1168a7',
-	'0xa86a8406b06bd6c332b4b380a0eaced822218eff',
-	'0xc0f1c74fb95100a97b532be53b266a54f41db615',
-	'0xecc5bdff6716847e45363befd3506b1d539c02d5',
-	'0x90ae2212ee70aca8671ab7f5238c828d13c6dea7',
-	'0x4879171d6c4693eaedcd8f448a785a31b2146e64',
-	'0x82b333da5c723da6e98fefecd96cb1ca304c6125',
-	'0x9d098fa94d559b8cb223b9760e8bac3d07617c78',
-	'0x926deadb97d8badd1221060840b5a1cf46711a86',
-	'0x709dae38d65a87289597ee79cb0d5d251a282e59',
-	'0x536cab27c6488202fd86bae0581f143c725f5b4d',
-	'0xb87058b44c881020fd529e7e34a158f05bc4c28a',
-	'0x82cee96db45933fe4b71d36fa8904508f929027c',
-	'0xf0ce0ae91f74f67893e00307cabea8c058939f03',
-	'0xb7644ddb12656f4854dc746464af47d33c206f0e',
-	'0x0fb5032915c5473b6ef40d878c3c701641f90ec8',
-	'0x407e9974a927af2860780645997778be7b0e8e23',
-	'0xea7b248cfcd457c4884371c55ae5afb0f428c483',
-	'0xe1666f0309529df18e7986064a337c981baea178',
-	'0x4cc2e5a596791cb71e34d7b3177e60f6ab3f73ed',
-	'0xcdab59228695bbf2137d56382395f854267194e1',
-	'0x3957724e39e3db4f9f5fb263dd18e73fe8a67581',
-	'0x4cb611a14b1441d36183f125503f2c72af5b8fc8',
-	'0xda36bd32418cac424dbffd07617094d1884e629c',
-	'0x63a6251a51939f6c47ba0ceff5984e5c9f031605',
-	'0x48952f9ea1231b59e5c5fa1a99bc657b122cfdfd',
-	'0xb8a42181adc9bb81b6ccc1f2198be95105cfd969',
-	'0x70399f0854f32553d7fe14a43fd6ab925d39c0b4',
-	'0xfb4d0546b90a8f353f7c479392a1ba40a1185b9d',
-	'0x4c66b36ba059b2f05ef3d5f383c67533f19c6219',
-	'0x9cda8477c9f03b8759ac64e21941e578908fd750',
-	'0x5c5376edabbf0f0bd52d5f7a93828606a5051694',
-	'0xeacd6cb7e9e5b2a2652ad65840997aab37b828e1',
-])
+/** 业务 API 返回的卡列表上做防御性二次过滤（exclude 表来自 GET /api/excludedUserCards）。 */
+const filterUserCardsFromApiLists = (cards: UserCardInfo[]): UserCardInfo[] =>
+	cards.filter((c) => !isApiExcludedUserCard(c.cardAddress))
 
-const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
-	cards.filter((c) => !USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()))
-
-/** 判断卡地址是否在 display exclude 列表中（用于持有者卡展示层过滤） */
+/** @deprecated 使用 `isApiExcludedUserCard`；保留旧导出名。 */
 export const isCardExcludedFromDisplay = (cardAddress: string): boolean =>
-	USER_CARD_DISPLAY_EXCLUDED.has((cardAddress || '').trim().toLowerCase())
+	isApiExcludedUserCard(cardAddress)
+
+export { loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 
 /** AA Factory 作为 UserCard gateway（与 config/chainAddresses BASE_AA_FACTORY 一致） */
 const BeamioUserCardGatewayAddress = BASE_MAINNET_FACTORIES.AA_FACTORY.toLowerCase()
@@ -1287,8 +1251,8 @@ async function fetchMyCardsFromApi(owners: string[]): Promise<UserCardInfo[]> {
 		throw new Error(`myCards API error: ${err}`)
 	}
 	const data = await res.json().catch(() => ({}))
-	const items = data?.items ?? []
-	return items as UserCardInfo[]
+	const items = (Array.isArray(data?.items) ? data.items : []) as UserCardInfo[]
+	return filterUserCardsFromApiLists(items)
 }
 
 export type GetCardsResult = {
@@ -1545,6 +1509,7 @@ async function fetchHeldCardsFromLatestForEOA(
 		const checks = await mapPool(items, HOLDER_SCAN_RPC_CONCURRENCY, async (it) => {
 			const rawAddr = String(it?.cardAddress ?? '').trim()
 			if (!rawAddr || !ethers.isAddress(rawAddr)) return null
+			if (isCardExcludedFromDisplay(rawAddr)) return null
 			const addr = ethers.getAddress(rawAddr)
 			const key = addr.toLowerCase()
 			if (existingCardAddresses.has(key)) return null
@@ -1659,100 +1624,77 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 	}
 
 	const cached = profile?.issuedCards ?? []
-	const seen = new Set<string>()
-	const merged: UserCardInfo[] = []
+	await loadApiExcludedUserCards()
+
 	let walletAssetsByCardKey: Record<string, MyCardAssets> | undefined
 	let walletResolvedAaAddress: string | null = null
+	let walletSnapshot: MyBrandsWalletAssetsSnapshot | null = null
 
-	// 0. RPC 熔断期：跳过 RPC，不向 API 请求
-	// （withBaseRpc 内部会走 CoNET-only）
+	if (eoa && ethers.isAddress(eoa)) {
+		walletSnapshot = await fetchMyBrandsWalletAssetsSnapshot(ethers.getAddress(eoa), new Set())
+		if (walletSnapshot !== null) {
+			walletAssetsByCardKey = walletSnapshot.assetsByCardKey
+			walletResolvedAaAddress = walletSnapshot.aaAddress
+		}
+	}
 
-	// 1. 尝试 RPC（Beamio Base RPC）
 	try {
-		for (const owner of uniqueOwners) {
-			const list = await fetchCardsForOwner(owner)
-			for (const c of list) {
-				const key = c.cardAddress.toLowerCase()
-				if (seen.has(key)) continue
-				seen.add(key)
-				merged.push(c)
+		const ownerCardsFromApi = await fetchMyCardsFromApi(uniqueOwners)
+		const seen = new Set<string>()
+		const merged: UserCardInfo[] = []
+		const holderCards: UserCardInfo[] = []
+
+		for (const c of ownerCardsFromApi) {
+			const key = c.cardAddress.toLowerCase()
+			if (seen.has(key)) continue
+			seen.add(key)
+			merged.push(c)
+		}
+
+		if (eoa && ethers.isAddress(eoa)) {
+			if (walletSnapshot !== null) {
+				mergeDiscoveredHolderCards(walletSnapshot.holderCards, seen, merged, holderCards)
+			} else {
+				const discoveredHolderCards = await fetchHeldCardsFromLatestForEOA(
+					ethers.getAddress(eoa),
+					seen,
+					aa
+				)
+				mergeDiscoveredHolderCards(discoveredHolderCards, seen, merged, holderCards)
 			}
 		}
-		// 补充：持有者视角（购买/领取）卡片。cardsOfOwner 仅覆盖 cardOwner，不覆盖持卡用户。
-		const ownerCards = filterExcludedUserCards([...merged])
-		const holderCards: UserCardInfo[] = []
-		if (eoa && ethers.isAddress(eoa)) {
-			const { holderCards: discoveredHolderCards, walletSnapshot } = await discoverHolderCardsForEOA(
-				ethers.getAddress(eoa),
-				seen,
-				aa
-			)
-			if (walletSnapshot) {
-				walletAssetsByCardKey = walletSnapshot.assetsByCardKey
-				walletResolvedAaAddress = walletSnapshot.aaAddress
-			}
-			mergeDiscoveredHolderCards(discoveredHolderCards, seen, merged, holderCards)
+
+		const ownerCards = merged.filter(
+			(c) => !holderCards.some((h) => h.cardAddress.toLowerCase() === c.cardAddress.toLowerCase())
+		)
+		if (merged.length === 0 && typeof console !== 'undefined' && console.warn) {
+			console.warn('[getCardsOfOwnerWithDetailsForProfile] API 返回 0 张卡。owners:', uniqueOwners)
 		}
 		return {
-			cards: filterExcludedUserCards(merged),
-			ownerCards,
-			holderCards: filterExcludedUserCards(holderCards),
+			cards: filterUserCardsFromApiLists(merged),
+			ownerCards: filterUserCardsFromApiLists(ownerCards),
+			holderCards: filterUserCardsFromApiLists(holderCards),
 			trusted: true,
 			walletAssetsByCardKey,
 			walletResolvedAaAddress,
 		}
-	} catch (e) {
-		if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
+	} catch (apiErr) {
 		if (typeof console !== 'undefined' && console.warn) {
-			console.warn('[getCardsOfOwnerWithDetailsForProfile] RPC 失败，尝试 API。owners:', uniqueOwners, (e as Error)?.message ?? e)
+			console.warn(
+				'[getCardsOfOwnerWithDetailsForProfile] API 失败，返回缓存。owners:',
+				uniqueOwners,
+				'cached:',
+				cached.length,
+				(apiErr as Error)?.message ?? apiErr
+			)
 		}
-		// 2. RPC 失败，尝试 API
-		try {
-			const apiItems = await fetchMyCardsFromApi(uniqueOwners)
-			const apiSeen = new Set(apiItems.map((c) => c.cardAddress.toLowerCase()))
-			const holderCards: UserCardInfo[] = []
-			if (eoa && ethers.isAddress(eoa)) {
-				const { holderCards: discoveredHolderCards, walletSnapshot } = await discoverHolderCardsForEOA(
-					ethers.getAddress(eoa),
-					apiSeen,
-					aa
-				)
-				if (walletSnapshot) {
-					walletAssetsByCardKey = walletSnapshot.assetsByCardKey
-					walletResolvedAaAddress = walletSnapshot.aaAddress
-				}
-				for (const c of discoveredHolderCards) {
-					const key = c.cardAddress.toLowerCase()
-					if (apiSeen.has(key)) continue
-					apiSeen.add(key)
-					holderCards.push(c)
-					apiItems.push(c)
-				}
-			}
-			if (apiItems.length === 0 && typeof console !== 'undefined' && console.warn) {
-				console.warn('[getCardsOfOwnerWithDetailsForProfile] API 返回 0 张卡。owners:', uniqueOwners)
-			}
-			return {
-				cards: filterExcludedUserCards(apiItems),
-				ownerCards: filterExcludedUserCards(apiItems.filter((c) => !holderCards.some((h) => h.cardAddress.toLowerCase() === c.cardAddress.toLowerCase()))),
-				holderCards: filterExcludedUserCards(holderCards),
-				trusted: true,
-				walletAssetsByCardKey,
-				walletResolvedAaAddress,
-			}
-		} catch (apiErr) {
-			if (typeof console !== 'undefined' && console.warn) {
-				console.warn('[getCardsOfOwnerWithDetailsForProfile] RPC+API 均失败，返回缓存。owners:', uniqueOwners, 'cached:', cached.length, (apiErr as Error)?.message ?? apiErr)
-			}
-			// 3. RPC 与 API 均失败，返回 profile 缓存的卡，不信任空 []
-			return {
-				cards: filterExcludedUserCards(cached),
-				ownerCards: [],
-				holderCards: [],
-				trusted: false,
-				walletAssetsByCardKey: undefined,
-				walletResolvedAaAddress: null,
-			}
+		return {
+			cards: filterUserCardsFromApiLists(cached),
+			ownerCards: [],
+			holderCards: [],
+			trusted: false,
+			walletAssetsByCardKey: undefined,
+			walletResolvedAaAddress: null,
 		}
 	}
 }
@@ -2953,17 +2895,89 @@ function readCardMetadataStringField(base: Record<string, unknown> | null, keys:
 	return ''
 }
 
-/** Merchant program icon — metadata `icon` first; legacy issuance stores logo as `image`. */
-function merchantIconUrlFromMetadataRoot(metaJson: Record<string, unknown>): string | undefined {
+const MERCHANT_BACKGROUND_IMAGE_KEYS = [
+	'background',
+	'backgroundImage',
+	'backgroundImageUrl',
+	'cover',
+	'coverImage',
+] as const
+
+function merchantMetadataImageUrl(raw: string): string | undefined {
+	const t = raw.trim()
+	if (!t) return undefined
+	if (/^https?:\/\//i.test(t) || t.startsWith('ipfs://') || t.startsWith('data:image/')) {
+		return t
+	}
+	return undefined
+}
+
+/** Program-level icon missing: first coupon / production row `icon` only (not coupon banner / couponImage). */
+function merchantFallbackIconFromShareCatalog(share: Record<string, unknown> | null): string | undefined {
+	if (!share) return undefined
+	const coupons = share.coupons
+	if (Array.isArray(coupons)) {
+		for (const row of coupons) {
+			const o = recordFromUnknown(row)
+			if (!o) continue
+			const url = merchantMetadataImageUrl(
+				readCardMetadataStringField(o, ['icon', 'iconUrl', 'logoUrl', 'logo', 'image'])
+			)
+			if (url) return url
+		}
+	}
+	const productions = share.productions
+	if (Array.isArray(productions)) {
+		for (const row of productions) {
+			const o = recordFromUnknown(row)
+			if (!o) continue
+			const url = merchantMetadataImageUrl(
+				readCardMetadataStringField(o, ['icon', 'iconUrl', 'logoUrl', 'logo', 'image'])
+			)
+			if (url) return url
+		}
+	}
+	return undefined
+}
+
+/** Merchant program icon — metadata `icon` first; legacy `image`; then first catalog row icon (not coupon background). */
+export function merchantIconUrlFromMetadataRoot(
+	metaJson: Record<string, unknown> | null | undefined
+): string | undefined {
+	if (!metaJson || typeof metaJson !== 'object') return undefined
 	const share = recordFromUnknown(metaJson.shareTokenMetadata)
 	const icon =
 		readCardMetadataStringField(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']) ||
 		readCardMetadataStringField(share, ['icon', 'iconUrl', 'logoUrl', 'logo'])
-	if (icon) return icon
+	if (icon) {
+		const url = merchantMetadataImageUrl(icon)
+		if (url) return url
+	}
 	const image =
-		readCardMetadataStringField(metaJson, ['image', 'merchantImage']) ||
-		readCardMetadataStringField(share, ['image', 'merchantImage'])
-	return image || undefined
+		readCardMetadataStringField(metaJson, ['image']) ||
+		readCardMetadataStringField(share, ['image'])
+	const programImage = image ? merchantMetadataImageUrl(image) : undefined
+	if (programImage) return programImage
+	return merchantFallbackIconFromShareCatalog(share)
+}
+
+/** Wide Discover / pass hero — program `background*` only (not coupon images); `merchantImage` is resolved separately in Discover. */
+export function merchantBackgroundImageFromMetadataRoot(
+	metaJson: Record<string, unknown> | null | undefined
+): string | undefined {
+	if (!metaJson || typeof metaJson !== 'object') return undefined
+	const share = recordFromUnknown(metaJson.shareTokenMetadata)
+	for (const src of [metaJson, share]) {
+		if (!src) continue
+		for (const key of MERCHANT_BACKGROUND_IMAGE_KEYS) {
+			const v = src[key]
+			if (typeof v === 'string') {
+				const url = merchantMetadataImageUrl(v)
+				if (url) return url
+			}
+		}
+	}
+	return undefined
 }
 
 /** biz Business Name / storeName — 与 Discover Featured Brands `title: businessName ?? name` 一致 */

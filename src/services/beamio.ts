@@ -1035,6 +1035,42 @@ const createKeyHDWallets = (secretPhrase: string | null) => {
   }
 }
 
+/**
+ * Ensure `profiles[0].privateKeyArmor` exists in session `CoNET_Data`.
+ * When IndexedDB has `mnemonicPhrase` but profile lost `privateKeyArmor`, re-derive from the 12-word phrase.
+ * If both are missing, user must `restoreWithUserPin` (BeamioTag + password, CoNET recover) — see
+ * `beamio-consumer-wallet-signing-storage.mdc` (bizSite must not persist keys; consumer/POS may).
+ */
+export const ensureProfilePrivateKeyArmorFromMnemonic = (
+  data: encrypt_keys_object | null,
+): encrypt_keys_object | null => {
+  if (!data?.profiles?.length) return data
+  const profiles = ensureFlatProfiles(data.profiles)
+  const p0 = profiles[0]
+  if (!p0) return data
+  const existing = p0.privateKeyArmor?.trim() ?? ''
+  if (existing) {
+    if (profiles === data.profiles) return data
+    return { ...data, profiles }
+  }
+  const phrase = data.mnemonicPhrase?.trim() ?? ''
+  if (!phrase) return data
+  const acc = createKeyHDWallets(phrase)
+  if (!acc) return data
+  const keyID = p0.keyID?.trim() ?? ''
+  if (keyID && ethers.isAddress(keyID) && acc.address.toLowerCase() !== keyID.toLowerCase()) {
+    console.warn('[ensureProfilePrivateKeyArmor] mnemonic does not match stored keyID')
+    return data
+  }
+  const nextProfile: profile = {
+    ...p0,
+    privateKeyArmor: acc.signingKey.privateKey,
+    publicKeyArmor: acc.publicKey,
+    keyID: keyID || acc.address,
+  }
+  return { ...data, profiles: [nextProfile, ...profiles.slice(1)] }
+}
+
 const getDuplicateOwnership = async(duplicateAccount: string, keyID: string): Promise<boolean|null> => {
 	try {
 		const owner = await duplicate_readOnly.duplicateList(keyID)
@@ -1104,6 +1140,11 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
 	await checkStorage()
 
   if (secretPhrase|| initAccount ) setCoNET_Data(null)
+
+  if (CoNET_Data?.profiles?.length) {
+    const hydrated = ensureProfilePrivateKeyArmorFromMnemonic(CoNET_Data)
+    if (hydrated) setCoNET_Data(hydrated)
+  }
 
   if (!CoNET_Data || !CoNET_Data?.profiles) {
 		const acc = createKeyHDWallets(secretPhrase);
@@ -1179,8 +1220,9 @@ export const checkStorage = async () => {
     const database = PouchDB(localDatabaseName, { auto_compaction: true });
     const doc = await database.get("init", { latest: true });
     const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
-    setCoNET_Data(data);
-    return data
+    const hydrated = ensureProfilePrivateKeyArmorFromMnemonic(data);
+    setCoNET_Data(hydrated);
+    return hydrated
   } catch {
     // IndexedDB（_pouch_conet）取不到 init 文档即视为未注册，直接进入 onboarding；
     // 不再从 Cache Storage 回填：Cache 残留可能让用户以"空 EOA"或不完整账号

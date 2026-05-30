@@ -72,7 +72,7 @@ import {
   createBeamioCard,
   updateBeamioCardShareMetadata,
   updateCardMerchantImage,
-  updateCardProgramImage,
+  persistCardProgramIconImage,
   updateIssuedCouponMetadata,
   updateBeamioCardTiers,
   encodeSetTiers,
@@ -13299,18 +13299,20 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      }
      setCardIssuanceCreateError('');
      setCardIssuanceShareImageUploading(true);
+     const previousShareImageUrl = cardIssuanceShareImageUrl;
      try {
        const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
        if (hash) {
          const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
-         setCardIssuanceShareImageUrl(url);
          const issuedAddr = cardIssuanceExistingCard?.cardAddress?.trim();
          if (issuedAddr && ethers.isAddress(issuedAddr)) {
-           const save = await updateCardProgramImage({
+           setCardIssuanceShareImageUrl(url);
+           const save = await persistCardProgramIconImage({
              cardAddress: ethers.getAddress(issuedAddr),
              image: url,
            });
            if (!save.success) {
+             setCardIssuanceShareImageUrl(previousShareImageUrl);
              setCardIssuanceCreateError(save.error ?? 'Failed to save merchant icon on server.');
              return;
            }
@@ -13318,17 +13320,20 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
              if (!prev?.meta) return prev;
              return { ...prev, meta: { ...prev.meta, image: url } };
            });
+         } else {
+           setCardIssuanceShareImageUrl(url);
          }
        } else {
          setCardIssuanceCreateError('Card icon upload failed.');
        }
      } catch (err: any) {
+       setCardIssuanceShareImageUrl(previousShareImageUrl);
        setCardIssuanceCreateError(err?.message ?? 'Card icon upload failed.');
      } finally {
        setCardIssuanceShareImageUploading(false);
      }
    },
-   [profiles, cardIssuanceExistingCard?.cardAddress]
+   [profiles, cardIssuanceExistingCard?.cardAddress, cardIssuanceShareImageUrl]
  );
 
  const removeIssuedProgramMerchantIcon = useCallback(async () => {
@@ -13336,12 +13341,14 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    if (addr && ethers.isAddress(addr)) {
      setCardIssuanceShareImageUploading(true);
      setCardIssuanceCreateError('');
+     const previousShareImageUrl = cardIssuanceShareImageUrl;
      try {
-       const r = await updateCardProgramImage({
+       const r = await persistCardProgramIconImage({
          cardAddress: ethers.getAddress(addr),
          image: '',
        });
        if (!r.success) {
+         setCardIssuanceShareImageUrl(previousShareImageUrl);
          setCardIssuanceCreateError(r.error ?? 'Failed to remove merchant icon on server.');
          return;
        }
@@ -13368,7 +13375,13 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    if (cardIssuanceMerchantIconIssuedPanelFileRef.current) {
      cardIssuanceMerchantIconIssuedPanelFileRef.current.value = '';
    }
- }, [cardIssuanceExistingCard?.cardAddress]);
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceShareImageUrl]);
+
+ useEffect(() => {
+   if (!cardIssuanceExistingCard?.cardAddress) return;
+   const img = (cardIssuanceExistingCard.meta?.image ?? '').trim();
+   setCardIssuanceShareImageUrl(img);
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.image]);
 
  const handleCardIssuanceMerchantImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
    async (e) => {

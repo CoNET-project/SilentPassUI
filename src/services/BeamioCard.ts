@@ -1282,6 +1282,61 @@ export const updateCardProgramImage = async (params: {
 }
 
 /**
+ * Persist program square icon (`shareTokenMetadata.image`).
+ * Tries `/api/updateCardProgramImage` first; falls back to full share metadata patch on older API builds.
+ */
+export const persistCardProgramIconImage = async (params: {
+	cardAddress: string
+	image: string
+}): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
+	const primary = await updateCardProgramImage(params)
+	if (primary.success) return primary
+
+	try {
+		const res = await fetch(
+			`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(params.cardAddress)}`
+		)
+		if (!res.ok) return primary
+		const data = (await res.json()) as { metadata?: Record<string, unknown> | null }
+		const metaJson = data?.metadata
+		if (!metaJson || typeof metaJson !== 'object') return primary
+		const existingShare =
+			metaJson.shareTokenMetadata != null &&
+			typeof metaJson.shareTokenMetadata === 'object' &&
+			!Array.isArray(metaJson.shareTokenMetadata)
+				? { ...(metaJson.shareTokenMetadata as Record<string, unknown>) }
+				: {}
+		const share = { ...existingShare }
+		const imageTrim = (params.image ?? '').trim()
+		if (imageTrim) share.image = imageTrim
+		else delete share.image
+		const upgradeTypeRaw = Number(metaJson.upgradeType)
+		const upgradeType =
+			upgradeTypeRaw === 0 || upgradeTypeRaw === 1 || upgradeTypeRaw === 2
+				? (upgradeTypeRaw as 0 | 1 | 2)
+				: undefined
+		const fallback = await updateBeamioCardShareMetadata({
+			cardAddress: params.cardAddress,
+			shareTokenMetadata: share as ShareTokenMetadata,
+			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && {
+				tiers: metaJson.tiers as UpdateBeamioCardShareMetadataParams['tiers'],
+			}),
+			...(upgradeType !== undefined && { upgradeType }),
+			...(typeof metaJson.transferWhitelistEnabled === 'boolean' && {
+				transferWhitelistEnabled: metaJson.transferWhitelistEnabled,
+			}),
+		})
+		if (fallback.success) return fallback
+		return {
+			success: false,
+			error: fallback.error ?? primary.error ?? 'Update program image failed',
+		}
+	} catch {
+		return primary
+	}
+}
+
+/**
  * 已发卡仅更新链下 metadata（`/api/updateCardShareMetadata`）：写入 0x{card}0.json 并同步 beamio_cards.metadata_json。
  * Recharge bonus 的增删改需在商户端确认后点此接口（或等价 Publish），POS/应用从 metadata 读取规则。
  */

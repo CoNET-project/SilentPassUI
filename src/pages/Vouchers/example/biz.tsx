@@ -113,9 +113,16 @@ import {
 } from '@/utils/ipfsCardImageUpload';
 import {
   fileLooksLikeProductionBackgroundVideo,
+  preloadProductionBackgroundVideoProcessor,
   probeProductionBackgroundVideoDurationSec,
+  productionBackgroundVideoNeedsClipEdit,
   standardizeProductionBackgroundVideo,
 } from '@/utils/productionBackgroundVideo';
+import {
+  ipfsFragmentUrlFromHash,
+  uploadMediaFileToIpfsChunked,
+  type IpfsFragmentUploadProgress,
+} from '@/utils/ipfsFragmentChunkUpload';
 import {
   hasLiteBusinessChainAck,
   hasVerraLiteBusinessRequiredFields,
@@ -139,6 +146,8 @@ import {
   initialRedeemRegisterBatchCount,
   resolveRedeemRegisterBatchCount,
   DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS,
+  catalogGlobalCategoryLabel,
+  productionItemCategoryLabel,
   buildCardIssuanceProductionMetadataPayload,
   buildPackageProductionDraftRowFromBase,
   buildPackageProductionRowFromBase,
@@ -151,6 +160,7 @@ import {
   makeCatalogPackageDealDraftId,
   packageDealDraftFromProductionRow,
   productionEffectiveChargeAmount,
+  productionIconLooksLikeImageUrl,
   resolvePackageParentTokenIdFromMeta,
   resolveProductionIssueTotalUnlimitedFromHydration,
   validateCatalogPackageDealDraft,
@@ -7107,6 +7117,38 @@ function saveTrustedCache<T>(key: string, value: T) {
   }
 }
 
+/** Business / Catalog — local-first per wallet partition + program card. */
+function bizCatalogProductionsCacheKey(partitionLower: string, cardAddressLower: string): string {
+  return `eoa:${partitionLower}:biz:catalog-productions:v1:${cardAddressLower}`;
+}
+
+function bizCatalogServiceCategoriesCacheKey(partitionLower: string, cardAddressLower: string): string {
+  return `eoa:${partitionLower}:biz:catalog-service-categories:v1:${cardAddressLower}`;
+}
+
+function bizCatalogCouponsCacheKey(partitionLower: string, cardAddressLower: string): string {
+  return `eoa:${partitionLower}:biz:catalog-coupons:v1:${cardAddressLower}`;
+}
+
+function resolveBizProgramCardLowerForTrustedCache(args: {
+  partitionLower: string | null;
+  cardIssuanceCardAddress?: string;
+  merchantOwnCardAddress?: string | null;
+  lastResolvedStaffProgramCacheKey?: string;
+}): string {
+  if (!args.partitionLower) return '';
+  let card = args.cardIssuanceCardAddress?.trim() ?? '';
+  if (!card && args.merchantOwnCardAddress && ethers.isAddress(args.merchantOwnCardAddress)) {
+    card = args.merchantOwnCardAddress;
+  }
+  if (!card && args.lastResolvedStaffProgramCacheKey) {
+    const last = loadTrustedCache<string>(args.lastResolvedStaffProgramCacheKey);
+    if (last && ethers.isAddress(last)) card = last;
+  }
+  if (!card || !ethers.isAddress(card)) return '';
+  return ethers.getAddress(card).toLowerCase();
+}
+
 /** Logged-in CoNET EOA for localStorage — `eoa:${...}:*` keys; must match EOA-switch cleanup `startsWith(eoa:${old}:)`. */
 function bizWalletStoragePartitionLower(profileKeyId: string | undefined, myAddr: string | undefined): string | null {
   const raw = (profileKeyId ?? myAddr ?? '').trim();
@@ -8511,6 +8553,21 @@ function buildProgramsCouponOpenClaimShareUrl(
   return cacheBustV ? appendAppDownloadShareCacheBust(base, cacheBustV) : base;
 }
 
+/** Catalog item open-claim share — same app-download wrapper + `couponId` param (production row id). */
+function buildProgramsCatalogOpenClaimShareUrl(
+  cardAddress: string,
+  productionId: string,
+  cacheBustV?: string
+): string {
+  return buildProgramsCouponOpenClaimShareUrl(cardAddress, productionId, cacheBustV);
+}
+
+function buildProgramsCatalogShareHeadline(merchantName: string): string {
+  const name = merchantName.trim() || 'Beamio';
+  const trimmed = name.length > 28 ? `${name.slice(0, 27).trim()}…` : name;
+  return `Get a ${trimmed} Catalog Item`;
+}
+
 function buildProgramsCouponRedeemShareUrl(
   cardAddress: string,
   redeemCode: string,
@@ -8721,6 +8778,135 @@ function ProgramsCouponShareCardPreview({
   );
 }
 
+function ProgramsCatalogShareCardPreview({
+  production,
+  shareUrl,
+  merchantName,
+  serviceCategories = DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS,
+  punchBgClassName = 'bg-white',
+}: {
+  production: CardIssuanceProductionRow;
+  shareUrl: string;
+  merchantName: string;
+  serviceCategories?: ProductionServiceCategoryOption[];
+  punchBgClassName?: string;
+}) {
+  const shareHeadline = buildProgramsCatalogShareHeadline(merchantName);
+  const globalCategoryLabel = catalogGlobalCategoryLabel(production.globalCategory);
+  const itemCategoryLabel = productionItemCategoryLabel(production.itemCategory, serviceCategories);
+  const categoryLine = [globalCategoryLabel, itemCategoryLabel].filter(Boolean).join(' · ');
+  const title = production.name.trim() || 'Catalog Item';
+  const subtitle = production.subtitle.trim();
+  const backgroundColorHex = tierBackgroundColorForPayload(production.backgroundColor) ?? '#ea580c';
+  const backgroundImage = production.productionImage.trim();
+  const hasBanner = backgroundImage.length > 0;
+  const iconUrl =
+    !hasBanner && productionIconLooksLikeImageUrl(production.icon) ? production.icon.trim() : '';
+  const noBannerWithQr = !hasBanner && Boolean(shareUrl);
+  const ticketMinHeightClass = noBannerWithQr ? 'min-h-[10rem]' : 'min-h-[7.5rem]';
+
+  const renderCatalogMetadata = (tone: 'inner' | 'external') => {
+    const categoryClass =
+      tone === 'inner'
+        ? 'text-[10px] font-bold uppercase tracking-wider text-white/85 drop-shadow-sm'
+        : 'text-[10px] font-bold uppercase tracking-wider text-[#ea580c]';
+    const titleClass =
+      tone === 'inner'
+        ? 'break-words font-manrope text-[1.05rem] font-extrabold leading-snug tracking-tight text-white drop-shadow-sm sm:text-lg'
+        : 'break-words font-manrope text-[1.05rem] font-extrabold leading-[2.1] tracking-tight text-[#2c2f31] sm:text-lg';
+    const subtitleClass =
+      tone === 'inner'
+        ? 'break-words font-manrope text-sm font-semibold leading-snug text-white/90 drop-shadow-sm'
+        : 'mt-1.5 break-words font-manrope text-sm font-semibold leading-[2.25] text-[#595c5e]';
+
+    return (
+      <>
+        {categoryLine ? <p className={categoryClass}>{categoryLine}</p> : null}
+        <p className={`${titleClass} ${categoryLine ? 'mt-1' : ''}`}>{title}</p>
+        {subtitle ? (
+          <p className={`${subtitleClass} ${categoryLine ? 'mt-1' : 'mt-1.5'}`}>{subtitle}</p>
+        ) : null}
+      </>
+    );
+  };
+
+  const ticketShell = (
+    <div className="relative w-full rounded-[1.75rem]">
+      <div className={`relative ${ticketMinHeightClass} rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]`}>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.75rem]" aria-hidden>
+          {hasBanner ? (
+            <ProgramsCouponBannerImage src={backgroundImage} />
+          ) : (
+            <>
+              <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }} />
+              <div
+                className="absolute inset-0 opacity-[0.12]"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(-26deg, #fff 0, #fff 1px, transparent 1px, transparent 8px)',
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-black/30" />
+            </>
+          )}
+        </div>
+        <div
+          className={`pointer-events-none absolute left-0 top-1/2 z-[1] h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-none ring-0 outline-none ${punchBgClassName}`}
+          aria-hidden
+        />
+        <div
+          className={`pointer-events-none absolute right-0 top-1/2 z-[1] h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full shadow-none ring-0 outline-none ${punchBgClassName}`}
+          aria-hidden
+        />
+        <div
+          className={[
+            `relative z-[2] flex ${ticketMinHeightClass} items-center gap-3 px-8 py-6 sm:gap-4 sm:px-9 sm:py-7`,
+            hasBanner ? 'justify-end' : '',
+            noBannerWithQr ? 'justify-between' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {!hasBanner ? (
+            <div className="min-w-0 flex-1">
+              {iconUrl ? (
+                <div className="mb-2 h-11 w-11 overflow-hidden rounded-xl ring-1 ring-white/20">
+                  <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+                </div>
+              ) : null}
+              {renderCatalogMetadata('inner')}
+            </div>
+          ) : null}
+          {noBannerWithQr ? (
+            <div className="shrink-0 rounded-2xl border border-white/20 bg-white p-2.5 shadow-sm ring-1 ring-black/[0.08]">
+              <QRCodeCanvas value={shareUrl} size={88} level="M" includeMargin={false} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative w-full text-left" role="region" aria-label="Catalog item preview">
+      <p className="mb-3 text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg">
+        {shareHeadline}
+      </p>
+      {ticketShell}
+      {hasBanner ? (
+        <div className="mt-3 w-full py-2">
+          {renderCatalogMetadata('external')}
+          {shareUrl ? (
+            <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
+              <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin={false} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 type ProgramsCouponShareImageStatus = 'idle' | 'loading' | 'success' | 'error';
 
 function sanitizeProgramsCouponShareFilenamePart(raw: string): string {
@@ -8734,6 +8920,10 @@ function sanitizeProgramsCouponShareFilenamePart(raw: string): string {
 function programsCouponShareImageFilename(coupon: CardIssuanceCouponRow, shareKind: 'open_claim' | 'redeem'): string {
   const kind = shareKind === 'redeem' ? 'redeem' : 'open-claim';
   return `${sanitizeProgramsCouponShareFilenamePart(coupon.name || coupon.id)}-${kind}.png`;
+}
+
+function programsCatalogShareImageFilename(production: CardIssuanceProductionRow): string {
+  return `${sanitizeProgramsCouponShareFilenamePart(production.name || production.id)}-catalog-open-claim.png`;
 }
 
 function downloadProgramsCouponShareBlob(blob: Blob, filename: string): void {
@@ -9792,6 +9982,7 @@ const [cardIssuanceBonusRules, setCardIssuanceBonusRules] = useState<CardIssuanc
  const [cardIssuanceBonusRuleEditorServerError, setCardIssuanceBonusRuleEditorServerError] = useState('');
 const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useState<string | null>(null);
 const [cardIssuanceCoupons, setCardIssuanceCoupons] = useState<CardIssuanceCouponRow[]>([]);
+const catalogCouponsTrustedPersistArmedRef = useRef(false);
 const [cardIssuanceCouponEditorOpen, setCardIssuanceCouponEditorOpen] = useState(false);
 /** Hydration must not reset editing session while the coupon editor is open (draft IPFS URL vs server row). */
 const cardIssuanceCouponEditorOpenRef = useRef(false);
@@ -9824,6 +10015,12 @@ const [cardIssuanceCouponShareUrlCopied, setCardIssuanceCouponShareUrlCopied] = 
 const [cardIssuanceCouponShareImageStatus, setCardIssuanceCouponShareImageStatus] =
   useState<ProgramsCouponShareImageStatus>('idle');
 const cardIssuanceCouponShareImageRef = useRef<HTMLDivElement>(null);
+const [cardIssuanceProductionShareOpenId, setCardIssuanceProductionShareOpenId] = useState<string | null>(null);
+const [cardIssuanceProductionShareCacheBustV, setCardIssuanceProductionShareCacheBustV] = useState('');
+const [cardIssuanceProductionShareUrlCopied, setCardIssuanceProductionShareUrlCopied] = useState(false);
+const [cardIssuanceProductionShareImageStatus, setCardIssuanceProductionShareImageStatus] =
+  useState<ProgramsCouponShareImageStatus>('idle');
+const cardIssuanceProductionShareImageRef = useRef<HTMLDivElement>(null);
 const [cardIssuanceCouponRedeemShareCacheBustV, setCardIssuanceCouponRedeemShareCacheBustV] = useState('');
 const [cardIssuanceCouponRedeemShareOpen, setCardIssuanceCouponRedeemShareOpen] = useState<{
   couponId: string;
@@ -9856,6 +10053,10 @@ useEffect(() => {
 }, [cardIssuanceCouponRedeemStatuses]);
 
 const [cardIssuanceProductions, setCardIssuanceProductions] = useState<CardIssuanceProductionRow[]>([]);
+/** Arms trusted catalog persist after local seed or successful remote hydrate (avoids wiping cache with []). */
+const catalogProductionsTrustedPersistArmedRef = useRef(false);
+const catalogServiceCategoriesTrustedPersistArmedRef = useRef(false);
+const bizProgramCardCatalogCacheBucketRef = useRef('');
 const [cardIssuanceProductionsPanelOpen, setCardIssuanceProductionsPanelOpen] = useState(false);
 const [cardIssuanceProductionEditorOpen, setCardIssuanceProductionEditorOpen] = useState(false);
 const cardIssuanceProductionEditorOpenRef = useRef(false);
@@ -9890,8 +10091,12 @@ const [productionVideoDraftFile, setProductionVideoDraftFile] = useState<File | 
 const [productionVideoDraftUrl, setProductionVideoDraftUrl] = useState('');
 const [productionVideoSourceDurationSec, setProductionVideoSourceDurationSec] = useState(0);
 const [productionVideoStartSec, setProductionVideoStartSec] = useState(0);
+const [productionVideoClipEditRequired, setProductionVideoClipEditRequired] = useState(false);
+const [productionVideoTrimConfirmed, setProductionVideoTrimConfirmed] = useState(false);
+const [productionVideoUploadProgress, setProductionVideoUploadProgress] = useState(0);
 const [productionVideoProcessingMessage, setProductionVideoProcessingMessage] = useState('');
 const productionVideoDraftUrlRef = useRef('');
+const productionVideoUploadAbortRef = useRef<AbortController | null>(null);
 /** Last catalog item icon entered (upload/save) — prefills the next Add item form. */
 const cardIssuanceProductionLastIconRef = useRef('');
 const [cardIssuanceProductionEditorError, setCardIssuanceProductionEditorError] = useState('');
@@ -10054,6 +10259,23 @@ const cardIssuanceCouponShareUrl = useMemo(() => {
   const couponId = cardIssuanceCouponShareRow?.id?.trim() ?? '';
   return buildProgramsCouponOpenClaimShareUrl(cardAddress, couponId, cardIssuanceCouponShareCacheBustV);
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponShareRow?.id, cardIssuanceCouponShareCacheBustV]);
+const cardIssuanceProductionShareRow = useMemo(
+  () => cardIssuanceProductions.find((item) => item.id === cardIssuanceProductionShareOpenId) ?? null,
+  [cardIssuanceProductions, cardIssuanceProductionShareOpenId]
+);
+const cardIssuanceProductionShareUrl = useMemo(() => {
+  const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+  const productionId = cardIssuanceProductionShareRow?.id?.trim() ?? '';
+  return buildProgramsCatalogOpenClaimShareUrl(
+    cardAddress,
+    productionId,
+    cardIssuanceProductionShareCacheBustV
+  );
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceProductionShareRow?.id,
+  cardIssuanceProductionShareCacheBustV,
+]);
 const cardIssuanceCouponRedeemShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponRedeemShareOpen?.couponId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponRedeemShareOpen?.couponId]
@@ -10856,6 +11078,7 @@ useEffect(() => {
       }
       return merged;
     });
+    catalogCouponsTrustedPersistArmedRef.current = true;
     if (!cardIssuanceCouponEditorOpenRef.current) {
       setCardIssuanceEditingCouponId(null);
       setCardIssuanceCouponEditorOpen(false);
@@ -10889,6 +11112,9 @@ useEffect(() => {
     }
     return prev;
   });
+  if (cardIssuanceExistingCard?.cardAddress && cardIssuanceExistingCard.meta) {
+    catalogServiceCategoriesTrustedPersistArmedRef.current = true;
+  }
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta]);
 
 function hydrateCardIssuanceProductionRowFromShareMeta(
@@ -11117,6 +11343,7 @@ useEffect(() => {
       }
       return merged;
     });
+    catalogProductionsTrustedPersistArmedRef.current = true;
     if (!cardIssuanceProductionEditorOpenRef.current) {
       setCardIssuanceEditingProductionId(null);
       setCardIssuanceProductionEditorOpen(false);
@@ -11882,6 +12109,21 @@ const openCardIssuanceCouponShare = useCallback((couponId: string) => {
   setCardIssuanceCouponShareOpenId(couponId);
 }, [cardIssuanceCoupons]);
 
+const openCardIssuanceProductionShare = useCallback((productionId: string) => {
+  const row = cardIssuanceProductions.find((item) => item.id === productionId);
+  if (!row || !row.issued || row.requiresRedeemCode) return;
+  setCardIssuanceProductionShareUrlCopied(false);
+  setCardIssuanceProductionShareImageStatus('idle');
+  setCardIssuanceProductionShareCacheBustV(String(Date.now()));
+  setCardIssuanceProductionShareOpenId(productionId);
+}, [cardIssuanceProductions]);
+
+const closeCardIssuanceProductionShare = useCallback(() => {
+  setCardIssuanceProductionShareOpenId(null);
+  setCardIssuanceProductionShareUrlCopied(false);
+  setCardIssuanceProductionShareImageStatus('idle');
+}, []);
+
 const closeCardIssuanceCouponShare = useCallback(() => {
   setCardIssuanceCouponShareOpenId(null);
   setCardIssuanceCouponShareUrlCopied(false);
@@ -11931,6 +12173,17 @@ const copyCardIssuanceCouponShareUrl = useCallback(async () => {
   }
 }, [cardIssuanceCouponShareUrl]);
 
+const copyCardIssuanceProductionShareUrl = useCallback(async () => {
+  if (!cardIssuanceProductionShareUrl) return;
+  try {
+    await navigator.clipboard.writeText(cardIssuanceProductionShareUrl);
+    setCardIssuanceProductionShareUrlCopied(true);
+    setTimeout(() => setCardIssuanceProductionShareUrlCopied(false), 2000);
+  } catch {
+    // ignore
+  }
+}, [cardIssuanceProductionShareUrl]);
+
 const downloadCardIssuanceCouponShareImage = useCallback(async () => {
   const target = cardIssuanceCouponShareImageRef.current;
   if (!target || !cardIssuanceCouponShareRow || !cardIssuanceCouponShareUrl) return;
@@ -11948,6 +12201,24 @@ const downloadCardIssuanceCouponShareImage = useCallback(async () => {
     window.setTimeout(() => setCardIssuanceCouponShareImageStatus('idle'), 3000);
   }
 }, [cardIssuanceCouponShareRow, cardIssuanceCouponShareUrl]);
+
+const downloadCardIssuanceProductionShareImage = useCallback(async () => {
+  const target = cardIssuanceProductionShareImageRef.current;
+  if (!target || !cardIssuanceProductionShareRow || !cardIssuanceProductionShareUrl) return;
+  setCardIssuanceProductionShareImageStatus('loading');
+  try {
+    await captureProgramsCouponSharePng(
+      target,
+      programsCatalogShareImageFilename(cardIssuanceProductionShareRow)
+    );
+    setCardIssuanceProductionShareImageStatus('success');
+    window.setTimeout(() => setCardIssuanceProductionShareImageStatus('idle'), 3000);
+  } catch (error) {
+    console.warn('Failed to download catalog share image', error);
+    setCardIssuanceProductionShareImageStatus('error');
+    window.setTimeout(() => setCardIssuanceProductionShareImageStatus('idle'), 3000);
+  }
+}, [cardIssuanceProductionShareRow, cardIssuanceProductionShareUrl]);
 
 const downloadCardIssuanceCouponRedeemShareImage = useCallback(async () => {
   const target = cardIssuanceCouponRedeemShareImageRef.current;
@@ -12414,7 +12685,12 @@ const revokeProductionVideoDraft = useCallback(() => {
   setProductionVideoDraftUrl('');
   setProductionVideoSourceDurationSec(0);
   setProductionVideoStartSec(0);
+  setProductionVideoClipEditRequired(false);
+  setProductionVideoTrimConfirmed(false);
+  setProductionVideoUploadProgress(0);
   setProductionVideoProcessingMessage('');
+  productionVideoUploadAbortRef.current?.abort();
+  productionVideoUploadAbortRef.current = null;
 }, []);
 
 const resetCardIssuanceProductionEditorFields = useCallback(() => {
@@ -12691,6 +12967,122 @@ const removeCardIssuanceProductionDraft = useCallback(
   [cardIssuanceExistingCard?.cardAddress, cardIssuanceProductions]
 );
 
+const runProductionVideoConvertAndUpload = useCallback(
+  async (args: {
+    file: File;
+    startSec: number;
+  }): Promise<{ ok: true; imageUrl: string; mime: string } | { ok: false }> => {
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceProductionEditorError(
+        'Profile not available for upload. Open Settings and ensure your wallet is ready.'
+      );
+      return { ok: false };
+    }
+    productionVideoUploadAbortRef.current?.abort();
+    const abortController = new AbortController();
+    productionVideoUploadAbortRef.current = abortController;
+
+    setCardIssuanceProductionEditorError('');
+    setCardIssuanceProductionImageUploading(true);
+    setProductionVideoUploadProgress(0);
+    setProductionVideoProcessingMessage('Preparing video…');
+    try {
+      let convertWorkflow = 'Preparing video…';
+      const mapUploadProgress = (progress: IpfsFragmentUploadProgress) => {
+        if (progress.phase === 'prepare') {
+          setProductionVideoUploadProgress(34);
+          setProductionVideoProcessingMessage(progress.message);
+          return;
+        }
+        const pct = 35 + Math.round(progress.percent * 0.65);
+        setProductionVideoUploadProgress(Math.min(100, pct));
+        setProductionVideoProcessingMessage(progress.message);
+      };
+
+      const standardized = await standardizeProductionBackgroundVideo({
+        file: args.file,
+        startSec: args.startSec,
+        onStatus: (message) => {
+          convertWorkflow = message;
+          setProductionVideoProcessingMessage(message);
+          if (/loading video processor/i.test(message)) {
+            setProductionVideoUploadProgress(6);
+          } else if (/optimizing video/i.test(message)) {
+            setProductionVideoUploadProgress(32);
+          }
+        },
+        onConvertProgress: (ratio) => {
+          setProductionVideoProcessingMessage(convertWorkflow);
+          setProductionVideoUploadProgress(8 + Math.round(Math.min(1, Math.max(0, ratio)) * 24));
+        },
+      });
+      if (abortController.signal.aborted) return { ok: false };
+
+      const hash = await uploadMediaFileToIpfsChunked(
+        p0,
+        standardized.file,
+        mapUploadProgress,
+        abortController.signal
+      );
+      if (!hash) {
+        setCardIssuanceProductionEditorError('Background video upload failed.');
+        return { ok: false };
+      }
+      const imageUrl = ipfsFragmentUrlFromHash(hash);
+      setProductionVideoUploadProgress(100);
+      setCardIssuanceProductionImage(imageUrl);
+      setCardIssuanceProductionImageMime('video/mp4');
+      setCardIssuanceProductionImageStartSec(0);
+      revokeProductionVideoDraft();
+      return { ok: true, imageUrl, mime: 'video/mp4' };
+    } catch (err: unknown) {
+      if (abortController.signal.aborted) return { ok: false };
+      setCardIssuanceProductionEditorError(
+        err instanceof Error ? err.message : 'Background video processing failed.'
+      );
+      return { ok: false };
+    } finally {
+      if (productionVideoUploadAbortRef.current === abortController) {
+        productionVideoUploadAbortRef.current = null;
+      }
+      setProductionVideoProcessingMessage('');
+      setCardIssuanceProductionImageUploading(false);
+    }
+  },
+  [profiles, revokeProductionVideoDraft]
+);
+
+const startProductionVideoUploadAfterTrim = useCallback(async () => {
+  const file = productionVideoDraftFile;
+  if (!file || cardIssuanceProductionImageUploading) return;
+  await runProductionVideoConvertAndUpload({
+    file,
+    startSec: productionVideoStartSec,
+  });
+}, [
+  productionVideoDraftFile,
+  productionVideoStartSec,
+  cardIssuanceProductionImageUploading,
+  runProductionVideoConvertAndUpload,
+]);
+
+const confirmProductionVideoTrimAndUpload = useCallback(() => {
+  setProductionVideoTrimConfirmed(true);
+  void startProductionVideoUploadAfterTrim();
+}, [startProductionVideoUploadAfterTrim]);
+
+const editProductionVideoTrim = useCallback(() => {
+  if (cardIssuanceProductionImageUploading) {
+    productionVideoUploadAbortRef.current?.abort();
+    productionVideoUploadAbortRef.current = null;
+    setCardIssuanceProductionImageUploading(false);
+    setProductionVideoProcessingMessage('');
+  }
+  setProductionVideoTrimConfirmed(false);
+  setProductionVideoUploadProgress(0);
+}, [cardIssuanceProductionImageUploading]);
+
 const submitCardIssuanceProductionEditor = useCallback(async () => {
   const editingExistingRow = cardIssuanceEditingProductionId
     ? cardIssuanceProductions.find((item) => item.id === cardIssuanceEditingProductionId) ?? null
@@ -12719,9 +13111,9 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     : cardIssuanceProductionIssueTotal.trim();
   const description = cardIssuanceProductionDescription.trim();
   const icon = cardIssuanceProductionIcon.trim();
-  const productionImage = cardIssuanceProductionImage.trim();
-  const productionImageMime = cardIssuanceProductionImageMime.trim();
-  const productionImageStartSec =
+  let productionImage = cardIssuanceProductionImage.trim();
+  let productionImageMime = cardIssuanceProductionImageMime.trim();
+  let productionImageStartSec =
     cardIssuanceProductionImageStartSec > 0 ? cardIssuanceProductionImageStartSec : undefined;
   const backgroundColor =
     tierBackgroundColorForPayload(cardIssuanceProductionBackgroundColor.trim()) ?? '#ea580c';
@@ -12768,6 +13160,15 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     }
   }
   setCardIssuanceProductionEditorError('');
+
+  if (productionVideoClipEditRequired && !productionImage) {
+    if (cardIssuanceProductionImageUploading) {
+      setCardIssuanceProductionEditorError('Video upload is still in progress.');
+      return;
+    }
+    setCardIssuanceProductionEditorError('Confirm your trim and wait for the video upload to finish.');
+    return;
+  }
 
   const issueTotalFixed = issueTotalUnlimited
     ? String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX)
@@ -13077,6 +13478,8 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
   cardIssuanceEditingProductionId,
   cardIssuanceProductions,
   profiles,
+  productionVideoClipEditRequired,
+  cardIssuanceProductionImageUploading,
   resetCardIssuanceProductionEditorFields,
 ]);
 
@@ -13599,19 +14002,38 @@ const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputE
       setCardIssuanceProductionImage('');
       setCardIssuanceProductionImageMime('');
       setCardIssuanceProductionImageStartSec(0);
+      setProductionVideoClipEditRequired(false);
+      setProductionVideoTrimConfirmed(false);
+      setCardIssuanceProductionImageUploading(true);
+      setProductionVideoProcessingMessage('Reading video…');
       try {
         const durationSec = await probeProductionBackgroundVideoDurationSec(file);
+        const needsClipEdit = productionBackgroundVideoNeedsClipEdit(durationSec);
         const url = URL.createObjectURL(file);
         productionVideoDraftUrlRef.current = url;
         setProductionVideoDraftFile(file);
         setProductionVideoDraftUrl(url);
         setProductionVideoSourceDurationSec(durationSec);
         setProductionVideoStartSec(0);
+        setProductionVideoClipEditRequired(needsClipEdit);
+        setProductionVideoTrimConfirmed(false);
         setProductionVideoProcessingMessage('');
+
+        if (needsClipEdit) {
+          preloadProductionBackgroundVideoProcessor((message) =>
+            setProductionVideoProcessingMessage(message)
+          );
+          setCardIssuanceProductionImageUploading(false);
+          return;
+        }
+
+        await runProductionVideoConvertAndUpload({ file, startSec: 0 });
       } catch (err: unknown) {
         setCardIssuanceProductionEditorError(
           err instanceof Error ? err.message : 'Could not open video file.'
         );
+        setCardIssuanceProductionImageUploading(false);
+        setProductionVideoProcessingMessage('');
       }
       return;
     }
@@ -13635,56 +14057,23 @@ const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputE
       setCardIssuanceProductionImageUploading(false);
     }
   },
-  [profiles, revokeProductionVideoDraft]
+  [profiles, revokeProductionVideoDraft, runProductionVideoConvertAndUpload]
 );
 
 const cancelProductionVideoDraft = useCallback(() => {
+  if (cardIssuanceProductionImageUploading) return;
   revokeProductionVideoDraft();
-}, [revokeProductionVideoDraft]);
+}, [cardIssuanceProductionImageUploading, revokeProductionVideoDraft]);
 
 const confirmProductionVideoUpload = useCallback(async () => {
   const file = productionVideoDraftFile;
-  const p0 = profiles?.[0];
-  if (!file || !p0?.privateKeyArmor) {
-    setCardIssuanceProductionEditorError(
-      'Profile not available for upload. Open Settings and ensure your wallet is ready.'
-    );
-    return;
-  }
-  setCardIssuanceProductionEditorError('');
-  setCardIssuanceProductionImageUploading(true);
-  setProductionVideoProcessingMessage('Preparing video…');
-  try {
-    const standardized = await standardizeProductionBackgroundVideo({
-      file,
-      startSec: productionVideoStartSec,
-      onStatus: (message) => setProductionVideoProcessingMessage(message),
-    });
-    setProductionVideoProcessingMessage('Uploading to IPFS…');
-    const hash = await uploadMediaFileToIpfsWithRetry(standardized.file, (dataUrl) =>
-      postToIPFS(p0, dataUrl)
-    );
-    if (!hash) {
-      setCardIssuanceProductionEditorError('Background video upload failed.');
-      return;
-    }
-    setCardIssuanceProductionImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
-    setCardIssuanceProductionImageMime('video/mp4');
-    setCardIssuanceProductionImageStartSec(0);
-    revokeProductionVideoDraft();
-  } catch (err: unknown) {
-    setCardIssuanceProductionEditorError(
-      err instanceof Error ? err.message : 'Background video processing failed.'
-    );
-  } finally {
-    setProductionVideoProcessingMessage('');
-    setCardIssuanceProductionImageUploading(false);
-  }
+  if (!file || cardIssuanceProductionImageUploading) return { ok: false as const };
+  return runProductionVideoConvertAndUpload({ file, startSec: productionVideoStartSec });
 }, [
   productionVideoDraftFile,
   productionVideoStartSec,
-  profiles,
-  revokeProductionVideoDraft,
+  cardIssuanceProductionImageUploading,
+  runProductionVideoConvertAndUpload,
 ]);
 
 const clearCardIssuanceProductionIcon = useCallback(() => {
@@ -13692,11 +14081,12 @@ const clearCardIssuanceProductionIcon = useCallback(() => {
 }, []);
 
 const clearCardIssuanceProductionImage = useCallback(() => {
+  if (cardIssuanceProductionImageUploading) return;
   revokeProductionVideoDraft();
   setCardIssuanceProductionImage('');
   setCardIssuanceProductionImageMime('');
   setCardIssuanceProductionImageStartSec(0);
-}, [revokeProductionVideoDraft]);
+}, [cardIssuanceProductionImageUploading, revokeProductionVideoDraft]);
 
 const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
@@ -15115,6 +15505,171 @@ useEffect(() => {
   if (!lastResolvedStaffProgramCacheKey || !merchantOwnCardAddress || !ethers.isAddress(merchantOwnCardAddress)) return;
   saveTrustedCache(lastResolvedStaffProgramCacheKey, ethers.getAddress(merchantOwnCardAddress));
 }, [lastResolvedStaffProgramCacheKey, merchantOwnCardAddress]);
+
+const bizProgramCardCatalogTrustedCacheKeys = useMemo(() => {
+  const cardLower = resolveBizProgramCardLowerForTrustedCache({
+    partitionLower: walletStoragePartitionLower,
+    cardIssuanceCardAddress: cardIssuanceExistingCard?.cardAddress,
+    merchantOwnCardAddress,
+    lastResolvedStaffProgramCacheKey,
+  });
+  if (!walletStoragePartitionLower || !cardLower) {
+    return { productions: '', serviceCategories: '', coupons: '' };
+  }
+  return {
+    productions: bizCatalogProductionsCacheKey(walletStoragePartitionLower, cardLower),
+    serviceCategories: bizCatalogServiceCategoriesCacheKey(walletStoragePartitionLower, cardLower),
+    coupons: bizCatalogCouponsCacheKey(walletStoragePartitionLower, cardLower),
+  };
+}, [
+  walletStoragePartitionLower,
+  cardIssuanceExistingCard?.cardAddress,
+  merchantOwnCardAddress,
+  lastResolvedStaffProgramCacheKey,
+]);
+
+const persistBizCatalogProductionsTrusted = useCallback(
+  (rows: CardIssuanceProductionRow[]) => {
+    if (!bizProgramCardCatalogTrustedCacheKeys.productions) return;
+    saveTrustedCache(bizProgramCardCatalogTrustedCacheKeys.productions, rows);
+  },
+  [bizProgramCardCatalogTrustedCacheKeys.productions]
+);
+
+const persistBizCatalogServiceCategoriesTrusted = useCallback(
+  (rows: ProductionServiceCategoryOption[]) => {
+    if (!bizProgramCardCatalogTrustedCacheKeys.serviceCategories) return;
+    const committed = rows.filter((row) => !isDraftServiceCategoryId(row.id));
+    saveTrustedCache(bizProgramCardCatalogTrustedCacheKeys.serviceCategories, committed);
+  },
+  [bizProgramCardCatalogTrustedCacheKeys.serviceCategories]
+);
+
+const persistBizCatalogCouponsTrusted = useCallback(
+  (rows: CardIssuanceCouponRow[]) => {
+    if (!bizProgramCardCatalogTrustedCacheKeys.coupons) return;
+    saveTrustedCache(bizProgramCardCatalogTrustedCacheKeys.coupons, rows);
+  },
+  [bizProgramCardCatalogTrustedCacheKeys.coupons]
+);
+
+/** Business / Programs: local-first catalog rows (items, service categories, coupons). */
+useEffect(() => {
+  const { productions, serviceCategories, coupons } = bizProgramCardCatalogTrustedCacheKeys;
+  if (!productions && !serviceCategories && !coupons) {
+    bizProgramCardCatalogCacheBucketRef.current = '';
+    catalogProductionsTrustedPersistArmedRef.current = false;
+    catalogServiceCategoriesTrustedPersistArmedRef.current = false;
+    catalogCouponsTrustedPersistArmedRef.current = false;
+    return;
+  }
+  const bucket = productions || serviceCategories || coupons;
+  const cardChanged = bizProgramCardCatalogCacheBucketRef.current !== bucket;
+  bizProgramCardCatalogCacheBucketRef.current = bucket;
+
+  if (productions) {
+    const cachedProductions = loadTrustedCache<CardIssuanceProductionRow[]>(productions);
+    if (cachedProductions != null) {
+      catalogProductionsTrustedPersistArmedRef.current = true;
+      if (cachedProductions.length > 0) {
+        setCardIssuanceProductions((prev) =>
+          !cardChanged && prev.length > 0 ? prev : cachedProductions
+        );
+      } else if (cardChanged) {
+        setCardIssuanceProductions([]);
+      }
+    } else if (cardChanged) {
+      catalogProductionsTrustedPersistArmedRef.current = false;
+      setCardIssuanceProductions((prev) => (prev.length > 0 ? [] : prev));
+    }
+  }
+
+  if (serviceCategories) {
+    const cachedCategories = loadTrustedCache<ProductionServiceCategoryOption[]>(serviceCategories);
+    if (cachedCategories != null) {
+      catalogServiceCategoriesTrustedPersistArmedRef.current = true;
+      if (cachedCategories.length > 0) {
+        setCardIssuanceServiceCategories((prev) => {
+          const drafts = cardChanged ? [] : prev.filter((row) => isDraftServiceCategoryId(row.id));
+          if (!cardChanged && prev.length > drafts.length) return prev;
+          return [...cachedCategories, ...drafts];
+        });
+      } else if (cardChanged) {
+        setCardIssuanceServiceCategories([...DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS]);
+      }
+    } else if (cardChanged) {
+      catalogServiceCategoriesTrustedPersistArmedRef.current = false;
+      setCardIssuanceServiceCategories((prev) => {
+        const hasCommitted = prev.some((row) => !isDraftServiceCategoryId(row.id));
+        return hasCommitted ? [...DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS] : prev;
+      });
+    }
+  }
+
+  if (coupons) {
+    const cachedCoupons = loadTrustedCache<CardIssuanceCouponRow[]>(coupons);
+    if (cachedCoupons != null) {
+      catalogCouponsTrustedPersistArmedRef.current = true;
+      if (cachedCoupons.length > 0) {
+        setCardIssuanceCoupons((prev) => (!cardChanged && prev.length > 0 ? prev : cachedCoupons));
+      } else if (cardChanged) {
+        setCardIssuanceCoupons([]);
+      }
+    } else if (cardChanged) {
+      catalogCouponsTrustedPersistArmedRef.current = false;
+      setCardIssuanceCoupons((prev) => (prev.length > 0 ? [] : prev));
+    }
+  }
+}, [bizProgramCardCatalogTrustedCacheKeys]);
+
+useEffect(() => {
+  if (cardIssuanceProductions.length > 0) {
+    catalogProductionsTrustedPersistArmedRef.current = true;
+  }
+  if (
+    catalogProductionsTrustedPersistArmedRef.current &&
+    bizProgramCardCatalogTrustedCacheKeys.productions
+  ) {
+    persistBizCatalogProductionsTrusted(cardIssuanceProductions);
+  }
+}, [
+  cardIssuanceProductions,
+  bizProgramCardCatalogTrustedCacheKeys.productions,
+  persistBizCatalogProductionsTrusted,
+]);
+
+useEffect(() => {
+  const committedCount = cardIssuanceServiceCategories.filter(
+    (row) => !isDraftServiceCategoryId(row.id)
+  ).length;
+  if (committedCount > 0) {
+    catalogServiceCategoriesTrustedPersistArmedRef.current = true;
+  }
+  if (
+    catalogServiceCategoriesTrustedPersistArmedRef.current &&
+    bizProgramCardCatalogTrustedCacheKeys.serviceCategories
+  ) {
+    persistBizCatalogServiceCategoriesTrusted(cardIssuanceServiceCategories);
+  }
+}, [
+  cardIssuanceServiceCategories,
+  bizProgramCardCatalogTrustedCacheKeys.serviceCategories,
+  persistBizCatalogServiceCategoriesTrusted,
+]);
+
+useEffect(() => {
+  if (cardIssuanceCoupons.length > 0) {
+    catalogCouponsTrustedPersistArmedRef.current = true;
+  }
+  if (catalogCouponsTrustedPersistArmedRef.current && bizProgramCardCatalogTrustedCacheKeys.coupons) {
+    persistBizCatalogCouponsTrusted(cardIssuanceCoupons);
+  }
+}, [
+  cardIssuanceCoupons,
+  bizProgramCardCatalogTrustedCacheKeys.coupons,
+  persistBizCatalogCouponsTrusted,
+]);
+
 useEffect(() => {
   if (!currentEoa || !ethers.isAddress(currentEoa)) return;
   if (staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)) return;
@@ -34858,6 +35413,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       onCloseEditor={closeCardIssuanceProductionEditor}
       onOpenCreate={openCardIssuanceProductionCreate}
       onOpenEdit={openCardIssuanceProductionEdit}
+      onOpenShare={openCardIssuanceProductionShare}
       productions={cardIssuanceProductions}
       serviceCategories={cardIssuanceServiceCategories}
       onUpdateServiceCategoryLabel={updateCardIssuanceServiceCategoryLabel}
@@ -34878,6 +35434,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       onProductionImageFileChange={handleCardIssuanceProductionImagePick}
       onClearProductionImage={clearCardIssuanceProductionImage}
       productionVideoDraftUrl={productionVideoDraftUrl}
+      productionVideoClipEditRequired={productionVideoClipEditRequired}
+      productionVideoTrimConfirmed={productionVideoTrimConfirmed}
+      onProductionVideoTrimConfirm={confirmProductionVideoTrimAndUpload}
+      onProductionVideoTrimEdit={editProductionVideoTrim}
+      productionVideoUploadProgress={productionVideoUploadProgress}
       productionVideoSourceDurationSec={productionVideoSourceDurationSec}
       productionVideoStartSec={productionVideoStartSec}
       setProductionVideoStartSec={setProductionVideoStartSec}
@@ -34915,6 +35476,123 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       onSubmit={() => void submitCardIssuanceProductionEditor()}
       onDeleteDraft={(id) => void removeCardIssuanceProductionDraft(id)}
     />
+
+    {cardIssuanceProductionShareOpenId &&
+    cardIssuanceProductionShareRow &&
+    !cardIssuanceProductionShareRow.requiresRedeemCode &&
+    cardIssuanceProductionShareRow.issued ? (
+      <div
+        className="fixed inset-0 z-[97] flex items-center justify-center p-4 sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="catalog-share-qr-title"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+          onClick={closeCardIssuanceProductionShare}
+          aria-label="Close catalog share dialog"
+        />
+        <div
+          className="relative z-10 w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">Catalog Distribution</p>
+              <h2
+                id="catalog-share-qr-title"
+                className="mt-1 truncate font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31]"
+              >
+                {cardIssuanceProductionShareRow.name}
+              </h2>
+              <p className="mt-1 text-xs font-medium text-[#595c5e]">
+                Share this URL or QR with members. Anyone who meets eligibility can claim without redeem code.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeCardIssuanceProductionShare}
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+          <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
+            {cardIssuanceProductionShareUrl ? (
+              <>
+                <div ref={cardIssuanceProductionShareImageRef} className="rounded-[22px] bg-white px-5 py-4 sm:px-7 sm:py-5">
+                  <ProgramsCatalogShareCardPreview
+                    production={cardIssuanceProductionShareRow}
+                    shareUrl={cardIssuanceProductionShareUrl}
+                    merchantName={programsOverviewDisplayName}
+                    serviceCategories={cardIssuanceServiceCategories}
+                  />
+                </div>
+                <div className="min-w-0 space-y-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Claim URL</p>
+                    <p className="break-all font-mono text-[11px] text-slate-700">{cardIssuanceProductionShareUrl}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={copyCardIssuanceProductionShareUrl}
+                      className={`inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
+                    >
+                      {cardIssuanceProductionShareUrlCopied ? (
+                        <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+                      ) : (
+                        <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                      )}
+                      {cardIssuanceProductionShareUrlCopied ? 'Copied' : 'Copy URL'}
+                    </button>
+                    <a
+                      href={cardIssuanceProductionShareUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-2 rounded-full border border-[#ea580c]/20 bg-[#ea580c]/10 px-3 py-2 text-xs font-bold text-[#ea580c] transition-colors hover:bg-[#ea580c]/15 ${bizFocusRingClass}`}
+                    >
+                      Open link
+                      <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={downloadCardIssuanceProductionShareImage}
+                      disabled={cardIssuanceProductionShareImageStatus !== 'idle'}
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border px-0 text-xs font-bold transition-colors ${
+                        cardIssuanceProductionShareImageStatus === 'error'
+                          ? 'border-amber-200 bg-amber-50 text-amber-600'
+                          : cardIssuanceProductionShareImageStatus === 'success'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                      } ${cardIssuanceProductionShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
+                      aria-label="Download catalog share PNG"
+                      title="Download PNG for WeChat"
+                    >
+                      {cardIssuanceProductionShareImageStatus === 'loading' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
+                      ) : cardIssuanceProductionShareImageStatus === 'success' ? (
+                        <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                      ) : cardIssuanceProductionShareImageStatus === 'error' ? (
+                        <AlertTriangle className="h-4 w-4" strokeWidth={2.3} aria-hidden />
+                      ) : (
+                        <Download className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                Program card address is unavailable. Open your program card first, then try again.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null}
 
      {/* TxDisplayRow JSON modal (`raw` = full indexer Transaction + mapped UI fields) */}
      {rawTxJsonModal && (

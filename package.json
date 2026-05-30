@@ -15,6 +15,7 @@
 		"@dicebear/lorelei": "^9.2.4",
 		"@emotion/react": "^11.14.0",
 		"@emotion/styled": "^11.14.0",
+		"@ffmpeg/core": "0.12.10",
 		"@ffmpeg/ffmpeg": "^0.12.10",
 		"@ffmpeg/util": "^0.12.1",
 		"@jup-ag/api": "^6.0.44",
@@ -35,6 +36,7 @@
 		"antd-mobile": "^5.42.1",
 		"async": "^3.2.6",
 		"axios": "^1.7.7",
+		"base-x": "3.0.11",
 		"bignumber.js": "^9.3.0",
 		"bip39": "^3.1.0",
 		"blobshape": "^1.0.0",
@@ -71,6 +73,8 @@
 		"web-vitals": "^2.1.4"
 	},
 	"scripts": {
+		"postinstall": "node scripts/copyFfmpegCorePublic.mjs",
+		"prebuild": "node scripts/copyFfmpegCorePublic.mjs",
 		"start": "craco start",
 		"build:react": "CI=false env=production node node_modules/.bin/craco build",
 		"test": "craco test",

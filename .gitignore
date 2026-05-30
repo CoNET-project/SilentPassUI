@@ -6,7 +6,8 @@
 # Node artifact files
 node_modules/
 dist/
-public/.*
+public/ffmpeg/ffmpeg-core.js
+public/ffmpeg/ffmpeg-core.wasm
 # Compiled Java class files
 *.class
 

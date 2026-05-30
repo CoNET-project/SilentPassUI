@@ -38,7 +38,7 @@ export function fileLooksLikeProductionBackgroundMedia(file: File): boolean {
   return file.name.toLowerCase().endsWith('.pdf')
 }
 
-/** Images use resize/SVG rasterization; video/PDF/other binaries upload as-is (37MB cap). */
+/** Images use resize/SVG rasterization; PDF uses byte cap; video uses duration cap elsewhere (≤60s). */
 export async function uploadMediaFileToIpfsWithRetry(
   file: File,
   postToIPFS: (dataUrl: string) => Promise<string | null>
@@ -46,6 +46,11 @@ export async function uploadMediaFileToIpfsWithRetry(
   const mime = inferProductionBackgroundMimeFromFile(file)
   if (mime.startsWith('image/')) {
     return uploadImageFileToIpfsWithRetry(file, postToIPFS)
+  }
+  if (mime.startsWith('video/')) {
+    // Catalog background video is standardized to ≤60s before upload; do not gate on file size.
+    const dataUrl = await blobToDataUrl(file)
+    return postToIPFS(dataUrl)
   }
   if (file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
     throw new Error(

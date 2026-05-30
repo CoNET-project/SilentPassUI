@@ -665,6 +665,21 @@ function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefin
 	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
 }
 
+function readProductionIdFromMetadata(meta: Record<string, unknown> | null | undefined): string {
+	if (!meta || typeof meta !== 'object') return ''
+	const root = meta as Record<string, unknown>
+	const rootProductionId = root.productionId
+	if (typeof rootProductionId === 'string' && rootProductionId.trim()) return rootProductionId.trim()
+	const rootId = root.id
+	if (typeof rootId === 'string' && rootId.trim()) return rootId.trim()
+	const properties = root.properties
+	if (!properties || typeof properties !== 'object') return ''
+	const beamioProduction = (properties as Record<string, unknown>).beamioProduction
+	if (!beamioProduction || typeof beamioProduction !== 'object') return ''
+	const nestedId = (beamioProduction as Record<string, unknown>).productionId
+	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
+}
+
 export async function fetchCardActiveIssuedCouponSeries(
 	cardAddress: string,
 	limit = 50
@@ -709,6 +724,11 @@ async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: 
 	const rows = await fetchCardActiveIssuedCouponSeries(cardAddress)
 	for (const row of rows) {
 		const id = readCouponIdFromMetadata(row.metadata ?? null)
+		if (id && id === wanted) return String(row.tokenId)
+	}
+	const productionRows = await fetchCardActiveIssuedProductionSeries(cardAddress)
+	for (const row of productionRows) {
+		const id = readProductionIdFromMetadata(row.metadata ?? null)
 		if (id && id === wanted) return String(row.tokenId)
 	}
 	return null

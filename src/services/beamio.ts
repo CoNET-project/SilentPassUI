@@ -2308,7 +2308,13 @@ export const postToIPFS = async (profile: profile, image: string): Promise<strin
 		return hash
 	} catch (err: any) {
 		console.error("postToIPFS error:", err)
-		throw err instanceof Error ? err : new Error(err?.message ?? "IPFS upload failed")
+		const msg = err?.message ?? String(err)
+		if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+			throw new Error(
+				'Background upload failed: network error reaching ipfs.conet.network. Check your connection and try again.'
+			)
+		}
+		throw err instanceof Error ? err : new Error(msg || "IPFS upload failed")
 	}
 }
 

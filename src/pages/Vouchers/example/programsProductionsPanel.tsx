@@ -11,6 +11,7 @@ import {
   Pencil,
   Play,
   Plus,
+  QrCode,
   Sparkles,
   Trash2,
   X,
@@ -40,8 +41,8 @@ import { IPFS_PRODUCTION_BACKGROUND_ACCEPT } from '@/utils/ipfsCardImageUpload';
 import {
   PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS,
   formatProductionVideoTimeSec,
-  productionVideoClipDurationSec,
 } from '@/utils/productionBackgroundVideo';
+import { ProductionVideoFilmstripTrimEditor } from './ProductionVideoFilmstripTrimEditor';
 import {
   createNumericInputWheelNonPassiveRefCallback,
   preventNumericInputStepKeys,
@@ -60,6 +61,16 @@ function ClickToPlayProductionVideo(props: {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const startSec = props.startSec != null && Number.isFinite(props.startSec) ? Math.max(0, props.startSec) : 0;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || playing) return;
+    try {
+      video.currentTime = startSec;
+    } catch {
+      /* ignore seek before metadata */
+    }
+  }, [startSec, playing, props.src]);
 
   const handlePlay = useCallback(() => {
     const video = videoRef.current;
@@ -155,6 +166,7 @@ export type ProgramsProductionsPanelProps = {
   onCloseEditor: () => void;
   onOpenCreate: () => void;
   onOpenEdit: (id: string) => void;
+  onOpenShare?: (id: string) => void;
   productions: CardIssuanceProductionRow[];
   serviceCategories: ProductionServiceCategoryOption[];
   onUpdateServiceCategoryLabel: (categoryId: string, label: string) => boolean | Promise<boolean>;
@@ -175,6 +187,12 @@ export type ProgramsProductionsPanelProps = {
   onProductionImageFileChange: React.ChangeEventHandler<HTMLInputElement>;
   onClearProductionImage: () => void;
   productionVideoDraftUrl?: string;
+  /** Set when picked video exceeds 60s — drives trim UI (source of truth from pick handler). */
+  productionVideoClipEditRequired?: boolean;
+  productionVideoTrimConfirmed?: boolean;
+  onProductionVideoTrimConfirm?: () => void;
+  onProductionVideoTrimEdit?: () => void;
+  productionVideoUploadProgress?: number;
   productionVideoSourceDurationSec?: number;
   productionVideoStartSec?: number;
   setProductionVideoStartSec?: (value: number) => void;
@@ -222,6 +240,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     onCloseEditor,
     onOpenCreate,
     onOpenEdit,
+    onOpenShare,
     productions,
     serviceCategories,
     onUpdateServiceCategoryLabel,
@@ -242,6 +261,11 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     onProductionImageFileChange,
     onClearProductionImage,
     productionVideoDraftUrl = '',
+    productionVideoClipEditRequired = false,
+    productionVideoTrimConfirmed = false,
+    onProductionVideoTrimConfirm,
+    onProductionVideoTrimEdit,
+    productionVideoUploadProgress = 0,
     productionVideoSourceDurationSec = 0,
     productionVideoStartSec = 0,
     setProductionVideoStartSec,
@@ -280,10 +304,14 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
   const [editingCategoryLabel, setEditingCategoryLabel] = useState('');
   const iconFileRef = useRef<HTMLInputElement>(null);
   const productionImageFileRef = useRef<HTMLInputElement>(null);
-  const productionVideoClipSec = useMemo(
-    () => productionVideoClipDurationSec(productionVideoStartSec, productionVideoSourceDurationSec),
-    [productionVideoStartSec, productionVideoSourceDurationSec]
-  );
+  const productionVideoNeedsClipEdit = productionVideoClipEditRequired;
+  const productionVideoDraftPending = Boolean(productionVideoDraftUrl.trim());
+  const productionBackgroundUploadLocked = productionImageUploading;
+  const productionBackgroundBlocksCatalogSubmit =
+    productionBackgroundUploadLocked ||
+    (productionVideoDraftPending &&
+      productionVideoNeedsClipEdit &&
+      !productionImage.trim());
   const issueTotalWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
   const numericNoSpinnerClass =
     '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]';
@@ -402,11 +430,12 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           key={row.id}
                           className="overflow-hidden rounded-2xl border border-[#ea580c]/15 bg-white shadow-sm"
                         >
-                          <button
-                            type="button"
-                            onClick={() => onOpenEdit(row.id)}
-                            className={`flex w-full items-start gap-3 p-4 text-left ${bizFocusRingClass}`}
-                          >
+                          <div className="flex w-full items-start gap-3 p-4">
+                            <button
+                              type="button"
+                              onClick={() => onOpenEdit(row.id)}
+                              className={`flex min-w-0 flex-1 items-start gap-3 text-left ${bizFocusRingClass}`}
+                            >
                             <div
                               className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl text-white"
                               style={
@@ -474,7 +503,22 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                 Draft
                               </span>
                             )}
-                          </button>
+                            </button>
+                            {row.issued && !row.requiresRedeemCode && onOpenShare ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenShare(row.id);
+                                }}
+                                className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 ${bizFocusRingClass}`}
+                                aria-label={`Show claim URL and QR for catalog item ${row.name}`}
+                                title="Claim URL and QR"
+                              >
+                                <QrCode className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                              </button>
+                            ) : null}
+                          </div>
                           {packageRows.length > 0 ? (
                             <ul className="border-t border-[#ea580c]/10 bg-[#fafbfc] px-3 py-2 space-y-1.5">
                               {packageRows.map((pkg) => {
@@ -546,11 +590,14 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                   <motion.button
                     type="button"
                     aria-label="Close service editor"
-                    className="absolute inset-0 z-[2] bg-[#2c2f31]/25"
+                    className={`absolute inset-0 z-[2] bg-[#2c2f31]/25 ${
+                      productionBackgroundUploadLocked ? 'pointer-events-none' : ''
+                    }`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    onClick={onCloseEditor}
+                    onClick={productionBackgroundUploadLocked ? undefined : onCloseEditor}
+                    aria-disabled={productionBackgroundUploadLocked}
                   />
                   <motion.div
                     className="absolute inset-0 z-[3] flex flex-col bg-[#f8fafc]"
@@ -564,7 +611,8 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                         <button
                           type="button"
                           onClick={onCloseEditor}
-                          className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[#747779] ${bizFocusRingClass}`}
+                          disabled={productionBackgroundUploadLocked}
+                          className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[#747779] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
                           aria-label="Back"
                         >
                           <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -575,7 +623,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                         <button
                           type="button"
                           onClick={onSubmit}
-                          disabled={publishing || iconUploading || productionImageUploading}
+                          disabled={publishing || iconUploading || productionBackgroundBlocksCatalogSubmit}
                           className={`text-xs font-bold uppercase tracking-wider text-[#ea580c] disabled:opacity-50 ${bizFocusRingClass}`}
                         >
                           {publishing ? 'Saving…' : 'Save'}
@@ -676,81 +724,80 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             onChange={onProductionImageFileChange}
                           />
                           {productionVideoDraftUrl ? (
-                            <div className="space-y-3 rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] p-3">
-                              <div className="relative h-[140px] w-full overflow-hidden rounded-xl bg-[#0f172a]/90">
-                                <ClickToPlayProductionVideo
-                                  src={productionVideoDraftUrl}
+                            <div className="space-y-3">
+                              {productionVideoNeedsClipEdit &&
+                              productionVideoDraftPending &&
+                              !productionImage.trim() ? (
+                                <ProductionVideoFilmstripTrimEditor
+                                  videoSrc={productionVideoDraftUrl}
+                                  durationSec={productionVideoSourceDurationSec}
+                                  maxClipSec={PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS}
                                   startSec={productionVideoStartSec}
-                                  className="h-full w-full object-contain"
+                                  onStartSecChange={(value) => setProductionVideoStartSec?.(value)}
+                                  trimConfirmed={productionVideoTrimConfirmed}
+                                  onTrimConfirm={() => onProductionVideoTrimConfirm?.()}
+                                  onTrimEdit={() => onProductionVideoTrimEdit?.()}
+                                  onCancel={() => onCancelProductionVideoDraft?.()}
+                                  disabled={productionImageUploading && !productionVideoTrimConfirmed}
+                                  uploading={productionImageUploading}
+                                  uploadProgress={productionVideoUploadProgress}
+                                  uploadMessage={productionVideoProcessingMessage}
                                 />
-                              </div>
-                              <div>
-                                <div className="mb-1 flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                                    Start time in video
-                                  </span>
-                                  <span className="text-[11px] font-semibold text-[#747779]">
-                                    {formatProductionVideoTimeSec(productionVideoStartSec)}
-                                  </span>
+                              ) : (
+                                <div className="rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] p-3">
+                                  <div className="relative h-[140px] w-full overflow-hidden rounded-xl bg-[#0f172a]/90">
+                                    <ClickToPlayProductionVideo
+                                      src={productionVideoDraftUrl}
+                                      startSec={productionVideoStartSec}
+                                      className="h-full w-full object-contain"
+                                      showControlsAfterPlay={!productionImageUploading}
+                                    />
+                                    {productionImageUploading ? (
+                                      <div
+                                        className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0f172a]/75 px-4 text-center text-white"
+                                        role="status"
+                                        aria-live="polite"
+                                        aria-busy="true"
+                                      >
+                                        <Loader2 className="h-8 w-8 animate-spin" strokeWidth={2} aria-hidden />
+                                        <span className="text-[11px] font-bold">
+                                          {productionVideoProcessingMessage || 'Converting and uploading…'}
+                                        </span>
+                                        <span className="text-[10px] font-medium text-white/80">
+                                          Please wait — do not close this screen.
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  {!productionImageUploading &&
+                                  !productionVideoNeedsClipEdit &&
+                                  productionVideoDraftPending &&
+                                  editorError ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => onConfirmProductionVideoUpload?.()}
+                                        className={`inline-flex min-h-10 flex-1 items-center justify-center rounded-xl bg-[#ea580c] px-4 text-xs font-bold text-white ${bizFocusRingClass}`}
+                                      >
+                                        Retry convert & upload
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => onCancelProductionVideoDraft?.()}
+                                        className={`inline-flex min-h-10 items-center justify-center rounded-xl border border-[#e5e9eb] bg-white px-4 text-xs font-bold text-[#747779] ${bizFocusRingClass}`}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : null}
                                 </div>
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={Math.max(
-                                    0,
-                                    productionVideoSourceDurationSec - 0.25
-                                  )}
-                                  step={0.1}
-                                  value={productionVideoStartSec}
-                                  onChange={(e) =>
-                                    setProductionVideoStartSec?.(Number(e.target.value))
-                                  }
-                                  disabled={productionImageUploading}
-                                  className="w-full accent-[#ea580c]"
-                                  aria-label="Video start time"
-                                />
-                                <p className="mt-1 text-[11px] text-[#747779]">
-                                  Clip length: {formatProductionVideoTimeSec(productionVideoClipSec)} (max{' '}
-                                  {PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS}s). Video is converted to MP4 locally
-                                  before upload.
-                                </p>
-                              </div>
-                              {productionVideoProcessingMessage ? (
-                                <p className="text-[11px] font-semibold text-[#595c5e]">
-                                  {productionVideoProcessingMessage}
-                                </p>
-                              ) : null}
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  disabled={productionImageUploading}
-                                  onClick={() => onConfirmProductionVideoUpload?.()}
-                                  className={`inline-flex min-h-10 flex-1 items-center justify-center rounded-xl bg-[#ea580c] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                                >
-                                  {productionImageUploading ? (
-                                    <>
-                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-                                      Processing…
-                                    </>
-                                  ) : (
-                                    'Convert & upload'
-                                  )}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={productionImageUploading}
-                                  onClick={() => onCancelProductionVideoDraft?.()}
-                                  className={`inline-flex min-h-10 items-center justify-center rounded-xl border border-[#e5e9eb] bg-white px-4 text-xs font-bold text-[#747779] disabled:opacity-60 ${bizFocusRingClass}`}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                              )}
                             </div>
                           ) : !productionImage ? (
                             <button
                               type="button"
                               onClick={() => productionImageFileRef.current?.click()}
-                              disabled={productionImageUploading}
+                              disabled={productionBackgroundUploadLocked}
                               className={`flex min-h-[96px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                             >
                               {productionImageUploading ? (
@@ -1201,26 +1248,52 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     </div>
 
                     <div className="shrink-0 border-t border-[#e5e9eb]/80 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
+                      {productionImageUploading &&
+                      productionVideoNeedsClipEdit &&
+                      productionVideoUploadProgress > 0 ? (
+                        <div className="mb-3">
+                          <div className="h-2 overflow-hidden rounded-full bg-[#eef1f3]">
+                            <div
+                              className="h-full rounded-full bg-[#0ea5e9] transition-[width] duration-200"
+                              style={{ width: `${productionVideoUploadProgress}%` }}
+                            />
+                          </div>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-semibold text-[#595c5e]">
+                            <span className="min-w-0 truncate">
+                              {productionVideoProcessingMessage || 'Uploading video…'}
+                            </span>
+                            <span className="shrink-0">{productionVideoUploadProgress}%</span>
+                          </div>
+                        </div>
+                      ) : null}
                       <button
                         type="button"
                         onClick={onSubmit}
-                        disabled={publishing || iconUploading || productionImageUploading}
+                        disabled={publishing || iconUploading || productionBackgroundBlocksCatalogSubmit}
                         className={`flex w-full items-center justify-center gap-2 rounded-2xl bg-[#ea580c] py-4 text-sm font-bold text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                       >
-                        {publishing || iconUploading || productionImageUploading ? (
+                        {publishing || iconUploading || productionBackgroundBlocksCatalogSubmit ? (
                           <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.4} aria-hidden />
                         ) : (
                           <Plus className="h-5 w-5" strokeWidth={2.4} aria-hidden />
                         )}
-                        {iconUploading || productionImageUploading
-                          ? 'Uploading…'
-                          : publishing
-                            ? 'Saving…'
-                            : editingId && editingIssued
-                              ? 'Save changes'
-                              : editingId
-                                ? 'Save changes'
-                                : 'Add item to catalog'}
+                        {productionImageUploading
+                          ? productionVideoProcessingMessage
+                            ? `${productionVideoProcessingMessage}${productionVideoUploadProgress > 0 ? ` (${productionVideoUploadProgress}%)` : ''}`
+                            : 'Converting video…'
+                          : iconUploading
+                            ? 'Uploading…'
+                            : productionVideoNeedsClipEdit &&
+                                productionVideoDraftPending &&
+                                !productionImage.trim()
+                              ? productionVideoTrimConfirmed
+                                ? 'Uploading video…'
+                                : 'Confirm trim with check to continue'
+                              : publishing
+                                ? 'Saving…'
+                                : editingId
+                                  ? 'Save changes'
+                                  : 'Add item to catalog'}
                       </button>
                     </div>
                   </motion.div>

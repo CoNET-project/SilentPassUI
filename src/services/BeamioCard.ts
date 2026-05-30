@@ -429,6 +429,21 @@ function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefin
 	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
 }
 
+function readProductionIdFromMetadata(meta: Record<string, unknown> | null | undefined): string {
+	if (!meta || typeof meta !== 'object') return ''
+	const root = meta as Record<string, unknown>
+	const rootProductionId = root.productionId
+	if (typeof rootProductionId === 'string' && rootProductionId.trim()) return rootProductionId.trim()
+	const rootId = root.id
+	if (typeof rootId === 'string' && rootId.trim()) return rootId.trim()
+	const properties = root.properties
+	if (!properties || typeof properties !== 'object') return ''
+	const beamioProduction = (properties as Record<string, unknown>).beamioProduction
+	if (!beamioProduction || typeof beamioProduction !== 'object') return ''
+	const nestedId = (beamioProduction as Record<string, unknown>).productionId
+	return typeof nestedId === 'string' && nestedId.trim() ? nestedId.trim() : ''
+}
+
 /** Align `cardCouponOpenClaimPreCheck` / issued NFT series tokenId floor. */
 const ISSUED_NFT_START_ID_MEMBER = 100_000_000_000n
 
@@ -608,6 +623,24 @@ export async function fetchCardActiveIssuedCouponSeriesTrusted(
 export async function getCardActiveIssuedCouponSeries(cardAddress: string, limit = 50): Promise<CardActiveIssuedCouponSeriesItem[]> {
 	const trusted = await fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, limit)
 	return trusted ?? []
+}
+
+export async function getCardActiveIssuedProductionSeries(
+	cardAddress: string,
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[]> {
+	if (!cardAddress || !ethers.isAddress(cardAddress)) return []
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	try {
+		const res = await fetch(
+			`${beamioApi}/api/cardActiveIssuedProductionSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=${normalizedLimit}`
+		)
+		if (!res.ok) return []
+		const json = (await res.json().catch(() => ({}))) as { items?: CardActiveIssuedCouponSeriesItem[] }
+		return Array.isArray(json.items) ? json.items : []
+	} catch {
+		return []
+	}
 }
 
 /** 从全站 recent 系列 API 拉取完整行（含 metadata），供 My Brands 已持有券检测 */
@@ -1071,6 +1104,11 @@ async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: 
 	const rows = await getCardActiveIssuedCouponSeries(cardAddress)
 	for (const row of rows) {
 		const id = readCouponIdFromMetadata(row.metadata ?? null)
+		if (id && id === wanted) return String(row.tokenId)
+	}
+	const productionRows = await getCardActiveIssuedProductionSeries(cardAddress)
+	for (const row of productionRows) {
+		const id = readProductionIdFromMetadata(row.metadata ?? null)
 		if (id && id === wanted) return String(row.tokenId)
 	}
 	return null

@@ -5,7 +5,7 @@ import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, searchUsername, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
@@ -20,7 +20,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Info, Star, Key, Home as HomeHardwareIcon, Ban, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift, UserCircle, MessageCircle, Layers, Search }
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Star, Key, Home as HomeHardwareIcon, Ban, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift }
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -76,16 +76,6 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 /** Mobile home CTAs: single-tap reliability (pairs with App.tsx touch-gesture guard). */
 const HOME_TOUCH_BUTTON_CLASS = RELIABLE_TAP_BUTTON_CLASS
 
-/** beamio 表示 name 的 protocol，与 ChatList displayName 一致。兼容 beamio 与 searchResult 两种类型 */
-const displayName = (item: beamio | searchResult | null | undefined) => {
-	if (!item) return ''
-	const first = 'first_name' in item ? item.first_name : (item as beamio).firstName ?? ''
-	const lastRaw = 'last_name' in item ? item.last_name : (item as beamio).lastName ?? ''
-	const lastname = String(lastRaw || '').split('\r\n') || []
-	const fullName = `${first || ''} ${/^\{/.test(lastname[0] || '') ? '' : lastname[0] || ''}`.trim()
-	return fullName || (item as beamio).accountName || (item as searchResult).username || (item as beamio).address || (item as searchResult).address || ''
-}
-
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
@@ -103,51 +93,6 @@ function formatPayRelayCountdown(secondsLeft: number): string {
 	const m = Math.floor(secondsLeft / 60)
 	const s = secondsLeft % 60
 	return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-/** Gift To: 下拉与 SearchBarWithResults 一致 */
-function giftSearchFormatUserDate(timestamp?: string | number): string {
-	if (!timestamp) return ''
-	const num = Number(timestamp)
-	if (!num) return ''
-	const ms = num < 10_000_000_000 ? num * 1000 : num
-	const d = new Date(ms)
-	if (isNaN(d.getTime())) return ''
-	return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
-function makeGiftSearchAddressOnlyResult(address: string): searchResult {
-	return {
-		username: 'unknow',
-		image: '',
-		address,
-		created_at: 0,
-		first_name: '',
-		last_name: '',
-		follow_count: '',
-		follower_count: '',
-	}
-}
-
-/** 与 Pay/send PayScreen 共用，Gift 选人写入后 Pay 侧「最近」一致 */
-const PAY_RECENT_KEY = 'beamio_pay_recent'
-const PAY_RECENT_MAX = 8
-function loadPayRecentRecipients(): searchResult[] {
-	try {
-		const raw = localStorage.getItem(PAY_RECENT_KEY)
-		if (!raw) return []
-		const arr = JSON.parse(raw) as searchResult[]
-		return Array.isArray(arr) ? arr.slice(0, PAY_RECENT_MAX) : []
-	} catch {
-		return []
-	}
-}
-function savePayRecentRecipients(items: searchResult[]) {
-	try {
-		localStorage.setItem(PAY_RECENT_KEY, JSON.stringify(items.slice(0, PAY_RECENT_MAX)))
-	} catch {
-		/* ignore */
-	}
 }
 
 type CashTreesNativeNfcStatus =
@@ -263,18 +208,6 @@ type HomeStoreCardRow = {
 	backgroundImage?: string
 }
 
-/** Send a Store Gift：资产来源（与 renderAction UsdcGiftVault / GiftSource 对齐） */
-type HomeUsdcGiftVault = {
-	id: 'usdc'
-	name: string
-	type: string
-	color: string
-	text: string
-	balanceCad: number
-}
-
-type HomeGiftSource = HomeStoreCardRow | HomeUsdcGiftVault
-
 /** Bundled Sen Pho artwork URL — also used when card state omits `backgroundImage`. */
 const SEN_PHO_STORE_CARD_ART_URL: string = senPhoCafeStoreCardBg
 
@@ -384,22 +317,7 @@ const Home = (_props: HomeProps) => {
 	const [topUpOracleLoading, setTopUpOracleLoading] = useState(false)
 	const [topUpOracleError, setTopUpOracleError] = useState(false)
 	const [topUpRateRefreshStatus, setTopUpRateRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-	const [showGiftSheet, setShowGiftSheet] = useState(false)
 	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)
-	const [giftAmount, setGiftAmount] = useState('')
-	const [giftRecipient, setGiftRecipient] = useState('')
-	const [giftMessage, setGiftMessage] = useState('')
-	const [giftStore, setGiftStore] = useState<HomeGiftSource | null>(null)
-	const [isSelectingGiftStore, setIsSelectingGiftStore] = useState(false)
-	const [giftRecipientHits, setGiftRecipientHits] = useState<searchResult[]>([])
-	const [giftRecipientSearchLoading, setGiftRecipientSearchLoading] = useState(false)
-	const [giftRecipientSuggestOpen, setGiftRecipientSuggestOpen] = useState(true)
-	const giftRecipientSearchRef = useRef<HTMLDivElement>(null)
-	const giftRecipientSearchSeq = useRef(0)
-	const [giftRecipientSelected, setGiftRecipientSelected] = useState<searchResult | null>(null)
-	const [giftPayRecentRecipients, setGiftPayRecentRecipients] = useState<searchResult[]>([])
-	const [giftPayHandoffPayee, setGiftPayHandoffPayee] = useState<searchResult | null>(null)
-	const [giftPayPrefill, setGiftPayPrefill] = useState<{ note?: string; usdc?: string } | null>(null)
 	const [aaAddrCopied, setAaAddrCopied] = useState(false)
 	/** 首页 CashTrees 大卡：EOA+AA USDC（链上）+ 基础设施卡 points；合计 CAD 用 Oracle（与 Top Up 同源） */
 	const [cashTreesWalletSnapshot, setCashTreesWalletSnapshot] = useState<{
@@ -791,12 +709,6 @@ const Home = (_props: HomeProps) => {
 		return ctx
 	}, [currencyData, topUpOracleCadPerUsdc])
 
-	/** Gift 资产列表：USDC 金库按 Oracle 折算为 CAD 展示 */
-	const giftUsdcValuationCad = useMemo(
-		() => addCashVaultUsdc * addCashTopUpCadPerUsdc,
-		[addCashVaultUsdc, addCashTopUpCadPerUsdc]
-	)
-
 	const refreshTopUpOracleRate = useCallback(
 		async (fromUserRefresh: boolean) => {
 			if (fromUserRefresh) setTopUpRateRefreshStatus('loading')
@@ -827,7 +739,7 @@ const Home = (_props: HomeProps) => {
 		[currencyData]
 	)
 
-	/** CashTrees 大卡合计依赖链上 Oracle；登录后预拉取与 Top Up / Gift 一致 */
+	/** CashTrees 大卡合计依赖链上 Oracle；登录后预拉取与 Top Up 一致 */
 	useEffect(() => {
 		if (!profiles?.[0]?.keyID) return
 		void refreshTopUpOracleRate(false)
@@ -837,11 +749,6 @@ const Home = (_props: HomeProps) => {
 		if (!showAddCashSheet || addCashMode !== 'topup_store') return
 		void refreshTopUpOracleRate(false)
 	}, [showAddCashSheet, addCashMode, refreshTopUpOracleRate])
-
-	useEffect(() => {
-		if (!showGiftSheet) return
-		void refreshTopUpOracleRate(false)
-	}, [showGiftSheet, refreshTopUpOracleRate])
 
 	const closeAddCashSheet = useCallback(() => {
 		setShowAddCashSheet(false)
@@ -888,10 +795,6 @@ const Home = (_props: HomeProps) => {
 	}
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
-	const openGiftSheetTap = useReliableTapHandler(() => {
-		setShowGiftSheet(true)
-		setShowFooter(false)
-	})
 	const openPayCodeSheetTap = useReliableTapHandler(() => {
 		setPayReceiveQrMode('pay')
 		setShowPayReceiveSheet(true)
@@ -903,161 +806,6 @@ const Home = (_props: HomeProps) => {
 		if (tag) return `@${tag}`
 		return eoaAddressShort !== '—' ? eoaAddressShort : '—'
 	}, [beamio?.accountName, eoaAddressShort])
-
-	const closeGiftSheet = useCallback(() => {
-		giftRecipientSearchSeq.current++
-		setShowGiftSheet(false)
-		setIsSelectingGiftStore(false)
-		setGiftAmount('')
-		setGiftRecipient('')
-		setGiftMessage('')
-		setGiftStore(null)
-		setGiftRecipientSelected(null)
-		setGiftRecipientHits([])
-		setGiftRecipientSearchLoading(false)
-		setGiftRecipientSuggestOpen(true)
-		setShowFooter(true)
-	}, [setShowFooter])
-
-	useEffect(() => {
-		if (showGiftSheet) setGiftPayRecentRecipients(loadPayRecentRecipients())
-	}, [showGiftSheet])
-
-	const onPickGiftRecipientHit = useCallback((hit: searchResult) => {
-		setGiftRecipientSelected(hit)
-		const u = (hit.username || '').trim().toLowerCase()
-		if (u && u !== 'unknow') setGiftRecipient(`@${u}`)
-		else setGiftRecipient(hit.address)
-		setGiftRecipientHits([])
-		setGiftRecipientSuggestOpen(false)
-		const prev = loadPayRecentRecipients()
-		const next = [
-			hit,
-			...prev.filter((p) => (p.address || '').toLowerCase() !== (hit.address || '').toLowerCase()),
-		]
-		savePayRecentRecipients(next)
-		setGiftPayRecentRecipients(next)
-	}, [])
-
-	useEffect(() => {
-		if (!showGiftSheet) return
-		const down = (e: MouseEvent) => {
-			if (!giftRecipientSearchRef.current?.contains(e.target as Node)) {
-				setGiftRecipientSuggestOpen(false)
-			}
-		}
-		document.addEventListener('mousedown', down)
-		return () => document.removeEventListener('mousedown', down)
-	}, [showGiftSheet])
-
-	useEffect(() => {
-		if (!showGiftSheet) return
-		if (giftRecipientSelected) return
-		const q = giftRecipient.trim().replace(/^@/, '')
-		if (q.length < 3) {
-			setGiftRecipientHits([])
-			setGiftRecipientSearchLoading(false)
-			return
-		}
-		const t = window.setTimeout(() => {
-			const seq = ++giftRecipientSearchSeq.current
-			setGiftRecipientSearchLoading(true)
-			void (async () => {
-				try {
-					const data = await searchUsername(q.toLowerCase())
-					if (giftRecipientSearchSeq.current !== seq) return
-					let rows: searchResult[] = data?.results ?? []
-					const my = (
-						profiles?.[0]?.aaAccount ||
-						profiles?.[0]?.keyID ||
-						''
-					).toLowerCase()
-					rows = rows.filter((n) => (n.address || '').toLowerCase() !== my)
-					if (!rows.length && ethers.isAddress(q)) {
-						rows = [makeGiftSearchAddressOnlyResult(q)]
-					}
-					setGiftRecipientHits(rows)
-				} catch {
-					if (giftRecipientSearchSeq.current === seq) setGiftRecipientHits([])
-				} finally {
-					if (giftRecipientSearchSeq.current === seq) setGiftRecipientSearchLoading(false)
-				}
-			})()
-		}, 320)
-		return () => window.clearTimeout(t)
-	}, [giftRecipient, giftRecipientSelected, showGiftSheet, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
-
-	const giftCadAmount = parseFloat(giftAmount) || 0
-	const giftCadPerUsdc = addCashTopUpCadPerUsdc
-	const giftUsdcEquivalent = giftCadPerUsdc > 0 ? giftCadAmount / giftCadPerUsdc : 0
-	let giftFeeUsdc = giftUsdcEquivalent * 0.008
-	if (giftCadAmount > 0) {
-		if (giftFeeUsdc < 0.02) giftFeeUsdc = 0.02
-		if (giftFeeUsdc > 2) giftFeeUsdc = 2
-	} else {
-		giftFeeUsdc = 0
-	}
-	const totalGiftCostCad = giftCadAmount + giftFeeUsdc * giftCadPerUsdc
-
-	const handleConfirmGift = useCallback(() => {
-		const cadAmt = parseFloat(giftAmount) || 0
-		if (!cadAmt || cadAmt <= 0) return
-		const r = addCashTopUpCadPerUsdc
-		if (!Number.isFinite(r) || r <= 0) return
-		let fee = (r > 0 ? cadAmt / r : 0) * 0.008
-		if (cadAmt > 0) {
-			if (fee < 0.02) fee = 0.02
-			if (fee > 2) fee = 2
-		} else {
-			fee = 0
-		}
-		const totalCad = cadAmt + fee * r
-		const usdcCost = r > 0 ? totalCad / r : 0
-		const source = giftStore
-		const isStoreCard = Boolean(source && source.id !== 'usdc')
-
-		if (isStoreCard && source && source.id !== 'usdc') {
-			const card = source as HomeStoreCardRow
-			if (card.balanceCad < totalCad) {
-				window.alert('Insufficient store card balance.')
-				return
-			}
-			setHomeStoreCards((prev) =>
-				prev.map((c) => (c.id === card.id ? { ...c, balanceCad: c.balanceCad - totalCad } : c))
-			)
-			closeGiftSheet()
-			return
-		}
-		if (usdcCost > addCashVaultUsdc) {
-			window.alert('Insufficient USDC balance.')
-			return
-		}
-		const payee =
-			giftRecipientSelected ??
-			(ethers.isAddress(giftRecipient.trim()) ? makeGiftSearchAddressOnlyResult(giftRecipient.trim()) : null)
-		if (!payee?.address || !ethers.isAddress(payee.address)) {
-			window.alert('Please select a recipient from search or enter a valid wallet address.')
-			return
-		}
-		setGiftPayHandoffPayee(payee)
-		setGiftPayPrefill({
-			note: giftMessage.trim() || undefined,
-			usdc: usdcCost.toFixed(6),
-		})
-		closeGiftSheet()
-		setSettingsOpen('Pay')
-		setShowFooter(false)
-	}, [
-		giftAmount,
-		giftStore,
-		giftRecipient,
-		giftRecipientSelected,
-		giftMessage,
-		addCashTopUpCadPerUsdc,
-		addCashVaultUsdc,
-		closeGiftSheet,
-		setShowFooter,
-	])
 
 	/** 余额卡：白底 + 渐变描边 */
 	function BalanceCard() {
@@ -2290,19 +2038,6 @@ const Home = (_props: HomeProps) => {
 									</div>
 									<div>
 										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Top Up</p>
-									</div>
-									</button>
-									<button
-										type="button"
-										data-touch-priority="1"
-										{...openGiftSheetTap}
-										className={`flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
-									>
-									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
-										<Gift size={22} strokeWidth={2} aria-hidden />
-									</div>
-									<div>
-										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Gift</p>
 									</div>
 									</button>
 								</section>
@@ -3601,414 +3336,6 @@ const Home = (_props: HomeProps) => {
 				document.body
 			)}
 
-			{/* Send a Store Gift — 对齐 beamio.app renderAction Gift Modal */}
-			{createPortal(
-				<AnimatePresence>
-					{showGiftSheet && (
-						<>
-							<motion.div
-								className="fixed inset-0 z-[9997] bg-black/40 backdrop-blur-md"
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								transition={{ duration: 0.2 }}
-								onClick={closeGiftSheet}
-							/>
-							<motion.div
-								className="fixed left-0 right-0 bottom-0 z-[9998] bg-white dark:bg-slate-900 rounded-t-[2.5rem] shadow-2xl flex flex-col max-h-[88dvh] pb-[calc(env(safe-area-inset-bottom)+1rem)]"
-								initial={{ y: '100%' }}
-								animate={{ y: 0 }}
-								exit={{ y: '100%' }}
-								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-								onClick={(e) => e.stopPropagation()}
-							>
-								<div className="flex-shrink-0 flex items-center justify-between px-4 pt-2 pb-1">
-									<div className="w-10" />
-									<div className="w-12 h-1.5 rounded-full bg-gray-200 dark:bg-slate-600" />
-									<button
-										type="button"
-										onClick={closeGiftSheet}
-										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-										aria-label="Close"
-									>
-										<X className="w-5 h-5" />
-									</button>
-								</div>
-								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4">
-									{isSelectingGiftStore ? (
-										<div className="flex flex-col min-h-[240px]">
-											<div className="flex items-center mb-6 relative w-full">
-												<button
-													type="button"
-													onClick={() => setIsSelectingGiftStore(false)}
-													className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors"
-													aria-label="Back"
-												>
-													<ChevronLeft size={20} />
-												</button>
-												<h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mx-auto">Select Asset to Gift</h3>
-											</div>
-											<div className="space-y-4 overflow-y-auto pb-6">
-												{(
-													[
-														{
-															id: 'usdc' as const,
-															name: 'USDC Balance',
-															type: 'Unallocated Funds',
-															color: 'bg-[#1562f0]',
-															text: 'text-white',
-															balanceCad: giftUsdcValuationCad,
-														} satisfies HomeUsdcGiftVault,
-														...homeStoreCards,
-													] satisfies HomeGiftSource[]
-												).map((card) => {
-													const IconCmp: LucideIcon =
-														card.id === 'usdc' ? Layers : (card as HomeStoreCardRow).icon
-													return (
-														<button
-															type="button"
-															key={card.id}
-															onClick={() => {
-																setGiftStore(card)
-																setIsSelectingGiftStore(false)
-															}}
-															className="w-full flex items-center p-4 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl cursor-pointer hover:border-[#1562f0] dark:hover:border-[#1562f0] hover:bg-[#1562f0]/5 dark:hover:bg-[#1562f0]/10 transition-colors shadow-sm text-left"
-														>
-															<div
-																className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 shadow-inner ${
-																	card.id === 'usdc'
-																		? 'bg-[#1562f0]'
-																		: `bg-gradient-to-br ${(card as HomeStoreCardRow).color}`
-																} text-white`}
-															>
-																{card.id === 'usdc' ? (
-																	<span className="font-bold">$</span>
-																) : (
-																	<IconCmp size={18} />
-																)}
-															</div>
-															<div className="flex-1 min-w-0">
-																<h4 className="font-bold text-gray-900 dark:text-slate-100">{card.name}</h4>
-																<p className="text-[10px] text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">
-																	{card.type}
-																</p>
-															</div>
-															<div className="text-right shrink-0">
-																<p className="text-sm font-bold text-gray-900 dark:text-slate-100">
-																	CA$ {card.balanceCad ? card.balanceCad.toFixed(2) : '0.00'}
-																</p>
-																<p className="text-[10px] text-gray-400 dark:text-slate-500">Available</p>
-															</div>
-														</button>
-													)
-												})}
-											</div>
-										</div>
-									) : (
-										<div className="flex flex-col animate-in fade-in duration-200">
-											<div className="flex flex-col items-center justify-center mb-6 mt-2">
-												<div className="w-16 h-16 bg-[#1562f0]/10 dark:bg-[#1562f0]/15 rounded-full flex items-center justify-center mb-4 shadow-sm border border-[#1562f0]/20 dark:border-[#1562f0]/30">
-													<Gift size={32} className="text-[#1562f0] dark:text-[#6ba3ff]" />
-												</div>
-												<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">
-													Send a Store Gift
-												</h3>
-												<p className="text-sm text-gray-500 dark:text-slate-400 mb-6 text-center px-6">
-													Gift specific store cards or unallocated USDC to friends.
-												</p>
-												<div className="flex items-center text-gray-900 dark:text-slate-100 font-bold text-6xl tracking-tighter">
-													<span className="text-3xl mr-1 text-gray-400 dark:text-slate-500">$</span>
-													<input
-														type="number"
-														placeholder="0.00"
-														value={giftAmount}
-														onChange={(e) => setGiftAmount(e.target.value)}
-														inputMode="decimal"
-														autoComplete="off"
-														className="w-40 bg-transparent outline-none text-center placeholder-gray-200 dark:placeholder-slate-600 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
-													/>
-												</div>
-												<button
-													type="button"
-													onClick={() => setIsSelectingGiftStore(true)}
-													className="mt-4 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border border-gray-200 dark:border-slate-600 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors shadow-sm"
-												>
-													{giftStore ? (
-														<>
-															<div
-																className={`w-4 h-4 rounded-full ${
-																	giftStore.id === 'usdc'
-																		? 'bg-[#1562f0]'
-																		: `bg-gradient-to-br ${(giftStore as HomeStoreCardRow).color}`
-																} border border-white/20 shadow-inner`}
-															/>
-															{giftStore.name}{' '}
-															<ChevronRight size={14} className="text-gray-400 inline" />
-														</>
-													) : (
-														<>
-															<div className="w-4 h-4 rounded-full bg-[#1562f0] flex items-center justify-center text-white text-[8px] font-bold">
-																$
-															</div>
-															Unallocated USDC <ChevronRight size={14} className="text-gray-400 inline" />
-														</>
-													)}
-												</button>
-											</div>
-											<div
-												ref={giftRecipientSearchRef}
-												className="relative z-20 mb-3 overflow-visible rounded-2xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800/80 shadow-sm"
-											>
-												{!giftRecipientSelected ? (
-													<>
-														<div className="flex items-center p-4">
-															<UserCircle className="text-gray-400 dark:text-slate-500 mr-3 shrink-0" size={24} />
-															<div className="flex-1 flex items-center min-w-0">
-																<span className="text-gray-900 dark:text-slate-100 font-bold mr-2 shrink-0">To:</span>
-																<input
-																	type="text"
-																	placeholder="@beamio.tag or Phone #"
-																	value={giftRecipient}
-																	onChange={(e) => {
-																		setGiftRecipient(e.target.value)
-																		setGiftRecipientSelected(null)
-																		setGiftRecipientSuggestOpen(true)
-																	}}
-																	onFocus={() => setGiftRecipientSuggestOpen(true)}
-																	autoComplete="off"
-																	autoCorrect="off"
-																	autoCapitalize="none"
-																	spellCheck={false}
-																	inputMode="search"
-																	enterKeyHint="search"
-																	className="w-full bg-transparent outline-none text-gray-800 dark:text-slate-200 font-semibold placeholder-gray-400 dark:placeholder-slate-500 text-[13px]"
-																/>
-															</div>
-														</div>
-														{giftPayRecentRecipients.length > 0 &&
-														!(
-															giftRecipientSuggestOpen &&
-															giftRecipient.trim().replace(/^@/, '').length >= 3 &&
-															(giftRecipientSearchLoading || giftRecipientHits.length > 0)
-														) ? (
-															<div className="flex items-center gap-3 overflow-x-auto px-4 pb-3 no-scrollbar">
-																{giftPayRecentRecipients.map((r) => (
-																	<button
-																		key={r.address}
-																		type="button"
-																		onClick={() => onPickGiftRecipientHit(r)}
-																		className="flex flex-shrink-0 flex-col items-center gap-1 active:scale-95 transition-transform"
-																	>
-																		<div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-slate-200 ring-2 ring-transparent hover:ring-[#1562f0]/35 dark:bg-slate-600 dark:hover:ring-[#6ba3ff]/45">
-																			{r.image ? (
-																				<img src={r.image} alt={r.username} className="h-full w-full object-cover" />
-																			) : (
-																				<img
-																					src={getImg(r.username || r.address)}
-																					alt={r.username}
-																					className="h-full w-full object-cover"
-																				/>
-																			)}
-																		</div>
-																		<span className="max-w-[56px] truncate text-[11px] font-medium text-[#1562f0] dark:text-[#6ba3ff]">
-																			@
-																			{(r.username || r.address?.slice(0, 6) || '').replace(/^@/, '')}
-																		</span>
-																	</button>
-																))}
-															</div>
-														) : null}
-														{giftRecipientSuggestOpen &&
-															!giftRecipientSelected &&
-															giftRecipient.trim().replace(/^@/, '').length >= 3 && (
-																<div
-																	className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200/80 dark:border-slate-600 bg-white dark:bg-slate-900 py-1 shadow-xl shadow-slate-200/80 dark:shadow-black/40"
-																	onMouseDown={(e) => e.preventDefault()}
-																>
-																	<button
-																		type="button"
-																		className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
-																	>
-																		<Search
-																			className="h-4 w-4 flex-shrink-0 text-slate-500 dark:text-slate-400"
-																			strokeWidth={2}
-																		/>
-																		<span className="flex-1 truncate text-[13px] text-slate-700 dark:text-slate-200">
-																			{giftRecipient.trim()
-																				? `${giftRecipient.trim()} Beamio search`
-																				: 'Beamio search'}
-																		</span>
-																		{giftRecipientSearchLoading ? (
-																			<span className="text-[11px] text-slate-400 dark:text-slate-500">
-																				Searching…
-																			</span>
-																		) : null}
-																	</button>
-																	{!giftRecipientSearchLoading &&
-																		giftRecipientHits.map((hit) => (
-																			<button
-																				key={`${hit.address}-${hit.username}`}
-																				type="button"
-																				className="flex w-full items-center px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
-																				onClick={() => onPickGiftRecipientHit(hit)}
-																			>
-																				<img
-																					src={hit.image ? hit.image : getImg(hit.username)}
-																					alt={hit.username}
-																					className="mr-2 h-7 w-7 flex-shrink-0 rounded-full bg-slate-200 object-cover dark:bg-slate-700"
-																				/>
-																				<div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-																					<div className="flex min-w-0 flex-col">
-																						<span className="truncate text-[13px] text-slate-900 dark:text-slate-100">
-																							{displayName(hit)}
-																						</span>
-																						<span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-																							@{hit.username} · {fmtAddr(hit.address)}
-																						</span>
-																						<span className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
-																							{Number(hit.follow_count || '0').toLocaleString()} following ·{' '}
-																							{Number(hit.follower_count || '0').toLocaleString()} followers
-																						</span>
-																					</div>
-																					<span className="whitespace-nowrap text-[10px] text-slate-400 dark:text-slate-500">
-																						{giftSearchFormatUserDate(hit.created_at)}
-																					</span>
-																				</div>
-																			</button>
-																		))}
-																	{!giftRecipientSearchLoading && giftRecipientHits.length === 0 ? (
-																		<div className="px-3 py-2.5 text-[12px] text-slate-400 dark:text-slate-500">
-																			No results
-																		</div>
-																	) : null}
-																</div>
-															)}
-													</>
-												) : (
-													<div className="flex w-full flex-col items-center px-4 pb-4 pt-2">
-														<div
-															className="inline-flex cursor-default select-none flex-col items-center"
-															role="group"
-															aria-label="Selected recipient"
-														>
-															<div className="mt-2 flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-slate-200 dark:bg-slate-600">
-																{giftRecipientSelected.image ? (
-																	<img
-																		src={giftRecipientSelected.image}
-																		alt={giftRecipientSelected.username}
-																		className="h-full w-full object-cover"
-																	/>
-																) : (
-																	<img
-																		src={getImg(giftRecipientSelected.username)}
-																		alt={giftRecipientSelected.username}
-																		className="h-full w-full object-cover"
-																	/>
-																)}
-															</div>
-															<div className="pointer-events-none mt-1 flex flex-col items-center">
-																<div className="text-[18px] font-semibold leading-[18px] text-[#1562f0] dark:text-[#6ba3ff]">
-																	@{giftRecipientSelected.username}
-																</div>
-																<div className="mt-0.5 text-[12px] leading-[13px] text-[#1562f0] dark:text-[#6ba3ff]">
-																	{fmtAddr(giftRecipientSelected.address)}
-																</div>
-															</div>
-														</div>
-														<button
-															type="button"
-															onClick={() => {
-																setGiftRecipientSelected(null)
-																setGiftRecipient('')
-																setGiftRecipientSuggestOpen(true)
-															}}
-															className="mt-3 text-[13px] font-medium text-[#1562f0] hover:underline dark:text-[#6ba3ff]"
-														>
-															Change recipient
-														</button>
-													</div>
-												)}
-											</div>
-											<div className="bg-gray-50 dark:bg-slate-800/80 rounded-2xl p-4 mb-auto border border-gray-200 dark:border-slate-600 flex items-center shadow-sm">
-												<MessageCircle className="text-gray-400 dark:text-slate-500 mr-3 shrink-0" size={24} />
-												<div className="flex-1 flex items-center min-w-0">
-													<input
-														type="text"
-														placeholder="Add a message..."
-														value={giftMessage}
-														onChange={(e) => setGiftMessage(e.target.value)}
-														className="w-full bg-transparent outline-none text-gray-800 dark:text-slate-200 font-medium placeholder-gray-400 dark:placeholder-slate-500"
-													/>
-												</div>
-											</div>
-											<div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-5 mt-6 border border-gray-200 dark:border-slate-600 shadow-sm">
-												<div className="flex justify-between items-center mb-3">
-													<span className="text-sm text-gray-500 dark:text-slate-400 font-medium">Gift Amount</span>
-													<span className="text-sm font-bold text-gray-900 dark:text-slate-100">
-														{giftStore && giftStore.id !== 'usdc' ? 'CA$' : 'USDC'} {giftCadAmount.toFixed(2)}
-													</span>
-												</div>
-												<div className="flex justify-between items-center pt-3 border-t border-dashed border-gray-200 dark:border-slate-600">
-													<span className="text-sm text-gray-500 dark:text-slate-400 font-medium flex items-center">
-														Network Fee (0.8%)
-														<Info size={12} className="ml-1 text-gray-400 shrink-0" />
-													</span>
-													<div className="text-right flex flex-col items-end">
-														<span className="text-sm font-mono font-bold text-gray-900 dark:text-slate-100">
-															+ {giftFeeUsdc.toFixed(2)} USDC
-														</span>
-														{giftCadAmount > 0 && giftFeeUsdc <= 0.0200001 ? (
-															<span className="text-[9px] text-gray-400 dark:text-slate-500 mt-0.5">
-																Minimum fee applied
-															</span>
-														) : giftCadAmount > 0 && giftFeeUsdc >= 1.999 ? (
-															<span className="text-[9px] text-gray-400 dark:text-slate-500 mt-0.5">
-																Maximum fee cap applied
-															</span>
-														) : null}
-													</div>
-												</div>
-												<div className="flex justify-between items-center pt-3 mt-3 border-t border-gray-200 dark:border-slate-600">
-													<span className="text-sm font-bold text-gray-900 dark:text-slate-100">Total Cost</span>
-													<div className="text-right">
-														<span className="text-base font-extrabold text-gray-900 dark:text-slate-100">
-															USDC{' '}
-															{giftCadPerUsdc > 0
-																? (giftCadAmount / giftCadPerUsdc + giftFeeUsdc).toFixed(2)
-																: '0.00'}
-														</span>
-													</div>
-												</div>
-											</div>
-											<button
-												type="button"
-												onClick={handleConfirmGift}
-												disabled={!giftCadAmount || giftCadAmount <= 0}
-												className={`w-full py-4 rounded-2xl font-bold transition-all shadow-md flex items-center justify-center gap-2 mt-4 ${
-													!giftCadAmount || giftCadAmount <= 0
-														? 'bg-gray-200 dark:bg-slate-700 text-gray-400 cursor-not-allowed shadow-none'
-														: 'bg-gray-900 dark:bg-gray-100 hover:bg-gray-800 dark:hover:bg-white active:scale-95 text-white dark:text-gray-900'
-												}`}
-											>
-												<Gift
-													size={20}
-													className={
-														!giftCadAmount || giftCadAmount <= 0
-															? 'text-gray-400'
-															: 'text-white dark:text-gray-900'
-													}
-												/>
-												Confirm & Send Gift
-											</button>
-										</div>
-									)}
-								</div>
-							</motion.div>
-						</>
-					)}
-				</AnimatePresence>,
-				document.body
-			)}
 
 			{showFuelView && createPortal(
 				<AnimatePresence>
@@ -4229,19 +3556,12 @@ const Home = (_props: HomeProps) => {
 
 							{ settingsOpen === 'Pay' && (
 								<PayScreen 
-									beamioer={giftPayHandoffPayee ?? userPreviewItem ?? undefined}
-									initialNote={giftPayPrefill?.note}
-									initialSendAmount={giftPayPrefill?.usdc}
-									focusAmountOnMount={Boolean(giftPayPrefill)}
+									beamioer={userPreviewItem ?? undefined}
 									close={() => {
-										setGiftPayHandoffPayee(null)
-										setGiftPayPrefill(null)
 										setSettingsOpen('')
 										setShowFooter(true)
 									}}
 									onShowFuelCenter={() => {
-										setGiftPayHandoffPayee(null)
-										setGiftPayPrefill(null)
 										setSettingsOpen('')
 										setShowFooter(true)
 										setShowFuelView(true)

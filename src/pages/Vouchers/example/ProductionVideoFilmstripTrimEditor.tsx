@@ -137,6 +137,11 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
   const [thumbsLoading, setThumbsLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [scrubPreviewSec, setScrubPreviewSec] = useState<number | null>(null);
+  const playingRef = useRef(false);
+
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
 
   const selectionLeftPct = (startSec / durationSec) * 100;
   const selectionWidthPct = (clipSec / durationSec) * 100;
@@ -144,38 +149,53 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
   const showUploadOverlay = Boolean(props.uploading && props.trimConfirmed);
   const uploadPct = Math.min(100, Math.max(0, props.uploadProgress ?? 0));
 
-  const seekPreview = useCallback(
-    (sec: number, updateScrubState: boolean) => {
-      const clamped = Math.min(Math.max(0, sec), Math.max(0, durationSec - 0.05));
+  const clampPlayheadSec = useCallback(
+    (sec: number): number => {
+      const maxPlayhead = Math.max(startSec, endSec - 0.05);
+      return Math.min(maxPlayhead, Math.max(startSec, sec));
+    },
+    [endSec, startSec]
+  );
+
+  const suppressPauseRef = useRef(false);
+  const seekingRef = useRef(false);
+
+  const seekPlayhead = useCallback(
+    (sec: number, opts?: { updateScrubLabel?: boolean; resumeIfPlaying?: boolean }) => {
+      const inClip = clampPlayheadSec(sec);
       const video = previewRef.current;
-      if (video && !playing) {
+      if (video) {
         try {
-          video.currentTime = clamped;
+          video.currentTime = inClip;
         } catch {
           /* ignore */
         }
+        if (opts?.resumeIfPlaying && playingRef.current) {
+          suppressPauseRef.current = true;
+          void video
+            .play()
+            .then(() => setPlaying(true))
+            .catch(() => undefined)
+            .finally(() => {
+              suppressPauseRef.current = false;
+            });
+        }
       }
-      if (updateScrubState) setScrubPreviewSec(clamped);
+      if (opts?.updateScrubLabel) setScrubPreviewSec(inClip);
     },
-    [durationSec, playing]
+    [clampPlayheadSec]
   );
 
   useEffect(() => {
     if (playing) return;
-    seekPreview(startSec, false);
-    if (!props.trimConfirmed) setScrubPreviewSec(null);
-  }, [startSec, props.trimConfirmed, playing, seekPreview]);
+    seekPlayhead(scrubPreviewSec ?? startSec, { updateScrubLabel: false });
+    if (!props.trimConfirmed && scrubPreviewSec == null) setScrubPreviewSec(null);
+  }, [startSec, props.trimConfirmed, playing, scrubPreviewSec, seekPlayhead]);
 
   useEffect(() => {
     if (!props.trimConfirmed || playing) return;
-    const video = previewRef.current;
-    if (!video) return;
-    try {
-      video.currentTime = startSec;
-    } catch {
-      /* ignore */
-    }
-  }, [props.trimConfirmed, startSec, playing]);
+    seekPlayhead(scrubPreviewSec ?? startSec, { updateScrubLabel: false });
+  }, [props.trimConfirmed, startSec, playing, scrubPreviewSec, seekPlayhead]);
 
   useEffect(() => {
     if (!selectMode) return;
@@ -202,20 +222,21 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
     if (!video) return;
 
     const stopAtEnd = () => {
-      const clipEnd = props.trimConfirmed ? endSec : endSec;
+      const clipEnd = endSec;
       if (video.currentTime >= clipEnd - 0.05) {
         video.pause();
         video.currentTime = startSec;
+        setScrubPreviewSec(startSec);
         setPlaying(false);
       }
-      if (props.trimConfirmed && video.currentTime < startSec - 0.05) {
-        video.currentTime = startSec;
+      if (video.currentTime < startSec - 0.05) {
+        video.currentTime = clampPlayheadSec(video.currentTime);
       }
     };
 
     video.addEventListener('timeupdate', stopAtEnd);
     return () => video.removeEventListener('timeupdate', stopAtEnd);
-  }, [endSec, props.trimConfirmed, startSec]);
+  }, [clampPlayheadSec, endSec, startSec]);
 
   const pointerSecFromClientX = useCallback(
     (clientX: number): number => {
@@ -231,9 +252,21 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
 
   const endDrag = useCallback(() => {
     dragRef.current = null;
-    setScrubPreviewSec(null);
-    seekPreview(startSec, false);
-  }, [seekPreview, startSec]);
+  }, []);
+
+  const seekFromTrackPointer = useCallback(
+    (clientX: number, opts?: { moveClipToInclude?: boolean; resumeIfPlaying?: boolean }) => {
+      const pointerSec = pointerSecFromClientX(clientX);
+      if (opts?.moveClipToInclude && (pointerSec < startSec || pointerSec > endSec)) {
+        const nextStart = clampStartSec(pointerSec, durationSec, clipSec);
+        props.onStartSecChange(nextStart);
+        seekPlayhead(pointerSec, { updateScrubLabel: true, resumeIfPlaying: opts?.resumeIfPlaying });
+        return;
+      }
+      seekPlayhead(pointerSec, { updateScrubLabel: true, resumeIfPlaying: opts?.resumeIfPlaying });
+    },
+    [clipSec, durationSec, endSec, pointerSecFromClientX, props, seekPlayhead, startSec]
+  );
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
@@ -245,19 +278,19 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
         const delta = pointerSec - drag.startPointerSec;
         const nextStart = clampStartSec(drag.startSec + delta, durationSec, clipSec);
         props.onStartSecChange(nextStart);
-        seekPreview(nextStart, true);
+        seekPlayhead(nextStart, { updateScrubLabel: true, resumeIfPlaying: playingRef.current });
         return;
       }
       if (drag.mode === 'left') {
         const nextStart = clampStartSec(pointerSec, durationSec, clipSec);
         props.onStartSecChange(nextStart);
-        seekPreview(nextStart, true);
+        seekPlayhead(nextStart, { updateScrubLabel: true, resumeIfPlaying: playingRef.current });
         return;
       }
       if (drag.mode === 'right') {
         const nextStart = clampStartSec(pointerSec - clipSec, durationSec, clipSec);
         props.onStartSecChange(nextStart);
-        seekPreview(nextStart + clipSec, true);
+        seekPlayhead(nextStart + clipSec, { updateScrubLabel: true, resumeIfPlaying: playingRef.current });
       }
     };
 
@@ -281,8 +314,22 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
     props.disabled,
     props.onStartSecChange,
     props.trimConfirmed,
-    seekPreview,
+    seekPlayhead,
   ]);
+
+  const handleTrackPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (props.disabled || props.trimConfirmed) return;
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-trim-selection]')) return;
+      event.preventDefault();
+      seekFromTrackPointer(event.clientX, {
+        moveClipToInclude: true,
+        resumeIfPlaying: playingRef.current,
+      });
+    },
+    [props.disabled, props.trimConfirmed, seekFromTrackPointer]
+  );
 
   const beginDrag = useCallback(
     (mode: DragMode, event: React.PointerEvent) => {
@@ -296,13 +343,13 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
         startSec,
       };
       if (mode === 'right') {
-        seekPreview(endSec, true);
+        seekPlayhead(endSec, { updateScrubLabel: true, resumeIfPlaying: playingRef.current });
       } else {
-        seekPreview(startSec, true);
+        seekPlayhead(startSec, { updateScrubLabel: true, resumeIfPlaying: playingRef.current });
       }
       (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     },
-    [endSec, pointerSecFromClientX, props.disabled, props.trimConfirmed, seekPreview, startSec]
+    [endSec, pointerSecFromClientX, props.disabled, props.trimConfirmed, seekPlayhead, startSec]
   );
 
   const togglePlay = useCallback(() => {
@@ -313,9 +360,10 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
       setPlaying(false);
       return;
     }
-    video.currentTime = startSec;
+    const resumeAt = scrubPreviewSec ?? video.currentTime;
+    seekPlayhead(resumeAt, { updateScrubLabel: true });
     void video.play().then(() => setPlaying(true)).catch(() => undefined);
-  }, [playing, props.disabled, startSec]);
+  }, [playing, props.disabled, scrubPreviewSec, seekPlayhead]);
 
   const previewTimeLabel = selectMode
     ? scrubPreviewSec != null
@@ -332,7 +380,39 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
           className="h-full w-full object-contain"
           playsInline
           preload="auto"
-          onPause={() => setPlaying(false)}
+          controls={playing}
+          onPlay={() => setPlaying(true)}
+          onSeeking={() => {
+            seekingRef.current = true;
+          }}
+          onSeeked={() => {
+            seekingRef.current = false;
+            const video = previewRef.current;
+            if (!video) return;
+            const clamped = clampPlayheadSec(video.currentTime);
+            if (Math.abs(clamped - video.currentTime) > 0.01) {
+              try {
+                video.currentTime = clamped;
+              } catch {
+                /* ignore */
+              }
+            }
+            setScrubPreviewSec(clamped);
+            if (playingRef.current && video.paused) {
+              suppressPauseRef.current = true;
+              void video
+                .play()
+                .then(() => setPlaying(true))
+                .catch(() => undefined)
+                .finally(() => {
+                  suppressPauseRef.current = false;
+                });
+            }
+          }}
+          onPause={() => {
+            if (suppressPauseRef.current || seekingRef.current) return;
+            setPlaying(false);
+          }}
           onEnded={() => setPlaying(false)}
         />
 
@@ -419,6 +499,7 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
               <div
                 ref={trackRef}
                 className="relative h-10 overflow-hidden rounded-md border border-white/10 bg-black/40"
+                onPointerDown={handleTrackPointerDown}
               >
                 <div className="absolute inset-0 flex">
                   {thumbsLoading ? (
@@ -450,6 +531,7 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
                 />
 
                 <div
+                  data-trim-selection
                   className="absolute inset-y-0 box-border cursor-grab touch-none border-2 border-[#facc15] active:cursor-grabbing"
                   style={{
                     left: `${selectionLeftPct}%`,

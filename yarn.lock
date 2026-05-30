@@ -1711,7 +1711,7 @@
 
 "@ffmpeg/core@0.12.10":
   version "0.12.10"
-  resolved "https://registry.yarnpkg.com/@ffmpeg/core/-/core-0.12.10.tgz#3177e88852bfbfaad5d258e9e0ac1fd9dffd3223"
+  resolved "https://registry.npmjs.org/@ffmpeg/core/-/core-0.12.10.tgz"
   integrity sha512-dzNplnn2Nxle2c2i2rrDhqcB19q9cglCkWnoMTDN9Q9l3PvdjZWd1HfSPjCNWc/p8Q3CT+Es9fWOR0UhAeYQZA==
 
 "@ffmpeg/ffmpeg@^0.12.10":
@@ -3052,6 +3052,11 @@
   dependencies:
     "@types/ms" "*"
 
+"@types/dom-webcodecs@^0.1.6":
+  version "0.1.18"
+  resolved "https://registry.npmjs.org/@types/dom-webcodecs/-/dom-webcodecs-0.1.18.tgz"
+  integrity sha512-vAvE8C9DGWR+tkb19xyjk1TSUlJ7RUzzp4a9Anu7mwBT+fpyePWK1UxmH14tMO5zHmrnrRIMg5NutnnDztLxgg==
+
 "@types/eslint-scope@^3.7.7":
   version "3.7.7"
   resolved "https://registry.npmmirror.com/@types/eslint-scope/-/eslint-scope-3.7.7.tgz"
@@ -3521,6 +3526,11 @@
   version "8.3.4"
   resolved "https://registry.npmmirror.com/@types/uuid/-/uuid-8.3.4.tgz"
   integrity sha512-c/I8ZRb51j+pYGAu5CrFMRxqZ2ke4y2grEBO5AUjgSkSk+qT2Ea+OdWElz/OiMf5MNpn2b17kuVBwZLQJXzihw==
+
+"@types/wicg-file-system-access@^2020.9.5":
+  version "2020.9.8"
+  resolved "https://registry.npmjs.org/@types/wicg-file-system-access/-/wicg-file-system-access-2020.9.8.tgz"
+  integrity sha512-ggMz8nOygG7d/stpH40WVaNvBwuyYLnrg5Mbyf6bmsj/8+gb6Ei4ZZ9/4PNpcPNTT8th9Q8sM8wYmWGjMWLX/A==
 
 "@types/ws@^7.4.4":
   version "7.4.7"
@@ -8712,6 +8722,19 @@ motion@^12.23.7:
   dependencies:
     framer-motion "^12.23.26"
     tslib "^2.4.0"
+
+mp4-muxer@^5.2.2:
+  version "5.2.2"
+  resolved "https://registry.npmjs.org/mp4-muxer/-/mp4-muxer-5.2.2.tgz"
+  integrity sha512-dhozjTywI0h2qFzeShagt8YYw811fh1XlwiDCE2f6Aeqf6xG2CyuShoSa5E0AZDO8pPF0JOZ3wOmWBNWIGdSpQ==
+  dependencies:
+    "@types/dom-webcodecs" "^0.1.6"
+    "@types/wicg-file-system-access" "^2020.9.5"
+
+mp4box@^2.3.0:
+  version "2.3.0"
+  resolved "https://registry.npmjs.org/mp4box/-/mp4box-2.3.0.tgz"
+  integrity sha512-nnABYbdh4UguEYyV+uRwQBi1tbb8kXka2Fx9yKzmDKAeh8gkvRKYxoK1XDd8GQIjSfN4rvsXrW1CBo4yRQJZDA==
 
 ms@2.0.0:
   version "2.0.0"

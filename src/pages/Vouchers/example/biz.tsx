@@ -63,6 +63,7 @@ import {
   postCardCreateRedeem,
   withPromiseTimeout,
   postRegisterIssuedNftSeries,
+  postRequestExplorerNftMetadataRefresh,
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
   getCardMetadataFromUri,
@@ -118,6 +119,8 @@ import {
   productionBackgroundVideoNeedsClipEdit,
   standardizeProductionBackgroundVideo,
 } from '@/utils/productionBackgroundVideo';
+import { validateProductionBackgroundYoutubeVideo } from '@/utils/validateProductionBackgroundYoutubeVideo';
+import { isYoutubeProductionVideoUrl, PRODUCTION_BACKGROUND_YOUTUBE_MIME, isProductionBackgroundYoutubeMedia, youtubeThumbnailUrlFromProductionUrl } from '@/utils/youtubeProductionVideo';
 import {
   ipfsFragmentUrlFromHash,
   uploadMediaFileToIpfsChunked,
@@ -147,6 +150,8 @@ import {
   resolveRedeemRegisterBatchCount,
   DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS,
   catalogGlobalCategoryLabel,
+  catalogProductionBaseScanNftLabel,
+  catalogProductionBaseScanNftUrl,
   productionItemCategoryLabel,
   buildCardIssuanceProductionMetadataPayload,
   buildPackageProductionDraftRowFromBase,
@@ -156,7 +161,12 @@ import {
   catalogProductionDisplayPrice,
   computeProductionIssueTotalN,
   finalizeServiceCategoriesByLabelHash,
+  flattenIssuedProductionSeriesMetadata,
   isCatalogPackageDealRow,
+  mergeCatalogProductionHydrationRows,
+  isSalesManagementCatalogCategory,
+  parseProductionIssueLeftN,
+  resolveProductionRequiresRedeemCode,
   makeCatalogPackageDealDraftId,
   packageDealDraftFromProductionRow,
   productionEffectiveChargeAmount,
@@ -177,6 +187,7 @@ import {
   effectiveTileBackgroundColorForMetadata,
   tileBackgroundColorApplies,
   uniqueDefaultNewServiceCategoryLabel,
+  type CardIssuanceProductionMetadataPayload,
   type CardIssuanceProductionRow,
   type CatalogGlobalCategoryId,
   type CatalogPackageDealDraft,
@@ -8247,6 +8258,26 @@ const CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX = 20;
 const CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT = 100;
 const CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT = 10;
 const CARD_ISSUANCE_POINT_REWARD_TOKEN_ID = 2;
+
+/** After biz publish/edit, warm Coupon Preview OG + optional OpenSea refresh for issued series NFTs. */
+function queueExplorerRefreshForIssuedProgramNfts(
+  cardAddress: string,
+  coupons: CardIssuanceCouponRow[],
+  productions: CardIssuanceProductionRow[]
+): void {
+  const tokenIds = new Set<string>();
+  for (const row of coupons) {
+    if (row.issued && row.issuedTokenId?.trim()) tokenIds.add(row.issuedTokenId.trim());
+  }
+  for (const row of productions) {
+    if (row.issued && row.issuedTokenId?.trim() && !isCatalogPackageDealRow(row)) {
+      tokenIds.add(row.issuedTokenId.trim());
+    }
+  }
+  for (const tokenId of tokenIds) {
+    void postRequestExplorerNftMetadataRefresh({ cardAddress, tokenId });
+  }
+}
 const CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 = '1000000';
 const CARD_ISSUANCE_POINT_RATIO_MAX = 1000;
 /** Short Name (program points ticker): max length, derived from Card Unit Name unless edited. */
@@ -8800,6 +8831,11 @@ function ProgramsCatalogShareCardPreview({
   const backgroundColorHex = tierBackgroundColorForPayload(production.backgroundColor) ?? '#ea580c';
   const backgroundImage = production.productionImage.trim();
   const hasBanner = backgroundImage.length > 0;
+  const youtubeBanner = isProductionBackgroundYoutubeMedia({
+    url: backgroundImage,
+    mime: production.productionImageMime,
+  });
+  const youtubeBannerThumb = youtubeBanner ? youtubeThumbnailUrlFromProductionUrl(backgroundImage) : null;
   const iconUrl =
     !hasBanner && productionIconLooksLikeImageUrl(production.icon) ? production.icon.trim() : '';
   const noBannerWithQr = !hasBanner && Boolean(shareUrl);
@@ -8835,7 +8871,11 @@ function ProgramsCatalogShareCardPreview({
       <div className={`relative ${ticketMinHeightClass} rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]`}>
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.75rem]" aria-hidden>
           {hasBanner ? (
-            <ProgramsCouponBannerImage src={backgroundImage} />
+            youtubeBanner && youtubeBannerThumb ? (
+              <img src={youtubeBannerThumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <ProgramsCouponBannerImage src={backgroundImage} />
+            )
           ) : (
             <>
               <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }} />
@@ -9019,6 +9059,40 @@ function collectCouponRedeemRowsByCouponId(
     }
     rows.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     map.set(coupon.id, rows);
+  }
+  return map;
+}
+
+function collectProductionRedeemRowsByProductionId(
+  cardAddress: string | undefined,
+  productions: CardIssuanceProductionRow[]
+): Map<string, CardIssuanceCouponRedeemItemView[]> {
+  const map = new Map<string, CardIssuanceCouponRedeemItemView[]>();
+  const addr = cardAddress?.trim().toLowerCase();
+  if (!addr) return map;
+  const batches = ((CoNET_Data as { cardRedeems?: CardRedeemBatch[] } | null)?.cardRedeems ??
+    []) as CardRedeemBatch[];
+  const redeemProductions = productions.filter((p) => p.requiresRedeemCode && p.issued);
+  for (const production of redeemProductions) {
+    const rows: CardIssuanceCouponRedeemItemView[] = [];
+    const tokenId = production.issuedTokenId?.trim() ?? '';
+    for (const batch of batches) {
+      if (batch.cardAddress.toLowerCase() !== addr) continue;
+      if (batch.kind !== 'issued_nft_production') continue;
+      const batchMatchesProduction =
+        batch.productionId === production.id ||
+        (tokenId && batch.issuedNftTokenId?.trim() === tokenId && !batch.productionId);
+      if (!batchMatchesProduction) continue;
+      for (const item of batch.items) {
+        rows.push({
+          ...item,
+          createdAt: (item as CardIssuanceCouponRedeemItemView).createdAt ?? batch.createdAt,
+          redeemedAt: (item as CardIssuanceCouponRedeemItemView).redeemedAt,
+        });
+      }
+    }
+    rows.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    map.set(production.id, rows);
   }
   return map;
 }
@@ -10041,6 +10115,10 @@ const [cardIssuanceCouponRedeemRegisteringId, setCardIssuanceCouponRedeemRegiste
   null
 );
 const [cardIssuanceCouponRedeemBatchQty, setCardIssuanceCouponRedeemBatchQty] = useState<Record<string, string>>({});
+const [cardIssuanceProductionRedeemBatchQty, setCardIssuanceProductionRedeemBatchQty] =
+  useState<Record<string, string>>({});
+const [cardIssuanceProductionRedeemRegisteringId, setCardIssuanceProductionRedeemRegisteringId] =
+  useState<string | null>(null);
 const [cardIssuanceCouponRedeemPageByCouponId, setCardIssuanceCouponRedeemPageByCouponId] = useState<
   Record<string, number>
 >({});
@@ -10079,6 +10157,12 @@ const [cardIssuanceProductionIssueTotal, setCardIssuanceProductionIssueTotal] = 
 );
 const [cardIssuanceProductionIssueTotalUnlimited, setCardIssuanceProductionIssueTotalUnlimited] =
   useState(false);
+useEffect(() => {
+  if (!isSalesManagementCatalogCategory(cardIssuanceProductionGlobalCategory)) return;
+  setCardIssuanceProductionIssueTotalUnlimited(true);
+  setCardIssuanceProductionPackageDeals([]);
+  setCardIssuanceProductionPrice('0');
+}, [cardIssuanceProductionGlobalCategory]);
 const [cardIssuanceProductionDescription, setCardIssuanceProductionDescription] = useState('');
 const [cardIssuanceProductionIcon, setCardIssuanceProductionIcon] = useState('');
 const [cardIssuanceProductionImage, setCardIssuanceProductionImage] = useState('');
@@ -10490,6 +10574,28 @@ const cardIssuanceCouponRedeemRowsByCouponId = useMemo(
   ]
 );
 
+const cardIssuanceRedeemProductionIdsKey = useMemo(
+  () =>
+    cardIssuanceProductions
+      .filter((p) => p.requiresRedeemCode && p.issued)
+      .map((p) => `${p.id}:${p.issuedTokenId?.trim() ?? ''}`)
+      .join('|'),
+  [cardIssuanceProductions]
+);
+
+const cardIssuanceProductionRedeemRowsByProductionId = useMemo(
+  () =>
+    collectProductionRedeemRowsByProductionId(
+      cardIssuanceExistingCard?.cardAddress,
+      cardIssuanceProductions
+    ),
+  [
+    cardIssuanceExistingCard?.cardAddress,
+    cardIssuanceRedeemProductionIdsKey,
+    cardIssuanceCouponRedeemsVersion,
+  ]
+);
+
 const cardIssuanceCouponRedeemStatusQueryItems = useMemo(() => {
   const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
   if (!cardAddress) return [];
@@ -10499,8 +10605,17 @@ const cardIssuanceCouponRedeemStatusQueryItems = useMemo(() => {
       items.push({ cardAddress, hash: row.hash, code: row.code });
     }
   }
+  for (const rows of cardIssuanceProductionRedeemRowsByProductionId.values()) {
+    for (const row of rows) {
+      items.push({ cardAddress, hash: row.hash, code: row.code });
+    }
+  }
   return items;
-}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponRedeemRowsByCouponId]);
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceCouponRedeemRowsByCouponId,
+  cardIssuanceProductionRedeemRowsByProductionId,
+]);
 
 const cardIssuanceCouponRedeemStatusQueryKey = useMemo(
   () => cardIssuanceCouponRedeemStatusQueryItems.map((item) => item.hash).join(','),
@@ -11171,6 +11286,10 @@ function hydrateCardIssuanceProductionRowFromShareMeta(
       ? { productionImageStartSec: production.productionImageStartSec }
       : {}),
     description: typeof production.description === 'string' ? production.description : '',
+    requiresRedeemCode: resolveProductionRequiresRedeemCode(
+      production,
+      normalizeCatalogGlobalCategory(production.category)
+    ),
     issued: production.issued === true || Boolean(issuedTokenId),
     ...(issuedTokenId ? { issuedTokenId } : {}),
   });
@@ -11203,19 +11322,8 @@ useEffect(() => {
             item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
               ? (item.metadata as Record<string, unknown>)
               : {};
-          const props =
-            rootMeta.properties && typeof rootMeta.properties === 'object' && !Array.isArray(rootMeta.properties)
-              ? (rootMeta.properties as Record<string, unknown>)
-              : {};
-          const beamioProduction =
-            props.beamioProduction &&
-            typeof props.beamioProduction === 'object' &&
-            !Array.isArray(props.beamioProduction)
-              ? (props.beamioProduction as Record<string, unknown>)
-              : {};
           const mergedMeta: Record<string, unknown> = {
-            ...rootMeta,
-            ...beamioProduction,
+            ...flattenIssuedProductionSeriesMetadata(rootMeta),
             issued: true,
             issuedTokenId: item.tokenId,
           };
@@ -11285,6 +11393,10 @@ useEffect(() => {
               ? { productionImageStartSec: mergedMeta.productionImageStartSec }
               : {}),
             description: typeof mergedMeta.description === 'string' ? mergedMeta.description : '',
+            requiresRedeemCode: resolveProductionRequiresRedeemCode(
+              mergedMeta,
+              normalizeCatalogGlobalCategory(mergedMeta.category)
+            ),
             issued: true,
             issuedTokenId: tokenId,
             ...(issueLeftFromChain ? { issueLeft: issueLeftFromChain } : {}),
@@ -11305,13 +11417,7 @@ useEffect(() => {
       if (idx < 0) {
         rows.push(sRow);
       } else {
-        rows[idx] = {
-          ...rows[idx],
-          ...sRow,
-          issued: true,
-          issuedTokenId: sRow.issuedTokenId ?? rows[idx].issuedTokenId,
-          issueLeft: sRow.issueLeft ?? rows[idx].issueLeft,
-        };
+        rows[idx] = mergeCatalogProductionHydrationRows(rows[idx], sRow);
       }
     }
     setCardIssuanceProductions((prev) => {
@@ -11333,6 +11439,7 @@ useEffect(() => {
           productionImageStartSec: row.productionImageStartSec ?? old.productionImageStartSec,
           issued: row.issued || old.issued,
           issuedTokenId: row.issuedTokenId ?? old.issuedTokenId,
+          requiresRedeemCode: row.requiresRedeemCode || old.requiresRedeemCode,
         });
       }
       const mergedIds = new Set(merged.map((item) => item.id));
@@ -12362,6 +12469,11 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
               setCardIssuanceCouponEditorError(
                 metadataRes.error ?? 'Could not update issued coupon metadata. Please try again.'
               );
+            } else {
+              void postRequestExplorerNftMetadataRefresh({
+                cardAddress: cardIssuanceExistingCard.cardAddress,
+                tokenId: issuedTokenId,
+              });
             }
           }
           // issued coupon on-chain fields are immutable; metadata endpoint already handled allowed edits
@@ -12622,6 +12734,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       loadingScope: 'bonusEditor',
     });
     if (metadataOk) {
+      void postRequestExplorerNftMetadataRefresh({ cardAddress: cardAddr, tokenId: tokenIdStr });
       setCardIssuanceCouponEditorOpen(false);
       setCardIssuanceEditingCouponId(null);
     } else {
@@ -12971,6 +13084,7 @@ const runProductionVideoConvertAndUpload = useCallback(
   async (args: {
     file: File;
     startSec: number;
+    sourceDurationSec?: number;
   }): Promise<{ ok: true; imageUrl: string; mime: string } | { ok: false }> => {
     const p0 = profiles?.[0];
     if (!p0?.privateKeyArmor) {
@@ -13003,11 +13117,21 @@ const runProductionVideoConvertAndUpload = useCallback(
       const standardized = await standardizeProductionBackgroundVideo({
         file: args.file,
         startSec: args.startSec,
+        sourceDurationSec:
+          args.sourceDurationSec != null && args.sourceDurationSec > 0
+            ? args.sourceDurationSec
+            : productionVideoSourceDurationSec > 0
+              ? productionVideoSourceDurationSec
+              : undefined,
         onStatus: (message) => {
           convertWorkflow = message;
           setProductionVideoProcessingMessage(message);
           if (/loading video processor/i.test(message)) {
             setProductionVideoUploadProgress(6);
+          } else if (/no re-encode|no conversion needed/i.test(message)) {
+            setProductionVideoUploadProgress(28);
+          } else if (/hardware accelerator|encoding with/i.test(message)) {
+            setProductionVideoUploadProgress(10);
           } else if (/optimizing video/i.test(message)) {
             setProductionVideoUploadProgress(32);
           }
@@ -13050,7 +13174,7 @@ const runProductionVideoConvertAndUpload = useCallback(
       setCardIssuanceProductionImageUploading(false);
     }
   },
-  [profiles, revokeProductionVideoDraft]
+  [profiles, productionVideoSourceDurationSec, revokeProductionVideoDraft]
 );
 
 const startProductionVideoUploadAfterTrim = useCallback(async () => {
@@ -13059,10 +13183,12 @@ const startProductionVideoUploadAfterTrim = useCallback(async () => {
   await runProductionVideoConvertAndUpload({
     file,
     startSec: productionVideoStartSec,
+    sourceDurationSec: productionVideoSourceDurationSec > 0 ? productionVideoSourceDurationSec : undefined,
   });
 }, [
   productionVideoDraftFile,
   productionVideoStartSec,
+  productionVideoSourceDurationSec,
   cardIssuanceProductionImageUploading,
   runProductionVideoConvertAndUpload,
 ]);
@@ -13097,15 +13223,20 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
   const globalCategory = lockIssuedOnChainFields
     ? editingExistingRow?.globalCategory ?? DEFAULT_CATALOG_GLOBAL_CATEGORY
     : cardIssuanceProductionGlobalCategory;
+  const salesManagementItem = isSalesManagementCatalogCategory(globalCategory);
   const itemCategory = lockIssuedOnChainFields
     ? editingExistingRow?.itemCategory ?? DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id
     : cardIssuanceProductionItemCategory;
   const singleSessionPrice = lockIssuedOnChainFields
     ? (editingExistingRow?.singleSessionPrice ?? '0')
-    : cardIssuanceProductionPrice.trim() || '0';
+    : salesManagementItem
+      ? '0'
+      : cardIssuanceProductionPrice.trim() || '0';
   const issueTotalUnlimited = lockIssuedOnChainFields
     ? editingExistingRow?.issueTotalUnlimited === true
-    : cardIssuanceProductionIssueTotalUnlimited;
+    : salesManagementItem
+      ? true
+      : cardIssuanceProductionIssueTotalUnlimited;
   const issueTotal = lockIssuedOnChainFields
     ? (editingExistingRow?.issueTotal ?? String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT))
     : cardIssuanceProductionIssueTotal.trim();
@@ -13123,7 +13254,7 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     setCardIssuanceProductionEditorError('Service name is required.');
     return;
   }
-  if (!lockIssuedOnChainFields) {
+  if (!lockIssuedOnChainFields && !salesManagementItem) {
     const chargeAmount = productionEffectiveChargeAmount({
       packageDealEnabled: false,
       singleSessionPrice,
@@ -13134,7 +13265,8 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
       return;
     }
   }
-  for (const deal of cardIssuanceProductionPackageDeals) {
+  const packageDealsForSubmit = salesManagementItem ? [] : cardIssuanceProductionPackageDeals;
+  for (const deal of packageDealsForSubmit) {
     const packageErr = validateCatalogPackageDealDraft(deal);
     if (packageErr) {
       setCardIssuanceProductionEditorError(packageErr);
@@ -13174,6 +13306,10 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     ? String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX)
     : String(Number.parseInt(issueTotal.replace(/,/g, '').trim(), 10));
 
+  const requiresRedeemCodeFinal = lockIssuedOnChainFields
+    ? editingExistingRow?.requiresRedeemCode === true
+    : salesManagementItem;
+
   const baseRow = makeCardIssuanceProductionRow({
     id: editingExistingRow?.id,
     name,
@@ -13187,6 +13323,7 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     packageTotalPrice: '0',
     issueTotal: issueTotalFixed,
     issueTotalUnlimited,
+    requiresRedeemCode: requiresRedeemCodeFinal,
     icon,
     backgroundColor,
     productionImage,
@@ -13198,7 +13335,7 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
   });
 
   const buildPackageRowsForBase = (parent: CardIssuanceProductionRow): CardIssuanceProductionRow[] =>
-    cardIssuanceProductionPackageDeals.map((deal) => {
+    packageDealsForSubmit.map((deal) => {
       if (deal.issued) {
         const existing = cardIssuanceProductions.find((item) => item.id === deal.id);
         if (existing) {
@@ -13250,7 +13387,11 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     row: CardIssuanceProductionRow,
     cardAddr: string,
     ownerKey: string
-  ): Promise<CardIssuanceProductionRow | null> => {
+  ): Promise<{
+    row: CardIssuanceProductionRow | null;
+    redeemErr?: string;
+    redeemInitialBatch?: number;
+  }> => {
     const issueTotalForRow = computeProductionIssueTotalN(row);
     const metaProps = buildProductionIssuedNftMetaProps(row);
     const nftData = encodeCreateIssuedNft(row.name.trim(), 0, 0, issueTotalForRow, 0, '0');
@@ -13274,21 +13415,21 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     });
     if (!createRes.success) {
       setCardIssuanceProductionEditorError(createRes.error ?? 'Failed to create catalog NFT on-chain.');
-      return null;
+      return { row: null };
     }
     const issuedRaw = createRes.issuedNftTokenId?.trim();
     if (!issuedRaw) {
       setCardIssuanceProductionEditorError(
         'Catalog NFT was submitted but the server did not return issuedNftTokenId. Please retry.'
       );
-      return null;
+      return { row: null };
     }
     let newTokenId: bigint;
     try {
       newTokenId = BigInt(issuedRaw);
     } catch {
       setCardIssuanceProductionEditorError('Server returned an invalid issuedNftTokenId. Please retry.');
-      return null;
+      return { row: null };
     }
     const tokenIdStr = String(newTokenId);
     void postRegisterIssuedNftSeries({
@@ -13300,10 +13441,87 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
         issuedTokenId: tokenIdStr,
       },
     }).catch(() => {});
+
+    let redeemErr: string | undefined;
+    let redeemInitialBatch = 0;
+    if (row.requiresRedeemCode) {
+      redeemInitialBatch = initialRedeemRegisterBatchCount(issueTotalForRow);
+      const codes: string[] = [];
+      const redeemItems: CardIssuanceCouponRedeemItemView[] = [];
+      const generatedAt = Date.now();
+      for (let i = 0; i < redeemInitialBatch; i++) {
+        const { code } = generateCODE('');
+        codes.push(code);
+        redeemItems.push({
+          code,
+          hash: chainHashForRedeemCode(code),
+          createdAt: generatedAt,
+        });
+      }
+      const { validAfter, validBefore } = redeemValidityForCoupon('none', '', '');
+      const rDeadline = Math.floor(Date.now() / 1000) + 3600;
+      const rNonce = ethers.hexlify(ethers.randomBytes(32));
+      const redeemData = encodeCreateRedeemBatchBundle(
+        codes,
+        0n,
+        0,
+        validAfter,
+        validBefore,
+        [newTokenId],
+        [1n]
+      );
+      const redeemSig = await signExecuteForOwner(ownerKey, cardAddr, redeemData, rDeadline, rNonce);
+      const redeemRes = await postCardCreateRedeem({
+        cardAddress: cardAddr,
+        codes,
+        points6: '0',
+        validAfter,
+        validBefore,
+        deadline: rDeadline,
+        nonce: rNonce,
+        ownerSignature: redeemSig,
+        tokenIds: [tokenIdStr],
+        amounts: ['1'],
+        attr: 0,
+      });
+      if (!redeemRes.success || !redeemRes.codes) {
+        redeemErr =
+          redeemRes.error ??
+          'Catalog NFT was created but redeem codes could not be registered. Register more from the catalog list.';
+      } else {
+        const batch: CardRedeemBatch = {
+          batchId: `production-${row.id}-${Date.now()}`,
+          cardAddress: cardAddr,
+          points6: '0',
+          pointsHuman: '1 NFT',
+          createdAt: generatedAt,
+          kind: 'issued_nft_production',
+          issuedNftTokenId: tokenIdStr,
+          productionId: row.id,
+          items: redeemItems,
+        };
+        const prev = CoNET_Data;
+        if (prev) {
+          const updatedList: CardRedeemBatch[] = [
+            ...(((prev as { cardRedeems?: CardRedeemBatch[] }).cardRedeems ?? []) as CardRedeemBatch[]),
+            batch,
+          ];
+          setCoNET_Data({ ...prev, cardRedeems: updatedList } as typeof prev);
+          await storeSystemData();
+          setCardIssuanceCouponRedeemsVersion((v) => v + 1);
+        }
+      }
+    }
+
     return {
-      ...row,
-      issued: true,
-      issuedTokenId: tokenIdStr,
+      row: {
+        ...row,
+        issued: true,
+        issuedTokenId: tokenIdStr,
+        requiresRedeemCode: row.requiresRedeemCode,
+      },
+      redeemErr,
+      redeemInitialBatch,
     };
   };
 
@@ -13346,13 +13564,13 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
               issuedPackages.push(pkgRow);
               continue;
             }
-            const issuedPkg = await issueCatalogProductionNftOnChain(
+            const issuedPkgRes = await issueCatalogProductionNftOnChain(
               pkgRow,
               cardAddr,
               p0.privateKeyArmor.trim()
             );
-            if (!issuedPkg) return;
-            issuedPackages.push(issuedPkg);
+            if (!issuedPkgRes.row) return;
+            issuedPackages.push(issuedPkgRes.row);
           }
           nextProductions = mergeCatalogBaseAndPackageRows(nextProductions, baseRow, issuedPackages);
           setCardIssuanceProductions(nextProductions);
@@ -13367,6 +13585,13 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
             'Could not save service changes. Fix any publish validation errors and try again.'
           );
         } else {
+          const productionsPayload = buildCardIssuanceProductionMetadataPayload(nextProductions);
+          if (productionsPayload?.length) {
+            setCardIssuanceExistingCard((prev) => {
+              if (!prev?.meta) return prev;
+              return { ...prev, meta: { ...prev.meta, productions: productionsPayload } };
+            });
+          }
           setCardIssuanceProductionEditorOpen(false);
           setCardIssuanceEditingProductionId(null);
           resetCardIssuanceProductionEditorFields();
@@ -13416,36 +13641,56 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
       return;
     }
 
-    const issuedBase = await issueCatalogProductionNftOnChain(
+    const issuedBaseRes = await issueCatalogProductionNftOnChain(
       baseRow,
       cardAddr,
       p0.privateKeyArmor.trim()
     );
-    if (!issuedBase) return;
+    if (!issuedBaseRes.row) return;
+    const issuedBase = issuedBaseRes.row;
 
     const parentToken = issuedBase.issuedTokenId?.trim() ?? '';
     const issuedPackages: CardIssuanceProductionRow[] = [];
     for (const deal of cardIssuanceProductionPackageDeals) {
       const pkgRow = buildPackageProductionRowFromBase(issuedBase, deal, parentToken);
-      const issuedPkg = await issueCatalogProductionNftOnChain(
+      const issuedPkgRes = await issueCatalogProductionNftOnChain(
         pkgRow,
         cardAddr,
         p0.privateKeyArmor.trim()
       );
-      if (!issuedPkg) return;
-      issuedPackages.push(issuedPkg);
+      if (!issuedPkgRes.row) return;
+      issuedPackages.push(issuedPkgRes.row);
     }
 
-    let nextProductions: CardIssuanceProductionRow[] = [];
-    setCardIssuanceProductions((prev) => {
-      nextProductions = mergeCatalogBaseAndPackageRows(prev, issuedBase, issuedPackages);
-      return nextProductions;
-    });
+    const nextProductions = mergeCatalogBaseAndPackageRows(
+      cardIssuanceProductions,
+      issuedBase,
+      issuedPackages
+    );
+    const productionsPayload = buildCardIssuanceProductionMetadataPayload(nextProductions);
+    if (!productionsPayload?.length) {
+      setCardIssuanceProductionEditorError(
+        'Catalog item was issued on-chain, but program metadata could not be built (name is required).'
+      );
+      return;
+    }
+    setCardIssuanceProductions(nextProductions);
     const metadataOk = await handlePublishCardIssuanceRef.current({
       productionsOverride: nextProductions,
       loadingScope: 'bonusEditor',
     });
     if (metadataOk) {
+      queueExplorerRefreshForIssuedProgramNfts(cardAddr, [], nextProductions);
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev?.meta) return prev;
+        return {
+          ...prev,
+          meta: {
+            ...prev.meta,
+            productions: productionsPayload,
+          },
+        };
+      });
       setCardIssuanceProductionEditorOpen(false);
       setCardIssuanceEditingProductionId(null);
       resetCardIssuanceProductionEditorFields();
@@ -13453,6 +13698,18 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
       setCardIssuanceProductionEditorError(
         'Service was saved on-chain, but updating share metadata failed. Try Publish again.'
       );
+    }
+    if (issuedBaseRes.redeemErr) {
+      setCardIssuanceOwnerAdminNotice({ kind: 'warn', text: issuedBaseRes.redeemErr });
+    } else if (
+      issuedBase.requiresRedeemCode &&
+      (issuedBaseRes.redeemInitialBatch ?? 0) > 0 &&
+      computeProductionIssueTotalN(issuedBase) > (issuedBaseRes.redeemInitialBatch ?? 0)
+    ) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'ok',
+        text: `Catalog item issued. Registered ${(issuedBaseRes.redeemInitialBatch ?? 0).toLocaleString()} redeem codes (max ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} per on-chain batch). Use + in the catalog list to register more while issuance remains.`,
+      });
     }
   } catch (e: unknown) {
     setCardIssuanceProductionEditorError(e instanceof Error ? e.message : String(e));
@@ -13660,6 +13917,169 @@ const registerCardIssuanceCouponRedeemCodes = useCallback(
     }
   },
   [cardIssuanceCoupons, cardIssuanceExistingCard?.cardAddress, profiles, cardIssuanceCouponRedeemBatchQty]
+);
+
+const registerCardIssuanceProductionRedeemCodes = useCallback(
+  async (productionId: string, requestedCount?: number) => {
+    const production = cardIssuanceProductions.find((item) => item.id === productionId);
+    if (!production?.issued || !production.requiresRedeemCode) return;
+    const issueLeftN = parseProductionIssueLeftN(production);
+    const batchCount = resolveRedeemRegisterBatchCount(
+      issueLeftN,
+      requestedCount,
+      cardIssuanceProductionRedeemBatchQty[productionId]
+    );
+    if (batchCount <= 0) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'No remaining issuance left for this catalog item.',
+      });
+      return;
+    }
+    const tokenIdStr = production.issuedTokenId?.trim() ?? '';
+    if (!tokenIdStr) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Catalog series id is not loaded yet. Wait for program data to finish loading, then try again.',
+      });
+      return;
+    }
+    const cardAddrRaw = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+    if (!cardAddrRaw || !ethers.isAddress(cardAddrRaw)) return;
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor?.trim()) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Unlock your wallet; program owner key is required to register redeem codes.',
+      });
+      return;
+    }
+
+    setCardIssuanceProductionRedeemRegisteringId(productionId);
+    try {
+      const cardAddr = ethers.getAddress(cardAddrRaw);
+      const wallet = new ethers.Wallet(p0.privateKeyArmor.trim());
+      const chainOwner = ethers.getAddress(
+        await withPromiseTimeout(getCardOwner(cardAddr), 20_000, 'card.owner()')
+      );
+      if (chainOwner !== ethers.getAddress(wallet.address)) {
+        setCardIssuanceOwnerAdminNotice({
+          kind: 'warn',
+          text: 'Registering redeem codes requires the Beamio program card owner wallet. Switch to owner in Wallet, then retry.',
+        });
+        return;
+      }
+
+      const codes: string[] = [];
+      const redeemItems: CardIssuanceCouponRedeemItemView[] = [];
+      const generatedAt = Date.now();
+      for (let i = 0; i < batchCount; i++) {
+        const { code } = generateCODE('');
+        codes.push(code);
+        redeemItems.push({
+          code,
+          hash: chainHashForRedeemCode(code),
+          createdAt: generatedAt,
+        });
+      }
+      const { validAfter, validBefore } = redeemValidityForCoupon('none', '', '');
+      const rDeadline = Math.floor(Date.now() / 1000) + 3600;
+      const rNonce = ethers.hexlify(ethers.randomBytes(32));
+      const redeemData = encodeCreateRedeemBatchBundle(
+        codes,
+        0n,
+        0,
+        validAfter,
+        validBefore,
+        [BigInt(tokenIdStr)],
+        [1n]
+      );
+      const redeemSig = await signExecuteForOwner(
+        p0.privateKeyArmor.trim(),
+        cardAddr,
+        redeemData,
+        rDeadline,
+        rNonce
+      );
+      const redeemRes = await postCardCreateRedeem({
+        cardAddress: cardAddr,
+        codes,
+        points6: '0',
+        validAfter,
+        validBefore,
+        deadline: rDeadline,
+        nonce: rNonce,
+        ownerSignature: redeemSig,
+        tokenIds: [tokenIdStr],
+        amounts: ['1'],
+        attr: 0,
+      });
+      if (!redeemRes.success || !redeemRes.codes?.length) {
+        setCardIssuanceOwnerAdminNotice({
+          kind: 'warn',
+          text: redeemRes.error ?? 'Failed to register redeem codes on-chain.',
+        });
+        return;
+      }
+
+      const batch: CardRedeemBatch = {
+        batchId: `production-${production.id}-${Date.now()}`,
+        cardAddress: cardAddr,
+        points6: '0',
+        pointsHuman: '1 NFT',
+        createdAt: generatedAt,
+        kind: 'issued_nft_production',
+        issuedNftTokenId: tokenIdStr,
+        productionId: production.id,
+        items: redeemItems,
+      };
+      const prev = CoNET_Data;
+      if (prev) {
+        const updatedList: CardRedeemBatch[] = [
+          ...(((prev as { cardRedeems?: CardRedeemBatch[] }).cardRedeems ?? []) as CardRedeemBatch[]),
+          batch,
+        ];
+        setCoNET_Data({ ...prev, cardRedeems: updatedList } as typeof prev);
+        await storeSystemData();
+        setCardIssuanceCouponRedeemsVersion((v) => v + 1);
+      }
+
+      setCardIssuanceProductions((prev) =>
+        prev.map((row) => {
+          if (row.id !== productionId) return row;
+          const leftN = parseProductionIssueLeftN(row);
+          return { ...row, issueLeft: String(Math.max(0, leftN - batchCount)) };
+        })
+      );
+      setCardIssuanceCouponRedeemStatuses((prev) => {
+        const next = { ...prev };
+        for (const item of redeemItems) {
+          next[item.hash] = 'pending';
+        }
+        return next;
+      });
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'ok',
+        text:
+          batchCount === 1
+            ? '1 redeem code registered on-chain.'
+            : `${batchCount.toLocaleString()} redeem codes registered on-chain in one batch (max ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} per batch).`,
+      });
+    } catch (e: unknown) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setCardIssuanceProductionRedeemRegisteringId(null);
+    }
+  },
+  [
+    cardIssuanceProductions,
+    cardIssuanceExistingCard?.cardAddress,
+    profiles,
+    cardIssuanceProductionRedeemBatchQty,
+  ]
 );
 
 const openCardIssuanceBonusRuleCreate = useCallback(() => {
@@ -13977,6 +14397,104 @@ const handleCardIssuanceProductionIconPick: React.ChangeEventHandler<HTMLInputEl
   [profiles]
 );
 
+const adoptProductionBackgroundVideoFromFile = useCallback(
+  async (file: File): Promise<void> => {
+    revokeProductionVideoDraft();
+    setCardIssuanceProductionImage('');
+    setCardIssuanceProductionImageMime('');
+    setCardIssuanceProductionImageStartSec(0);
+    setProductionVideoClipEditRequired(false);
+    setProductionVideoTrimConfirmed(false);
+    setCardIssuanceProductionImageUploading(true);
+    setProductionVideoUploadProgress(0);
+    setProductionVideoProcessingMessage('Reading video…');
+    try {
+      const durationSec = await probeProductionBackgroundVideoDurationSec(file);
+      const needsClipEdit = productionBackgroundVideoNeedsClipEdit(durationSec);
+      const url = URL.createObjectURL(file);
+      productionVideoDraftUrlRef.current = url;
+      setProductionVideoDraftFile(file);
+      setProductionVideoDraftUrl(url);
+      setProductionVideoSourceDurationSec(durationSec);
+      setProductionVideoStartSec(0);
+      setProductionVideoClipEditRequired(needsClipEdit);
+      setProductionVideoTrimConfirmed(false);
+      setProductionVideoProcessingMessage('');
+      setProductionVideoUploadProgress(0);
+      preloadProductionBackgroundVideoProcessor((message) => {
+        if (needsClipEdit) setProductionVideoProcessingMessage(message);
+      });
+
+      if (needsClipEdit) {
+        setCardIssuanceProductionImageUploading(false);
+        return;
+      }
+
+      await runProductionVideoConvertAndUpload({ file, startSec: 0, sourceDurationSec: durationSec });
+    } catch (err: unknown) {
+      setCardIssuanceProductionEditorError(
+        err instanceof Error ? err.message : 'Could not open video file.'
+      );
+      setCardIssuanceProductionImageUploading(false);
+      setProductionVideoProcessingMessage('');
+      setProductionVideoUploadProgress(0);
+    }
+  },
+  [revokeProductionVideoDraft, runProductionVideoConvertAndUpload]
+);
+
+const handleYoutubeProductionVideoImport = useCallback(
+  async (rawUrl: string) => {
+    const url = String(rawUrl ?? '').trim();
+    if (!url || !isYoutubeProductionVideoUrl(url)) {
+      setCardIssuanceProductionEditorError('Enter a valid YouTube URL (youtube.com or youtu.be).');
+      return;
+    }
+    setCardIssuanceProductionEditorError('');
+    productionVideoUploadAbortRef.current?.abort();
+    const abortController = new AbortController();
+    productionVideoUploadAbortRef.current = abortController;
+
+    revokeProductionVideoDraft();
+    setCardIssuanceProductionImageUploading(true);
+    setProductionVideoUploadProgress(0);
+    setProductionVideoProcessingMessage('Checking YouTube video…');
+
+    try {
+      const validated = await validateProductionBackgroundYoutubeVideo({
+        url,
+        signal: abortController.signal,
+        onProgress: ({ percent, message }) => {
+          setProductionVideoUploadProgress(percent);
+          setProductionVideoProcessingMessage(message);
+        },
+      });
+      if (abortController.signal.aborted) return;
+
+      setCardIssuanceProductionImage(validated.normalizedUrl);
+      setCardIssuanceProductionImageMime(PRODUCTION_BACKGROUND_YOUTUBE_MIME);
+      setCardIssuanceProductionImageStartSec(0);
+      setProductionVideoClipEditRequired(false);
+      setProductionVideoTrimConfirmed(false);
+      setProductionVideoUploadProgress(100);
+      setProductionVideoProcessingMessage('');
+    } catch (err: unknown) {
+      if (abortController.signal.aborted) return;
+      setCardIssuanceProductionEditorError(
+        err instanceof Error ? err.message : 'YouTube video could not be verified.'
+      );
+      setProductionVideoUploadProgress(0);
+      setProductionVideoProcessingMessage('');
+    } finally {
+      if (productionVideoUploadAbortRef.current === abortController) {
+        productionVideoUploadAbortRef.current = null;
+      }
+      setCardIssuanceProductionImageUploading(false);
+    }
+  },
+  [revokeProductionVideoDraft]
+);
+
 const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
     const input = e.currentTarget;
@@ -13998,43 +14516,7 @@ const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputE
     setCardIssuanceProductionEditorError('');
 
     if (fileLooksLikeProductionBackgroundVideo(file)) {
-      revokeProductionVideoDraft();
-      setCardIssuanceProductionImage('');
-      setCardIssuanceProductionImageMime('');
-      setCardIssuanceProductionImageStartSec(0);
-      setProductionVideoClipEditRequired(false);
-      setProductionVideoTrimConfirmed(false);
-      setCardIssuanceProductionImageUploading(true);
-      setProductionVideoProcessingMessage('Reading video…');
-      try {
-        const durationSec = await probeProductionBackgroundVideoDurationSec(file);
-        const needsClipEdit = productionBackgroundVideoNeedsClipEdit(durationSec);
-        const url = URL.createObjectURL(file);
-        productionVideoDraftUrlRef.current = url;
-        setProductionVideoDraftFile(file);
-        setProductionVideoDraftUrl(url);
-        setProductionVideoSourceDurationSec(durationSec);
-        setProductionVideoStartSec(0);
-        setProductionVideoClipEditRequired(needsClipEdit);
-        setProductionVideoTrimConfirmed(false);
-        setProductionVideoProcessingMessage('');
-
-        if (needsClipEdit) {
-          preloadProductionBackgroundVideoProcessor((message) =>
-            setProductionVideoProcessingMessage(message)
-          );
-          setCardIssuanceProductionImageUploading(false);
-          return;
-        }
-
-        await runProductionVideoConvertAndUpload({ file, startSec: 0 });
-      } catch (err: unknown) {
-        setCardIssuanceProductionEditorError(
-          err instanceof Error ? err.message : 'Could not open video file.'
-        );
-        setCardIssuanceProductionImageUploading(false);
-        setProductionVideoProcessingMessage('');
-      }
+      await adoptProductionBackgroundVideoFromFile(file);
       return;
     }
 
@@ -14057,7 +14539,7 @@ const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputE
       setCardIssuanceProductionImageUploading(false);
     }
   },
-  [profiles, revokeProductionVideoDraft, runProductionVideoConvertAndUpload]
+  [profiles, adoptProductionBackgroundVideoFromFile, revokeProductionVideoDraft, runProductionVideoConvertAndUpload]
 );
 
 const cancelProductionVideoDraft = useCallback(() => {
@@ -14068,10 +14550,15 @@ const cancelProductionVideoDraft = useCallback(() => {
 const confirmProductionVideoUpload = useCallback(async () => {
   const file = productionVideoDraftFile;
   if (!file || cardIssuanceProductionImageUploading) return { ok: false as const };
-  return runProductionVideoConvertAndUpload({ file, startSec: productionVideoStartSec });
+  return runProductionVideoConvertAndUpload({
+    file,
+    startSec: productionVideoStartSec,
+    sourceDurationSec: productionVideoSourceDurationSec > 0 ? productionVideoSourceDurationSec : undefined,
+  });
 }, [
   productionVideoDraftFile,
   productionVideoStartSec,
+  productionVideoSourceDurationSec,
   cardIssuanceProductionImageUploading,
   runProductionVideoConvertAndUpload,
 ]);
@@ -14426,7 +14913,16 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
     const couponsRowsForPublish = opts?.couponsOverride ?? cardIssuanceCoupons;
     const couponsPayloadForPublish = buildCardIssuanceCouponMetadataPayload(couponsRowsForPublish);
     const productionsRowsForPublish = opts?.productionsOverride ?? cardIssuanceProductions;
-    const productionsPayloadForPublish = buildCardIssuanceProductionMetadataPayload(productionsRowsForPublish);
+    const builtProductionsPayload = buildCardIssuanceProductionMetadataPayload(productionsRowsForPublish);
+    const existingProductionsFromMeta = cardIssuanceExistingCard?.meta?.productions;
+    const productionsPayloadForPublish =
+      builtProductionsPayload && builtProductionsPayload.length > 0
+        ? builtProductionsPayload
+        : opts?.productionsOverride != null
+          ? builtProductionsPayload ?? []
+          : Array.isArray(existingProductionsFromMeta) && existingProductionsFromMeta.length > 0
+            ? (existingProductionsFromMeta as CardIssuanceProductionMetadataPayload[])
+            : [];
     const itemCategoryRowsForPublish = (
       opts?.itemCategoryOverride ?? cardIssuanceServiceCategories
     ).filter((row) => !isDraftServiceCategoryId(row.id));
@@ -14635,6 +15131,11 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
            }
          }
        })();
+       queueExplorerRefreshForIssuedProgramNfts(
+         resolvedPublishCardAddr,
+         couponsRowsForPublish,
+         productionsRowsForPublish
+       );
        return true;
      }
      setCardIssuanceCreateError(res.error ?? 'Publish failed.');
@@ -30402,6 +30903,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               (redeemPage - 1) * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE,
                               redeemPage * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE
                             );
+                            const couponBaseScanNftUrl =
+                              coupon.issued && coupon.issuedTokenId?.trim()
+                                ? catalogProductionBaseScanNftUrl(
+                                    cardIssuanceExistingCard?.cardAddress,
+                                    coupon.issuedTokenId
+                                  )
+                                : null;
                             return (
                             <div
                               key={coupon.id}
@@ -30448,7 +30956,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   <p className="mt-1 line-clamp-2 text-[11px] text-[#595c5e]">{coupon.description}</p>
                                 ) : null}
                               </div>
-                              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
                                 {coupon.issued ? (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
                                     <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
@@ -30463,6 +30971,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     Issue
                                   </button>
                                 )}
+                                {couponBaseScanNftUrl ? (
+                                  <a
+                                    href={couponBaseScanNftUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-white px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-[#f8fafc] ${bizFocusRingClass}`}
+                                    aria-label={`View ${catalogProductionBaseScanNftLabel(coupon.issuedTokenId)} on BaseScan`}
+                                    title="View NFT on BaseScan"
+                                  >
+                                    {catalogProductionBaseScanNftLabel(coupon.issuedTokenId)}
+                                    <ExternalLink className="h-3 w-3 opacity-70" strokeWidth={2.2} aria-hidden />
+                                  </a>
+                                ) : null}
                                 {coupon.issued && !coupon.requiresRedeemCode ? (
                                   <button
                                     type="button"
@@ -35414,6 +35935,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       onOpenCreate={openCardIssuanceProductionCreate}
       onOpenEdit={openCardIssuanceProductionEdit}
       onOpenShare={openCardIssuanceProductionShare}
+      programCardAddress={cardIssuanceExistingCard?.cardAddress}
       productions={cardIssuanceProductions}
       serviceCategories={cardIssuanceServiceCategories}
       onUpdateServiceCategoryLabel={updateCardIssuanceServiceCategoryLabel}
@@ -35432,6 +35954,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       productionImageStartSec={cardIssuanceProductionImageStartSec}
       productionImageUploading={cardIssuanceProductionImageUploading}
       onProductionImageFileChange={handleCardIssuanceProductionImagePick}
+      onImportYoutubeProductionVideo={handleYoutubeProductionVideoImport}
       onClearProductionImage={clearCardIssuanceProductionImage}
       productionVideoDraftUrl={productionVideoDraftUrl}
       productionVideoClipEditRequired={productionVideoClipEditRequired}
@@ -35475,6 +35998,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       editingIssued={cardIssuanceProductionEditingIssued}
       onSubmit={() => void submitCardIssuanceProductionEditor()}
       onDeleteDraft={(id) => void removeCardIssuanceProductionDraft(id)}
+      productionRedeemRowsByProductionId={cardIssuanceProductionRedeemRowsByProductionId}
+      onRegisterProductionRedeemCodes={(id) => void registerCardIssuanceProductionRedeemCodes(id)}
+      productionRedeemBatchQty={cardIssuanceProductionRedeemBatchQty}
+      onProductionRedeemBatchQtyChange={(productionId, value) =>
+        setCardIssuanceProductionRedeemBatchQty((prev) => ({ ...prev, [productionId]: value }))
+      }
+      productionRedeemRegisteringId={cardIssuanceProductionRedeemRegisteringId}
+      productionRedeemStatuses={cardIssuanceCouponRedeemStatuses}
+      productionRedeemStatusLoading={cardIssuanceCouponRedeemStatusLoading}
     />
 
     {cardIssuanceProductionShareOpenId &&

@@ -8,6 +8,7 @@ export const CATALOG_GLOBAL_CATEGORY_OPTIONS = [
   { id: 'Product', label: 'Product' },
   { id: 'Service', label: 'Service' },
   { id: 'Menu', label: 'Menu' },
+  { id: 'SalesManagement', label: 'Sales Management' },
 ] as const;
 
 export type CatalogGlobalCategoryId = (typeof CATALOG_GLOBAL_CATEGORY_OPTIONS)[number]['id'];
@@ -30,6 +31,63 @@ export function normalizeCatalogGlobalCategory(raw: unknown): CatalogGlobalCateg
 
 export function catalogGlobalCategoryLabel(id: CatalogGlobalCategoryId): string {
   return CATALOG_GLOBAL_CATEGORY_OPTIONS.find((opt) => opt.id === id)?.label ?? id;
+}
+
+/** Sales Management catalog items: no price, package deals, or capped issuance UI. */
+export function isSalesManagementCatalogCategory(
+  category: CatalogGlobalCategoryId
+): boolean {
+  return category === 'SalesManagement';
+}
+
+function productionRequiresRedeemFlagTruthy(raw: unknown): boolean {
+  if (raw === true || raw === 1) return true;
+  if (typeof raw === 'string') {
+    const t = raw.trim().toLowerCase();
+    return t === '1' || t === 'true' || t === 'yes';
+  }
+  return false;
+}
+
+/** Parse requiresRedeemCode from share metadata / issued-series hydration. */
+export function parseProductionRequiresRedeemFromHydration(meta: Record<string, unknown>): boolean {
+  if (
+    productionRequiresRedeemFlagTruthy(meta.requiresRedeemCode) ||
+    productionRequiresRedeemFlagTruthy(meta.redeemCodeRequired)
+  ) {
+    return true;
+  }
+  const beamioProduction = meta.beamioProduction;
+  if (beamioProduction && typeof beamioProduction === 'object' && !Array.isArray(beamioProduction)) {
+    const nested = beamioProduction as Record<string, unknown>;
+    if (
+      productionRequiresRedeemFlagTruthy(nested.requiresRedeemCode) ||
+      productionRequiresRedeemFlagTruthy(nested.redeemCodeRequired)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Sales Management defaults to redeem-code claim unless metadata explicitly says otherwise. */
+export function resolveProductionRequiresRedeemCode(
+  meta: Record<string, unknown>,
+  globalCategory?: CatalogGlobalCategoryId
+): boolean {
+  if (parseProductionRequiresRedeemFromHydration(meta)) return true;
+  const cat = globalCategory ?? normalizeCatalogGlobalCategory(meta.category);
+  return isSalesManagementCatalogCategory(cat);
+}
+
+export function parseProductionIssueLeftN(
+  row: Pick<CardIssuanceProductionRow, 'issueLeft' | 'issueTotal' | 'issueTotalUnlimited'>
+): number {
+  const leftRaw = String(row.issueLeft ?? '').replace(/,/g, '').trim();
+  const leftN = Number.parseInt(leftRaw, 10);
+  if (Number.isFinite(leftN) && leftN >= 0) return leftN;
+  if (row.issueTotalUnlimited) return CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX;
+  return computeProductionIssueTotalN(row);
 }
 
 export const NEW_PRODUCTION_SERVICE_CATEGORY_DEFAULT_LABEL = 'New Category';
@@ -55,6 +113,50 @@ export const DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS: ProductionServiceCateg
 export const PRODUCTION_SERVICE_CATEGORY_OPTIONS = DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS;
 
 export type ProductionServiceCategoryId = string;
+
+/** Base ERC-1155 NFT explorer (catalog issued series). */
+export const BEAMIO_CATALOG_BASESCAN_NFT_EXPLORER = 'https://basescan.org/nft' as const;
+
+/** On-chain `createIssuedNft` tokenIds (not share token #0–#99). */
+export const CATALOG_ISSUED_NFT_TOKEN_ID_MIN = 100_000_000_000n;
+
+/** Decimal tokenId string for BaseScan `/nft/{card}/{tokenId}` (no Number() — avoids wrong ids). */
+export function normalizeCatalogIssuedNftTokenIdForExplorer(
+  issuedTokenId: string | number | undefined
+): string | null {
+  const raw = String(issuedTokenId ?? '')
+    .trim()
+    .replace(/,/g, '');
+  if (!/^\d+$/.test(raw)) return null;
+  try {
+    if (BigInt(raw) < CATALOG_ISSUED_NFT_TOKEN_ID_MIN) return null;
+  } catch {
+    return null;
+  }
+  return raw;
+}
+
+export function catalogProductionBaseScanNftUrl(
+  cardAddress: string | undefined,
+  issuedTokenId: string | number | undefined
+): string | null {
+  const tid = normalizeCatalogIssuedNftTokenIdForExplorer(issuedTokenId);
+  if (!tid) return null;
+  const card = cardAddress?.trim() ?? '';
+  if (!card || !/^0x[a-fA-F0-9]{40}$/i.test(card)) return null;
+  try {
+    const cardNorm = ethers.getAddress(card);
+    return `${BEAMIO_CATALOG_BASESCAN_NFT_EXPLORER}/${cardNorm}/${tid}`;
+  } catch {
+    return null;
+  }
+}
+
+export function catalogProductionBaseScanNftLabel(issuedTokenId: string | number | undefined): string {
+  const tid = normalizeCatalogIssuedNftTokenIdForExplorer(issuedTokenId);
+  if (!tid) return 'NFT';
+  return `NFT #${tid}`;
+}
 
 export const CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT = 10_000;
 export const CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX = 9_999_999;
@@ -101,7 +203,7 @@ export type CardIssuanceProductionRow = {
   id: string;
   name: string;
   subtitle: string;
-  /** Root metadata `category` — Product | Service | Menu. */
+  /** Root metadata `category` — Product | Service | Menu | SalesManagement. */
   globalCategory: CatalogGlobalCategoryId;
   /** Second-level metadata `itemCategory` (chip id). */
   itemCategory: ProductionServiceCategoryId;
@@ -484,6 +586,7 @@ export function buildCardIssuanceProductionMetadataPayload(
           ? { productionImageMime: row.productionImageMime.trim() }
           : {}),
         ...(row.description.trim() ? { description: row.description.trim() } : {}),
+        ...(row.requiresRedeemCode ? { requiresRedeemCode: true } : {}),
       };
       if (row.issued) payload.issued = true;
       const it = row.issuedTokenId?.trim();
@@ -507,9 +610,11 @@ export function buildProductionIssuedNftMetaProps(row: CardIssuanceProductionRow
   const parentToken = row.packageParentTokenId?.trim() ?? '';
   return {
     category: normalizeCatalogGlobalCategory(row.globalCategory),
+    ...(row.requiresRedeemCode ? { requiresRedeemCode: true } : {}),
     beamioProduction: {
       productionId: row.id,
       name: row.name.trim(),
+      ...(row.requiresRedeemCode ? { requiresRedeemCode: true } : {}),
       ...(row.subtitle.trim() ? { subtitle: row.subtitle.trim() } : {}),
       itemCategory: row.itemCategory,
       issueTotal: issueTotalN,
@@ -549,12 +654,15 @@ export function resolveProductionBackgroundMediaKind(args: {
   url?: unknown;
   mime?: unknown;
 }): ProductionBackgroundMediaKind {
+  const mime = typeof args.mime === 'string' ? args.mime.trim().toLowerCase() : '';
+  if (mime === 'video/youtube') return 'video';
   const mimeKind =
     typeof args.mime === 'string' && args.mime.trim()
       ? productionBackgroundMediaKindFromMime(args.mime)
       : null;
   if (mimeKind === 'video' || mimeKind === 'pdf') return mimeKind;
   const u = typeof args.url === 'string' ? args.url.trim().toLowerCase() : '';
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return 'video';
   if (u.includes('.pdf') || u.includes('application/pdf')) return 'pdf';
   if (/\.(mp4|webm|mov|m4v|ogv)(\?|&|$)/i.test(u)) return 'video';
   return mimeKind ?? 'image';
@@ -677,6 +785,67 @@ export function normalizeServiceCategoryList(raw: unknown): ProductionServiceCat
     out.push({ id, label });
   }
   return out;
+}
+
+/**
+ * Issued-series rows from API/DB may store catalog fields on the root, under `properties`, or in `beamioProduction`.
+ */
+/** Prefer non-empty text from series vs share-metadata row when merging hydration sources. */
+export function mergeCatalogProductionHydrationRows(
+  base: CardIssuanceProductionRow,
+  incoming: CardIssuanceProductionRow
+): CardIssuanceProductionRow {
+  const pickStr = (a: string, b: string) => (b.trim() ? b : a);
+  return {
+    ...base,
+    ...incoming,
+    name: pickStr(base.name, incoming.name),
+    subtitle: pickStr(base.subtitle, incoming.subtitle),
+    description: pickStr(base.description, incoming.description),
+    productionImage: pickStr(base.productionImage, incoming.productionImage),
+    icon: pickStr(base.icon, incoming.icon),
+    globalCategory: incoming.globalCategory ?? base.globalCategory,
+    itemCategory: incoming.itemCategory || base.itemCategory,
+    issued: base.issued || incoming.issued,
+    issuedTokenId: incoming.issuedTokenId?.trim() ? incoming.issuedTokenId : base.issuedTokenId,
+    issueLeft: incoming.issueLeft?.trim() ? incoming.issueLeft : base.issueLeft,
+    requiresRedeemCode: base.requiresRedeemCode || incoming.requiresRedeemCode,
+  };
+}
+
+export function flattenIssuedProductionSeriesMetadata(
+  rootMeta: Record<string, unknown>
+): Record<string, unknown> {
+  const props =
+    rootMeta.properties && typeof rootMeta.properties === 'object' && !Array.isArray(rootMeta.properties)
+      ? (rootMeta.properties as Record<string, unknown>)
+      : {};
+  const fromProps =
+    props.beamioProduction &&
+    typeof props.beamioProduction === 'object' &&
+    !Array.isArray(props.beamioProduction)
+      ? (props.beamioProduction as Record<string, unknown>)
+      : {};
+  const fromRoot =
+    rootMeta.beamioProduction &&
+    typeof rootMeta.beamioProduction === 'object' &&
+    !Array.isArray(rootMeta.beamioProduction)
+      ? (rootMeta.beamioProduction as Record<string, unknown>)
+      : {};
+  const productionId =
+    (typeof rootMeta.productionId === 'string' && rootMeta.productionId.trim()) ||
+    (typeof fromRoot.productionId === 'string' && fromRoot.productionId.trim()) ||
+    (typeof fromProps.productionId === 'string' && fromProps.productionId.trim()) ||
+    (typeof rootMeta.id === 'string' && rootMeta.id.trim()) ||
+    (typeof fromRoot.id === 'string' && fromRoot.id.trim()) ||
+    (typeof fromProps.id === 'string' && fromProps.id.trim()) ||
+    '';
+  return {
+    ...rootMeta,
+    ...fromProps,
+    ...fromRoot,
+    ...(productionId ? { productionId, id: productionId } : {}),
+  };
 }
 
 export function resolveProductionItemCategoryId(

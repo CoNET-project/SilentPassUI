@@ -51,6 +51,8 @@
 		"lucide-react": "^0.346.0",
 		"mitt": "^3.0.1",
 		"motion": "^12.23.7",
+		"mp4-muxer": "^5.2.2",
+		"mp4box": "^2.3.0",
 		"openpgp": "6.3.0",
 		"pouchdb": "^9.0.0",
 		"qrcode.react": "^4.2.0",

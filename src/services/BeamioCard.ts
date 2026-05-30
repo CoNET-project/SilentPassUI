@@ -372,6 +372,7 @@ const updateCardShareMetadataEndpoint = `${beamioApi}/api/updateCardShareMetadat
 const updateCardMerchantImageEndpoint = `${beamioApi}/api/updateCardMerchantImage`
 const updateCardProgramImageEndpoint = `${beamioApi}/api/updateCardProgramImage`
 const updateIssuedCouponMetadataEndpoint = `${beamioApi}/api/updateIssuedCouponMetadata`
+const requestExplorerNftMetadataRefreshEndpoint = `${beamioApi}/api/requestExplorerNftMetadataRefresh`
 const cardUpdateTiersEndpoint = `${beamioApi}/api/cardUpdateTiers`
 const cardsByCategoryEndpoint = `${beamioApi}/api/cardsByCategory`
 
@@ -1139,7 +1140,7 @@ export type ShareTokenMetadataProduction = {
 	packageBonusSessions?: number
 	packageTotalPrice?: number
 	issueTotal?: number
-	/** Global catalog category: Product | Service | Menu. */
+	/** Global catalog category: Product | Service | Menu | SalesManagement. */
 	category?: string
 	icon?: string
 	backgroundColor?: string
@@ -1180,7 +1181,7 @@ export type ShareTokenMetadata = {
 	pointSystem?: ShareTokenMetadataPointSystem
 	/** Program coupons metadata (icon can be an IPFS URL). */
 	coupons?: ShareTokenMetadataCoupon[]
-	/** Program service catalog / productions (global category Product | Service | Menu). */
+	/** Program service catalog / productions (global category Product | Service | Menu | SalesManagement). */
 	productions?: ShareTokenMetadataProduction[]
 	/** Item category chip definitions for catalog UI (legacy `serviceCategory`). */
 	itemCategory?: ShareTokenMetadataServiceCategoryEntry[]
@@ -1394,6 +1395,40 @@ export const updateBeamioCardShareMetadata = async (
 		if (e instanceof DOMException && e.name === 'AbortError') {
 			return { success: false, error: 'Update metadata timed out. Check your network and try again.' }
 		}
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg }
+	}
+}
+
+/** Warm Coupon Preview OG + optional OpenSea refresh so BaseScan picks up new `image` after biz edits. */
+export const postRequestExplorerNftMetadataRefresh = async (params: {
+	cardAddress: string
+	tokenId: string
+}): Promise<{ success: boolean; channels?: string[]; errors?: string[]; error?: string }> => {
+	try {
+		const res = await fetch(requestExplorerNftMetadataRefreshEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: ethers.getAddress(params.cardAddress),
+				tokenId: String(params.tokenId).trim(),
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as {
+			success?: boolean
+			channels?: string[]
+			errors?: string[]
+			error?: string
+		}
+		if (!res.ok) {
+			return { success: false, error: data.error ?? `requestExplorerNftMetadataRefresh HTTP ${res.status}` }
+		}
+		return {
+			success: data.success === true,
+			channels: data.channels,
+			errors: data.errors,
+		}
+	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : String(e)
 		return { success: false, error: msg }
 	}

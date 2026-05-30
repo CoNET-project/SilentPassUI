@@ -1,19 +1,22 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import {
+  encodeProductionBackgroundVideoWebCodecs,
+  isWebCodecsProductionVideoEncodeSupported,
+  WEBCODECS_MAX_WIDTH,
+} from './productionBackgroundVideoWebCodecs';
 
 /** Max catalog background clip length after local standardization. */
 export const PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS = 60;
 
 /** Raw MP4 ceiling before base64 (~4/3) for fragment JSON limit (70mb). Internal encode target only. */
-const IPFS_VIDEO_RAW_MAX_BYTES = 50 * 1024 * 1024;
+export const IPFS_VIDEO_RAW_MAX_BYTES = 50 * 1024 * 1024;
 
-const VIDEO_ENCODE_ATTEMPTS: ReadonlyArray<{ crf: number; maxWidth: number }> = [
-  { crf: 28, maxWidth: 1280 },
+const FFMPEG_ENCODE_ATTEMPTS: ReadonlyArray<{ crf: number; maxWidth: number }> = [
   { crf: 32, maxWidth: 1280 },
   { crf: 35, maxWidth: 960 },
   { crf: 38, maxWidth: 720 },
 ];
-
 
 function ffmpegCorePublicBase(): string {
   const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
@@ -56,7 +59,7 @@ async function loadFfmpeg(onStatus?: (message: string) => void): Promise<FFmpeg>
   return ffmpegLoadPromise;
 }
 
-/** Warm up ffmpeg.wasm while the user trims (same-origin core from public/ffmpeg). */
+/** Warm up ffmpeg.wasm (same-origin core from public/ffmpeg). Call on any video pick. */
 export function preloadProductionBackgroundVideoProcessor(onStatus?: (message: string) => void): void {
   void loadFfmpeg(onStatus).catch(() => undefined);
 }
@@ -66,6 +69,12 @@ export function fileLooksLikeProductionBackgroundVideo(file: File): boolean {
   if (mime.startsWith('video/')) return true;
   const name = file.name.toLowerCase();
   return /\.(mp4|webm|mov|m4v|ogv|mkv)$/.test(name);
+}
+
+function fileLooksLikeMp4Container(file: File): boolean {
+  const mime = (file.type || '').trim().toLowerCase();
+  if (mime === 'video/mp4' || mime === 'video/quicktime') return true;
+  return /\.(mp4|m4v|mov)$/i.test(file.name);
 }
 
 export function formatProductionVideoTimeSec(totalSec: number): string {
@@ -203,36 +212,204 @@ export type StandardizedProductionBackgroundVideo = {
   durationSec: number;
 };
 
-/**
- * Transcode to H.264/AAC MP4, extract up to 60s from `startSec`, max width 1280px.
- */
-export async function standardizeProductionBackgroundVideo(args: {
+function buildClipFileName(sourceName: string): string {
+  const baseName = sourceName.replace(/\.[^.]+$/, '') || 'background';
+  return `${baseName}-clip.mp4`;
+}
+
+function blobToOutputFile(blob: Blob, sourceName: string): File {
+  return new File([blob], buildClipFileName(sourceName), {
+    type: 'video/mp4',
+    lastModified: Date.now(),
+  });
+}
+
+function canPassthroughMp4WithoutProcessing(args: {
   file: File;
-  startSec: number;
+  sourceStartSec: number;
+  clipSec: number;
+  sourceDurationSec: number;
+}): boolean {
+  if (!fileLooksLikeMp4Container(args.file)) return false;
+  if (args.file.size > IPFS_VIDEO_RAW_MAX_BYTES) return false;
+  if (args.sourceStartSec !== 0) return false;
+  return args.clipSec >= args.sourceDurationSec - 0.05;
+}
+
+async function readFfmpegOutputBlob(ffmpeg: FFmpeg, outputName: string): Promise<Blob> {
+  const data = await ffmpeg.readFile(outputName);
+  const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(String(data));
+  return new Blob([bytes], { type: 'video/mp4' });
+}
+
+async function tryFfmpegStreamCopyTrim(args: {
+  ffmpeg: FFmpeg;
+  file: File;
+  sourceStartSec: number;
+  clipSec: number;
   onStatus?: (message: string) => void;
-  /** FFmpeg encode progress within the current attempt (0–1). */
   onConvertProgress?: (ratio: number) => void;
-}): Promise<StandardizedProductionBackgroundVideo> {
-  const sourceDurationSec = await probeProductionBackgroundVideoDurationSec(args.file);
-  const sourceStartSec = clampProductionVideoStartSec(args.startSec, sourceDurationSec);
-  const clipSec = productionVideoClipDurationSec(sourceStartSec, sourceDurationSec);
-  if (clipSec < 0.25) {
-    throw new Error('Selected clip is too short. Pick an earlier start time.');
+}): Promise<Blob | null> {
+  if (!fileLooksLikeMp4Container(args.file)) return null;
+
+  args.onStatus?.('Trimming video (no re-encode)…');
+  args.onConvertProgress?.(0);
+
+  const extMatch = args.file.name.match(/\.([a-z0-9]+)$/i);
+  const ext = extMatch?.[1]?.toLowerCase() || 'mp4';
+  const inputName = `input.${ext}`;
+  const outputName = 'output-copy.mp4';
+
+  await args.ffmpeg.writeFile(inputName, await fetchFile(args.file));
+
+  const exitCode = await args.ffmpeg.exec([
+    '-ss',
+    String(args.sourceStartSec),
+    '-i',
+    inputName,
+    '-t',
+    String(args.clipSec),
+    '-c',
+    'copy',
+    '-movflags',
+    '+faststart',
+    outputName,
+  ]);
+
+  args.onConvertProgress?.(1);
+  if (exitCode !== 0) {
+    await args.ffmpeg.deleteFile(inputName).catch(() => undefined);
+    await args.ffmpeg.deleteFile(outputName).catch(() => undefined);
+    return null;
   }
 
-  const ffmpeg = await loadFfmpeg(args.onStatus);
+  const blob = await readFfmpegOutputBlob(args.ffmpeg, outputName);
+  await args.ffmpeg.deleteFile(inputName).catch(() => undefined);
+  await args.ffmpeg.deleteFile(outputName).catch(() => undefined);
+
+  if (blob.size > IPFS_VIDEO_RAW_MAX_BYTES) return null;
+  return blob;
+}
+
+async function mergeAudioWithFfmpeg(args: {
+  ffmpeg: FFmpeg;
+  videoOnlyBlob: Blob;
+  sourceFile: File;
+  sourceStartSec: number;
+  clipSec: number;
+  onStatus?: (message: string) => void;
+}): Promise<Blob> {
+  args.onStatus?.('Adding audio track…');
+  const extMatch = args.sourceFile.name.match(/\.([a-z0-9]+)$/i);
+  const ext = extMatch?.[1]?.toLowerCase() || 'mp4';
+  const inputName = `source.${ext}`;
+  const videoName = 'video-only.mp4';
+  const outputName = 'output-with-audio.mp4';
+
+  await args.ffmpeg.writeFile(videoName, await fetchFile(args.videoOnlyBlob));
+  await args.ffmpeg.writeFile(inputName, await fetchFile(args.sourceFile));
+
+  const exitCode = await args.ffmpeg.exec([
+    '-i',
+    videoName,
+    '-ss',
+    String(args.sourceStartSec),
+    '-i',
+    inputName,
+    '-t',
+    String(args.clipSec),
+    '-map',
+    '0:v:0',
+    '-map',
+    '1:a:0?',
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '128k',
+    '-shortest',
+    '-movflags',
+    '+faststart',
+    outputName,
+  ]);
+
+  await args.ffmpeg.deleteFile(videoName).catch(() => undefined);
+  await args.ffmpeg.deleteFile(inputName).catch(() => undefined);
+
+  if (exitCode !== 0) {
+    await args.ffmpeg.deleteFile(outputName).catch(() => undefined);
+    return args.videoOnlyBlob;
+  }
+
+  const blob = await readFfmpegOutputBlob(args.ffmpeg, outputName);
+  await args.ffmpeg.deleteFile(outputName).catch(() => undefined);
+  return blob.size <= IPFS_VIDEO_RAW_MAX_BYTES ? blob : args.videoOnlyBlob;
+}
+
+async function tryWebCodecsEncode(args: {
+  file: File;
+  sourceStartSec: number;
+  clipSec: number;
+  onStatus?: (message: string) => void;
+  onConvertProgress?: (ratio: number) => void;
+}): Promise<Blob | null> {
+  if (!isWebCodecsProductionVideoEncodeSupported()) return null;
+
+  args.onStatus?.('Encoding with hardware accelerator…');
+  args.onConvertProgress?.(0);
+
+  try {
+    let videoOnly = await encodeProductionBackgroundVideoWebCodecs({
+      file: args.file,
+      startSec: args.sourceStartSec,
+      clipSec: args.clipSec,
+      maxWidth: WEBCODECS_MAX_WIDTH,
+      onProgress: (ratio) => args.onConvertProgress?.(ratio),
+    });
+
+    if (videoOnly.size > IPFS_VIDEO_RAW_MAX_BYTES) return null;
+
+    if (fileLooksLikeMp4Container(args.file)) {
+      const ffmpeg = await loadFfmpeg(args.onStatus);
+      videoOnly = await mergeAudioWithFfmpeg({
+        ffmpeg,
+        videoOnlyBlob: videoOnly,
+        sourceFile: args.file,
+        sourceStartSec: args.sourceStartSec,
+        clipSec: args.clipSec,
+        onStatus: args.onStatus,
+      });
+    }
+
+    args.onConvertProgress?.(1);
+    if (videoOnly.size > IPFS_VIDEO_RAW_MAX_BYTES) return null;
+    return videoOnly;
+  } catch {
+    return null;
+  }
+}
+
+async function ffmpegTranscodeFallback(args: {
+  ffmpeg: FFmpeg;
+  file: File;
+  sourceStartSec: number;
+  clipSec: number;
+  onStatus?: (message: string) => void;
+  onConvertProgress?: (ratio: number) => void;
+}): Promise<Blob> {
   const extMatch = args.file.name.match(/\.([a-z0-9]+)$/i);
   const ext = extMatch?.[1]?.toLowerCase() || 'mp4';
   const inputName = `input.${ext}`;
   const outputName = 'output.mp4';
 
-  await ffmpeg.writeFile(inputName, await fetchFile(args.file));
+  await args.ffmpeg.writeFile(inputName, await fetchFile(args.file));
   args.onStatus?.('Reading source video…');
   args.onConvertProgress?.(0);
 
   let blob: Blob | null = null;
-  for (let i = 0; i < VIDEO_ENCODE_ATTEMPTS.length; i += 1) {
-    const { crf, maxWidth } = VIDEO_ENCODE_ATTEMPTS[i];
+  for (let i = 0; i < FFMPEG_ENCODE_ATTEMPTS.length; i += 1) {
+    const { crf, maxWidth } = FFMPEG_ENCODE_ATTEMPTS[i];
     const workflowMessage =
       i === 0
         ? `Converting to MP4 (max ${PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS}s)…`
@@ -245,23 +422,23 @@ export async function standardizeProductionBackgroundVideo(args: {
         args.onConvertProgress(Math.min(1, Math.max(0, progress as number)));
       }
     };
-    ffmpeg.on('progress', onFfmpegProgress);
+    args.ffmpeg.on('progress', onFfmpegProgress);
 
     let exitCode: number;
     try {
-      exitCode = await ffmpeg.exec([
+      exitCode = await args.ffmpeg.exec([
         '-ss',
-        String(sourceStartSec),
+        String(args.sourceStartSec),
         '-i',
         inputName,
         '-t',
-        String(clipSec),
+        String(args.clipSec),
         '-vf',
         `scale='min(${maxWidth},iw)':-2`,
         '-c:v',
         'libx264',
         '-preset',
-        'fast',
+        'ultrafast',
         '-crf',
         String(crf),
         '-c:a',
@@ -275,7 +452,7 @@ export async function standardizeProductionBackgroundVideo(args: {
         outputName,
       ]);
     } finally {
-      ffmpeg.off('progress', onFfmpegProgress);
+      args.ffmpeg.off('progress', onFfmpegProgress);
     }
 
     args.onConvertProgress?.(1);
@@ -283,34 +460,111 @@ export async function standardizeProductionBackgroundVideo(args: {
       throw new Error('Video conversion failed. Try a shorter clip or a different file.');
     }
 
-    const data = await ffmpeg.readFile(outputName);
-    const bytes =
-      data instanceof Uint8Array ? data : new TextEncoder().encode(String(data));
-    const candidate = new Blob([bytes], { type: 'video/mp4' });
+    const candidate = await readFfmpegOutputBlob(args.ffmpeg, outputName);
     if (candidate.size <= IPFS_VIDEO_RAW_MAX_BYTES) {
       blob = candidate;
       break;
     }
-    await ffmpeg.deleteFile(outputName).catch(() => undefined);
+    await args.ffmpeg.deleteFile(outputName).catch(() => undefined);
   }
+
+  await args.ffmpeg.deleteFile(inputName).catch(() => undefined);
+  await args.ffmpeg.deleteFile(outputName).catch(() => undefined);
 
   if (!blob) {
     throw new Error(
       `Could not prepare this clip. Keep the exported segment within ${PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS} seconds and try again.`
     );
   }
+  return blob;
+}
 
-  const baseName = args.file.name.replace(/\.[^.]+$/, '') || 'background';
-  const outFile = new File([blob], `${baseName}-clip.mp4`, {
-    type: 'video/mp4',
-    lastModified: Date.now(),
+/**
+ * Standardize to H.264/AAC MP4, extract up to 60s from `startSec`, max width 1280px.
+ * Uses passthrough → stream copy → WebCodecs worker → ffmpeg.wasm fallback.
+ */
+export async function standardizeProductionBackgroundVideo(args: {
+  file: File;
+  startSec: number;
+  /** Skip re-probe when caller already measured duration. */
+  sourceDurationSec?: number;
+  onStatus?: (message: string) => void;
+  /** Encode progress within the current attempt (0–1). */
+  onConvertProgress?: (ratio: number) => void;
+}): Promise<StandardizedProductionBackgroundVideo> {
+  const sourceDurationSec =
+    args.sourceDurationSec != null && Number.isFinite(args.sourceDurationSec) && args.sourceDurationSec > 0
+      ? args.sourceDurationSec
+      : await probeProductionBackgroundVideoDurationSec(args.file);
+
+  const sourceStartSec = clampProductionVideoStartSec(args.startSec, sourceDurationSec);
+  const clipSec = productionVideoClipDurationSec(sourceStartSec, sourceDurationSec);
+  if (clipSec < 0.25) {
+    throw new Error('Selected clip is too short. Pick an earlier start time.');
+  }
+
+  if (
+    canPassthroughMp4WithoutProcessing({
+      file: args.file,
+      sourceStartSec,
+      clipSec,
+      sourceDurationSec,
+    })
+  ) {
+    args.onStatus?.('Video ready (no conversion needed).');
+    args.onConvertProgress?.(1);
+    return {
+      file: args.file,
+      sourceStartSec,
+      durationSec: clipSec,
+    };
+  }
+
+  const copyBlob = await tryFfmpegStreamCopyTrim({
+    ffmpeg: await loadFfmpeg(args.onStatus),
+    file: args.file,
+    sourceStartSec,
+    clipSec,
+    onStatus: args.onStatus,
+    onConvertProgress: args.onConvertProgress,
+  }).catch(() => null);
+
+  if (copyBlob) {
+    return {
+      file: blobToOutputFile(copyBlob, args.file.name),
+      sourceStartSec,
+      durationSec: clipSec,
+    };
+  }
+
+  const webCodecsBlob = await tryWebCodecsEncode({
+    file: args.file,
+    sourceStartSec,
+    clipSec,
+    onStatus: args.onStatus,
+    onConvertProgress: args.onConvertProgress,
   });
 
-  await ffmpeg.deleteFile(inputName).catch(() => undefined);
-  await ffmpeg.deleteFile(outputName).catch(() => undefined);
+  if (webCodecsBlob) {
+    return {
+      file: blobToOutputFile(webCodecsBlob, args.file.name),
+      sourceStartSec,
+      durationSec: clipSec,
+    };
+  }
+
+  const ffmpeg = await loadFfmpeg(args.onStatus);
+  const transcodeBlob = await ffmpegTranscodeFallback({
+    ffmpeg,
+    file: args.file,
+    sourceStartSec,
+    clipSec,
+    onStatus: args.onStatus,
+    onConvertProgress: args.onConvertProgress,
+  });
 
   return {
-    file: outFile,
+    file: blobToOutputFile(transcodeBlob, args.file.name),
     sourceStartSec,
     durationSec: clipSec,
   };

@@ -72,6 +72,7 @@ import {
   createBeamioCard,
   updateBeamioCardShareMetadata,
   updateCardMerchantImage,
+  updateCardProgramImage,
   updateIssuedCouponMetadata,
   updateBeamioCardTiers,
   encodeSetTiers,
@@ -10007,6 +10008,7 @@ const handlePublishCardIssuanceRef = useRef<
     text: string;
   } | null>(null);
  const cardIssuanceIconFileRef = useRef<HTMLInputElement>(null);
+ const cardIssuanceMerchantIconIssuedPanelFileRef = useRef<HTMLInputElement>(null);
  const settingsMerchantLogoFileRef = useRef<HTMLInputElement>(null);
  const [settingsMerchantLogoUploading, setSettingsMerchantLogoUploading] = useState(false);
  const [settingsMerchantLogoError, setSettingsMerchantLogoError] = useState('');
@@ -13307,7 +13309,24 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
      try {
        const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
        if (hash) {
-         setCardIssuanceShareImageUrl(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+         const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+         setCardIssuanceShareImageUrl(url);
+         const issuedAddr = cardIssuanceExistingCard?.cardAddress?.trim();
+         if (issuedAddr && ethers.isAddress(issuedAddr)) {
+           const save = await updateCardProgramImage({
+             cardAddress: ethers.getAddress(issuedAddr),
+             image: url,
+           });
+           if (!save.success) {
+             setCardIssuanceCreateError(save.error ?? 'Failed to save merchant icon on server.');
+             setCardIssuanceShareImageUrl('');
+             return;
+           }
+           setCardIssuanceExistingCard((prev) => {
+             if (!prev?.meta) return prev;
+             return { ...prev, meta: { ...prev.meta, image: url } };
+           });
+         }
        } else {
          setCardIssuanceCreateError('Card icon upload failed.');
        }
@@ -13317,8 +13336,47 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        setCardIssuanceShareImageUploading(false);
      }
    },
-   [profiles]
+   [profiles, cardIssuanceExistingCard?.cardAddress]
  );
+
+ const removeIssuedProgramMerchantIcon = useCallback(async () => {
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim();
+   if (addr && ethers.isAddress(addr)) {
+     setCardIssuanceShareImageUploading(true);
+     setCardIssuanceCreateError('');
+     try {
+       const r = await updateCardProgramImage({
+         cardAddress: ethers.getAddress(addr),
+         image: '',
+       });
+       if (!r.success) {
+         setCardIssuanceCreateError(r.error ?? 'Failed to remove merchant icon on server.');
+         return;
+       }
+       setCardIssuanceExistingCard((prev) => {
+         if (!prev?.meta) return prev;
+         return { ...prev, meta: { ...prev.meta, image: '' } };
+       });
+       setCardIssuanceShareImageUrl('');
+       if (cardIssuanceIconFileRef.current) {
+         cardIssuanceIconFileRef.current.value = '';
+       }
+       if (cardIssuanceMerchantIconIssuedPanelFileRef.current) {
+         cardIssuanceMerchantIconIssuedPanelFileRef.current.value = '';
+       }
+     } finally {
+       setCardIssuanceShareImageUploading(false);
+     }
+     return;
+   }
+   setCardIssuanceShareImageUrl('');
+   if (cardIssuanceIconFileRef.current) {
+     cardIssuanceIconFileRef.current.value = '';
+   }
+   if (cardIssuanceMerchantIconIssuedPanelFileRef.current) {
+     cardIssuanceMerchantIconIssuedPanelFileRef.current.value = '';
+   }
+ }, [cardIssuanceExistingCard?.cardAddress]);
 
  const handleCardIssuanceMerchantImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
    async (e) => {
@@ -29321,6 +29379,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         className="hidden"
                         onChange={handleCardIssuanceMerchantImagePick}
                       />
+                      <input
+                        ref={cardIssuanceMerchantIconIssuedPanelFileRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCardIssuanceIconPick}
+                      />
 
                       <div
                         className="w-full min-w-0 overflow-hidden rounded-[30px] border border-[#e8ecf0] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]"
@@ -29353,7 +29418,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             </div>
                           </div>
                           <div className="absolute -bottom-8 left-6">
-                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
+                            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
                               {programsOverviewShareImage ? (
                                 <img
                                   src={programsOverviewShareImage}
@@ -29368,6 +29433,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   {(programsOverviewDisplayName || 'P').charAt(0).toUpperCase()}
                                 </span>
                               )}
+                              <button
+                                type="button"
+                                aria-label="Upload merchant icon"
+                                disabled={cardIssuanceShareImageUploading}
+                                onClick={() => cardIssuanceMerchantIconIssuedPanelFileRef.current?.click()}
+                                className="absolute -bottom-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#2c2f31] shadow-sm ring-1 ring-black/5 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {cardIssuanceShareImageUploading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden />
+                                ) : (
+                                  <Pencil className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                                )}
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -29399,6 +29477,27 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       ) : null}
 
                       <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => cardIssuanceMerchantIconIssuedPanelFileRef.current?.click()}
+                          disabled={cardIssuanceShareImageUploading}
+                          className={`inline-flex items-center justify-center rounded-full border border-[#1562f0]/25 bg-[#1562f0]/8 px-4 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/12 disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          {cardIssuanceShareImageUploading ? 'Uploading…' : 'Upload or replace icon'}
+                        </button>
+                        {programsOverviewShareImage ? (
+                          <button
+                            type="button"
+                            onClick={() => void removeIssuedProgramMerchantIcon()}
+                            disabled={cardIssuanceShareImageUploading}
+                            className={`inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-[#b31b25] transition-colors hover:bg-rose-100 disabled:opacity-60 ${bizFocusRingClass}`}
+                          >
+                            Remove icon
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}

@@ -370,6 +370,7 @@ const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 const updateCardShareMetadataEndpoint = `${beamioApi}/api/updateCardShareMetadata`
 const updateCardMerchantImageEndpoint = `${beamioApi}/api/updateCardMerchantImage`
+const updateCardProgramImageEndpoint = `${beamioApi}/api/updateCardProgramImage`
 const updateIssuedCouponMetadataEndpoint = `${beamioApi}/api/updateIssuedCouponMetadata`
 const cardUpdateTiersEndpoint = `${beamioApi}/api/cardUpdateTiers`
 const cardsByCategoryEndpoint = `${beamioApi}/api/cardsByCategory`
@@ -1240,6 +1241,40 @@ export const updateCardMerchantImage = async (params: {
 	} catch (e: unknown) {
 		if (e instanceof DOMException && e.name === 'AbortError') {
 			return { success: false, error: 'Update merchant image timed out. Check your network and try again.' }
+		}
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg }
+	}
+}
+
+/**
+ * 仅更新已登记卡的 `shareTokenMetadata.image`（https URL）或空字符串清除；服务端合并 DB 后写 metadata 文件。
+ */
+export const updateCardProgramImage = async (params: {
+	cardAddress: string
+	image: string
+}): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
+	try {
+		const body = JSON.stringify({
+			cardAddress: params.cardAddress,
+			image: params.image ?? '',
+		})
+		const signal = createFetchTimeoutSignal(180_000)
+		const response = await fetch(updateCardProgramImageEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body,
+			...(signal ? { signal } : {}),
+		})
+		const data = await response.json()
+		if (response.ok && data.success) {
+			invalidateBeamioCardMetadataCache(params.cardAddress)
+			return { success: true, cardAddress: data.cardAddress as string | undefined }
+		}
+		return { success: false, error: data.error ?? 'Update program image failed' }
+	} catch (e: unknown) {
+		if (e instanceof DOMException && e.name === 'AbortError') {
+			return { success: false, error: 'Update program image timed out. Check your network and try again.' }
 		}
 		const msg = e instanceof Error ? e.message : String(e)
 		return { success: false, error: msg }

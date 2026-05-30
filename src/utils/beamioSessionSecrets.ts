@@ -1,6 +1,6 @@
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
-/** Session-only EOA signing material — never persisted (see beamio-private-key-session-memory-only.mdc). */
+/** Session-only EOA signing material — bizSite only; never persisted (beamio-private-key-session-memory-only.mdc). */
 let sessionPrivateKeyArmor: string | null = null
 
 function ensureFlatProfiles(p: unknown): profile[] {

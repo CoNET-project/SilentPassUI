@@ -8471,10 +8471,39 @@ function parseCardIssuanceCouponIssueLeftN(coupon: CardIssuanceCouponRow): numbe
 /** Redeem codes table: max rows per page in Programs coupon panel. */
 const CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE = 10;
 
+/** Align with x402sdk `appendAppDownloadCacheBust` — `v` busts Meta/WhatsApp OG cache via og:url + /og/s token `b`. */
+function appendAppDownloadShareCacheBust(appDownloadUrl: string, cacheBustV: string): string {
+  const vTrim = cacheBustV.trim();
+  if (!vTrim || !appDownloadUrl) return appDownloadUrl;
+  try {
+    const u = new URL(appDownloadUrl);
+    u.searchParams.set('v', vTrim);
+    return u.toString();
+  } catch {
+    return appDownloadUrl;
+  }
+}
+
+function buildProgramsCouponOpenClaimShareUrl(
+  cardAddress: string,
+  couponId: string,
+  cacheBustV?: string
+): string {
+  const addr = cardAddress?.trim() ?? '';
+  const cid = couponId?.trim() ?? '';
+  if (!addr || !cid || !ethers.isAddress(addr)) return '';
+  const claimUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+    ethers.getAddress(addr)
+  )}&couponId=${encodeURIComponent(cid)}&claim=open`;
+  const base = `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`;
+  return cacheBustV ? appendAppDownloadShareCacheBust(base, cacheBustV) : base;
+}
+
 function buildProgramsCouponRedeemShareUrl(
   cardAddress: string,
   redeemCode: string,
-  couponId?: string
+  couponId?: string,
+  cacheBustV?: string
 ): string {
   const addr = cardAddress?.trim() ?? '';
   const code = redeemCode?.trim() ?? '';
@@ -8485,7 +8514,8 @@ function buildProgramsCouponRedeemShareUrl(
   const cid = couponId?.trim() ?? '';
   if (cid) params.set('couponId', cid);
   const redeemUrl = `https://beamio.app/app/?${params.toString()}`;
-  return `https://beamio.app/app-download?target=${encodeURIComponent(redeemUrl)}`;
+  const base = `https://beamio.app/app-download?target=${encodeURIComponent(redeemUrl)}`;
+  return cacheBustV ? appendAppDownloadShareCacheBust(base, cacheBustV) : base;
 }
 
 function programsCouponShareExpiryUsesUrgentVariant(expiresLabel: string): boolean {
@@ -9777,10 +9807,12 @@ const [cardIssuanceCouponIconUploading, setCardIssuanceCouponIconUploading] = us
 const [cardIssuanceCouponImageUploading, setCardIssuanceCouponImageUploading] = useState(false);
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
 const [cardIssuanceCouponShareOpenId, setCardIssuanceCouponShareOpenId] = useState<string | null>(null);
+const [cardIssuanceCouponShareCacheBustV, setCardIssuanceCouponShareCacheBustV] = useState('');
 const [cardIssuanceCouponShareUrlCopied, setCardIssuanceCouponShareUrlCopied] = useState(false);
 const [cardIssuanceCouponShareImageStatus, setCardIssuanceCouponShareImageStatus] =
   useState<ProgramsCouponShareImageStatus>('idle');
 const cardIssuanceCouponShareImageRef = useRef<HTMLDivElement>(null);
+const [cardIssuanceCouponRedeemShareCacheBustV, setCardIssuanceCouponRedeemShareCacheBustV] = useState('');
 const [cardIssuanceCouponRedeemShareOpen, setCardIssuanceCouponRedeemShareOpen] = useState<{
   couponId: string;
   hash: string;
@@ -9999,12 +10031,8 @@ const cardIssuanceCouponShareRow = useMemo(
 const cardIssuanceCouponShareUrl = useMemo(() => {
   const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
   const couponId = cardIssuanceCouponShareRow?.id?.trim() ?? '';
-  if (!cardAddress || !couponId || !ethers.isAddress(cardAddress)) return '';
-  const claimUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
-    ethers.getAddress(cardAddress)
-  )}&couponId=${encodeURIComponent(couponId)}&claim=open`;
-  return `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`;
-}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponShareRow?.id]);
+  return buildProgramsCouponOpenClaimShareUrl(cardAddress, couponId, cardIssuanceCouponShareCacheBustV);
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCouponShareRow?.id, cardIssuanceCouponShareCacheBustV]);
 const cardIssuanceCouponRedeemShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponRedeemShareOpen?.couponId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponRedeemShareOpen?.couponId]
@@ -10013,11 +10041,17 @@ const cardIssuanceCouponRedeemShareUrl = useMemo(() => {
   const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
   const code = cardIssuanceCouponRedeemShareOpen?.code?.trim() ?? '';
   const couponId = cardIssuanceCouponRedeemShareRow?.id?.trim() ?? '';
-  return buildProgramsCouponRedeemShareUrl(cardAddress, code, couponId);
+  return buildProgramsCouponRedeemShareUrl(
+    cardAddress,
+    code,
+    couponId,
+    cardIssuanceCouponRedeemShareCacheBustV
+  );
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceCouponRedeemShareOpen?.code,
   cardIssuanceCouponRedeemShareRow?.id,
+  cardIssuanceCouponRedeemShareCacheBustV,
 ]);
 
 useEffect(() => {
@@ -11811,6 +11845,7 @@ const openCardIssuanceCouponShare = useCallback((couponId: string) => {
   if (!row || !row.issued || row.requiresRedeemCode) return;
   setCardIssuanceCouponShareUrlCopied(false);
   setCardIssuanceCouponShareImageStatus('idle');
+  setCardIssuanceCouponShareCacheBustV(String(Date.now()));
   setCardIssuanceCouponShareOpenId(couponId);
 }, [cardIssuanceCoupons]);
 
@@ -11825,6 +11860,7 @@ const openCardIssuanceCouponRedeemShare = useCallback(
     if (!row.code?.trim()) return;
     setCardIssuanceCouponRedeemShareUrlCopied(false);
     setCardIssuanceCouponRedeemShareImageStatus('idle');
+    setCardIssuanceCouponRedeemShareCacheBustV(String(Date.now()));
     setCardIssuanceCouponRedeemShareOpen({
       couponId,
       hash: row.hash,

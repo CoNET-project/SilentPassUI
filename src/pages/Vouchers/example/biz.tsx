@@ -11094,10 +11094,10 @@ useEffect(() => {
 ]);
 
  const programsOverviewShareImage = useMemo(() => {
-   if (!cardIssuanceExistingCard) {
-     return cardIssuanceShareImageUrl.trim();
-   }
-   return (cardIssuanceExistingCard.meta?.image ?? '').trim() || cardIssuanceShareImageUrl.trim();
+   const draft = cardIssuanceShareImageUrl.trim();
+   if (draft) return draft;
+   if (!cardIssuanceExistingCard) return '';
+   return (cardIssuanceExistingCard.meta?.image ?? '').trim();
  }, [cardIssuanceExistingCard, cardIssuanceShareImageUrl]);
 
 const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
@@ -11587,13 +11587,6 @@ const cardIssuanceRechargeBonusPreviewReceive = Number(
 /** Same fallback as SilentPassUI `Market.tsx` Discover hero when `merchantImage` is absent. */
 const MERCHANT_PANEL_DISCOVER_HERO_FALLBACK =
   'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80';
-
-const merchantPanelDiscoverStyleRating = useMemo(() => {
-  const addr = (cardIssuanceExistingCard?.cardAddress ?? '').toLowerCase();
-  let n = 0;
-  for (let i = 2; i < addr.length; i++) n = (n + addr.charCodeAt(i)) % 4;
-  return Math.max(4.6, Math.min(5, 4.7 + n * 0.1)).toFixed(1);
-}, [cardIssuanceExistingCard?.cardAddress]);
 
 const merchantPanelDiscoverHeroSrc = useMemo(() => {
   const hero = cardIssuanceEffectiveMerchantImage.trim();
@@ -13319,7 +13312,6 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
            });
            if (!save.success) {
              setCardIssuanceCreateError(save.error ?? 'Failed to save merchant icon on server.');
-             setCardIssuanceShareImageUrl('');
              return;
            }
            setCardIssuanceExistingCard((prev) => {
@@ -29217,6 +29209,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  <div className="shrink-0">
                                    {programsOverviewShareImage ? (
                                      <img
+                                       key={programsOverviewShareImage}
                                        src={programsOverviewShareImage}
                                        alt=""
                                        className={`object-contain ${CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]}`}
@@ -29398,35 +29391,40 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             className="aspect-[16/9] w-full object-cover"
                             draggable={false}
                           />
-                          <div className="absolute right-3 top-3 flex items-center gap-2">
-                            <button
-                              type="button"
-                              aria-label="Upload merchant banner image"
-                              disabled={cardIssuanceMerchantImageUploading}
-                              onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
-                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-[#2c2f31] shadow-sm ring-1 ring-black/5 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {cardIssuanceMerchantImageUploading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
-                              ) : (
-                                <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-                              )}
-                            </button>
-                            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-[#2c2f31] shadow-sm ring-1 ring-black/5">
-                              <Star className="h-3.5 w-3.5 text-amber-500" fill="currentColor" strokeWidth={0} aria-hidden />
-                              <span className="text-[12px] font-bold leading-none">{merchantPanelDiscoverStyleRating}</span>
-                            </div>
+                          <div className="absolute right-3 top-3 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                aria-label="Replace merchant banner"
+                                disabled={cardIssuanceMerchantImageUploading}
+                                onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {cardIssuanceMerchantImageUploading ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                                ) : (
+                                  <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                                )}
+                              </button>
+                              {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
+                                <button
+                                  type="button"
+                                  aria-label="Remove merchant banner"
+                                  disabled={cardIssuanceMerchantImageUploading}
+                                  onClick={() => void removeIssuedProgramMerchantImage()}
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                </button>
+                              ) : null}
                           </div>
                           <div className="absolute -bottom-8 left-6">
                             <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
                               {programsOverviewShareImage ? (
                                 <img
+                                  key={programsOverviewShareImage}
                                   src={programsOverviewShareImage}
                                   alt=""
                                   className="h-11 w-11 rounded-xl object-cover"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                  }}
                                 />
                               ) : (
                                 <span className="text-[20px] font-semibold leading-none text-[#94afff]">
@@ -29435,10 +29433,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               )}
                               <button
                                 type="button"
-                                aria-label="Upload merchant icon"
+                                aria-label="Replace merchant icon"
                                 disabled={cardIssuanceShareImageUploading}
                                 onClick={() => cardIssuanceMerchantIconIssuedPanelFileRef.current?.click()}
-                                className="absolute -bottom-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#2c2f31] shadow-sm ring-1 ring-black/5 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="absolute -top-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {cardIssuanceShareImageUploading ? (
                                   <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden />
@@ -29446,6 +29444,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   <Pencil className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
                                 )}
                               </button>
+                              {programsOverviewShareImage ? (
+                                <button
+                                  type="button"
+                                  aria-label="Remove merchant icon"
+                                  disabled={cardIssuanceShareImageUploading}
+                                  onClick={() => void removeIssuedProgramMerchantIcon()}
+                                  className="absolute -bottom-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                                </button>
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -29475,48 +29484,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           Hero image above is a stock placeholder until you upload your own wide banner.
                         </p>
                       ) : null}
-
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => cardIssuanceMerchantIconIssuedPanelFileRef.current?.click()}
-                          disabled={cardIssuanceShareImageUploading}
-                          className={`inline-flex items-center justify-center rounded-full border border-[#1562f0]/25 bg-[#1562f0]/8 px-4 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/12 disabled:opacity-60 ${bizFocusRingClass}`}
-                        >
-                          {cardIssuanceShareImageUploading ? 'Uploading…' : 'Upload or replace icon'}
-                        </button>
-                        {programsOverviewShareImage ? (
-                          <button
-                            type="button"
-                            onClick={() => void removeIssuedProgramMerchantIcon()}
-                            disabled={cardIssuanceShareImageUploading}
-                            className={`inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-[#b31b25] transition-colors hover:bg-rose-100 disabled:opacity-60 ${bizFocusRingClass}`}
-                          >
-                            Remove icon
-                          </button>
-                        ) : null}
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
-                          disabled={cardIssuanceMerchantImageUploading}
-                          className={`inline-flex items-center justify-center rounded-full border border-[#1562f0]/25 bg-[#1562f0]/8 px-4 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/12 disabled:opacity-60 ${bizFocusRingClass}`}
-                        >
-                          {cardIssuanceMerchantImageUploading ? 'Uploading…' : 'Upload or replace banner'}
-                        </button>
-                        {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
-                          <button
-                            type="button"
-                            onClick={() => void removeIssuedProgramMerchantImage()}
-                            disabled={cardIssuanceMerchantImageUploading}
-                            className={`inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-[#b31b25] transition-colors hover:bg-rose-100 disabled:opacity-60 ${bizFocusRingClass}`}
-                          >
-                            Remove banner
-                          </button>
-                        ) : null}
-                      </div>
                     </div>
 
                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">

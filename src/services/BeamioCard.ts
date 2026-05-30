@@ -1124,6 +1124,8 @@ export type ShareTokenMetadataProduction = {
 	icon?: string
 	backgroundColor?: string
 	productionImage?: string
+	productionImageStartSec?: number
+	productionImageMime?: string
 	description?: string
 	issued?: boolean
 	issuedTokenId?: string | number
@@ -3116,6 +3118,16 @@ function shareTokenProductionsFromUnknown(
 		const icon = typeof obj.icon === 'string' ? obj.icon.trim() : ''
 		const backgroundColor = typeof obj.backgroundColor === 'string' ? obj.backgroundColor.trim() : ''
 		const productionImage = typeof obj.productionImage === 'string' ? obj.productionImage.trim() : ''
+		let productionImageStartSec: number | undefined
+		const startRaw = obj.productionImageStartSec
+		if (typeof startRaw === 'number' && Number.isFinite(startRaw) && startRaw > 0) {
+			productionImageStartSec = startRaw
+		} else if (typeof startRaw === 'string') {
+			const parsed = Number.parseFloat(startRaw.replace(/,/g, '').trim())
+			if (Number.isFinite(parsed) && parsed > 0) productionImageStartSec = parsed
+		}
+		const productionImageMime =
+			typeof obj.productionImageMime === 'string' ? obj.productionImageMime.trim() : ''
 		const description = typeof obj.description === 'string' ? obj.description.trim() : ''
 		const issued =
 			obj.issued === true || obj.issued === 1 || obj.issued === '1' || obj.issued === 'true'
@@ -3139,6 +3151,8 @@ function shareTokenProductionsFromUnknown(
 			...(icon ? { icon } : {}),
 			...(backgroundColor ? { backgroundColor } : {}),
 			...(productionImage ? { productionImage } : {}),
+			...(productionImageStartSec != null ? { productionImageStartSec } : {}),
+			...(productionImageMime ? { productionImageMime } : {}),
 			...(description ? { description } : {}),
 			...(issued ? { issued: true } : {}),
 			...(issuedTokenId ? { issuedTokenId } : {}),

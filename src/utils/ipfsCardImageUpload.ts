@@ -11,6 +11,51 @@ export const IPFS_UPLOAD_JPEG_RETRY_MAX_BYTES = 700 * 1024
 
 export const IPFS_GET_FRAGMENT = 'https://ipfs.conet.network/api/getFragment?hash='
 
+/** Catalog item background media picker — images, video, PDF. */
+export const IPFS_PRODUCTION_BACKGROUND_ACCEPT =
+  'image/*,video/*,application/pdf,.pdf'
+
+export function inferProductionBackgroundMimeFromFile(file: File): string {
+  const mime = (file.type || '').trim().toLowerCase()
+  if (mime) return mime
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.pdf')) return 'application/pdf'
+  if (name.endsWith('.mp4')) return 'video/mp4'
+  if (name.endsWith('.webm')) return 'video/webm'
+  if (name.endsWith('.mov')) return 'video/quicktime'
+  if (name.endsWith('.m4v')) return 'video/x-m4v'
+  if (name.endsWith('.png')) return 'image/png'
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg'
+  if (name.endsWith('.svg')) return 'image/svg+xml'
+  return 'application/octet-stream'
+}
+
+export function fileLooksLikeProductionBackgroundMedia(file: File): boolean {
+  const mime = inferProductionBackgroundMimeFromFile(file)
+  if (mime.startsWith('image/')) return true
+  if (mime.startsWith('video/')) return true
+  if (mime === 'application/pdf') return true
+  return file.name.toLowerCase().endsWith('.pdf')
+}
+
+/** Images use resize/SVG rasterization; video/PDF/other binaries upload as-is (37MB cap). */
+export async function uploadMediaFileToIpfsWithRetry(
+  file: File,
+  postToIPFS: (dataUrl: string) => Promise<string | null>
+): Promise<string | null> {
+  const mime = inferProductionBackgroundMimeFromFile(file)
+  if (mime.startsWith('image/')) {
+    return uploadImageFileToIpfsWithRetry(file, postToIPFS)
+  }
+  if (file.size > IPFS_UPLOAD_TARGET_MAX_BYTES) {
+    throw new Error(
+      `File is too large. Maximum upload size is ${Math.round(IPFS_UPLOAD_TARGET_MAX_BYTES / (1024 * 1024))} MB.`
+    )
+  }
+  const dataUrl = await blobToDataUrl(file)
+  return postToIPFS(dataUrl)
+}
+
 function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob)

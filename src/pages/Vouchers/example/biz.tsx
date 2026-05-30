@@ -104,7 +104,18 @@ import {
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi';
-import { IPFS_GET_FRAGMENT, uploadImageFileToIpfsWithRetry } from '@/utils/ipfsCardImageUpload';
+import {
+  IPFS_GET_FRAGMENT,
+  uploadImageFileToIpfsWithRetry,
+  uploadMediaFileToIpfsWithRetry,
+  fileLooksLikeProductionBackgroundMedia,
+  inferProductionBackgroundMimeFromFile,
+} from '@/utils/ipfsCardImageUpload';
+import {
+  fileLooksLikeProductionBackgroundVideo,
+  probeProductionBackgroundVideoDurationSec,
+  standardizeProductionBackgroundVideo,
+} from '@/utils/productionBackgroundVideo';
 import {
   hasLiteBusinessChainAck,
   hasVerraLiteBusinessRequiredFields,
@@ -9870,9 +9881,17 @@ const [cardIssuanceProductionIssueTotalUnlimited, setCardIssuanceProductionIssue
 const [cardIssuanceProductionDescription, setCardIssuanceProductionDescription] = useState('');
 const [cardIssuanceProductionIcon, setCardIssuanceProductionIcon] = useState('');
 const [cardIssuanceProductionImage, setCardIssuanceProductionImage] = useState('');
+const [cardIssuanceProductionImageMime, setCardIssuanceProductionImageMime] = useState('');
+const [cardIssuanceProductionImageStartSec, setCardIssuanceProductionImageStartSec] = useState(0);
 const [cardIssuanceProductionBackgroundColor, setCardIssuanceProductionBackgroundColor] = useState('#ea580c');
 const [cardIssuanceProductionIconUploading, setCardIssuanceProductionIconUploading] = useState(false);
 const [cardIssuanceProductionImageUploading, setCardIssuanceProductionImageUploading] = useState(false);
+const [productionVideoDraftFile, setProductionVideoDraftFile] = useState<File | null>(null);
+const [productionVideoDraftUrl, setProductionVideoDraftUrl] = useState('');
+const [productionVideoSourceDurationSec, setProductionVideoSourceDurationSec] = useState(0);
+const [productionVideoStartSec, setProductionVideoStartSec] = useState(0);
+const [productionVideoProcessingMessage, setProductionVideoProcessingMessage] = useState('');
+const productionVideoDraftUrlRef = useRef('');
 /** Last catalog item icon entered (upload/save) — prefills the next Add item form. */
 const cardIssuanceProductionLastIconRef = useRef('');
 const [cardIssuanceProductionEditorError, setCardIssuanceProductionEditorError] = useState('');
@@ -10917,6 +10936,14 @@ function hydrateCardIssuanceProductionRowFromShareMeta(
     icon: typeof production.icon === 'string' ? production.icon : '',
     backgroundColor: typeof production.backgroundColor === 'string' ? production.backgroundColor : '#ea580c',
     productionImage: typeof production.productionImage === 'string' ? production.productionImage : '',
+    ...(typeof production.productionImageMime === 'string' && production.productionImageMime.trim()
+      ? { productionImageMime: production.productionImageMime.trim() }
+      : {}),
+    ...(typeof production.productionImageStartSec === 'number' &&
+    Number.isFinite(production.productionImageStartSec) &&
+    production.productionImageStartSec > 0
+      ? { productionImageStartSec: production.productionImageStartSec }
+      : {}),
     description: typeof production.description === 'string' ? production.description : '',
     issued: production.issued === true || Boolean(issuedTokenId),
     ...(issuedTokenId ? { issuedTokenId } : {}),
@@ -11022,6 +11049,15 @@ useEffect(() => {
               typeof mergedMeta.backgroundColor === 'string' ? mergedMeta.backgroundColor : '#ea580c',
             productionImage:
               typeof mergedMeta.productionImage === 'string' ? mergedMeta.productionImage : '',
+            ...(typeof mergedMeta.productionImageMime === 'string' &&
+            mergedMeta.productionImageMime.trim()
+              ? { productionImageMime: mergedMeta.productionImageMime.trim() }
+              : {}),
+            ...(typeof mergedMeta.productionImageStartSec === 'number' &&
+            Number.isFinite(mergedMeta.productionImageStartSec) &&
+            mergedMeta.productionImageStartSec > 0
+              ? { productionImageStartSec: mergedMeta.productionImageStartSec }
+              : {}),
             description: typeof mergedMeta.description === 'string' ? mergedMeta.description : '',
             issued: true,
             issuedTokenId: tokenId,
@@ -11067,6 +11103,8 @@ useEffect(() => {
         merged.push({
           ...row,
           productionImage: row.productionImage ?? old.productionImage ?? '',
+          productionImageMime: row.productionImageMime ?? old.productionImageMime ?? '',
+          productionImageStartSec: row.productionImageStartSec ?? old.productionImageStartSec,
           issued: row.issued || old.issued,
           issuedTokenId: row.issuedTokenId ?? old.issuedTokenId,
         });
@@ -12367,6 +12405,18 @@ const removeCardIssuanceCouponDraft = useCallback(async (couponId: string) => {
   }
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons]);
 
+const revokeProductionVideoDraft = useCallback(() => {
+  if (productionVideoDraftUrlRef.current) {
+    URL.revokeObjectURL(productionVideoDraftUrlRef.current);
+    productionVideoDraftUrlRef.current = '';
+  }
+  setProductionVideoDraftFile(null);
+  setProductionVideoDraftUrl('');
+  setProductionVideoSourceDurationSec(0);
+  setProductionVideoStartSec(0);
+  setProductionVideoProcessingMessage('');
+}, []);
+
 const resetCardIssuanceProductionEditorFields = useCallback(() => {
   setCardIssuanceProductionName('');
   setCardIssuanceProductionSubtitle('');
@@ -12388,12 +12438,16 @@ const resetCardIssuanceProductionEditorFields = useCallback(() => {
     })
   );
   setCardIssuanceProductionImage('');
+  setCardIssuanceProductionImageMime('');
+  setCardIssuanceProductionImageStartSec(0);
+  revokeProductionVideoDraft();
   setCardIssuanceProductionBackgroundColor('#ea580c');
 }, [
   cardIssuanceServiceCategories,
   cardIssuanceCouponIcon,
   cardIssuanceShareImageUrl,
   cardIssuanceExistingCard?.meta?.image,
+  revokeProductionVideoDraft,
 ]);
 
 const commitCardIssuanceServiceCategories = useCallback(
@@ -12598,6 +12652,9 @@ const openCardIssuanceProductionEdit = useCallback(
     setCardIssuanceProductionDescription(row.description);
     setCardIssuanceProductionIcon(row.icon || '');
     setCardIssuanceProductionImage((row.productionImage ?? '').trim());
+    setCardIssuanceProductionImageMime((row.productionImageMime ?? '').trim());
+    setCardIssuanceProductionImageStartSec(row.productionImageStartSec ?? 0);
+    revokeProductionVideoDraft();
     setCardIssuanceProductionBackgroundColor(
       tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#ea580c')
     );
@@ -12606,7 +12663,7 @@ const openCardIssuanceProductionEdit = useCallback(
     );
     setCardIssuanceProductionEditorOpen(true);
   },
-  [cardIssuanceProductions]
+  [cardIssuanceProductions, revokeProductionVideoDraft]
 );
 
 const closeCardIssuanceProductionEditor = useCallback(() => {
@@ -12663,6 +12720,9 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
   const description = cardIssuanceProductionDescription.trim();
   const icon = cardIssuanceProductionIcon.trim();
   const productionImage = cardIssuanceProductionImage.trim();
+  const productionImageMime = cardIssuanceProductionImageMime.trim();
+  const productionImageStartSec =
+    cardIssuanceProductionImageStartSec > 0 ? cardIssuanceProductionImageStartSec : undefined;
   const backgroundColor =
     tierBackgroundColorForPayload(cardIssuanceProductionBackgroundColor.trim()) ?? '#ea580c';
   rememberCardIssuanceProductionLastIconInput(icon, cardIssuanceProductionLastIconRef);
@@ -12729,6 +12789,8 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     icon,
     backgroundColor,
     productionImage,
+    ...(productionImageMime ? { productionImageMime } : {}),
+    ...(productionImageStartSec != null ? { productionImageStartSec } : {}),
     description,
     issued: editingExistingRow?.issued === true,
     ...(editingExistingRow?.issuedTokenId ? { issuedTokenId: editingExistingRow.issuedTokenId } : {}),
@@ -12748,6 +12810,12 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
             icon: parent.icon,
             backgroundColor: parent.backgroundColor,
             productionImage: parent.productionImage,
+            ...(parent.productionImageMime?.trim()
+              ? { productionImageMime: parent.productionImageMime.trim() }
+              : {}),
+            ...(parent.productionImageStartSec != null && parent.productionImageStartSec > 0
+              ? { productionImageStartSec: parent.productionImageStartSec }
+              : {}),
             description: parent.description,
             issueTotal: parent.issueTotal,
             issueTotalUnlimited: parent.issueTotalUnlimited,
@@ -12995,6 +13063,8 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
   cardIssuanceProductionDescription,
   cardIssuanceProductionIcon,
   cardIssuanceProductionImage,
+  cardIssuanceProductionImageMime,
+  cardIssuanceProductionImageStartSec,
   cardIssuanceProductionBackgroundColor,
   cardIssuanceProductionName,
   cardIssuanceProductionPackageDeals,
@@ -13509,7 +13579,12 @@ const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputE
     const input = e.currentTarget;
     const file = input.files?.[0];
     input.value = '';
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file || !fileLooksLikeProductionBackgroundMedia(file)) {
+      setCardIssuanceProductionEditorError(
+        'Background media must be an image, video, or PDF file.'
+      );
+      return;
+    }
     const p0 = profiles?.[0];
     if (!p0?.privateKeyArmor) {
       setCardIssuanceProductionEditorError(
@@ -13518,32 +13593,110 @@ const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputE
       return;
     }
     setCardIssuanceProductionEditorError('');
+
+    if (fileLooksLikeProductionBackgroundVideo(file)) {
+      revokeProductionVideoDraft();
+      setCardIssuanceProductionImage('');
+      setCardIssuanceProductionImageMime('');
+      setCardIssuanceProductionImageStartSec(0);
+      try {
+        const durationSec = await probeProductionBackgroundVideoDurationSec(file);
+        const url = URL.createObjectURL(file);
+        productionVideoDraftUrlRef.current = url;
+        setProductionVideoDraftFile(file);
+        setProductionVideoDraftUrl(url);
+        setProductionVideoSourceDurationSec(durationSec);
+        setProductionVideoStartSec(0);
+        setProductionVideoProcessingMessage('');
+      } catch (err: unknown) {
+        setCardIssuanceProductionEditorError(
+          err instanceof Error ? err.message : 'Could not open video file.'
+        );
+      }
+      return;
+    }
+
+    revokeProductionVideoDraft();
     setCardIssuanceProductionImageUploading(true);
     try {
-      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      const hash = await uploadMediaFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
       if (hash) {
         setCardIssuanceProductionImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+        setCardIssuanceProductionImageMime(inferProductionBackgroundMimeFromFile(file));
+        setCardIssuanceProductionImageStartSec(0);
       } else {
-        setCardIssuanceProductionEditorError('Background photo upload failed.');
+        setCardIssuanceProductionEditorError('Background media upload failed.');
       }
     } catch (err: unknown) {
       setCardIssuanceProductionEditorError(
-        err instanceof Error ? err.message : 'Background photo upload failed.'
+        err instanceof Error ? err.message : 'Background media upload failed.'
       );
     } finally {
       setCardIssuanceProductionImageUploading(false);
     }
   },
-  [profiles]
+  [profiles, revokeProductionVideoDraft]
 );
+
+const cancelProductionVideoDraft = useCallback(() => {
+  revokeProductionVideoDraft();
+}, [revokeProductionVideoDraft]);
+
+const confirmProductionVideoUpload = useCallback(async () => {
+  const file = productionVideoDraftFile;
+  const p0 = profiles?.[0];
+  if (!file || !p0?.privateKeyArmor) {
+    setCardIssuanceProductionEditorError(
+      'Profile not available for upload. Open Settings and ensure your wallet is ready.'
+    );
+    return;
+  }
+  setCardIssuanceProductionEditorError('');
+  setCardIssuanceProductionImageUploading(true);
+  setProductionVideoProcessingMessage('Preparing video…');
+  try {
+    const standardized = await standardizeProductionBackgroundVideo({
+      file,
+      startSec: productionVideoStartSec,
+      onStatus: (message) => setProductionVideoProcessingMessage(message),
+    });
+    setProductionVideoProcessingMessage('Uploading to IPFS…');
+    const hash = await uploadMediaFileToIpfsWithRetry(standardized.file, (dataUrl) =>
+      postToIPFS(p0, dataUrl)
+    );
+    if (!hash) {
+      setCardIssuanceProductionEditorError('Background video upload failed.');
+      return;
+    }
+    setCardIssuanceProductionImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+    setCardIssuanceProductionImageMime('video/mp4');
+    setCardIssuanceProductionImageStartSec(0);
+    revokeProductionVideoDraft();
+  } catch (err: unknown) {
+    setCardIssuanceProductionEditorError(
+      err instanceof Error ? err.message : 'Background video processing failed.'
+    );
+  } finally {
+    setProductionVideoProcessingMessage('');
+    setCardIssuanceProductionImageUploading(false);
+  }
+}, [
+  productionVideoDraftFile,
+  productionVideoStartSec,
+  profiles,
+  revokeProductionVideoDraft,
+]);
 
 const clearCardIssuanceProductionIcon = useCallback(() => {
   setCardIssuanceProductionIcon('');
 }, []);
 
 const clearCardIssuanceProductionImage = useCallback(() => {
+  revokeProductionVideoDraft();
   setCardIssuanceProductionImage('');
-}, []);
+  setCardIssuanceProductionImageMime('');
+  setCardIssuanceProductionImageStartSec(0);
+}, [revokeProductionVideoDraft]);
 
 const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
@@ -34719,9 +34872,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       onIconFileChange={handleCardIssuanceProductionIconPick}
       onClearIcon={clearCardIssuanceProductionIcon}
       productionImage={cardIssuanceProductionImage}
+      productionImageMime={cardIssuanceProductionImageMime}
+      productionImageStartSec={cardIssuanceProductionImageStartSec}
       productionImageUploading={cardIssuanceProductionImageUploading}
       onProductionImageFileChange={handleCardIssuanceProductionImagePick}
       onClearProductionImage={clearCardIssuanceProductionImage}
+      productionVideoDraftUrl={productionVideoDraftUrl}
+      productionVideoSourceDurationSec={productionVideoSourceDurationSec}
+      productionVideoStartSec={productionVideoStartSec}
+      setProductionVideoStartSec={setProductionVideoStartSec}
+      productionVideoProcessingMessage={productionVideoProcessingMessage}
+      onCancelProductionVideoDraft={cancelProductionVideoDraft}
+      onConfirmProductionVideoUpload={confirmProductionVideoUpload}
       backgroundColor={cardIssuanceProductionBackgroundColor}
       setBackgroundColor={setCardIssuanceProductionBackgroundColor}
       moneyPrefix={cardIssuanceDisplayMoneyPrefix}

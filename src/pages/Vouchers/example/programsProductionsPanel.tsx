@@ -3,11 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Check,
+  FileText,
   Gift,
   ImagePlus,
   Loader2,
   Package,
   Pencil,
+  Play,
   Plus,
   Sparkles,
   Trash2,
@@ -26,6 +28,7 @@ import {
   productionIconLooksLikeImageUrl,
   productionIssueTotalDisplayLabel,
   productionItemCategoryLabel,
+  resolveProductionBackgroundMediaKind,
   tileBackgroundColorApplies,
   type CardIssuanceProductionRow,
   type CatalogGlobalCategoryId,
@@ -33,6 +36,12 @@ import {
   type ProductionServiceCategoryId,
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
+import { IPFS_PRODUCTION_BACKGROUND_ACCEPT } from '@/utils/ipfsCardImageUpload';
+import {
+  PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS,
+  formatProductionVideoTimeSec,
+  productionVideoClipDurationSec,
+} from '@/utils/productionBackgroundVideo';
 import {
   createNumericInputWheelNonPassiveRefCallback,
   preventNumericInputStepKeys,
@@ -41,6 +50,100 @@ import {
 
 const bizFocusRingClass =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ea580c]/40 focus-visible:ring-offset-2';
+
+function ClickToPlayProductionVideo(props: {
+  src: string;
+  startSec?: number;
+  className?: string;
+  showControlsAfterPlay?: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const startSec = props.startSec != null && Number.isFinite(props.startSec) ? Math.max(0, props.startSec) : 0;
+
+  const handlePlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = startSec;
+    void video.play().then(() => setPlaying(true)).catch(() => undefined);
+  }, [startSec]);
+
+  return (
+    <div className="relative h-full w-full">
+      <video
+        ref={videoRef}
+        src={props.src}
+        className={props.className ?? 'h-full w-full object-cover'}
+        playsInline
+        preload="metadata"
+        controls={props.showControlsAfterPlay !== false && playing}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
+      {!playing ? (
+        <button
+          type="button"
+          onClick={handlePlay}
+          className={`absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-white transition hover:bg-black/45 ${bizFocusRingClass}`}
+          aria-label="Play video"
+        >
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-[#2c2f31] shadow-md">
+            <Play className="ml-0.5 h-6 w-6" strokeWidth={2.4} fill="currentColor" aria-hidden />
+          </span>
+          {startSec > 0 ? (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white/90">
+              Starts at {formatProductionVideoTimeSec(startSec)}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ProductionBackgroundMediaPreview(props: {
+  url: string;
+  mime?: string;
+  startSec?: number;
+  className?: string;
+  imgClassName?: string;
+}) {
+  const kind = resolveProductionBackgroundMediaKind({ url: props.url, mime: props.mime });
+  if (kind === 'video') {
+    return (
+      <ClickToPlayProductionVideo
+        src={props.url}
+        startSec={props.startSec}
+        className={props.className ?? 'h-full w-full object-cover'}
+      />
+    );
+  }
+  if (kind === 'pdf') {
+    return (
+      <div
+        className={`flex h-full w-full flex-col items-center justify-center gap-2 bg-[#eef1f3] px-3 text-[#595c5e] ${props.className ?? ''}`}
+      >
+        <FileText className="h-8 w-8 shrink-0" strokeWidth={2} aria-hidden />
+        <span className="text-center text-[11px] font-semibold">PDF uploaded</span>
+        <a
+          href={props.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] font-bold text-[#ea580c] underline"
+        >
+          Open PDF
+        </a>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={props.url}
+      alt=""
+      className={props.imgClassName ?? props.className ?? 'h-full w-full object-cover'}
+    />
+  );
+}
 
 export type ProgramsProductionsPanelProps = {
   catalogOpen: boolean;
@@ -66,9 +169,18 @@ export type ProgramsProductionsPanelProps = {
   onIconFileChange: React.ChangeEventHandler<HTMLInputElement>;
   onClearIcon: () => void;
   productionImage: string;
+  productionImageMime?: string;
+  productionImageStartSec?: number;
   productionImageUploading: boolean;
   onProductionImageFileChange: React.ChangeEventHandler<HTMLInputElement>;
   onClearProductionImage: () => void;
+  productionVideoDraftUrl?: string;
+  productionVideoSourceDurationSec?: number;
+  productionVideoStartSec?: number;
+  setProductionVideoStartSec?: (value: number) => void;
+  productionVideoProcessingMessage?: string;
+  onCancelProductionVideoDraft?: () => void;
+  onConfirmProductionVideoUpload?: () => void;
   backgroundColor: string;
   setBackgroundColor: (v: string) => void;
   moneyPrefix: string;
@@ -124,9 +236,18 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     onIconFileChange,
     onClearIcon,
     productionImage,
+    productionImageMime,
+    productionImageStartSec,
     productionImageUploading,
     onProductionImageFileChange,
     onClearProductionImage,
+    productionVideoDraftUrl = '',
+    productionVideoSourceDurationSec = 0,
+    productionVideoStartSec = 0,
+    setProductionVideoStartSec,
+    productionVideoProcessingMessage = '',
+    onCancelProductionVideoDraft,
+    onConfirmProductionVideoUpload,
     backgroundColor,
     setBackgroundColor,
     moneyPrefix,
@@ -159,6 +280,10 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
   const [editingCategoryLabel, setEditingCategoryLabel] = useState('');
   const iconFileRef = useRef<HTMLInputElement>(null);
   const productionImageFileRef = useRef<HTMLInputElement>(null);
+  const productionVideoClipSec = useMemo(
+    () => productionVideoClipDurationSec(productionVideoStartSec, productionVideoSourceDurationSec),
+    [productionVideoStartSec, productionVideoSourceDurationSec]
+  );
   const issueTotalWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
   const numericNoSpinnerClass =
     '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]';
@@ -267,6 +392,11 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     {productions.filter(isCatalogBaseProductionRow).map((row) => {
                       const displayPrice = catalogProductionDisplayPrice(row);
                       const packageRows = catalogPackageDealsForBase(productions, row);
+                      const backgroundKind = resolveProductionBackgroundMediaKind({
+                        url: row.productionImage,
+                        mime: row.productionImageMime,
+                      });
+                      const hasBackgroundMedia = row.productionImage.trim().length > 0;
                       return (
                         <li
                           key={row.id}
@@ -278,9 +408,9 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             className={`flex w-full items-start gap-3 p-4 text-left ${bizFocusRingClass}`}
                           >
                             <div
-                              className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl text-white"
+                              className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl text-white"
                               style={
-                                row.productionImage.trim()
+                                backgroundKind === 'image' && hasBackgroundMedia
                                   ? {
                                       backgroundImage: `url(${row.productionImage})`,
                                       backgroundSize: 'cover',
@@ -289,11 +419,28 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                   : { backgroundColor: row.backgroundColor || '#ea580c' }
                               }
                             >
+                              {backgroundKind === 'video' && hasBackgroundMedia ? (
+                                <video
+                                  src={row.productionImage}
+                                  className="absolute inset-0 h-full w-full object-cover"
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                  aria-hidden
+                                />
+                              ) : null}
+                              {backgroundKind === 'pdf' && hasBackgroundMedia ? (
+                                <FileText className="relative z-[1] h-5 w-5" strokeWidth={2} aria-hidden />
+                              ) : null}
                               {productionIconLooksLikeImageUrl(row.icon) ? (
-                                <img src={row.icon} alt="" className="h-full w-full object-cover" />
-                              ) : row.productionImage.trim() ? null : (
+                                <img
+                                  src={row.icon}
+                                  alt=""
+                                  className="relative z-[1] h-full w-full object-cover"
+                                />
+                              ) : hasBackgroundMedia && backgroundKind !== 'pdf' ? null : !hasBackgroundMedia ? (
                                 <Sparkles className="h-5 w-5" strokeWidth={2} aria-hidden />
-                              )}
+                              ) : null}
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="truncate font-manrope text-base font-bold text-[#2c2f31]">{row.name}</p>
@@ -519,16 +666,87 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
 
                         <div>
                           <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            Background photo (optional)
+                            Background media (optional)
                           </label>
                           <input
                             ref={productionImageFileRef}
                             type="file"
-                            accept="image/*"
+                            accept={IPFS_PRODUCTION_BACKGROUND_ACCEPT}
                             className="hidden"
                             onChange={onProductionImageFileChange}
                           />
-                          {!productionImage ? (
+                          {productionVideoDraftUrl ? (
+                            <div className="space-y-3 rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] p-3">
+                              <div className="relative h-[140px] w-full overflow-hidden rounded-xl bg-[#0f172a]/90">
+                                <ClickToPlayProductionVideo
+                                  src={productionVideoDraftUrl}
+                                  startSec={productionVideoStartSec}
+                                  className="h-full w-full object-contain"
+                                />
+                              </div>
+                              <div>
+                                <div className="mb-1 flex items-center justify-between gap-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                                    Start time in video
+                                  </span>
+                                  <span className="text-[11px] font-semibold text-[#747779]">
+                                    {formatProductionVideoTimeSec(productionVideoStartSec)}
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={Math.max(
+                                    0,
+                                    productionVideoSourceDurationSec - 0.25
+                                  )}
+                                  step={0.1}
+                                  value={productionVideoStartSec}
+                                  onChange={(e) =>
+                                    setProductionVideoStartSec?.(Number(e.target.value))
+                                  }
+                                  disabled={productionImageUploading}
+                                  className="w-full accent-[#ea580c]"
+                                  aria-label="Video start time"
+                                />
+                                <p className="mt-1 text-[11px] text-[#747779]">
+                                  Clip length: {formatProductionVideoTimeSec(productionVideoClipSec)} (max{' '}
+                                  {PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS}s). Video is converted to MP4 locally
+                                  before upload.
+                                </p>
+                              </div>
+                              {productionVideoProcessingMessage ? (
+                                <p className="text-[11px] font-semibold text-[#595c5e]">
+                                  {productionVideoProcessingMessage}
+                                </p>
+                              ) : null}
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  disabled={productionImageUploading}
+                                  onClick={() => onConfirmProductionVideoUpload?.()}
+                                  className={`inline-flex min-h-10 flex-1 items-center justify-center rounded-xl bg-[#ea580c] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                                >
+                                  {productionImageUploading ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                                      Processing…
+                                    </>
+                                  ) : (
+                                    'Convert & upload'
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={productionImageUploading}
+                                  onClick={() => onCancelProductionVideoDraft?.()}
+                                  className={`inline-flex min-h-10 items-center justify-center rounded-xl border border-[#e5e9eb] bg-white px-4 text-xs font-bold text-[#747779] disabled:opacity-60 ${bizFocusRingClass}`}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : !productionImage ? (
                             <button
                               type="button"
                               onClick={() => productionImageFileRef.current?.click()}
@@ -543,20 +761,26 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                               <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
                                 {productionImageUploading
                                   ? 'Uploading…'
-                                  : 'Upload wide banner (PNG or JPEG). Default: solid color below.'}
+                                  : 'Upload image, video (max 60s), or PDF to IPFS. Default: solid color below.'}
                               </span>
                             </button>
                           ) : (
                             <div className="relative h-[120px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#0f172a]/90">
-                              <img src={productionImage} alt="" className="h-full w-full object-cover opacity-95" />
+                              <ProductionBackgroundMediaPreview
+                                url={productionImage}
+                                mime={productionImageMime}
+                                startSec={productionImageStartSec}
+                                className="h-full w-full opacity-95"
+                                imgClassName="h-full w-full object-cover opacity-95"
+                              />
                               <button
                                 type="button"
                                 onClick={() => {
                                   onClearProductionImage();
                                   if (productionImageFileRef.current) productionImageFileRef.current.value = '';
                                 }}
-                                className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                                aria-label="Remove background photo"
+                                className={`absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
+                                aria-label="Remove background media"
                               >
                                 <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
                               </button>

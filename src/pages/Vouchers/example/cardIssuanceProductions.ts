@@ -123,6 +123,10 @@ export type CardIssuanceProductionRow = {
   icon: string;
   backgroundColor: string;
   productionImage: string;
+  /** Seconds to seek before playback in the stored background video (0 after source trim export). */
+  productionImageStartSec?: number;
+  /** MIME type for `productionImage` when not a raster image (e.g. video/mp4, application/pdf). */
+  productionImageMime?: string;
   description: string;
   issued: boolean;
   issuedTokenId?: string;
@@ -148,6 +152,8 @@ export type CardIssuanceProductionMetadataPayload = {
   icon?: string;
   backgroundColor?: string;
   productionImage?: string;
+  productionImageStartSec?: number;
+  productionImageMime?: string;
   description?: string;
   issued?: boolean;
   issuedTokenId?: string;
@@ -176,6 +182,14 @@ export function makeCardIssuanceProductionRow(
     icon: String(partial?.icon ?? ''),
     backgroundColor: String(partial?.backgroundColor ?? '#ea580c'),
     productionImage: String(partial?.productionImage ?? '').trim(),
+    ...(partial?.productionImageStartSec != null &&
+    Number.isFinite(Number(partial.productionImageStartSec)) &&
+    Number(partial.productionImageStartSec) > 0
+      ? { productionImageStartSec: Math.max(0, Number(partial.productionImageStartSec)) }
+      : {}),
+    ...(partial?.productionImageMime?.trim()
+      ? { productionImageMime: partial.productionImageMime.trim() }
+      : {}),
     description: String(partial?.description ?? ''),
     issued: partial?.issued === true,
     ...(partial?.issuedTokenId?.trim() ? { issuedTokenId: partial.issuedTokenId.trim() } : {}),
@@ -299,6 +313,12 @@ export function buildPackageProductionRowFromBase(
     icon: base.icon,
     backgroundColor: base.backgroundColor,
     productionImage: base.productionImage,
+    ...(base.productionImageMime?.trim()
+      ? { productionImageMime: base.productionImageMime.trim() }
+      : {}),
+    ...(base.productionImageStartSec != null && base.productionImageStartSec > 0
+      ? { productionImageStartSec: base.productionImageStartSec }
+      : {}),
     description: base.description,
     issued: draft.issued === true,
     ...(draft.issuedTokenId?.trim() ? { issuedTokenId: draft.issuedTokenId.trim() } : {}),
@@ -326,6 +346,12 @@ export function buildPackageProductionDraftRowFromBase(
     icon: base.icon,
     backgroundColor: base.backgroundColor,
     productionImage: base.productionImage,
+    ...(base.productionImageMime?.trim()
+      ? { productionImageMime: base.productionImageMime.trim() }
+      : {}),
+    ...(base.productionImageStartSec != null && base.productionImageStartSec > 0
+      ? { productionImageStartSec: base.productionImageStartSec }
+      : {}),
     description: base.description,
     issued: false,
   });
@@ -449,6 +475,14 @@ export function buildCardIssuanceProductionMetadataPayload(
         ...(row.icon.trim() ? { icon: row.icon.trim() } : {}),
         ...(tileBg ? { backgroundColor: tileBg } : {}),
         ...(row.productionImage.trim() ? { productionImage: row.productionImage.trim() } : {}),
+        ...(row.productionImageStartSec != null &&
+        Number.isFinite(row.productionImageStartSec) &&
+        row.productionImageStartSec > 0
+          ? { productionImageStartSec: row.productionImageStartSec }
+          : {}),
+        ...(row.productionImageMime?.trim()
+          ? { productionImageMime: row.productionImageMime.trim() }
+          : {}),
         ...(row.description.trim() ? { description: row.description.trim() } : {}),
       };
       if (row.issued) payload.issued = true;
@@ -489,9 +523,41 @@ export function buildProductionIssuedNftMetaProps(row: CardIssuanceProductionRow
       ...(row.icon.trim() ? { icon: row.icon.trim() } : {}),
       ...(tileBg ? { backgroundColor: tileBg } : {}),
       ...(row.productionImage.trim() ? { productionImage: row.productionImage.trim() } : {}),
+      ...(row.productionImageStartSec != null &&
+      Number.isFinite(row.productionImageStartSec) &&
+      row.productionImageStartSec > 0
+        ? { productionImageStartSec: row.productionImageStartSec }
+        : {}),
+      ...(row.productionImageMime?.trim()
+        ? { productionImageMime: row.productionImageMime.trim() }
+        : {}),
       ...(row.description.trim() ? { description: row.description.trim() } : {}),
     },
   };
+}
+
+export type ProductionBackgroundMediaKind = 'image' | 'video' | 'pdf';
+
+export function productionBackgroundMediaKindFromMime(mime: unknown): ProductionBackgroundMediaKind {
+  const m = typeof mime === 'string' ? mime.trim().toLowerCase() : '';
+  if (m.startsWith('video/')) return 'video';
+  if (m === 'application/pdf') return 'pdf';
+  return 'image';
+}
+
+export function resolveProductionBackgroundMediaKind(args: {
+  url?: unknown;
+  mime?: unknown;
+}): ProductionBackgroundMediaKind {
+  const mimeKind =
+    typeof args.mime === 'string' && args.mime.trim()
+      ? productionBackgroundMediaKindFromMime(args.mime)
+      : null;
+  if (mimeKind === 'video' || mimeKind === 'pdf') return mimeKind;
+  const u = typeof args.url === 'string' ? args.url.trim().toLowerCase() : '';
+  if (u.includes('.pdf') || u.includes('application/pdf')) return 'pdf';
+  if (/\.(mp4|webm|mov|m4v|ogv)(\?|&|$)/i.test(u)) return 'video';
+  return mimeKind ?? 'image';
 }
 
 export function normalizeServiceCategoryLabelForHash(label: string): string {

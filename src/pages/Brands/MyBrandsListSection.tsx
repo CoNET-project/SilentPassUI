@@ -117,7 +117,9 @@ export function MyBrandCardRow({
 			<div className="min-w-0 flex-1">
 				<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 					<p className="min-w-0 truncate text-sm font-bold text-[#191c1d] dark:text-slate-100">{title}</p>
-					{cardAddress ? <MyBrandCardAddressCapsule address={cardAddress} /> : null}
+					{cardAddress ? (
+						<BeamioBaseScanNftCapsule cardAddress={cardAddress} pointsBalance className="!py-0.5" />
+					) : null}
 				</div>
 				<p className="mt-0.5 text-[11px] leading-tight text-[#424655] dark:text-slate-400">
 					{categorySubtitle}
@@ -211,21 +213,15 @@ export function MyBrandListEntries({
 				)
 			})}
 			{allCoupons.map((ownedCoupon) => (
-				<div key={ownedCoupon.id} className="space-y-1.5">
-					<ActiveCouponTicketItem
-						row={ownedCoupon}
-						actionLabel="Owned"
-						disabled
-						metadataBelowBackgroundImage
-						aria-label={`Owned coupon ${ownedCoupon.title}`}
-						punchBgClassName={punchBgClassName}
-					/>
-					<BeamioBaseScanNftCapsule
-						cardAddress={ownedCoupon.cardAddress}
-						tokenId={ownedCoupon.tokenId}
-						className="ml-1"
-					/>
-				</div>
+				<ActiveCouponTicketItem
+					key={ownedCoupon.id}
+					row={ownedCoupon}
+					actionLabel="Owned"
+					disabled
+					metadataBelowBackgroundImage
+					aria-label={`Owned coupon ${ownedCoupon.title}`}
+					punchBgClassName={punchBgClassName}
+				/>
 			))}
 		</>
 	)

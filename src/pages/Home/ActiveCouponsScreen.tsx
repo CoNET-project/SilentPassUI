@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Copy, Gift, Loader2, RefreshCw } from 'lucide-react'
 import { ethers } from 'ethers'
+import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
+import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
 import {
 	type CardActiveIssuedCouponSeriesItem,
@@ -36,6 +38,10 @@ type ActiveCouponsScreenProps = {
 
 type FetchState = 'loading' | 'idle' | 'error'
 type ClaimButtonStatus = 'idle' | 'loading' | 'success' | 'error'
+
+/** POS `ReadBalanceCouponsSection` `ClaimCouponButton` — orange→red gradient + white gift icon. */
+const POS_CLAIM_GRADIENT =
+	'linear-gradient(to bottom right, rgb(255,132,36), rgb(255,71,87))'
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>
 	v && typeof v === 'object' ? (v as Record<string, unknown>) : null
@@ -387,6 +393,29 @@ export function ActiveCouponTicketItem({
 	const title = row.title.trim()
 	const subtitle = row.subtitle.trim()
 	const iconUrl = hasBanner ? '' : row.iconUrl.trim()
+	const showBaseScanNftLink = beamioBaseScanNftUrl(row.cardAddress, row.tokenId) != null
+
+	const renderSubtitleWithBaseScan = (subtitleClassName: string, marginTopClass = 'mt-0.5') => {
+		if (!subtitle && !showBaseScanNftLink) return null
+		return (
+			<div
+				className={`inline-flex max-w-full items-center gap-2 ${marginTopClass}`.trim()}
+			>
+				{subtitle ? (
+					<p className={`min-w-0 truncate font-manrope font-semibold ${subtitleClassName}`}>
+						{subtitle}
+					</p>
+				) : null}
+				{showBaseScanNftLink ? (
+					<BeamioBaseScanNftCapsule
+						cardAddress={row.cardAddress}
+						tokenId={row.tokenId}
+						className="shrink-0"
+					/>
+				) : null}
+			</div>
+		)
+	}
 
 	const renderExpiryPill = (placement: 'inner' | 'external') => {
 		const style = placement === 'external' ? externalExpiryBgStyle : innerExpiryBgStyle
@@ -404,35 +433,68 @@ export function ActiveCouponTicketItem({
 		)
 	}
 
+	const usesPosClaimGiftButton = actionLabel === 'Claim'
+	const usesOwnedStatusCapsule = actionLabel === 'Owned'
+	const claimActionAriaLabel =
+		ariaLabel ??
+		(actionStatus === 'success'
+			? 'Coupon claimed'
+			: actionStatus === 'error'
+				? actionError ?? 'Coupon action failed'
+				: actionLabel)
+
 	const claimButton = showActionButton ? (
 		<div className="pointer-events-auto absolute right-6 top-1/2 z-[2] -translate-y-1/2 sm:right-8">
-			<button
-				type="button"
-				disabled={actionDisabled}
-				onClick={(e) => {
-					e.stopPropagation()
-					onAction?.()
-				}}
-				className="font-manrope flex h-8 min-w-[4.25rem] max-w-[5.75rem] shrink-0 items-center justify-center gap-1 rounded-full bg-white px-2.5 text-[11px] font-semibold leading-tight text-[#1562f0] shadow-sm transition-all duration-200 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:max-w-none sm:px-3 sm:text-[13px]"
-				title={actionStatus === 'error' ? actionError : undefined}
-				aria-label={
-					actionStatus === 'success'
-						? 'Coupon claimed'
-						: actionStatus === 'error'
-							? actionError ?? 'Coupon action failed'
-							: actionLabel
-				}
-			>
-				{actionStatus === 'loading' ? (
-					<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-				) : actionStatus === 'success' ? (
-					<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
-				) : actionStatus === 'error' ? (
-					<AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.4} aria-hidden />
-				) : (
-					actionLabel
-				)}
-			</button>
+			{usesOwnedStatusCapsule ? (
+				<span
+					className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/40 bg-transparent shadow-sm ring-1 ring-emerald-500/15 backdrop-blur-sm dark:border-emerald-400/45 dark:ring-emerald-400/20"
+					aria-label={claimActionAriaLabel}
+				>
+					<Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400" strokeWidth={2.4} aria-hidden />
+				</span>
+			) : usesPosClaimGiftButton && actionStatus === 'success' ? (
+				<span
+					className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-2.5 py-1.5"
+					aria-label={claimActionAriaLabel}
+				>
+					<Check className="h-4 w-4 text-white" strokeWidth={2.4} aria-hidden />
+				</span>
+			) : (
+				<button
+					type="button"
+					disabled={actionDisabled}
+					onClick={(e) => {
+						e.stopPropagation()
+						onAction?.()
+					}}
+					className={
+						usesPosClaimGiftButton
+							? 'inline-flex items-center justify-center rounded-full px-2.5 py-1.5 transition-opacity active:scale-95 disabled:cursor-not-allowed disabled:opacity-55'
+							: 'font-manrope flex h-8 min-w-[4.25rem] max-w-[5.75rem] shrink-0 items-center justify-center gap-1 rounded-full bg-white px-2.5 text-[11px] font-semibold leading-tight text-[#1562f0] shadow-sm transition-all duration-200 hover:bg-[#f2f2f7] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:max-w-none sm:px-3 sm:text-[13px]'
+					}
+					style={usesPosClaimGiftButton ? { background: POS_CLAIM_GRADIENT } : undefined}
+					title={actionStatus === 'error' ? actionError : undefined}
+					aria-label={claimActionAriaLabel}
+				>
+					{usesPosClaimGiftButton ? (
+						actionStatus === 'loading' ? (
+							<Loader2 className="h-4 w-4 animate-spin text-white" aria-hidden />
+						) : actionStatus === 'error' ? (
+							<AlertTriangle className="h-4 w-4 text-white" strokeWidth={2.4} aria-hidden />
+						) : (
+							<Gift className="h-4 w-4 text-white" strokeWidth={2} aria-hidden />
+						)
+					) : actionStatus === 'loading' ? (
+						<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+					) : actionStatus === 'success' ? (
+						<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+					) : actionStatus === 'error' ? (
+						<AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.4} aria-hidden />
+					) : (
+						actionLabel
+					)}
+				</button>
+			)}
 		</div>
 	) : null
 
@@ -504,9 +566,9 @@ export function ActiveCouponTicketItem({
 							<p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
 								{row.title}
 							</p>
-							<p className="mt-0.5 truncate text-sm font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
-								{row.subtitle}
-							</p>
+							{renderSubtitleWithBaseScan(
+								'text-sm text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]'
+							)}
 							{showCardAddress && row.cardAddress ? (
 								<CouponCardAddressCapsule address={row.cardAddress} />
 							) : null}
@@ -533,16 +595,11 @@ export function ActiveCouponTicketItem({
 						{title}
 					</p>
 				) : null}
-				{subtitle ? (
-					<p
-						className={`truncate font-manrope text-sm font-semibold text-[#595c5e] dark:text-slate-400 ${
-							title ? 'mt-0.5' : ''
-						}`}
-					>
-						{subtitle}
-					</p>
-				) : null}
-				{showExpiryPill ? <div className={title || subtitle ? 'mt-2' : ''}>{renderExpiryPill('external')}</div> : null}
+				{renderSubtitleWithBaseScan(
+					'text-sm text-[#595c5e] dark:text-slate-400',
+					title ? 'mt-0.5' : ''
+				)}
+				{showExpiryPill ? <div className={title || subtitle || showBaseScanNftLink ? 'mt-2' : ''}>{renderExpiryPill('external')}</div> : null}
 			</div>
 		</div>
 	)

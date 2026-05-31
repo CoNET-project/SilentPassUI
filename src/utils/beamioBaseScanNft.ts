@@ -7,27 +7,41 @@ export const BEAMIO_BASESCAN_NFT_EXPLORER = 'https://basescan.org/nft' as const
 export const ISSUED_NFT_TOKEN_ID_MIN = 100_000_000_000n
 
 /** Decimal tokenId for BaseScan `/nft/{card}/{tokenId}` (avoid Number() precision loss). */
-export function normalizeIssuedNftTokenIdForBaseScan(
-	issuedTokenId: string | number | undefined
+export function normalizeNftTokenIdForBaseScan(
+	tokenId: string | number | undefined
 ): string | null {
-	const raw = String(issuedTokenId ?? '')
+	const raw = String(tokenId ?? '')
 		.trim()
 		.replace(/,/g, '')
 	if (!/^\d+$/.test(raw)) return null
 	try {
-		if (BigInt(raw) < ISSUED_NFT_TOKEN_ID_MIN) return null
+		BigInt(raw)
 	} catch {
 		return null
 	}
 	return raw
 }
 
-export function beamioBaseScanNftUrl(
-	cardAddress: string | undefined,
+/** Issued coupon/catalog series only (`tokenId >= 100000000000`). */
+export function normalizeIssuedNftTokenIdForBaseScan(
 	issuedTokenId: string | number | undefined
 ): string | null {
-	const tid = normalizeIssuedNftTokenIdForBaseScan(issuedTokenId)
+	const tid = normalizeNftTokenIdForBaseScan(issuedTokenId)
 	if (!tid) return null
+	try {
+		if (BigInt(tid) < ISSUED_NFT_TOKEN_ID_MIN) return null
+	} catch {
+		return null
+	}
+	return tid
+}
+
+export function beamioBaseScanNftUrlForToken(
+	cardAddress: string | undefined,
+	tokenId: string | number | undefined
+): string | null {
+	const tid = normalizeNftTokenIdForBaseScan(tokenId)
+	if (tid == null) return null
 	const card = cardAddress?.trim() ?? ''
 	if (!card || !/^0x[a-fA-F0-9]{40}$/i.test(card)) return null
 	try {
@@ -38,8 +52,30 @@ export function beamioBaseScanNftUrl(
 	}
 }
 
+export function beamioBaseScanNftLabelForToken(tokenId: string | number | undefined): string {
+	const tid = normalizeNftTokenIdForBaseScan(tokenId)
+	if (!tid) return 'NFT'
+	return `NFT #${tid}`
+}
+
+/** ERC-1155 points balance token on Beamio program cards. */
+export const BEAMIO_POINTS_ERC1155_TOKEN_ID = '0' as const
+
+export function beamioBaseScanPointsNftUrl(cardAddress: string | undefined): string | null {
+	return beamioBaseScanNftUrlForToken(cardAddress, BEAMIO_POINTS_ERC1155_TOKEN_ID)
+}
+
+export function beamioBaseScanNftUrl(
+	cardAddress: string | undefined,
+	issuedTokenId: string | number | undefined
+): string | null {
+	const tid = normalizeIssuedNftTokenIdForBaseScan(issuedTokenId)
+	if (!tid) return null
+	return beamioBaseScanNftUrlForToken(cardAddress, tid)
+}
+
 export function beamioBaseScanNftLabel(issuedTokenId: string | number | undefined): string {
 	const tid = normalizeIssuedNftTokenIdForBaseScan(issuedTokenId)
 	if (!tid) return 'NFT'
-	return `NFT #${tid}`
+	return beamioBaseScanNftLabelForToken(tid)
 }

@@ -20,7 +20,6 @@ import {
 	Flame,
 	Banknote,
 	PackageOpen,
-	ArrowLeft,
 	ShoppingBag,
 	UtensilsCrossed,
 	ShoppingCart,
@@ -67,8 +66,8 @@ import {
 	parseDiscoverPrimaryCategoryId,
 	type DiscoverCategoryTab,
 } from "@/utils/discoverMerchantCategory"
+import { BeamioCircularBackButton } from "@/components/BeamioCircularBackButton"
 import { mapActiveCouponRow, ActiveCouponTicketItem, type ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
-import BeamioBaseScanNftCapsule from "@/components/BeamioBaseScanNftCapsule"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
@@ -546,8 +545,13 @@ function DiscoverMerchantCouponOfferRow({
 	const isAlreadyClaimed = claimEligibility === 'already_claimed'
 	const canClaim =
 		claimEligibility === 'claimable' || claimEligibility === 'unknown'
-	const actionLabel = isAlreadyClaimed ? 'Already claimed' : 'Claim'
 	const claimDisabled = isAlreadyClaimed || !canClaim || claimStatus !== 'idle'
+	const ticketActionStatus: DiscoverCouponClaimButtonStatus =
+		claimStatus !== 'idle'
+			? claimStatus
+			: isAlreadyClaimed
+				? 'success'
+				: 'idle'
 	return (
 		<div className="space-y-1.5">
 			<ActiveCouponTicketItem
@@ -555,8 +559,8 @@ function DiscoverMerchantCouponOfferRow({
 				punchBgClassName="bg-white dark:bg-slate-900"
 				metadataBelowBackgroundImage
 				showActionButton={showClaimButton}
-				actionLabel={actionLabel}
-				actionStatus={claimStatus}
+				actionLabel="Claim"
+				actionStatus={ticketActionStatus}
 				actionError={claimError}
 				disabled={claimDisabled}
 				onAction={canClaim && !isAlreadyClaimed ? onClaim : undefined}
@@ -566,17 +570,11 @@ function DiscoverMerchantCouponOfferRow({
 						: `Claim coupon ${row.coupon.title}`
 				}
 			/>
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
-				{row.supplySummary ? (
-					<p className="line-clamp-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-						{row.supplySummary}
-					</p>
-				) : null}
-				<BeamioBaseScanNftCapsule
-					cardAddress={row.coupon.cardAddress}
-					tokenId={row.coupon.tokenId}
-				/>
-			</div>
+			{row.supplySummary ? (
+				<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+					{row.supplySummary}
+				</p>
+			) : null}
 		</div>
 	)
 }
@@ -2054,14 +2052,7 @@ function DiscoverMerchantDetailFullScreen({
 						className="absolute left-0 right-0 z-20 flex items-start justify-between px-4"
 						style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
 					>
-						<button
-							type="button"
-							onClick={onClose}
-							className="flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-lg ring-1 ring-black/5 active:scale-95 dark:bg-white/90"
-							aria-label="Back"
-						>
-							<ArrowLeft className="h-5 w-5" strokeWidth={2} />
-						</button>
+						<BeamioCircularBackButton onClick={onClose} />
 						<button
 							type="button"
 							onClick={() => setFavorited((v) => !v)}
@@ -2667,15 +2658,8 @@ export default function Market() {
 				className="absolute left-0 right-0 z-50 flex items-center justify-between px-5"
 				style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
 			>
-				<button
-					type="button"
-					onClick={closeCardDetail}
-					className="w-12 h-12 rounded-full bg-white/90 dark:bg-slate-900/70 shadow-[0_10px_24px_rgba(0,0,0,0.12)] ring-1 ring-black/5 dark:ring-white/10 flex items-center justify-center text-slate-600 dark:text-slate-200 active:scale-95 transition-transform"
-					aria-label="Back"
-				>
-					<ArrowLeft className="w-5 h-5" />
-				</button>
-				<div className="w-12 h-12" aria-hidden />
+				<BeamioCircularBackButton onClick={closeCardDetail} />
+				<div className="h-9 w-9 shrink-0" aria-hidden />
 			</div>
 			<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 				{overlayMode === "cardItem" && isMember && myAssets != null ? (

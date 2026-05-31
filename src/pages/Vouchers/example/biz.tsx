@@ -14451,11 +14451,11 @@ const handleYoutubeProductionVideoImport = useCallback(
       return;
     }
     setCardIssuanceProductionEditorError('');
-    productionVideoUploadAbortRef.current?.abort();
+    revokeProductionVideoDraft();
+
     const abortController = new AbortController();
     productionVideoUploadAbortRef.current = abortController;
 
-    revokeProductionVideoDraft();
     setCardIssuanceProductionImageUploading(true);
     setProductionVideoUploadProgress(0);
     setProductionVideoProcessingMessage('Checking YouTube video…');

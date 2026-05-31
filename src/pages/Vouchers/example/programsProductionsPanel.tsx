@@ -395,8 +395,18 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     if (!editorOpen) {
       setEditingCategoryId(null);
       setEditingCategoryLabel('');
+      setYoutubeImportUrl('');
     }
   }, [editorOpen]);
+
+  useEffect(() => {
+    if (
+      productionImage.trim() &&
+      isProductionBackgroundYoutubeMedia({ url: productionImage, mime: productionImageMime })
+    ) {
+      setYoutubeImportUrl('');
+    }
+  }, [productionImage, productionImageMime]);
 
   const cancelCategoryEdit = useCallback(() => {
     if (editingCategoryId) {
@@ -1133,6 +1143,20 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                           placeholder="https://www.youtube.com/watch?v=…"
                                           value={youtubeImportUrl}
                                           onChange={(e) => setYoutubeImportUrl(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key !== 'Enter') return;
+                                            e.preventDefault();
+                                            const url = youtubeImportUrl.trim();
+                                            if (
+                                              !url ||
+                                              !onImportYoutubeProductionVideo ||
+                                              productionBackgroundUploadLocked ||
+                                              !isYoutubeProductionVideoUrl(url)
+                                            ) {
+                                              return;
+                                            }
+                                            void onImportYoutubeProductionVideo(url);
+                                          }}
                                           disabled={productionBackgroundUploadLocked}
                                           className={`min-h-10 flex-1 rounded-xl border border-[#e5e9eb] bg-[#f8fafb] px-3 text-xs font-medium text-[#2c2f31] placeholder:text-[#abadaf] disabled:opacity-60 ${bizFocusRingClass}`}
                                         />

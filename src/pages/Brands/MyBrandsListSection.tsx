@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { CreditCard, ExternalLink } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
 import baseIcon from '@/components/assets/base-logo.png'
 import {
@@ -210,15 +211,21 @@ export function MyBrandListEntries({
 				)
 			})}
 			{allCoupons.map((ownedCoupon) => (
-				<ActiveCouponTicketItem
-					key={ownedCoupon.id}
-					row={ownedCoupon}
-					actionLabel="Owned"
-					disabled
-					metadataBelowBackgroundImage
-					aria-label={`Owned coupon ${ownedCoupon.title}`}
-					punchBgClassName={punchBgClassName}
-				/>
+				<div key={ownedCoupon.id} className="space-y-1.5">
+					<ActiveCouponTicketItem
+						row={ownedCoupon}
+						actionLabel="Owned"
+						disabled
+						metadataBelowBackgroundImage
+						aria-label={`Owned coupon ${ownedCoupon.title}`}
+						punchBgClassName={punchBgClassName}
+					/>
+					<BeamioBaseScanNftCapsule
+						cardAddress={ownedCoupon.cardAddress}
+						tokenId={ownedCoupon.tokenId}
+						className="ml-1"
+					/>
+				</div>
 			))}
 		</>
 	)

@@ -68,6 +68,7 @@ import {
 	type DiscoverCategoryTab,
 } from "@/utils/discoverMerchantCategory"
 import { mapActiveCouponRow, ActiveCouponTicketItem, type ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
+import BeamioBaseScanNftCapsule from "@/components/BeamioBaseScanNftCapsule"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
 import CardDetail from "./CardDetail"
@@ -547,7 +548,6 @@ function DiscoverMerchantCouponOfferRow({
 		claimEligibility === 'claimable' || claimEligibility === 'unknown'
 	const actionLabel = isAlreadyClaimed ? 'Already claimed' : 'Claim'
 	const claimDisabled = isAlreadyClaimed || !canClaim || claimStatus !== 'idle'
-
 	return (
 		<div className="space-y-1.5">
 			<ActiveCouponTicketItem
@@ -566,11 +566,17 @@ function DiscoverMerchantCouponOfferRow({
 						: `Claim coupon ${row.coupon.title}`
 				}
 			/>
-			{row.supplySummary ? (
-				<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-					{row.supplySummary}
-				</p>
-			) : null}
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
+				{row.supplySummary ? (
+					<p className="line-clamp-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+						{row.supplySummary}
+					</p>
+				) : null}
+				<BeamioBaseScanNftCapsule
+					cardAddress={row.coupon.cardAddress}
+					tokenId={row.coupon.tokenId}
+				/>
+			</div>
 		</div>
 	)
 }

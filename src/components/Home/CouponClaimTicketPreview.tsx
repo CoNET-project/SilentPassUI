@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import {
 	ActiveCouponTicketItem,
 	buildFallbackActiveCouponListItem,
@@ -49,15 +50,18 @@ export default function CouponClaimTicketPreview({
 	}
 
 	return (
-		<ActiveCouponTicketItem
-			row={row}
-			actionLabel="Open claim"
-			disabled
-			actionStatus={submitting ? 'loading' : 'idle'}
-			aria-label={`Open claim coupon ${row.title}`}
-			punchBgClassName="bg-white dark:bg-slate-900"
-			metadataBelowBackgroundImage
-			showActionButton={false}
-		/>
+		<div className="space-y-1.5">
+			<ActiveCouponTicketItem
+				row={row}
+				actionLabel="Open claim"
+				disabled
+				actionStatus={submitting ? 'loading' : 'idle'}
+				aria-label={`Open claim coupon ${row.title}`}
+				punchBgClassName="bg-white dark:bg-slate-900"
+				metadataBelowBackgroundImage
+				showActionButton={false}
+			/>
+			<BeamioBaseScanNftCapsule cardAddress={row.cardAddress} tokenId={row.tokenId} className="ml-1" />
+		</div>
 	)
 }

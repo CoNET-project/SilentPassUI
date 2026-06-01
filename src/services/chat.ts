@@ -8,6 +8,7 @@ import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/const
 import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
+import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 
 
 type GenerateKeyArg = Parameters<typeof generateKey>[0]
@@ -381,9 +382,9 @@ function logGossipListingBlockHeight(
   const blockHeight = extractGossipListingBlockHeight(payload)
   if (!blockHeight) return
   const nodePart = nodeHint ? ` node=${nodeHint}` : ''
-  console.log(
-    `[Gossip] Listing ${kind} blockHeight=${blockHeight}${nodePart} streamActive=${!rootSignal?.aborted}`
-  )
+  const line = `[Gossip] Listing ${kind} blockHeight=${blockHeight}${nodePart} streamActive=${!rootSignal?.aborted}`
+  console.log(line)
+  publishNativePwaLog('info', line)
 }
 
 interface SSEErrorType {

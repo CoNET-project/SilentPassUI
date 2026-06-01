@@ -7,6 +7,7 @@ declare global {
       getEmbeddedPwaPendingVersion?: () => string
       applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (state: Record<string, unknown>) => void
+      debugLog?: (level: string, message: string) => void
     }
     CashTreesAndroid?: {
       getNfcStatus?: () => string
@@ -16,6 +17,7 @@ declare global {
       scanRecoveryQr?: (requestId: string) => void
       openURL?: (url: string) => void
       publishAppState?: (json: string) => void
+      debugLog?: (level: string, message: string) => void
     }
   }
 }

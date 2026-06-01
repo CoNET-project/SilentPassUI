@@ -10,6 +10,7 @@ import SplashScreen from '@/components/SplashScreen'
 import { EmbeddedPwaUpdateBanner } from '@/components/EmbeddedPwaUpdateBanner'
 import BeamioOnboardingModal from '@/pages/Home/LoadingPage'
 import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
+import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import {
 	consumerAppNeedsWalletRecover,
 	hasCompletedBeamioAccount,
@@ -43,7 +44,10 @@ export default function AppEntryGate() {
 	}
 
 	useEffect(() => {
-		console.log('[PWA] AppEntryGate mounted', { nativeShell: isCashTreesNativeWebView() })
+		const nativeShell = isCashTreesNativeWebView()
+		const msg = `[PWA] AppEntryGate mounted nativeShell=${nativeShell}`
+		console.log(msg, { nativeShell })
+		publishNativePwaLog('info', msg)
 		void init()
 	}, [])
 

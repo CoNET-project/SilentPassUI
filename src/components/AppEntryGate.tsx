@@ -7,6 +7,7 @@ import { Outlet } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { checkStorage } from '@/services/beamio'
 import SplashScreen from '@/components/SplashScreen'
+import { EmbeddedPwaUpdateBanner } from '@/components/EmbeddedPwaUpdateBanner'
 import BeamioOnboardingModal from '@/pages/Home/LoadingPage'
 import {
 	consumerAppNeedsWalletRecover,
@@ -46,6 +47,7 @@ export default function AppEntryGate() {
 
 	return (
 		<div className="flex min-h-0 h-full w-full flex-col">
+			<EmbeddedPwaUpdateBanner />
 			{splashVisible && <SplashScreen />}
 			{showBeamioOnboardingModal ? (
 				<BeamioOnboardingModal

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Copy, Gift, Loader2, RefreshCw } from 'lucide-react'
 import { ethers } from 'ethers'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
+import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
 import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
 import {
@@ -360,6 +361,8 @@ export function ActiveCouponTicketItem({
 	punchBgClassName = 'bg-[#f9f9fe]',
 	showCardAddress = false,
 	showActionButton = true,
+	/** My Brands owned coupon — show Open Claim Distribution share icon beside NFT capsule. */
+	showOpenClaimShareButton = false,
 	/** biz Coupon preview parity: banner ticket shows icon only; title/subtitle/expiry below. */
 	metadataBelowBackgroundImage = false,
 }: {
@@ -373,6 +376,7 @@ export function ActiveCouponTicketItem({
 	punchBgClassName?: string
 	showCardAddress?: boolean
 	showActionButton?: boolean
+	showOpenClaimShareButton?: boolean
 	metadataBelowBackgroundImage?: boolean
 }) {
 	const expires = formatCouponExpiryPill(row.validBeforeSec)
@@ -396,10 +400,10 @@ export function ActiveCouponTicketItem({
 	const showBaseScanNftLink = beamioBaseScanNftUrl(row.cardAddress, row.tokenId) != null
 
 	const renderSubtitleWithBaseScan = (subtitleClassName: string, marginTopClass = 'mt-0.5') => {
-		if (!subtitle && !showBaseScanNftLink) return null
+		if (!subtitle && !showBaseScanNftLink && !showOpenClaimShareButton) return null
 		return (
 			<div
-				className={`inline-flex max-w-full items-center gap-2 ${marginTopClass}`.trim()}
+				className={`inline-flex max-w-full flex-wrap items-center gap-2 ${marginTopClass}`.trim()}
 			>
 				{subtitle ? (
 					<p className={`min-w-0 truncate font-manrope font-semibold ${subtitleClassName}`}>
@@ -410,6 +414,14 @@ export function ActiveCouponTicketItem({
 					<BeamioBaseScanNftCapsule
 						cardAddress={row.cardAddress}
 						tokenId={row.tokenId}
+						className="shrink-0"
+					/>
+				) : null}
+				{showOpenClaimShareButton && row.couponId ? (
+					<CouponOpenClaimShareButton
+						cardAddress={row.cardAddress}
+						couponId={row.couponId}
+						couponTitle={row.title}
 						className="shrink-0"
 					/>
 				) : null}
@@ -599,7 +611,11 @@ export function ActiveCouponTicketItem({
 					'text-sm text-[#595c5e] dark:text-slate-400',
 					title ? 'mt-0.5' : ''
 				)}
-				{showExpiryPill ? <div className={title || subtitle || showBaseScanNftLink ? 'mt-2' : ''}>{renderExpiryPill('external')}</div> : null}
+				{showExpiryPill ? (
+					<div className={title || subtitle || showBaseScanNftLink || showOpenClaimShareButton ? 'mt-2' : ''}>
+						{renderExpiryPill('external')}
+					</div>
+				) : null}
 			</div>
 		</div>
 	)

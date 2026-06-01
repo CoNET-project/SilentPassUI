@@ -10,7 +10,7 @@ import {
 } from '@/utils/beamioBaseScanNft'
 
 /**
- * BaseScan ERC-1155 NFT capsule.
+ * Blockscout ERC-1155 NFT capsule (`/token/{card}/instance/{tokenId}`).
  * - `issuedOnly` (default): coupon/catalog (`tokenId >= 100000000000`)
  * - `pointsBalance`: program card points token `#0`
  */
@@ -42,8 +42,8 @@ export default function BeamioBaseScanNftCapsule({
 				openExternalUrl(url)
 			}}
 			className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-white px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-[#f8fafc] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 ${className}`}
-			aria-label={`View ${label} on BaseScan`}
-			title="View NFT on BaseScan"
+			aria-label={`View ${label} on Blockscout`}
+			title="View NFT on Blockscout"
 		>
 			{label}
 			<ExternalLink className="h-3 w-3 opacity-70" strokeWidth={2.2} aria-hidden />

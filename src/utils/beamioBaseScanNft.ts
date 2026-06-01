@@ -1,12 +1,18 @@
 import { ethers } from 'ethers'
 
-/** Base ERC-1155 NFT explorer (issued coupon / catalog series tokenId). */
-export const BEAMIO_BASESCAN_NFT_EXPLORER = 'https://basescan.org/nft' as const
+/**
+ * Base ERC-1155 NFT explorer (issued coupon / catalog series tokenId).
+ * @see https://base.blockscout.com/token/{contract}/instance/{tokenId}
+ */
+export const BEAMIO_BLOCKSCOUT_NFT_EXPLORER = 'https://base.blockscout.com/token' as const
+
+/** @deprecated Use BEAMIO_BLOCKSCOUT_NFT_EXPLORER */
+export const BEAMIO_BASESCAN_NFT_EXPLORER = BEAMIO_BLOCKSCOUT_NFT_EXPLORER
 
 /** On-chain issued NFT tokenIds (not points #0 or membership #1–99). */
 export const ISSUED_NFT_TOKEN_ID_MIN = 100_000_000_000n
 
-/** Decimal tokenId for BaseScan `/nft/{card}/{tokenId}` (avoid Number() precision loss). */
+/** Decimal tokenId for Blockscout `/token/{card}/instance/{tokenId}` (avoid Number() precision loss). */
 export function normalizeNftTokenIdForBaseScan(
 	tokenId: string | number | undefined
 ): string | null {
@@ -46,7 +52,7 @@ export function beamioBaseScanNftUrlForToken(
 	if (!card || !/^0x[a-fA-F0-9]{40}$/i.test(card)) return null
 	try {
 		const cardNorm = ethers.getAddress(card)
-		return `${BEAMIO_BASESCAN_NFT_EXPLORER}/${cardNorm}/${tid}`
+		return `${BEAMIO_BLOCKSCOUT_NFT_EXPLORER}/${cardNorm}/instance/${tid}`
 	} catch {
 		return null
 	}

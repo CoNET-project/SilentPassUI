@@ -558,6 +558,7 @@ function DiscoverMerchantCouponOfferRow({
 				row={row.coupon}
 				punchBgClassName="bg-white dark:bg-slate-900"
 				metadataBelowBackgroundImage
+				showOpenClaimShareButton
 				showActionButton={showClaimButton}
 				actionLabel="Claim"
 				actionStatus={ticketActionStatus}

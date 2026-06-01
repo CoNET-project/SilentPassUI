@@ -218,6 +218,7 @@ export function MyBrandListEntries({
 					row={ownedCoupon}
 					actionLabel="Owned"
 					disabled
+					showOpenClaimShareButton
 					metadataBelowBackgroundImage
 					aria-label={`Owned coupon ${ownedCoupon.title}`}
 					punchBgClassName={punchBgClassName}

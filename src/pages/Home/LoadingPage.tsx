@@ -836,7 +836,9 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		return () => { cancelled = true }
 	}, [redeemFromUrl, isInitialEntry])
 
-	const initialSplashOnly = isInitialEntry && !redeemFromUrl
+	const initialSplashOnly = isInitialEntry && !redeemFromUrl && !settingsOpen
+	const showInitialEntrySplash = isInitialEntry && !settingsOpen
+	const onboardingSubScreenOpen = isInitialEntry && !!settingsOpen
 
 	return (
 		<div
@@ -844,19 +846,21 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 				'pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]',
 				initialSplashOnly
 					? 'fixed inset-0 z-0 flex min-h-0 flex-col overflow-hidden bg-[#1562f0] pt-0 pb-0'
+					: onboardingSubScreenOpen
+						? 'fixed inset-0 z-0 flex min-h-0 flex-col overflow-hidden bg-white dark:bg-slate-900 pt-0 pb-0'
 					: 'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
 			].join(' ')}
 		>
-			<div className={initialSplashOnly ? 'flex min-h-0 flex-1 flex-col' : ''}>
+			<div className={initialSplashOnly || onboardingSubScreenOpen ? 'flex min-h-0 flex-1 flex-col' : ''}>
 				{
-					isInitialEntry ? (redeemFromUrl ? <RedeemSplashStep onActivate={() => setSettingsOpen("CreateUsernamePinScreen")} redeemDetails={redeemDetails} redeemDetailsLoading={redeemDetailsLoading} /> : (
+					showInitialEntrySplash ? (redeemFromUrl ? <RedeemSplashStep onActivate={() => setSettingsOpen("CreateUsernamePinScreen")} redeemDetails={redeemDetails} redeemDetailsLoading={redeemDetailsLoading} /> : (
 						<InitialEntrySplash
 							appVersion={APP_VERSION}
 							isStandalone={isStandalone}
 							onGetStarted={() => setSettingsOpen('CreateUsernamePinScreen')}
 							onRestoreWallet={() => setSettingsOpen('RestoreWalletScreen')}
 						/>
-					)) : (hasCheckedUrl && !redeemFromUrl) ? null : (
+					)) : !isInitialEntry ? ((hasCheckedUrl && !redeemFromUrl) ? null : (
 					<>
 						{/* Card Active 成功画面：redeem 完成后显示 */}
 						{redeemFromUrl && !redeeming && redeemResult?.success ? (
@@ -1066,7 +1070,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 							)}
 						</div>
 						)}
-					</>)
+					</>)) : null
 				}
 				
 			</div>
@@ -1076,9 +1080,8 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 						className="
 							fixed inset-0 z-[9998]
 							bg-white dark:bg-slate-900
-							flex flex-col
+							flex flex-col min-h-0
 						"
-						style={{ height: "var(--beamio-native-viewport-height, 100dvh)" }}
 						
 						initial={{ x: "100%" }}
 						animate={{ x: 0 }}

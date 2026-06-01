@@ -16,6 +16,9 @@ declare global {
       scanQr?: (requestId: string) => void
       scanRecoveryQr?: (requestId: string) => void
       openURL?: (url: string) => void
+      getEmbeddedPwaVersion?: () => string
+      getEmbeddedPwaPendingVersion?: () => string
+      applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (json: string) => void
       debugLog?: (level: string, message: string) => void
     }

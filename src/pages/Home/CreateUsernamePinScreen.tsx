@@ -172,9 +172,8 @@ const CreateUsernamePinScreen = forwardRef<
 		const syncViewportHeight = () => {
 			const nextHeight = Math.round(window.visualViewport?.height ?? window.innerHeight)
 			setViewportHeight(nextHeight)
-			if (nextHeight > 0) {
-				document.documentElement.style.setProperty("--beamio-native-viewport-height", `${nextHeight}px`)
-			}
+			// Do not write --beamio-native-viewport-height here: LoadingPage onboarding
+			// overlay uses that variable for height; shrinking it exposes App shell (#000414).
 		}
 
 		syncViewportHeight()
@@ -457,7 +456,7 @@ const CreateUsernamePinScreen = forwardRef<
 			<VerraFloatingNavChrome onBack={() => onRequestClose?.()} tone="create" />
 			<main
 				lang="en"
-				className={`flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-[max(1rem,env(safe-area-inset-bottom))] [@media(max-height:700px)]:pb-[max(0.875rem,env(safe-area-inset-bottom))] [@media(max-height:640px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))] [@media(max-height:560px)]:px-5 [@media(max-height:560px)]:pb-[max(0.625rem,env(safe-area-inset-bottom))] ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
+				className={`flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 pb-[max(1rem,env(safe-area-inset-bottom))] [@media(max-height:700px)]:pb-[max(0.875rem,env(safe-area-inset-bottom))] [@media(max-height:640px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))] [@media(max-height:560px)]:px-5 [@media(max-height:560px)]:pb-[max(0.625rem,env(safe-area-inset-bottom))] ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
 				style={{ paddingTop: topInsetPadding }}
 			>
 				<div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col">

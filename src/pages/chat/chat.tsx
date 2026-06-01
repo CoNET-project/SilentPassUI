@@ -1571,6 +1571,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 							<button
 								ref={plusBtnRef}
 								type="button"
+								tabIndex={-1}
 								onClick={() => setPlusOpen(true)}
 								className={[
 								"h-9 w-9 rounded-full",
@@ -1602,6 +1603,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									placeholder={hasRoute ? "iMessage…" : "No route – message may not be delivered"}
 									readOnly={!hasRoute}
 									rows={1}
+									tabIndex={1}
+									inputMode="text"
+									enterKeyHint="send"
+									autoComplete="off"
+									autoCorrect="on"
+									spellCheck
 									className={[
 										"w-full resize-none bg-transparent outline-none",
 										"px-4 py-3",
@@ -1619,6 +1626,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									{/* ✅ 按钮放进输入框内部，最右对齐 */}
 									<button
 									type="button"
+									tabIndex={-1}
 									onClick={canSend ? send : undefined}
 									disabled={false}
 									onMouseDown={() => {

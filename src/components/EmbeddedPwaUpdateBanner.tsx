@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import {
-  isIosEmbeddedPwaOtaSupported,
+  isEmbeddedPwaOtaSupported,
   readEmbeddedPwaPendingVersion,
   readEmbeddedPwaVersion,
   requestEmbeddedPwaUpdateApply,
@@ -9,7 +9,7 @@ import {
 } from '../utils/cashTreesEmbeddedPwaUpdate'
 
 /**
- * Optional iOS-only banner. Renders nothing on Android / browser.
+ * Optional native-shell banner (iOS / Android embedded PWA). Renders nothing in browser.
  * Mount once near the app shell root (e.g. AppEntryGate).
  */
 export function EmbeddedPwaUpdateBanner(): React.ReactElement | null {
@@ -19,7 +19,7 @@ export function EmbeddedPwaUpdateBanner(): React.ReactElement | null {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!isIosEmbeddedPwaOtaSupported()) return undefined
+    if (!isEmbeddedPwaOtaSupported()) return undefined
 
     setCurrentVer(readEmbeddedPwaVersion())
     const initialPending = readEmbeddedPwaPendingVersion()
@@ -54,7 +54,7 @@ export function EmbeddedPwaUpdateBanner(): React.ReactElement | null {
     requestEmbeddedPwaUpdateApply()
   }, [applying, pendingVer])
 
-  if (!isIosEmbeddedPwaOtaSupported() || !pendingVer) return null
+  if (!isEmbeddedPwaOtaSupported() || !pendingVer) return null
 
   return (
     <div

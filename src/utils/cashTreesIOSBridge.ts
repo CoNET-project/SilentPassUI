@@ -14,6 +14,8 @@ declare global {
       cancelPhysicalCardBind?: () => void
       scanQr?: (requestId: string) => void
       scanRecoveryQr?: (requestId: string) => void
+      openURL?: (url: string) => void
+      publishAppState?: (json: string) => void
     }
   }
 }

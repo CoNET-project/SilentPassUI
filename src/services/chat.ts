@@ -355,6 +355,37 @@ interface TimeoutConfig {
   retryDelay: number            // 重连延迟
 }
 
+/** SI liveness handshake / listing push expose `epoch` (= CoNET block height). */
+function extractGossipListingBlockHeight(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+  const row = payload as Record<string, unknown>
+  const epoch = row.epoch
+  if (epoch == null) return null
+  if (typeof epoch === 'number' && Number.isFinite(epoch)) return String(Math.trunc(epoch))
+  if (typeof epoch === 'string' && epoch.trim()) return epoch.trim()
+  return null
+}
+
+function isGossipListingLivenessFrame(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false
+  const row = payload as Record<string, unknown>
+  return typeof row.ipaddress === 'string' || 'nodeWallets' in row
+}
+
+function logGossipListingBlockHeight(
+  kind: 'handshake' | 'listing',
+  payload: unknown,
+  rootSignal?: AbortSignal,
+  nodeHint?: string
+) {
+  const blockHeight = extractGossipListingBlockHeight(payload)
+  if (!blockHeight) return
+  const nodePart = nodeHint ? ` node=${nodeHint}` : ''
+  console.log(
+    `[Gossip] Listing ${kind} blockHeight=${blockHeight}${nodePart} streamActive=${!rootSignal?.aborted}`
+  )
+}
+
 interface SSEErrorType {
   type: 'connect_timeout' | 'idle_timeout' | 'read_timeout' | 'network_error' | 'unknown'
   message: string
@@ -503,7 +534,11 @@ function startGossip(
             if (payload) {
                 if (first) {
                     first = false;
-                    try { console.log("[SSE] Handshake:", JSON.parse(payload)); } catch {}
+                    try {
+                      const parsed = JSON.parse(payload)
+                      console.log("[SSE] Handshake:", parsed)
+                      logGossipListingBlockHeight('handshake', parsed, rootSignal, node.domain)
+                    } catch {}
                 } else {
                     callback?.("", payload);
                 }
@@ -697,8 +732,17 @@ export const connectToGossipNode = async (
             if (!_data) return;
 
             try {
-                // ... (解析逻辑保持不变) ...
                 const data = JSON.parse(_data);
+                if (isGossipListingLivenessFrame(data) && extractGossipListingBlockHeight(data)) {
+                    const nodeHint =
+                      typeof data.nodeDomain === 'string'
+                        ? data.nodeDomain
+                        : typeof data.nodeIpAddr === 'string'
+                          ? data.nodeIpAddr
+                          : undefined
+                    logGossipListingBlockHeight('listing', data, rootSignal, nodeHint)
+                    return
+                }
                 if (data?.data && /^-----BEGIN PGP MESSAGE-----/i.test(data.data)) {
                     const armoredMessage = data.data;
                     const msg = await readMessage({ armoredMessage });

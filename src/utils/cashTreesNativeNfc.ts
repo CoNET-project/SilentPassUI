@@ -9,11 +9,14 @@ export type CashTreesNativeNfcBridge = {
 	scanQr?: (payload: { requestId?: string }) => void
 	/** iOS WK bridge — object payload. Android `@JavascriptInterface` accepts a plain URL string (use `openExternalUrl`). */
 	openURL?: (payload: { url: string }) => void
+	/** PWA → Native 通用状态（Footer 角标、App 图标 badge 等） */
+	publishAppState?: (state: Record<string, unknown>) => void
 }
 
-/** Android bridge variant: `openURL(url: string)` */
+/** Android bridge variant: `openURL(url: string)` + `publishAppState(json: string)` */
 type CashTreesAndroidOpenUrlBridge = CashTreesNativeNfcBridge & {
 	openURL?: ((url: string) => void) | ((payload: { url: string }) => void)
+	publishAppState?: (json: string) => void
 }
 
 type CashTreesNativeWindow = Window & {

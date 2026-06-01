@@ -42,6 +42,7 @@ import {
 	myBrandCardListSignature,
 	type MyBrandCardFeedDetailsMap,
 } from '@/utils/myBrandsFeedState'
+import { syncNativeFooterChatBadge } from '@/utils/cashTreesNativeAppStateBridge'
 
 export type { MyBrandCardFeedDetailsMap }
 
@@ -645,6 +646,12 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const seenMsgRef = useRef<Set<string>>(new Set())
 	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
 	const [messageCount, setMessageCount] = useState(0)
+
+	/** Footer `/chat` 冒泡 → Native App 图标角标（WebView 壳内；浏览器 no-op）。 */
+	useEffect(() => {
+		syncNativeFooterChatBadge(messageCount)
+	}, [messageCount])
+
 	const [scanData, setScanData] = useState('')
 	const [scanIntent, setScanIntent] = useState<'' | 'voucherPay' | 'payBill' | 'payByNfc'>('')
 	const [voucherPayAmount, setVoucherPayAmount] = useState('')

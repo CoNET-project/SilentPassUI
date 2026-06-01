@@ -3,16 +3,6 @@
  * do not call these helpers unless `isIosEmbeddedPwaOtaSupported()` is true.
  */
 
-declare global {
-  interface Window {
-    CashTreesIOS?: {
-      getEmbeddedPwaVersion?: () => string
-      getEmbeddedPwaPendingVersion?: () => string
-      applyEmbeddedPwaUpdate?: () => void
-    }
-  }
-}
-
 export type EmbeddedPwaUpdateDetail = {
   currentVer: string
   pendingVer: string

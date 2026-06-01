@@ -3,6 +3,9 @@ declare global {
     CashTreesIOS?: {
       scanQr?: (payload: { requestId: string }) => void
       scanRecoveryQr?: (payload: { requestId: string }) => void
+      getEmbeddedPwaVersion?: () => string
+      getEmbeddedPwaPendingVersion?: () => string
+      applyEmbeddedPwaUpdate?: () => void
     }
     CashTreesAndroid?: {
       getNfcStatus?: () => string

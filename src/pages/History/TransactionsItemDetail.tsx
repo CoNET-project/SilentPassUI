@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useMemo, useCallback, useRef, useState, useEffect } from "react"
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
 import {
@@ -592,7 +593,7 @@ export function TransactionsItemDetail({
 								<div className="flex items-center gap-3 min-w-0">
 									<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
 									{fromBeamio?.username !== "Unknow" ? (
-										<img
+										<IpfsImg
 										src={userImg}
 										className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
 										/>
@@ -698,7 +699,7 @@ export function TransactionsItemDetail({
 									"
 									aria-label="Open gift"
 								>
-									<img
+									<IpfsImg
 										src={giftEnvelope}
 										className="
 											w-12   /* w-14 -> w-12 */

@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useMemo, useEffect } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import {
@@ -194,7 +195,7 @@ const GenesisCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => 
     onClick={onClick}
     className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-gradient-to-br from-gray-900 to-black border border-gray-800 shadow-[0_0_30px_rgba(0,112,243,0.15)] shrink-0"
   >
-    <img
+    <IpfsImg
       src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop"
       alt="Carbon texture"
       className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
@@ -240,7 +241,7 @@ const FuelPackCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () =>
     onClick={onClick}
     className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-gradient-to-br from-gray-900 to-[#1a1005] border border-gray-800 shadow-[0_0_30px_rgba(249,115,22,0.15)] shrink-0"
   >
-    <img
+    <IpfsImg
       src="https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=800&auto=format&fit=crop"
       alt="Server texture"
       className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
@@ -293,7 +294,7 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
       <div className="absolute inset-0 overflow-y-auto pb-48">
         {/* Hero Image Area */}
         <div className="relative h-[380px] w-full bg-gradient-to-b from-gray-900 to-[#0a0a0c]">
-          <img
+          <IpfsImg
             src={genesisItem.image}
             alt="Detail background"
             className="w-full h-full object-cover opacity-30 mix-blend-screen"
@@ -410,7 +411,7 @@ const FuelPackDetailModal = ({ item, onClose, onBuy }: { item: ViewingItem; onCl
       <div className="absolute inset-0 overflow-y-auto pb-48">
         {/* Hero Image Area */}
         <div className="relative h-[380px] w-full bg-gradient-to-b from-gray-900 to-[#0a0a0c]">
-          <img
+          <IpfsImg
             src={fuelItem.image}
             alt="Detail background"
             className="w-full h-full object-cover opacity-30 mix-blend-screen"
@@ -544,7 +545,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
         <button className="w-9 h-9 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-sm hover:bg-white/30 transition-colors"><Share size={18} /></button>
       </div>
       <div className="relative w-full h-[45vh] shrink-0 bg-gray-900">
-        {heroItem.image && <img src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
+        {heroItem.image && <IpfsImg src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
         <div className={`absolute inset-0 bg-gradient-to-t ${heroItem.overlay || "from-black/80 via-transparent to-black/30"}`} />
         <div className="absolute bottom-0 left-0 w-full p-6 text-white"><span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-3 inline-block bg-[#1562f0]">{heroItem.type || "Voucher"}</span><h1 className="text-4xl font-bold leading-tight mb-2 shadow-sm">{heroItem.title}</h1><p className="text-lg text-white/90 font-medium">{heroItem.merchant}</p></div>
       </div>
@@ -837,7 +838,7 @@ export default function Market() {
 						onKeyDown={(e) => e.key === "Enter" && openDetail(item)}
 						className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300 shrink-0"
 					>
-						<img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.title} />
+						<IpfsImg src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.title} />
 						<div className={`absolute inset-0 bg-gradient-to-t ${item.overlay}`} />
 						<div className="absolute inset-0 p-6 flex flex-col justify-between">
 							<div>

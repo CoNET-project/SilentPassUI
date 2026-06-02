@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useAutoFocus } from "@/components/input/useAutoFocus"
 import { XCircle } from "lucide-react"
@@ -413,7 +414,7 @@ const AmountCurrency = ({ setAmount, amount, showMax, readOnly, needBalance=true
 									min-w-[16px] min-h-[16px]
 								"
 							>
-								<img
+								<IpfsImg
 									src={usdcIcon}
 									alt="USDC"
 									className="
@@ -423,7 +424,7 @@ const AmountCurrency = ({ setAmount, amount, showMax, readOnly, needBalance=true
 										object-contain
 									"
 								/>
-								<img
+								<IpfsImg
 									src={baseIcon}
 									alt="Base"
 									className="

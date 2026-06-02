@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 // @/components/CryptoAssetsCard.tsx
 import React, { useEffect, useState } from 'react'
 import './CryptoAssetsCard.scss'
@@ -82,10 +83,10 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
         <div className="cryptoAssetLeft">
           {/* 组合 USDC + Base icon */}
 			<div className="cryptoAssetIcon">
-				<img src={usdcIcon} alt="USDC" className="usdcIcon" />
+				<IpfsImg src={usdcIcon} alt="USDC" className="usdcIcon" />
 
 				{/* Base 徽章：叠加在右下角 */}
-				<img src={baseIcon} alt="Base" className="baseBadge" />
+				<IpfsImg src={baseIcon} alt="Base" className="baseBadge" />
 			</div>
 
           <div className="cryptoAssetText">

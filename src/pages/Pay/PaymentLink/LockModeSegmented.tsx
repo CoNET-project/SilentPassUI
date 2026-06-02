@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useMemo, useState } from 'react'
 import { motion, useAnimation } from 'framer-motion'
 import type { Transition } from 'framer-motion'
@@ -112,12 +113,12 @@ function LockModeSwitch({
               `}
               aria-hidden={!isUSDC}
             >
-              <img
+              <IpfsImg
                 src={usdcIcon}
                 alt="USDC"
                 className="w-6 h-6 rounded-full object-contain"
               />
-              <img
+              <IpfsImg
                 src={baseIcon}
                 alt="Base"
                 className="

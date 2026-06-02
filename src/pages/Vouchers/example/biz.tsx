@@ -9,6 +9,7 @@ import React, {
   type SetStateAction,
 } from 'react';
 import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
+import { IpfsImg } from '@/components/IpfsImg';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import html2canvas from 'html2canvas';
@@ -33,6 +34,7 @@ import {
 import Chat from '@/pages/chat/chat';
 import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
+import { CATALOG_VIDEO_OG_BELOW_BANNER_ROW_UNPADDED_CLASSNAME } from '@/utils/catalogProductionVideoOg';
 import BeamioMeMainScreen from '@/components/Setting';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
@@ -118,8 +120,11 @@ import {
   probeProductionBackgroundVideoDurationSec,
   productionBackgroundVideoNeedsClipEdit,
   standardizeProductionBackgroundVideo,
+  type ProductionVideoFrameThumbnail,
 } from '@/utils/productionBackgroundVideo';
+import type { CatalogBannerPreviewSnapshot } from '@/utils/couponStyleBannerFillCanvas';
 import { validateProductionBackgroundYoutubeVideo } from '@/utils/validateProductionBackgroundYoutubeVideo';
+import { resolveCatalogProductionSharePresentation } from '@/utils/catalogProductionVideoOg';
 import { isYoutubeProductionVideoUrl, PRODUCTION_BACKGROUND_YOUTUBE_MIME, isProductionBackgroundYoutubeMedia, youtubeThumbnailUrlFromProductionUrl } from '@/utils/youtubeProductionVideo';
 import {
   ipfsFragmentUrlFromHash,
@@ -151,7 +156,8 @@ import {
   DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS,
   catalogGlobalCategoryLabel,
   catalogProductionBaseScanNftLabel,
-  catalogProductionBaseScanNftUrl,
+  catalogProductionNftExplorerLink,
+  catalogProductionNftExplorerTitle,
   productionItemCategoryLabel,
   buildCardIssuanceProductionMetadataPayload,
   buildPackageProductionDraftRowFromBase,
@@ -162,9 +168,12 @@ import {
   computeProductionIssueTotalN,
   finalizeServiceCategoriesByLabelHash,
   flattenIssuedProductionSeriesMetadata,
+  inferProductionImageMimeFromUrl,
   isCatalogPackageDealRow,
   mergeCatalogProductionHydrationRows,
+  isCatalogPriceOptionalCategory,
   isSalesManagementCatalogCategory,
+  isShareLinkCatalogCategory,
   parseProductionIssueLeftN,
   resolveProductionRequiresRedeemCode,
   makeCatalogPackageDealDraftId,
@@ -195,6 +204,7 @@ import {
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
+import { CatalogVideoOgOpenClaimSharePreview } from './businessCatalogListItemPreview';
 import {
   CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT,
   CARD_PREVIEW_LOGO_ICON_TIER_CLASSES,
@@ -633,8 +643,8 @@ const UsdcBaseCompositeIcon = ({ size = 16, badgeSize }: { size?: number; badgeS
   const bs = badgeSize ?? Math.round(size * 0.625);
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size, minWidth: size, minHeight: size }}>
-      <img src={USDC_ICON_URL} alt="USDC" className="block w-full h-full rounded-full object-contain" />
-      <img src={BASE_ICON_URL} alt="Base" className="block absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white" style={{ width: bs, height: bs }} />
+      <IpfsImg src={USDC_ICON_URL} alt="USDC" className="block w-full h-full rounded-full object-contain" />
+      <IpfsImg src={BASE_ICON_URL} alt="Base" className="block absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white" style={{ width: bs, height: bs }} />
     </div>
   );
 };
@@ -644,8 +654,8 @@ const CaddBaseCompositeIcon = ({ size = 16, badgeSize }: { size?: number; badgeS
   const bs = badgeSize ?? Math.round(size * 0.625);
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size, minWidth: size, minHeight: size }}>
-      <img src={CADD_ICON_URL} alt="CADD" className="block w-full h-full rounded-full object-contain" />
-      <img src={BASE_ICON_URL} alt="Base" className="block absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white" style={{ width: bs, height: bs }} />
+      <IpfsImg src={CADD_ICON_URL} alt="CADD" className="block w-full h-full rounded-full object-contain" />
+      <IpfsImg src={BASE_ICON_URL} alt="Base" className="block absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white" style={{ width: bs, height: bs }} />
     </div>
   );
 };
@@ -684,7 +694,7 @@ const BeamioCapsule = ({
   if (item && (displayName(item) || beamioTag)) {
     return (
       <div className={`inline-flex max-w-full min-w-0 items-center gap-3 rounded-full pl-1 pr-4 py-1.5 ${className}`}>
-        <img
+        <IpfsImg
           src={item.image ? item.image : getImg(tag)}
           alt={beamioTag ?? ''}
           className={`h-9 w-9 shrink-0 rounded-full border object-cover ${isLight ? 'border-[#abadaf]/50' : 'border-white/20'}`}
@@ -1691,7 +1701,7 @@ function MembersLoyaltyNoAaEditorial(props: { onSetUpFirstProgram: () => void })
         <div className="relative mb-8 aspect-square w-full max-w-sm">
           <div className="absolute inset-0 rounded-full bg-[#0051d1]/5 opacity-50 blur-3xl" aria-hidden />
           <div className="absolute inset-0 z-10 overflow-hidden rounded-xl border border-white/50 bg-white/70 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
-            <img
+            <IpfsImg
               src={communityIllustrationUrl}
               alt="Minimal community illustration"
               className="h-full w-full object-cover opacity-90 mix-blend-multiply"
@@ -2699,7 +2709,7 @@ function WalletsTreasuryShell(props: {
                 <div className="absolute left-4 top-5 h-12 w-12 rounded-2xl bg-[#1562f0]/80 blur-[1px]" />
                 <div className="absolute bottom-4 right-4 h-14 w-14 rounded-full bg-white/80 shadow-lg" />
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <img src={merchantAvatarSrc} alt="" className="h-14 w-14 rounded-2xl object-cover shadow-md" />
+                  <IpfsImg src={merchantAvatarSrc} alt="" className="h-14 w-14 rounded-2xl object-cover shadow-md" />
                 </div>
               </div>
             </div>
@@ -3570,9 +3580,9 @@ function WalletSendUsdcSheet(props: {
                   <div className="relative shrink-0">
                     <div className="size-14 overflow-hidden rounded-full bg-[#eef1f3]">
                       {selected.image ? (
-                        <img src={selected.image} alt="" className="size-full object-cover" />
+                        <IpfsImg src={selected.image} alt="" className="size-full object-cover" />
                       ) : (
-                        <img src={getImg(selected.username)} alt="" className="size-full object-cover" />
+                        <IpfsImg src={getImg(selected.username)} alt="" className="size-full object-cover" />
                       )}
                     </div>
                   </div>
@@ -3621,9 +3631,9 @@ function WalletSendUsdcSheet(props: {
                           >
                             <div className="size-11 shrink-0 overflow-hidden rounded-full bg-[#d9dde0]">
                               {row.image ? (
-                                <img src={row.image} alt="" className="size-full object-cover" />
+                                <IpfsImg src={row.image} alt="" className="size-full object-cover" />
                               ) : (
-                                <img src={getImg(row.username)} alt="" className="size-full object-cover" />
+                                <IpfsImg src={getImg(row.username)} alt="" className="size-full object-cover" />
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -3883,7 +3893,7 @@ function MessagesDayZeroShell(props: {
             <MessageSquarePlus className="size-4 shrink-0" strokeWidth={2.2} aria-hidden />
             New message
           </button>
-          <img
+          <IpfsImg
             src={headerAvatarSrc}
             alt=""
             className="h-10 w-10 shrink-0 rounded-full border-2 border-[#0051d1]/20 object-cover"
@@ -3916,7 +3926,7 @@ function MessagesDayZeroShell(props: {
             <div className="flex cursor-default items-center gap-4 rounded-lg border-l-4 border-[#0051d1] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
               <div className="relative shrink-0">
                 <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#0051d1]/10">
-                  <img src={VERRA_CONCIERGE_INBOX_IMG} alt="" className="h-full w-full object-cover" />
+                  <IpfsImg src={VERRA_CONCIERGE_INBOX_IMG} alt="" className="h-full w-full object-cover" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 rounded-full bg-white p-0.5 shadow-sm">
                   <BadgeCheck className="size-3.5 text-[#0051d1]" strokeWidth={2.4} aria-hidden />
@@ -4174,7 +4184,7 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
           <div className="mb-8 flex flex-col items-center">
             <div className="mb-4 rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] p-1">
               <div className="size-24 overflow-hidden rounded-full border-4 border-white bg-[#dfe3e6]">
-                <img src={avatarSrc} alt="" className="size-full object-cover" />
+                <IpfsImg src={avatarSrc} alt="" className="size-full object-cover" />
               </div>
             </div>
             <h3 id="member-profile-drawer-title" className="text-center font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
@@ -8386,6 +8396,8 @@ type CardIssuanceCouponRow = {
   issued: boolean;
   /** On-chain issued NFT tokenId after successful createIssuedNft (coupon series). */
   issuedTokenId?: string;
+  /** From issued-series API — Blockscout instance link needs minted count above zero. */
+  issuedNftMintedCount?: string;
 };
 
 function makeCardIssuanceCouponRow(
@@ -8402,7 +8414,8 @@ function makeCardIssuanceCouponRow(
   issued = false,
   issuedTokenId?: string,
   couponId?: string,
-  issueLeft?: string
+  issueLeft?: string,
+  issuedNftMintedCount?: string
 ): CardIssuanceCouponRow {
   return {
     id: couponId?.trim() || `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -8419,6 +8432,7 @@ function makeCardIssuanceCouponRow(
     issued,
     ...(issuedTokenId?.trim() ? { issuedTokenId: issuedTokenId.trim() } : {}),
     ...(issueLeft != null && String(issueLeft).trim() ? { issueLeft: String(issueLeft).trim() } : {}),
+    ...(issuedNftMintedCount?.trim() ? { issuedNftMintedCount: issuedNftMintedCount.trim() } : {}),
   };
 }
 
@@ -8593,12 +8607,6 @@ function buildProgramsCatalogOpenClaimShareUrl(
   return buildProgramsCouponOpenClaimShareUrl(cardAddress, productionId, cacheBustV);
 }
 
-function buildProgramsCatalogShareHeadline(merchantName: string): string {
-  const name = merchantName.trim() || 'Beamio';
-  const trimmed = name.length > 28 ? `${name.slice(0, 27).trim()}…` : name;
-  return `Get a ${trimmed} Catalog Item`;
-}
-
 function buildProgramsCouponRedeemShareUrl(
   cardAddress: string,
   redeemCode: string,
@@ -8667,7 +8675,7 @@ function ProgramsCouponBannerImage({ src }: { src: string }) {
         style={{ backgroundImage: `url("${src}")` }}
         aria-hidden
       />
-      <img
+      <IpfsImg
         src={src}
         alt=""
         className="absolute left-1/2 top-0 z-[1] h-full w-auto max-w-none -translate-x-1/2 object-contain"
@@ -8701,8 +8709,6 @@ function ProgramsCouponShareCardPreview({
   const showExpiryPill = programsCouponShareShouldShowExpiryPill(expiresLabel);
   const expiryUrgent = programsCouponShareExpiryUsesUrgentVariant(expiresLabel);
   const ExpiryIcon = expiryUrgent ? Clock : Calendar;
-  const noBannerWithQr = !hasBanner && Boolean(shareUrl);
-  const ticketMinHeightClass = noBannerWithQr ? 'min-h-[10rem]' : 'min-h-[7.5rem]';
   const innerExpiryClass = expiryUrgent
     ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
     : 'border border-white/25 bg-slate-950/65 text-white shadow-sm shadow-black/20 backdrop-blur-md';
@@ -8723,7 +8729,7 @@ function ProgramsCouponShareCardPreview({
 
   const ticketShell = (
     <div className="relative w-full rounded-[1.75rem]">
-      <div className={`relative ${ticketMinHeightClass} rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]`}>
+      <div className="relative min-h-[7.5rem] rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.75rem]" aria-hidden>
           {hasBanner ? (
             <ProgramsCouponBannerImage src={backgroundImage} />
@@ -8752,14 +8758,13 @@ function ProgramsCouponShareCardPreview({
 
         <div
           className={[
-            `relative z-[2] flex ${ticketMinHeightClass} items-center gap-3 px-8 py-6 sm:gap-4 sm:px-9 sm:py-7`,
-            !hasBanner && shareUrl ? 'pr-[6.75rem] sm:pr-[7.25rem]' : 'pr-8 sm:pr-9',
+            'relative z-[2] flex min-h-[7.5rem] items-center gap-3 px-8 py-6 sm:gap-4 sm:px-9 sm:py-7',
             !hasBanner && iconUrl ? 'pl-9 sm:pl-10' : '',
           ].join(' ')}
         >
           {!hasBanner && iconUrl ? (
             <div className="relative z-[2] flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
-              <img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+              <IpfsImg src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
             </div>
           ) : null}
 
@@ -8774,16 +8779,16 @@ function ProgramsCouponShareCardPreview({
               {showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
             </div>
           ) : null}
-
-          {!hasBanner && shareUrl ? (
-            <div className="absolute right-7 top-1/2 z-[2] -translate-y-1/2 rounded-2xl bg-white p-2 shadow-sm sm:right-8">
-              <QRCodeCanvas value={shareUrl} size={96} level="M" includeMargin={false} />
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
   );
+
+  const shareQrBelowTicket = shareUrl ? (
+    <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
+      <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin={false} />
+    </div>
+  ) : null;
 
   return (
     <div className="relative w-full text-left" role="region" aria-label="Coupon preview">
@@ -8798,13 +8803,11 @@ function ProgramsCouponShareCardPreview({
           </p>
           <p className="mt-1.5 break-words font-manrope text-sm font-semibold leading-[2.25] text-[#595c5e]">{subtitle}</p>
           {showExpiryPill ? <div className="mt-2">{renderExpiryPill('external')}</div> : null}
-          {shareUrl ? (
-            <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
-              <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin={false} />
-            </div>
-          ) : null}
+          {shareQrBelowTicket}
         </div>
-      ) : null}
+      ) : (
+        shareQrBelowTicket
+      )}
     </div>
   );
 }
@@ -8813,34 +8816,61 @@ function ProgramsCatalogShareCardPreview({
   production,
   shareUrl,
   merchantName,
+  publisherBeamioTag,
   serviceCategories = DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS,
+  moneyPrefix = '$',
   punchBgClassName = 'bg-white',
 }: {
   production: CardIssuanceProductionRow;
   shareUrl: string;
   merchantName: string;
+  publisherBeamioTag?: string;
   serviceCategories?: ProductionServiceCategoryOption[];
+  moneyPrefix?: string;
   punchBgClassName?: string;
 }) {
-  const shareHeadline = buildProgramsCatalogShareHeadline(merchantName);
   const globalCategoryLabel = catalogGlobalCategoryLabel(production.globalCategory);
   const itemCategoryLabel = productionItemCategoryLabel(production.itemCategory, serviceCategories);
   const categoryLine = [globalCategoryLabel, itemCategoryLabel].filter(Boolean).join(' · ');
-  const title = production.name.trim() || 'Catalog Item';
-  const subtitle = production.subtitle.trim();
-  const backgroundColorHex = tierBackgroundColorForPayload(production.backgroundColor) ?? '#ea580c';
-  const backgroundImage = production.productionImage.trim();
-  const hasBanner = backgroundImage.length > 0;
-  const youtubeBanner = isProductionBackgroundYoutubeMedia({
-    url: backgroundImage,
-    mime: production.productionImageMime,
+  const sharePresentation = resolveCatalogProductionSharePresentation({
+    row: production,
+    publisherBeamioTag,
   });
-  const youtubeBannerThumb = youtubeBanner ? youtubeThumbnailUrlFromProductionUrl(backgroundImage) : null;
+  const isVideoOg = sharePresentation.layout === 'videoOg';
+  const displayPrice = catalogProductionDisplayPrice(production);
+  const showCatalogPrice =
+    displayPrice != null && !isCatalogPriceOptionalCategory(production.globalCategory);
+
+  if (isVideoOg) {
+    return (
+      <div className="relative w-full text-left" role="region" aria-label="Catalog item preview">
+        <CatalogVideoOgOpenClaimSharePreview
+          row={production}
+          publisherBeamioTag={publisherBeamioTag}
+          itemCategoryLabel={itemCategoryLabel}
+          displayPrice={displayPrice}
+          moneyPrefix={moneyPrefix}
+          showPrice={showCatalogPrice}
+          shareDistributionTicket
+        />
+        {shareUrl ? (
+          <div className="mx-auto mt-4 flex w-full max-w-[32rem] shrink-0 justify-center">
+            <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
+              <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  const title = sharePresentation.title;
+  const subtitle = sharePresentation.subtitle;
+  const publisherLine = sharePresentation.publisherLine;
+  const backgroundColorHex = tierBackgroundColorForPayload(production.backgroundColor) ?? '#ea580c';
+  const backgroundImage = sharePresentation.bannerImageUrl;
+  const hasBanner = backgroundImage.length > 0;
   const iconUrl =
     !hasBanner && productionIconLooksLikeImageUrl(production.icon) ? production.icon.trim() : '';
-  const noBannerWithQr = !hasBanner && Boolean(shareUrl);
-  const ticketMinHeightClass = noBannerWithQr ? 'min-h-[10rem]' : 'min-h-[7.5rem]';
-
   const renderCatalogMetadata = (tone: 'inner' | 'external') => {
     const categoryClass =
       tone === 'inner'
@@ -8848,34 +8878,36 @@ function ProgramsCatalogShareCardPreview({
         : 'text-[10px] font-bold uppercase tracking-wider text-[#ea580c]';
     const titleClass =
       tone === 'inner'
-        ? 'break-words font-manrope text-[1.05rem] font-extrabold leading-snug tracking-tight text-white drop-shadow-sm sm:text-lg'
-        : 'break-words font-manrope text-[1.05rem] font-extrabold leading-[2.1] tracking-tight text-[#2c2f31] sm:text-lg';
+        ? 'line-clamp-2 break-words font-manrope text-[1.05rem] font-extrabold leading-snug tracking-tight text-white drop-shadow-sm sm:text-lg'
+        : 'line-clamp-2 break-words font-manrope text-[1.05rem] font-extrabold leading-snug tracking-tight text-[#2c2f31] sm:text-lg';
     const subtitleClass =
       tone === 'inner'
-        ? 'break-words font-manrope text-sm font-semibold leading-snug text-white/90 drop-shadow-sm'
-        : 'mt-1.5 break-words font-manrope text-sm font-semibold leading-[2.25] text-[#595c5e]';
+        ? 'line-clamp-3 break-words font-manrope text-sm font-semibold leading-snug text-white/90 drop-shadow-sm'
+        : 'mt-0.5 line-clamp-4 break-words font-manrope text-sm font-semibold leading-snug text-[#595c5e]';
+    const publisherClass =
+      tone === 'inner'
+        ? 'mt-1 truncate text-xs font-medium text-white/85 drop-shadow-sm'
+        : 'mt-1 truncate text-xs font-medium text-[#595c5e]';
 
     return (
-      <>
+      <div className="min-w-0 overflow-hidden">
         {categoryLine ? <p className={categoryClass}>{categoryLine}</p> : null}
         <p className={`${titleClass} ${categoryLine ? 'mt-1' : ''}`}>{title}</p>
         {subtitle ? (
-          <p className={`${subtitleClass} ${categoryLine ? 'mt-1' : 'mt-1.5'}`}>{subtitle}</p>
+          <p className={`${subtitleClass} ${categoryLine ? 'mt-1' : 'mt-1.5'}`} title={subtitle}>
+            {subtitle}
+          </p>
         ) : null}
-      </>
+      </div>
     );
   };
 
   const ticketShell = (
     <div className="relative w-full rounded-[1.75rem]">
-      <div className={`relative ${ticketMinHeightClass} rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]`}>
+      <div className="relative min-h-[7.5rem] max-h-[10rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.75rem]" aria-hidden>
           {hasBanner ? (
-            youtubeBanner && youtubeBannerThumb ? (
-              <img src={youtubeBannerThumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            ) : (
-              <ProgramsCouponBannerImage src={backgroundImage} />
-            )
+            <ProgramsCouponBannerImage src={backgroundImage} />
           ) : (
             <>
               <div className="absolute inset-0" style={{ backgroundColor: backgroundColorHex }} />
@@ -8900,26 +8932,20 @@ function ProgramsCatalogShareCardPreview({
         />
         <div
           className={[
-            `relative z-[2] flex ${ticketMinHeightClass} items-center gap-3 px-8 py-6 sm:gap-4 sm:px-9 sm:py-7`,
+            'relative z-[2] flex min-h-[7.5rem] max-h-[10rem] items-center gap-3 px-8 py-6 sm:gap-4 sm:px-9 sm:py-7',
             hasBanner ? 'justify-end' : '',
-            noBannerWithQr ? 'justify-between' : '',
           ]
             .filter(Boolean)
             .join(' ')}
         >
           {!hasBanner ? (
-            <div className="min-w-0 flex-1">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {iconUrl ? (
-                <div className="mb-2 h-11 w-11 overflow-hidden rounded-xl ring-1 ring-white/20">
-                  <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+                <div className="mb-2 h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/20">
+                  <IpfsImg src={iconUrl} alt="" className="h-full w-full object-cover" />
                 </div>
               ) : null}
-              {renderCatalogMetadata('inner')}
-            </div>
-          ) : null}
-          {noBannerWithQr ? (
-            <div className="shrink-0 rounded-2xl border border-white/20 bg-white p-2.5 shadow-sm ring-1 ring-black/[0.08]">
-              <QRCodeCanvas value={shareUrl} size={88} level="M" includeMargin={false} />
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{renderCatalogMetadata('inner')}</div>
             </div>
           ) : null}
         </div>
@@ -8927,22 +8953,23 @@ function ProgramsCatalogShareCardPreview({
     </div>
   );
 
+  const shareQrBelowTicket = shareUrl ? (
+    <div className="mx-auto mt-4 flex w-fit shrink-0 justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
+      <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin />
+    </div>
+  ) : null;
+
   return (
     <div className="relative w-full text-left" role="region" aria-label="Catalog item preview">
-      <p className="mb-3 text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg">
-        {shareHeadline}
-      </p>
       {ticketShell}
       {hasBanner ? (
         <div className="mt-3 w-full py-2">
           {renderCatalogMetadata('external')}
-          {shareUrl ? (
-            <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
-              <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin={false} />
-            </div>
-          ) : null}
+          {shareQrBelowTicket}
         </div>
-      ) : null}
+      ) : (
+        shareQrBelowTicket
+      )}
     </div>
   );
 }
@@ -10158,10 +10185,17 @@ const [cardIssuanceProductionIssueTotal, setCardIssuanceProductionIssueTotal] = 
 const [cardIssuanceProductionIssueTotalUnlimited, setCardIssuanceProductionIssueTotalUnlimited] =
   useState(false);
 useEffect(() => {
-  if (!isSalesManagementCatalogCategory(cardIssuanceProductionGlobalCategory)) return;
-  setCardIssuanceProductionIssueTotalUnlimited(true);
-  setCardIssuanceProductionPackageDeals([]);
-  setCardIssuanceProductionPrice('0');
+  if (isSalesManagementCatalogCategory(cardIssuanceProductionGlobalCategory)) {
+    setCardIssuanceProductionIssueTotalUnlimited(true);
+    setCardIssuanceProductionPackageDeals([]);
+    setCardIssuanceProductionPrice('0');
+    return;
+  }
+  if (isShareLinkCatalogCategory(cardIssuanceProductionGlobalCategory)) {
+    setCardIssuanceProductionIssueTotalUnlimited(true);
+    setCardIssuanceProductionPackageDeals([]);
+    setCardIssuanceProductionPrice('0');
+  }
 }, [cardIssuanceProductionGlobalCategory]);
 const [cardIssuanceProductionDescription, setCardIssuanceProductionDescription] = useState('');
 const [cardIssuanceProductionIcon, setCardIssuanceProductionIcon] = useState('');
@@ -10179,6 +10213,11 @@ const [productionVideoClipEditRequired, setProductionVideoClipEditRequired] = us
 const [productionVideoTrimConfirmed, setProductionVideoTrimConfirmed] = useState(false);
 const [productionVideoUploadProgress, setProductionVideoUploadProgress] = useState(0);
 const [productionVideoProcessingMessage, setProductionVideoProcessingMessage] = useState('');
+/** True only while ffmpeg/WebCodecs is converting — IPFS upload does not hold this. */
+const [productionVideoFfmpegBusy, setProductionVideoFfmpegBusy] = useState(false);
+/** Live Business Catalogs preview banner after width/height snapshot capture. */
+const [catalogBannerPreviewSnapshot, setCatalogBannerPreviewSnapshot] =
+  useState<CatalogBannerPreviewSnapshot | null>(null);
 const productionVideoDraftUrlRef = useRef('');
 const productionVideoUploadAbortRef = useRef<AbortController | null>(null);
 /** Last catalog item icon entered (upload/save) — prefills the next Add item form. */
@@ -10201,6 +10240,21 @@ const cardIssuanceEditingProductionRow = useMemo(
   [cardIssuanceProductions, cardIssuanceEditingProductionId]
 );
 const cardIssuanceProductionEditingIssued = Boolean(cardIssuanceEditingProductionRow?.issued);
+
+/** Add item: default Item Category to first chip; edit: keep valid selection only. */
+useEffect(() => {
+  if (!cardIssuanceProductionEditorOpen) return;
+  setCardIssuanceProductionItemCategory((prev) => {
+    const raw = cardIssuanceEditingProductionId
+      ? prev
+      : (cardIssuanceServiceCategories[0]?.id ?? prev);
+    return resolveProductionItemCategoryId(raw, cardIssuanceServiceCategories);
+  });
+}, [
+  cardIssuanceProductionEditorOpen,
+  cardIssuanceEditingProductionId,
+  cardIssuanceServiceCategories,
+]);
 
 const cardIssuanceEditingCouponRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null,
@@ -11111,6 +11165,11 @@ useEffect(() => {
             issueTotalFromChainRaw && /^\d+$/.test(issueTotalFromChainRaw) ? issueTotalFromChainRaw : '';
           const issueLeftFromChain =
             issueLeftFromChainRaw && /^\d+$/.test(issueLeftFromChainRaw) ? issueLeftFromChainRaw : '';
+          const mintedFromChainRaw = String(
+            (item as { issuedNftMintedCount?: string }).issuedNftMintedCount ?? ''
+          ).trim();
+          const mintedFromChain =
+            mintedFromChainRaw && /^\d+$/.test(mintedFromChainRaw) ? mintedFromChainRaw : '';
           const title =
             typeof mergedMeta.name === 'string' && mergedMeta.name.trim()
               ? mergedMeta.name
@@ -11137,7 +11196,8 @@ useEffect(() => {
             true,
             tokenId,
             idRaw || undefined,
-            issueLeftFromChain || undefined
+            issueLeftFromChain || undefined,
+            mintedFromChain || undefined
           );
         });
       }
@@ -11161,6 +11221,7 @@ useEffect(() => {
           issued: true,
           issuedTokenId: sRow.issuedTokenId ?? rows[idx].issuedTokenId,
           issueLeft: sRow.issueLeft ?? rows[idx].issueLeft,
+          issuedNftMintedCount: sRow.issuedNftMintedCount ?? rows[idx].issuedNftMintedCount,
         };
       }
     }
@@ -11277,9 +11338,14 @@ function hydrateCardIssuanceProductionRowFromShareMeta(
     icon: typeof production.icon === 'string' ? production.icon : '',
     backgroundColor: typeof production.backgroundColor === 'string' ? production.backgroundColor : '#ea580c',
     productionImage: typeof production.productionImage === 'string' ? production.productionImage : '',
-    ...(typeof production.productionImageMime === 'string' && production.productionImageMime.trim()
-      ? { productionImageMime: production.productionImageMime.trim() }
-      : {}),
+    ...(() => {
+      const image = typeof production.productionImage === 'string' ? production.productionImage : '';
+      const mime =
+        (typeof production.productionImageMime === 'string' && production.productionImageMime.trim()) ||
+        inferProductionImageMimeFromUrl(image) ||
+        '';
+      return mime ? { productionImageMime: mime } : {};
+    })(),
     ...(typeof production.productionImageStartSec === 'number' &&
     Number.isFinite(production.productionImageStartSec) &&
     production.productionImageStartSec > 0
@@ -11344,6 +11410,11 @@ useEffect(() => {
             issueTotalFromChainRaw && /^\d+$/.test(issueTotalFromChainRaw) ? issueTotalFromChainRaw : '';
           const issueLeftFromChain =
             issueLeftFromChainRaw && /^\d+$/.test(issueLeftFromChainRaw) ? issueLeftFromChainRaw : '';
+          const mintedFromChainRaw = String(
+            (item as { issuedNftMintedCount?: string }).issuedNftMintedCount ?? ''
+          ).trim();
+          const mintedFromChain =
+            mintedFromChainRaw && /^\d+$/.test(mintedFromChainRaw) ? mintedFromChainRaw : '';
           const title =
             typeof mergedMeta.name === 'string' && mergedMeta.name.trim()
               ? mergedMeta.name
@@ -11383,10 +11454,16 @@ useEffect(() => {
               typeof mergedMeta.backgroundColor === 'string' ? mergedMeta.backgroundColor : '#ea580c',
             productionImage:
               typeof mergedMeta.productionImage === 'string' ? mergedMeta.productionImage : '',
-            ...(typeof mergedMeta.productionImageMime === 'string' &&
-            mergedMeta.productionImageMime.trim()
-              ? { productionImageMime: mergedMeta.productionImageMime.trim() }
-              : {}),
+            ...(() => {
+              const image =
+                typeof mergedMeta.productionImage === 'string' ? mergedMeta.productionImage : '';
+              const mime =
+                (typeof mergedMeta.productionImageMime === 'string' &&
+                  mergedMeta.productionImageMime.trim()) ||
+                inferProductionImageMimeFromUrl(image) ||
+                '';
+              return mime ? { productionImageMime: mime } : {};
+            })(),
             ...(typeof mergedMeta.productionImageStartSec === 'number' &&
             Number.isFinite(mergedMeta.productionImageStartSec) &&
             mergedMeta.productionImageStartSec > 0
@@ -11400,6 +11477,7 @@ useEffect(() => {
             issued: true,
             issuedTokenId: tokenId,
             ...(issueLeftFromChain ? { issueLeft: issueLeftFromChain } : {}),
+            ...(mintedFromChain ? { issuedNftMintedCount: mintedFromChain } : {}),
           });
         });
       }
@@ -11439,6 +11517,7 @@ useEffect(() => {
           productionImageStartSec: row.productionImageStartSec ?? old.productionImageStartSec,
           issued: row.issued || old.issued,
           issuedTokenId: row.issuedTokenId ?? old.issuedTokenId,
+          issuedNftMintedCount: row.issuedNftMintedCount ?? old.issuedNftMintedCount,
           requiresRedeemCode: row.requiresRedeemCode || old.requiresRedeemCode,
         });
       }
@@ -12789,22 +12868,42 @@ const removeCardIssuanceCouponDraft = useCallback(async (couponId: string) => {
   }
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons]);
 
-const revokeProductionVideoDraft = useCallback(() => {
+/** After local standardize — preview + catalog frame picker use the clip (fast ffmpeg extract). */
+const adoptProductionVideoDraftStandardizedClip = useCallback((file: File) => {
+  if (productionVideoDraftUrlRef.current) {
+    URL.revokeObjectURL(productionVideoDraftUrlRef.current);
+  }
+  const url = URL.createObjectURL(file);
+  productionVideoDraftUrlRef.current = url;
+  setProductionVideoDraftUrl(url);
+  setProductionVideoDraftFile(file);
+  // Catalog videoOg banner uses `icon` when set — clear so preview shows encoded clip until user picks OG thumb.
+  setCardIssuanceProductionIcon('');
+  setCatalogBannerPreviewSnapshot(null);
+}, []);
+
+/** Drop preview blob URL only; keep `productionVideoDraftFile` for Pick icon from video. */
+const revokeProductionVideoDraftPreviewUrl = useCallback(() => {
   if (productionVideoDraftUrlRef.current) {
     URL.revokeObjectURL(productionVideoDraftUrlRef.current);
     productionVideoDraftUrlRef.current = '';
   }
-  setProductionVideoDraftFile(null);
   setProductionVideoDraftUrl('');
+}, []);
+
+const revokeProductionVideoDraft = useCallback(() => {
+  revokeProductionVideoDraftPreviewUrl();
+  setProductionVideoDraftFile(null);
   setProductionVideoSourceDurationSec(0);
   setProductionVideoStartSec(0);
   setProductionVideoClipEditRequired(false);
   setProductionVideoTrimConfirmed(false);
   setProductionVideoUploadProgress(0);
   setProductionVideoProcessingMessage('');
+  setCatalogBannerPreviewSnapshot(null);
   productionVideoUploadAbortRef.current?.abort();
   productionVideoUploadAbortRef.current = null;
-}, []);
+}, [revokeProductionVideoDraftPreviewUrl]);
 
 const resetCardIssuanceProductionEditorFields = useCallback(() => {
   setCardIssuanceProductionName('');
@@ -13099,6 +13198,7 @@ const runProductionVideoConvertAndUpload = useCallback(
 
     setCardIssuanceProductionEditorError('');
     setCardIssuanceProductionImageUploading(true);
+    setProductionVideoFfmpegBusy(true);
     setProductionVideoUploadProgress(0);
     setProductionVideoProcessingMessage('Preparing video…');
     try {
@@ -13143,6 +13243,9 @@ const runProductionVideoConvertAndUpload = useCallback(
       });
       if (abortController.signal.aborted) return { ok: false };
 
+      setProductionVideoFfmpegBusy(false);
+      adoptProductionVideoDraftStandardizedClip(standardized.file);
+
       const hash = await uploadMediaFileToIpfsChunked(
         p0,
         standardized.file,
@@ -13158,7 +13261,7 @@ const runProductionVideoConvertAndUpload = useCallback(
       setCardIssuanceProductionImage(imageUrl);
       setCardIssuanceProductionImageMime('video/mp4');
       setCardIssuanceProductionImageStartSec(0);
-      revokeProductionVideoDraft();
+      // Keep draft blob + standardized File for catalog preview picker (browser decode, no 2nd ffmpeg pass).
       return { ok: true, imageUrl, mime: 'video/mp4' };
     } catch (err: unknown) {
       if (abortController.signal.aborted) return { ok: false };
@@ -13171,10 +13274,11 @@ const runProductionVideoConvertAndUpload = useCallback(
         productionVideoUploadAbortRef.current = null;
       }
       setProductionVideoProcessingMessage('');
+      setProductionVideoFfmpegBusy(false);
       setCardIssuanceProductionImageUploading(false);
     }
   },
-  [profiles, productionVideoSourceDurationSec, revokeProductionVideoDraft]
+  [profiles, productionVideoSourceDurationSec, adoptProductionVideoDraftStandardizedClip, revokeProductionVideoDraftPreviewUrl]
 );
 
 const startProductionVideoUploadAfterTrim = useCallback(async () => {
@@ -13224,17 +13328,19 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     ? editingExistingRow?.globalCategory ?? DEFAULT_CATALOG_GLOBAL_CATEGORY
     : cardIssuanceProductionGlobalCategory;
   const salesManagementItem = isSalesManagementCatalogCategory(globalCategory);
+  const shareLinkItem = isShareLinkCatalogCategory(globalCategory);
+  const priceOptionalItem = isCatalogPriceOptionalCategory(globalCategory);
   const itemCategory = lockIssuedOnChainFields
     ? editingExistingRow?.itemCategory ?? DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS[0].id
     : cardIssuanceProductionItemCategory;
   const singleSessionPrice = lockIssuedOnChainFields
     ? (editingExistingRow?.singleSessionPrice ?? '0')
-    : salesManagementItem
+    : priceOptionalItem
       ? '0'
       : cardIssuanceProductionPrice.trim() || '0';
   const issueTotalUnlimited = lockIssuedOnChainFields
     ? editingExistingRow?.issueTotalUnlimited === true
-    : salesManagementItem
+    : salesManagementItem || shareLinkItem
       ? true
       : cardIssuanceProductionIssueTotalUnlimited;
   const issueTotal = lockIssuedOnChainFields
@@ -13254,7 +13360,7 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     setCardIssuanceProductionEditorError('Service name is required.');
     return;
   }
-  if (!lockIssuedOnChainFields && !salesManagementItem) {
+  if (!lockIssuedOnChainFields && !priceOptionalItem) {
     const chargeAmount = productionEffectiveChargeAmount({
       packageDealEnabled: false,
       singleSessionPrice,
@@ -13265,7 +13371,7 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
       return;
     }
   }
-  const packageDealsForSubmit = salesManagementItem ? [] : cardIssuanceProductionPackageDeals;
+  const packageDealsForSubmit = priceOptionalItem ? [] : cardIssuanceProductionPackageDeals;
   for (const deal of packageDealsForSubmit) {
     const packageErr = validateCatalogPackageDealDraft(deal);
     if (packageErr) {
@@ -13308,7 +13414,9 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
 
   const requiresRedeemCodeFinal = lockIssuedOnChainFields
     ? editingExistingRow?.requiresRedeemCode === true
-    : salesManagementItem;
+    : shareLinkItem
+      ? false
+      : salesManagementItem;
 
   const baseRow = makeCardIssuanceProductionRow({
     id: editingExistingRow?.id,
@@ -13393,7 +13501,14 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     redeemInitialBatch?: number;
   }> => {
     const issueTotalForRow = computeProductionIssueTotalN(row);
-    const metaProps = buildProductionIssuedNftMetaProps(row);
+    const catalogPublisherBeamioTag =
+      beamio?.accountName?.trim() ||
+      (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ||
+      (profiles?.[0] as { accountName?: string } | undefined)?.accountName ||
+      '';
+    const metaProps = buildProductionIssuedNftMetaProps(row, {
+      publisherBeamioTag: catalogPublisherBeamioTag,
+    });
     const nftData = encodeCreateIssuedNft(row.name.trim(), 0, 0, issueTotalForRow, 0, '0');
     const deadline = Math.floor(Date.now() / 1000) + 3600;
     const nonce = ethers.hexlify(ethers.randomBytes(32));
@@ -14397,6 +14512,51 @@ const handleCardIssuanceProductionIconPick: React.ChangeEventHandler<HTMLInputEl
   [profiles]
 );
 
+const handleSelectProductionIconFromVideoFrame = useCallback(
+  async (frame: ProductionVideoFrameThumbnail) => {
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceProductionEditorError(
+        'Profile not available for upload. Open Settings and ensure your wallet is ready.'
+      );
+      return;
+    }
+    setCardIssuanceProductionEditorError('');
+    /** Frame picker = catalog preview + OG icon; keep Business Catalogs banner in sync (see capture overlay). */
+    setCatalogBannerPreviewSnapshot({ dataUrl: frame.dataUrl, mode: 'width' });
+    setCardIssuanceProductionIcon(frame.dataUrl);
+    setCardIssuanceProductionIconUploading(true);
+    try {
+      const hash = await postToIPFS(p0, frame.dataUrl);
+      if (hash) {
+        const nextIcon = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+        setCardIssuanceProductionIcon(nextIcon);
+        rememberCardIssuanceProductionLastIconInput(nextIcon, cardIssuanceProductionLastIconRef);
+      } else {
+        setCardIssuanceProductionEditorError('Catalog preview image upload failed.');
+      }
+    } catch (err: unknown) {
+      setCardIssuanceProductionEditorError(
+        err instanceof Error ? err.message : 'Catalog preview image upload failed.'
+      );
+    } finally {
+      setCardIssuanceProductionIconUploading(false);
+    }
+  },
+  [profiles]
+);
+
+const handleCaptureCatalogBannerSnapshot = useCallback(
+  async (args: CatalogBannerPreviewSnapshot) => {
+    setCatalogBannerPreviewSnapshot({ dataUrl: args.dataUrl, mode: args.mode });
+    void handleSelectProductionIconFromVideoFrame({
+      timeSec: 0,
+      dataUrl: args.dataUrl,
+    });
+  },
+  [handleSelectProductionIconFromVideoFrame]
+);
+
 const adoptProductionBackgroundVideoFromFile = useCallback(
   async (file: File): Promise<void> => {
     revokeProductionVideoDraft();
@@ -14405,7 +14565,6 @@ const adoptProductionBackgroundVideoFromFile = useCallback(
     setCardIssuanceProductionImageStartSec(0);
     setProductionVideoClipEditRequired(false);
     setProductionVideoTrimConfirmed(false);
-    setCardIssuanceProductionImageUploading(true);
     setProductionVideoUploadProgress(0);
     setProductionVideoProcessingMessage('Reading video…');
     try {
@@ -14476,6 +14635,17 @@ const handleYoutubeProductionVideoImport = useCallback(
       setCardIssuanceProductionImageStartSec(0);
       setProductionVideoClipEditRequired(false);
       setProductionVideoTrimConfirmed(false);
+      const youtubeIconUrl = youtubeThumbnailUrlFromProductionUrl(validated.normalizedUrl);
+      if (youtubeIconUrl) {
+        setCardIssuanceProductionIcon(youtubeIconUrl);
+        rememberCardIssuanceProductionLastIconInput(youtubeIconUrl, cardIssuanceProductionLastIconRef);
+      }
+      const lockCatalogTitleFields = Boolean(cardIssuanceEditingProductionRow?.issued);
+      if (!lockCatalogTitleFields) {
+        setCardIssuanceProductionSubtitle(validated.title);
+        setCardIssuanceProductionName(validated.channelUsername);
+      }
+      setCardIssuanceProductionDescription(validated.description);
       setProductionVideoUploadProgress(100);
       setProductionVideoProcessingMessage('');
     } catch (err: unknown) {
@@ -14492,15 +14662,12 @@ const handleYoutubeProductionVideoImport = useCallback(
       setCardIssuanceProductionImageUploading(false);
     }
   },
-  [revokeProductionVideoDraft]
+  [cardIssuanceEditingProductionRow?.issued, revokeProductionVideoDraft]
 );
 
-const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
-  async (e) => {
-    const input = e.currentTarget;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || !fileLooksLikeProductionBackgroundMedia(file)) {
+const processCardIssuanceProductionBackgroundFile = useCallback(
+  async (file: File): Promise<void> => {
+    if (!fileLooksLikeProductionBackgroundMedia(file)) {
       setCardIssuanceProductionEditorError(
         'Background media must be an image, video, or PDF file.'
       );
@@ -14539,7 +14706,18 @@ const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputE
       setCardIssuanceProductionImageUploading(false);
     }
   },
-  [profiles, adoptProductionBackgroundVideoFromFile, revokeProductionVideoDraft, runProductionVideoConvertAndUpload]
+  [profiles, adoptProductionBackgroundVideoFromFile, revokeProductionVideoDraft]
+);
+
+const handleCardIssuanceProductionImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  async (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    await processCardIssuanceProductionBackgroundFile(file);
+  },
+  [processCardIssuanceProductionBackgroundFile]
 );
 
 const cancelProductionVideoDraft = useCallback(() => {
@@ -14565,6 +14743,7 @@ const confirmProductionVideoUpload = useCallback(async () => {
 
 const clearCardIssuanceProductionIcon = useCallback(() => {
   setCardIssuanceProductionIcon('');
+  setCatalogBannerPreviewSnapshot(null);
 }, []);
 
 const clearCardIssuanceProductionImage = useCallback(() => {
@@ -22264,7 +22443,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              </div>
              <div className="flex size-8 items-center justify-center overflow-hidden rounded-full border border-white/30 bg-[#7a9dff]">
                {beamio?.image ? (
-                 <img src={beamio.image} alt="" className="size-full object-cover" />
+                 <IpfsImg src={beamio.image} alt="" className="size-full object-cover" />
                ) : (
                  <Store className="size-4 text-white" strokeWidth={2} aria-hidden />
                )}
@@ -23130,7 +23309,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                >
                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0051d1]/10 ring-4 ring-[#0051d1]/5">
                    {beamio?.image ? (
-                     <img src={beamio.image} alt="Merchant profile" className="h-full w-full object-cover" />
+                     <IpfsImg src={beamio.image} alt="Merchant profile" className="h-full w-full object-cover" />
                    ) : (
                      <Store size={22} className="text-[#0051d1]" strokeWidth={2} aria-hidden />
                    )}
@@ -23314,7 +23493,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               >
                 <span className="truncate text-xs font-bold text-slate-600">@{mobileHeaderBeamioTag}</span>
                 <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-slate-200/60 bg-white">
-                  <img src={mobileHeaderAvatarSrc} alt="" className="h-full w-full object-cover" />
+                  <IpfsImg src={mobileHeaderAvatarSrc} alt="" className="h-full w-full object-cover" />
                 </div>
               </button>
             </div>
@@ -23518,7 +23697,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="h-6 w-[1px] bg-slate-200"></div>
                <div className="flex items-center gap-3">
                  <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 bg-white shadow-sm shrink-0">
-                   <img src={BIZ_PUBLIC_LOGO512} alt="Beamio" className="w-full h-full object-cover" />
+                   <IpfsImg src={BIZ_PUBLIC_LOGO512} alt="Beamio" className="w-full h-full object-cover" />
                  </div>
                </div>
              </>
@@ -23555,7 +23734,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <div className="flex justify-end">
                 <div className="relative h-[230px] w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_32px_rgba(21,98,240,0.22)] sm:h-[250px] sm:rounded-[28px]">
                   {fixedCardMetadata?.image ? (
-                    <img
+                    <IpfsImg
                       src={fixedCardMetadata.image}
                       alt={fixedCardMetadata?.name || 'Merchant card'}
                       className="absolute inset-0 w-full h-full object-cover opacity-35 mix-blend-screen"
@@ -23570,7 +23749,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="flex items-center gap-2.5 sm:gap-3">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-white/10 backdrop-blur-sm sm:h-14 sm:w-14 sm:rounded-2xl">
                           {fixedCardMetadata?.image ? (
-                            <img
+                            <IpfsImg
                               src={fixedCardMetadata.image}
                               alt={fixedCardMetadata?.name || 'Merchant card'}
                               className="w-full h-full object-cover"
@@ -24169,7 +24348,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   </h2>
                   <div className="flex -space-x-3 pt-1.5 sm:pt-2">
                     {topupMemberTableRowsAll.slice(0, 3).map((row, avi) => (
-                      <img
+                      <IpfsImg
                         key={`${row.memberAddress}-${avi}`}
                         src={getAvatarImgUrl(row.beamioTag?.replace(/^@/, ''), {
                           address: row.memberAddress,
@@ -26521,7 +26700,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <div className={`size-14 overflow-hidden rounded-full ring-1 ${
                                 isHighestRewardTier ? 'bg-white/10 ring-white/30' : 'bg-[#eef1f3] ring-black/[0.04]'
                               }`}>
-                                 <img
+                                 <IpfsImg
                                    src={getAvatarImgUrl(tagRaw, { address: row.memberAddress, profileMap: addressProfileByLower })}
                                    alt=""
                                    className="size-full object-cover"
@@ -26834,7 +27013,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            className={`group flex w-full items-center gap-4 rounded-lg border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:translate-x-px hover:border-[#0051d1]/10 ${bizFocusRingClass}`}
                          >
                            <div className="relative shrink-0">
-                             <img
+                             <IpfsImg
                                src={getAvatarImgUrl(tagRaw, { address: row.memberAddress, profileMap: addressProfileByLower })}
                                alt=""
                                className="size-14 rounded-full object-cover"
@@ -27074,7 +27253,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  className="flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-left transition hover:border-[#1562f0]/30 hover:bg-white"
                                >
                                  {r.image?.trim() ? (
-                                   <img src={r.image.trim()} alt="" className="size-11 shrink-0 rounded-full object-cover ring-1 ring-black/5" />
+                                   <IpfsImg src={r.image.trim()} alt="" className="size-11 shrink-0 rounded-full object-cover ring-1 ring-black/5" />
                                  ) : (
                                    <div className="grid size-11 shrink-0 place-items-center rounded-full bg-slate-200 text-sm font-bold text-slate-600 ring-1 ring-black/5">
                                      {(show.replace('@', '').slice(0, 2) || '?').toUpperCase()}
@@ -27827,7 +28006,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <div className="w-full text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden">
                          <div className="relative">
                            {cardIssuanceEffectiveMerchantImage ? (
-                             <img
+                             <IpfsImg
                                src={cardIssuanceEffectiveMerchantImage}
                                alt=""
                                className="w-full aspect-[16/9] object-cover"
@@ -27846,7 +28025,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <div className="absolute -bottom-8 left-6">
                              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900">
                                {cardIssuanceEffectiveMerchantLogo ? (
-                                 <img
+                                 <IpfsImg
                                    src={cardIssuanceEffectiveMerchantLogo}
                                    alt=""
                                    className="h-11 w-11 rounded-xl object-cover"
@@ -28034,7 +28213,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          ) : null}
                         {cardIssuanceEffectiveMerchantLogo ? (
                            <div className="relative h-[140px] w-full shrink-0 overflow-hidden rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                             <img
+                             <IpfsImg
                               src={cardIssuanceEffectiveMerchantLogo}
                                alt=""
                                className="h-full w-full object-contain"
@@ -28130,7 +28309,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          ) : null}
                          {cardIssuanceEffectiveMerchantImage ? (
                            <div className="relative min-h-[160px] w-full shrink-0 overflow-hidden rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                             <img
+                             <IpfsImg
                                src={cardIssuanceEffectiveMerchantImage}
                                alt=""
                                className="h-full min-h-[160px] w-full object-cover"
@@ -28250,7 +28429,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  <div className="relative z-[1] flex items-start justify-between gap-2">
                                  <div className="shrink-0">
                                    {cardIssuanceShareImageUrl ? (
-                                     <img
+                                     <IpfsImg
                                        src={cardIssuanceShareImageUrl}
                                        alt=""
                                        className={`object-contain ${
@@ -28351,7 +28530,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <div className="flex items-center gap-4">
                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a1a1a] ring-1 ring-black/5">
                              {cardIssuanceShareImageUrl ? (
-                               <img src={cardIssuanceShareImageUrl} alt="" className="h-full w-full object-cover" />
+                               <IpfsImg src={cardIssuanceShareImageUrl} alt="" className="h-full w-full object-cover" />
                              ) : (
                                <Sparkles className="h-6 w-6 text-white" strokeWidth={2} aria-hidden />
                              )}
@@ -28637,7 +28816,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  className={`shrink-0 rounded-md p-0.5 transition-opacity hover:opacity-90 active:scale-95 ${bizFocusRingClass}`}
                                >
                                  {cardIssuanceShareImageUrl ? (
-                                   <img
+                                   <IpfsImg
                                      src={cardIssuanceShareImageUrl}
                                      alt=""
                                      className={`object-contain transition-[width,height] duration-200 ${
@@ -29735,7 +29914,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <h5 className="text-xl font-black tracking-tight text-[#2c2f31]">Your Rewards</h5>
                            </div>
                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#e5e9eb]">
-                             <img
+                             <IpfsImg
                                src={getAvatarImgUrl(
                                  beamio?.accountName ??
                                    (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ??
@@ -29784,7 +29963,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <div className="relative z-10 flex items-start justify-between gap-2">
                              <div className="shrink-0">
                                {cardIssuanceShareImageUrl ? (
-                                 <img
+                                 <IpfsImg
                                    src={cardIssuanceShareImageUrl}
                                    alt=""
                                    className={`object-contain ${CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]}`}
@@ -29966,7 +30145,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <div className="flex items-start justify-between">
                              <div className="shrink-0 rounded-md bg-white/90 p-2 shadow-sm">
                                {cardIssuanceShareImageUrl ? (
-                                 <img
+                                 <IpfsImg
                                    src={cardIssuanceShareImageUrl}
                                    alt=""
                                    className={`object-contain ${CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]}`}
@@ -30399,7 +30578,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                }}
                              >
                                {cardIssuanceEffectiveMerchantImage ? (
-                                 <img
+                                 <IpfsImg
                                    src={cardIssuanceEffectiveMerchantImage}
                                    alt=""
                                    className="pointer-events-none absolute inset-0 h-full w-full object-cover"
@@ -30430,7 +30609,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <div className="relative z-[1] flex items-start justify-between gap-3">
                                  <div className="shrink-0">
                                    {programsOverviewShareImage ? (
-                                     <img
+                                     <IpfsImg
                                        key={programsOverviewShareImage}
                                        src={programsOverviewShareImage}
                                        alt=""
@@ -30607,7 +30786,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         aria-label="Discover Featured Brands style preview"
                       >
                         <div className="relative">
-                          <img
+                          <IpfsImg
                             src={merchantPanelDiscoverHeroSrc}
                             alt=""
                             className="aspect-[16/9] w-full object-cover"
@@ -30642,7 +30821,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <div className="absolute -bottom-8 left-6">
                             <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
                               {programsOverviewShareImage ? (
-                                <img
+                                <IpfsImg
                                   key={programsOverviewShareImage}
                                   src={programsOverviewShareImage}
                                   alt=""
@@ -30903,11 +31082,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               (redeemPage - 1) * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE,
                               redeemPage * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE
                             );
-                            const couponBaseScanNftUrl =
+                            const couponNftExplorerLink =
                               coupon.issued && coupon.issuedTokenId?.trim()
-                                ? catalogProductionBaseScanNftUrl(
+                                ? catalogProductionNftExplorerLink(
                                     cardIssuanceExistingCard?.cardAddress,
-                                    coupon.issuedTokenId
+                                    coupon.issuedTokenId,
+                                    coupon.issuedNftMintedCount
                                   )
                                 : null;
                             return (
@@ -30924,7 +31104,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                       style={{ backgroundColor: tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#0051d1' }}
                                       aria-hidden
                                     >
-                                      <img src={coupon.icon} alt="" className="h-6 w-6 rounded-full object-cover" />
+                                      <IpfsImg src={coupon.icon} alt="" className="h-6 w-6 rounded-full object-cover" />
                                     </span>
                                   ) : null}
                                   <p className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{coupon.name}</p>
@@ -30971,14 +31151,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     Issue
                                   </button>
                                 )}
-                                {couponBaseScanNftUrl ? (
+                                {couponNftExplorerLink ? (
                                   <a
-                                    href={couponBaseScanNftUrl}
+                                    href={couponNftExplorerLink.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-white px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-[#f8fafc] ${bizFocusRingClass}`}
-                                    aria-label={`View ${catalogProductionBaseScanNftLabel(coupon.issuedTokenId)} on BaseScan`}
-                                    title="View NFT on BaseScan"
+                                    aria-label={`View ${catalogProductionBaseScanNftLabel(coupon.issuedTokenId)} on ${couponNftExplorerLink.explorer === 'blockscout' ? 'Blockscout' : 'BaseScan'}`}
+                                    title={catalogProductionNftExplorerTitle(couponNftExplorerLink.explorer)}
                                   >
                                     {catalogProductionBaseScanNftLabel(coupon.issuedTokenId)}
                                     <ExternalLink className="h-3 w-3 opacity-70" strokeWidth={2.2} aria-hidden />
@@ -31559,7 +31739,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 <div className="relative z-[1] flex min-h-[7.5rem] items-center gap-3 px-7 py-4 pr-7 sm:gap-4 sm:px-8 sm:py-5 sm:pr-8">
                                   {!cardIssuanceCouponEditorLivePreview.banner && cardIssuanceCouponEditorLivePreview.iconUrl ? (
                                     <div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
-                                      <img
+                                      <IpfsImg
                                         src={cardIssuanceCouponEditorLivePreview.iconUrl}
                                         alt=""
                                         className="h-full w-full object-cover"
@@ -31804,7 +31984,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </button>
                       ) : (
                         <div className="relative h-[112px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                          <img src={cardIssuanceCouponIcon} alt="" className="h-full w-full object-contain" />
+                          <IpfsImg src={cardIssuanceCouponIcon} alt="" className="h-full w-full object-contain" />
                           <button
                             type="button"
                             onClick={() => {
@@ -31854,7 +32034,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </button>
                       ) : (
                         <div className="relative h-[120px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#0f172a]/90">
-                          <img src={cardIssuanceCouponImage} alt="" className="h-full w-full object-cover opacity-95" />
+                          <IpfsImg src={cardIssuanceCouponImage} alt="" className="h-full w-full object-cover opacity-95" />
                           <button
                             type="button"
                             onClick={() => {
@@ -32672,7 +32852,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </button>
                          ) : (
                            <div className="relative h-[140px] w-full overflow-hidden rounded-xl border-2 border-dashed border-[#abadaf] bg-[#eef1f3]">
-                             <img src={beamio.image} alt="" className="h-full w-full object-contain" />
+                             <IpfsImg src={beamio.image} alt="" className="h-full w-full object-contain" />
                              {settingsMerchantLogoUploading ? (
                                <div
                                  className="absolute inset-0 flex items-center justify-center bg-black/35"
@@ -33633,7 +33813,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2">Terminal Beamio Tag / EOA Address</label>
                 {deviceHandleResolved && deviceHandleResolved.address ? (
                   <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                    <img src={deviceHandleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${deviceHandleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-emerald-200 object-cover" />
+                    <IpfsImg src={deviceHandleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${deviceHandleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-emerald-200 object-cover" />
                     <div className="flex flex-col gap-0.5">
                       <span className="font-mono font-bold text-emerald-700">@{deviceHandleResolved.username}</span>
                       <span className="text-[10px] text-slate-500 font-mono" title={deviceHandleResolved.address}>{fmtAddr(deviceHandleResolved.address)}</span>
@@ -34987,18 +35167,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="space-y-6 rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-sm">
                        <div className="flex flex-col items-center justify-center gap-4 py-2">
                          <div className="flex flex-wrap items-center justify-center gap-4">
-                           <img
+                           <IpfsImg
                              alt="Visa"
                              className="h-4 object-contain opacity-70"
                              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDC7Nz3rHVMLvgVPd_BXycLtsXKm4So3FFLsTKJfekdn2u1Y1cF8hx15EMDc-P3n5sE39GDzdb3ZpXkf4HETDaVGTIPDbA5-Kw8B0NgB24LXvZFeQDsxdAddMZmVRR882e9Msno7jD6deID-fPaQKNB7XKK_8QYllDRqFLAmNjweUZayN0wIkC0kzMltM6UYkBXiJpgxIr1D1EvdrKfh4PMN2EdqcyzmDQ8ZcGZBXlhbsZ0oz3jmXpZpdzvO70hyZam_OxPgV4UBJA"
                            />
-                           <img
+                           <IpfsImg
                              alt="Mastercard"
                              className="h-4 object-contain opacity-70"
                              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCD_kMQio7gKxAW4Lt_1lWqsX_QDQwobCNTZ9x3GjWFhyr96m0ISVnPDckIjhlZvDc9F4AYdk9qqP5cAitIEWAi1zxgnPL0sENXBtg8PDU5_F5j7o7UJFhcSCLVqMiALAAxjMsbBaLHu_H1I03PREwldB9aX9Cuv4GPSIaj16wsIZulpmwAjDkW0TaVvnltL4k4Rc8AcCk0lX3k5dr3c7ChonGGV6upyx34hNT-DfpnjG4DQ7lULl8SQg_Llv2q8KAHaGUHzMfwWNc"
                            />
                            <span className="font-sans text-[10px] font-black uppercase tracking-tighter text-[#595c5e]/70">AMEX</span>
-                           <img
+                           <IpfsImg
                              alt="Apple Pay"
                              className="h-6 object-contain opacity-70"
                              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiYFWAXcdfRlxJZySJzgKdz0767XwG9_rOMdX_RS_aSnMOYrQyQP9ysvM0toFkZWvyeECX9aRYQfqcTh0C31xhKIouR5SK4mSI9SNuCUnxBQfgaoIU0pxnkjTqHNQlTzn1Nvr1V7CWnw2IurIWYJOWSbOJ9r27zY_kwEWXhGU0Y85LMJ0PqDScNzwgYwsKXnn-9w9gwL57lHtvbenlarivwho2H3alkM_LNJvWNymuc-GERBcZoTDUvR0F5hW_Jthtj2DfSz0m4ak"
@@ -35936,6 +36116,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       onOpenEdit={openCardIssuanceProductionEdit}
       onOpenShare={openCardIssuanceProductionShare}
       programCardAddress={cardIssuanceExistingCard?.cardAddress}
+      catalogPublisherBeamioTag={
+        beamio?.accountName?.trim() ||
+        (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ||
+        (profiles?.[0] as { accountName?: string } | undefined)?.accountName
+      }
       productions={cardIssuanceProductions}
       serviceCategories={cardIssuanceServiceCategories}
       onUpdateServiceCategoryLabel={updateCardIssuanceServiceCategoryLabel}
@@ -35948,15 +36133,25 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       icon={cardIssuanceProductionIcon}
       iconUploading={cardIssuanceProductionIconUploading}
       onIconFileChange={handleCardIssuanceProductionIconPick}
+      onSelectVideoFrameAsIcon={handleSelectProductionIconFromVideoFrame}
+      onCaptureCatalogBannerSnapshot={handleCaptureCatalogBannerSnapshot}
+      catalogBannerPreviewSnapshot={catalogBannerPreviewSnapshot}
+      bannerCaptureDisabled={
+        cardIssuanceProductionIconUploading ||
+        cardIssuanceProductionImageUploading ||
+        productionVideoFfmpegBusy
+      }
       onClearIcon={clearCardIssuanceProductionIcon}
       productionImage={cardIssuanceProductionImage}
       productionImageMime={cardIssuanceProductionImageMime}
       productionImageStartSec={cardIssuanceProductionImageStartSec}
       productionImageUploading={cardIssuanceProductionImageUploading}
       onProductionImageFileChange={handleCardIssuanceProductionImagePick}
+      onProductionBackgroundMediaFile={processCardIssuanceProductionBackgroundFile}
       onImportYoutubeProductionVideo={handleYoutubeProductionVideoImport}
       onClearProductionImage={clearCardIssuanceProductionImage}
       productionVideoDraftUrl={productionVideoDraftUrl}
+      productionVideoDraftFile={productionVideoDraftFile}
       productionVideoClipEditRequired={productionVideoClipEditRequired}
       productionVideoTrimConfirmed={productionVideoTrimConfirmed}
       onProductionVideoTrimConfirm={confirmProductionVideoTrimAndUpload}
@@ -35966,6 +36161,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       productionVideoStartSec={productionVideoStartSec}
       setProductionVideoStartSec={setProductionVideoStartSec}
       productionVideoProcessingMessage={productionVideoProcessingMessage}
+      productionVideoFfmpegBusy={productionVideoFfmpegBusy}
       onCancelProductionVideoDraft={cancelProductionVideoDraft}
       onConfirmProductionVideoUpload={confirmProductionVideoUpload}
       backgroundColor={cardIssuanceProductionBackgroundColor}
@@ -36026,10 +36222,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           aria-label="Close catalog share dialog"
         />
         <div
-          className="relative z-10 w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
+          className="relative z-10 flex max-h-[min(92vh,44rem)] w-full max-w-xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">Catalog Distribution</p>
               <h2
@@ -36051,15 +36247,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
           </div>
-          <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
             {cardIssuanceProductionShareUrl ? (
               <>
-                <div ref={cardIssuanceProductionShareImageRef} className="rounded-[22px] bg-white px-5 py-4 sm:px-7 sm:py-5">
+                <div
+                  ref={cardIssuanceProductionShareImageRef}
+                  className="rounded-[22px] bg-white px-5 py-4 sm:px-7 sm:py-5"
+                >
                   <ProgramsCatalogShareCardPreview
                     production={cardIssuanceProductionShareRow}
                     shareUrl={cardIssuanceProductionShareUrl}
                     merchantName={programsOverviewDisplayName}
+                    publisherBeamioTag={
+                      beamio?.accountName?.trim() ||
+                      (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ||
+                      (profiles?.[0] as { accountName?: string } | undefined)?.accountName
+                    }
                     serviceCategories={cardIssuanceServiceCategories}
+                    moneyPrefix={cardIssuanceDisplayMoneyPrefix}
                   />
                 </div>
                 <div className="min-w-0 space-y-3">

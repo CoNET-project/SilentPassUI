@@ -3,8 +3,8 @@ import { blobToDataUrl, IPFS_GET_FRAGMENT } from '@/utils/ipfsCardImageUpload';
 
 const IPFS_API_BASE = 'https://ipfs.conet.network/api/';
 
-/** Must match server FRAGMENT_UPLOAD_CHUNK_BYTES (32 KiB). */
-export const IPFS_FRAGMENT_CHUNK_BYTES = 32 * 1024;
+/** Must match server FRAGMENT_UPLOAD_CHUNK_BYTES (512 KiB). */
+export const IPFS_FRAGMENT_CHUNK_BYTES = 512 * 1024;
 
 export type IpfsFragmentUploadProgress = {
   phase: 'prepare' | 'convert' | 'upload';
@@ -73,24 +73,18 @@ async function postChunk(args: {
   chunkBytes: Uint8Array;
   signal?: AbortSignal;
 }): Promise<{ received: number; complete: boolean }> {
-  let binary = '';
-  for (let i = 0; i < args.chunkBytes.length; i += 1) {
-    binary += String.fromCharCode(args.chunkBytes[i]!);
-  }
-  const chunkBase64 = btoa(binary);
+  const form = new FormData();
+  form.append('wallet', args.wallet);
+  form.append('signMessage', args.signMessage);
+  form.append('hash', args.hash);
+  form.append('totalSize', String(args.totalSize));
+  form.append('offset', String(args.offset));
+  form.append('chunk', new Blob([args.chunkBytes]), 'chunk');
 
   const resp = await fetch(`${IPFS_API_BASE}storageFragmentChunk`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     signal: args.signal,
-    body: JSON.stringify({
-      wallet: args.wallet,
-      signMessage: args.signMessage,
-      hash: args.hash,
-      totalSize: args.totalSize,
-      offset: args.offset,
-      chunkBase64,
-    }),
+    body: form,
   });
   const data = (await resp.json().catch(() => null)) as {
     ok?: boolean;
@@ -118,7 +112,7 @@ function wrapNetworkError(err: unknown): Error {
 }
 
 /**
- * Upload a data URL to IPFS fragment storage in 32 KiB chunks with resume.
+ * Upload a data URL to IPFS fragment storage in 512 KiB multipart chunks with resume.
  * Hash must be keccak256(utf8 dataUrl) — same as legacy storageFragment.
  */
 export async function uploadDataUrlToIpfsChunked(

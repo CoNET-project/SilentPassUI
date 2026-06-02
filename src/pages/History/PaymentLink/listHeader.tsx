@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import {
   useMemo,
   useRef,
@@ -189,7 +190,7 @@ const ListHeader = ({address, tx}: Prof) => {
 								: "text-fuchsia-600 dark:text-fuchsia-300"
 							].join(" ")}
 							>
-							<img
+							<IpfsImg
 								src={giftEnvelope}
 								className="w-5 block pointer-events-none"
 								alt="Gift Envelope"

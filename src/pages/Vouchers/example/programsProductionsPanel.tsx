@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { IpfsImg } from '@/components/IpfsImg';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -14,7 +15,7 @@ import {
   Play,
   Plus,
   QrCode,
-  Sparkles,
+  Search,
   Trash2,
   X,
 } from 'lucide-react';
@@ -25,19 +26,20 @@ import {
   CATALOG_GLOBAL_CATEGORY_OPTIONS,
   PRODUCTION_ITEM_COLOR_PRESETS,
   catalogGlobalCategoryLabel,
+  groupCatalogBaseProductionsByGlobalCategory,
   catalogPackageDealsForBase,
   catalogProductionBaseScanNftLabel,
-  catalogProductionBaseScanNftUrl,
+  catalogProductionNftExplorerLink,
+  catalogProductionNftExplorerTitle,
   catalogProductionDisplayPrice,
   computePackagePerSessionPrice,
   isCatalogBaseProductionRow,
+  isCatalogPriceOptionalCategory,
   isSalesManagementCatalogCategory,
-  productionIconLooksLikeImageUrl,
+  isShareLinkCatalogCategory,
   parseProductionIssueLeftN,
-  productionIssueTotalDisplayLabel,
-  productionItemCategoryLabel,
   resolveProductionBackgroundMediaKind,
-  tileBackgroundColorApplies,
+  catalogEditorTileBackgroundColorApplies,
   type CardIssuanceProductionRow,
   type CatalogGlobalCategoryId,
   type CatalogPackageDealDraft,
@@ -49,18 +51,27 @@ import {
   isProductionBackgroundYoutubeMedia,
   isYoutubeProductionVideoUrl,
   youtubeEmbedUrlFromProductionUrl,
-  youtubeThumbnailUrlFromProductionUrl,
 } from '@/utils/youtubeProductionVideo';
 import {
   PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS,
   formatProductionVideoTimeSec,
+  isUploadedProductionBackgroundVideo,
 } from '@/utils/productionBackgroundVideo';
+import type { ProductionVideoFrameThumbnail } from '@/utils/productionBackgroundVideo';
 import { ProductionVideoFilmstripTrimEditor } from './ProductionVideoFilmstripTrimEditor';
+import { ProductionVideoIconFramePicker } from './ProductionVideoIconFramePicker';
 import {
   createNumericInputWheelNonPassiveRefCallback,
   preventNumericInputStepKeys,
   preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys';
+import { catalogProductionHasVideoBackgroundMedia } from '@/utils/catalogProductionVideoOg';
+import {
+  buildBusinessCatalogEditorPreviewRow,
+  BusinessCatalogListItemPreviewCard,
+  BusinessCatalogListItemPreviewContent,
+  BusinessCatalogVideoOgListItemBody,
+} from './businessCatalogListItemPreview';
 
 const bizFocusRingClass =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ea580c]/40 focus-visible:ring-offset-2';
@@ -149,6 +160,23 @@ function ClickToPlayProductionVideo(props: {
   );
 }
 
+function ProductionBackgroundMediaDeleteButton(props: {
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={props.disabled}
+      className={`absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-black/50 text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-45 ${bizFocusRingClass}`}
+      aria-label="Remove background media"
+    >
+      <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+    </button>
+  );
+}
+
 function ProductionBackgroundMediaPreview(props: {
   url: string;
   mime?: string;
@@ -199,7 +227,7 @@ function ProductionBackgroundMediaPreview(props: {
     );
   }
   return (
-    <img
+    <IpfsImg
       src={props.url}
       alt=""
       className={props.imgClassName ?? props.className ?? 'h-full w-full object-cover'}
@@ -218,8 +246,10 @@ export type ProgramsProductionsPanelProps = {
   onOpenCreate: () => void;
   onOpenEdit: (id: string) => void;
   onOpenShare?: (id: string) => void;
-  /** BeamioUserCard address — used for BaseScan NFT links on live catalog items. */
+  /** BeamioUserCard address — used for Blockscout NFT links on live catalog items. */
   programCardAddress?: string;
+  /** Merchant @beamioTag for video catalog rows (publisher line under YouTube OG body). */
+  catalogPublisherBeamioTag?: string;
   productions: CardIssuanceProductionRow[];
   serviceCategories: ProductionServiceCategoryOption[];
   onUpdateServiceCategoryLabel: (categoryId: string, label: string) => boolean | Promise<boolean>;
@@ -232,15 +262,24 @@ export type ProgramsProductionsPanelProps = {
   icon: string;
   iconUploading: boolean;
   onIconFileChange: React.ChangeEventHandler<HTMLInputElement>;
+  onSelectVideoFrameAsIcon?: (frame: ProductionVideoFrameThumbnail) => void | Promise<void>;
+  onCaptureCatalogBannerSnapshot?: (args: {
+    dataUrl: string;
+    mode: 'width' | 'height';
+  }) => void | Promise<void>;
+  catalogBannerPreviewSnapshot?: { dataUrl: string; mode: 'width' | 'height' } | null;
+  bannerCaptureDisabled?: boolean;
   onClearIcon: () => void;
   productionImage: string;
   productionImageMime?: string;
   productionImageStartSec?: number;
   productionImageUploading: boolean;
   onProductionImageFileChange: React.ChangeEventHandler<HTMLInputElement>;
+  onProductionBackgroundMediaFile?: (file: File) => void | Promise<void>;
   onImportYoutubeProductionVideo?: (url: string) => void | Promise<void>;
   onClearProductionImage: () => void;
   productionVideoDraftUrl?: string;
+  productionVideoDraftFile?: File | null;
   /** Set when picked video exceeds 60s — drives trim UI (source of truth from pick handler). */
   productionVideoClipEditRequired?: boolean;
   productionVideoTrimConfirmed?: boolean;
@@ -251,6 +290,8 @@ export type ProgramsProductionsPanelProps = {
   productionVideoStartSec?: number;
   setProductionVideoStartSec?: (value: number) => void;
   productionVideoProcessingMessage?: string;
+  /** True while ffmpeg/WebCodecs converts background video (not during IPFS upload). */
+  productionVideoFfmpegBusy?: boolean;
   onCancelProductionVideoDraft?: () => void;
   onConfirmProductionVideoUpload?: () => void;
   backgroundColor: string;
@@ -303,6 +344,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     onOpenEdit,
     onOpenShare,
     programCardAddress,
+    catalogPublisherBeamioTag,
     productions,
     serviceCategories,
     onUpdateServiceCategoryLabel,
@@ -315,15 +357,21 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     icon,
     iconUploading,
     onIconFileChange,
+    onSelectVideoFrameAsIcon,
+    onCaptureCatalogBannerSnapshot,
+    catalogBannerPreviewSnapshot = null,
+    bannerCaptureDisabled = false,
     onClearIcon,
     productionImage,
     productionImageMime,
     productionImageStartSec,
     productionImageUploading,
     onProductionImageFileChange,
+    onProductionBackgroundMediaFile,
     onImportYoutubeProductionVideo,
     onClearProductionImage,
     productionVideoDraftUrl = '',
+    productionVideoDraftFile = null,
     productionVideoClipEditRequired = false,
     productionVideoTrimConfirmed = false,
     onProductionVideoTrimConfirm,
@@ -333,8 +381,8 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     productionVideoStartSec = 0,
     setProductionVideoStartSec,
     productionVideoProcessingMessage = '',
+    productionVideoFfmpegBusy = false,
     onCancelProductionVideoDraft,
-    onConfirmProductionVideoUpload,
     backgroundColor,
     setBackgroundColor,
     moneyPrefix,
@@ -375,10 +423,61 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
   const [editingCategoryLabel, setEditingCategoryLabel] = useState('');
   const iconFileRef = useRef<HTMLInputElement>(null);
   const productionImageFileRef = useRef<HTMLInputElement>(null);
+  const [backgroundMediaDragOver, setBackgroundMediaDragOver] = useState(false);
+  const backgroundMediaDragDepthRef = useRef(0);
   const [youtubeImportUrl, setYoutubeImportUrl] = useState('');
   const productionVideoNeedsClipEdit = productionVideoClipEditRequired;
   const productionVideoDraftPending = Boolean(productionVideoDraftUrl.trim());
   const productionBackgroundUploadLocked = productionImageUploading;
+
+  const backgroundMediaDropDisabled =
+    productionBackgroundUploadLocked || editingIssued || !onProductionBackgroundMediaFile;
+
+  const handleBackgroundMediaDragEnter = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (backgroundMediaDropDisabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      backgroundMediaDragDepthRef.current += 1;
+      setBackgroundMediaDragOver(true);
+    },
+    [backgroundMediaDropDisabled]
+  );
+
+  const handleBackgroundMediaDragLeave = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (backgroundMediaDropDisabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      backgroundMediaDragDepthRef.current = Math.max(0, backgroundMediaDragDepthRef.current - 1);
+      if (backgroundMediaDragDepthRef.current === 0) setBackgroundMediaDragOver(false);
+    },
+    [backgroundMediaDropDisabled]
+  );
+
+  const handleBackgroundMediaDragOver = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (backgroundMediaDropDisabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+    },
+    [backgroundMediaDropDisabled]
+  );
+
+  const handleBackgroundMediaDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      backgroundMediaDragDepthRef.current = 0;
+      setBackgroundMediaDragOver(false);
+      if (backgroundMediaDropDisabled) return;
+      const file = e.dataTransfer.files?.[0];
+      if (!file) return;
+      void onProductionBackgroundMediaFile(file);
+    },
+    [backgroundMediaDropDisabled, onProductionBackgroundMediaFile]
+  );
   const productionBackgroundBlocksCatalogSubmit =
     productionBackgroundUploadLocked ||
     (productionVideoDraftPending &&
@@ -390,6 +489,70 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
   const backgroundColorPickerValue =
     backgroundColor.trim().startsWith('#') ? backgroundColor.trim() : `#${backgroundColor.trim() || 'ea580c'}`;
   const salesManagementCatalog = isSalesManagementCatalogCategory(globalCategory);
+  const shareLinkCatalog = isShareLinkCatalogCategory(globalCategory);
+  const catalogPriceOptional = isCatalogPriceOptionalCategory(globalCategory);
+
+  const uploadedBackgroundVideo = isUploadedProductionBackgroundVideo({
+    productionImage,
+    productionImageMime,
+    productionVideoDraftUrl,
+  });
+  const catalogTileBackgroundColorEditorVisible = catalogEditorTileBackgroundColorApplies({
+    productionImage,
+    productionImageMime,
+    productionVideoDraftUrl,
+  });
+  const videoIconPickerSrc =
+    productionVideoDraftUrl.trim() || (uploadedBackgroundVideo ? productionImage.trim() : '');
+
+  const catalogBaseProductionCount = useMemo(
+    () => productions.filter(isCatalogBaseProductionRow).length,
+    [productions]
+  );
+  const catalogProductionGroupsByGlobalCategory = useMemo(
+    () => groupCatalogBaseProductionsByGlobalCategory(productions),
+    [productions]
+  );
+
+  const catalogEditorPreviewRow = useMemo(
+    () =>
+      buildBusinessCatalogEditorPreviewRow({
+        editingId,
+        name,
+        subtitle,
+        description,
+        globalCategory,
+        itemCategory,
+        icon,
+        backgroundColor,
+        productionImage,
+        productionImageMime,
+        productionVideoDraftUrl,
+        price,
+        issueTotal,
+        issueTotalUnlimited,
+        editingIssued,
+        catalogPriceOptional,
+      }),
+    [
+      editingId,
+      name,
+      subtitle,
+      description,
+      globalCategory,
+      itemCategory,
+      icon,
+      backgroundColor,
+      productionImage,
+      productionImageMime,
+      productionVideoDraftUrl,
+      price,
+      issueTotal,
+      issueTotalUnlimited,
+      editingIssued,
+      catalogPriceOptional,
+    ]
+  );
 
   useEffect(() => {
     if (!editorOpen) {
@@ -407,6 +570,25 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
       setYoutubeImportUrl('');
     }
   }, [productionImage, productionImageMime]);
+
+  const youtubeImportUrlValid = isYoutubeProductionVideoUrl(youtubeImportUrl);
+
+  const runYoutubeProductionVideoImport = useCallback(() => {
+    const url = youtubeImportUrl.trim();
+    if (
+      !url ||
+      !onImportYoutubeProductionVideo ||
+      productionBackgroundUploadLocked ||
+      !isYoutubeProductionVideoUrl(url)
+    ) {
+      return;
+    }
+    void onImportYoutubeProductionVideo(url);
+  }, [
+    onImportYoutubeProductionVideo,
+    productionBackgroundUploadLocked,
+    youtubeImportUrl,
+  ]);
 
   const cancelCategoryEdit = useCallback(() => {
     if (editingCategoryId) {
@@ -484,7 +666,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
               </header>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-                {productions.filter(isCatalogBaseProductionRow).length === 0 ? (
+                {catalogBaseProductionCount === 0 ? (
                   <div className="rounded-2xl border border-dashed border-[#abadaf]/40 bg-white p-8 text-center">
                     <Package className="mx-auto h-10 w-10 text-[#ea580c]/70" strokeWidth={1.6} aria-hidden />
                     <p className="mt-3 text-sm font-semibold text-[#2c2f31]">No item in your catalog yet</p>
@@ -499,105 +681,61 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     </button>
                   </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {productions.filter(isCatalogBaseProductionRow).map((row) => {
-                      const displayPrice = catalogProductionDisplayPrice(row);
+                  <div className="space-y-6">
+                    {catalogProductionGroupsByGlobalCategory.map(({ globalCategory: groupCategory, rows }) => (
+                      <section key={groupCategory}>
+                        <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                          {catalogGlobalCategoryLabel(groupCategory)}
+                          <span className="ml-2 font-semibold text-[#abadaf]">({rows.length})</span>
+                        </h3>
+                        <ul className="space-y-3">
+                          {rows.map((row) => {
                       const packageRows = catalogPackageDealsForBase(productions, row);
-                      const backgroundKind = resolveProductionBackgroundMediaKind({
-                        url: row.productionImage,
-                        mime: row.productionImageMime,
-                      });
-                      const hasBackgroundMedia = row.productionImage.trim().length > 0;
-                      const baseScanNftUrl =
+                      const nftExplorerLink =
                         row.issued && row.issuedTokenId?.trim()
-                          ? catalogProductionBaseScanNftUrl(programCardAddress, row.issuedTokenId)
+                          ? catalogProductionNftExplorerLink(
+                              programCardAddress,
+                              row.issuedTokenId,
+                              row.issuedNftMintedCount
+                            )
                           : null;
+                      const catalogVideoOgListLayout = catalogProductionHasVideoBackgroundMedia(row);
                       return (
                         <li
                           key={row.id}
                           className="overflow-hidden rounded-2xl border border-[#ea580c]/15 bg-white shadow-sm"
                         >
-                          <div className="flex w-full items-start gap-3 p-4">
+                          {catalogVideoOgListLayout ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenEdit(row.id)}
+                              className={`block w-full text-left ${bizFocusRingClass}`}
+                            >
+                              <BusinessCatalogVideoOgListItemBody
+                                row={row}
+                                serviceCategories={serviceCategories}
+                                moneyPrefix={moneyPrefix}
+                                catalogPublisherBeamioTag={catalogPublisherBeamioTag}
+                              />
+                            </button>
+                          ) : null}
+                          <div
+                            className={`flex w-full flex-wrap items-center gap-2 ${catalogVideoOgListLayout ? 'px-4 pb-4 pt-2' : 'items-start gap-3 p-4'}`}
+                          >
+                            {!catalogVideoOgListLayout ? (
                             <button
                               type="button"
                               onClick={() => onOpenEdit(row.id)}
                               className={`flex min-w-0 flex-1 items-start gap-3 text-left ${bizFocusRingClass}`}
                             >
-                            <div
-                              className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl text-white"
-                              style={
-                                backgroundKind === 'image' && hasBackgroundMedia
-                                  ? {
-                                      backgroundImage: `url(${row.productionImage})`,
-                                      backgroundSize: 'cover',
-                                      backgroundPosition: 'center',
-                                    }
-                                  : { backgroundColor: row.backgroundColor || '#ea580c' }
-                              }
-                            >
-                              {backgroundKind === 'video' && hasBackgroundMedia ? (
-                                isProductionBackgroundYoutubeMedia({
-                                  url: row.productionImage,
-                                  mime: row.productionImageMime,
-                                }) ? (
-                                  <img
-                                    src={youtubeThumbnailUrlFromProductionUrl(row.productionImage) ?? ''}
-                                    alt=""
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                    aria-hidden
-                                  />
-                                ) : (
-                                  <video
-                                    src={row.productionImage}
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                    muted
-                                    playsInline
-                                    preload="metadata"
-                                    aria-hidden
-                                  />
-                                )
-                              ) : null}
-                              {backgroundKind === 'pdf' && hasBackgroundMedia ? (
-                                <FileText className="relative z-[1] h-5 w-5" strokeWidth={2} aria-hidden />
-                              ) : null}
-                              {productionIconLooksLikeImageUrl(row.icon) ? (
-                                <img
-                                  src={row.icon}
-                                  alt=""
-                                  className="relative z-[1] h-full w-full object-cover"
+                              <div className="flex min-w-0 flex-1 items-start gap-3">
+                                <BusinessCatalogListItemPreviewContent
+                                  row={row}
+                                  serviceCategories={serviceCategories}
+                                  moneyPrefix={moneyPrefix}
+                                  catalogPublisherBeamioTag={catalogPublisherBeamioTag}
                                 />
-                              ) : hasBackgroundMedia && backgroundKind !== 'pdf' ? null : !hasBackgroundMedia ? (
-                                <Sparkles className="h-5 w-5" strokeWidth={2} aria-hidden />
-                              ) : null}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate font-manrope text-base font-bold text-[#2c2f31]">{row.name}</p>
-                              {row.subtitle.trim() ? (
-                                <p className="truncate text-sm text-[#747779]">{row.subtitle}</p>
-                              ) : null}
-                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[#ea580c]">
-                                {catalogGlobalCategoryLabel(row.globalCategory)} ·{' '}
-                                {productionItemCategoryLabel(row.itemCategory, serviceCategories)}
-                              </p>
-                              {displayPrice != null &&
-                              !isSalesManagementCatalogCategory(row.globalCategory) ? (
-                                <p className="mt-1 text-xs font-semibold text-[#595c5e]">
-                                  {moneyPrefix}
-                                  {displayPrice.toFixed(2)}
-                                </p>
-                              ) : null}
-                              <p className="mt-0.5 text-[10px] font-semibold text-[#747779]">
-                                Issuance: {productionIssueTotalDisplayLabel(row)}
-                                {row.issued && row.issueLeft?.trim()
-                                  ? ` · ${Number.parseInt(row.issueLeft.replace(/,/g, ''), 10).toLocaleString()} left`
-                                  : ''}
-                              </p>
-                              {row.requiresRedeemCode ? (
-                                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[#ea580c]">
-                                  Redeem code
-                                </p>
-                              ) : null}
-                            </div>
+                              </div>
                             {row.issued ? (
                               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-800">
                                 <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
@@ -609,14 +747,28 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                               </span>
                             )}
                             </button>
-                            {baseScanNftUrl ? (
+                            ) : (
+                              <>
+                            {row.issued ? (
+                              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-800">
+                                <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+                                Live
+                              </span>
+                            ) : (
+                              <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800">
+                                Draft
+                              </span>
+                            )}
+                              </>
+                            )}
+                            {nftExplorerLink ? (
                               <a
-                                href={baseScanNftUrl}
+                                href={nftExplorerLink.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-[#f8fafc] px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-white ${bizFocusRingClass}`}
-                                aria-label={`View ${catalogProductionBaseScanNftLabel(row.issuedTokenId)} on BaseScan`}
-                                title="View NFT on BaseScan"
+                                aria-label={`View ${catalogProductionBaseScanNftLabel(row.issuedTokenId)} on ${nftExplorerLink.explorer === 'blockscout' ? 'Blockscout' : 'BaseScan'}`}
+                                title={catalogProductionNftExplorerTitle(nftExplorerLink.explorer)}
                               >
                                 {catalogProductionBaseScanNftLabel(row.issuedTokenId)}
                                 <ExternalLink className="h-3 w-3 opacity-70" strokeWidth={2.2} aria-hidden />
@@ -869,8 +1021,11 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           ) : null}
                         </li>
                       );
-                    })}
-                  </ul>
+                          })}
+                        </ul>
+                      </section>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -923,11 +1078,27 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     </header>
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-28 sm:px-5">
+                      <div className="sticky top-0 z-30 -mx-4 mb-4 border-b border-[#abadaf]/15 bg-[#f8fafc]/95 px-4 pb-4 pt-3 backdrop-blur-md supports-[backdrop-filter]:bg-[#f8fafc]/80 sm:-mx-5 sm:px-5">
+                        <span className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                          Business Catalogs preview
+                        </span>
+                        <BusinessCatalogListItemPreviewCard
+                          row={catalogEditorPreviewRow}
+                          serviceCategories={serviceCategories}
+                          moneyPrefix={moneyPrefix}
+                          catalogPublisherBeamioTag={catalogPublisherBeamioTag}
+                          globalCategoryHint={catalogGlobalCategoryLabel(globalCategory)}
+                          bannerCaptureDisabled={bannerCaptureDisabled}
+                          catalogBannerPreviewSnapshot={catalogBannerPreviewSnapshot}
+                          onCaptureBannerSnapshot={onCaptureCatalogBannerSnapshot}
+                        />
+                      </div>
+
                       {editingIssued ? (
                         <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-medium text-sky-900">
                           This item is live on-chain. Name, price, and total issuance are locked. You can still update the
-                          item icon,
-                          optional background photo, background color, and description.
+                          item icon, optional background media
+                          {catalogTileBackgroundColorEditorVisible ? ', tile background color' : ''}, and description.
                         </div>
                       ) : null}
 
@@ -969,38 +1140,58 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             className="hidden"
                             onChange={onIconFileChange}
                           />
-                          {!icon ? (
-                            <button
-                              type="button"
-                              onClick={() => iconFileRef.current?.click()}
-                              disabled={iconUploading}
-                              className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                            >
-                              {iconUploading ? (
-                                <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
-                              ) : (
-                                <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
-                              )}
-                              <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                                {iconUploading ? 'Uploading…' : 'Upload icon (PNG, JPEG, or SVG)'}
-                              </span>
-                            </button>
-                          ) : (
-                            <div className="relative h-[112px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                              <img src={icon} alt="" className="h-full w-full object-contain" />
+                          <div className="overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
+                            {!icon ? (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  onClearIcon();
-                                  if (iconFileRef.current) iconFileRef.current.value = '';
-                                }}
-                                className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                                aria-label="Remove item icon"
+                                onClick={() => iconFileRef.current?.click()}
+                                disabled={iconUploading}
+                                className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                               >
-                                <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                {iconUploading ? (
+                                  <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                                ) : (
+                                  <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
+                                )}
+                                <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
+                                  {iconUploading
+                                    ? 'Uploading…'
+                                    : 'Upload icon (PNG, JPEG, or SVG)'}
+                                </span>
                               </button>
-                            </div>
-                          )}
+                            ) : (
+                              <div className="relative h-[112px] w-full overflow-hidden bg-[#eef1f3]">
+                                <IpfsImg src={icon} alt="" className="h-full w-full object-contain" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClearIcon();
+                                    if (iconFileRef.current) iconFileRef.current.value = '';
+                                  }}
+                                  className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
+                                  aria-label="Remove item icon"
+                                >
+                                  <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                </button>
+                              </div>
+                            )}
+                            {uploadedBackgroundVideo && videoIconPickerSrc && onSelectVideoFrameAsIcon ? (
+                              <ProductionVideoIconFramePicker
+                                videoSrc={videoIconPickerSrc}
+                                sourceFile={productionVideoDraftFile}
+                                backgroundVideoFfmpegBusy={productionVideoFfmpegBusy}
+                                backgroundMediaUploading={productionImageUploading}
+                                durationSec={
+                                  productionVideoSourceDurationSec > 0
+                                    ? productionVideoSourceDurationSec
+                                    : undefined
+                                }
+                                disabled={editingIssued || iconUploading}
+                                uploading={iconUploading}
+                                onSelectFrame={(frame) => void onSelectVideoFrameAsIcon(frame)}
+                              />
+                            ) : null}
+                          </div>
                         </div>
 
                         <div>
@@ -1014,6 +1205,17 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             className="hidden"
                             onChange={onProductionImageFileChange}
                           />
+                          <div
+                            className={`rounded-2xl transition-[box-shadow,background-color] ${
+                              backgroundMediaDragOver && !backgroundMediaDropDisabled
+                                ? 'bg-[#ea580c]/[0.06] ring-2 ring-[#ea580c]/45 ring-offset-2'
+                                : ''
+                            }`}
+                            onDragEnter={handleBackgroundMediaDragEnter}
+                            onDragLeave={handleBackgroundMediaDragLeave}
+                            onDragOver={handleBackgroundMediaDragOver}
+                            onDrop={handleBackgroundMediaDrop}
+                          >
                           {productionVideoDraftUrl ? (
                             <div className="space-y-3">
                               {productionVideoNeedsClipEdit &&
@@ -1021,6 +1223,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                               !productionImage.trim() ? (
                                 <ProductionVideoFilmstripTrimEditor
                                   videoSrc={productionVideoDraftUrl}
+                                  sourceFile={productionVideoDraftFile}
                                   durationSec={productionVideoSourceDurationSec}
                                   maxClipSec={PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS}
                                   startSec={productionVideoStartSec}
@@ -1058,29 +1261,21 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                           Please wait — do not close this screen.
                                         </span>
                                       </div>
-                                    ) : null}
+                                    ) : (
+                                      <ProductionBackgroundMediaDeleteButton
+                                        disabled={
+                                          productionBackgroundUploadLocked ||
+                                          productionImageUploading
+                                        }
+                                        onClick={() => {
+                                          onCancelProductionVideoDraft?.();
+                                          if (productionImageFileRef.current) {
+                                            productionImageFileRef.current.value = '';
+                                          }
+                                        }}
+                                      />
+                                    )}
                                   </div>
-                                  {!productionImageUploading &&
-                                  !productionVideoNeedsClipEdit &&
-                                  productionVideoDraftPending &&
-                                  editorError ? (
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => onConfirmProductionVideoUpload?.()}
-                                        className={`inline-flex min-h-10 flex-1 items-center justify-center rounded-xl bg-[#ea580c] px-4 text-xs font-bold text-white ${bizFocusRingClass}`}
-                                      >
-                                        Retry convert & upload
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => onCancelProductionVideoDraft?.()}
-                                        className={`inline-flex min-h-10 items-center justify-center rounded-xl border border-[#e5e9eb] bg-white px-4 text-xs font-bold text-[#747779] ${bizFocusRingClass}`}
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  ) : null}
                                 </div>
                               )}
                             </div>
@@ -1121,7 +1316,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                   >
                                     <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
                                     <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
-                                      Upload image, video (max 60s), or PDF to IPFS. Default: solid color below.
+                                      Upload or drag image, video (max 60s), or PDF here. Default: solid color below.
                                     </span>
                                   </button>
                                   {onImportYoutubeProductionVideo ? (
@@ -1133,7 +1328,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                         <Link2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                                         Import from YouTube
                                       </label>
-                                      <div className="flex flex-col gap-2 sm:flex-row">
+                                      <div className="relative">
                                         <input
                                           id="production-youtube-url"
                                           type="url"
@@ -1146,39 +1341,27 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                           onKeyDown={(e) => {
                                             if (e.key !== 'Enter') return;
                                             e.preventDefault();
-                                            const url = youtubeImportUrl.trim();
-                                            if (
-                                              !url ||
-                                              !onImportYoutubeProductionVideo ||
-                                              productionBackgroundUploadLocked ||
-                                              !isYoutubeProductionVideoUrl(url)
-                                            ) {
-                                              return;
-                                            }
-                                            void onImportYoutubeProductionVideo(url);
+                                            runYoutubeProductionVideoImport();
                                           }}
                                           disabled={productionBackgroundUploadLocked}
-                                          className={`min-h-10 flex-1 rounded-xl border border-[#e5e9eb] bg-[#f8fafb] px-3 text-xs font-medium text-[#2c2f31] placeholder:text-[#abadaf] disabled:opacity-60 ${bizFocusRingClass}`}
+                                          className={`min-h-10 w-full rounded-full border border-[#e5e9eb] bg-[#f8fafb] py-2 pl-3 pr-11 text-xs font-medium text-[#2c2f31] placeholder:text-[#abadaf] disabled:opacity-60 ${bizFocusRingClass}`}
                                         />
                                         <button
                                           type="button"
                                           disabled={
-                                            productionBackgroundUploadLocked ||
-                                            !isYoutubeProductionVideoUrl(youtubeImportUrl)
+                                            productionBackgroundUploadLocked || !youtubeImportUrlValid
                                           }
-                                          onClick={() => {
-                                            const url = youtubeImportUrl.trim();
-                                            if (!url || !onImportYoutubeProductionVideo) return;
-                                            void onImportYoutubeProductionVideo(url);
-                                          }}
-                                          className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-[#ea580c] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                                          onClick={runYoutubeProductionVideoImport}
+                                          aria-label="Import from YouTube"
+                                          className={`absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
                                         >
-                                          Import
+                                          {productionBackgroundUploadLocked ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
+                                          ) : (
+                                            <Search className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                                          )}
                                         </button>
                                       </div>
-                                      <p className="mt-1.5 text-[10px] leading-snug text-[#747779]">
-                                        Verifies the video is playable on YouTube, then saves the link in metadata (no download, no 60s limit).
-                                      </p>
                                     </div>
                                   ) : null}
                                 </>
@@ -1193,22 +1376,21 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                 className="h-full w-full opacity-95"
                                 imgClassName="h-full w-full object-cover opacity-95"
                               />
-                              <button
-                                type="button"
+                              <ProductionBackgroundMediaDeleteButton
+                                disabled={productionBackgroundUploadLocked || productionImageUploading}
                                 onClick={() => {
                                   onClearProductionImage();
-                                  if (productionImageFileRef.current) productionImageFileRef.current.value = '';
+                                  if (productionImageFileRef.current) {
+                                    productionImageFileRef.current.value = '';
+                                  }
                                 }}
-                                className={`absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                                aria-label="Remove background media"
-                              >
-                                <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                              </button>
+                              />
                             </div>
                           )}
+                          </div>
                         </div>
 
-                        {tileBackgroundColorApplies(productionImage) ? (
+                        {catalogTileBackgroundColorEditorVisible ? (
                         <div className="space-y-2">
                           <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                             Tile background color
@@ -1387,22 +1569,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                         </p>
                       </section>
 
-                      {salesManagementCatalog ? (
-                        <section className="mb-5">
-                          <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            How members claim
-                          </h3>
-                          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#e5e9eb]">
-                            <p className="text-sm font-bold text-[#2c2f31]">Redeem code</p>
-                            <p className="mt-1 text-[11px] leading-relaxed text-[#747779]">
-                              Members enter a secret code to claim this NFT. An initial batch of codes is
-                              registered on-chain when you publish this item live.
-                            </p>
-                          </div>
-                        </section>
-                      ) : null}
-
-                      {!salesManagementCatalog ? (
+                      {!catalogPriceOptional ? (
                         <section className="mb-5 space-y-3">
                           <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Price</h3>
                           <p className="text-[11px] text-[#747779]">
@@ -1542,7 +1709,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                         </section>
                       ) : null}
 
-                      {!salesManagementCatalog ? (
+                      {!salesManagementCatalog && !shareLinkCatalog ? (
                         <section className="mb-5 space-y-3">
                           <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                             Total issuance

@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import * as React from 'react'
 import bLogoWhite from '@/components/Footer/assets/B-logo-white.svg'
 
@@ -33,7 +34,7 @@ export const BeamioLogoWhiteWhithBlueApp: React.FC<BeamioLogoProps> = ({
 				...style
 		}}
 		>
-		<img
+		<IpfsImg
 			src={bLogoWhite}
 			alt="Beamio"
 			style={{

@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, {useEffect, useState} from "react"
 import { X, Copy, Check, XCircle } from "lucide-react"
 import { getFollowStatus, removeFollowing as removeFollowingProcess, addFollowing, AuthorizationSign} from '@/services/beamio'
@@ -315,7 +316,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 							window.open(`https://basescan.org/tx/${successHash}`, '_blank', 'noopener,noreferrer')
 						}}
 						>
-						<img
+						<IpfsImg
 							src={base_ex}
 							alt="Base Explorer"
 							className="w-4 h-4 object-contain"
@@ -453,13 +454,13 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 							<div className="flex flex-col items-center text-center mt-10">
 							{/* 头像 */}
 							{item?.image ? (
-								<img
+								<IpfsImg
 									src={item.image}
 									alt={item.username}
 									className="w-20 h-20 rounded-full object-cover mr-2 flex-shrink-0"
 								/>
 								) : (
-								<img
+								<IpfsImg
 									src={getImg(item?.username)}
 									alt={item?.username}
 									className="w-20 h-20 rounded-full object-cover mr-2 flex-shrink-0 bg-slate-200"

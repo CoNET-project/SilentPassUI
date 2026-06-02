@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Loader2, Pause, Pencil, Play, X } from 'lucide-react';
+import { IpfsImg } from '@/components/IpfsImg';
+import { Check, Loader2, Pause, Pencil, Play, Trash2 } from 'lucide-react';
 import {
   PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS,
   formatProductionVideoTimeSec,
+  generateProductionVideoFrameThumbnails,
 } from '@/utils/productionBackgroundVideo';
 
 const bizFocusRingClass =
@@ -16,6 +18,7 @@ type DragMode = 'move' | 'left' | 'right' | null;
 
 export type ProductionVideoFilmstripTrimEditorProps = {
   videoSrc: string;
+  sourceFile?: File | null;
   durationSec: number;
   maxClipSec?: number;
   startSec: number;
@@ -34,59 +37,6 @@ function clampStartSec(startSec: number, durationSec: number, clipSec: number): 
   const maxStart = Math.max(0, durationSec - clipSec);
   if (!Number.isFinite(startSec)) return 0;
   return Math.min(Math.max(0, startSec), maxStart);
-}
-
-async function waitForVideoEvent(video: HTMLVideoElement, event: keyof HTMLMediaElementEventMap): Promise<void> {
-  if (event === 'loadedmetadata' && video.readyState >= 1) return;
-  if (event === 'seeked' && !video.seeking) return;
-
-  await new Promise<void>((resolve, reject) => {
-    const onOk = () => {
-      cleanup();
-      resolve();
-    };
-    const onErr = () => {
-      cleanup();
-      reject(new Error('Video seek failed.'));
-    };
-    const cleanup = () => {
-      video.removeEventListener(event, onOk);
-      video.removeEventListener('error', onErr);
-    };
-    video.addEventListener(event, onOk);
-    video.addEventListener('error', onErr);
-  });
-}
-
-async function generateFilmstripThumbnails(videoSrc: string, durationSec: number, count: number): Promise<string[]> {
-  const video = document.createElement('video');
-  video.muted = true;
-  video.playsInline = true;
-  video.preload = 'auto';
-  video.src = videoSrc;
-
-  await waitForVideoEvent(video, 'loadedmetadata');
-
-  const canvas = document.createElement('canvas');
-  canvas.width = FILMSTRIP_THUMB_WIDTH;
-  canvas.height = FILMSTRIP_THUMB_HEIGHT;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return [];
-
-  const safeDuration = Math.max(0.25, durationSec);
-  const thumbs: string[] = [];
-
-  for (let i = 0; i < count; i += 1) {
-    const t = count <= 1 ? 0 : (i / (count - 1)) * Math.max(0, safeDuration - 0.05);
-    video.currentTime = t;
-    await waitForVideoEvent(video, 'seeked');
-    ctx.drawImage(video, 0, 0, FILMSTRIP_THUMB_WIDTH, FILMSTRIP_THUMB_HEIGHT);
-    thumbs.push(canvas.toDataURL('image/jpeg', 0.52));
-  }
-
-  video.removeAttribute('src');
-  video.load();
-  return thumbs;
 }
 
 function TrimActionButton(props: {
@@ -202,9 +152,16 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
     let cancelled = false;
     setThumbsLoading(true);
     setThumbnails([]);
-    void generateFilmstripThumbnails(props.videoSrc, durationSec, FILMSTRIP_THUMB_COUNT)
+    void generateProductionVideoFrameThumbnails(props.videoSrc, {
+      count: FILMSTRIP_THUMB_COUNT,
+      durationSec,
+      width: FILMSTRIP_THUMB_WIDTH,
+      height: FILMSTRIP_THUMB_HEIGHT,
+      jpegQuality: 0.52,
+      sourceFile: props.sourceFile ?? null,
+    })
       .then((rows) => {
-        if (!cancelled) setThumbnails(rows);
+        if (!cancelled) setThumbnails(rows.map((r) => r.dataUrl));
       })
       .catch(() => {
         if (!cancelled) setThumbnails([]);
@@ -215,7 +172,7 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
     return () => {
       cancelled = true;
     };
-  }, [props.videoSrc, durationSec, selectMode]);
+  }, [props.videoSrc, props.sourceFile, durationSec, selectMode]);
 
   useEffect(() => {
     const video = previewRef.current;
@@ -416,39 +373,36 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
           onEnded={() => setPlaying(false)}
         />
 
+        <button
+          type="button"
+          onClick={props.onCancel}
+          disabled={(props.disabled && !props.uploading) || props.uploading}
+          aria-label="Remove background video"
+          title="Remove background video"
+          className={`absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-black/50 text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-45 ${bizFocusRingClass}`}
+        >
+          <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+        </button>
+
         <div className="pointer-events-none absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2">
           <div className="pointer-events-auto flex flex-col gap-2">
             {props.trimConfirmed ? (
-              <>
-                <TrimActionButton
-                  label="Edit trim"
-                  onClick={props.onTrimEdit}
-                  disabled={props.disabled || props.uploading}
-                >
-                  <Pencil className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                </TrimActionButton>
-                <TrimActionButton
-                  label="Cancel"
-                  onClick={props.onCancel}
-                  disabled={props.disabled && !props.uploading}
-                >
-                  <X className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                </TrimActionButton>
-              </>
+              <TrimActionButton
+                label="Edit trim"
+                onClick={props.onTrimEdit}
+                disabled={props.disabled || props.uploading}
+              >
+                <Pencil className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+              </TrimActionButton>
             ) : (
-              <>
-                <TrimActionButton
-                  label="Confirm trim"
-                  tone="confirm"
-                  onClick={props.onTrimConfirm}
-                  disabled={props.disabled}
-                >
-                  <Check className="h-4 w-4" strokeWidth={2.6} aria-hidden />
-                </TrimActionButton>
-                <TrimActionButton label="Cancel" onClick={props.onCancel} disabled={props.disabled}>
-                  <X className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                </TrimActionButton>
-              </>
+              <TrimActionButton
+                label="Confirm trim"
+                tone="confirm"
+                onClick={props.onTrimConfirm}
+                disabled={props.disabled}
+              >
+                <Check className="h-4 w-4" strokeWidth={2.6} aria-hidden />
+              </TrimActionButton>
             )}
           </div>
         </div>
@@ -508,7 +462,7 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
                     </div>
                   ) : thumbnails.length > 0 ? (
                     thumbnails.map((src, index) => (
-                      <img
+                      <IpfsImg
                         key={`filmstrip-${index}`}
                         src={src}
                         alt=""

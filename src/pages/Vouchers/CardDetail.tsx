@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React from "react"
 import {
   Check,
@@ -38,7 +39,7 @@ export default function CardDetail({
     <div className="w-full min-h-screen flex flex-col bg-white">
       {/* Hero Section (ProductDetailModal style - 45vh) */}
       <div className="relative w-full h-[45vh] shrink-0 bg-gray-900">
-        <img
+        <IpfsImg
           src={CCSA_IMAGE}
           className="w-full h-full object-cover"
           alt="CCSA Member Card"

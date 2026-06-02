@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 // CardManager - Form for creating BeamioUserCard
 // Key params: cardOwner, currency, unitPriceHuman (human-readable, backend converts to priceInCurrencyE6), initCode (built by backend)
 import React, { useState, useEffect, useRef } from "react"
@@ -260,7 +261,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 						>
 							<div className="relative">
 								{cardOwner ? (
-									<img
+									<IpfsImg
 										src={beamio?.image || getImg(beamio?.accountName ?? cardOwner)}
 										alt="owner"
 										className="w-11 h-11 rounded-full object-cover bg-white/10 shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
@@ -293,8 +294,8 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 						>
 							{currency === "USDC" ? (
 								<div className="relative flex-shrink-0 w-4 h-4">
-									<img src={usdcIcon} alt="" className="block w-4 h-4 rounded-full object-contain" />
-									<img src={baseIcon} alt="" className="block w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white/20 bg-white" />
+									<IpfsImg src={usdcIcon} alt="" className="block w-4 h-4 rounded-full object-contain" />
+									<IpfsImg src={baseIcon} alt="" className="block w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white/20 bg-white" />
 								</div>
 							) : (
 								<span className="text-lg">{CURRENCY_META[currency]?.flag}</span>
@@ -383,7 +384,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 									</button>
 									{metaImage && (
 										<div className="relative flex-1 min-w-0">
-											<img src={metaImage} alt="preview" className="h-10 w-10 rounded-lg object-cover border border-white/20" />
+											<IpfsImg src={metaImage} alt="preview" className="h-10 w-10 rounded-lg object-cover border border-white/20" />
 											<button
 												type="button"
 												onClick={() => setMetaImage("")}
@@ -470,7 +471,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 											</button>
 											{t.image && (
 												<>
-													<img src={t.image} alt={`Tier ${i + 1}`} className="h-8 w-8 rounded object-cover border border-white/20" />
+													<IpfsImg src={t.image} alt={`Tier ${i + 1}`} className="h-8 w-8 rounded object-cover border border-white/20" />
 													<button type="button" onClick={() => updateTier(i, "image", "")} className="p-0.5 rounded bg-red-500/80 hover:bg-red-500 text-white" aria-label="Remove"><X className="w-3 h-3" /></button>
 												</>
 											)}

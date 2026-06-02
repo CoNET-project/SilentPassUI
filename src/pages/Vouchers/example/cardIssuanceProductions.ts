@@ -8,6 +8,7 @@ export const CATALOG_GLOBAL_CATEGORY_OPTIONS = [
   { id: 'Product', label: 'Product' },
   { id: 'Service', label: 'Service' },
   { id: 'Menu', label: 'Menu' },
+  { id: 'ShareLink', label: 'Share link' },
   { id: 'SalesManagement', label: 'Sales Management' },
 ] as const;
 
@@ -38,6 +39,15 @@ export function isSalesManagementCatalogCategory(
   category: CatalogGlobalCategoryId
 ): boolean {
   return category === 'SalesManagement';
+}
+
+/** Share link catalog items: open-claim URL / QR only (no redeem codes, no list price). */
+export function isShareLinkCatalogCategory(category: CatalogGlobalCategoryId): boolean {
+  return category === 'ShareLink';
+}
+
+export function isCatalogPriceOptionalCategory(category: CatalogGlobalCategoryId): boolean {
+  return isSalesManagementCatalogCategory(category) || isShareLinkCatalogCategory(category);
 }
 
 function productionRequiresRedeemFlagTruthy(raw: unknown): boolean {
@@ -77,6 +87,7 @@ export function resolveProductionRequiresRedeemCode(
 ): boolean {
   if (parseProductionRequiresRedeemFromHydration(meta)) return true;
   const cat = globalCategory ?? normalizeCatalogGlobalCategory(meta.category);
+  if (isShareLinkCatalogCategory(cat)) return false;
   return isSalesManagementCatalogCategory(cat);
 }
 
@@ -114,13 +125,76 @@ export const PRODUCTION_SERVICE_CATEGORY_OPTIONS = DEFAULT_PRODUCTION_SERVICE_CA
 
 export type ProductionServiceCategoryId = string;
 
-/** Base ERC-1155 NFT explorer (catalog issued series). */
+/**
+ * Base ERC-1155 NFT explorer (catalog issued series).
+ * @see https://base.blockscout.com/token/{contract}/instance/{tokenId}
+ */
+export const BEAMIO_CATALOG_BLOCKSCOUT_NFT_EXPLORER = 'https://base.blockscout.com/token' as const;
+
+/**
+ * BaseScan NFT page works for issued series with zero mints; Blockscout `/instance/` does not.
+ * @see https://basescan.org/nft/{contract}/{tokenId}
+ */
 export const BEAMIO_CATALOG_BASESCAN_NFT_EXPLORER = 'https://basescan.org/nft' as const;
+
+export type CatalogNftExplorerKind = 'blockscout' | 'basescan';
+
+export type CatalogNftExplorerLink = {
+  url: string;
+  explorer: CatalogNftExplorerKind;
+};
+
+function parseIssuedNftMintedCountBigInt(raw: string | number | undefined): bigint | null {
+  const s = String(raw ?? '')
+    .trim()
+    .replace(/,/g, '');
+  if (!/^\d+$/.test(s)) return null;
+  try {
+    return BigInt(s);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Blockscout only lists ERC-1155 instances after at least one mint (`issuedNftMintedCount > 0`).
+ * Live series with zero mints must use BaseScan or the Blockscout instance SPA shows 404.
+ */
+export function catalogProductionNftExplorerLink(
+  cardAddress: string | undefined,
+  issuedTokenId: string | number | undefined,
+  issuedNftMintedCount?: string | number | undefined
+): CatalogNftExplorerLink | null {
+  const tid = normalizeCatalogIssuedNftTokenIdForExplorer(issuedTokenId);
+  if (!tid) return null;
+  const card = cardAddress?.trim() ?? '';
+  if (!card || !/^0x[a-fA-F0-9]{40}$/i.test(card)) return null;
+  try {
+    const cardNorm = ethers.getAddress(card);
+    const minted = parseIssuedNftMintedCountBigInt(issuedNftMintedCount);
+    if (minted != null && minted > 0n) {
+      return {
+        url: `${BEAMIO_CATALOG_BLOCKSCOUT_NFT_EXPLORER}/${cardNorm}/instance/${tid}`,
+        explorer: 'blockscout',
+      };
+    }
+    return {
+      url: `${BEAMIO_CATALOG_BASESCAN_NFT_EXPLORER}/${cardNorm}/${tid}`,
+      explorer: 'basescan',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function catalogProductionNftExplorerTitle(explorer: CatalogNftExplorerKind): string {
+  return explorer === 'blockscout' ? 'View NFT on Blockscout' : 'View NFT on BaseScan';
+}
 
 /** On-chain `createIssuedNft` tokenIds (not share token #0–#99). */
 export const CATALOG_ISSUED_NFT_TOKEN_ID_MIN = 100_000_000_000n;
 
-/** Decimal tokenId string for BaseScan `/nft/{card}/{tokenId}` (no Number() — avoids wrong ids). */
+/** Decimal tokenId string for Blockscout `/token/{card}/instance/{tokenId}` (no Number() — avoids wrong ids). */
 export function normalizeCatalogIssuedNftTokenIdForExplorer(
   issuedTokenId: string | number | undefined
 ): string | null {
@@ -136,20 +210,13 @@ export function normalizeCatalogIssuedNftTokenIdForExplorer(
   return raw;
 }
 
+/** @deprecated Prefer {@link catalogProductionNftExplorerLink} (mint-aware Blockscout vs BaseScan). */
 export function catalogProductionBaseScanNftUrl(
   cardAddress: string | undefined,
-  issuedTokenId: string | number | undefined
+  issuedTokenId: string | number | undefined,
+  issuedNftMintedCount?: string | number | undefined
 ): string | null {
-  const tid = normalizeCatalogIssuedNftTokenIdForExplorer(issuedTokenId);
-  if (!tid) return null;
-  const card = cardAddress?.trim() ?? '';
-  if (!card || !/^0x[a-fA-F0-9]{40}$/i.test(card)) return null;
-  try {
-    const cardNorm = ethers.getAddress(card);
-    return `${BEAMIO_CATALOG_BASESCAN_NFT_EXPLORER}/${cardNorm}/${tid}`;
-  } catch {
-    return null;
-  }
+  return catalogProductionNftExplorerLink(cardAddress, issuedTokenId, issuedNftMintedCount)?.url ?? null;
 }
 
 export function catalogProductionBaseScanNftLabel(issuedTokenId: string | number | undefined): string {
@@ -203,7 +270,7 @@ export type CardIssuanceProductionRow = {
   id: string;
   name: string;
   subtitle: string;
-  /** Root metadata `category` — Product | Service | Menu | SalesManagement. */
+  /** Root metadata `category` — Product | Service | Menu | ShareLink | SalesManagement. */
   globalCategory: CatalogGlobalCategoryId;
   /** Second-level metadata `itemCategory` (chip id). */
   itemCategory: ProductionServiceCategoryId;
@@ -232,6 +299,8 @@ export type CardIssuanceProductionRow = {
   description: string;
   issued: boolean;
   issuedTokenId?: string;
+  /** From `cardActiveIssuedProductionSeries` — drives Blockscout vs BaseScan explorer link. */
+  issuedNftMintedCount?: string;
 };
 
 export type CardIssuanceProductionMetadataPayload = {
@@ -295,6 +364,9 @@ export function makeCardIssuanceProductionRow(
     description: String(partial?.description ?? ''),
     issued: partial?.issued === true,
     ...(partial?.issuedTokenId?.trim() ? { issuedTokenId: partial.issuedTokenId.trim() } : {}),
+    ...(partial?.issuedNftMintedCount?.trim()
+      ? { issuedNftMintedCount: partial.issuedNftMintedCount.trim() }
+      : {}),
     ...(partial?.issueLeft != null && String(partial.issueLeft).trim()
       ? { issueLeft: String(partial.issueLeft).trim() }
       : {}),
@@ -342,6 +414,68 @@ export function isCatalogBaseProductionRow(
   >
 ): boolean {
   return !isCatalogPackageDealRow(row);
+}
+
+/** BigInt tokenId for sort; null when draft or not yet issued on-chain. */
+export function catalogProductionNftTokenIdBigInt(
+  issuedTokenId: string | number | undefined
+): bigint | null {
+  const tid = normalizeCatalogIssuedNftTokenIdForExplorer(issuedTokenId);
+  if (!tid) return null;
+  try {
+    return BigInt(tid);
+  } catch {
+    return null;
+  }
+}
+
+/** Catalog list: higher NFT # first; non-issued rows after all issued rows. */
+export function compareCatalogProductionRowsByNftTokenIdDesc(
+  a: Pick<CardIssuanceProductionRow, 'issuedTokenId' | 'name'>,
+  b: Pick<CardIssuanceProductionRow, 'issuedTokenId' | 'name'>
+): number {
+  const aNft = catalogProductionNftTokenIdBigInt(a.issuedTokenId);
+  const bNft = catalogProductionNftTokenIdBigInt(b.issuedTokenId);
+  if (aNft != null && bNft != null) {
+    if (aNft > bNft) return -1;
+    if (aNft < bNft) return 1;
+  } else if (aNft != null) return -1;
+  else if (bNft != null) return 1;
+  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+}
+
+export type CatalogProductionGlobalCategoryGroup = {
+  globalCategory: CatalogGlobalCategoryId;
+  rows: CardIssuanceProductionRow[];
+};
+
+/** Group base catalog rows by `globalCategory`; each group sorted by NFT # descending. */
+export function groupCatalogBaseProductionsByGlobalCategory(
+  productions: CardIssuanceProductionRow[]
+): CatalogProductionGlobalCategoryGroup[] {
+  const buckets = new Map<CatalogGlobalCategoryId, CardIssuanceProductionRow[]>();
+  for (const row of productions) {
+    if (!isCatalogBaseProductionRow(row)) continue;
+    const cat = normalizeCatalogGlobalCategory(row.globalCategory);
+    const list = buckets.get(cat) ?? [];
+    list.push(row);
+    buckets.set(cat, list);
+  }
+  const groups: CatalogProductionGlobalCategoryGroup[] = [];
+  const seen = new Set<CatalogGlobalCategoryId>();
+  for (const opt of CATALOG_GLOBAL_CATEGORY_OPTIONS) {
+    const rows = buckets.get(opt.id);
+    if (!rows?.length) continue;
+    seen.add(opt.id);
+    rows.sort(compareCatalogProductionRowsByNftTokenIdDesc);
+    groups.push({ globalCategory: opt.id, rows });
+  }
+  for (const [cat, rows] of buckets) {
+    if (seen.has(cat) || rows.length === 0) continue;
+    rows.sort(compareCatalogProductionRowsByNftTokenIdDesc);
+    groups.push({ globalCategory: cat, rows });
+  }
+  return groups;
 }
 
 export function catalogPackageDealsForBase(
@@ -518,6 +652,15 @@ export function productionIssueTotalDisplayLabel(
   return Number.isFinite(issueN) ? issueN.toLocaleString() : String(row.issueTotal);
 }
 
+/** Business Catalogs preview: hide issuance row when supply is unlimited. */
+export function catalogBusinessPreviewShowsIssuanceLine(
+  row: Pick<CardIssuanceProductionRow, 'issueTotalUnlimited'>,
+  ogSharePreviewLayout?: boolean
+): boolean {
+  if (!ogSharePreviewLayout) return true;
+  return !row.issueTotalUnlimited;
+}
+
 export function computeProductionIssueTotalN(
   row: Pick<CardIssuanceProductionRow, 'issueTotal' | 'issueTotalUnlimited'>
 ): number {
@@ -597,7 +740,11 @@ export function buildCardIssuanceProductionMetadataPayload(
   return out.length > 0 ? out : undefined;
 }
 
-export function buildProductionIssuedNftMetaProps(row: CardIssuanceProductionRow): Record<string, unknown> {
+export function buildProductionIssuedNftMetaProps(
+  row: CardIssuanceProductionRow,
+  options?: { publisherBeamioTag?: string }
+): Record<string, unknown> {
+  const publisherBeamioTag = options?.publisherBeamioTag?.trim().replace(/^@/, '') ?? '';
   const issueTotalN = computeProductionIssueTotalN(row);
   const single = parseProductionMoney(row.singleSessionPrice);
   const pkgTotal = parseProductionMoney(row.packageTotalPrice);
@@ -637,6 +784,7 @@ export function buildProductionIssuedNftMetaProps(row: CardIssuanceProductionRow
         ? { productionImageMime: row.productionImageMime.trim() }
         : {}),
       ...(row.description.trim() ? { description: row.description.trim() } : {}),
+      ...(publisherBeamioTag ? { publisherBeamioTag } : {}),
     },
   };
 }
@@ -666,6 +814,18 @@ export function resolveProductionBackgroundMediaKind(args: {
   if (u.includes('.pdf') || u.includes('application/pdf')) return 'pdf';
   if (/\.(mp4|webm|mov|m4v|ogv)(\?|&|$)/i.test(u)) return 'video';
   return mimeKind ?? 'image';
+}
+
+/** Infer stored mime when issued-series / share metadata omitted `productionImageMime` but URL is video. */
+export function inferProductionImageMimeFromUrl(url: string): string | undefined {
+  const u = url.trim();
+  if (!u) return undefined;
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return 'video/youtube';
+  const kind = resolveProductionBackgroundMediaKind({ url: u, mime: '' });
+  if (kind === 'video') return 'video/mp4';
+  if (kind === 'pdf') return 'application/pdf';
+  if (kind === 'image') return 'image/jpeg';
+  return undefined;
 }
 
 export function normalizeServiceCategoryLabelForHash(label: string): string {
@@ -803,11 +963,22 @@ export function mergeCatalogProductionHydrationRows(
     subtitle: pickStr(base.subtitle, incoming.subtitle),
     description: pickStr(base.description, incoming.description),
     productionImage: pickStr(base.productionImage, incoming.productionImage),
+    productionImageMime: (() => {
+      const inc = incoming.productionImageMime?.trim() ?? '';
+      if (inc) return inc;
+      const baseMime = base.productionImageMime?.trim() ?? '';
+      if (baseMime) return baseMime;
+      const image = pickStr(base.productionImage, incoming.productionImage);
+      return inferProductionImageMimeFromUrl(image) ?? '';
+    })(),
     icon: pickStr(base.icon, incoming.icon),
     globalCategory: incoming.globalCategory ?? base.globalCategory,
     itemCategory: incoming.itemCategory || base.itemCategory,
     issued: base.issued || incoming.issued,
     issuedTokenId: incoming.issuedTokenId?.trim() ? incoming.issuedTokenId : base.issuedTokenId,
+    issuedNftMintedCount: incoming.issuedNftMintedCount?.trim()
+      ? incoming.issuedNftMintedCount
+      : base.issuedNftMintedCount,
     issueLeft: incoming.issueLeft?.trim() ? incoming.issueLeft : base.issueLeft,
     requiresRedeemCode: base.requiresRedeemCode || incoming.requiresRedeemCode,
   };
@@ -907,6 +1078,28 @@ export function hasTileBackgroundPhoto(photo: unknown): boolean {
 /** True when solid `backgroundColor` applies (no wide background photo). */
 export function tileBackgroundColorApplies(photo: unknown): boolean {
   return !hasTileBackgroundPhoto(photo);
+}
+
+/** Business Catalog editor: hide tile color when background is (or will be) video. */
+export function catalogEditorTileBackgroundColorApplies(args: {
+  productionImage?: string;
+  productionImageMime?: string;
+  productionVideoDraftUrl?: string;
+}): boolean {
+  if (typeof args.productionVideoDraftUrl === 'string' && args.productionVideoDraftUrl.trim()) {
+    return false;
+  }
+  const url = typeof args.productionImage === 'string' ? args.productionImage.trim() : '';
+  if (!url) return tileBackgroundColorApplies(url);
+  if (
+    resolveProductionBackgroundMediaKind({
+      url,
+      mime: args.productionImageMime,
+    }) === 'video'
+  ) {
+    return false;
+  }
+  return tileBackgroundColorApplies(url);
 }
 
 export function effectiveTileBackgroundColorForMetadata(args: {

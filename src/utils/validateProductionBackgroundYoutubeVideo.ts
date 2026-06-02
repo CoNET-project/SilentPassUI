@@ -14,7 +14,14 @@ export async function validateProductionBackgroundYoutubeVideo(args: {
   apiBase?: string;
   onProgress?: (progress: ValidateProductionBackgroundYoutubeProgress) => void;
   signal?: AbortSignal;
-}): Promise<{ normalizedUrl: string; title: string; videoId: string; embedUrl: string }> {
+}): Promise<{
+  normalizedUrl: string;
+  title: string;
+  channelUsername: string;
+  description: string;
+  videoId: string;
+  embedUrl: string;
+}> {
   const normalized = normalizeYoutubeProductionVideoUrl(args.url);
   if (!normalized) {
     throw new Error('Enter a valid YouTube URL (youtube.com or youtu.be).');
@@ -37,9 +44,16 @@ export async function validateProductionBackgroundYoutubeVideo(args: {
 
   args.onProgress?.({ percent: 100, message: data.title ? `Ready: ${data.title}` : 'YouTube video ready' });
 
+  const channelUsername = String(data.channelUsername ?? '').trim();
+  if (!channelUsername) {
+    throw new Error(data?.error ?? 'This YouTube channel could not be verified.');
+  }
+
   return {
     normalizedUrl: data.normalizedUrl,
     title: data.title ?? '',
+    channelUsername,
+    description: String(data.description ?? '').trim(),
     videoId: data.videoId,
     embedUrl: data.embedUrl ?? `https://www.youtube.com/embed/${data.videoId}?rel=0`,
   };

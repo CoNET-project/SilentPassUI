@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useLayoutEffect } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { createPortal } from 'react-dom';
+import { IpfsImg } from '@/components/IpfsImg';
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, searchUsername} from '@/services/beamio'
 import base_icon from '@/components/assets/base-logo.png'
@@ -443,7 +444,7 @@ const Home = ({}) => {
 							onClick={reflashProcess}
 							disabled={reflash}
 						>
-							<img
+							<IpfsImg
 								src={base_icon}
 								alt="Base"
 								className={[
@@ -499,12 +500,12 @@ const Home = ({}) => {
 
 									<div className="mt-1 flex items-center text-[16px] text-white/80">
 										<div className="relative mr-2 flex-shrink-0">
-											<img
+											<IpfsImg
 												src={usdcIcon}
 												alt="USDC"
 												className="w-5 h-5 rounded-full"
 											/>
-											<img
+											<IpfsImg
 												src={baseIcon}
 												alt="Base"
 												className="
@@ -744,7 +745,7 @@ const Home = ({}) => {
 				>
 					<div className="flex items-center space-x-2.5 px-3 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50 group active:scale-[0.98] transition-transform">
 						{beamio ? (
-							<img
+							<IpfsImg
 								src={beamio.image ? beamio.image : getImg(beamio.accountName)}
 								alt={beamio.accountName}
 								className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-slate-600 shadow-sm"

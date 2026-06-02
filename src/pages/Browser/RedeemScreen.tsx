@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useNavigate } from "react-router-dom"
 import { useState, useRef, useEffect } from 'react'
@@ -114,7 +115,7 @@ const RedeemScreen = ({close}: Prof) => {
 					"
 				>
 					{/* Avatar */}
-					<img
+					<IpfsImg
 						src={fromBeamio?.image || fallback}
 						alt={fromBeamio?.username}
 						className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-200"
@@ -356,7 +357,7 @@ const RedeemScreen = ({close}: Prof) => {
 									"
 									aria-label="Open gift"
 								>
-									<img
+									<IpfsImg
 										src={giftEnvelope}
 										className="
 											w-12   /* w-14 -> w-12 */

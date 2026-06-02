@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback } from "react"
 import { flushSync } from "react-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
@@ -1121,7 +1122,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 							<ChevronLeft className="h-6 w-6" strokeWidth={2.4} />
 						</button>
 						{userImg ? (
-							<img src={userImg} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover ring-1 ring-black/5" />
+							<IpfsImg src={userImg} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover ring-1 ring-black/5" />
 						) : (
 							<div className="h-11 w-11 shrink-0 rounded-full bg-slate-200 ring-1 ring-black/5" />
 						)}

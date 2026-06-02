@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React from "react"
 import { BIZ_PUBLIC_LOGO512 } from "@/pages/Home/brandUi"
 
@@ -12,7 +13,7 @@ const SplashScreen: React.FC = () => (
 			paddingRight: 'env(safe-area-inset-right)',
 		}}
 	>
-		<img src={BIZ_PUBLIC_LOGO512} alt="" className="h-32 w-32 object-contain" />
+		<IpfsImg src={BIZ_PUBLIC_LOGO512} alt="" className="h-32 w-32 object-contain" />
 	</div>
 )
 

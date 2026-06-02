@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useAutoFocus } from "@/components/input/useAutoFocus"
 import { XCircle } from "lucide-react"
@@ -597,7 +598,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 									min-w-[16px] min-h-[16px]
 								"
 							>
-								<img
+								<IpfsImg
 									src={usdcIcon}
 									alt="USDC"
 									className="
@@ -607,7 +608,7 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 										object-contain
 									"
 								/>
-								<img
+								<IpfsImg
 									src={baseIcon}
 									alt="Base"
 									className="
@@ -633,8 +634,8 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 						<IOSGlassPillButton open={showCurrencyPicker} onToggle={openPicker} >
 							{effectiveCurrency === 'USDC' ? (
 								<div className="relative flex-shrink-0 w-4 h-4 min-w-[16px] min-h-[16px]">
-									<img src={usdcIcon} alt="USDC" className="block w-4 h-4 rounded-full object-contain" />
-									<img src={baseIcon} alt="Base" className="block w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+									<IpfsImg src={usdcIcon} alt="USDC" className="block w-4 h-4 rounded-full object-contain" />
+									<IpfsImg src={baseIcon} alt="Base" className="block w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
 								</div>
 							) : (
 								<>

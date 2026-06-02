@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { IpfsImg } from '@/components/IpfsImg';
 import {
  X,
  Share,
@@ -131,7 +132,7 @@ const App = () => {
          <div className="pt-12 px-6 flex justify-between items-center">
            <h1 className="text-3xl font-extrabold tracking-tight text-white">Strategic</h1>
            <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-800">
-             <img src="https://i.pravatar.cc/150?img=11" alt="User avatar" className="w-full h-full object-cover" />
+             <IpfsImg src="https://i.pravatar.cc/150?img=11" alt="User avatar" className="w-full h-full object-cover" />
            </div>
          </div>
 
@@ -158,7 +159,7 @@ const App = () => {
              onClick={() => handlePackageSelect('genesis')}
              className="min-w-[300px] h-[400px] rounded-3xl bg-gradient-to-br from-gray-900 to-black relative overflow-hidden snap-center cursor-pointer shadow-[0_0_30px_rgba(0,112,243,0.15)] border border-gray-800 group active:scale-95 transition-transform duration-200"
            >
-             <img
+             <IpfsImg
                src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop"
                alt="Carbon texture"
                className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
@@ -210,7 +211,7 @@ const App = () => {
              onClick={() => handlePackageSelect('fuel')}
              className="min-w-[300px] h-[400px] rounded-3xl bg-gradient-to-br from-gray-900 to-[#1a1005] relative overflow-hidden snap-center cursor-pointer shadow-[0_0_30px_rgba(249,115,22,0.15)] border border-gray-800 group active:scale-95 transition-transform duration-200"
            >
-              <img
+              <IpfsImg
                src="https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=800&auto=format&fit=crop"
                alt="Server texture"
                className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
@@ -278,7 +279,7 @@ const App = () => {
           
            {/* Hero Image Area */}
            <div className={`relative h-[380px] w-full bg-gradient-to-b from-gray-900 to-[#0a0a0c]`}>
-             <img
+             <IpfsImg
                src={currentData.heroImg}
                alt="Detail background"
                className="w-full h-full object-cover opacity-30 mix-blend-screen"

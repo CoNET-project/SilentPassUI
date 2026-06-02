@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import BeamioDetail from "./beamioForShow"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} from '@/services/beamio'
@@ -132,7 +133,7 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 				{/* 图片层 - 仅在图片存在且未加载失败时显示 */}
 				{hasImage && (
 					<div className="absolute inset-0" style={{ transform: "translateZ(0)" }}>
-						<img
+						<IpfsImg
 							key={imgSrc}                 // ✅ 强制刷新 img 节点，iOS 更稳
 							src={imgSrc}
 							alt="card-bg"

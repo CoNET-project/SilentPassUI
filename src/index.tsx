@@ -7,6 +7,7 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'
 import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider'
+import { IpfsImageLibraryProvider } from './providers/IpfsImageLibraryProvider'
 import { HashRouter as Router } from 'react-router-dom'
 
 const root = ReactDOM.createRoot(
@@ -18,7 +19,9 @@ root.render(
 		<Router>
 			<DaemonProvider>
 				<BeamioTagDatabaseProvider>
-					<App />
+					<IpfsImageLibraryProvider>
+						<App />
+					</IpfsImageLibraryProvider>
 				</BeamioTagDatabaseProvider>
 			</DaemonProvider>
 		</Router>

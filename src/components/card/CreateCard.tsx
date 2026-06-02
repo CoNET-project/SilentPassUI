@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { images } from "./cards"
 import BeamioDetail from "./beamioCard"
@@ -642,7 +643,7 @@ export default function DiceBearCardFullscreenEditor({
       <div className="absolute inset-0">
         <div className={bgBreathing ? "absolute inset-0 bg-breath" : "absolute inset-0"}>
           {bgSrc && (
-            <img
+            <IpfsImg
               src={bgSrc}
               alt="card-bg"
               className="w-full h-full object-cover"
@@ -919,7 +920,7 @@ export default function DiceBearCardFullscreenEditor({
                 {/* ✅ 已上传图片缩略图 + 删除键（在 + 右边，用户可删除来更换新图） */}
                 {isCurrentUserUploaded && bgSrc && (
                   <div className="shrink-0 relative">
-                    <img src={bgSrc} alt="uploaded" className="w-16 h-10 rounded-xl object-cover border border-white/40" draggable={false} />
+                    <IpfsImg src={bgSrc} alt="uploaded" className="w-16 h-10 rounded-xl object-cover border border-white/40" draggable={false} />
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); deleteCurrentBackground() }}
@@ -940,7 +941,7 @@ export default function DiceBearCardFullscreenEditor({
                     className={`shrink-0 rounded-xl overflow-hidden border ${i === currentIndex ? "border-white scale-105" : "border-white/40"}`}
                     aria-label={`Select background ${i + 1}`}
                   >
-                    <img src={src} className="w-16 h-10 object-cover" draggable={false} />
+                    <IpfsImg src={src} className="w-16 h-10 object-cover" draggable={false} />
                   </button>
                 ))}
               </div>

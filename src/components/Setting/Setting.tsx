@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 // @/components/Setting.tsx
 
 import React, { useState, useEffect } from 'react'
@@ -183,7 +184,7 @@ const Setting = ({}) => {
 				setAvatarEditorVisible(true)
 			}}
 		>
-			<img
+			<IpfsImg
 			src={currentAvatarSrc}
 			alt="AI avatar"
 			className={styles.avatarImage}
@@ -234,7 +235,7 @@ const Setting = ({}) => {
 
 			<div className={styles.avatarEditorPreview}>
 				<div className={styles.avatarWrapper}>
-				<img
+				<IpfsImg
 					src={currentAvatarSrcTemp}
 					alt="Avatar preview"
 					className={styles.avatarEditorImage}

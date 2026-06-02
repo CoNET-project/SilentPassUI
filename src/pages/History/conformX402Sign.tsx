@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { useMemo, useState, useEffect } from 'react'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
@@ -110,12 +111,12 @@ export function ConformSignInfo({
 
 						{/* USDC + Base icon */}
 						<div className="relative w-9 h-9 rounded-full border border-slate-200 dark:border-white/10 grid place-items-center">
-						<img
+						<IpfsImg
 							src={usdcIcon}
 							alt="USDC"
 							className="w-7 h-7"
 						/>
-						<img
+						<IpfsImg
 							src={baseIcon}
 							alt="Base"
 							className="
@@ -170,7 +171,7 @@ export function ConformSignInfo({
 						aria-label="View on BaseScan"
 						title="View on BaseScan"
 					>
-						<img
+						<IpfsImg
 							src={darkModle ? base_ex_dark : base_ex}
 							alt=""
 							className="w-4 h-4"

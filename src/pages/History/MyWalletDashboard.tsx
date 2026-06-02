@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { createPortal } from 'react-dom';
+import { IpfsImg } from '@/components/IpfsImg';
 import { ethers } from "ethers"
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -840,7 +841,7 @@ export function MyWalletDashboard() {
 									disabled={reflash}
 									aria-label="Refresh"
 								>
-									<img
+									<IpfsImg
 										src={base_icon}
 										alt="Base"
 										className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
@@ -915,7 +916,7 @@ export function MyWalletDashboard() {
 										disabled={reflash}
 										aria-label="Refresh"
 									>
-										<img
+										<IpfsImg
 											src={base_icon}
 											alt="Base"
 											className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
@@ -1184,8 +1185,8 @@ export function MyWalletDashboard() {
 								<div className="flex items-center gap-3">
 									<div className="flex-shrink-0 w-11 h-11 flex items-center justify-center">
 										<div className="relative flex-shrink-0 min-w-[16px] min-h-[16px]">
-											<img src={usdc_icon} alt="USDC" className="block w-8 h-8 rounded-full object-contain" />
-											<img src={base_icon} alt="Base" className="block w-5 h-5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+											<IpfsImg src={usdc_icon} alt="USDC" className="block w-8 h-8 rounded-full object-contain" />
+											<IpfsImg src={base_icon} alt="Base" className="block w-5 h-5 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
 										</div>
 									</div>
 									<div className="flex-1 min-w-0">

@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Sparkles, Receipt, Loader2, RefreshCw } from 'lucide-react'
@@ -73,8 +74,8 @@ function UsdcOnBaseAmountRow({ amount }: { amount: number }) {
 		<div className="flex justify-between text-sm">
 			<span className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
 				<span className="relative inline-flex h-5 w-5 shrink-0">
-					<img src={USDC_ICON_URL} alt="" className="h-5 w-5 rounded-full object-contain" />
-					<img
+					<IpfsImg src={USDC_ICON_URL} alt="" className="h-5 w-5 rounded-full object-contain" />
+					<IpfsImg
 						src={base_icon}
 						alt=""
 						className="absolute -bottom-px -right-px h-2.5 w-2.5 rounded-full border border-white bg-white object-contain dark:border-slate-900"
@@ -178,7 +179,7 @@ export default function SalesOverview() {
 						{loading ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <RefreshCw className="h-5 w-5" aria-hidden />}
 					</button>
 					<div className="h-10 w-10 overflow-hidden rounded-full ring-2 ring-white shadow-md dark:ring-slate-700">
-						<img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+						<IpfsImg src={avatarSrc} alt="" className="h-full w-full object-cover" />
 					</div>
 				</div>
 			</header>

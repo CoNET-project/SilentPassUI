@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { useEffect, useMemo, useState, useRef } from "react"
 import { Copy, Check, MessageCircle, Share2, Plus, Wallet, CreditCard } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -248,7 +249,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 					<div className="text-center">
 						{!hideName && (
 							<div className="flex flex-col items-center gap-0">
-								<img
+								<IpfsImg
 									src={beamio?.image || getImg(beamio?.accountName)}
 									alt=""
 									className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-600 shrink-0"

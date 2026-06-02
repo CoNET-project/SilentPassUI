@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { ChevronRight } from 'lucide-react'
 import payIcon from '@/pages/Pay/assets/Pay.svg'
 import cashcodeIcon from '@/pages/Pay/assets/cashcode.svg'
@@ -41,7 +42,7 @@ export default function MainScreen({
 			active:scale-[0.98]
         "
       >
-        <img
+        <IpfsImg
           src={payIcon}
           alt="Pay"
           className="w-5 h-5 filter brightness-0 invert"
@@ -90,7 +91,7 @@ export default function MainScreen({
 			active:scale-[0.98]
         "
       >
-        <img
+        <IpfsImg
           src={rlIcon}
           alt="Request Link or QR"
           className="w-5 h-5 filter brightness-0 invert"
@@ -137,7 +138,7 @@ export default function MainScreen({
           active:scale-[0.98]
         "
       >
-        <img
+        <IpfsImg
           src={cashcodeIcon}
           alt="Cashcode"
           className="w-5 h-5 filter brightness-0 invert"
@@ -183,7 +184,7 @@ export default function MainScreen({
 			active:scale-[0.98]
         "
       >
-        <img
+        <IpfsImg
           src={pmIcon}
           alt="Pay me QR"
           className="w-5 h-5 filter brightness-0 invert"

@@ -50,6 +50,13 @@ export function youtubeThumbnailUrlFromProductionUrl(raw: string): string | null
   return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 }
 
+export {
+  CATALOG_VIDEO_OG_RIGHT_THUMB_HEIGHT as YOUTUBE_HQDEFAULT_THUMB_HEIGHT,
+  CATALOG_VIDEO_OG_RIGHT_THUMB_WIDTH as YOUTUBE_HQDEFAULT_THUMB_WIDTH,
+  CATALOG_VIDEO_OG_RIGHT_THUMB_JPEG_QUALITY as CATALOG_VIDEO_OG_THUMB_JPEG_QUALITY,
+  CATALOG_VIDEO_OG_THUMB_FFMPEG_QV,
+} from './catalogProductionVideoOgConstants';
+
 export function isProductionBackgroundYoutubeMedia(args: {
   url?: unknown;
   mime?: unknown;
@@ -68,5 +75,7 @@ export type YoutubeProductionVideoValidateResponse = {
   normalizedUrl?: string;
   embedUrl?: string;
   title?: string;
+  channelUsername?: string;
+  description?: string;
   error?: string;
 };

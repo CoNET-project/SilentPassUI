@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import {AuthorizationSign, aesGcmEncrypt, generateCODE, postToIPFS, storeSystemData} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
@@ -531,7 +532,7 @@ export default function PaymentLink ({close}: Props) {
 							{showGiftEnvelope && (
 								<div className="flex justify-center">
 									<div className="relative w-fit">
-									<img
+									<IpfsImg
 										src={giftEnvelope}
 										className="w-24 block"
 										alt="Gift Envelope"

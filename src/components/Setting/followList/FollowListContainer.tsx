@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { getFololowsData } from '@/services/beamio'
@@ -215,13 +216,13 @@ const FollowListContainer = ({ tab, onClose }: FollowListContainerProps) => {
                   {/* 左侧：头像 + 文本 */}
                   <div className="flex items-center min-w-0">
                     {item.image ? (
-                      <img
+                      <IpfsImg
                         src={item.image}
                         alt={item.username || ''}
                         className="w-9 h-9 rounded-full object-cover mr-3 flex-shrink-0"
                       />
                     ) : (
-                      <img
+                      <IpfsImg
                         src={getImg(item.username || '')}
                         alt={item.username || ''}
                         className="w-9 h-9 rounded-full object-cover mr-3 flex-shrink-0 bg-slate-200"

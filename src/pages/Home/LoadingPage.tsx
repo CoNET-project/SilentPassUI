@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { IpfsImg } from '@/components/IpfsImg';
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
@@ -443,7 +444,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 								<div className="relative mt-14">
 									<div className="aspect-[16/10] overflow-hidden rounded-lg opacity-40 mix-blend-multiply grayscale">
-										<img
+										<IpfsImg
 											alt=""
 											className="h-full w-full object-cover"
 											src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-lOOZSffTjg2F90jGhQQCV5JGl0HYwdJshlRF7JS-vuz6_xwBwr1DWrZN8TusbAKh2gifA-EbWTl0uyfIBnIaVZuhtQYmayWamMPuKyc3VwTkgy2RdHO93Ux5rP3j1R7vMz2zLssVdWgYWRPm0Pjh-9Cs4kW29OllrPYDwm-9i0yPcqdl-lNiEiOUAzmGD2VitahYc35dG883pISfBCRCI7wFQnZb2RtWSksGm6GfpyZKe5Jr-84-RleF5YP4gtWIO9C_d8lZgm0"
@@ -736,7 +737,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 				<section className="hidden w-full flex-col justify-center bg-[#eef1f3] p-5 md:flex md:w-[40%] md:p-10 lg:p-12">
 					<div className="mx-auto w-full max-w-md md:mx-0">
 						<div className="mb-6 flex items-center gap-0 md:mb-8">
-							<img src={BIZ_PUBLIC_LOGO512} alt="" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
+							<IpfsImg src={BIZ_PUBLIC_LOGO512} alt="" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
 							<div className="text-2xl font-black tracking-tighter text-[#1562f0]" style={headlineFont}>
 								Beamio Business
 							</div>
@@ -952,7 +953,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 			{/* newOnloading.html — 单列顶栏 */}
 			<header className="relative z-10 flex shrink-0 items-center justify-center gap-0 px-5 pt-5 lg:justify-start lg:px-8">
-				<img
+				<IpfsImg
 					src={BIZ_PUBLIC_LOGO512}
 					alt=""
 					className="h-8 w-8 shrink-0 rounded-lg object-contain"

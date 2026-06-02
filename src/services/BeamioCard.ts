@@ -1140,7 +1140,7 @@ export type ShareTokenMetadataProduction = {
 	packageBonusSessions?: number
 	packageTotalPrice?: number
 	issueTotal?: number
-	/** Global catalog category: Product | Service | Menu | SalesManagement. */
+	/** Global catalog category: Product | Service | Menu | ShareLink | SalesManagement. */
 	category?: string
 	icon?: string
 	backgroundColor?: string
@@ -1181,7 +1181,7 @@ export type ShareTokenMetadata = {
 	pointSystem?: ShareTokenMetadataPointSystem
 	/** Program coupons metadata (icon can be an IPFS URL). */
 	coupons?: ShareTokenMetadataCoupon[]
-	/** Program service catalog / productions (global category Product | Service | Menu | SalesManagement). */
+	/** Program service catalog / productions (global category Product | Service | Menu | ShareLink | SalesManagement). */
 	productions?: ShareTokenMetadataProduction[]
 	/** Item category chip definitions for catalog UI (legacy `serviceCategory`). */
 	itemCategory?: ShareTokenMetadataServiceCategoryEntry[]

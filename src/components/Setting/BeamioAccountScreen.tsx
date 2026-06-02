@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useEffect, useRef } from 'react'
 import { Camera, Check, Trash2,  } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -230,7 +231,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
         <div className="flex flex-col items-center">
 			<div className="relative">
 				<div className="h-[118px] w-[118px] rounded-full bg-white shadow-[0_16px_40px_rgba(15,23,42,0.10)] ring-1 ring-slate-200 overflow-hidden">
-				<img
+				<IpfsImg
 					key={avatarSeed}
 					src={currentAvatarSrcTemp}
 					alt="Avatar"

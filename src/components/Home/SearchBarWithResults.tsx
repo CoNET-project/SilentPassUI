@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
 import { Search, ChevronLeft, QrCode, Loader2 } from 'lucide-react'
 import { searchUsername, storeSystemData, handleNfcLinkAppDeepLinkScan, emitWalletEvent } from '@/services/beamio'
@@ -544,7 +545,7 @@ const SearchInputWithDropdown =
 												transition
 											"
 										>
-											<img
+											<IpfsImg
 												src={b.image || fallback}
 												alt={b.username}
 												className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-200"
@@ -638,7 +639,7 @@ const SearchInputWithDropdown =
 							}
 							
 							{/* Beamio icon —— 在最左侧 */}
-							{/* <img
+							{/* <IpfsImg
 								src={beamio_icon}
 								alt="Beamio"
 								className={[
@@ -827,7 +828,7 @@ const SearchInputWithDropdown =
 											>
 												{/* 头像 */}
 												
-													<img
+													<IpfsImg
 														src={item.image? item.image : getImg(item.username)}
 														alt={item.username}
 														className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-slate-200"

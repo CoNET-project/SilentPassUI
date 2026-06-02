@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 
 import {AppButton} from '@/components/button/AppButton'
 import React, { useState, useEffect } from 'react'
@@ -195,7 +196,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		<div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
 			<div className="flex items-center gap-3">
 			<div className="w-6 h-6 rounded-full bg-white border border-blue-100 flex items-center justify-center">
-				<img
+				<IpfsImg
 				src={baseIcon}
 				alt="Base"
 				className="w-6 h-6"

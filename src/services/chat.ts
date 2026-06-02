@@ -10,6 +10,10 @@ import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 
+function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
+	publishNativePwaLog(level, `[Chat] ${message}`)
+}
+
 
 type GenerateKeyArg = Parameters<typeof generateKey>[0]
 
@@ -175,29 +179,36 @@ let initChatInProgress = false
 
 export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
 	if (initChatInProgress) {
-		console.debug('[initChat] Skipped: already in progress')
+		chatBootLog('initChat skipped: already in progress', 'info')
 		return
 	}
-	if (gossip) return
+	if (gossip) {
+		chatBootLog('initChat skipped: gossip already active', 'info')
+		return
+	}
 
 	initChatInProgress = true
+	chatBootLog('initChat starting…')
 	try {
 		setGossip(true)
 		const allNodes = await getAllNodes()
+		chatBootLog(`CoNET nodes loaded: ${allNodes?.length ?? 0}`)
 		setAllNodes(allNodes)
 		const temp = CoNET_Data
 		if (!temp || !temp?.profiles?.length) {
+			chatBootLog('initChat abort: no profiles in CoNET_Data', 'warn')
 			setGossip(false)
 			return
 		}
 		const profiles: profile[] =  temp.profiles
 		let profile = profiles[0]
 		if (!profile) {
+			chatBootLog('initChat abort: empty profiles[0]', 'warn')
 			setGossip(false)
 			return
 		}
 		if (!profile.privateKeyArmor || !isValidEthersPrivateKey(profile.privateKeyArmor)) {
-			console.warn('[initChat] profile.privateKeyArmor invalid or missing, cannot init')
+			chatBootLog('initChat abort: privateKeyArmor invalid or missing', 'warn')
 			setGossip(false)
 			return
 		}
@@ -286,13 +297,15 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		storeSystemData()
 
 		if (!allNodes?.length) {
+			chatBootLog('initChat abort: no CoNET gossip nodes', 'warn')
 			setGossip(false)
 			return
 		}
 	
+		chatBootLog(`connectToGossipNode starting (router=${Boolean(chatManager.router)})`)
 		await connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
 	} catch (error) {
-		console.error('[initChat] Error:', error)
+		chatBootLog(`initChat error: ${(error as Error)?.message ?? String(error)}`, 'error')
 		setGossip(false)
 	} finally {
 		initChatInProgress = false
@@ -474,7 +487,9 @@ function startGossip(
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
       markGossipNodeHealthy(node.domain)
-      console.log(`[SSE] Connected [${node.ip_addr}]`);
+      const connectedLine = `[SSE] Connected [${node.ip_addr}]`
+      console.log(connectedLine)
+      chatBootLog(connectedLine)
       reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
@@ -566,6 +581,7 @@ function startGossip(
 
       if (err.name !== 'AbortError') {
           console.error(`[SSE] Connection Error:`, msg);
+          chatBootLog(`SSE error (${node.domain}): ${msg}`, 'warn')
           callback?.(msg);
       }
       if (msg === 'connect_timeout' || msg === 'idle_timeout' || msg === 'Failed to fetch') {
@@ -691,7 +707,7 @@ export const connectToGossipNode = async (
   try {
       const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
       if (!routeNodes.length) {
-        console.error('[Gossip] No route node matches current router armored public key')
+        chatBootLog('connectToGossipNode abort: no route node for router key', 'error')
         return
       }
 
@@ -713,11 +729,12 @@ export const connectToGossipNode = async (
       const userPgpKeyID = pgpPublicArmored ? await getPublicKeyArmoredKeyID(pgpPublicArmored) : '';
 
       console.log("🚀 [Gossip] Starting new connection...");
+      chatBootLog('Gossip SSE connect starting…')
       const gossipBody = JSON.stringify({ data: postData })
       const healthyNodes = await pickHealthyGossipNodes(routeNodes)
-      console.log(`[Gossip] Route healthy nodes ${healthyNodes.length}/${routeNodes.length}`)
+      chatBootLog(`Gossip healthy route nodes: ${healthyNodes.length}/${routeNodes.length}`)
       if (!healthyNodes.length) {
-        console.error('[Gossip] No healthy route node available, skip connect')
+        chatBootLog('connectToGossipNode abort: no healthy route node', 'error')
         return
       }
 

@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, QrCode, Loader, Loader2, Check, X, RefreshCw, Zap, Copy, ExternalLink, Wallet, CreditCard, SmartphoneNfc } from 'lucide-react'
@@ -445,9 +446,9 @@ function ConfirmDeductionView({
 				{isBillPay ? (
 					<div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
 						{data.payeeImage ? (
-							<img src={data.payeeImage} alt="" className="w-full h-full object-cover" />
+							<IpfsImg src={data.payeeImage} alt="" className="w-full h-full object-cover" />
 						) : (
-							<img src={getImg(data.payeeAccountName ?? payeeAddr)} alt="" className="w-full h-full object-cover" />
+							<IpfsImg src={getImg(data.payeeAccountName ?? payeeAddr)} alt="" className="w-full h-full object-cover" />
 						)}
 					</div>
 				) : (

@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useMemo, useEffect, useRef, useCallback, useState } from "react"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {ethers} from 'ethers'
@@ -143,7 +144,7 @@ function Avatar({
 	return (
 		<div className="relative h-12 w-12 flex-shrink-0">
 		{avatarSrc ? (
-			<img
+			<IpfsImg
 				key={avatarSrc}
 				src={avatarSrc}
 				alt=""

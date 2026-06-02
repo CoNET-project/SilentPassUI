@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 /**
  * 根据 AI 输出的 Action 渲染对应 UI 组件
  * 去 UI 化：AI 决定展示什么，此处仅负责映射与渲染
@@ -157,7 +158,7 @@ function EditProfileForm({
             Avatar (DiceBear seed)
           </label>
           <div className="flex gap-3 items-center">
-            <img
+            <IpfsImg
               src={`${DICEBEAR_URL}${encodeURIComponent(avatarSeed || "Beamio")}`}
               alt="Avatar"
               className="w-14 h-14 rounded-full object-cover border border-slate-200"

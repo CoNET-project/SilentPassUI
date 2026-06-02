@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
+import { IpfsImg } from '@/components/IpfsImg';
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
@@ -23,6 +24,7 @@ import {
 } from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, getMyAssets } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
+import { dispatchBeamioWalletReady } from '@/utils/beamioWalletReadyEvent'
 
 import { getUsdcBalanceFromApi, formatWithThousands, isStandalone } from "@/services/beamio"
 import { ethers } from "ethers"
@@ -156,7 +158,7 @@ function OnboardHeroMarquee() {
 			className="pointer-events-none absolute inset-0 z-0 min-h-full overflow-hidden"
 		>
 			<div className="absolute inset-0 hidden motion-reduce:block" aria-hidden>
-				<img
+				<IpfsImg
 					src={ONBOARD_HERO_BG}
 					alt=""
 					className="h-full w-full object-cover blur-sm"
@@ -169,7 +171,7 @@ function OnboardHeroMarquee() {
 				aria-hidden
 			>
 				<div ref={panel0Ref} className="relative h-full shrink-0 overflow-hidden">
-					<img
+					<IpfsImg
 						src={ONBOARD_HERO_BG}
 						alt=""
 						className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
@@ -177,7 +179,7 @@ function OnboardHeroMarquee() {
 					/>
 				</div>
 				<div className="relative h-full shrink-0 overflow-hidden">
-					<img
+					<IpfsImg
 						src={ONBOARD_HERO_BG}
 						alt=""
 						className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
@@ -237,7 +239,7 @@ function InitialEntrySplash({
 				aria-label="Beamio"
 			>
 				<div className="flex items-center gap-2.5 text-white">
-					<img
+					<IpfsImg
 						src={ONBOARD_APP_LOGO_SRC}
 						alt="Beamio"
 						className="h-9 w-9 shrink-0 rounded-[10px] object-contain"
@@ -421,7 +423,7 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 				)}
 				<div className="w-full max-w-[340px] perspective-1000 mb-10">
 					<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
-						<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+						<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 						<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 						<div className="relative z-10 p-5 h-full flex flex-col justify-between">
 							<div className="flex justify-between items-start">
@@ -566,9 +568,10 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		const bo: beamio = userInfo
 
 		SetLoading(true)
-		initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
+		await initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
 			setCharts((prev: string[]) => [...prev, message])
 		})
+		dispatchBeamioWalletReady('loading-page-init')
 		
 		bo.initialLoading = true
 		
@@ -877,7 +880,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 								{/* CCSA 卡片 + READY badge */}
 								<div className="w-full max-w-[340px] mx-auto mb-10 relative">
 									<div className="rounded-[24px] overflow-hidden shadow-2xl relative" style={{ aspectRatio: '1.58 / 1' }}>
-										<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+										<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 										<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 										<div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -30px 70px rgba(0,0,0,0.42)' }} />
 										<div className="relative z-10 p-5 h-full flex flex-col justify-between">
@@ -946,7 +949,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 							{/* Header: Logo + CashTrees Wallet + VAULT ACTIVE */}
 							<div className="flex items-center justify-between pt-6 pb-4">
 								<div className="flex items-center gap-1.5">
-									<img
+									<IpfsImg
 										src={VERRA_BRAND_LOGO_SRC}
 										alt=""
 										className="h-[72px] w-[72px] object-contain shrink-0 select-none"
@@ -971,7 +974,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 
 							{/* CCSA 卡片 */}
 							<div className="rounded-[24px] overflow-hidden shadow-lg mb-4 relative" style={{ aspectRatio: '1.58 / 1' }}>
-								<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+								<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 								<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 								<div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -30px 70px rgba(0,0,0,0.42)' }} />
 								<div className="relative z-10 p-5 h-full flex flex-col justify-between">

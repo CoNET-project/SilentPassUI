@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import {
   ChevronRight,
@@ -641,7 +642,7 @@ function DiscoverMerchantPromoRewardTierCard({
 	const hero = config.backgroundImage?.trim() || fallbackImage
 	return (
 		<div className="relative overflow-hidden rounded-[28px] shadow-[0_10px_28px_rgba(15,23,42,0.18)] ring-1 ring-black/10">
-			<img src={hero} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+			<IpfsImg src={hero} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 			<div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/58 to-black/32" aria-hidden />
 			<div className="relative z-[1] flex flex-col p-5 pb-5 pt-4 sm:p-6">
 				<span className="inline-flex w-fit rounded-full bg-[#1562f0] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
@@ -1053,7 +1054,7 @@ const GenesisCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () => 
     onClick={onClick}
     className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-gradient-to-br from-gray-900 to-black border border-gray-800 shadow-[0_0_30px_rgba(0,112,243,0.15)] shrink-0"
   >
-    <img
+    <IpfsImg
       src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop"
       alt="Carbon texture"
       className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
@@ -1099,7 +1100,7 @@ const FuelPackCard = ({ data, onClick }: { data: GenesisNodeData; onClick: () =>
     onClick={onClick}
     className="snap-center relative min-w-[320px] h-[420px] rounded-[32px] overflow-hidden cursor-pointer group active:scale-[0.98] transition-transform duration-300 bg-gradient-to-br from-gray-900 to-[#1a1005] border border-gray-800 shadow-[0_0_30px_rgba(249,115,22,0.15)] shrink-0"
   >
-    <img
+    <IpfsImg
       src="https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=800&auto=format&fit=crop"
       alt="Server texture"
       className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay"
@@ -1154,7 +1155,7 @@ const GenesisDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
       <div className="absolute inset-0 overflow-y-auto pb-48">
         {/* Hero Image Area */}
         <div className="relative h-[380px] w-full bg-gradient-to-b from-gray-900 to-[#0a0a0c]">
-          <img
+          <IpfsImg
             src={genesisItem.image}
             alt="Detail background"
             className="w-full h-full object-cover opacity-30 mix-blend-screen"
@@ -1272,7 +1273,7 @@ const FuelPackDetailModal = ({ item, onClose, onBuy }: { item: ViewingItem; onCl
       <div className="absolute inset-0 overflow-y-auto pb-48">
         {/* Hero Image Area */}
         <div className="relative h-[380px] w-full bg-gradient-to-b from-gray-900 to-[#0a0a0c]">
-          <img
+          <IpfsImg
             src={fuelItem.image}
             alt="Detail background"
             className="w-full h-full object-cover opacity-30 mix-blend-screen"
@@ -1412,7 +1413,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet, can
         {isCashTrees ? (
           <>
             <div className="absolute inset-0 bg-[#ECECF1] flex items-center justify-center px-6">
-              <img
+              <IpfsImg
                 src={heroItem.id === 202 ? greenCard : blackCard}
                 alt={heroItem.title}
                 className="w-full max-w-[420px] object-contain rounded-[22px] shadow-[0_28px_55px_rgba(2,6,23,0.38),0_10px_22px_rgba(2,6,23,0.22)]"
@@ -1423,7 +1424,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet, can
           </>
         ) : (
           <>
-            {heroItem.image && <img src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
+            {heroItem.image && <IpfsImg src={heroItem.image} className="w-full h-full object-cover" alt={heroItem.title} />}
             {heroItem.customGradient ? (
               <div className="absolute inset-0" style={{ background: heroItem.customGradient }} />
             ) : (
@@ -2041,7 +2042,7 @@ function DiscoverMerchantDetailFullScreen({
 		<div className="flex h-full min-h-0 flex-col bg-[#f5f7f9] dark:bg-slate-950 text-[#1f2328] dark:text-slate-100">
 			<div className="relative shrink-0">
 				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
-					<img src={item.image} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+					<IpfsImg src={item.image} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 					<div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30" />
 					{heroRechargeBonusPill ? (
 						<DiscoverRechargeBonusHeroChip
@@ -2554,7 +2555,7 @@ export default function Market() {
 						className="w-full min-w-0 text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f5f7f9] dark:focus-visible:ring-offset-slate-950 active:scale-[0.99] transition-transform"
 					>
 						<div className="relative">
-							<img
+							<IpfsImg
 								src={item.image}
 								alt={item.title}
 								className="w-full aspect-[16/9] object-cover"
@@ -2569,7 +2570,7 @@ export default function Market() {
 							<div className="absolute -bottom-8 left-6">
 								<div className="w-16 h-16 rounded-2xl bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] flex items-center justify-center border border-slate-100">
 									{item.logo ? (
-										<img
+										<IpfsImg
 											src={item.logo}
 											alt=""
 											className="w-11 h-11 rounded-xl object-cover"

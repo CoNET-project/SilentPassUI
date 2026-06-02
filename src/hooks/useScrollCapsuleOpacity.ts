@@ -7,9 +7,10 @@ const computeOpacity = (scrollTop: number) =>
 	scrollTop <= THRESHOLD ? 1 : Math.max(0, 1 - (scrollTop - THRESHOLD) / FADE_RANGE)
 
 /**
- * 根据滚动容器的 scrollTop 计算胶囊的不透明度
- * - onScroll + ref 绑定到滚动容器
- * - 同时用 document capture 监听兜底（解决 Chat/Market 等页在部分环境下 onScroll 不触发的问题）
+ * 根据滚动容器的 scrollTop 计算固定顶栏胶囊不透明度。
+ * 全项目守则：beamio-fixed-top-capsule-protocol.mdc（THRESHOLD=40，FADE_RANGE=100）
+ * - onScroll + ref 绑定到 overflow-y-auto 主滚动区
+ * - document capture 兜底（部分 WebView 下 React onScroll 不触发）
  */
 export function useScrollCapsuleOpacity(enabled = true) {
 	const [opacity, setOpacity] = useState(1)

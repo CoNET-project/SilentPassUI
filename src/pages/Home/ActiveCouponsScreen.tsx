@@ -1,3 +1,5 @@
+import { IpfsImg } from '@/components/IpfsImg';
+import { useObjectImgSrc } from '@/components/card/useObjectImgSrc'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Copy, Gift, Loader2, RefreshCw } from 'lucide-react'
 import { ethers } from 'ethers'
@@ -328,20 +330,23 @@ export function buildFallbackActiveCouponListItemForRedeem(
 }
 
 function CouponBannerImage({ src }: { src: string }) {
+	const displaySrc = useObjectImgSrc(src)
+	if (!displaySrc) return null
+
 	return (
 		<div className="absolute inset-0 overflow-hidden">
 			<div
 				className="absolute inset-y-0 left-0 w-1/2 scale-110 bg-cover bg-left bg-no-repeat blur-xl"
-				style={{ backgroundImage: `url("${src}")` }}
+				style={{ backgroundImage: `url("${displaySrc}")` }}
 				aria-hidden
 			/>
 			<div
 				className="absolute inset-y-0 right-0 w-1/2 scale-110 bg-cover bg-right bg-no-repeat blur-xl"
-				style={{ backgroundImage: `url("${src}")` }}
+				style={{ backgroundImage: `url("${displaySrc}")` }}
 				aria-hidden
 			/>
 			<img
-				src={src}
+				src={displaySrc}
 				alt=""
 				className="absolute left-1/2 top-0 z-[1] h-full w-auto max-w-none -translate-x-1/2 object-contain"
 				draggable={false}
@@ -569,7 +574,7 @@ export function ActiveCouponTicketItem({
 				>
 					{iconUrl ? (
 						<div className="relative flex h-[3.35rem] w-[3.35rem] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-white/95 shadow-md ring-2 ring-black/10 sm:h-14 sm:w-14">
-							<img src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+							<IpfsImg src={iconUrl} alt="" className="h-full w-full object-cover" draggable={false} />
 						</div>
 					) : null}
 

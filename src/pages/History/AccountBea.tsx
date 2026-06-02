@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import {
   useMemo,
   useRef,
@@ -122,7 +123,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 		// 如果有 userImg，优先显示 userImg（即使 fromBeamio 还没加载完成）
 		if (userImg) {
 			return (
-				<img
+				<IpfsImg
 					src={userImg}
 					className={`${avatarSize} rounded-full object-cover flex-shrink-0 bg-slate-200`}
 					alt=""
@@ -133,7 +134,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 		if (fromBeamio && fromBeamio.username !== 'Unknow') {
 			const imgSrc = fromBeamio.image || getImg(fromBeamio.username)
 			return (
-				<img
+				<IpfsImg
 					src={imgSrc}
 					className={`${avatarSize} rounded-full object-cover flex-shrink-0 bg-slate-200`}
 					alt=""
@@ -250,7 +251,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 							: "text-fuchsia-600 dark:text-fuchsia-300"
 						].join(" ")}
 						>
-						<img
+						<IpfsImg
 							src={giftEnvelope}
 							className="w-5 block pointer-events-none"
 							alt="Gift Envelope"

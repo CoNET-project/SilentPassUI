@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useMemo, useState } from "react"
 import { ethers } from "ethers"
 import { Check, ExternalLink, RefreshCw } from "lucide-react"
@@ -505,7 +506,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 									onClick={() => applyTierSelection(t)}
 								>
 									{t.image ? (
-										<img
+										<IpfsImg
 											src={t.image}
 											alt={t.name}
 											className="pointer-events-none absolute left-4 top-4 h-[calc(100%-2rem)] w-52 rounded-xl object-contain object-left opacity-95"

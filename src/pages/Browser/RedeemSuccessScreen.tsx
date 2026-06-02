@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import {ethers} from 'ethers'
 import base_ex_dark from '@/components/assets/base-ex-dark.svg'
 import base_ex from '@/components/assets/base-ex.svg'
@@ -59,7 +60,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							aria-label="View on BaseScan"
 							title="View on BaseScan"
 							>
-							<img
+							<IpfsImg
 								src={darkModle ? base_ex_dark : base_ex}
 								alt=""
 								className="w-4 h-4"
@@ -87,7 +88,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							aria-label="View on BaseScan"
 							title="View on BaseScan"
 							>
-							<img
+							<IpfsImg
 								src={darkModle ? base_ex_dark : base_ex}
 								alt=""
 								className="w-4 h-4"
@@ -132,7 +133,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 						openExternalUrl(`https://basescan.org/tx/${hash}`)
 					}}
 					>
-					<img
+					<IpfsImg
 						src={base_ex}
 						alt="Base Explorer"
 						className="w-4 h-4 object-contain"

@@ -2335,6 +2335,11 @@ export const postToIPFS = async (profile: profile, image: string): Promise<strin
 			}
 		}
 
+		// Permanent local cache keyed by hash (local-first library).
+		void import('@/utils/ipfsImageLibrary')
+			.then(({ putLocalIpfsImageFromDataUrl }) => putLocalIpfsImageFromDataUrl(hash, image))
+			.catch(() => {})
+
 		return hash
 	} catch (err: any) {
 		console.error("postToIPFS error:", err)

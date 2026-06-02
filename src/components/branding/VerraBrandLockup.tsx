@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 
 export type VerraBrandLockupProps = {
@@ -31,7 +32,7 @@ export function VerraBrandLockup({
 }: VerraBrandLockupProps) {
 	return (
 		<div className={['flex items-center gap-0', className].filter(Boolean).join(' ')}>
-			<img
+			<IpfsImg
 				src={VERRA_BRAND_LOGO_SRC}
 				alt=""
 				className={[

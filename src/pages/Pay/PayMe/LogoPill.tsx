@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React from 'react'
 import visa_icon from './assets/icons8-visa.svg'
 import master_icon from './assets/Mastercard-logo.svg'
@@ -24,7 +25,7 @@ export function PayLogo({ type, size = 24, className, style }: PayLogoProps) {
   const resolvedSize = typeof size === 'number' ? `${size}px` : size
 
   return (
-    <img
+    <IpfsImg
       src={LOGO_MAP[type]}
       alt={type}
       className={className}

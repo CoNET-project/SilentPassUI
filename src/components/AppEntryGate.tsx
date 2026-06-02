@@ -14,6 +14,7 @@ import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import {
 	consumerAppNeedsWalletRecover,
 	hasCompletedBeamioAccount,
+	hasLocalPlaintextMnemonic,
 } from '@/utils/consumerWalletGate'
 
 export default function AppEntryGate() {
@@ -24,7 +25,14 @@ export default function AppEntryGate() {
 
 	const init = async () => {
 		const CoNETData = await checkStorage()
-		if (hasCompletedBeamioAccount(CoNETData)) {
+		const hasAccount = hasCompletedBeamioAccount(CoNETData)
+		const needsRecover = consumerAppNeedsWalletRecover(CoNETData)
+		const hasMnemonic = hasLocalPlaintextMnemonic(CoNETData)
+		publishNativePwaLog(
+			'info',
+			`[AppEntryGate] storage hasAccount=${hasAccount} needsRecover=${needsRecover} hasMnemonic=${hasMnemonic}`,
+		)
+		if (hasAccount) {
 			if (consumerAppNeedsWalletRecover(CoNETData)) {
 				setRequireWalletRecover(true)
 				setIsInitialLoading(true)

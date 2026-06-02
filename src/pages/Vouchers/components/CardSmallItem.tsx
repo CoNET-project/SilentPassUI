@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React from "react"
 import { Coffee } from "lucide-react"
 
@@ -42,7 +43,7 @@ export default function CardSmallItem({
     >
       {/* 背景图 + 遮罩 */}
       <div className="absolute inset-0">
-        <img
+        <IpfsImg
           src={backgroundImg}
           alt=""
           className="absolute inset-0 w-full h-full object-cover"

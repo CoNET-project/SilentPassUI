@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 /**
  * Generate avatar image: uses Pollinations.ai for AI image generation (any prompt).
  * Fallback to The Cat API for instant cat photos when prompt is "cat".
@@ -169,7 +170,7 @@ export function GenerateAvatarImageCard({
               <span className="ml-2 text-sm">Generating…</span>
             </div>
           )}
-          <img
+          <IpfsImg
             src={imageUrl}
             alt={rawPrompt}
             className="w-full h-auto max-h-64 object-cover"

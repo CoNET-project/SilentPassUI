@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useNavigate } from "react-router-dom"
@@ -350,7 +351,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 							openExternalUrl(`https://basescan.org/tx/${successHash}`)
 						}}
 						>
-						<img
+						<IpfsImg
 							src={base_ex}
 							alt="Base Explorer"
 							className="w-4 h-4 object-contain"
@@ -928,9 +929,9 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 									>
 										<div className="w-10 h-10 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center ring-2 ring-transparent hover:ring-blue-300">
 											{r.image ? (
-												<img src={r.image} alt={r.username} className="w-full h-full object-cover" />
+												<IpfsImg src={r.image} alt={r.username} className="w-full h-full object-cover" />
 											) : (
-												<img src={getImg(r.username || r.address)} alt={r.username} className="w-full h-full object-cover" />
+												<IpfsImg src={getImg(r.username || r.address)} alt={r.username} className="w-full h-full object-cover" />
 											)}
 										</div>
 										<span className="text-[11px] font-medium text-blue-600 truncate max-w-[56px]">
@@ -962,13 +963,13 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 									{/* Avatar */}
 									<div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center mt-4">
 									{item.image ? (
-										<img
+										<IpfsImg
 										src={item.image}
 										alt={item.username}
 										className="w-full h-full object-cover"
 										/>
 									) : (
-										<img
+										<IpfsImg
 										src={getImg(item.username)}
 										alt={item.username}
 										className="w-full h-full object-cover"
@@ -1149,7 +1150,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 						{showGiftEnvelope && !isAaEoaTransfer && (
 							<div className="flex justify-center">
 								<div className="relative w-fit">
-								<img
+								<IpfsImg
 									src={giftEnvelope}
 									className="w-24 block"
 									alt="Gift Envelope"

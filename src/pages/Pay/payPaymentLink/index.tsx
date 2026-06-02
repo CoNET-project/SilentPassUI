@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import {AuthorizationSign, aesGcmEncrypt, generateCODE, searchUsername, getUserInfo} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
@@ -126,7 +127,7 @@ const displayName = (item: searchResult) => {
 								openExternalUrl(`https://basescan.org/tx/${successHash}`)
 							}}
 							>
-							<img
+							<IpfsImg
 								src={base_ex}
 								alt="Base Explorer"
 								className="w-4 h-4 object-contain"

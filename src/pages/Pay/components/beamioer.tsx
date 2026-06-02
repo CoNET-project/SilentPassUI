@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 
 type Prof = {
 	item: searchResult|undefined
@@ -57,13 +58,13 @@ const BeamioDetail = ({item}: Prof) => {
 
 			{/* 头像 */}
 			{item.image ? (
-				<img
+				<IpfsImg
 					src={item.image}
 					alt={item.username}
 					className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0"
 				/>
 			) : (
-				<img
+				<IpfsImg
 					src={getImg(item.username)}
 					alt={item.username}
 					className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-sky-200"

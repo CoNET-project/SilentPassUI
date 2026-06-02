@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 /**
  * Shared My Brands list body — used by full page route and slide-over drawer.
  */
@@ -61,7 +62,7 @@ export function MyBrandMerchantIcon({
 			className={`flex shrink-0 items-center justify-center overflow-hidden border border-[#c3c6d8]/25 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900 ${sizeClassName} ${className}`}
 		>
 			{resolved ? (
-				<img src={resolved} alt={title} className="h-full w-full object-cover" draggable={false} />
+				<IpfsImg src={resolved} alt={title} className="h-full w-full object-cover" draggable={false} />
 			) : (
 				<span className={letterClassName} aria-hidden>
 					{letter}
@@ -260,7 +261,7 @@ export function MyBrandCardAddressCapsule({
 			className={`inline-flex max-w-full shrink-0 items-center gap-1 rounded-full border border-[#c3c6d8]/40 bg-white/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#424655] transition hover:border-[#1562f0]/35 hover:bg-[#1562f0]/5 hover:text-[#1562f0] dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-400 dark:hover:border-[#6ba3ff]/40 dark:hover:bg-[#6ba3ff]/10 dark:hover:text-[#8db8ff] ${className}`}
 			aria-label={`View contract on BaseScan: ${normalized}`}
 		>
-			<img src={baseIcon} alt="Base" className="h-3.5 w-3.5 shrink-0 rounded-full object-contain" />
+			<IpfsImg src={baseIcon} alt="Base" className="h-3.5 w-3.5 shrink-0 rounded-full object-contain" />
 			<span className="truncate">{shortMyBrandCardAddress(normalized)}</span>
 			<ExternalLink className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2} aria-hidden />
 		</button>

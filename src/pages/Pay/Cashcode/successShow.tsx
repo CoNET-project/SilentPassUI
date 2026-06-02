@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { QRCodeCanvas } from 'qrcode.react'
 import React, {useRef, useState, useEffect, useMemo} from "react"
 import { Copy, ExternalLink, Check, Lock, Unlock } from 'lucide-react'
@@ -265,7 +266,7 @@ const SuccessShow = ({
 						openExternalUrl(`https://basescan.org/tx/${successHash}`)
 					}}
 					>
-					<img
+					<IpfsImg
 						src={base_ex}
 						alt="Base Explorer"
 						className="w-4 h-4 object-contain"

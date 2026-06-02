@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, {useRef, useState, useEffect, useMemo} from "react"
 
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
@@ -317,9 +318,9 @@ return (
 						<div className="relative">
 							<div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center">
 								{item.image ? (
-									<img src={item.image} alt={item.username} className="w-full h-full object-cover" />
+									<IpfsImg src={item.image} alt={item.username} className="w-full h-full object-cover" />
 								) : (
-									<img src={getImg(item.username)} alt={item.username} className="w-full h-full object-cover" />
+									<IpfsImg src={getImg(item.username)} alt={item.username} className="w-full h-full object-cover" />
 								)}
 							</div>
 						</div>

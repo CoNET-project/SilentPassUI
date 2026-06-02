@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { Globe, QrCode } from "lucide-react"
 import ccsabackphoto from "./assets/ccsacard.avif"
 import { motion } from "framer-motion"
@@ -36,7 +37,7 @@ function CCSABuySquareButton({ onClick }: { onClick?: () => void }) {
 function CCSAWaveBg() {
 	return (
 	  <>
-		<img
+		<IpfsImg
 		  src={ccsabackphoto}
 		  alt="CCSA Card Pattern"
 		  className="absolute inset-0 h-full w-full object-cover"

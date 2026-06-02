@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useMemo } from "react"
 import { ethers } from "ethers"
 import { motion } from "framer-motion"
@@ -79,7 +80,7 @@ export function ChatHeaderIOS({
 				<div className="flex flex-col items-center">
 					<div className="relative z-10">
 						{beamioer?.address ? (
-							<img
+							<IpfsImg
 							src={avatarSrc}
 							alt="avatar"
 							className="

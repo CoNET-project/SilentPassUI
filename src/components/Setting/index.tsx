@@ -17,6 +17,7 @@ import BeamioRegionCurrencyScreen from "./BeamioRegionCurrencyScreen"
 import NavigateLeftButton from '@/components/navigate'
 import BeamioAccountScreen from "./BeamioAccountScreen"
 import BeamioNotificationsSettingsScreen from "./BeamioNotificationsSettingsScreen";
+import { IpfsImg } from '@/components/IpfsImg';
 import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
@@ -417,7 +418,7 @@ export default function BeamioMeMainScreen() {
 					className="flex-shrink-0 mr-2"
 				>
 				{displayAvatarSrc && (
-					<img
+					<IpfsImg
 						key={displayAvatarSrc}
 						src={displayAvatarSrc}
 						alt={beamio?.accountName}

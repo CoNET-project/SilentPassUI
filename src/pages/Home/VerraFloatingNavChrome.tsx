@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { ChevronLeft } from 'lucide-react'
 
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
@@ -38,7 +39,7 @@ export function VerraFloatingNavChrome({
 			>
 				<ChevronLeft className={compact ? 'h-5 w-5' : 'h-6 w-6'} strokeWidth={2} aria-hidden />
 			</button>
-			<img
+			<IpfsImg
 				src={APP_LOGO_SRC}
 				alt="Beamio"
 				className={[

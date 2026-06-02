@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { IpfsImg } from '@/components/IpfsImg';
 import {
  Search,
  MapPin,
@@ -241,7 +242,7 @@ const StoryCard = ({ item, count, onClick, onBuy }: { item: HeroItem; count: num
      onClick={() => onClick(item)}
      className="snap-center relative min-w-[340px] h-[460px] rounded-[32px] overflow-hidden shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] cursor-pointer group active:scale-[0.98] transition-transform duration-300"
    >
-     <img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={item.title} />
+     <IpfsImg src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={item.title} />
      <div className="absolute inset-0" style={{ background: item.customGradient }}></div>
 
 
@@ -332,7 +333,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
 
 
      <div className={`relative w-full h-[45vh] shrink-0 ${headerBgClass} ${item.shadow || ''}`}>
-        {item.image ? <img src={item.image} className="w-full h-full object-cover" alt={item.title} /> : <div className="w-full h-full flex items-center justify-center text-9xl opacity-20 text-white">{item.icon}</div>}
+        {item.image ? <IpfsImg src={item.image} className="w-full h-full object-cover" alt={item.title} /> : <div className="w-full h-full flex items-center justify-center text-9xl opacity-20 text-white">{item.icon}</div>}
         <div className="absolute inset-0" style={{ background: item.customGradient || (item.overlay ? undefined : 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.8))') }}></div>
         {item.overlay && !item.customGradient && <div className={`absolute inset-0 bg-gradient-to-t ${item.overlay}`}></div>}
        
@@ -564,7 +565,7 @@ const ActionSheet = ({ item, instance, onClose, onGift, onRedeem }: { item: Prod
         <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[32px] p-6 animate-slide-up" onClick={e => e.stopPropagation()}>
            <div className="w-full flex justify-center mb-6"><div className="w-10 h-1 bg-gray-300 rounded-full" /></div>
            <div className="flex gap-4 items-center mb-8">
-              <div className={`w-14 h-14 rounded-xl ${item.bg || 'bg-gray-900'} flex items-center justify-center text-2xl text-white shadow-md`}>{item.icon || (item.image && <img src={item.image} className="w-full h-full object-cover rounded-xl" />) || "💎"}</div>
+              <div className={`w-14 h-14 rounded-xl ${item.bg || 'bg-gray-900'} flex items-center justify-center text-2xl text-white shadow-md`}>{item.icon || (item.image && <IpfsImg src={item.image} className="w-full h-full object-cover rounded-xl" />) || "💎"}</div>
               <div><h3 className="font-bold text-lg text-gray-900">{item.title}</h3><div className="flex items-center gap-2 text-sm text-gray-500"><span>#{instance.id.replace('#','')}</span><span className="text-gray-300">•</span><span>Purchased Today</span></div></div>
            </div>
            <div className="space-y-3">
@@ -612,7 +613,7 @@ const PaymentSheet = ({ item, onConfirm, onCancel }: { item: ProductItem & { isV
           </div>
           <div className="bg-white rounded-[24px] p-4 shadow-sm mb-6 flex gap-4 border border-gray-100">
              <div className={`w-16 h-16 rounded-[18px] ${item.bg || 'bg-gray-900'} flex items-center justify-center text-3xl shrink-0 shadow-inner overflow-hidden`}>
-                {item.image ? <img src={item.image} className="w-full h-full object-cover" /> : item.icon || "💎"}
+                {item.image ? <IpfsImg src={item.image} className="w-full h-full object-cover" /> : item.icon || "💎"}
              </div>
              <div className="flex-1 min-w-0 flex flex-col justify-center">
                 <h3 className="font-bold text-gray-900 truncate text-lg">{item.title}</h3>
@@ -746,7 +747,7 @@ export default function BeamioMarketPage() {
         
          <div className="px-6 pt-16 pb-4 flex justify-between items-end bg-[#F2F2F7]/90 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
            <h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Market</h1>
-           <div className="w-10 h-10 rounded-full bg-gray-200 border border-white overflow-hidden active:scale-95 transition-transform cursor-pointer"><img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Profile" /></div>
+           <div className="w-10 h-10 rounded-full bg-gray-200 border border-white overflow-hidden active:scale-95 transition-transform cursor-pointer"><IpfsImg src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Profile" /></div>
          </div>
 
 

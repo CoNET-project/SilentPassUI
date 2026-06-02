@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React from "react"
 import { isEmbeddedCashTreesWebView } from "@/utils/cashTreesIOSBridge"
 
@@ -24,7 +25,7 @@ const SplashScreen: React.FC = () => {
 					</div>
 				</div>
 			) : (
-				<img
+				<IpfsImg
 					src={`${process.env.PUBLIC_URL || ''}/beamio-launch.png`}
 					alt="Beamio"
 					className="w-32 h-32 object-contain"

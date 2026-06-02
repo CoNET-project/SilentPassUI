@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 // TopUpAccount.tsx - Top Up 流程，依据图片完成，样式参考 PurchaseAccount.tsx
 import React, { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -278,7 +279,7 @@ export default function TopUpAccount({
           <div className="px-6 pb-4 flex flex-col items-center gap-1">
             <div className="relative z-10">
               {myAssets.cardOwner.image ? (
-                <img
+                <IpfsImg
                   src={myAssets.cardOwner.image}
                   alt="card creator"
                   className="w-[44px] h-[44px] rounded-full object-cover bg-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
@@ -401,12 +402,12 @@ export default function TopUpAccount({
                         >
                           {item.useUsdcBaseIcon ? (
                             <div className="relative flex-shrink-0 w-5 h-5 min-w-[20px] min-h-[20px]">
-                              <img
+                              <IpfsImg
                                 src={usdcIcon}
                                 alt="USDC"
                                 className="block w-5 h-5 rounded-full object-contain"
                               />
-                              <img
+                              <IpfsImg
                                 src={baseIcon}
                                 alt="Base"
                                 className="block w-3 h-3 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white"

@@ -1,5 +1,6 @@
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import React, { useMemo, useState, useEffect } from "react";
+import { IpfsImg } from '@/components/IpfsImg';
 import {useAutoFocus} from '@/components/input/useAutoFocus'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
@@ -111,12 +112,12 @@ const StepAmount: React.FC<{
 											{
 												!isOnramp && (
 													<div className="relative pointer-events-none">
-														<img
+														<IpfsImg
 															src={usdcIcon}
 															alt="USDC"
 															className="w-6 h-6 rounded-full"
 														/>
-														<img
+														<IpfsImg
 															src={baseIcon}
 															alt="Base"
 															className="

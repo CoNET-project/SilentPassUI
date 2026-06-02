@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
+import { IpfsImg } from '@/components/IpfsImg';
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
 import base_icon from '@/components/assets/base-logo.png'
@@ -866,7 +867,7 @@ const Home = (_props: HomeProps) => {
 							onClick={reflashProcess}
 							disabled={reflash}
 						>
-							<img
+							<IpfsImg
 								src={base_icon}
 								alt="Base"
 								className={[
@@ -922,12 +923,12 @@ const Home = (_props: HomeProps) => {
 
 									<div className="mt-1 flex items-center text-[16px] text-white/80">
 										<div className="relative mr-2 flex-shrink-0">
-											<img
+											<IpfsImg
 												src={usdcIcon}
 												alt="USDC"
 												className="w-5 h-5 rounded-full"
 											/>
-											<img
+											<IpfsImg
 												src={baseIcon}
 												alt="Base"
 												className="
@@ -1729,7 +1730,7 @@ const Home = (_props: HomeProps) => {
 					>
 						<div className="flex min-w-0 max-w-full items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
 							<div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-200/80 dark:bg-slate-700/80 dark:ring-slate-600/80">
-								<img
+								<IpfsImg
 									src={homeCapsuleAvatarSrc}
 									alt=""
 									className="h-full w-full object-cover"
@@ -1891,7 +1892,7 @@ const Home = (_props: HomeProps) => {
 																			className="block"
 																		/>
 																		<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[18px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
-																			<img
+																			<IpfsImg
 																				src={APP_LOGO_SRC}
 																				alt="Beamio"
 																				className="h-full w-full rounded-[14px] object-contain"
@@ -2270,8 +2271,8 @@ const Home = (_props: HomeProps) => {
 											<div className="flex items-center gap-3 min-w-0">
 												<div className="w-10 h-10 bg-gray-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-gray-200 dark:border-slate-600 shrink-0 relative">
 													<div className="relative w-7 h-7 shrink-0">
-														<img src={usdcIcon} alt="" className="block w-7 h-7 rounded-full object-contain" />
-														<img src={baseIcon} alt="" className="block w-4 h-4 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
+														<IpfsImg src={usdcIcon} alt="" className="block w-7 h-7 rounded-full object-contain" />
+														<IpfsImg src={baseIcon} alt="" className="block w-4 h-4 absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white" />
 													</div>
 												</div>
 												<div className="flex flex-col min-w-0">
@@ -2295,7 +2296,7 @@ const Home = (_props: HomeProps) => {
 										<div className="p-4 flex items-center justify-between bg-gradient-to-r from-[#1562f0]/15 to-transparent dark:from-[#1562f0]/20 dark:to-transparent">
 											<div className="flex items-center gap-3 min-w-0">
 												<div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-[#1562f0]/30 dark:border-[#1562f0]/40 shrink-0" aria-hidden>
-													<img
+													<IpfsImg
 														src={`${process.env.PUBLIC_URL ?? ''}/logo512.png`}
 														alt=""
 														className="h-7 w-7 object-contain"
@@ -2823,7 +2824,7 @@ const Home = (_props: HomeProps) => {
 																			padding: Math.min(6, Math.max(4, Math.round((6 * paySheetQrSize) / 256))),
 																		}}
 																	>
-																		<img
+																		<IpfsImg
 																			src={APP_LOGO_SRC}
 																			alt="Beamio"
 																			className="h-full w-full object-contain"
@@ -2917,7 +2918,7 @@ const Home = (_props: HomeProps) => {
 																	className="block rounded-sm"
 																/>
 																<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[16px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
-																	<img
+																	<IpfsImg
 																		src={APP_LOGO_SRC}
 																		alt="Beamio"
 																		className="h-full w-full rounded-[12px] object-contain"

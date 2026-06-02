@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react"
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
@@ -335,7 +336,7 @@ const CreateUsernamePinScreen = forwardRef<
 								[@media(max-height:640px)]:h-20 [@media(max-height:640px)]:w-20"
 							style={{ backdropFilter: "blur(20px)", background: "rgba(255, 255, 255, 0.7)" }}
 						>
-							<img
+							<IpfsImg
 								src={APP_LOGO_SRC}
 								alt="Beamio"
 								className="h-14 w-14 rounded-[14px] object-contain [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-9 [@media(max-height:640px)]:w-9 [@media(max-height:640px)]:rounded-[10px]"

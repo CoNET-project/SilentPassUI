@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 //		`https://beamio.app/app/?beamiocard=${cardaddress}&redeemcode=${redeemcode}`
 
 
@@ -285,7 +286,7 @@ function NfcCheckBalanceBottomSheet({
 						) : status === 'success' && assets ? (
 							<div className="w-full space-y-4">
 								<div className="relative w-full max-w-[340px] mx-auto rounded-2xl overflow-hidden shadow-lg aspect-[1.58/1]">
-									<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+									<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
 									<div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
 									<div className="absolute inset-0 p-5 flex flex-col justify-end text-white">
 										<div className="flex justify-between items-start mb-1">
@@ -624,7 +625,7 @@ const ManageCardsOverlay = ({
 									className="w-10 h-10 rounded-full flex items-center justify-center mr-3 overflow-hidden shrink-0"
 									style={{ background: pass.bg }}
 								>
-									{pass.image ? <img src={pass.image} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-white" />}
+									{pass.image ? <IpfsImg src={pass.image} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-white" />}
 								</div>
 								<div className="flex-1">
 									<div className="flex items-center gap-2">
@@ -699,7 +700,7 @@ const ManageCardsOverlay = ({
 											<PlusCircle className="w-6 h-6 fill-green-100" />
 										</button>
 										<div className="w-10 h-10 rounded-full flex items-center justify-center mr-3 overflow-hidden shrink-0 bg-gray-200">
-											{pass.image ? <img src={pass.image} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-gray-500" />}
+											{pass.image ? <IpfsImg src={pass.image} alt="" className="w-full h-full object-cover" /> : <Icon className="w-5 h-5 text-gray-500" />}
 										</div>
 										<div className="flex-1">
 											<h3 className="font-bold text-gray-900 text-sm">{pass.nickname || pass.name}</h3>
@@ -2493,7 +2494,7 @@ export default function MyWalletDashboardNew() {
 							<div className="flex-1 overflow-y-auto px-6 pt-2 pb-24 z-10 no-scrollbar">
 								{/* 顶部预览：CCSA 用 greenCard；其余用 image / blackCard */}
 								<div className="w-full min-h-[14rem] rounded-[24px] bg-[#ECECF1] border border-white/70 shadow-sm relative overflow-hidden mb-8 flex items-center justify-center px-4">
-									<img
+									<IpfsImg
 										src={selectedCard.id === 'ccsa' ? greenCard : (selectedCard.image || blackCard)}
 										alt="Market card preview"
 										className="w-full max-w-[420px] object-contain drop-shadow-[0_20px_40px_rgba(0,0,0,0.18)]"
@@ -2898,7 +2899,7 @@ export default function MyWalletDashboardNew() {
 															style={{ background: card.bg }}
 														>
 															{card.image ? (
-																<img
+																<IpfsImg
 																	src={card.image}
 																	alt={card.name}
 																	className="pointer-events-none absolute left-4 top-4 h-[calc(100%-2rem)] w-52 rounded-xl object-contain object-left opacity-95"
@@ -3122,7 +3123,7 @@ export default function MyWalletDashboardNew() {
 										</div>
 										{newNftImageUrl && (
 											<div className="mt-2 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 aspect-video max-h-24">
-												<img src={newNftImageUrl} alt="NFT" className="w-full h-full object-contain" />
+												<IpfsImg src={newNftImageUrl} alt="NFT" className="w-full h-full object-contain" />
 											</div>
 										)}
 									</div>
@@ -3599,7 +3600,7 @@ export default function MyWalletDashboardNew() {
 											<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
 												{isCcsaCard(redeemCardNumberInput) ? (
 													<>
-														<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+														<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 														<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 													</>
 												) : (
@@ -3621,7 +3622,7 @@ export default function MyWalletDashboardNew() {
 														{/* card image 显示在左上角：优先 tier，无则用卡级 */}
 														{(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
 															<div className="absolute top-4 left-4 w-14 h-14 rounded-xl overflow-hidden border border-white/20 shadow-lg z-10">
-																<img src={(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ?? ''} alt="" className="w-full h-full object-cover" draggable={false} />
+																<IpfsImg src={(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ?? ''} alt="" className="w-full h-full object-cover" draggable={false} />
 															</div>
 														)}
 													</>
@@ -3724,7 +3725,7 @@ export default function MyWalletDashboardNew() {
 										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
 											{isCcsaCard(redeemCardNumberInput) ? (
 												<>
-													<img src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+													<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 													<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 												</>
 											) : (
@@ -3746,7 +3747,7 @@ export default function MyWalletDashboardNew() {
 													{/* card image 显示在左上角：优先 tier，无则用卡级 */}
 													{(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) && (
 														<div className="absolute top-4 left-4 w-14 h-14 rounded-xl overflow-hidden border border-white/20 shadow-lg z-10">
-															<img src={(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ?? ''} alt="" className="w-full h-full object-cover" draggable={false} />
+															<IpfsImg src={(redeemCardTierMeta?.image ?? redeemCardMetadata?.image) ?? ''} alt="" className="w-full h-full object-cover" draggable={false} />
 														</div>
 													)}
 												</>

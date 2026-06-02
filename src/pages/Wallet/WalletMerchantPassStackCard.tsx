@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React from 'react'
 import { Store, Info, QrCode, ShoppingBasket, type LucideIcon } from 'lucide-react'
 import type { UserCardInfo } from '@/services/BeamioCard'
@@ -47,7 +48,7 @@ function PassCardFace({
 							}}
 						>
 							{imgUrl ? (
-								<img
+								<IpfsImg
 									src={imgUrl}
 									alt=""
 									className="h-full w-full object-contain"

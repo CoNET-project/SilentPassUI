@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -117,8 +118,8 @@ const getReadableTextColor = (hexColor: string): '#000000' | '#FFFFFF' => {
 
 const UsdcBaseCompositeIcon = ({ className = '' }: { className?: string }) => (
 	<span className={`relative flex-shrink-0 ${className || 'w-4 h-4 min-w-[16px] min-h-[16px]'}`}>
-		<img src={usdcIcon} alt="USDC" className="block w-full h-full rounded-full object-contain" />
-		<img
+		<IpfsImg src={usdcIcon} alt="USDC" className="block w-full h-full rounded-full object-contain" />
+		<IpfsImg
 			src={baseIcon}
 			alt="Base"
 			className="block w-[62.5%] h-[62.5%] absolute -bottom-0.5 -right-0.5 rounded-full border border-white dark:border-slate-900 bg-white object-contain"
@@ -2178,7 +2179,7 @@ const ActiveHistoryPannelNew = ({
 								>
 									{selectedTx.card.image && (
 										<div className="w-14 h-14 rounded-xl overflow-hidden bg-amber-100 dark:bg-amber-900/40 flex-shrink-0">
-											<img src={selectedTx.card.image} alt={selectedTx.card.title ?? 'Gift'} className="w-full h-full object-cover" />
+											<IpfsImg src={selectedTx.card.image} alt={selectedTx.card.title ?? 'Gift'} className="w-full h-full object-cover" />
 										</div>
 									)}
 									<div className="flex-1 min-w-0 text-left">
@@ -2363,7 +2364,7 @@ const ActiveHistoryPannelNew = ({
 													{selectedIsCardTopupKind && row.isVoucher ? (
 														<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 overflow-hidden bg-white dark:bg-slate-700">
 															{selectedCardImage ? (
-																<img src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
+																<IpfsImg src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
 															) : (
 																<div className="w-full h-full flex items-center justify-center bg-[#34C759]/10 text-[#34C759] text-[10px] font-bold">
 																	{selectedCardDisplayInitial}
@@ -2400,7 +2401,7 @@ const ActiveHistoryPannelNew = ({
 												<div className="flex items-center gap-3">
 													<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 overflow-hidden bg-white dark:bg-slate-700">
 														{selectedCardImage ? (
-															<img src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
+															<IpfsImg src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
 														) : (
 															<div className="w-full h-full flex items-center justify-center bg-[#1562f0]/10 text-[#1562f0] text-[10px] font-bold">
 																{selectedCardDisplayInitial}
@@ -2451,7 +2452,7 @@ const ActiveHistoryPannelNew = ({
 														{isProgramCardVoucherLine ? (
 															<div className="rounded-full border-2 border-white dark:border-slate-800 shadow-sm z-10 w-6 h-6 overflow-hidden bg-white dark:bg-slate-700">
 																{selectedCardImage ? (
-																	<img src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
+																	<IpfsImg src={selectedCardImage} alt={selectedCardDisplayLabel} className="w-full h-full object-cover" />
 																) : (
 																	<div className={`w-full h-full flex items-center justify-center text-[10px] font-bold ${
 																		isChargeDebitLine

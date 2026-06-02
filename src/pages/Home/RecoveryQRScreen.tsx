@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useRef, useEffect } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -303,7 +304,7 @@ const RecoveryQRScreen = ({
                         className="block h-full w-full rounded-md"
                       />
                       <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[14px] bg-white p-1 shadow-[0_4px_12px_rgba(0,0,0,0.12)] [@media(max-height:700px)]:h-10 [@media(max-height:700px)]:w-10 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-8 [@media(max-height:640px)]:w-8 [@media(max-height:640px)]:rounded-[10px]">
-                        <img
+                        <IpfsImg
                           src={APP_LOGO_SRC}
                           alt="Beamio"
                           className="h-full w-full rounded-[10px] object-contain [@media(max-height:700px)]:rounded-[9px] [@media(max-height:640px)]:rounded-[8px]"

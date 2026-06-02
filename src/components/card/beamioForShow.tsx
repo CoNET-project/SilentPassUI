@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 
 type Prof = {
 	item: searchResult
@@ -71,7 +72,7 @@ const BeamioDetailShow = ({ item, currencyText, usdcAmount }: Prof) => {
 			onClick={() => {}}
 		>
 			{/* 头像：水平居中 + 上半圆悬浮 */}
-			<img
+			<IpfsImg
 				src={item.image || getImg(item.image)}
 				alt={item.username}
 				className="

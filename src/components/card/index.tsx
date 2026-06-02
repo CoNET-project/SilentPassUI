@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createAvatar, type Style } from '@dicebear/core'
 import { avataaars, bottts, identicon, lorelei } from '@dicebear/collection'
@@ -217,7 +218,7 @@ const svg = useMemo(() => {
         <div className="flex items-center gap-3">
           <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-2">
             {svgDataUrl ? (
-              <img
+              <IpfsImg
                 src={svgDataUrl}
                 alt="dicebear"
                 className="h-24 w-24 rounded-xl object-contain"
@@ -272,7 +273,7 @@ const svg = useMemo(() => {
         {pngDataUrl && (
           <div className="mt-3">
             <div className="text-[12px] text-slate-600">PNG preview</div>
-            <img
+            <IpfsImg
               src={pngDataUrl}
               alt="png preview"
               className="mt-2 w-full rounded-2xl border border-slate-200 bg-white"

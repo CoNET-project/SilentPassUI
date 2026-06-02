@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { IpfsImg } from '@/components/IpfsImg';
 import type { LucideIcon } from 'lucide-react';
 import { 
   CreditCard, 
@@ -478,7 +479,7 @@ export default function CashTreesApp() {
           
           <div className="h-32 relative overflow-hidden bg-orange-50 rounded-t-[2rem]">
             <span className="text-7xl absolute opacity-30 flex items-center justify-center w-full h-full">🍜</span>
-            <img 
+            <IpfsImg 
               src="https://images.unsplash.com/photo-1585032226651-759b368d7246?auto=format&fit=crop&q=80&w=800" 
               alt="Sen Pho + Cafe" 
               className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out z-10"
@@ -528,7 +529,7 @@ export default function CashTreesApp() {
           
           <div className="h-32 relative overflow-hidden bg-green-50 rounded-t-[2rem]">
             <span className="text-6xl absolute opacity-30 flex items-center justify-center w-full h-full">🧋</span>
-            <img 
+            <IpfsImg 
               src="https://images.unsplash.com/photo-1558855567-1a42823b18d2?auto=format&fit=crop&q=80&w=800" 
               alt="Boba Tea" 
               className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out z-10"

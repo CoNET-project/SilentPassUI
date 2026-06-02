@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 /**
  * RedeemListScreen - 独立全屏窗口，从右滑入，显示 owner 已创建的完整 redeem 一览，支持 Cancel
  */
@@ -266,7 +267,7 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound, refreshVer
                             />
                             <div className="px-6 pt-2 pb-6 flex flex-col items-center">
                                 {/* Beamio 标志性 avatar */}
-                                <img
+                                <IpfsImg
                                     src={beamioAvatarSrc}
                                     alt=""
                                     className="h-16 w-16 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-600 shrink-0"

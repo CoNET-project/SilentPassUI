@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { useState, useRef, useEffect, useMemo } from "react"
 import {ConformSignInfo} from '@/pages/History/conformX402Sign'
 import base_ex from '@/components/assets/base-ex.svg'
@@ -599,7 +600,7 @@ const PayForm = ({code, closeWin}: Props) => {
 					"
 				>
 					{/* Avatar */}
-					<img
+					<IpfsImg
 						src={fromBeamio?.image || fallback}
 						alt={fromBeamio?.username}
 						className="w-6 h-6 rounded-full object-cover flex-shrink-0 bg-slate-200"

@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import { FormEvent, useEffect, useState } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { RegenerateRecover, onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
@@ -295,7 +296,7 @@ export default function RestoreWalletUnifiedScreen({
 							className="relative z-10 flex h-32 w-32 items-center justify-center rounded-full border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.06)] [@media(max-height:700px)]:h-24 [@media(max-height:700px)]:w-24 [@media(max-height:640px)]:h-20 [@media(max-height:640px)]:w-20"
 							style={{ backdropFilter: 'blur(20px)', background: 'rgba(255, 255, 255, 0.7)' }}
 						>
-							<img
+							<IpfsImg
 								src={APP_LOGO_SRC}
 								alt="Beamio"
 								className="h-14 w-14 rounded-[14px] object-contain [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-9 [@media(max-height:640px)]:w-9 [@media(max-height:640px)]:rounded-[10px]"

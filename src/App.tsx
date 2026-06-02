@@ -61,6 +61,8 @@ import {
 	isRedeemDeepLink,
 	isCouponOpenClaimDeepLink,
 } from "@/utils/beamioDeepLinkParams"
+import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
+import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 
 global.Buffer = require("buffer").Buffer
 
@@ -132,6 +134,8 @@ function AppShell() {
   const processedIdsRef = useRef<Set<string>>(new Set())
   const setChartsRef = useRef(setCharts)
   setChartsRef.current = setCharts
+  const gossipActiveRef = useRef(gossip)
+  gossipActiveRef.current = gossip
   const bUnitClaimAttemptedRef = useRef(false)
   const initialRedeemUrlProcessedRef = useRef(false)
   const initialOpenClaimUrlProcessedRef = useRef(false)
@@ -633,10 +637,12 @@ function AppShell() {
 		}
 	}, [])
 
-	const init = async (temp?: encrypt_keys_object) => {
+	const init = async (source = 'mount', temp?: encrypt_keys_object) => {
+		publishNativePwaLog('info', `[AppShell] init start (${source})`)
 
 		const isAcc = await checkStorage()
 		if (!isAcc) {
+			publishNativePwaLog('info', '[AppShell] init skip: no local wallet storage')
 			setIsInitialLoading(true)
 			return 
 		}
@@ -647,14 +653,24 @@ function AppShell() {
 		const profiles = temp?.profiles
 
 		if (!temp || !profiles) {
+			publishNativePwaLog('info', '[AppShell] init skip: missing profiles')
 			setIsInitialLoading(true)
 			return 
 		}
 
 		if (!hasLocalPlaintextMnemonic(temp)) {
+			publishNativePwaLog('info', '[AppShell] init skip: wallet recover required (no local mnemonic) — gossip not started')
 			setIsInitialLoading(true)
 			return
 		}
+
+		if (gossipActiveRef.current) {
+			publishNativePwaLog('info', '[AppShell] init skip: gossip already active')
+			setIsInitialLoading(false)
+			return
+		}
+
+		publishNativePwaLog('info', '[AppShell] init proceeding → initChat')
 
 		setCoNET_Data(temp)
 		setProfiles(profiles)
@@ -675,7 +691,7 @@ function AppShell() {
 		
 		const bo: beamio = userInfo
 
-		await initChat(setProfiles,setAllNodes, setGossip, gossip, message => {
+		await initChat(setProfiles,setAllNodes, setGossip, gossipActiveRef.current, message => {
 			setChartsRef.current((prev: string[]) => [...prev, message])
 		})
 		
@@ -695,14 +711,19 @@ function AppShell() {
 
   	}
 
-	// 首次进入显示
+	// 首次进入 + 钱包恢复后重试 gossip（冷启动时 AppShell 往往早于 recover 完成）
 	useEffect(() => {
-		init()
-		
+		void init('mount')
+
+		const onWalletReady = () => {
+			void init('wallet-ready')
+		}
+		window.addEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
 
 		const t = setTimeout(() => setFooterVisible(true), 0)
 		return () => {
 			clearTimeout(t)
+			window.removeEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
 			console.log("🧹 Component unmounting, cleaning up gossip...")
 			if (currentGossipAbortController) {
 				currentGossipAbortController.abort("component_unmount")

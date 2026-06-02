@@ -1,3 +1,4 @@
+import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { X, CreditCard, Share2, Copy, Check, Loader2 } from "lucide-react"
@@ -169,7 +170,7 @@ export default function QrOperationPage() {
           {/* Beamio avatar + name + @beamioTag */}
           {(displayName(beamio) || beamio?.accountName) && (
             <div className="flex flex-col items-center mt-3 gap-1">
-              <img
+              <IpfsImg
                 src={beamio?.image?.trim() || getImg(beamio?.accountName)}
                 alt={beamio?.accountName ?? ""}
                 className="w-12 h-12 rounded-full object-cover border-2 border-white/30 shadow-lg"

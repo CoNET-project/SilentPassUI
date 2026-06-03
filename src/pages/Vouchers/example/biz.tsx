@@ -134,6 +134,13 @@ import {
   mapIndexerIssuedNftRedeemBizActivityType,
   mergeIssuedNftRedeemDistributionIntoDisplayJson,
   seriesMetadataProductKind,
+  resolveCreateIssuedNftBunitProductKind,
+  createIssuedNftBunitTxDisplayType,
+  createIssuedNftBunitLedgerTitle,
+  txDisplayRowLedgerTypeTitle,
+  isCreateIssuedNftBuintLedgerRowType,
+  isCreateIssuedNftBunitIndexerCategory,
+  TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE,
 } from '@/utils/indexerCatalogRedeemClaim';
 import { isYoutubeProductionVideoUrl, PRODUCTION_BACKGROUND_YOUTUBE_MIME, isProductionBackgroundYoutubeMedia, youtubeThumbnailUrlFromProductionUrl } from '@/utils/youtubeProductionVideo';
 import {
@@ -741,7 +748,16 @@ type TxDisplayRowCore = {
   indexerTxId: string
   dateStr: string
   time: string
-  type: 'Charge' | 'In-Store Top-Up' | 'Claim Coupons' | 'Claim Catalogs' | 'In-Store Redeem' | 'Tip' | 'B-Unit Fee'
+  type:
+    | 'Charge'
+    | 'In-Store Top-Up'
+    | 'Claim Coupons'
+    | 'Claim Catalogs'
+    | 'In-Store Redeem'
+    | 'Tip'
+    | 'B-Unit Fee'
+    | 'Create Coupon'
+    | 'Create Catalogs'
   subtotal: number
   tip: number
   total: number
@@ -2425,7 +2441,31 @@ function walletMobileActivityIconFrame(tx: TxDisplayRow): { Icon: LucideIcon; wr
   if (tx.type === 'In-Store Redeem') return { Icon: Store, wrap: 'bg-amber-500/10 text-amber-700' };
   if (tx.type === 'Tip') return { Icon: Heart, wrap: 'bg-rose-500/10 text-rose-600' };
   if (tx.type === 'B-Unit Fee') return { Icon: Fuel, wrap: 'bg-orange-500/10 text-orange-600' };
+  if (tx.type === 'Create Coupon') return { Icon: Gift, wrap: 'bg-fuchsia-500/10 text-fuchsia-600' };
+  if (tx.type === 'Create Catalogs') return { Icon: Package, wrap: 'bg-violet-500/10 text-violet-600' };
   return { Icon: Fuel, wrap: 'bg-[#8d3a8b]/10 text-[#8d3a8b]' };
+}
+
+function createIssuedNftBunitAmountPreview(tx: TxDisplayRow): React.ReactNode {
+  const usdcNotional = tx.usdcAmount > 0 ? tx.usdcAmount : (Number.isFinite(tx.bUnits) ? tx.bUnits : 0) * 0.01;
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+        <Fuel size={15} className="text-orange-500 shrink-0" strokeWidth={2} aria-hidden />
+        {tx.bUnits > 0 ? (
+          <>
+            {tx.bUnits.toFixed(2)}{' '}
+            <span className="text-[12px] text-slate-400 font-medium">B-Units</span>
+          </>
+        ) : (
+          <>
+            {usdcNotional.toFixed(2)}{' '}
+            <span className="text-[12px] text-slate-400 font-medium">USDC</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function walletMobileActivityRightColumn(tx: TxDisplayRow): { top: string; bottom: string } {
@@ -2433,6 +2473,15 @@ function walletMobileActivityRightColumn(tx: TxDisplayRow): { top: string; botto
     tx.hash && typeof tx.hash === 'string' && tx.hash.length > 12
       ? `${tx.hash.slice(0, 5)}…${tx.hash.slice(-3)}`
       : '—';
+  if (isCreateIssuedNftBuintLedgerRowType(tx.type)) {
+    const label = txDisplayRowLedgerTypeTitle(tx.type);
+    if (tx.bUnits > 0) {
+      return { top: `${tx.bUnits.toFixed(2)} B-Units`, bottom: `${label} · ${hash}` };
+    }
+    const usdc = tx.usdcAmount > 0 ? tx.usdcAmount : 0;
+    if (usdc > 0) return { top: `${usdc.toFixed(2)} USDC`, bottom: `${label} · ${hash}` };
+    return { top: '—', bottom: `${label} · ${hash}` };
+  }
   if (Number.isFinite(tx.usdcAmount) && Math.abs(tx.usdcAmount) >= 0.000001) {
     const sign = tx.usdcAmount > 0 ? '+ ' : '';
     return { top: `${sign}${tx.usdcAmount.toFixed(2)} USDC`, bottom: `Hash: ${hash}` };
@@ -2841,13 +2890,15 @@ function WalletsTreasuryShell(props: {
                 const activityTitle =
                   tx.type === 'In-Store Top-Up'
                     ? 'New Deposit'
-                    : tx.type === 'Claim Coupons'
-                      ? 'Claim Coupons'
-                      : tx.type === 'Claim Catalogs'
-                        ? 'Claim Catalogs'
-                        : tx.type === 'In-Store Redeem'
-                          ? 'In-Store Redeem'
-                          : tx.type;
+                    : isCreateIssuedNftBuintLedgerRowType(tx.type)
+                      ? txDisplayRowLedgerTypeTitle(tx.type)
+                      : tx.type === 'Claim Coupons'
+                        ? 'Claim Coupons'
+                        : tx.type === 'Claim Catalogs'
+                          ? 'Claim Catalogs'
+                          : tx.type === 'In-Store Redeem'
+                            ? 'In-Store Redeem'
+                            : tx.type;
                 const normalizedTop = top.replace(/^\+\s*/, '').trim();
                 const displayTop =
                   top === '—'
@@ -4618,6 +4669,7 @@ const BUINT_SERVICE_FEE_CATEGORY_LOWER = new Set([
   TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
   TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
   TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
+  TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE.toLowerCase(),
   TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase(),
   TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
   TX_BUINT_CHARGE_SERVICE.toLowerCase(),
@@ -4634,6 +4686,7 @@ const BUINT_SERVICE_MERGE_INTO_PARENT_CATEGORY_LOWER = new Set([
 /** bizSite：无主业务时 B-Unit 行即 Transactions 主行（不合并） */
 const BUINT_SERVICE_PRIMARY_ONLY_CATEGORY_LOWER = new Set([
   TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
+  TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE.toLowerCase(),
   TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
 ])
 
@@ -5997,19 +6050,27 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
         title?: string
         source?: string
         basePaymentHash?: string
+        baseTopupTxHash?: string
+        baseChargeTxHash?: string
         baseCreateIssuedNftTxHash?: string
       } = {}
       try {
         if (tx.displayJson) display = JSON.parse(tx.displayJson) as typeof display
       } catch { /* ignore */ }
       const baseHash =
-        typeof tx.originalPaymentHash === 'string' && tx.originalPaymentHash.length > 0
+        typeof tx.originalPaymentHash === 'string' &&
+        tx.originalPaymentHash.length > 0 &&
+        tx.originalPaymentHash.toLowerCase() !== ethers.ZeroHash.toLowerCase()
           ? tx.originalPaymentHash
-          : typeof display.basePaymentHash === 'string'
-            ? display.basePaymentHash
-            : typeof display.baseCreateIssuedNftTxHash === 'string'
-              ? display.baseCreateIssuedNftTxHash
-              : ''
+          : typeof display.baseTopupTxHash === 'string'
+            ? display.baseTopupTxHash
+            : typeof display.baseChargeTxHash === 'string'
+              ? display.baseChargeTxHash
+              : typeof display.basePaymentHash === 'string'
+                ? display.basePaymentHash
+                : typeof display.baseCreateIssuedNftTxHash === 'string'
+                  ? display.baseCreateIssuedNftTxHash
+                  : ''
       const hashShort =
         baseHash && baseHash.length >= 10
           ? `${baseHash.slice(0, 6)}...${baseHash.slice(-4)}`
@@ -6029,10 +6090,15 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
         }
       })()
       const catHex = normalizeIndexerTxCategoryHex(tx.txCategory)
-      const displayType: TxDisplayRow['type'] =
-        catHex === TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase()
-          ? 'In-Store Redeem'
-          : 'B-Unit Fee'
+      let displayType: TxDisplayRow['type'] = 'B-Unit Fee'
+      let ledgerTitle = display.title ?? 'B-Unit service fee'
+      if (catHex === TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase()) {
+        displayType = 'In-Store Redeem'
+      } else if (isCreateIssuedNftBunitIndexerCategory(tx.txCategory)) {
+        const productKind = resolveCreateIssuedNftBunitProductKind(tx.displayJson ?? '')
+        displayType = createIssuedNftBunitTxDisplayType(productKind)
+        ledgerTitle = createIssuedNftBunitLedgerTitle(productKind)
+      }
       return {
         id: `TX-${1000 + rows.length - idx}`,
         indexerTxId,
@@ -6052,7 +6118,7 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
         beamioTag: null,
         status: 'Settled',
         hash: hashShort,
-        terminal: display.title ?? 'B-Unit service fee',
+        terminal: ledgerTitle,
         bUnits,
         originalPaymentHash: tx.originalPaymentHash,
         topAdmin: tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined,
@@ -6183,8 +6249,31 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
   })
 }
 
+/** Cached rows may still use legacy `B-Unit Fee` for `createIssuedNftCoupon:bunitService`. */
+function remapLegacyCreateIssuedNftBuintDisplayRows(rows: TxDisplayRow[]): TxDisplayRow[] {
+  return rows.map((row) => {
+    if (!isCreateIssuedNftBunitIndexerCategory((row.raw as { txCategory?: unknown })?.txCategory)) return row
+    if (isCreateIssuedNftBuintLedgerRowType(row.type)) return row
+    const dj =
+      typeof (row.raw as { displayJson?: unknown })?.displayJson === 'string'
+        ? String((row.raw as { displayJson: string }).displayJson)
+        : ''
+    const kind = resolveCreateIssuedNftBunitProductKind(dj)
+    return {
+      ...row,
+      type: createIssuedNftBunitTxDisplayType(kind),
+      terminal: createIssuedNftBunitLedgerTitle(kind),
+      method: 'B-Unit',
+      ctreeAmount: 0,
+      subtotal: 0,
+      tip: 0,
+      total: 0,
+    }
+  })
+}
+
 function normalizeTxDisplayRowsForCardCurrency(rows: TxDisplayRow[], cardCurrencyType: number | null): TxDisplayRow[] {
-  return rows.map((tx) => {
+  const normalized = rows.map((tx) => {
     if (tx.type !== 'Charge') return tx
     const raw = tx.raw as Record<string, unknown>
     const total6 = parseIndexerUintE6Field(raw.finalRequestAmountUSDC6)
@@ -6206,6 +6295,7 @@ function normalizeTxDisplayRowsForCardCurrency(rows: TxDisplayRow[], cardCurrenc
       method: total > 0 ? '$CTree or USDC' : 'USDC',
     }
   })
+  return remapLegacyCreateIssuedNftBuintDisplayRows(normalized)
 }
 
 /** Indexer `Transaction.timestamp`: seconds on wire; readme allows ms — normalize to unix seconds. */
@@ -6621,10 +6711,18 @@ function chargeRowTipParentKeySet(p: TxDisplayRow): Set<string> {
   try {
     const dj = raw.displayJson
     if (typeof dj === 'string' && dj) {
-      const o = JSON.parse(dj) as { finishedHash?: string; baseRelayTxHash?: string; requestHash?: string }
+      const o = JSON.parse(dj) as {
+        finishedHash?: string
+        baseRelayTxHash?: string
+        requestHash?: string
+        baseTopupTxHash?: string
+        baseChargeTxHash?: string
+      }
       add(o?.finishedHash)
       add(o?.baseRelayTxHash)
       add(o?.requestHash)
+      add(o?.baseTopupTxHash)
+      add(o?.baseChargeTxHash)
     }
   } catch {
     /* ignore */
@@ -6793,14 +6891,20 @@ function buintFeeRowParentLinkKeySet(f: TxDisplayRow): Set<string> {
     if (typeof dj === 'string' && dj) {
       const o = JSON.parse(dj) as {
         basePaymentHash?: string
+        baseTopupTxHash?: string
+        baseChargeTxHash?: string
         baseCreateIssuedNftTxHash?: string
         finishedHash?: string
         originalPaymentHash?: string
+        consumeTxHash?: string
       }
       add(o?.basePaymentHash)
+      add(o?.baseTopupTxHash)
+      add(o?.baseChargeTxHash)
       add(o?.baseCreateIssuedNftTxHash)
       add(o?.finishedHash)
       add(o?.originalPaymentHash)
+      add(o?.consumeTxHash)
     }
   } catch {
     /* ignore */
@@ -6908,6 +7012,15 @@ function mergeBuintServiceFeeRowsIntoMainBusinessRows(rows: TxDisplayRow[]): TxD
   return mergeRedeemBunitFeeRowsIntoIssuedRedeem(
     mergeChargeBunitFeeRowsIntoCharges(mergeTopupBunitFeeRowsIntoTopups(rows))
   )
+}
+
+/** Union indexer fetch + local cache, then absorb B-Unit / bonus / tips (cache must not re-introduce orphan B-Unit rows). */
+function mergeInboundLedgerDisplayRows(fetchedMapped: TxDisplayRow[], cachedInbound: TxDisplayRow[]): TxDisplayRow[] {
+  const deduped = mergeRenumberTxDisplays(fetchedMapped, cachedInbound)
+  const afterBuint = mergeBuintServiceFeeRowsIntoMainBusinessRows(deduped)
+  const afterBonus = mergeTopupRechargeBonusRowsIntoTopups(afterBuint)
+  const afterTips = mergeTipRowsIntoParentCharges(afterBonus)
+  return mergeBuintServiceFeeRowsIntoMainBusinessRows(afterTips)
 }
 
 function mergeRenumberTxDisplays(fetched: TxDisplayRow[], cachedInbound: TxDisplayRow[]): TxDisplayRow[] {
@@ -8026,6 +8139,9 @@ function smartReceiptLedgerAmountPreviewColumn(
   cadOracle: number,
   pointsCurrencySymbol: string,
 ): React.ReactNode {
+  if (isCreateIssuedNftBuintLedgerRowType(tx.type)) {
+    return createIssuedNftBunitAmountPreview(tx);
+  }
   if (tx.type === 'Charge') {
     const raw = tx.raw as Record<string, unknown>;
     const meta = parseIndexerMetaTuple(raw.meta);
@@ -8104,7 +8220,7 @@ function smartReceiptLedgerAmountPreviewColumn(
       </div>
     );
   }
-  if (tx.type.includes('Top-Up')) {
+  if (tx.type === 'In-Store Top-Up') {
     const meta = parseIndexerMetaTuple(tx.raw.meta);
     const reqFiat = tx.topupBonusFiat && tx.topupBonusFiat > 0
       ? tx.total
@@ -8130,7 +8246,7 @@ function smartReceiptLedgerAmountPreviewColumn(
       </div>
     );
   }
-  if (tx.method === 'Tip') {
+  if (tx.type === 'Tip' || tx.method === 'Tip') {
     return (
       <div className="flex flex-col">
         <div className="flex items-center gap-2 text-[14px] font-semibold text-rose-600 whitespace-nowrap">
@@ -8213,15 +8329,21 @@ function smartReceiptLedgerAmountPreviewColumn(
       </div>
     );
   }
-  return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
-        <Ticket size={15} className="text-[#34C759] shrink-0" /> {tx.ctreeAmount.toFixed(2)}{' '}
-        <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
+  if (tx.type === 'B-Unit Fee' || tx.method === 'B-Unit') {
+    return createIssuedNftBunitAmountPreview(tx);
+  }
+  if (tx.ctreeAmount > 0) {
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
+          <Ticket size={15} className="text-[#34C759] shrink-0" /> {tx.ctreeAmount.toFixed(2)}{' '}
+          <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
       </div>
-      <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
-    </div>
-  );
+    );
+  }
+  return <span className="text-[13px] font-medium text-slate-400">—</span>;
 }
 
 type SmartReceiptLedgerAlignedPrimaryCardArgs = {
@@ -21336,7 +21458,9 @@ useEffect(() => {
   }
   const cached = loadInboundTxDisplayCache(eoaKey);
   if (cached.length > 0) {
-    const normalized = normalizeTxDisplayRowsForCardCurrency(cached, programCardBeamioCurrencyType);
+    const normalized = mergeBuintServiceFeeRowsIntoMainBusinessRows(
+      normalizeTxDisplayRowsForCardCurrency(cached, programCardBeamioCurrencyType)
+    );
     setIndexerTransactions(normalized);
     setTodayTopupSnapshot(summarizeTodayTopupsFromRows(normalized));
     saveInboundTxDisplayCache(eoaKey, normalized);
@@ -21390,7 +21514,11 @@ const refreshIndexerTransactions = useCallback(
       }
 
       if (cachedLocal.length > 0 && indexerTxListCountRef.current === 0) {
-        setIndexerTransactions(normalizeTxDisplayRowsForCardCurrency(cachedLocal, programCardBeamioCurrencyType));
+        setIndexerTransactions(
+          mergeBuintServiceFeeRowsIntoMainBusinessRows(
+            normalizeTxDisplayRowsForCardCurrency(cachedLocal, programCardBeamioCurrencyType)
+          )
+        );
       }
 
       try {
@@ -21702,11 +21830,9 @@ const refreshIndexerTransactions = useCallback(
           throw raceErr;
         }
 
-        const mapped = mergeBuintServiceFeeRowsIntoMainBusinessRows(
-          normalizeTxDisplayRowsForCardCurrency(
-            mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
-            programCardBeamioCurrencyType
-          )
+        const mapped = normalizeTxDisplayRowsForCardCurrency(
+          mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
+          programCardBeamioCurrencyType
         );
         const localBase = eoaKey
           ? mergeLocalLedgerBaseForIndexerMerge(
@@ -21715,13 +21841,13 @@ const refreshIndexerTransactions = useCallback(
               programCardBeamioCurrencyType
             )
           : [];
-        const deduped = mergeRenumberTxDisplays(mapped, localBase);
-        const absorbedTopupBonus = mergeTopupRechargeBonusRowsIntoTopups(deduped);
-        const absorbedTips = mergeTipRowsIntoParentCharges(absorbedTopupBonus);
+        const absorbedTips = mergeInboundLedgerDisplayRows(mapped, localBase);
         const capped = absorbedTips.slice(0, 80);
         const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
         if (eoaKey) {
-          const preTip = buildTipsCollectedLedgerEntriesFromPremergeTips(deduped)
+          const preTip = buildTipsCollectedLedgerEntriesFromPremergeTips(
+            mergeRenumberTxDisplays(mapped, localBase)
+          )
           if (preTip.length > 0) {
             const tm = tipsCollectedLedgerRef.current
             if (mergeTipsCollectedLedgerEntries(tm, preTip)) {
@@ -25284,7 +25410,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
            const calculateTxNetValueCAD = (tx: TxDisplayRow) => {
              if (tx.type.includes('Top-Up')) return tx.ctreeAmount || 0;
-             if (tx.type === 'Charge') return chargeTxDisplayRowApproxCad(tx, cadOracle)
+             if (tx.type === 'Charge') return chargeTxDisplayRowApproxCad(tx, cadOracle);
+             if (isCreateIssuedNftBuintLedgerRowType(tx.type)) {
+               const usdc = tx.usdcAmount > 0 ? tx.usdcAmount : (Number.isFinite(tx.bUnits) ? tx.bUnits : 0) * 0.01;
+               return usdc / cadOracle;
+             }
              return (tx.usdcAmount / cadOracle) + (tx.ctreeAmount || 0);
            };
            /** Tip portion in CAD (merged TX_TIP child and/or embedded `chargeBreakdown.tipCurrencyAmount`). */
@@ -25696,7 +25826,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             : tx.type.includes('Top-Up')
                               ? { label: 'Confirmed', cls: 'bg-emerald-50 text-emerald-600' as const }
                               : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const }
-                        let ledgerTypeTitle: string = tx.type
+                        let ledgerTypeTitle: string = txDisplayRowLedgerTypeTitle(tx.type)
                         if (tx.type === 'Charge') {
                           const rawLt = tx.raw as Record<string, unknown>
                           const rteLt = rawLt.route
@@ -25741,6 +25871,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    <Heart size={20} className="fill-rose-100" strokeWidth={2} aria-hidden />
                                  ) : tx.type.includes('Top-Up') ? (
                                    <ArrowUpFromLine size={20} strokeWidth={2} aria-hidden />
+                                 ) : tx.type === 'Create Coupon' ? (
+                                   <Gift size={20} strokeWidth={2} aria-hidden />
+                                 ) : tx.type === 'Create Catalogs' ? (
+                                   <Package size={20} strokeWidth={2} aria-hidden />
                                  ) : isVaultTerminal ? (
                                    <Shield size={20} strokeWidth={2} aria-hidden />
                                  ) : (
@@ -25896,7 +26030,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                              <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
                              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                               {tx.type === 'Charge' ? (() => {
+                               {isCreateIssuedNftBuintLedgerRowType(tx.type) ? (
+                                 createIssuedNftBunitAmountPreview(tx)
+                               ) : tx.type === 'Charge' ? (() => {
                                  const raw = tx.raw as Record<string, unknown>
                                  const meta = parseIndexerMetaTuple(raw.meta)
                                  const finalFiat = parseIndexerUintE6Field(raw.finalRequestAmountFiat6)
@@ -25981,7 +26117,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      ) : null}
                                    </div>
                                  )
-                               })() : tx.type.includes('Top-Up') ? (
+                               })() : tx.type === 'In-Store Top-Up' ? (
                                  (() => {
                                    const meta = parseIndexerMetaTuple(tx.raw.meta)
                                    const reqFiat = tx.topupBonusFiat && tx.topupBonusFiat > 0
@@ -26062,17 +26198,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    </div>
                                    <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${(tx.usdcAmount / cadOracle).toFixed(2)} CAD</span>
                                  </div>
-                               ) : (
+                               ) : tx.type === 'B-Unit Fee' || tx.method === 'B-Unit' ? (
+                                 createIssuedNftBunitAmountPreview(tx)
+                               ) : tx.ctreeAmount > 0 ? (
                                  <div className="flex flex-col">
                                    <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
                                      <Ticket size={15} className="text-[#34C759] shrink-0" /> {tx.ctreeAmount.toFixed(2)} <span className="text-[12px] text-slate-400 font-medium">$CTree</span>
                                    </div>
                                    <span className="text-[11px] text-slate-400 font-medium mt-0.5 ml-6">≈ ${tx.ctreeAmount.toFixed(2)} CAD</span>
                                  </div>
+                               ) : (
+                                 <span className="text-[13px] font-medium text-slate-400">—</span>
                                )}
                              </div>
                              <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
-                               {(tx.type.includes('Top-Up') || tx.type === 'Charge') && baseScanTxHash ? (
+                               {(tx.type === 'In-Store Top-Up' || tx.type === 'Charge') && baseScanTxHash ? (
                                  <a
                                    href={`https://basescan.org/tx/${baseScanTxHash}`}
                                    target="_blank"
@@ -26279,7 +26419,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              const statusIsPending = tx.status === 'Pending';
              const isVaultTerminalSr =
                tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
-             let ledgerTypeTitleSr: string = tx.type;
+             let ledgerTypeTitleSr: string = txDisplayRowLedgerTypeTitle(tx.type);
              if (tx.type === 'Charge') {
                const rawLt = tx.raw as Record<string, unknown>;
                const rteLt = rawLt.route;

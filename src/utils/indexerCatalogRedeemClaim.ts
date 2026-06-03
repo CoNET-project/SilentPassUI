@@ -376,3 +376,81 @@ export function globalCategoryLabelForIssuedNftRedeem(
   const normalized = normalizeCatalogGlobalCategory(globalCategory);
   return normalized;
 }
+
+/** `createIssuedNftCoupon:bunitService` / `createIssuedNftCatalog:bunitService` indexer row. */
+export function resolveCreateIssuedNftBunitProductKind(displayJson: string): IndexerIssuedNftRedeemProductKind {
+  try {
+    const j = JSON.parse(displayJson || '{}') as Record<string, unknown>;
+    const dk = String(j.distributionKind ?? '').trim().toLowerCase();
+    if (dk === 'catalog' || dk === 'coupon') return dk as IndexerIssuedNftRedeemProductKind;
+
+    const title = String(j.title ?? '').trim().toLowerCase();
+    if (title.includes('catalogs fee') || title.includes('create catalogs')) return 'catalog';
+    if (title === 'create coupon' || title.includes('create coupon')) return 'coupon';
+
+    const productionId = String(j.productionId ?? '').trim();
+    if (productionId) return 'catalog';
+    const couponId = String(j.couponId ?? '').trim();
+    if (couponId) return 'coupon';
+
+    const beamioProduction = j.beamioProduction;
+    if (beamioProduction != null && typeof beamioProduction === 'object' && !Array.isArray(beamioProduction)) {
+      return 'catalog';
+    }
+    const beamioCoupon = j.beamioCoupon;
+    if (beamioCoupon != null && typeof beamioCoupon === 'object' && !Array.isArray(beamioCoupon)) {
+      return 'coupon';
+    }
+
+    const gc = String(j.globalCategory ?? j.category ?? '').trim();
+    if (gc) {
+      if (isCouponGlobalCategory(gc)) return 'coupon';
+      if (isCatalogGlobalCategoryId(gc) || gc.toLowerCase() === 'productions') return 'catalog';
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const classified = classifyIndexerIssuedNftRedeemProductKind({ displayJson });
+  if (classified) return classified;
+  return 'coupon';
+}
+
+export const TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE = ethers.keccak256(
+  ethers.toUtf8Bytes('createIssuedNftCoupon:bunitService')
+);
+export const TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE = ethers.keccak256(
+  ethers.toUtf8Bytes('createIssuedNftCatalog:bunitService')
+);
+
+export function isCreateIssuedNftBunitIndexerCategory(cat: unknown): boolean {
+  const h = normalizeIndexerTxCategoryHex(cat);
+  return (
+    h === TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase() ||
+    h === TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE.toLowerCase()
+  );
+}
+
+export type CreateIssuedNftBunitTxDisplayType = 'Create Coupon' | 'Create Catalogs';
+
+export function createIssuedNftBunitTxDisplayType(
+  kind: IndexerIssuedNftRedeemProductKind
+): CreateIssuedNftBunitTxDisplayType {
+  return kind === 'catalog' ? 'Create Catalogs' : 'Create Coupon';
+}
+
+/** Merchant Transactions ledger headline (English). */
+export function createIssuedNftBunitLedgerTitle(kind: IndexerIssuedNftRedeemProductKind): string {
+  return kind === 'catalog' ? 'Create Catalogs fee' : 'Create Coupon';
+}
+
+export function txDisplayRowLedgerTypeTitle(type: CreateIssuedNftBunitTxDisplayType | string): string {
+  if (type === 'Create Catalogs') return 'Create Catalogs fee';
+  return type;
+}
+
+export function isCreateIssuedNftBuintLedgerRowType(
+  type: string
+): type is CreateIssuedNftBunitTxDisplayType {
+  return type === 'Create Coupon' || type === 'Create Catalogs';
+}

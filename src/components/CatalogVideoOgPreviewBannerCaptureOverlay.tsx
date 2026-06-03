@@ -30,8 +30,8 @@ function CaptureFitButton(props: {
   const Icon = isWidth ? RectangleHorizontal : AlignVerticalSpaceAround;
   const label = isWidth ? 'Capture fit to width' : 'Capture fit to height';
   const hint = isWidth
-    ? 'Fit banner width; fill top and bottom like coupon banner'
-    : 'Fit banner height; fill left and right like coupon banner';
+    ? 'Fit to width inside 4:3 catalog preview (480×360 parity)'
+    : 'Fit to height inside 4:3 catalog preview (480×360 parity)';
 
   let icon = <Icon className="h-4 w-4" strokeWidth={2} aria-hidden />;
   if (props.status === 'loading') {
@@ -60,7 +60,7 @@ function CaptureFitButton(props: {
   );
 }
 
-/** Two coupon-style snapshot controls over the Business Catalogs preview banner. */
+/** Width/height fit snapshots into the Business Catalogs 4:3 hero (video upload frame parity). */
 export function CatalogVideoOgPreviewBannerCaptureOverlay(props: CatalogVideoOgPreviewBannerCaptureOverlayProps) {
   const { exportWidth, exportHeight, disabled, activeSnapshotMode = null, onCaptured, children } = props;
   const hostRef = useRef<HTMLDivElement>(null);

@@ -89,6 +89,7 @@ import {
   fetchCardActiveIssuedCouponSeries,
   fetchCardActiveIssuedProductionSeries,
   getRedeemStatusBatchFromChain,
+  removeNotFoundRedeems,
   type CardMetadataFromUri,
   type CardTierMetadata,
   type TierMetadata,
@@ -125,6 +126,15 @@ import {
 import type { CatalogBannerPreviewSnapshot } from '@/utils/couponStyleBannerFillCanvas';
 import { validateProductionBackgroundYoutubeVideo } from '@/utils/validateProductionBackgroundYoutubeVideo';
 import { resolveCatalogProductionSharePresentation } from '@/utils/catalogProductionVideoOg';
+import {
+  indexerRouteCardAddress,
+  indexerRouteMaxPositiveTokenId,
+  indexerRowNeedsIssuedNftRedeemDistributionEnrich,
+  indexerRowNeedsRouteForCatalogRedeemClassify,
+  mapIndexerIssuedNftRedeemBizActivityType,
+  mergeIssuedNftRedeemDistributionIntoDisplayJson,
+  seriesMetadataProductKind,
+} from '@/utils/indexerCatalogRedeemClaim';
 import { isYoutubeProductionVideoUrl, PRODUCTION_BACKGROUND_YOUTUBE_MIME, isProductionBackgroundYoutubeMedia, youtubeThumbnailUrlFromProductionUrl } from '@/utils/youtubeProductionVideo';
 import {
   ipfsFragmentUrlFromHash,
@@ -353,9 +363,9 @@ import {
   Megaphone,
   Download,
   ListTodo,
- ShoppingCart,
- Package,
- Palette,
+  ShoppingCart,
+  Package,
+  Palette,
   History,
   Gift,
   Gauge,
@@ -731,7 +741,7 @@ type TxDisplayRowCore = {
   indexerTxId: string
   dateStr: string
   time: string
-  type: 'Charge' | 'In-Store Top-Up' | 'Tip'
+  type: 'Charge' | 'In-Store Top-Up' | 'Claim Coupons' | 'Claim Catalogs' | 'In-Store Redeem' | 'Tip' | 'B-Unit Fee'
   subtotal: number
   tip: number
   total: number
@@ -2410,7 +2420,11 @@ function StaffSoftPosHero(props: { onLinkNew: () => void }) {
 function walletMobileActivityIconFrame(tx: TxDisplayRow): { Icon: LucideIcon; wrap: string } {
   if (tx.type === 'Charge') return { Icon: ShoppingBag, wrap: 'bg-blue-500/10 text-blue-600' };
   if (tx.type === 'In-Store Top-Up') return { Icon: Landmark, wrap: 'bg-emerald-500/10 text-emerald-600' };
+  if (tx.type === 'Claim Coupons') return { Icon: Gift, wrap: 'bg-fuchsia-500/10 text-fuchsia-600' };
+  if (tx.type === 'Claim Catalogs') return { Icon: Package, wrap: 'bg-violet-500/10 text-violet-600' };
+  if (tx.type === 'In-Store Redeem') return { Icon: Store, wrap: 'bg-amber-500/10 text-amber-700' };
   if (tx.type === 'Tip') return { Icon: Heart, wrap: 'bg-rose-500/10 text-rose-600' };
+  if (tx.type === 'B-Unit Fee') return { Icon: Fuel, wrap: 'bg-orange-500/10 text-orange-600' };
   return { Icon: Fuel, wrap: 'bg-[#8d3a8b]/10 text-[#8d3a8b]' };
 }
 
@@ -2428,7 +2442,16 @@ function walletMobileActivityRightColumn(tx: TxDisplayRow): { top: string; botto
     const sign = v > 0 ? '+ ' : '';
     return {
       top: `${sign}C$ ${Math.abs(v).toFixed(2)}`,
-      bottom: tx.type === 'In-Store Top-Up' ? 'Mint System Record' : `Hash: ${hash}`,
+      bottom:
+        tx.type === 'In-Store Top-Up'
+          ? 'Mint System Record'
+          : tx.type === 'Claim Coupons'
+            ? 'Coupon redeem (APP)'
+            : tx.type === 'Claim Catalogs'
+              ? 'Catalog redeem (APP)'
+              : tx.type === 'In-Store Redeem'
+                ? 'Redeem (in-store)'
+                : `Hash: ${hash}`,
     };
   }
   return { top: '—', bottom: `Hash: ${hash}` };
@@ -2815,6 +2838,16 @@ function WalletsTreasuryShell(props: {
                 const { Icon, wrap } = walletMobileActivityIconFrame(tx);
                 const { top, bottom } = walletMobileActivityRightColumn(tx);
                 const isPositive = tx.type === 'In-Store Top-Up';
+                const activityTitle =
+                  tx.type === 'In-Store Top-Up'
+                    ? 'New Deposit'
+                    : tx.type === 'Claim Coupons'
+                      ? 'Claim Coupons'
+                      : tx.type === 'Claim Catalogs'
+                        ? 'Claim Catalogs'
+                        : tx.type === 'In-Store Redeem'
+                          ? 'In-Store Redeem'
+                          : tx.type;
                 const normalizedTop = top.replace(/^\+\s*/, '').trim();
                 const displayTop =
                   top === '—'
@@ -2836,7 +2869,7 @@ function WalletsTreasuryShell(props: {
                         <Icon className="size-5" strokeWidth={2} aria-hidden />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-manrope text-base font-semibold text-[#141b2b]">{tx.type === 'In-Store Top-Up' ? 'New Deposit' : tx.type}</p>
+                        <p className="font-manrope text-base font-semibold text-[#141b2b]">{activityTitle}</p>
                         <p className="mt-0.5 text-sm text-[#424655]">
                           {tx.dateStr}
                           {tx.time ? `, ${tx.time}` : ''}
@@ -4399,11 +4432,15 @@ const INDEXER_ASSET_STATS_ABI = [
 ] as const
 
 /** BeamioIndexerDiamond ActionFacet: paged account + topAdmin supplement (TX_TIP 等可能仅进 topAdminActionIds) */
+const TX_FULL_TUPLE =
+  '(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, address topAdmin, address subordinate, (address asset, uint256 amountE6, uint8 assetType, uint8 source, uint256 tokenId, uint8 itemCurrencyType, uint256 offsetInRequestCurrencyE6)[] route, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta)';
+
 const INDEXER_ACCOUNT_ABI = [
   `function getAccountActionCount(address account) view returns (uint256)`,
   `function getAccountTransactionsPaged(address account, uint256 offset, uint256 limit) view returns (${TX_PAGE_TUPLE}[] page)`,
   `function getAccountTransactionsByCurrentPeriodOffsetAndAccountModePaged(address account, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
   `function getTopAdminTransactionsByCurrentPeriodOffsetAndAccountModePaged(address topAdmin, uint8 periodType, uint256 periodOffset, uint256 pageOffset, uint256 pageLimit, bytes32 txCategoryFilter, uint8 accountMode) view returns (uint256 total, uint256 periodStart, uint256 periodEnd, ${TX_PAGE_TUPLE}[] page)`,
+  `function getTransactionFullByTxId(bytes32 txId) view returns (${TX_FULL_TUPLE})`,
 ] as const
 
 const CHAIN_ID_FILTER_ALL = ethers.MaxUint256
@@ -4569,6 +4606,56 @@ const TX_BUINT_USDC_TOPUP_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('usdcTop
 const TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE = ethers.keccak256(
   ethers.toUtf8Bytes('createIssuedNftCoupon:bunitService')
 )
+/** Indexer: Claim redeem code B-Unit 服务费单独一条（`MemberCard` `cardRedeem:bunitService`） */
+const TX_BUINT_CARD_REDEEM_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('cardRedeem:bunitService'))
+/** Indexer: POS 核销烧毁客户券 B-Unit 服务费单独一条（`posCouponBurn:bunitService`） */
+const TX_BUINT_POS_COUPON_BURN_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('posCouponBurn:bunitService'))
+/** Indexer: Charge B-Unit 服务费单独一条（`charge:bunitService`） */
+const TX_BUINT_CHARGE_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('charge:bunitService'))
+
+/** Indexer：全部 `*:bunitService`（txId=CoNET consume；originalPaymentHash=Base 业务 tx） */
+const BUINT_SERVICE_FEE_CATEGORY_LOWER = new Set([
+  TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
+  TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
+  TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
+  TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase(),
+  TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
+  TX_BUINT_CHARGE_SERVICE.toLowerCase(),
+])
+
+/** bizSite：有主业务时合并进 Top-Up / Charge / Claim 主行 */
+const BUINT_SERVICE_MERGE_INTO_PARENT_CATEGORY_LOWER = new Set([
+  TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
+  TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
+  TX_BUINT_CHARGE_SERVICE.toLowerCase(),
+  TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase(),
+])
+
+/** bizSite：无主业务时 B-Unit 行即 Transactions 主行（不合并） */
+const BUINT_SERVICE_PRIMARY_ONLY_CATEGORY_LOWER = new Set([
+  TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
+  TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
+])
+
+function isStandaloneBuintServiceFeeCategory(cat: unknown): boolean {
+  const h = normalizeIndexerTxCategoryHex(cat)
+  return h !== '' && BUINT_SERVICE_FEE_CATEGORY_LOWER.has(h)
+}
+
+function isBuintServiceFeeMergeIntoParentCategory(cat: unknown): boolean {
+  const h = normalizeIndexerTxCategoryHex(cat)
+  return h !== '' && BUINT_SERVICE_MERGE_INTO_PARENT_CATEGORY_LOWER.has(h)
+}
+
+function isBuintServiceFeePrimaryOnlyCategory(cat: unknown): boolean {
+  const h = normalizeIndexerTxCategoryHex(cat)
+  return h !== '' && BUINT_SERVICE_PRIMARY_ONLY_CATEGORY_LOWER.has(h)
+}
+
+function txDisplayRowBuintServiceCategoryHex(row: TxDisplayRow): string {
+  const raw = row.raw as { txCategory?: unknown }
+  return normalizeIndexerTxCategoryHex(raw.txCategory)
+}
 
 const INDEXER_BUINT_LEDGER_CATEGORY_HEX_LOWER = new Set([
   TX_BUINT_CLAIM.toLowerCase(),
@@ -4577,9 +4664,6 @@ const INDEXER_BUINT_LEDGER_CATEGORY_HEX_LOWER = new Set([
   TX_BUINT_REQUEST_ACCOUNTING.toLowerCase(),
   TX_BUINT_SEND_USDC.toLowerCase(),
   TX_BUINT_X402_SEND.toLowerCase(),
-  TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
-  TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
-  TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
 ])
 
 function normalizeIndexerTxCategoryHex(cat: unknown): string {
@@ -4617,21 +4701,17 @@ function isIndexerBuintConsumePayee(payee: unknown): boolean {
 
 /** Exclude from Merchant OS Transactions: B-Unit claim / USDC mint / consume (any registered kind). */
 function isIndexerFetchedRowBunitLedger(tx: { txCategory: string; payee: string }): boolean {
+  if (isStandaloneBuintServiceFeeCategory(tx.txCategory)) return false
   if (isIndexerBuintLedgerCategory(tx.txCategory)) return true
   return isIndexerBuintConsumePayee(tx.payee)
 }
 
-const TOPUP_BUINT_SERVICE_CATEGORY_LOWER = new Set([
-  TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
-  TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
-])
-
-/** True = omit row from raw ingest. NFC/USDC top-up **service fee** lines are kept for merge into parent Top-Up. */
+/** True = omit row from raw ingest. `*:bunitService` 保留；展示时按主业务合并或单独成行。 */
 function shouldSkipIndexerRowForMerchantTxTable(tx: { txCategory: string; payee: string }): boolean {
   const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
   /** Keep USDC request-accounting rows in memory so Wallet Recent Activity can render bookkeeping items. */
   if (cat === TX_BUINT_REQUEST_ACCOUNTING.toLowerCase()) return false
-  if (TOPUP_BUINT_SERVICE_CATEGORY_LOWER.has(cat)) return false
+  if (isStandaloneBuintServiceFeeCategory(tx.txCategory)) return false
   return isIndexerFetchedRowBunitLedger(tx)
 }
 
@@ -4648,16 +4728,35 @@ function txDisplayRowIsTerminalSettlementReset(tx: TxDisplayRow): boolean {
 
 function txDisplayRowIsIndexerBunitLedger(r: TxDisplayRow): boolean {
   const raw = r.raw as { txCategory?: unknown; payee?: unknown }
+  if (isStandaloneBuintServiceFeeCategory(raw.txCategory)) return false
   if (isIndexerBuintLedgerCategory(raw.txCategory)) return true
   return isIndexerBuintConsumePayee(raw.payee)
 }
 
-function dashboardActivityTypeFromIndexerRow(tx: { txCategory: string; payee: string }): 'Charge' | 'In-Store Top-Up' | 'Tip' | null {
+function dashboardActivityTypeFromIndexerRow(tx: {
+  txCategory: string
+  payee: string
+  displayJson?: string
+  route?: unknown
+  payer?: string
+  subordinate?: string
+  topAdmin?: string
+}): 'Charge' | 'In-Store Top-Up' | 'Claim Coupons' | 'Claim Catalogs' | 'In-Store Redeem' | 'Tip' | null {
   if (shouldSkipIndexerRowForMerchantTxTable(tx)) return null
   if (indexerTxCategoryIsTerminalSettlementReset(tx.txCategory)) return null
   const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
-  if (!cat || TOPUP_BUINT_SERVICE_CATEGORY_LOWER.has(cat)) return null
+  if (!cat || isStandaloneBuintServiceFeeCategory(tx.txCategory)) return null
   if (cat === TX_MERCHANT_PAY_TIP_UPDATED.toLowerCase() || cat === TX_TIP_LEDGER_CATEGORY.toLowerCase()) return 'Tip'
+  const issuedRedeemType = mapIndexerIssuedNftRedeemBizActivityType({
+    txCategory: tx.txCategory,
+    displayJson: tx.displayJson,
+    route: tx.route,
+    payer: tx.payer,
+    payee: tx.payee,
+    subordinate: tx.subordinate,
+    topAdmin: tx.topAdmin,
+  })
+  if (issuedRedeemType) return issuedRedeemType
   if (INDEXER_TX_TOPUP_CATEGORIES.has(cat as `0x${string}`)) return 'In-Store Top-Up'
   return 'Charge'
 }
@@ -5732,6 +5831,130 @@ function indexerPageTupleToTransactionJson(tx: {
   }
 }
 
+function indexerFullRouteToJson(route: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(route)) return []
+  const out: Array<Record<string, unknown>> = []
+  for (const item of route) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    out.push({
+      asset: typeof r.asset === 'string' ? r.asset : String(r.asset ?? ''),
+      amountE6: String(r.amountE6 ?? '0'),
+      assetType: Number(r.assetType ?? 0),
+      source: Number(r.source ?? 0),
+      tokenId: String(r.tokenId ?? '0'),
+      itemCurrencyType: Number(r.itemCurrencyType ?? 0),
+      offsetInRequestCurrencyE6: String(r.offsetInRequestCurrencyE6 ?? '0'),
+    })
+  }
+  return out
+}
+
+async function enrichCatalogRedeemRoutesOnLedgerFetchRows(
+  rows: IndexerFetchedTxRow[],
+  indexerAccount: ethers.Contract
+): Promise<void> {
+  const needs = rows.filter((row) =>
+    indexerRowNeedsRouteForCatalogRedeemClassify({
+      txCategory: row.txCategory,
+      displayJson: row.displayJson,
+      route: row.raw.route,
+    })
+  )
+  if (needs.length === 0) return
+  const cap = Math.min(needs.length, 32)
+  await Promise.all(
+    needs.slice(0, cap).map(async (row) => {
+      try {
+        const idRaw = String(row.id ?? '').trim()
+        const idHex =
+          idRaw.startsWith('0x') && idRaw.length === 66
+            ? idRaw
+            : ethers.hexlify(idRaw as ethers.BytesLike)
+        const full = (await indexerAccount.getTransactionFullByTxId(idHex)) as {
+          route?: unknown
+        }
+        const routeJson = indexerFullRouteToJson(full?.route)
+        if (routeJson.length > 0) row.raw.route = routeJson
+      } catch {
+        /* keep empty route */
+      }
+    })
+  )
+}
+
+/** Backfill `distributionKind` / `globalCategory` on legacy `cardRedeem` rows from series metadata. */
+async function enrichIssuedNftRedeemDistributionOnLedgerFetchRows(
+  rows: IndexerFetchedTxRow[]
+): Promise<void> {
+  const needs = rows.filter((row) =>
+    indexerRowNeedsIssuedNftRedeemDistributionEnrich({
+      txCategory: row.txCategory,
+      displayJson: row.displayJson,
+      route: row.raw.route,
+    })
+  )
+  if (needs.length === 0) return
+  const cap = Math.min(needs.length, 24)
+  await Promise.all(
+    needs.slice(0, cap).map(async (row) => {
+      try {
+        const card = indexerRouteCardAddress(row.raw.route)
+        const tokenId = indexerRouteMaxPositiveTokenId(row.raw.route)
+        if (!card || tokenId == null) return
+        const url = `${BEAMIO_APP_URL}/api/seriesSharedMetadata?${new URLSearchParams({
+          card,
+          tokenId: tokenId.toString(),
+        })}`
+        const res = await fetch(url)
+        if (!res.ok) return
+        const body = (await res.json()) as {
+          metadata?: Record<string, unknown> | null
+          sharedSeriesMetadata?: Record<string, unknown> | null
+        }
+        const meta =
+          body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+            ? body.metadata
+            : body.sharedSeriesMetadata &&
+                typeof body.sharedSeriesMetadata === 'object' &&
+                !Array.isArray(body.sharedSeriesMetadata)
+              ? body.sharedSeriesMetadata
+              : null
+        const product = seriesMetadataProductKind(meta)
+        if (!product) return
+        const globalCategory =
+          product === 'coupon'
+            ? 'Coupon'
+            : String(
+                meta && typeof meta.category === 'string' && meta.category.trim()
+                  ? meta.category.trim()
+                  : 'Service'
+              )
+        const couponId =
+          product === 'coupon' && meta && typeof meta.couponId === 'string' && meta.couponId.trim()
+            ? meta.couponId.trim()
+            : product === 'coupon' && meta && typeof meta.id === 'string' && meta.id.trim()
+              ? meta.id.trim()
+              : undefined
+        const productionId =
+          product === 'catalog' && meta && typeof meta.productionId === 'string' && meta.productionId.trim()
+            ? meta.productionId.trim()
+            : product === 'catalog' && meta && typeof meta.id === 'string' && meta.id.trim()
+              ? meta.id.trim()
+              : undefined
+        row.displayJson = mergeIssuedNftRedeemDistributionIntoDisplayJson(row.displayJson, {
+          distributionKind: product,
+          globalCategory,
+          ...(couponId ? { couponId } : {}),
+          ...(productionId ? { productionId } : {}),
+        })
+      } catch {
+        /* keep prior displayJson */
+      }
+    })
+  )
+}
+
 /**
  * NFC / Container Charge: tip may exist only in `displayJson.chargeBreakdown` when indexer has no separate TX_TIP row
  * (`tipCurrencyAmount` present on the main Charge displayJson only).
@@ -5769,10 +5992,93 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
     const cat = String(tx.txCategory ?? '')
     const catLower = cat.toLowerCase()
     const catNorm = normalizeIndexerTxCategoryHex(tx.txCategory)
+    if (isStandaloneBuintServiceFeeCategory(tx.txCategory)) {
+      let display: {
+        title?: string
+        source?: string
+        basePaymentHash?: string
+        baseCreateIssuedNftTxHash?: string
+      } = {}
+      try {
+        if (tx.displayJson) display = JSON.parse(tx.displayJson) as typeof display
+      } catch { /* ignore */ }
+      const baseHash =
+        typeof tx.originalPaymentHash === 'string' && tx.originalPaymentHash.length > 0
+          ? tx.originalPaymentHash
+          : typeof display.basePaymentHash === 'string'
+            ? display.basePaymentHash
+            : typeof display.baseCreateIssuedNftTxHash === 'string'
+              ? display.baseCreateIssuedNftTxHash
+              : ''
+      const hashShort =
+        baseHash && baseHash.length >= 10
+          ? `${baseHash.slice(0, 6)}...${baseHash.slice(-4)}`
+          : typeof tx.id === 'string' && tx.id.length >= 10
+            ? `${tx.id.slice(0, 6)}...${tx.id.slice(-4)}`
+            : '—'
+      const d = new Date(Number(tx.timestamp ?? 0) * 1000)
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+      const indexerTxId = (() => {
+        const s = String(tx.id)
+        if (/^0x[0-9a-fA-F]{64}$/.test(s)) return s.toLowerCase()
+        try {
+          return ethers.hexlify(s as ethers.BytesLike).toLowerCase()
+        } catch {
+          return s.toLowerCase()
+        }
+      })()
+      const catHex = normalizeIndexerTxCategoryHex(tx.txCategory)
+      const displayType: TxDisplayRow['type'] =
+        catHex === TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase()
+          ? 'In-Store Redeem'
+          : 'B-Unit Fee'
+      return {
+        id: `TX-${1000 + rows.length - idx}`,
+        indexerTxId,
+        dateStr,
+        time,
+        type: displayType,
+        subtotal: 0,
+        tip: 0,
+        total: 0,
+        method: 'B-Unit',
+        ctreeAmount: 0,
+        usdcAmount: Number(tx.bServiceUSDC6 ?? '0') / 1_000_000,
+        source: 'APP',
+        beamioTag: null,
+        status: 'Completed',
+        hash: hashShort,
+        terminal: display.title ?? 'B-Unit service fee',
+        bUnits,
+        originalPaymentHash: tx.originalPaymentHash,
+        topAdmin: tx.topAdmin ?? tx.raw.topAdmin,
+        subordinate: tx.subordinate ?? tx.raw.subordinate,
+        raw: tx.raw,
+      }
+    }
     const isTip =
       cat === TX_MERCHANT_PAY_TIP_UPDATED || catLower === TX_TIP_LEDGER_CATEGORY.toLowerCase()
-    const isTopUp = catNorm !== '' && INDEXER_TX_TOPUP_CATEGORIES.has(catNorm as `0x${string}`)
-    const type: TxDisplayRow['type'] = isTip ? 'Tip' : isTopUp ? 'In-Store Top-Up' : 'Charge'
+    const issuedRedeemType = mapIndexerIssuedNftRedeemBizActivityType({
+      txCategory: tx.txCategory,
+      displayJson: tx.displayJson,
+      route: tx.raw.route,
+      payer: tx.payer,
+      payee: tx.payee,
+      subordinate: tx.subordinate ?? tx.raw.subordinate,
+      topAdmin: tx.topAdmin ?? tx.raw.topAdmin,
+    })
+    const isTopUp =
+      !issuedRedeemType &&
+      catNorm !== '' &&
+      INDEXER_TX_TOPUP_CATEGORIES.has(catNorm as `0x${string}`)
+    const type: TxDisplayRow['type'] = isTip
+      ? 'Tip'
+      : issuedRedeemType
+        ? issuedRedeemType
+        : isTopUp
+          ? 'In-Store Top-Up'
+          : 'Charge'
     const total6 = Number(tx.finalRequestAmountUSDC6 ?? '0') / 1_000_000
     const totalFiat = Number(tx.finalRequestAmountFiat6 ?? '0') / 1_000_000
     let total: number
@@ -6469,34 +6775,136 @@ function mergeTopupRechargeBonusRowsIntoTopups(rows: TxDisplayRow[]): TxDisplayR
   return merged
 }
 
-/** Merge standalone `nfcTopup:bunitService` / `usdcTopup:bunitService` indexer rows into parent In-Store Top-Up (same Base `originalPaymentHash`). */
-function mergeTopupBunitFeeRowsIntoTopups(rows: TxDisplayRow[]): TxDisplayRow[] {
-  const feeRows = rows.filter((r) =>
-    TOPUP_BUINT_SERVICE_CATEGORY_LOWER.has(normalizeIndexerTxCategoryHex((r.raw as { txCategory?: unknown }).txCategory))
+/** B-Unit fee row → parent link hashes (`originalPaymentHash` / `displayJson.basePaymentHash`). */
+function buintFeeRowParentLinkKeySet(f: TxDisplayRow): Set<string> {
+  const out = new Set<string>()
+  const add = (v: unknown) => {
+    const n = normalizeBytes32HexLower(v)
+    if (n && n !== ethers.ZeroHash.toLowerCase()) out.add(n)
+  }
+  add(f.originalPaymentHash)
+  const raw = f.raw as Record<string, unknown>
+  add(raw.originalPaymentHash)
+  try {
+    const dj = raw.displayJson
+    if (typeof dj === 'string' && dj) {
+      const o = JSON.parse(dj) as {
+        basePaymentHash?: string
+        baseCreateIssuedNftTxHash?: string
+        finishedHash?: string
+        originalPaymentHash?: string
+      }
+      add(o?.basePaymentHash)
+      add(o?.baseCreateIssuedNftTxHash)
+      add(o?.finishedHash)
+      add(o?.originalPaymentHash)
+    }
+  } catch {
+    /* ignore */
+  }
+  return out
+}
+
+function buintFeeRowMatchesParent(fee: TxDisplayRow, parent: TxDisplayRow): boolean {
+  const feeKeys = buintFeeRowParentLinkKeySet(fee)
+  if (feeKeys.size === 0) return false
+  const parentKeys = chargeRowTipParentKeySet(parent)
+  for (const k of feeKeys) {
+    if (parentKeys.has(k)) return true
+  }
+  return false
+}
+
+function mergeBuintFeeRowsIntoParents(
+  rows: TxDisplayRow[],
+  feeCategorySet: Set<string>,
+  parentPredicate: (r: TxDisplayRow) => boolean
+): TxDisplayRow[] {
+  const parents = rows.filter(parentPredicate)
+  const fees = rows.filter(
+    (r) =>
+      (r.type === 'B-Unit Fee' || isBuintServiceFeeMergeIntoParentCategory((r.raw as { txCategory?: unknown }).txCategory)) &&
+      feeCategorySet.has(txDisplayRowBuintServiceCategoryHex(r))
   )
-  if (feeRows.length === 0) return rows
-  const zero = ethers.ZeroHash.toLowerCase()
-  const absorbKeys = new Set<string>()
-  const next = rows.map((r) => {
-    if (!r.type.includes('Top-Up')) return r
-    const pid = r.indexerTxId.toLowerCase()
-    const matching = feeRows.filter((f) => {
-      const oph = (f.originalPaymentHash ?? '').toLowerCase().trim()
-      return oph && oph !== zero && oph === pid
+  const absorbedFeeIds = new Set<string>()
+  const mergedParents: TxDisplayRow[] = []
+
+  for (const p of parents) {
+    const matching = fees.filter((f) => buintFeeRowMatchesParent(f, p))
+    if (matching.length === 0) {
+      mergedParents.push(p)
+      continue
+    }
+    for (const f of matching) absorbedFeeIds.add(f.indexerTxId.toLowerCase())
+    const addedBUnits = matching.reduce((s, f) => s + (Number.isFinite(f.bUnits) ? f.bUnits : 0), 0)
+    const addedUsdc = matching.reduce((s, f) => s + (Number.isFinite(f.usdcAmount) ? f.usdcAmount : 0), 0)
+    mergedParents.push({
+      ...p,
+      bUnits: (Number.isFinite(p.bUnits) ? p.bUnits : 0) + addedBUnits,
+      usdcAmount: Number.isFinite(p.usdcAmount) ? p.usdcAmount : addedUsdc > 0 ? addedUsdc : p.usdcAmount,
     })
-    if (matching.length === 0) return r
-    for (const f of matching) absorbKeys.add(f.indexerTxId.toLowerCase())
-    const addB = matching.reduce((s, f) => s + (Number.isFinite(f.bUnits) ? f.bUnits : 0), 0)
-    const baseB = Number.isFinite(r.bUnits) ? r.bUnits : 0
-    return { ...r, bUnits: Math.max(baseB, addB) }
+  }
+
+  const orphanFees = fees.filter((f) => !absorbedFeeIds.has(f.indexerTxId.toLowerCase()))
+  const rest = rows.filter((r) => {
+    const id = r.indexerTxId.toLowerCase()
+    if (absorbedFeeIds.has(id)) return false
+    if (parentPredicate(r)) return false
+    return true
   })
-  return next.filter((r) => {
-    const k = r.indexerTxId.toLowerCase()
-    if (absorbKeys.has(k)) return false
-    return !TOPUP_BUINT_SERVICE_CATEGORY_LOWER.has(
-      normalizeIndexerTxCategoryHex((r.raw as { txCategory?: unknown }).txCategory)
-    )
+
+  const combined = [...rest, ...mergedParents, ...orphanFees]
+  combined.sort((a, b) => {
+    const ta = txDisplayRowTimestampSec(a)
+    const tb = txDisplayRowTimestampSec(b)
+    if (tb !== ta) return tb - ta
+    return b.indexerTxId.localeCompare(a.indexerTxId)
   })
+  return combined
+}
+
+const BUINT_TOPUP_SERVICE_CATEGORY_LOWER = new Set([
+  TX_BUINT_NFC_TOPUP_SERVICE.toLowerCase(),
+  TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
+])
+
+const ISSUED_REDEEM_TX_DISPLAY_TYPES: ReadonlySet<TxDisplayRow['type']> = new Set([
+  'Claim Coupons',
+  'Claim Catalogs',
+  'In-Store Redeem',
+])
+
+/** Top-Up 主行吸收 `nfcTopup` / `usdcTopup` B-Unit 服务费（indexer 仍单独记账）。 */
+function mergeTopupBunitFeeRowsIntoTopups(rows: TxDisplayRow[]): TxDisplayRow[] {
+  return mergeBuintFeeRowsIntoParents(
+    rows,
+    BUINT_TOPUP_SERVICE_CATEGORY_LOWER,
+    (r) => r.type === 'In-Store Top-Up'
+  )
+}
+
+/** Charge 主行吸收 `charge:bunitService`。 */
+function mergeChargeBunitFeeRowsIntoCharges(rows: TxDisplayRow[]): TxDisplayRow[] {
+  return mergeBuintFeeRowsIntoParents(
+    rows,
+    new Set([TX_BUINT_CHARGE_SERVICE.toLowerCase()]),
+    (r) => r.type === 'Charge'
+  )
+}
+
+/** Claim / In-Store Redeem 主行吸收 `cardRedeem:bunitService`；无父行时保留 B-Unit 行作主业务。 */
+function mergeRedeemBunitFeeRowsIntoIssuedRedeem(rows: TxDisplayRow[]): TxDisplayRow[] {
+  return mergeBuintFeeRowsIntoParents(
+    rows,
+    new Set([TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase()]),
+    (r) => ISSUED_REDEEM_TX_DISPLAY_TYPES.has(r.type)
+  )
+}
+
+function mergeBuintServiceFeeRowsIntoMainBusinessRows(rows: TxDisplayRow[]): TxDisplayRow[] {
+  return mergeRedeemBunitFeeRowsIntoIssuedRedeem(
+    mergeChargeBunitFeeRowsIntoCharges(mergeTopupBunitFeeRowsIntoTopups(rows))
+  )
 }
 
 function mergeRenumberTxDisplays(fetched: TxDisplayRow[], cachedInbound: TxDisplayRow[]): TxDisplayRow[] {
@@ -7519,10 +7927,30 @@ async function fetchRecentActiveAccountKeysForDashboard(
           TX_CATEGORY_ZERO,
           0,
           CHAIN_ID_FILTER_ALL
-        ) as [bigint, bigint, bigint, Array<{ txCategory: string; payee: string; payer: string; exists?: boolean }>];
+        ) as [
+          bigint,
+          bigint,
+          bigint,
+          Array<{
+            txCategory: string
+            payee: string
+            payer: string
+            exists?: boolean
+            displayJson?: string
+            subordinate?: string
+            topAdmin?: string
+          }>,
+        ];
       for (const tx of page) {
         if (!tx?.exists) continue;
-        const kind = dashboardActivityTypeFromIndexerRow({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' });
+        const kind = dashboardActivityTypeFromIndexerRow({
+          txCategory: String(tx.txCategory),
+          payee: tx.payee ?? '',
+          displayJson: typeof tx.displayJson === 'string' ? tx.displayJson : undefined,
+          payer: tx.payer,
+          subordinate: tx.subordinate,
+          topAdmin: tx.topAdmin,
+        });
         if (kind !== 'Charge' && kind !== 'In-Store Top-Up') continue;
         if (typeof tx.payer === 'string' && ethers.isAddress(tx.payer) && tx.payer !== ethers.ZeroAddress) {
           activeAccounts.add(ethers.getAddress(tx.payer).toLowerCase());
@@ -7838,16 +8266,28 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
       <div className="flex min-w-0 flex-1 items-start gap-4">
         <div
           className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
-            tx.type.includes('Top-Up')
-              ? 'bg-emerald-50 text-emerald-600'
-              : tx.type === 'Tip'
-                ? 'bg-rose-50 text-rose-600'
-                : isVaultTerminalSr
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'bg-[#1562f0]/10 text-[#1562f0]'
+            tx.type === 'Claim Coupons'
+              ? 'bg-fuchsia-50 text-fuchsia-600'
+              : tx.type === 'Claim Catalogs'
+                ? 'bg-violet-50 text-violet-600'
+                : tx.type === 'In-Store Redeem'
+                  ? 'bg-amber-50 text-amber-700'
+                  : tx.type.includes('Top-Up')
+                ? 'bg-emerald-50 text-emerald-600'
+                : tx.type === 'Tip'
+                  ? 'bg-rose-50 text-rose-600'
+                  : isVaultTerminalSr
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'bg-[#1562f0]/10 text-[#1562f0]'
           }`}
         >
-          {tx.type === 'Tip' ? (
+          {tx.type === 'Claim Coupons' ? (
+            <Gift size={20} strokeWidth={2} aria-hidden />
+          ) : tx.type === 'Claim Catalogs' ? (
+            <Package size={20} strokeWidth={2} aria-hidden />
+          ) : tx.type === 'In-Store Redeem' ? (
+            <Store size={20} strokeWidth={2} aria-hidden />
+          ) : tx.type === 'Tip' ? (
             <Heart size={20} className="fill-rose-100" strokeWidth={2} aria-hidden />
           ) : tx.type.includes('Top-Up') ? (
             <ArrowUpFromLine size={20} strokeWidth={2} aria-hidden />
@@ -8989,8 +9429,12 @@ function programsCouponShareImageFilename(coupon: CardIssuanceCouponRow, shareKi
   return `${sanitizeProgramsCouponShareFilenamePart(coupon.name || coupon.id)}-${kind}.png`;
 }
 
-function programsCatalogShareImageFilename(production: CardIssuanceProductionRow): string {
-  return `${sanitizeProgramsCouponShareFilenamePart(production.name || production.id)}-catalog-open-claim.png`;
+function programsCatalogShareImageFilename(
+  production: CardIssuanceProductionRow,
+  shareKind: 'open_claim' | 'redeem' = 'open_claim'
+): string {
+  const kind = shareKind === 'redeem' ? 'redeem' : 'open-claim';
+  return `${sanitizeProgramsCouponShareFilenamePart(production.name || production.id)}-catalog-${kind}.png`;
 }
 
 function downloadProgramsCouponShareBlob(blob: Blob, filename: string): void {
@@ -9053,7 +9497,64 @@ function resolveProgramsCouponRedeemDisplayStatus(args: {
   if (recentlyRegistered) {
     return { display: 'pending', recordRedeemedAt: false };
   }
-  return { display: 'redeemed', recordRedeemedAt: false };
+  // Inactive on chain but never confirmed active: registration failed, cancelled, or not indexed — not consumed.
+  return { display: 'pending', recordRedeemedAt: false };
+}
+
+/** Remove local redeem rows that never became active on chain (past registration grace). */
+function shouldRemoveLocalRedeemNotOnChain(args: {
+  chainStatus: 'pending' | 'redeemed' | 'cancelled' | 'not_found';
+  chainActiveConfirmed: boolean;
+  row: CardIssuanceCouponRedeemItemView | undefined;
+}): boolean {
+  const { chainStatus, chainActiveConfirmed, row } = args;
+  if (chainStatus === 'pending') return false;
+  if (chainActiveConfirmed) return false;
+  if (row?.redeemedAt) return false;
+  const createdAt = row?.createdAt ?? 0;
+  if (
+    createdAt > 0 &&
+    Date.now() - createdAt < CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS
+  ) {
+    return false;
+  }
+  return chainStatus === 'not_found' || chainStatus === 'cancelled';
+}
+
+function countRemovedRedeemHashesByIssuanceScope(hashes: Set<string>): {
+  couponById: Map<string, number>;
+  productionById: Map<string, number>;
+} {
+  const couponById = new Map<string, number>();
+  const productionById = new Map<string, number>();
+  const batches = ((CoNET_Data as { cardRedeems?: CardRedeemBatch[] } | null)?.cardRedeems ??
+    []) as CardRedeemBatch[];
+  for (const batch of batches) {
+    for (const item of batch.items) {
+      if (!hashes.has(item.hash)) continue;
+      if (batch.couponId?.trim()) {
+        const id = batch.couponId.trim();
+        couponById.set(id, (couponById.get(id) ?? 0) + 1);
+      } else if (batch.productionId?.trim()) {
+        const id = batch.productionId.trim();
+        productionById.set(id, (productionById.get(id) ?? 0) + 1);
+      }
+    }
+  }
+  return { couponById, productionById };
+}
+
+/** Share modal: only warn when redeem was active on chain and is now inactive (consumed), or local redeemedAt is set. */
+function programsRedeemShareShowsConsumedWarning(args: {
+  hash: string;
+  displayStatus: 'pending' | 'redeemed' | undefined;
+  row: CardIssuanceCouponRedeemItemView | undefined;
+  chainActiveConfirmed: boolean;
+}): boolean {
+  const { hash, displayStatus, row, chainActiveConfirmed } = args;
+  if (!hash || displayStatus !== 'redeemed') return false;
+  if (row?.redeemedAt) return true;
+  return chainActiveConfirmed;
 }
 
 function collectCouponRedeemRowsByCouponId(
@@ -10132,6 +10633,18 @@ const [cardIssuanceCouponRedeemShareUrlCopied, setCardIssuanceCouponRedeemShareU
 const [cardIssuanceCouponRedeemShareImageStatus, setCardIssuanceCouponRedeemShareImageStatus] =
   useState<ProgramsCouponShareImageStatus>('idle');
 const cardIssuanceCouponRedeemShareImageRef = useRef<HTMLDivElement>(null);
+const [cardIssuanceProductionRedeemShareCacheBustV, setCardIssuanceProductionRedeemShareCacheBustV] =
+  useState('');
+const [cardIssuanceProductionRedeemShareOpen, setCardIssuanceProductionRedeemShareOpen] = useState<{
+  productionId: string;
+  hash: string;
+  code: string;
+} | null>(null);
+const [cardIssuanceProductionRedeemShareUrlCopied, setCardIssuanceProductionRedeemShareUrlCopied] =
+  useState(false);
+const [cardIssuanceProductionRedeemShareImageStatus, setCardIssuanceProductionRedeemShareImageStatus] =
+  useState<ProgramsCouponShareImageStatus>('idle');
+const cardIssuanceProductionRedeemShareImageRef = useRef<HTMLDivElement>(null);
 const [cardIssuanceCouponRedeemStatuses, setCardIssuanceCouponRedeemStatuses] = useState<
   Record<string, 'pending' | 'redeemed'>
 >({});
@@ -10184,9 +10697,11 @@ const [cardIssuanceProductionIssueTotal, setCardIssuanceProductionIssueTotal] = 
 );
 const [cardIssuanceProductionIssueTotalUnlimited, setCardIssuanceProductionIssueTotalUnlimited] =
   useState(false);
+const [cardIssuanceProductionRequiresRedeemCode, setCardIssuanceProductionRequiresRedeemCode] =
+  useState(false);
 useEffect(() => {
   if (isSalesManagementCatalogCategory(cardIssuanceProductionGlobalCategory)) {
-    setCardIssuanceProductionIssueTotalUnlimited(true);
+    setCardIssuanceProductionIssueTotalUnlimited(false);
     setCardIssuanceProductionPackageDeals([]);
     setCardIssuanceProductionPrice('0');
     return;
@@ -10215,7 +10730,7 @@ const [productionVideoUploadProgress, setProductionVideoUploadProgress] = useSta
 const [productionVideoProcessingMessage, setProductionVideoProcessingMessage] = useState('');
 /** True only while ffmpeg/WebCodecs is converting — IPFS upload does not hold this. */
 const [productionVideoFfmpegBusy, setProductionVideoFfmpegBusy] = useState(false);
-/** Live Business Catalogs preview banner after width/height snapshot capture. */
+/** Live Business Catalogs preview hero (4:3) after width/height snapshot capture. */
 const [catalogBannerPreviewSnapshot, setCatalogBannerPreviewSnapshot] =
   useState<CatalogBannerPreviewSnapshot | null>(null);
 const productionVideoDraftUrlRef = useRef('');
@@ -10433,6 +10948,28 @@ const cardIssuanceCouponRedeemShareUrl = useMemo(() => {
   cardIssuanceCouponRedeemShareOpen?.code,
   cardIssuanceCouponRedeemShareRow?.id,
   cardIssuanceCouponRedeemShareCacheBustV,
+]);
+const cardIssuanceProductionRedeemShareRow = useMemo(
+  () =>
+    cardIssuanceProductions.find((item) => item.id === cardIssuanceProductionRedeemShareOpen?.productionId) ??
+    null,
+  [cardIssuanceProductions, cardIssuanceProductionRedeemShareOpen?.productionId]
+);
+const cardIssuanceProductionRedeemShareUrl = useMemo(() => {
+  const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+  const code = cardIssuanceProductionRedeemShareOpen?.code?.trim() ?? '';
+  const productionId = cardIssuanceProductionRedeemShareRow?.id?.trim() ?? '';
+  return buildProgramsCouponRedeemShareUrl(
+    cardAddress,
+    code,
+    productionId,
+    cardIssuanceProductionRedeemShareCacheBustV
+  );
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceProductionRedeemShareOpen?.code,
+  cardIssuanceProductionRedeemShareRow?.id,
+  cardIssuanceProductionRedeemShareCacheBustV,
 ]);
 
 useEffect(() => {
@@ -10683,7 +11220,10 @@ useEffect(() => {
 
 useEffect(() => {
   const programsVisible =
-    activeTab === 'Card Issuance Setup' || (activeTab === 'Overview' && ketNoCardProgramsEligible);
+    activeTab === 'Card Issuance Setup' ||
+    (activeTab === 'Overview' && ketNoCardProgramsEligible) ||
+    activeTab === 'Business' ||
+    cardIssuanceProductionsPanelOpen;
   if (!programsVisible || cardIssuanceCouponRedeemStatusQueryItems.length === 0) return;
 
   let cancelled = false;
@@ -10698,19 +11238,35 @@ useEffect(() => {
       const nextStatuses: Record<string, 'pending' | 'redeemed'> = {};
       const redeemedUpdates: { hash: string; redeemedAt: number }[] = [];
       const mistakenRedeemedClears: string[] = [];
+      const notOnChainHashesToRemove: string[] = [];
       const now = Date.now();
       const prevStatuses = cardIssuanceCouponRedeemStatusesRef.current;
       const chainActiveConfirmedRef = cardIssuanceCouponRedeemChainActiveConfirmedRef.current;
       for (const item of cardIssuanceCouponRedeemStatusQueryItems) {
         const chainStatus = chainStatuses[item.hash] ?? 'pending';
         const prevStatus = prevStatuses[item.hash];
-        const row = [...cardIssuanceCouponRedeemRowsByCouponId.values()]
-          .flat()
-          .find((r) => r.hash === item.hash);
+        const row =
+          [...cardIssuanceCouponRedeemRowsByCouponId.values()]
+            .flat()
+            .find((r) => r.hash === item.hash) ??
+          [...cardIssuanceProductionRedeemRowsByProductionId.values()]
+            .flat()
+            .find((r) => r.hash === item.hash);
         if (chainStatus === 'pending') {
           chainActiveConfirmedRef.add(item.hash);
         }
         const chainActiveConfirmed = chainActiveConfirmedRef.has(item.hash);
+        if (
+          shouldRemoveLocalRedeemNotOnChain({
+            chainStatus,
+            chainActiveConfirmed,
+            row,
+          })
+        ) {
+          notOnChainHashesToRemove.push(item.hash);
+          chainActiveConfirmedRef.delete(item.hash);
+          continue;
+        }
         const resolved = resolveProgramsCouponRedeemDisplayStatus({
           chainStatus,
           prevStatus,
@@ -10724,9 +11280,43 @@ useEffect(() => {
           mistakenRedeemedClears.push(item.hash);
         }
       }
-      setCardIssuanceCouponRedeemStatuses((prev) => ({ ...prev, ...nextStatuses }));
-      cardIssuanceCouponRedeemStatusHasLoadedRef.current = true;
       let persistedMeta = false;
+      let removedOffChainCount = 0;
+      if (notOnChainHashesToRemove.length > 0) {
+        const removeSet = new Set(notOnChainHashesToRemove);
+        const { couponById, productionById } = countRemovedRedeemHashesByIssuanceScope(removeSet);
+        removeNotFoundRedeems(removeSet);
+        removedOffChainCount = notOnChainHashesToRemove.length;
+        persistedMeta = true;
+        if (!cancelled && couponById.size > 0) {
+          setCardIssuanceCoupons((prev) =>
+            prev.map((row) => {
+              const restored = couponById.get(row.id);
+              if (!restored) return row;
+              const leftN = parseCardIssuanceCouponIssueLeftN(row);
+              return { ...row, issueLeft: String(leftN + restored) };
+            })
+          );
+        }
+        if (!cancelled && productionById.size > 0) {
+          setCardIssuanceProductions((prev) =>
+            prev.map((row) => {
+              const restored = productionById.get(row.id);
+              if (!restored) return row;
+              const leftN = parseProductionIssueLeftN(row);
+              return { ...row, issueLeft: String(leftN + restored) };
+            })
+          );
+        }
+      }
+      setCardIssuanceCouponRedeemStatuses((prev) => {
+        const next = { ...prev, ...nextStatuses };
+        for (const hash of notOnChainHashesToRemove) {
+          delete next[hash];
+        }
+        return next;
+      });
+      cardIssuanceCouponRedeemStatusHasLoadedRef.current = true;
       if (redeemedUpdates.length > 0) {
         persistedMeta = (await persistCouponRedeemRedeemedTimestamps(redeemedUpdates)) || persistedMeta;
       }
@@ -10735,6 +11325,15 @@ useEffect(() => {
       }
       if (persistedMeta && !cancelled) {
         setCardIssuanceCouponRedeemsVersion((v) => v + 1);
+      }
+      if (!cancelled && removedOffChainCount > 0) {
+        setCardIssuanceOwnerAdminNotice({
+          kind: 'warn',
+          text:
+            removedOffChainCount === 1
+              ? 'Removed 1 redeem code that is not active on chain. Issuance left was restored; register again to share.'
+              : `Removed ${removedOffChainCount.toLocaleString()} redeem codes that are not active on chain. Issuance left was restored; register again to share.`,
+        });
       }
       const hasPending = cardIssuanceCouponRedeemStatusQueryItems.some(
         (item) => (nextStatuses[item.hash] ?? prevStatuses[item.hash] ?? 'pending') === 'pending'
@@ -10758,6 +11357,7 @@ useEffect(() => {
 }, [
   activeTab,
   ketNoCardProgramsEligible,
+  cardIssuanceProductionsPanelOpen,
   cardIssuanceCouponRedeemStatusQueryKey,
 ]);
 
@@ -12337,6 +12937,38 @@ const closeCardIssuanceCouponRedeemShare = useCallback(() => {
   setCardIssuanceCouponRedeemShareImageStatus('idle');
 }, []);
 
+const openCardIssuanceProductionRedeemShare = useCallback(
+  (productionId: string, row: { hash: string; code: string }) => {
+    if (!row.code?.trim()) return;
+    setCardIssuanceProductionRedeemShareUrlCopied(false);
+    setCardIssuanceProductionRedeemShareImageStatus('idle');
+    setCardIssuanceProductionRedeemShareCacheBustV(String(Date.now()));
+    setCardIssuanceProductionRedeemShareOpen({
+      productionId,
+      hash: row.hash,
+      code: row.code.trim(),
+    });
+  },
+  []
+);
+
+const closeCardIssuanceProductionRedeemShare = useCallback(() => {
+  setCardIssuanceProductionRedeemShareOpen(null);
+  setCardIssuanceProductionRedeemShareUrlCopied(false);
+  setCardIssuanceProductionRedeemShareImageStatus('idle');
+}, []);
+
+const copyCardIssuanceProductionRedeemShareUrl = useCallback(async () => {
+  if (!cardIssuanceProductionRedeemShareUrl) return;
+  try {
+    await navigator.clipboard.writeText(cardIssuanceProductionRedeemShareUrl);
+    setCardIssuanceProductionRedeemShareUrlCopied(true);
+    setTimeout(() => setCardIssuanceProductionRedeemShareUrlCopied(false), 2000);
+  } catch {
+    // ignore
+  }
+}, [cardIssuanceProductionRedeemShareUrl]);
+
 const copyCardIssuanceCouponRedeemShareUrl = useCallback(async () => {
   if (!cardIssuanceCouponRedeemShareUrl) return;
   try {
@@ -12423,6 +13055,24 @@ const downloadCardIssuanceCouponRedeemShareImage = useCallback(async () => {
     window.setTimeout(() => setCardIssuanceCouponRedeemShareImageStatus('idle'), 3000);
   }
 }, [cardIssuanceCouponRedeemShareRow, cardIssuanceCouponRedeemShareUrl]);
+
+const downloadCardIssuanceProductionRedeemShareImage = useCallback(async () => {
+  const target = cardIssuanceProductionRedeemShareImageRef.current;
+  if (!target || !cardIssuanceProductionRedeemShareRow || !cardIssuanceProductionRedeemShareUrl) return;
+  setCardIssuanceProductionRedeemShareImageStatus('loading');
+  try {
+    await captureProgramsCouponSharePng(
+      target,
+      programsCatalogShareImageFilename(cardIssuanceProductionRedeemShareRow, 'redeem')
+    );
+    setCardIssuanceProductionRedeemShareImageStatus('success');
+    window.setTimeout(() => setCardIssuanceProductionRedeemShareImageStatus('idle'), 3000);
+  } catch (error) {
+    console.warn('Failed to download catalog redeem share image', error);
+    setCardIssuanceProductionRedeemShareImageStatus('error');
+    window.setTimeout(() => setCardIssuanceProductionRedeemShareImageStatus('idle'), 3000);
+  }
+}, [cardIssuanceProductionRedeemShareRow, cardIssuanceProductionRedeemShareUrl]);
 
 const submitCardIssuanceCouponEditor = useCallback(async () => {
   const editingCouponExistingRow = cardIssuanceEditingCouponId
@@ -12916,6 +13566,7 @@ const resetCardIssuanceProductionEditorFields = useCallback(() => {
   setCardIssuanceProductionPackageDeals([]);
   setCardIssuanceProductionIssueTotal(String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceProductionIssueTotalUnlimited(false);
+  setCardIssuanceProductionRequiresRedeemCode(false);
   setCardIssuanceProductionDescription('');
   setCardIssuanceProductionIcon(
     resolveDefaultCardIssuanceProductionIcon({
@@ -13137,6 +13788,7 @@ const openCardIssuanceProductionEdit = useCallback(
       row.issueTotal || String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT)
     );
     setCardIssuanceProductionIssueTotalUnlimited(row.issueTotalUnlimited === true);
+    setCardIssuanceProductionRequiresRedeemCode(row.requiresRedeemCode === true);
     setCardIssuanceProductionDescription(row.description);
     setCardIssuanceProductionIcon(row.icon || '');
     setCardIssuanceProductionImage((row.productionImage ?? '').trim());
@@ -13340,9 +13992,11 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
       : cardIssuanceProductionPrice.trim() || '0';
   const issueTotalUnlimited = lockIssuedOnChainFields
     ? editingExistingRow?.issueTotalUnlimited === true
-    : salesManagementItem || shareLinkItem
+    : shareLinkItem
       ? true
-      : cardIssuanceProductionIssueTotalUnlimited;
+      : salesManagementItem
+        ? false
+        : cardIssuanceProductionIssueTotalUnlimited;
   const issueTotal = lockIssuedOnChainFields
     ? (editingExistingRow?.issueTotal ?? String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT))
     : cardIssuanceProductionIssueTotal.trim();
@@ -13416,7 +14070,9 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
     ? editingExistingRow?.requiresRedeemCode === true
     : shareLinkItem
       ? false
-      : salesManagementItem;
+      : salesManagementItem
+        ? cardIssuanceProductionRequiresRedeemCode
+        : false;
 
   const baseRow = makeCardIssuanceProductionRow({
     id: editingExistingRow?.id,
@@ -13844,6 +14500,7 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
   cardIssuanceProductionPrice,
   cardIssuanceProductionIssueTotal,
   cardIssuanceProductionIssueTotalUnlimited,
+  cardIssuanceProductionRequiresRedeemCode,
   cardIssuanceProductionGlobalCategory,
   cardIssuanceProductionItemCategory,
   cardIssuanceProductionSubtitle,
@@ -18308,6 +18965,13 @@ const txQueryRootAddress = useMemo(() => {
 
  const walletMobileActivityPreview = useMemo(() => {
   const rows = indexerTransactions.filter((tx) => {
+    if (
+      tx.type === 'Claim Coupons' ||
+      tx.type === 'Claim Catalogs' ||
+      tx.type === 'In-Store Redeem'
+    ) {
+      return false
+    }
     const isUsdcLedgerItem = txDisplayRowIsUsdcRequestAccounting(tx)
     const isWalletUsdcFlow =
       txDisplayRowCurrencyFiatIsUsdc(tx) &&
@@ -21015,6 +21679,9 @@ const refreshIndexerTransactions = useCallback(
             )
           );
 
+          await enrichCatalogRedeemRoutesOnLedgerFetchRows(all, indexerAccount);
+          await enrichIssuedNftRedeemDistributionOnLedgerFetchRows(all);
+
           /** Cap before map: must cover newest ids after merge; keep above `mergeRenumberTxDisplays` (80) + local union headroom. */
           return all.sort((a, b) => Number(BigInt(b.timestamp) - BigInt(a.timestamp))).slice(0, 250);
           };
@@ -21032,7 +21699,7 @@ const refreshIndexerTransactions = useCallback(
           throw raceErr;
         }
 
-        const mapped = mergeTopupBunitFeeRowsIntoTopups(
+        const mapped = mergeBuintServiceFeeRowsIntoMainBusinessRows(
           normalizeTxDisplayRowsForCardCurrency(
             mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
             programCardBeamioCurrencyType
@@ -24818,6 +25485,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div className="space-y-2">
                           {g.items.map((tx, idx) => {
                             const isTopup = tx.type === 'In-Store Top-Up';
+                            const isCouponClaim = tx.type === 'Claim Coupons';
+                            const isCatalogClaim = tx.type === 'Claim Catalogs';
+                            const isInStoreCatalogRedeem = tx.type === 'In-Store Redeem';
                             const isCharge = tx.type === 'Charge';
                             const isTip = tx.type === 'Tip';
                             const rawM = tx.raw as Record<string, unknown>;
@@ -24837,12 +25507,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 : '');
                             let titleM = 'Purchase (-)';
                             if (isTopup) titleM = 'Top-up (+)';
+                            else if (isCouponClaim) titleM = 'Claim Coupons';
+                            else if (isCatalogClaim) titleM = 'Claim Catalogs';
+                            else if (isInStoreCatalogRedeem) titleM = 'In-Store Redeem';
                             else if (isTip) titleM = 'Tip (-)';
                             const cadAmtM = calculateTxNetValueCAD(tx);
                             const tipCadM = isCharge ? mergedChargeTipCad(tx) : 0;
                             let subtitleM: string;
                             if (isTopup) {
                               subtitleM = mobileTransactionsTopupSubtitle(tx, timeStrM);
+                            } else if (isCouponClaim) {
+                              subtitleM = `Coupon redeem (APP) • ${timeStrM || '—'}`;
+                            } else if (isCatalogClaim) {
+                              subtitleM = `Catalog redeem (APP) • ${timeStrM || '—'}`;
+                            } else if (isInStoreCatalogRedeem) {
+                              subtitleM = `Redeem (in-store) • ${timeStrM || '—'}`;
                             } else if (payerTagM) {
                               subtitleM = `${payerTagM} • ${timeStrM || '—'}`;
                             } else if (isTip) {
@@ -24867,18 +25546,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               >
                                 <div
                                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-                                    isTopup
-                                      ? tx.source === 'NFC'
-                                        ? 'bg-sky-100 text-sky-600'
-                                        : 'bg-sky-100 text-[#1562f0]'
-                                      : isTip
-                                        ? 'bg-rose-50 text-rose-500'
-                                        : useNfcM
+                                    isCatalogClaim
+                                      ? 'bg-violet-50 text-violet-600'
+                                      : isTopup
+                                        ? tx.source === 'NFC'
                                           ? 'bg-sky-100 text-sky-600'
-                                          : 'bg-sky-100 text-slate-700'
+                                          : 'bg-sky-100 text-[#1562f0]'
+                                        : isTip
+                                          ? 'bg-rose-50 text-rose-500'
+                                          : useNfcM
+                                            ? 'bg-sky-100 text-sky-600'
+                                            : 'bg-sky-100 text-slate-700'
                                   }`}
                                 >
-                                  {isTopup ? (
+                                  {isCatalogClaim ? (
+                                    <Package size={20} strokeWidth={2} aria-hidden />
+                                  ) : isTopup ? (
                                     tx.source === 'NFC' ? (
                                       <Nfc size={20} strokeWidth={2} aria-hidden />
                                     ) : (
@@ -25606,9 +26289,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              const ledgerCardStatusSr =
                tx.status === 'Pending'
                  ? { label: 'Pending', cls: 'bg-amber-50 text-amber-700' as const }
-                 : tx.type.includes('Top-Up')
-                   ? { label: 'Confirmed', cls: 'bg-emerald-50 text-emerald-600' as const }
-                   : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const };
+                 : tx.type === 'Claim Coupons'
+                   ? { label: 'Claimed', cls: 'bg-fuchsia-50 text-fuchsia-600' as const }
+                   : tx.type === 'Claim Catalogs'
+                     ? { label: 'Claimed', cls: 'bg-violet-50 text-violet-600' as const }
+                     : tx.type === 'In-Store Redeem'
+                       ? { label: 'Redeemed', cls: 'bg-amber-50 text-amber-700' as const }
+                       : tx.type.includes('Top-Up')
+                     ? { label: 'Confirmed', cls: 'bg-emerald-50 text-emerald-600' as const }
+                     : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const };
 
              const breakdownBlock = (() => {
                if (tx.type === 'Charge') {
@@ -30550,8 +31239,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              </div>
              ) : cardIssuanceExistingCard ? (
                <div className="max-w-7xl space-y-5 pb-5">
-                 <section className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:gap-6">
-                   <div className="space-y-4 lg:col-span-5">
+                <section className="flex flex-col gap-5">
+                  <div className="space-y-4">
                      <header className="min-w-0 space-y-0.5">
                        <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
                          Live Preview
@@ -31549,7 +32238,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                    </div>
 
-                   <div className="flex flex-col gap-4 rounded-xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-4 sm:rounded-2xl sm:gap-5 sm:p-5 lg:col-span-7 lg:p-6">
+                   <div className="flex flex-col gap-4 rounded-xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-4 sm:rounded-2xl sm:gap-5 sm:p-5 lg:p-6">
                      <div>
                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
                          <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Tiers &amp; rules</h3>
@@ -31644,7 +32333,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                      </div>
                    </div>
-                   <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:col-span-12">
+                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
                      <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">MIN RELOAD</p>
                        <p className="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]">
@@ -36043,11 +36732,43 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               />
             </div>
             <div className="min-w-0 space-y-3">
-              {cardIssuanceCouponRedeemStatuses[cardIssuanceCouponRedeemShareOpen.hash] === 'redeemed' ? (
-                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-                  This code is already redeemed. The link may no longer work for new claims.
-                </p>
-              ) : null}
+              {(() => {
+                const shareHash = cardIssuanceCouponRedeemShareOpen.hash;
+                const shareRow =
+                  cardIssuanceCouponRedeemRowsByCouponId
+                    .get(cardIssuanceCouponRedeemShareOpen.couponId)
+                    ?.find((r) => r.hash === shareHash) ?? undefined;
+                const shareDisplay = cardIssuanceCouponRedeemStatuses[shareHash];
+                const shareChainActiveConfirmed =
+                  cardIssuanceCouponRedeemChainActiveConfirmedRef.current.has(shareHash);
+                if (
+                  programsRedeemShareShowsConsumedWarning({
+                    hash: shareHash,
+                    displayStatus: shareDisplay,
+                    row: shareRow,
+                    chainActiveConfirmed: shareChainActiveConfirmed,
+                  })
+                ) {
+                  return (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                      This code is already redeemed. The link may no longer work for new claims.
+                    </p>
+                  );
+                }
+                if (
+                  cardIssuanceCouponRedeemStatusHasLoadedRef.current &&
+                  shareDisplay === 'pending' &&
+                  !shareChainActiveConfirmed
+                ) {
+                  return (
+                    <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-900">
+                      This code is not active on chain yet. Registration may have failed or is still indexing; try
+                      registering again before sharing.
+                    </p>
+                  );
+                }
+                return null;
+              })()}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Redeem URL</p>
                 <p className="break-all font-mono text-[11px] text-slate-700">{cardIssuanceCouponRedeemShareUrl}</p>
@@ -36183,6 +36904,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       setIssueTotal={setCardIssuanceProductionIssueTotal}
       issueTotalUnlimited={cardIssuanceProductionIssueTotalUnlimited}
       setIssueTotalUnlimited={setCardIssuanceProductionIssueTotalUnlimited}
+      requiresRedeemCode={cardIssuanceProductionRequiresRedeemCode}
+      setRequiresRedeemCode={setCardIssuanceProductionRequiresRedeemCode}
       description={cardIssuanceProductionDescription}
       setDescription={setCardIssuanceProductionDescription}
       editorError={cardIssuanceProductionEditorError}
@@ -36203,7 +36926,181 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       productionRedeemRegisteringId={cardIssuanceProductionRedeemRegisteringId}
       productionRedeemStatuses={cardIssuanceCouponRedeemStatuses}
       productionRedeemStatusLoading={cardIssuanceCouponRedeemStatusLoading}
+      onOpenProductionRedeemShare={openCardIssuanceProductionRedeemShare}
+      productionRedeemCopiedHash={cardIssuanceCouponRedeemCopiedHash}
+      onProductionRedeemCodeCopied={setCardIssuanceCouponRedeemCopiedHash}
+      productionRedeemChainConfirmGraceMs={CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS}
     />
+
+    {cardIssuanceProductionRedeemShareOpen && cardIssuanceProductionRedeemShareRow ? (
+      <div
+        className="fixed inset-0 z-[98] flex items-center justify-center p-4 sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="catalog-redeem-share-qr-title"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+          onClick={closeCardIssuanceProductionRedeemShare}
+          aria-label="Close catalog redeem share dialog"
+        />
+        <div
+          className="relative z-10 flex max-h-[min(92vh,44rem)] w-full max-w-xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">
+                Redeem Code Distribution
+              </p>
+              <h2
+                id="catalog-redeem-share-qr-title"
+                className="mt-1 truncate font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31]"
+              >
+                {cardIssuanceProductionRedeemShareRow.name}
+              </h2>
+              <p className="mt-1 text-xs font-medium text-[#595c5e]">
+                Share this URL or QR with the recipient. They can open it in the Beamio app to redeem this catalog
+                item.
+              </p>
+              <p className="mt-2 font-mono text-[11px] text-[#747779]">
+                {cardIssuanceProductionRedeemShareOpen.code}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeCardIssuanceProductionRedeemShare}
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+            {cardIssuanceProductionRedeemShareUrl ? (
+              <>
+                <div
+                  ref={cardIssuanceProductionRedeemShareImageRef}
+                  className="rounded-[22px] bg-white px-5 py-4 sm:px-7 sm:py-5"
+                >
+                  <ProgramsCatalogShareCardPreview
+                    production={cardIssuanceProductionRedeemShareRow}
+                    shareUrl={cardIssuanceProductionRedeemShareUrl}
+                    merchantName={programsOverviewDisplayName}
+                    publisherBeamioTag={
+                      beamio?.accountName?.trim() ||
+                      (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ||
+                      (profiles?.[0] as { accountName?: string } | undefined)?.accountName
+                    }
+                    serviceCategories={cardIssuanceServiceCategories}
+                    moneyPrefix={cardIssuanceDisplayMoneyPrefix}
+                  />
+                </div>
+                <div className="min-w-0 space-y-3">
+                  {(() => {
+                    const shareHash = cardIssuanceProductionRedeemShareOpen.hash;
+                    const shareRow =
+                      cardIssuanceProductionRedeemRowsByProductionId
+                        .get(cardIssuanceProductionRedeemShareOpen.productionId)
+                        ?.find((r) => r.hash === shareHash) ?? undefined;
+                    const shareDisplay = cardIssuanceCouponRedeemStatuses[shareHash];
+                    const shareChainActiveConfirmed =
+                      cardIssuanceCouponRedeemChainActiveConfirmedRef.current.has(shareHash);
+                    if (
+                      programsRedeemShareShowsConsumedWarning({
+                        hash: shareHash,
+                        displayStatus: shareDisplay,
+                        row: shareRow,
+                        chainActiveConfirmed: shareChainActiveConfirmed,
+                      })
+                    ) {
+                      return (
+                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                          This code is already redeemed. The link may no longer work for new claims.
+                        </p>
+                      );
+                    }
+                    if (
+                      cardIssuanceCouponRedeemStatusHasLoadedRef.current &&
+                      shareDisplay === 'pending' &&
+                      !shareChainActiveConfirmed
+                    ) {
+                      return (
+                        <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-900">
+                          This code is not active on chain yet. Registration may have failed or is still indexing; try
+                          registering again before sharing.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                      Redeem URL
+                    </p>
+                    <p className="break-all font-mono text-[11px] text-slate-700">
+                      {cardIssuanceProductionRedeemShareUrl}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={copyCardIssuanceProductionRedeemShareUrl}
+                      className={`inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
+                    >
+                      {cardIssuanceProductionRedeemShareUrlCopied ? (
+                        <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.4} aria-hidden />
+                      ) : (
+                        <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                      )}
+                      {cardIssuanceProductionRedeemShareUrlCopied ? 'Copied' : 'Copy URL'}
+                    </button>
+                    <a
+                      href={cardIssuanceProductionRedeemShareUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-2 rounded-full border border-[#ea580c]/20 bg-[#ea580c]/10 px-3 py-2 text-xs font-bold text-[#ea580c] transition-colors hover:bg-[#ea580c]/15 ${bizFocusRingClass}`}
+                    >
+                      Open link
+                      <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={downloadCardIssuanceProductionRedeemShareImage}
+                      disabled={cardIssuanceProductionRedeemShareImageStatus !== 'idle'}
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border px-0 text-xs font-bold transition-colors ${
+                        cardIssuanceProductionRedeemShareImageStatus === 'error'
+                          ? 'border-amber-200 bg-amber-50 text-amber-600'
+                          : cardIssuanceProductionRedeemShareImageStatus === 'success'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                      } ${cardIssuanceProductionRedeemShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
+                      aria-label="Download catalog redeem share PNG"
+                      title="Download PNG for WeChat"
+                    >
+                      {cardIssuanceProductionRedeemShareImageStatus === 'loading' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
+                      ) : cardIssuanceProductionRedeemShareImageStatus === 'success' ? (
+                        <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                      ) : cardIssuanceProductionRedeemShareImageStatus === 'error' ? (
+                        <AlertTriangle className="h-4 w-4" strokeWidth={2.3} aria-hidden />
+                      ) : (
+                        <Download className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+                Redeem URL is unavailable. Link your issued program card before sharing redeem codes.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null}
 
     {cardIssuanceProductionShareOpenId &&
     cardIssuanceProductionShareRow &&

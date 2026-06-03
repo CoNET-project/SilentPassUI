@@ -34,7 +34,7 @@ export function catalogGlobalCategoryLabel(id: CatalogGlobalCategoryId): string 
   return CATALOG_GLOBAL_CATEGORY_OPTIONS.find((opt) => opt.id === id)?.label ?? id;
 }
 
-/** Sales Management catalog items: no price, package deals, or capped issuance UI. */
+/** Sales Management catalog items: no price or package deals; claim method + total issuance like Coupons. */
 export function isSalesManagementCatalogCategory(
   category: CatalogGlobalCategoryId
 ): boolean {
@@ -80,7 +80,10 @@ export function parseProductionRequiresRedeemFromHydration(meta: Record<string, 
   return false;
 }
 
-/** Sales Management defaults to redeem-code claim unless metadata explicitly says otherwise. */
+/**
+ * Hydration / legacy rows: explicit metadata flags, or Sales Management category default (redeem code).
+ * Live editor uses explicit `requiresRedeemCode` state — not this helper alone.
+ */
 export function resolveProductionRequiresRedeemCode(
   meta: Record<string, unknown>,
   globalCategory?: CatalogGlobalCategoryId

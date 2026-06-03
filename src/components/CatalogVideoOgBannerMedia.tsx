@@ -1,6 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { IpfsImg } from '@/components/IpfsImg';
-import { CatalogVideoOgBannerImageWithPlay } from '@/components/CatalogVideoOgBannerImageWithPlay';
 import { CatalogVideoOgPlayOverlay } from '@/components/CatalogVideoOgPlayOverlay';
 import { catalogVideoOgBannerShouldUseVideoElement } from '@/utils/catalogProductionVideoOg';
 import {
@@ -11,6 +10,7 @@ import {
   CATALOG_VIDEO_OG_BANNER_CAPTURE_SOURCE_ATTR,
   CATALOG_VIDEO_OG_BANNER_MEDIA_CLASSNAME,
   CATALOG_VIDEO_OG_BANNER_SLOT_CLASSNAME,
+  CATALOG_VIDEO_OG_PREVIEW_BANNER_MEDIA_CLASSNAME,
   CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME,
 } from '@/utils/catalogProductionVideoOgConstants';
 
@@ -34,7 +34,7 @@ function CatalogVideoOgBannerShell(props: {
   className?: string;
   style?: CSSProperties;
   backgroundColor?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const style = props.backgroundColor
     ? { ...props.style, backgroundColor: props.backgroundColor }
@@ -53,8 +53,11 @@ export function CatalogVideoOgBannerMedia(props: CatalogVideoOgBannerMediaProps)
   const slotClassName = props.previewLayout
     ? props.className ?? CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME
     : props.className ?? CATALOG_VIDEO_OG_BANNER_SLOT_CLASSNAME;
+  const mediaClassName = props.previewLayout
+    ? CATALOG_VIDEO_OG_PREVIEW_BANNER_MEDIA_CLASSNAME
+    : CATALOG_VIDEO_OG_BANNER_MEDIA_CLASSNAME;
   const slotStyle =
-    props.previewLayout && props.bannerHeightPx != null && props.bannerHeightPx > 0
+    !props.previewLayout && props.bannerHeightPx != null && props.bannerHeightPx > 0
       ? { height: props.bannerHeightPx }
       : undefined;
   const isYoutube = isProductionBackgroundYoutubeMedia({
@@ -71,11 +74,7 @@ export function CatalogVideoOgBannerMedia(props: CatalogVideoOgBannerMediaProps)
         className={slotClassName}
         style={slotStyle}
         backgroundColor={bg}
-      >
-        {!props.suppressPlayOverlay ? (
-          <CatalogVideoOgPlayOverlay previewLayout={props.previewLayout} />
-        ) : null}
-      </CatalogVideoOgBannerShell>
+      />
     );
   }
 
@@ -83,7 +82,7 @@ export function CatalogVideoOgBannerMedia(props: CatalogVideoOgBannerMediaProps)
     ? { [CATALOG_VIDEO_OG_BANNER_CAPTURE_SOURCE_ATTR]: '' }
     : undefined;
   const showPlay =
-    props.previewLayout && !props.suppressPlayOverlay ? <CatalogVideoOgPlayOverlay previewLayout /> : null;
+    !props.suppressPlayOverlay ? <CatalogVideoOgPlayOverlay previewLayout={props.previewLayout} /> : null;
 
   const rasterSrc = isYoutube || youtubeThumb ? (youtubeThumb ?? banner) : banner;
 
@@ -94,7 +93,7 @@ export function CatalogVideoOgBannerMedia(props: CatalogVideoOgBannerMediaProps)
         <IpfsImg
           src={src}
           alt=""
-          className={CATALOG_VIDEO_OG_BANNER_MEDIA_CLASSNAME}
+          className={mediaClassName}
           draggable={false}
           {...captureAttr}
         />
@@ -115,7 +114,7 @@ export function CatalogVideoOgBannerMedia(props: CatalogVideoOgBannerMediaProps)
       <CatalogVideoOgBannerShell className={slotClassName} style={slotStyle}>
         <video
           src={videoSrc}
-          className={CATALOG_VIDEO_OG_BANNER_MEDIA_CLASSNAME}
+          className={mediaClassName}
           muted
           playsInline
           preload="metadata"
@@ -129,7 +128,7 @@ export function CatalogVideoOgBannerMedia(props: CatalogVideoOgBannerMediaProps)
 
   return (
     <CatalogVideoOgBannerShell className={slotClassName} style={slotStyle}>
-      <CatalogVideoOgBannerImageWithPlay imageUrl={rasterSrc} previewLayout={props.previewLayout} />
+      <IpfsImg src={rasterSrc} alt="" className={mediaClassName} draggable={false} {...captureAttr} />
     </CatalogVideoOgBannerShell>
   );
 }

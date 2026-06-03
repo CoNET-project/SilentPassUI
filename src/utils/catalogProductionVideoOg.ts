@@ -13,7 +13,6 @@ import {
 import {
   CATALOG_VIDEO_OG_RIGHT_THUMB_HEIGHT,
   CATALOG_VIDEO_OG_RIGHT_THUMB_WIDTH,
-  CATALOG_VIDEO_OG_SHARE_BANNER_HEIGHT_PX,
   CATALOG_VIDEO_OG_SHARE_LAYOUT_WIDTH_PX,
   CATALOG_VIDEO_OG_SHARE_METADATA_THUMB_PX,
   CATALOG_VIDEO_OG_SHARE_TICKET_PREVIEW_MAX_WIDTH_PX,
@@ -35,6 +34,7 @@ export {
   CATALOG_VIDEO_OG_PREVIEW_RIGHT_THUMB_SLOT_CLASSNAME,
   CATALOG_VIDEO_OG_PREVIEW_RIGHT_THUMB_PLACEHOLDER_SLOT_CLASSNAME,
   CATALOG_VIDEO_OG_BANNER_MEDIA_CLASSNAME,
+  CATALOG_VIDEO_OG_PREVIEW_BANNER_MEDIA_CLASSNAME,
   CATALOG_VIDEO_OG_BELOW_BANNER_ROW_CLASSNAME,
   CATALOG_VIDEO_OG_BELOW_BANNER_ROW_EMBEDDED_CLASSNAME,
   CATALOG_VIDEO_OG_BELOW_BANNER_ROW_UNPADDED_CLASSNAME,
@@ -61,11 +61,26 @@ export function catalogVideoOgSharePreviewScale(
   return maxWidthPx / CATALOG_VIDEO_OG_SHARE_LAYOUT_WIDTH_PX;
 }
 
-/** Scaled OG banner height for Business Catalogs preview (max 512px wide). */
+/**
+ * Business Catalogs preview hero height — **4:3** (upload / OG thumb 480×360), not coupon ticket banner
+ * ({@link CATALOG_VIDEO_OG_SHARE_BANNER_HEIGHT_PX} @ 1200px wide).
+ */
 export function catalogVideoOgPreviewBannerHeightPx(
   maxWidthPx: number = CATALOG_VIDEO_OG_SHARE_TICKET_PREVIEW_MAX_WIDTH_PX
 ): number {
-  return Math.round(CATALOG_VIDEO_OG_SHARE_BANNER_HEIGHT_PX * catalogVideoOgSharePreviewScale(maxWidthPx));
+  return Math.round(
+    maxWidthPx * (CATALOG_VIDEO_OG_RIGHT_THUMB_HEIGHT / CATALOG_VIDEO_OG_RIGHT_THUMB_WIDTH)
+  );
+}
+
+/** Preview hero slot size at max ticket width (512×384). */
+export function catalogVideoOgPreviewHeroDisplaySize(
+  maxWidthPx: number = CATALOG_VIDEO_OG_SHARE_TICKET_PREVIEW_MAX_WIDTH_PX
+): { width: number; height: number } {
+  return {
+    width: maxWidthPx,
+    height: catalogVideoOgPreviewBannerHeightPx(maxWidthPx),
+  };
 }
 
 /** Scaled 4:3 right thumb (OG metadata uses {@link CATALOG_VIDEO_OG_SHARE_METADATA_THUMB_PX} width @ 1200). */
@@ -79,15 +94,37 @@ export function catalogVideoOgPreviewRightThumbDisplaySize(
   return { width, height };
 }
 
+/** Any uploaded/imported background media URL (image, video, YouTube, PDF, …). */
+export function catalogProductionHasUploadedBackgroundMedia(
+  row: Pick<CardIssuanceProductionRow, 'productionImage'>
+): boolean {
+  return row.productionImage.trim().length > 0;
+}
+
 export function catalogProductionHasVideoBackgroundMedia(
   row: Pick<CardIssuanceProductionRow, 'productionImage' | 'productionImageMime'>
 ): boolean {
-  if (!row.productionImage.trim()) return false;
+  if (!catalogProductionHasUploadedBackgroundMedia(row)) return false;
   return (
     resolveProductionBackgroundMediaKind({
       url: row.productionImage,
       mime: row.productionImageMime,
     }) === 'video'
+  );
+}
+
+/** Static image background in Business Catalogs preview — same 4:3 hero as video OG thumb. */
+export function catalogProductionBusinessPreviewHasHeroImage(
+  row: Pick<CardIssuanceProductionRow, 'productionImage' | 'productionImageMime'>
+): boolean {
+  if (catalogProductionHasVideoBackgroundMedia(row)) return false;
+  const url = row.productionImage.trim();
+  if (!url) return false;
+  return (
+    resolveProductionBackgroundMediaKind({
+      url,
+      mime: row.productionImageMime,
+    }) === 'image'
   );
 }
 

@@ -94,7 +94,7 @@ function drawVerticalEdgeGutters(
 }
 
 /**
- * Rasterize into `outW`×`outH` with coupon ticket banner fill semantics.
+ * Rasterize into `outW`×`outH` (Business Catalogs preview: **4:3**, e.g. 512×384) with width/height fit + blurred gutters.
  * - `width`: foreground spans full width; top/bottom gaps use blurred top/bottom edge strips.
  * - `height`: foreground spans full height; left/right gaps use blurred left/right edge strips.
  */

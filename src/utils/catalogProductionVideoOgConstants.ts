@@ -53,11 +53,18 @@ export const CATALOG_VIDEO_OG_PREVIEW_OG_CARD_CLASSNAME =
 export const CATALOG_VIDEO_OG_BANNER_SLOT_CLASSNAME =
   'relative w-full aspect-video overflow-hidden bg-[#0f172a]';
 
-/** Fixed-height banner inside {@link CATALOG_VIDEO_OG_PREVIEW_SHELL_CLASSNAME}. */
+/**
+ * Business Catalogs preview hero — **4:3** (480×360 upload / ffmpeg parity), not coupon wide banner.
+ */
 export const CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME =
-  'relative w-full overflow-hidden bg-[#0f172a]';
+  'relative w-full aspect-[4/3] overflow-hidden bg-[#0f172a]';
 
+/** List / share OG ticket banner (wide capsule @ 1200px layout). */
 export const CATALOG_VIDEO_OG_BANNER_MEDIA_CLASSNAME = 'absolute inset-0 h-full w-full object-cover';
+
+/** Business Catalogs preview hero — full frame visible (match catalog preview image / video OG thumb). */
+export const CATALOG_VIDEO_OG_PREVIEW_BANNER_MEDIA_CLASSNAME =
+  'absolute inset-0 h-full w-full object-contain';
 
 /** Width/Height fit snapshot in Business Catalogs preview — show full raster (blur gutters), no crop. */
 export const CATALOG_VIDEO_OG_BANNER_SNAPSHOT_PREVIEW_CLASSNAME =

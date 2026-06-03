@@ -7,25 +7,26 @@ import { CatalogVideoOgRightThumbnail } from '@/components/CatalogVideoOgRightTh
 import type { CatalogBannerPreviewSnapshot } from '@/utils/couponStyleBannerFillCanvas';
 import {
   catalogProductionDisplayPrice,
+  effectiveTileBackgroundColorForMetadata,
   isCatalogPriceOptionalCategory,
   makeCardIssuanceProductionRow,
-  productionIconLooksLikeImageUrl,
   catalogBusinessPreviewShowsIssuanceLine,
   productionIssueTotalDisplayLabel,
   productionItemCategoryLabel,
   resolveProductionBackgroundMediaKind,
-  resolveProductionRequiresRedeemCode,
   type CardIssuanceProductionRow,
   type CatalogGlobalCategoryId,
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
 import {
+  catalogProductionBusinessPreviewHasHeroImage,
+  catalogProductionHasUploadedBackgroundMedia,
   catalogProductionHasVideoBackgroundMedia,
   catalogVideoOgBannerShouldUseVideoElement,
   CATALOG_VIDEO_OG_BELOW_BANNER_ROW_CLASSNAME,
   CATALOG_VIDEO_OG_BELOW_BANNER_ROW_EMBEDDED_CLASSNAME,
   CATALOG_VIDEO_OG_PREVIEW_OG_CARD_CLASSNAME,
-  catalogVideoOgPreviewBannerHeightPx,
+  catalogVideoOgPreviewHeroDisplaySize,
   resolveCatalogProductionSharePresentation,
 } from '@/utils/catalogProductionVideoOg';
 import {
@@ -33,7 +34,8 @@ import {
   CATALOG_VIDEO_OG_BANNER_SNAPSHOT_PREVIEW_ATTR,
   CATALOG_VIDEO_OG_BANNER_SNAPSHOT_PREVIEW_CLASSNAME,
   CATALOG_VIDEO_OG_BELOW_BANNER_ROW_OG_PREVIEW_CLASSNAME,
-  CATALOG_VIDEO_OG_SHARE_TICKET_PREVIEW_MAX_WIDTH_PX,
+  CATALOG_VIDEO_OG_PREVIEW_BANNER_MEDIA_CLASSNAME,
+  CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME,
 } from '@/utils/catalogProductionVideoOgConstants';
 import {
   isProductionBackgroundYoutubeMedia,
@@ -51,7 +53,22 @@ export type BusinessCatalogVideoOgPreviewDetailsProps = {
   shareDistributionTicket?: boolean;
   /** Add item → Business Catalogs preview: no right thumb, unlimited hides issuance. */
   ogSharePreviewLayout?: boolean;
+  /** Solid tile color (no background photo) — paints whole preview card. */
+  tileBackgroundColor?: string;
 };
+
+/** OG ticket shell — white by default; tile color fills entire Business Catalogs preview. */
+export function catalogPreviewOgCardSurface(tileBackgroundColor?: string): {
+  className: string;
+  style?: { backgroundColor: string };
+} {
+  const shell =
+    'mx-auto w-full max-w-[32rem] overflow-hidden rounded-2xl shadow-[0_4px_24px_rgba(15,23,42,0.14),0_1px_3px_rgba(15,23,42,0.08)]';
+  if (tileBackgroundColor?.trim()) {
+    return { className: shell, style: { backgroundColor: tileBackgroundColor.trim() } };
+  }
+  return { className: `${shell} bg-white` };
+}
 
 /** Text block for `videoOg` — pairs with {@link CatalogVideoOgRightThumbnail} in below-banner row. */
 export function BusinessCatalogVideoOgPreviewDetails(props: BusinessCatalogVideoOgPreviewDetailsProps) {
@@ -64,7 +81,9 @@ export function BusinessCatalogVideoOgPreviewDetails(props: BusinessCatalogVideo
     showPrice,
     shareDistributionTicket,
     ogSharePreviewLayout,
+    tileBackgroundColor,
   } = props;
+  const onTileBackground = Boolean(tileBackgroundColor?.trim());
   const showIssuanceLine = catalogBusinessPreviewShowsIssuanceLine(row, ogSharePreviewLayout);
   const presentation = resolveCatalogProductionSharePresentation({ row, publisherBeamioTag });
   const titleText = presentation.title;
@@ -75,32 +94,56 @@ export function BusinessCatalogVideoOgPreviewDetails(props: BusinessCatalogVideo
   return (
     <div className="min-w-0 flex-1 text-left">
       {titleText ? (
-        <p className="line-clamp-2 font-manrope text-base font-bold leading-snug text-[#2c2f31]">
+        <p
+          className={`line-clamp-2 font-manrope text-base font-bold leading-snug ${
+            onTileBackground ? 'text-white drop-shadow-sm' : 'text-[#2c2f31]'
+          }`}
+        >
           {titleText}
         </p>
       ) : null}
       {descriptionText ? (
         <p
-          className={`mt-0.5 ${descriptionClampClass} text-sm leading-snug text-[#747779]`}
+          className={`mt-0.5 ${descriptionClampClass} text-sm leading-snug ${
+            onTileBackground ? 'text-white/90 drop-shadow-sm' : 'text-[#747779]'
+          }`}
           title={descriptionText}
         >
           {descriptionText}
         </p>
       ) : null}
       {publisherLine ? (
-        <p className="mt-1 truncate text-xs font-medium text-[#595c5e]">{publisherLine}</p>
+        <p
+          className={`mt-1 truncate text-xs font-medium ${
+            onTileBackground ? 'text-white/85 drop-shadow-sm' : 'text-[#595c5e]'
+          }`}
+        >
+          {publisherLine}
+        </p>
       ) : null}
-      <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[#ea580c]">
+      <p
+        className={`mt-1 text-[10px] font-bold uppercase tracking-wider ${
+          onTileBackground ? 'text-white/85 drop-shadow-sm' : 'text-[#ea580c]'
+        }`}
+      >
         {itemCategoryLabel}
       </p>
       {showPrice && displayPrice != null ? (
-        <p className="mt-1 text-xs font-semibold text-[#595c5e]">
+        <p
+          className={`mt-1 text-xs font-semibold ${
+            onTileBackground ? 'text-white/90 drop-shadow-sm' : 'text-[#595c5e]'
+          }`}
+        >
           {moneyPrefix}
           {displayPrice.toFixed(2)}
         </p>
       ) : null}
       {showIssuanceLine ? (
-        <p className="mt-0.5 text-[10px] font-semibold text-[#747779]">
+        <p
+          className={`mt-0.5 text-[10px] font-semibold ${
+            onTileBackground ? 'text-white/80' : 'text-[#747779]'
+          }`}
+        >
           Issuance: {productionIssueTotalDisplayLabel(row)}
           {row.issued && row.issueLeft?.trim()
             ? ` · ${Number.parseInt(row.issueLeft.replace(/,/g, ''), 10).toLocaleString()} left`
@@ -108,7 +151,11 @@ export function BusinessCatalogVideoOgPreviewDetails(props: BusinessCatalogVideo
         </p>
       ) : null}
       {row.requiresRedeemCode ? (
-        <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[#ea580c]">
+        <p
+          className={`mt-0.5 text-[10px] font-bold uppercase tracking-wider ${
+            onTileBackground ? 'text-white/90 drop-shadow-sm' : 'text-[#ea580c]'
+          }`}
+        >
           Redeem code
         </p>
       ) : null}
@@ -167,13 +214,15 @@ export function BusinessCatalogVideoOgPreviewBlock(
   }
 ) {
   const { bannerCaptureDisabled, catalogBannerPreviewSnapshot, onCaptureBannerSnapshot, ...details } = props;
+  const ogCard = catalogPreviewOgCardSurface(details.tileBackgroundColor);
   const presentation = resolveCatalogProductionSharePresentation({
     row: details.row,
     publisherBeamioTag: details.publisherBeamioTag,
   });
 
-  const bannerHeightPx = catalogVideoOgPreviewBannerHeightPx();
-  const bannerExportWidth = CATALOG_VIDEO_OG_SHARE_TICKET_PREVIEW_MAX_WIDTH_PX;
+  const heroSize = catalogVideoOgPreviewHeroDisplaySize();
+  const bannerExportWidth = heroSize.width;
+  const bannerHeightPx = heroSize.height;
 
   const [liveSnapshot, setLiveSnapshot] = useState<CatalogBannerPreviewSnapshot | null>(
     catalogBannerPreviewSnapshot ?? null
@@ -197,6 +246,9 @@ export function BusinessCatalogVideoOgPreviewBlock(
   const snapshotLabel =
     snapshot?.mode === 'width' ? 'Width fit' : snapshot?.mode === 'height' ? 'Height fit' : '';
 
+  const hasCapturableBannerMedia = catalogProductionHasUploadedBackgroundMedia(details.row);
+  const showBannerCaptureControls = Boolean(onCaptureBannerSnapshot) && hasCapturableBannerMedia;
+
   const productionVideoSrc = details.row.productionImage.trim();
   const bannerUsesLiveVideo = catalogVideoOgBannerShouldUseVideoElement({
     bannerImageUrl: presentation.bannerImageUrl,
@@ -204,8 +256,7 @@ export function BusinessCatalogVideoOgPreviewBlock(
     productionImageMime: details.row.productionImageMime,
   });
   const hiddenCaptureVideo =
-    Boolean(onCaptureBannerSnapshot) &&
-    catalogProductionHasVideoBackgroundMedia(details.row) &&
+    showBannerCaptureControls &&
     !isProductionBackgroundYoutubeMedia({
       url: productionVideoSrc,
       mime: details.row.productionImageMime,
@@ -215,11 +266,12 @@ export function BusinessCatalogVideoOgPreviewBlock(
 
   const captureSourceAttr = { [CATALOG_VIDEO_OG_BANNER_CAPTURE_SOURCE_ATTR]: '' };
 
+  const bannerSlotClassName = details.tileBackgroundColor?.trim()
+    ? `${CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME} !bg-transparent`
+    : CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME;
+
   const bannerMedia = (
-    <div
-      className="relative w-full"
-      style={bannerHeightPx > 0 ? { height: bannerHeightPx } : undefined}
-    >
+    <div className={bannerSlotClassName}>
       {hiddenCaptureVideo ? (
         <video
           {...captureSourceAttr}
@@ -233,15 +285,14 @@ export function BusinessCatalogVideoOgPreviewBlock(
       ) : null}
       <CatalogVideoOgBannerMedia
         previewLayout
-        bannerHeightPx={bannerHeightPx}
         bannerImageUrl={presentation.bannerImageUrl}
         productionImage={details.row.productionImage}
         productionImageMime={details.row.productionImageMime}
         backgroundColor={details.row.backgroundColor}
-        markBannerCaptureSource={Boolean(onCaptureBannerSnapshot) && bannerUsesLiveVideo}
+        markBannerCaptureSource={showBannerCaptureControls && bannerUsesLiveVideo}
         suppressPlayOverlay={hasSnapshot}
       />
-      {hasSnapshot && snapshot ? (
+      {showBannerCaptureControls && hasSnapshot && snapshot ? (
         <div
           {...{ [CATALOG_VIDEO_OG_BANNER_SNAPSHOT_PREVIEW_ATTR]: '' }}
           className="pointer-events-none absolute inset-0 overflow-hidden bg-[#0f172a]"
@@ -266,8 +317,8 @@ export function BusinessCatalogVideoOgPreviewBlock(
   );
 
   return (
-    <div className={CATALOG_VIDEO_OG_PREVIEW_OG_CARD_CLASSNAME}>
-      {onCaptureBannerSnapshot ? (
+    <div className={ogCard.className} style={ogCard.style}>
+      {showBannerCaptureControls ? (
         <CatalogVideoOgPreviewBannerCaptureOverlay
           exportWidth={bannerExportWidth}
           exportHeight={bannerHeightPx}
@@ -285,8 +336,99 @@ export function BusinessCatalogVideoOgPreviewBlock(
   );
 }
 
+/** Static image background — 4:3 hero (upload parity), metadata below. */
+export function BusinessCatalogImageHeroPreviewBlock(
+  props: BusinessCatalogVideoOgPreviewDetailsProps & {
+    bannerCaptureDisabled?: boolean;
+    catalogBannerPreviewSnapshot?: CatalogBannerPreviewSnapshot | null;
+    onCaptureBannerSnapshot?: (args: CatalogBannerPreviewSnapshot) => void | Promise<void>;
+  }
+) {
+  const { bannerCaptureDisabled, catalogBannerPreviewSnapshot, onCaptureBannerSnapshot, ...details } = props;
+  const imageUrl = details.row.productionImage.trim();
+  const ogCard = catalogPreviewOgCardSurface(details.tileBackgroundColor);
+  const heroSize = catalogVideoOgPreviewHeroDisplaySize();
+  const hasCapturableBannerMedia = catalogProductionHasUploadedBackgroundMedia(details.row);
+  const showBannerCaptureControls = Boolean(onCaptureBannerSnapshot) && hasCapturableBannerMedia;
+
+  const [liveSnapshot, setLiveSnapshot] = useState<CatalogBannerPreviewSnapshot | null>(
+    catalogBannerPreviewSnapshot ?? null
+  );
+  useEffect(() => {
+    setLiveSnapshot(catalogBannerPreviewSnapshot ?? null);
+  }, [catalogBannerPreviewSnapshot?.dataUrl, catalogBannerPreviewSnapshot?.mode]);
+
+  const handleCaptureBannerSnapshot = useCallback(
+    async (args: CatalogBannerPreviewSnapshot) => {
+      setLiveSnapshot(args);
+      await onCaptureBannerSnapshot?.(args);
+    },
+    [onCaptureBannerSnapshot]
+  );
+
+  const snapshot = liveSnapshot;
+  const hasSnapshot = Boolean(snapshot?.dataUrl?.trim());
+  const snapshotLabel =
+    snapshot?.mode === 'width' ? 'Width fit' : snapshot?.mode === 'height' ? 'Height fit' : '';
+  const captureSourceAttr = { [CATALOG_VIDEO_OG_BANNER_CAPTURE_SOURCE_ATTR]: '' };
+
+  const bannerMedia = (
+    <div className={CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME}>
+      {imageUrl ? (
+        <IpfsImg
+          src={imageUrl}
+          alt=""
+          className={CATALOG_VIDEO_OG_PREVIEW_BANNER_MEDIA_CLASSNAME}
+          draggable={false}
+          {...(showBannerCaptureControls ? captureSourceAttr : {})}
+        />
+      ) : null}
+      {showBannerCaptureControls && hasSnapshot && snapshot ? (
+        <div
+          {...{ [CATALOG_VIDEO_OG_BANNER_SNAPSHOT_PREVIEW_ATTR]: '' }}
+          className="pointer-events-none absolute inset-0 overflow-hidden bg-[#0f172a]"
+          role="img"
+          aria-label={`Banner snapshot preview (${snapshotLabel})`}
+        >
+          <IpfsImg
+            key={`${snapshot.mode}:${snapshot.dataUrl.length}`}
+            src={snapshot.dataUrl}
+            alt=""
+            className={CATALOG_VIDEO_OG_BANNER_SNAPSHOT_PREVIEW_CLASSNAME}
+            draggable={false}
+          />
+          {snapshotLabel ? (
+            <p className="absolute bottom-2 left-2 z-[11] rounded-full bg-black/55 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+              {snapshotLabel}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <div className={ogCard.className} style={ogCard.style}>
+      {showBannerCaptureControls ? (
+        <CatalogVideoOgPreviewBannerCaptureOverlay
+          exportWidth={heroSize.width}
+          exportHeight={heroSize.height}
+          disabled={bannerCaptureDisabled}
+          activeSnapshotMode={snapshot?.mode ?? null}
+          onCaptured={handleCaptureBannerSnapshot}
+        >
+          {bannerMedia}
+        </CatalogVideoOgPreviewBannerCaptureOverlay>
+      ) : (
+        bannerMedia
+      )}
+      <BusinessCatalogVideoOgBelowBannerRow {...details} ogSharePreviewLayout />
+    </div>
+  );
+}
+
 /**
- * Catalog Distribution / QR modal — same videoOg stack as Business Catalogs preview (no below-banner right thumb).
+ * Catalog Distribution / QR modal — same 4:3 hero as Business Catalogs preview (no below-banner right thumb).
  * See `beamio-catalog-video-og-thumbnail.mdc`.
  */
 export function CatalogVideoOgOpenClaimSharePreview(props: BusinessCatalogVideoOgPreviewDetailsProps) {
@@ -294,18 +436,18 @@ export function CatalogVideoOgOpenClaimSharePreview(props: BusinessCatalogVideoO
     row: props.row,
     publisherBeamioTag: props.publisherBeamioTag,
   });
-  const bannerHeightPx = catalogVideoOgPreviewBannerHeightPx();
 
   return (
     <div className={`${CATALOG_VIDEO_OG_PREVIEW_OG_CARD_CLASSNAME} mx-auto w-full max-w-[32rem]`}>
-      <CatalogVideoOgBannerMedia
-        previewLayout
-        bannerHeightPx={bannerHeightPx}
-        bannerImageUrl={presentation.bannerImageUrl}
-        productionImage={props.row.productionImage}
-        productionImageMime={props.row.productionImageMime}
-        backgroundColor={props.row.backgroundColor}
-      />
+      <div className={CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME}>
+        <CatalogVideoOgBannerMedia
+          previewLayout
+          bannerImageUrl={presentation.bannerImageUrl}
+          productionImage={props.row.productionImage}
+          productionImageMime={props.row.productionImageMime}
+          backgroundColor={props.row.backgroundColor}
+        />
+      </div>
       <BusinessCatalogVideoOgBelowBannerRow
         {...props}
         ogSharePreviewLayout
@@ -333,14 +475,15 @@ export function BusinessCatalogVideoOgListItemBody(props: {
 
   return (
     <>
-      <CatalogVideoOgBannerMedia
-        previewLayout
-        bannerHeightPx={catalogVideoOgPreviewBannerHeightPx()}
-        bannerImageUrl={presentation.bannerImageUrl}
-        productionImage={row.productionImage}
-        productionImageMime={row.productionImageMime}
-        backgroundColor={row.backgroundColor}
-      />
+      <div className={CATALOG_VIDEO_OG_PREVIEW_BANNER_SLOT_CLASSNAME}>
+        <CatalogVideoOgBannerMedia
+          previewLayout
+          bannerImageUrl={presentation.bannerImageUrl}
+          productionImage={row.productionImage}
+          productionImageMime={row.productionImageMime}
+          backgroundColor={row.backgroundColor}
+        />
+      </div>
       <BusinessCatalogVideoOgBelowBannerRow
         ogSharePreviewLayout
         row={row}
@@ -426,9 +569,7 @@ export function BusinessCatalogListItemPreviewContent(props: {
         {backgroundKind === 'pdf' && hasBackgroundMedia ? (
           <FileText className="relative z-[1] h-5 w-5" strokeWidth={2} aria-hidden />
         ) : null}
-        {productionIconLooksLikeImageUrl(row.icon) ? (
-          <IpfsImg src={row.icon} alt="" className="relative z-[1] h-full w-full object-cover" />
-        ) : hasBackgroundMedia && backgroundKind !== 'pdf' ? null : !hasBackgroundMedia ? (
+        {hasBackgroundMedia && backgroundKind !== 'pdf' ? null : !hasBackgroundMedia ? (
           <Sparkles className="h-5 w-5" strokeWidth={2} aria-hidden />
         ) : null}
       </div>
@@ -481,6 +622,7 @@ export type BusinessCatalogEditorPreviewDraft = {
   price: string;
   issueTotal: string;
   issueTotalUnlimited: boolean;
+  requiresRedeemCode: boolean;
   editingIssued: boolean;
   catalogPriceOptional: boolean;
 };
@@ -509,7 +651,7 @@ export function buildBusinessCatalogEditorPreviewRow(
     singleSessionPrice: draft.catalogPriceOptional ? '0' : draft.price.trim() || '0',
     issueTotal: draft.issueTotal,
     issueTotalUnlimited: draft.issueTotalUnlimited,
-    requiresRedeemCode: resolveProductionRequiresRedeemCode({}, draft.globalCategory),
+    requiresRedeemCode: draft.requiresRedeemCode,
     issued: draft.editingIssued,
   });
 }
@@ -551,6 +693,13 @@ export function BusinessCatalogListItemPreviewCard(props: {
   const itemCategoryLabel = productionItemCategoryLabel(row.itemCategory, serviceCategories);
   const showCatalogPrice = displayPrice != null && !isCatalogPriceOptionalCategory(row.globalCategory);
   const videoOgPreview = catalogProductionHasVideoBackgroundMedia(row);
+  const imageHeroPreview = catalogProductionBusinessPreviewHasHeroImage(row);
+  const tileBackgroundColor = effectiveTileBackgroundColorForMetadata({
+    photo: row.productionImage,
+    backgroundColor: row.backgroundColor,
+  });
+  const colorOnlyCatalogPreview = Boolean(tileBackgroundColor) && !videoOgPreview && !imageHeroPreview;
+  const compactPreviewCard = catalogPreviewOgCardSurface(tileBackgroundColor);
 
   const videoOgDetails: BusinessCatalogVideoOgPreviewDetailsProps = {
     row,
@@ -559,11 +708,12 @@ export function BusinessCatalogListItemPreviewCard(props: {
     displayPrice,
     moneyPrefix,
     showPrice: showCatalogPrice,
+    tileBackgroundColor,
   };
 
   return (
     <div role="region" aria-label="Business Catalogs preview" className="w-full">
-      {videoOgPreview ? (
+      {videoOgPreview || colorOnlyCatalogPreview ? (
         <div className="relative mx-auto w-full max-w-[32rem]">
           <BusinessCatalogVideoOgPreviewBlock
             {...videoOgDetails}
@@ -575,17 +725,25 @@ export function BusinessCatalogListItemPreviewCard(props: {
             <BusinessCatalogListItemStatusChip issued={row.issued} />
           </div>
         </div>
+      ) : imageHeroPreview ? (
+        <div className="relative mx-auto w-full max-w-[32rem]">
+          <BusinessCatalogImageHeroPreviewBlock
+            {...videoOgDetails}
+            bannerCaptureDisabled={bannerCaptureDisabled}
+            catalogBannerPreviewSnapshot={catalogBannerPreviewSnapshot}
+            onCaptureBannerSnapshot={onCaptureBannerSnapshot}
+          />
+          <div className="pointer-events-none absolute right-3 top-3 z-10">
+            <BusinessCatalogListItemStatusChip issued={row.issued} />
+          </div>
+        </div>
       ) : (
         <div
-          className={`${CATALOG_VIDEO_OG_PREVIEW_OG_CARD_CLASSNAME} flex w-full items-start gap-3 p-4`}
+          className={`${compactPreviewCard.className} relative flex w-full items-start gap-3 p-4`}
+          style={compactPreviewCard.style}
         >
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            <BusinessCatalogListItemPreviewContent
-              row={row}
-              serviceCategories={serviceCategories}
-              moneyPrefix={moneyPrefix}
-              catalogPublisherBeamioTag={catalogPublisherBeamioTag}
-            />
+          <div className="min-w-0 flex-1">
+            <BusinessCatalogVideoOgPreviewDetails {...videoOgDetails} ogSharePreviewLayout />
           </div>
           <BusinessCatalogListItemStatusChip issued={row.issued} />
         </div>

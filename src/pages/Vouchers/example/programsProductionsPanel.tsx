@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Check,
+  Copy,
   ExternalLink,
   FileText,
   Gift,
@@ -59,7 +60,6 @@ import {
 } from '@/utils/productionBackgroundVideo';
 import type { ProductionVideoFrameThumbnail } from '@/utils/productionBackgroundVideo';
 import { ProductionVideoFilmstripTrimEditor } from './ProductionVideoFilmstripTrimEditor';
-import { ProductionVideoIconFramePicker } from './ProductionVideoIconFramePicker';
 import {
   createNumericInputWheelNonPassiveRefCallback,
   preventNumericInputStepKeys,
@@ -77,6 +77,17 @@ const bizFocusRingClass =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ea580c]/40 focus-visible:ring-offset-2';
 
 const CATALOG_PRODUCTION_REDEEM_PAGE_SIZE = 10;
+
+function formatCatalogProductionRedeemDate(ts: number | undefined): string {
+  if (ts == null || !Number.isFinite(ts) || ts <= 0) return '—';
+  return new Date(ts).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export type CatalogProductionRedeemItemView = {
   code: string;
@@ -316,6 +327,8 @@ export type ProgramsProductionsPanelProps = {
   setIssueTotal: (v: string) => void;
   issueTotalUnlimited: boolean;
   setIssueTotalUnlimited: (v: boolean) => void;
+  requiresRedeemCode: boolean;
+  setRequiresRedeemCode: (v: boolean) => void;
   description: string;
   setDescription: (v: string) => void;
   editorError: string;
@@ -330,6 +343,11 @@ export type ProgramsProductionsPanelProps = {
   productionRedeemRegisteringId?: string | null;
   productionRedeemStatuses?: Record<string, 'pending' | 'redeemed'>;
   productionRedeemStatusLoading?: boolean;
+  onOpenProductionRedeemShare?: (productionId: string, row: CatalogProductionRedeemItemView) => void;
+  productionRedeemCopiedHash?: string | null;
+  onProductionRedeemCodeCopied?: (hash: string) => void;
+  /** Aligns with coupon redeem grace before showing Redeemed from local `redeemedAt`. */
+  productionRedeemChainConfirmGraceMs?: number;
 };
 
 export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
@@ -402,6 +420,8 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     setIssueTotal,
     issueTotalUnlimited,
     setIssueTotalUnlimited,
+    requiresRedeemCode,
+    setRequiresRedeemCode,
     description,
     setDescription,
     editorError,
@@ -416,12 +436,15 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     productionRedeemRegisteringId = null,
     productionRedeemStatuses = {},
     productionRedeemStatusLoading = false,
+    onOpenProductionRedeemShare,
+    productionRedeemCopiedHash = null,
+    onProductionRedeemCodeCopied,
+    productionRedeemChainConfirmGraceMs = 3 * 60_000,
   } = props;
 
   const [productionRedeemPageById, setProductionRedeemPageById] = useState<Record<string, number>>({});
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryLabel, setEditingCategoryLabel] = useState('');
-  const iconFileRef = useRef<HTMLInputElement>(null);
   const productionImageFileRef = useRef<HTMLInputElement>(null);
   const [backgroundMediaDragOver, setBackgroundMediaDragOver] = useState(false);
   const backgroundMediaDragDepthRef = useRef(0);
@@ -502,9 +525,6 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     productionImageMime,
     productionVideoDraftUrl,
   });
-  const videoIconPickerSrc =
-    productionVideoDraftUrl.trim() || (uploadedBackgroundVideo ? productionImage.trim() : '');
-
   const catalogBaseProductionCount = useMemo(
     () => productions.filter(isCatalogBaseProductionRow).length,
     [productions]
@@ -531,6 +551,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
         price,
         issueTotal,
         issueTotalUnlimited,
+        requiresRedeemCode,
         editingIssued,
         catalogPriceOptional,
       }),
@@ -549,6 +570,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
       price,
       issueTotal,
       issueTotalUnlimited,
+      requiresRedeemCode,
       editingIssued,
       catalogPriceOptional,
     ]
@@ -589,6 +611,14 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     productionBackgroundUploadLocked,
     youtubeImportUrl,
   ]);
+
+  const hasBackgroundMediaContent =
+    Boolean(productionImage.trim()) || Boolean(productionVideoDraftUrl?.trim());
+  const showBackgroundMediaYoutubeImport =
+    Boolean(onImportYoutubeProductionVideo) &&
+    !hasBackgroundMediaContent &&
+    !(productionVideoNeedsClipEdit && productionVideoDraftPending && !productionImage.trim()) &&
+    !(productionImageUploading && !productionVideoDraftUrl && !productionImage.trim());
 
   const cancelCategoryEdit = useCallback(() => {
     if (editingCategoryId) {
@@ -935,33 +965,107 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                               <th className="px-2.5 py-2 sm:px-3">Code</th>
                                               <th className="px-2.5 py-2 sm:px-3">Generated</th>
                                               <th className="px-2.5 py-2 sm:px-3">Status</th>
+                                              <th className="px-2.5 py-2 sm:px-3">Redeemed</th>
                                             </tr>
                                           </thead>
                                           <tbody className="divide-y divide-[#ea580c]/8 bg-white">
                                             {redeemRowsPage.map((redeemRow) => {
                                               const status =
                                                 productionRedeemStatuses[redeemRow.hash] ??
-                                                (redeemRow.redeemedAt ? 'redeemed' : 'pending');
+                                                (redeemRow.redeemedAt &&
+                                                (!redeemRow.createdAt ||
+                                                  Date.now() - redeemRow.createdAt >=
+                                                    productionRedeemChainConfirmGraceMs)
+                                                  ? 'redeemed'
+                                                  : 'pending');
+                                              const statusLabel =
+                                                status === 'pending' ? 'Available' : 'Redeemed';
+                                              const statusClass =
+                                                status === 'pending'
+                                                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                                                  : 'bg-slate-100 text-slate-600 ring-slate-200';
                                               return (
-                                                <tr key={redeemRow.hash}>
-                                                  <td className="px-2.5 py-2 font-mono text-[10px] sm:px-3">
-                                                    {redeemRow.code}
+                                                <tr
+                                                  key={redeemRow.hash}
+                                                  role={onOpenProductionRedeemShare ? 'button' : undefined}
+                                                  tabIndex={onOpenProductionRedeemShare ? 0 : undefined}
+                                                  onClick={
+                                                    onOpenProductionRedeemShare
+                                                      ? () => onOpenProductionRedeemShare(row.id, redeemRow)
+                                                      : undefined
+                                                  }
+                                                  onKeyDown={
+                                                    onOpenProductionRedeemShare
+                                                      ? (e) => {
+                                                          if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            onOpenProductionRedeemShare(row.id, redeemRow);
+                                                          }
+                                                        }
+                                                      : undefined
+                                                  }
+                                                  className={
+                                                    onOpenProductionRedeemShare
+                                                      ? 'cursor-pointer transition-colors hover:bg-[#ea580c]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ea580c]/35'
+                                                      : undefined
+                                                  }
+                                                  aria-label={
+                                                    onOpenProductionRedeemShare
+                                                      ? `Show redeem URL and QR for code ${redeemRow.code}`
+                                                      : undefined
+                                                  }
+                                                >
+                                                  <td className="px-2.5 py-2 sm:px-3">
+                                                    <div className="flex min-w-[9rem] items-center gap-1.5">
+                                                      <span className="truncate font-mono text-[10px] text-[#2c2f31] sm:text-[11px]">
+                                                        {redeemRow.code}
+                                                      </span>
+                                                      {onProductionRedeemCodeCopied ? (
+                                                        <button
+                                                          type="button"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            void navigator.clipboard
+                                                              .writeText(redeemRow.code)
+                                                              .then(() => {
+                                                                onProductionRedeemCodeCopied(redeemRow.hash);
+                                                              });
+                                                          }}
+                                                          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 ${bizFocusRingClass}`}
+                                                          aria-label={`Copy redeem code ${redeemRow.code}`}
+                                                          title="Copy code"
+                                                        >
+                                                          {productionRedeemCopiedHash === redeemRow.hash ? (
+                                                            <Check
+                                                              className="h-3 w-3 text-emerald-500"
+                                                              strokeWidth={2.5}
+                                                              aria-hidden
+                                                            />
+                                                          ) : (
+                                                            <Copy
+                                                              className="h-3 w-3 opacity-70"
+                                                              strokeWidth={2}
+                                                              aria-hidden
+                                                            />
+                                                          )}
+                                                        </button>
+                                                      ) : null}
+                                                    </div>
                                                   </td>
-                                                  <td className="px-2.5 py-2 text-[#747779] sm:px-3">
-                                                    {redeemRow.createdAt
-                                                      ? new Date(redeemRow.createdAt).toLocaleString()
-                                                      : '—'}
+                                                  <td className="whitespace-nowrap px-2.5 py-2 text-[#595c5e] sm:px-3">
+                                                    {formatCatalogProductionRedeemDate(redeemRow.createdAt)}
                                                   </td>
                                                   <td className="px-2.5 py-2 sm:px-3">
                                                     <span
-                                                      className={
-                                                        status === 'redeemed'
-                                                          ? 'font-semibold text-emerald-700'
-                                                          : 'font-semibold text-amber-700'
-                                                      }
+                                                      className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ${statusClass}`}
                                                     >
-                                                      {status === 'redeemed' ? 'Redeemed' : 'Pending'}
+                                                      {statusLabel}
                                                     </span>
+                                                  </td>
+                                                  <td className="whitespace-nowrap px-2.5 py-2 text-[#595c5e] sm:px-3">
+                                                    {status === 'redeemed'
+                                                      ? formatCatalogProductionRedeemDate(redeemRow.redeemedAt)
+                                                      : '—'}
                                                   </td>
                                                 </tr>
                                               );
@@ -1096,8 +1200,13 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
 
                       {editingIssued ? (
                         <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-medium text-sky-900">
-                          This item is live on-chain. Name, price, and total issuance are locked. You can still update the
-                          item icon, optional background media
+                          This item is live on-chain. Name
+                          {salesManagementCatalog
+                            ? ', claim method, and total issuance'
+                            : catalogPriceOptional
+                              ? ''
+                              : ', price, and total issuance'}{' '}
+                          are locked. You can still update optional background media
                           {catalogTileBackgroundColorEditorVisible ? ', tile background color' : ''}, and description.
                         </div>
                       ) : null}
@@ -1131,71 +1240,6 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                       <section className="mb-5 space-y-4">
                         <div>
                           <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            Item icon
-                          </label>
-                          <input
-                            ref={iconFileRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={onIconFileChange}
-                          />
-                          <div className="overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                            {!icon ? (
-                              <button
-                                type="button"
-                                onClick={() => iconFileRef.current?.click()}
-                                disabled={iconUploading}
-                                className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                              >
-                                {iconUploading ? (
-                                  <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
-                                ) : (
-                                  <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
-                                )}
-                                <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
-                                  {iconUploading
-                                    ? 'Uploading…'
-                                    : 'Upload icon (PNG, JPEG, or SVG)'}
-                                </span>
-                              </button>
-                            ) : (
-                              <div className="relative h-[112px] w-full overflow-hidden bg-[#eef1f3]">
-                                <IpfsImg src={icon} alt="" className="h-full w-full object-contain" />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onClearIcon();
-                                    if (iconFileRef.current) iconFileRef.current.value = '';
-                                  }}
-                                  className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                                  aria-label="Remove item icon"
-                                >
-                                  <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                                </button>
-                              </div>
-                            )}
-                            {uploadedBackgroundVideo && videoIconPickerSrc && onSelectVideoFrameAsIcon ? (
-                              <ProductionVideoIconFramePicker
-                                videoSrc={videoIconPickerSrc}
-                                sourceFile={productionVideoDraftFile}
-                                backgroundVideoFfmpegBusy={productionVideoFfmpegBusy}
-                                backgroundMediaUploading={productionImageUploading}
-                                durationSec={
-                                  productionVideoSourceDurationSec > 0
-                                    ? productionVideoSourceDurationSec
-                                    : undefined
-                                }
-                                disabled={editingIssued || iconUploading}
-                                uploading={iconUploading}
-                                onSelectFrame={(frame) => void onSelectVideoFrameAsIcon(frame)}
-                              />
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                             Background media (optional)
                           </label>
                           <input
@@ -1206,7 +1250,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             onChange={onProductionImageFileChange}
                           />
                           <div
-                            className={`rounded-2xl transition-[box-shadow,background-color] ${
+                            className={`overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-[box-shadow,background-color] ${
                               backgroundMediaDragOver && !backgroundMediaDropDisabled
                                 ? 'bg-[#ea580c]/[0.06] ring-2 ring-[#ea580c]/45 ring-offset-2'
                                 : ''
@@ -1216,29 +1260,28 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             onDragOver={handleBackgroundMediaDragOver}
                             onDrop={handleBackgroundMediaDrop}
                           >
-                          {productionVideoDraftUrl ? (
-                            <div className="space-y-3">
-                              {productionVideoNeedsClipEdit &&
-                              productionVideoDraftPending &&
-                              !productionImage.trim() ? (
-                                <ProductionVideoFilmstripTrimEditor
-                                  videoSrc={productionVideoDraftUrl}
-                                  sourceFile={productionVideoDraftFile}
-                                  durationSec={productionVideoSourceDurationSec}
-                                  maxClipSec={PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS}
-                                  startSec={productionVideoStartSec}
-                                  onStartSecChange={(value) => setProductionVideoStartSec?.(value)}
-                                  trimConfirmed={productionVideoTrimConfirmed}
-                                  onTrimConfirm={() => onProductionVideoTrimConfirm?.()}
-                                  onTrimEdit={() => onProductionVideoTrimEdit?.()}
-                                  onCancel={() => onCancelProductionVideoDraft?.()}
-                                  disabled={productionImageUploading && !productionVideoTrimConfirmed}
-                                  uploading={productionImageUploading}
-                                  uploadProgress={productionVideoUploadProgress}
-                                  uploadMessage={productionVideoProcessingMessage}
-                                />
-                              ) : (
-                                <div className="rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] p-3">
+                            {productionVideoDraftUrl ? (
+                              <div className="p-3">
+                                {productionVideoNeedsClipEdit &&
+                                productionVideoDraftPending &&
+                                !productionImage.trim() ? (
+                                  <ProductionVideoFilmstripTrimEditor
+                                    videoSrc={productionVideoDraftUrl}
+                                    sourceFile={productionVideoDraftFile}
+                                    durationSec={productionVideoSourceDurationSec}
+                                    maxClipSec={PRODUCTION_BACKGROUND_VIDEO_MAX_SECONDS}
+                                    startSec={productionVideoStartSec}
+                                    onStartSecChange={(value) => setProductionVideoStartSec?.(value)}
+                                    trimConfirmed={productionVideoTrimConfirmed}
+                                    onTrimConfirm={() => onProductionVideoTrimConfirm?.()}
+                                    onTrimEdit={() => onProductionVideoTrimEdit?.()}
+                                    onCancel={() => onCancelProductionVideoDraft?.()}
+                                    disabled={productionImageUploading && !productionVideoTrimConfirmed}
+                                    uploading={productionImageUploading}
+                                    uploadProgress={productionVideoUploadProgress}
+                                    uploadMessage={productionVideoProcessingMessage}
+                                  />
+                                ) : (
                                   <div className="relative h-[140px] w-full overflow-hidden rounded-xl bg-[#0f172a]/90">
                                     <ClickToPlayProductionVideo
                                       src={productionVideoDraftUrl}
@@ -1276,14 +1319,12 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                       />
                                     )}
                                   </div>
-                                </div>
-                              )}
-                            </div>
-                          ) : !productionImage ? (
-                            <div className="space-y-3">
-                              {productionImageUploading && !productionVideoDraftUrl ? (
+                                )}
+                              </div>
+                            ) : !productionImage ? (
+                              productionImageUploading && !productionVideoDraftUrl ? (
                                 <div
-                                  className="flex min-h-[96px] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] px-4 py-5"
+                                  className="flex min-h-[96px] w-full flex-col items-center justify-center px-4 py-5"
                                   role="status"
                                   aria-live="polite"
                                   aria-busy="true"
@@ -1307,86 +1348,84 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                   ) : null}
                                 </div>
                               ) : (
-                                <>
+                                <button
+                                  type="button"
+                                  onClick={() => productionImageFileRef.current?.click()}
+                                  disabled={productionBackgroundUploadLocked}
+                                  className={`flex min-h-[96px] w-full cursor-pointer flex-col items-center justify-center px-4 py-5 transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${
+                                    showBackgroundMediaYoutubeImport ? 'border-b border-[#abadaf]/40' : ''
+                                  }`}
+                                >
+                                  <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
+                                  <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
+                                    Upload or drag image, video (max 60s), or PDF here. Default: solid color below.
+                                  </span>
+                                </button>
+                              )
+                            ) : (
+                              <div className="relative h-[120px] w-full overflow-hidden bg-[#0f172a]/90">
+                                <ProductionBackgroundMediaPreview
+                                  url={productionImage}
+                                  mime={productionImageMime}
+                                  startSec={productionImageStartSec}
+                                  className="h-full w-full opacity-95"
+                                  imgClassName="h-full w-full object-cover opacity-95"
+                                />
+                                <ProductionBackgroundMediaDeleteButton
+                                  disabled={productionBackgroundUploadLocked || productionImageUploading}
+                                  onClick={() => {
+                                    onClearProductionImage();
+                                    if (productionImageFileRef.current) {
+                                      productionImageFileRef.current.value = '';
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {showBackgroundMediaYoutubeImport ? (
+                              <div className="border-t border-[#abadaf]/40 bg-white px-3 py-3">
+                                <label
+                                  htmlFor="production-youtube-url"
+                                  className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                                >
+                                  <Link2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                                  Import from YouTube
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    id="production-youtube-url"
+                                    type="url"
+                                    inputMode="url"
+                                    autoComplete="off"
+                                    enterKeyHint="go"
+                                    placeholder="https://www.youtube.com/watch?v=…"
+                                    value={youtubeImportUrl}
+                                    onChange={(e) => setYoutubeImportUrl(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key !== 'Enter') return;
+                                      e.preventDefault();
+                                      runYoutubeProductionVideoImport();
+                                    }}
+                                    disabled={productionBackgroundUploadLocked}
+                                    className={`min-h-10 w-full rounded-full border border-[#e5e9eb] bg-[#f8fafb] py-2 pl-3 pr-11 text-xs font-medium text-[#2c2f31] placeholder:text-[#abadaf] disabled:opacity-60 ${bizFocusRingClass}`}
+                                  />
                                   <button
                                     type="button"
-                                    onClick={() => productionImageFileRef.current?.click()}
-                                    disabled={productionBackgroundUploadLocked}
-                                    className={`flex min-h-[96px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                                    disabled={productionBackgroundUploadLocked || !youtubeImportUrlValid}
+                                    onClick={runYoutubeProductionVideoImport}
+                                    aria-label="Import from YouTube"
+                                    className={`absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
                                   >
-                                    <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
-                                    <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
-                                      Upload or drag image, video (max 60s), or PDF here. Default: solid color below.
-                                    </span>
+                                    {productionBackgroundUploadLocked ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
+                                    ) : (
+                                      <Search className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                                    )}
                                   </button>
-                                  {onImportYoutubeProductionVideo ? (
-                                    <div className="rounded-2xl border border-[#e5e9eb] bg-white p-3">
-                                      <label
-                                        htmlFor="production-youtube-url"
-                                        className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
-                                      >
-                                        <Link2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                                        Import from YouTube
-                                      </label>
-                                      <div className="relative">
-                                        <input
-                                          id="production-youtube-url"
-                                          type="url"
-                                          inputMode="url"
-                                          autoComplete="off"
-                                          enterKeyHint="go"
-                                          placeholder="https://www.youtube.com/watch?v=…"
-                                          value={youtubeImportUrl}
-                                          onChange={(e) => setYoutubeImportUrl(e.target.value)}
-                                          onKeyDown={(e) => {
-                                            if (e.key !== 'Enter') return;
-                                            e.preventDefault();
-                                            runYoutubeProductionVideoImport();
-                                          }}
-                                          disabled={productionBackgroundUploadLocked}
-                                          className={`min-h-10 w-full rounded-full border border-[#e5e9eb] bg-[#f8fafb] py-2 pl-3 pr-11 text-xs font-medium text-[#2c2f31] placeholder:text-[#abadaf] disabled:opacity-60 ${bizFocusRingClass}`}
-                                        />
-                                        <button
-                                          type="button"
-                                          disabled={
-                                            productionBackgroundUploadLocked || !youtubeImportUrlValid
-                                          }
-                                          onClick={runYoutubeProductionVideoImport}
-                                          aria-label="Import from YouTube"
-                                          className={`absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
-                                        >
-                                          {productionBackgroundUploadLocked ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
-                                          ) : (
-                                            <Search className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : null}
-                                </>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="relative h-[120px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#0f172a]/90">
-                              <ProductionBackgroundMediaPreview
-                                url={productionImage}
-                                mime={productionImageMime}
-                                startSec={productionImageStartSec}
-                                className="h-full w-full opacity-95"
-                                imgClassName="h-full w-full object-cover opacity-95"
-                              />
-                              <ProductionBackgroundMediaDeleteButton
-                                disabled={productionBackgroundUploadLocked || productionImageUploading}
-                                onClick={() => {
-                                  onClearProductionImage();
-                                  if (productionImageFileRef.current) {
-                                    productionImageFileRef.current.value = '';
-                                  }
-                                }}
-                              />
-                            </div>
-                          )}
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
 
@@ -1706,6 +1745,91 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                               })}
                             </ul>
                           ) : null}
+                        </section>
+                      ) : null}
+
+                      {salesManagementCatalog ? (
+                        <section className="mb-5 space-y-4">
+                          <div>
+                            <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                              How members claim
+                            </span>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (editingIssued) return;
+                                  setRequiresRedeemCode(false);
+                                }}
+                                disabled={editingIssued}
+                                className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                                  !requiresRedeemCode
+                                    ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                                    : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                                } disabled:cursor-not-allowed disabled:opacity-60`}
+                              >
+                                Open claim
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (editingIssued) return;
+                                  setRequiresRedeemCode(true);
+                                }}
+                                disabled={editingIssued}
+                                className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                                  requiresRedeemCode
+                                    ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                                    : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                                } disabled:cursor-not-allowed disabled:opacity-60`}
+                              >
+                                Redeem code
+                              </button>
+                            </div>
+                            <p className="mt-1 text-[11px] text-[#abadaf]">
+                              {requiresRedeemCode
+                                ? `Members enter a redeem code to claim. Codes are registered on-chain in batches of up to ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} (contract limit); register more from the catalog list as needed.`
+                                : 'Members can claim without entering a secret redeem code, within your issuance cap.'}
+                            </p>
+                          </div>
+                          <div>
+                            <label
+                              className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                              htmlFor="programs-production-sales-issue-total"
+                            >
+                              Total issuance
+                            </label>
+                            <input
+                              ref={issueTotalWheelRef}
+                              id="programs-production-sales-issue-total"
+                              type="number"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              min={1}
+                              max={CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX}
+                              value={issueTotal}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onKeyDownCapture={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              disabled={editingIssued}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/,/g, '');
+                                if (raw === '') {
+                                  setIssueTotal('');
+                                  return;
+                                }
+                                setIssueTotal(raw.split('.')[0].replace(/\D/g, ''));
+                              }}
+                              placeholder={String(CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT)}
+                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${numericNoSpinnerClass}`}
+                            />
+                            <p className="mt-1 text-[11px] text-[#abadaf]">
+                              Maximum redemptions for this catalog item (1–
+                              {CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX.toLocaleString()}). With Redeem code, only up
+                              to {CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} codes are registered per
+                              on-chain batch at issue; add more later from the catalog list.
+                            </p>
+                          </div>
                         </section>
                       ) : null}
 

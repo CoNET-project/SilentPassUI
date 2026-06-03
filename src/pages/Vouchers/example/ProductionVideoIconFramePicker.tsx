@@ -49,7 +49,7 @@ function filledFrameCount(slots: Array<ProductionVideoFrameThumbnail | null>): n
   return slots.filter((slot) => slot != null).length;
 }
 
-/** OG-style frame strip (YouTube hqdefault 480×360) — embed at bottom of Item icon section. */
+/** OG-style frame strip (YouTube hqdefault 480×360) — embed at bottom of Background media when video is set. */
 export function ProductionVideoIconFramePicker(props: ProductionVideoIconFramePickerProps) {
   const {
     videoSrc,

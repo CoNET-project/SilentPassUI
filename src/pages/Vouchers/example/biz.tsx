@@ -6044,16 +6044,19 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
         total: 0,
         method: 'B-Unit',
         ctreeAmount: 0,
-        usdcAmount: Number(tx.bServiceUSDC6 ?? '0') / 1_000_000,
+        usdcAmount:
+          Number(tx.finalRequestAmountUSDC6 ?? '0') > 0
+            ? Number(tx.finalRequestAmountUSDC6) / 1_000_000
+            : bUnits * 0.01,
         source: 'APP',
         beamioTag: null,
-        status: 'Completed',
+        status: 'Settled',
         hash: hashShort,
         terminal: display.title ?? 'B-Unit service fee',
         bUnits,
         originalPaymentHash: tx.originalPaymentHash,
-        topAdmin: tx.topAdmin ?? tx.raw.topAdmin,
-        subordinate: tx.subordinate ?? tx.raw.subordinate,
+        topAdmin: tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined,
+        subordinate: tx.subordinate && tx.subordinate !== ethers.ZeroAddress ? tx.subordinate : undefined,
         raw: tx.raw,
       }
     }

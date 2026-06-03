@@ -140,6 +140,8 @@ import {
   txDisplayRowLedgerTypeTitle,
   isCreateIssuedNftBuintLedgerRowType,
   isCreateIssuedNftBunitIndexerCategory,
+  resolveCreateIssuedNftBuintLedgerBeamioTag,
+  resolveCreateIssuedNftBuintOwnerAddressLower,
   TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE,
 } from '@/utils/indexerCatalogRedeemClaim';
 import { isYoutubeProductionVideoUrl, PRODUCTION_BACKGROUND_YOUTUBE_MIME, isProductionBackgroundYoutubeMedia, youtubeThumbnailUrlFromProductionUrl } from '@/utils/youtubeProductionVideo';
@@ -6123,7 +6125,7 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
         originalPaymentHash: tx.originalPaymentHash,
         topAdmin: tx.topAdmin && tx.topAdmin !== ethers.ZeroAddress ? tx.topAdmin : undefined,
         subordinate: tx.subordinate && tx.subordinate !== ethers.ZeroAddress ? tx.subordinate : undefined,
-        raw: tx.raw,
+        raw: { ...tx.raw, txCategory: tx.txCategory, displayJson: tx.displayJson, payer: tx.payer },
       }
     }
     const isTip =
@@ -8361,6 +8363,7 @@ type SmartReceiptLedgerAlignedPrimaryCardArgs = {
   isVaultTerminalSr: boolean;
   chargeTxNetValueColumnShowBreakdown: (t: TxDisplayRow) => boolean;
   chargeMetaRequestAmountApproxCad: (t: TxDisplayRow) => number;
+  resolveReportingBeamioTag: (addressLower: string) => string;
 };
 
 function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAlignedPrimaryCardArgs): React.ReactElement {
@@ -8377,6 +8380,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
     ledgerTypeTitleSr,
     ledgerCardStatusSr,
     isVaultTerminalSr,
+    resolveReportingBeamioTag,
     chargeTxNetValueColumnShowBreakdown,
     chargeMetaRequestAmountApproxCad,
   } = a;
@@ -8500,23 +8504,42 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
               </>
             ) : (
               <>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {tx.beamioTag ? (
-                    <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.beamioTag}</span>
-                  ) : (
-                    <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
-                  {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? (
-                    <Nfc size={14} className="text-slate-400" />
-                  ) : (
-                    <Smartphone size={14} className="text-emerald-800" />
-                  )}
-                  <span>
-                    {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? 'NFC' : 'App'} • {tx.terminal}
-                  </span>
-                </div>
+                {(() => {
+                  const ledgerMemberTag = resolveCreateIssuedNftBuintLedgerBeamioTag(
+                    tx,
+                    resolveReportingBeamioTag
+                  )
+                  const ownerLower = isCreateIssuedNftBuintLedgerRowType(tx.type)
+                    ? resolveCreateIssuedNftBuintOwnerAddressLower(tx.raw as Record<string, unknown>)
+                    : ''
+                  const subtitleTag = ledgerMemberTag || tx.beamioTag
+                  return (
+                    <>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {subtitleTag ? (
+                          <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{subtitleTag}</span>
+                        ) : ownerLower ? (
+                          <AddressCapsule
+                            address={ethers.getAddress(ownerLower)}
+                            className="bg-slate-100 border-slate-200 text-slate-700"
+                          />
+                        ) : (
+                          <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
+                        {inferMemberDirectoryUserTypeFromBeamioTag(subtitleTag) === 'nfc' ? (
+                          <Nfc size={14} className="text-slate-400" />
+                        ) : (
+                          <Smartphone size={14} className="text-emerald-800" />
+                        )}
+                        <span>
+                          {inferMemberDirectoryUserTypeFromBeamioTag(subtitleTag) === 'nfc' ? 'NFC' : 'App'} • {tx.terminal}
+                        </span>
+                      </div>
+                    </>
+                  )
+                })()}
               </>
             )}
           </div>
@@ -25995,22 +26018,48 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  </>
                                ) : (
                                  <>
-                                   <div className="flex items-center gap-2 flex-wrap">
-                                     {tx.beamioTag ? (
-                                       <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{tx.beamioTag}</span>
-                                     ) : (
-                                       <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
-                                     )}
-                                   </div>
-                                   <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
-                                    {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? (
-                                      <Nfc size={14} className="text-slate-400" />
-                                    ) : (
-                                      <Smartphone size={14} className="text-emerald-800" />
-                                    )}
-                                    <span>{inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'nfc' ? 'NFC' : 'App'} • {tx.terminal}</span>
-                                   </div>
-                                  {inferMemberDirectoryUserTypeFromBeamioTag(tx.beamioTag) === 'app' && tx.beamioTag && (
+                                   {(() => {
+                                     const ledgerMemberTag = resolveCreateIssuedNftBuintLedgerBeamioTag(
+                                       tx,
+                                       resolveReportingBeamioTagLower
+                                     )
+                                     const ownerLower = isCreateIssuedNftBuintLedgerRowType(tx.type)
+                                       ? resolveCreateIssuedNftBuintOwnerAddressLower(tx.raw as Record<string, unknown>)
+                                       : ''
+                                     const subtitleTag = ledgerMemberTag || tx.beamioTag
+                                     return (
+                                       <>
+                                         <div className="flex items-center gap-2 flex-wrap">
+                                           {subtitleTag ? (
+                                             <span className="font-semibold text-[15px] text-slate-900 whitespace-nowrap">{subtitleTag}</span>
+                                           ) : ownerLower ? (
+                                             <AddressCapsule
+                                               address={ethers.getAddress(ownerLower)}
+                                               className="bg-slate-100 border-slate-200 text-slate-700"
+                                             />
+                                           ) : (
+                                             <span className="font-medium text-[15px] text-slate-500 italic whitespace-nowrap">Anonymous</span>
+                                           )}
+                                         </div>
+                                         <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium whitespace-nowrap">
+                                           {inferMemberDirectoryUserTypeFromBeamioTag(subtitleTag) === 'nfc' ? (
+                                             <Nfc size={14} className="text-slate-400" />
+                                           ) : (
+                                             <Smartphone size={14} className="text-emerald-800" />
+                                           )}
+                                           <span>
+                                             {inferMemberDirectoryUserTypeFromBeamioTag(subtitleTag) === 'nfc' ? 'NFC' : 'App'} • {tx.terminal}
+                                           </span>
+                                         </div>
+                                       </>
+                                     )
+                                   })()}
+                                  {(() => {
+                                    const subtitleTag =
+                                      resolveCreateIssuedNftBuintLedgerBeamioTag(tx, resolveReportingBeamioTagLower) ||
+                                      tx.beamioTag
+                                    return inferMemberDirectoryUserTypeFromBeamioTag(subtitleTag) === 'app' && subtitleTag
+                                  })() && (
                                      <div className="hidden lg:group-hover:flex items-center gap-1 pt-0.5">
                                        <button type="button" className="rounded-md bg-[#1562f0]/20 p-1.5 text-blue-900 hover:bg-[#1562f0] hover:text-white transition-colors" title="Send Message">
                                          <MessageSquare size={14} />
@@ -26615,6 +26664,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          isVaultTerminalSr,
                          chargeTxNetValueColumnShowBreakdown,
                          chargeMetaRequestAmountApproxCad,
+                         resolveReportingBeamioTag: resolveReportingBeamioTagLower,
                        })}
                        <div className="space-y-4 border-b border-[#e5e9eb] px-8 py-8">
                          <p className="text-[10px] font-black uppercase tracking-widest text-[#595c5e]">Transaction breakdown</p>

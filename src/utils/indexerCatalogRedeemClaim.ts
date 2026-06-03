@@ -454,3 +454,34 @@ export function isCreateIssuedNftBuintLedgerRowType(
 ): type is CreateIssuedNftBunitTxDisplayType {
   return type === 'Create Coupon' || type === 'Create Catalogs';
 }
+
+/** Card owner EOA (B-Unit fee payer) on `createIssuedNft* :bunitService` indexer rows. */
+export function resolveCreateIssuedNftBuintOwnerAddressLower(raw: Record<string, unknown>): string {
+  try {
+    const payer = typeof raw.payer === 'string' && ethers.isAddress(raw.payer) ? ethers.getAddress(raw.payer).toLowerCase() : ''
+    if (payer) return payer
+    const dj = typeof raw.displayJson === 'string' ? raw.displayJson.trim() : ''
+    if (dj) {
+      const o = JSON.parse(dj) as { beneficiary?: unknown }
+      if (typeof o.beneficiary === 'string' && ethers.isAddress(o.beneficiary)) {
+        return ethers.getAddress(o.beneficiary).toLowerCase()
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+/** Ledger subtitle: program card owner @beamioTag (not Anonymous). */
+export function resolveCreateIssuedNftBuintLedgerBeamioTag(
+  tx: { type: string; beamioTag?: string | null; raw: Record<string, unknown> },
+  resolveTag: (addressLower: string) => string
+): string {
+  if (!isCreateIssuedNftBuintLedgerRowType(tx.type)) return tx.beamioTag?.trim() ? tx.beamioTag : ''
+  const lower = resolveCreateIssuedNftBuintOwnerAddressLower(tx.raw)
+  if (!lower) return tx.beamioTag?.trim() ? tx.beamioTag : ''
+  const tag = resolveTag(lower).trim()
+  if (tag) return tag.startsWith('@') ? tag : `@${tag.replace(/^@/, '')}`
+  return tx.beamioTag?.trim() ? tx.beamioTag : ''
+}

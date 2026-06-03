@@ -66,6 +66,7 @@ import contracts from '@/utils/contracts'
 import { formatAmount, formatAmountWithCurrencyProtocol, fiatPrefix, getDecimals } from '@/services/currency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
+import { shouldUpdateRecentActivityList } from '@/utils/recentActivityFeedState'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
 import {
@@ -337,6 +338,26 @@ function useStableRecentActivityTitle(txId: string, candidate: string): string {
 	}
 	return prev || next
 }
+
+/** 商户 icon URL 就绪后保持，避免 IPFS 加载中空窗与字母来回闪 */
+function useStableMerchantIconUrl(txId: string, candidate: string | undefined): string | undefined {
+	const ref = useRef<{ txId: string; url: string | undefined }>({ txId: '', url: undefined })
+	if (ref.current.txId !== txId) {
+		ref.current = { txId, url: candidate }
+		return candidate
+	}
+	if (candidate) {
+		ref.current.url = candidate
+		return candidate
+	}
+	return ref.current.url
+}
+
+/** Recent Activity 行左侧 icon 槽 — 固定 36px，避免 Lucide 尺寸差导致垂直跳动 */
+const RECENT_ACTIVITY_ROW_ICON_OUTER_CLASS =
+	'flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] shadow-sm'
+const RECENT_ACTIVITY_ROW_ICON_INNER_CLASS =
+	'flex h-4 w-4 items-center justify-center [&>svg]:h-4 [&>svg]:w-4'
 
 /** 通过地址获取对方 firstname+lastname 与 @beamioTag，用于 EOA Sent 展示；优先使用 beamioUsers 缓存 */
 function useCounterpartyProfile(address: string | undefined) {
@@ -1002,7 +1023,11 @@ const ActiveHistoryPannelNew = ({
 				nonLocalSettledRef.current = false
 			}
 			if (recentActivityNoAaItems.length > 0 || itemsCountRef.current === 0) {
-				setItems(recentActivityNoAaItems)
+				setItems((prev) =>
+					shouldUpdateRecentActivityList(prev, recentActivityNoAaItems)
+						? recentActivityNoAaItems
+						: prev,
+				)
 			}
 			if (!recentActivityNoAaLoading || recentActivityNoAaItems.length > 0) {
 				nonLocalSettledRef.current = true
@@ -1344,10 +1369,11 @@ const ActiveHistoryPannelNew = ({
 			registerCardAddresses([addr])
 			void fetchCardMetadata(addr)
 		}, [merchantChargeCardAddr, topupCardAddr, registerCardAddresses, fetchCardMetadata])
-		const merchantChargeIconUrl = useMemo(() => {
+		const merchantChargeIconUrlCandidate = useMemo(() => {
 			if (!isMerchantChargeLedgerTx || !merchantChargeCardAddr) return undefined
 			return resolveMyBrandCardIconUrl(peekMetadata(merchantChargeCardAddr))
 		}, [isMerchantChargeLedgerTx, merchantChargeCardAddr, cardMap, peekMetadata])
+		const merchantChargeIconUrl = useStableMerchantIconUrl(tx.id, merchantChargeIconUrlCandidate)
 		const merchantCardName = useMemo(() => {
 			if (!isMerchantChargeLedgerTx) return ''
 			const addrKey = merchantChargeCardAddr.toLowerCase()
@@ -1502,7 +1528,7 @@ const ActiveHistoryPannelNew = ({
 						setSelectedTx(tx)
 					}
 				}}
-				className="relative flex items-center justify-between py-2.5 px-3 bg-white dark:bg-slate-800/80 rounded-[15px] shadow-[0_2px_9px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-all duration-200 cursor-pointer border border-gray-100/50 dark:border-slate-700/50"
+				className="relative flex items-center justify-between py-2.5 px-3 bg-white dark:bg-slate-800/80 rounded-[15px] shadow-[0_2px_9px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-transform duration-200 cursor-pointer border border-gray-100/50 dark:border-slate-700/50"
 			>
 				<div className="flex items-center gap-3">
 					{isMerchantChargeLedgerTx ? (
@@ -1513,20 +1539,20 @@ const ActiveHistoryPannelNew = ({
 							letterClassName="text-sm font-bold text-[#1562f0] dark:text-[#6ba3ff]"
 						/>
 					) : (
-					<div
-						className={`w-9 h-9 rounded-[10px] flex items-center justify-center shadow-sm shrink-0 ${iconBg}`}
-					>
-						{tx.type === 'fuel_yield' ? (
-							<ArrowUpRight size={16} strokeWidth={2} />
-						) : isCardTopupLedgerTx ? (
-							<Plus size={17} strokeWidth={2.6} />
-						) : (isEoaReceived && tx.type !== 'request_fulfilled') ? (
-							<ArrowDownLeft size={16} strokeWidth={2} />
-						) : (isEoaSent || isAASent) ? (
-							<ArrowUpRight size={16} strokeWidth={2} />
-						) : (
-							iconForType(tx.type, 16, tx)
-						)}
+					<div className={`${RECENT_ACTIVITY_ROW_ICON_OUTER_CLASS} ${iconBg}`}>
+						<span className={RECENT_ACTIVITY_ROW_ICON_INNER_CLASS}>
+							{tx.type === 'fuel_yield' ? (
+								<ArrowUpRight size={16} strokeWidth={2} />
+							) : isCardTopupLedgerTx ? (
+								<Plus size={16} strokeWidth={2.5} />
+							) : isEoaReceived && tx.type !== 'request_fulfilled' ? (
+								<ArrowDownLeft size={16} strokeWidth={2} />
+							) : isEoaSent || isAASent ? (
+								<ArrowUpRight size={16} strokeWidth={2} />
+							) : (
+								iconForType(tx.type, 16, tx)
+							)}
+						</span>
 					</div>
 					)}
 					<div className="flex flex-col gap-0.5 min-w-0">

@@ -4,6 +4,29 @@
 import { ethers } from 'ethers'
 import { conetDepinProvider } from '@/utils/constants'
 import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
+import {
+	CATALOG_ISSUED_NFT_TOKEN_ID_MIN,
+	classifyIndexerIssuedNftRedeemProductKind,
+	isIndexerCardRedeemLedgerRow,
+	indexerRouteCardAddress,
+	indexerRouteMaxPositiveTokenId,
+	indexerRowNeedsIssuedNftRedeemDistributionEnrich,
+	indexerRowNeedsRouteForIssuedNftClaimClassify,
+	indexerTxIsCardRedeemLedgerCategory,
+	isGenericIssuedNftClaimActivityTitle,
+	isIndexerConsumerIssuedNftClaimType,
+	isIndexerIssuedNftCardRedeemTx,
+	isIndexerRedeemLedgerPlaceholderTitle,
+	mapIndexerIssuedNftConsumerClaimActivity,
+	mergeIssuedNftRedeemDistributionIntoDisplayJson,
+	parseIndexerCardRedeemDisplayJson,
+	fetchBeamioSeriesSharedMetadata,
+	issuedNftClaimNeedsSeriesTitleResolve,
+	issuedNftClaimRouteIdentity,
+	readSeriesMetadataDisplayTitle,
+	seriesMetadataProductKind,
+	type IndexerIssuedNftRedeemProductKind,
+} from '@/utils/indexerCatalogRedeemClaim'
 import contracts from '@/utils/contracts'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9'
@@ -85,6 +108,24 @@ const RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER = new Set(
 export function isRecentActivityCardTopupCategory(txCategory: string): boolean {
 	const cat = String(txCategory ?? '').toLowerCase()
 	return cat !== '' && RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER.has(cat)
+}
+
+/** Claim coupon/catalog row — includes paged `cardRedeem` before enrich adds `type` + metadata title. */
+export function isRecentActivityIssuedNftClaimTxView(tx: TxView): boolean {
+	if (tx.type === 'claim_coupon' || tx.type === 'claim_catalog') return true
+	const raw = tx.rawTransaction
+	if (!raw) return false
+	return (
+		isIndexerIssuedNftCardRedeemTx({
+			txCategory: raw.txCategory,
+			displayJson: raw.displayJson,
+			route: raw.route,
+		}) ||
+		isIndexerCardRedeemLedgerRow({
+			txCategory: raw.txCategory,
+			displayJson: raw.displayJson,
+		})
+	)
 }
 
 export type RecentActivityTopupDisplay = {
@@ -488,6 +529,165 @@ export async function enrichMerchantChargeItemsWithIndexerRoutes(items: TxView[]
 	})
 }
 
+function mergeIssuedNftClaimDisplayJson(
+	displayJson: string,
+	seriesMeta: Record<string, unknown>,
+	product: IndexerIssuedNftRedeemProductKind
+): string {
+	const globalCategory =
+		product === 'coupon'
+			? 'Coupon'
+			: String(
+					typeof seriesMeta.category === 'string' && seriesMeta.category.trim()
+						? seriesMeta.category.trim()
+						: 'Service'
+				)
+	const couponId =
+		product === 'coupon' && typeof seriesMeta.couponId === 'string' && seriesMeta.couponId.trim()
+			? seriesMeta.couponId.trim()
+			: product === 'coupon' && typeof seriesMeta.id === 'string' && seriesMeta.id.trim()
+				? seriesMeta.id.trim()
+				: undefined
+	const productionId =
+		product === 'catalog' &&
+		typeof seriesMeta.productionId === 'string' &&
+		seriesMeta.productionId.trim()
+			? seriesMeta.productionId.trim()
+			: product === 'catalog' && typeof seriesMeta.id === 'string' && seriesMeta.id.trim()
+				? seriesMeta.id.trim()
+				: undefined
+	const seriesTitle = readSeriesMetadataDisplayTitle(seriesMeta, product)
+	let next = mergeIssuedNftRedeemDistributionIntoDisplayJson(displayJson, {
+		distributionKind: product,
+		globalCategory,
+		...(couponId ? { couponId } : {}),
+		...(productionId ? { productionId } : {}),
+	})
+	try {
+		const j = JSON.parse(next || '{}') as Record<string, unknown>
+		next = JSON.stringify({ ...j, title: seriesTitle })
+	} catch {
+		/* keep merged distribution */
+	}
+	return next
+}
+
+function reclassifyIssuedNftClaimTxView(
+	tx: TxView,
+	raw: RawTxRecord,
+	seriesMetadata?: Record<string, unknown> | null
+): TxView {
+	const routeId = issuedNftClaimRouteIdentity(raw.route)
+	let displayJson = raw.displayJson ?? ''
+	if (seriesMetadata) {
+		const product = seriesMetadataProductKind(seriesMetadata)
+		if (product) {
+			displayJson = mergeIssuedNftClaimDisplayJson(displayJson, seriesMetadata, product)
+		}
+	}
+	const mergedRaw: RawTxRecord = { ...raw, displayJson }
+	const claim = mapIndexerIssuedNftConsumerClaimActivity({
+		txCategory: mergedRaw.txCategory,
+		displayJson: mergedRaw.displayJson,
+		route: mergedRaw.route,
+		payer: mergedRaw.payer,
+		payee: mergedRaw.payee,
+		subordinate: mergedRaw.subordinate,
+		topAdmin: mergedRaw.topAdmin,
+		seriesMetadata,
+	})
+	const cardAddr = routeId.cardAddress || tx.merchantCardAddress || ''
+	if (claim) {
+		return {
+			...tx,
+			type: claim.type,
+			title: claim.title,
+			...(cardAddr ? { merchantCardAddress: cardAddr } : {}),
+			...(routeId.tokenId ? { issuedNftClaimTokenId: routeId.tokenId } : {}),
+			rawTransaction: mergedRaw,
+		}
+	}
+	if (seriesMetadata) {
+		const product = seriesMetadataProductKind(seriesMetadata)
+		if (product) {
+			const title = readSeriesMetadataDisplayTitle(seriesMetadata, product)
+			return {
+				...tx,
+				type: product === 'catalog' ? 'claim_catalog' : 'claim_coupon',
+				title,
+				...(cardAddr ? { merchantCardAddress: cardAddr } : {}),
+				...(routeId.tokenId ? { issuedNftClaimTokenId: routeId.tokenId } : {}),
+				rawTransaction: mergedRaw,
+			}
+		}
+	}
+	return { ...tx, rawTransaction: mergedRaw }
+}
+
+/** Paged indexer rows omit route[]; issued-NFT cardRedeem must not stay as Top-up: Membership. */
+export async function enrichIssuedNftClaimItemsWithIndexerRoutes(items: TxView[]): Promise<TxView[]> {
+	const need = items.filter((tx) => {
+		const raw = tx.rawTransaction
+		if (raw) {
+			if (!isIndexerCardRedeemLedgerRow({ txCategory: raw.txCategory, displayJson: raw.displayJson })) {
+				return false
+			}
+			return issuedNftClaimNeedsSeriesTitleResolve(tx.title)
+		}
+		return (
+			Boolean(tx.merchantCardAddress && tx.issuedNftClaimTokenId) &&
+			issuedNftClaimNeedsSeriesTitleResolve(tx.title)
+		)
+	})
+	if (need.length === 0) return items
+
+	const enrichmentByTxId = new Map<string, MerchantChargeFullEnrichment>()
+	const seriesMetaByTxId = new Map<string, Record<string, unknown> | null>()
+
+	await Promise.all(
+		need.map(async (tx) => {
+			const raw = tx.rawTransaction
+			let card = tx.merchantCardAddress ?? ''
+			let tokenId = tx.issuedNftClaimTokenId ?? ''
+			if (raw) {
+				const enrichment = await fetchMerchantChargeFullEnrichmentByTxId(tx.id)
+				if (enrichment) enrichmentByTxId.set(tx.id, enrichment)
+				const mergedRoute = enrichment?.route?.length ? enrichment.route : raw.route
+				const routeId = issuedNftClaimRouteIdentity(mergedRoute)
+				card = routeId.cardAddress || card
+				tokenId = routeId.tokenId || tokenId
+			}
+			if (card && tokenId) {
+				const meta = await fetchBeamioSeriesSharedMetadata(card, tokenId)
+				if (meta) seriesMetaByTxId.set(tx.id, meta)
+			}
+		})
+	)
+
+	return items.map((tx) => {
+		if (!need.some((n) => n.id === tx.id)) return tx
+		const enrichment = enrichmentByTxId.get(tx.id)
+		const seriesMeta = seriesMetaByTxId.get(tx.id)
+		const raw = tx.rawTransaction
+		if (!raw) {
+			if (!seriesMeta) return tx
+			const product = seriesMetadataProductKind(seriesMeta)
+			if (!product) return tx
+			return {
+				...tx,
+				type: product === 'catalog' ? 'claim_catalog' : 'claim_coupon',
+				title: readSeriesMetadataDisplayTitle(seriesMeta, product),
+			}
+		}
+		const mergedRaw: RawTxRecord = {
+			...raw,
+			...(enrichment?.route?.length ? { route: enrichment.route } : {}),
+			...(enrichment?.subordinate ? { subordinate: enrichment.subordinate } : {}),
+		}
+		return reclassifyIssuedNftClaimTxView(tx, mergedRaw, seriesMeta ?? null)
+	})
+}
+
 export function merchantChargeListCurrencyCode(raw: RawTxRecord, txCurrencyCode: string): string {
 	const parsed = parseMerchantChargeDisplayJson(raw.displayJson ?? '')
 	const fromBreakdown = parsed?.chargeBreakdown?.requestCurrency?.trim().toUpperCase()
@@ -659,12 +859,16 @@ export type TxDisplayType =
 	| 'request_create'
 	| 'request_expired'
 	| 'topup'
+	| 'claim_coupon'
+	| 'claim_catalog'
 	| 'cardmint'
 	| 'internal_transfer'
 	| 'voucher_burn'
 	| 'request_cancel'
 	| 'fuel_yield'
 	| 'unknown'
+
+const BEAMIO_APP_METADATA_ORIGIN = 'https://beamio.app'
 
 function txCategoryToType(txCategory: string): TxDisplayType {
 	const cat = txCategory.toLowerCase()
@@ -831,6 +1035,8 @@ export interface TxView {
 	merchantPayeeAddress?: string
 	/** Merchant program card from route / displayJson — persisted for metadata prefetch */
 	merchantCardAddress?: string
+	/** Issued-NFT claim route tokenId — persisted for metadata title when rawTransaction is stripped */
+	issuedNftClaimTokenId?: string
 	/** Split top-up display: actual customer payment leg plus Recharge Bonus leg merged into one row. */
 	topupActualPaymentFiat?: number
 	topupBonusFiat?: number
@@ -889,21 +1095,53 @@ function appendIndexerPage(
 		if (seen.has(id)) continue
 		seen.add(id)
 
-		const type = txCategoryToType(tx.txCategory ?? '')
+		const rawRecord = tx as RawTxRecord
+		const claimArgs = {
+			txCategory: tx.txCategory,
+			displayJson: tx.displayJson,
+			route: rawRecord.route,
+			payer: tx.payer,
+			payee: tx.payee,
+			subordinate: (tx as { subordinate?: string }).subordinate,
+			topAdmin: (tx as { topAdmin?: string }).topAdmin,
+		}
+		const issuedNftClaim = mapIndexerIssuedNftConsumerClaimActivity(claimArgs)
+		const isIssuedNftRedeemRow = isIndexerIssuedNftCardRedeemTx(claimArgs)
+
+		const type = issuedNftClaim?.type ?? txCategoryToType(tx.txCategory ?? '')
 		const amPayee = normalized.some((a) => a.toLowerCase() === (tx.payee ?? '').toLowerCase())
 		let { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
+		if (issuedNftClaim) {
+			title = issuedNftClaim.title
+		}
 		if (String(tx.txCategory ?? '') === TX_BUINT_USDC && amPayee) {
 			title = 'Fuel Yield (1:100)'
 			handle = 'USDC Top-up'
 		}
 		const txCategoryLower = String(tx.txCategory ?? '').toLowerCase()
-		const isCardTopupLedgerTx = isRecentActivityCardTopupCategory(txCategoryLower)
+		const isCardRedeemLedgerRow = isIndexerCardRedeemLedgerRow({
+			txCategory: tx.txCategory,
+			displayJson: tx.displayJson,
+		})
+		const isCardTopupLedgerTx =
+			!issuedNftClaim &&
+			!isCardRedeemLedgerRow &&
+			!isIssuedNftRedeemRow &&
+			isRecentActivityCardTopupCategory(txCategoryLower)
 		const topupCardAddress = isCardTopupLedgerTx
 			? parseDisplayJsonCardIdentity(tx.displayJson ?? '').cardAddress
 			: ''
-		if (isCardTopupLedgerTx) {
+		if ((isIssuedNftRedeemRow || isCardRedeemLedgerRow) && !issuedNftClaim) {
+			const product = classifyIndexerIssuedNftRedeemProductKind({ displayJson: tx.displayJson })
+			title = readSeriesMetadataDisplayTitle(null, product ?? 'coupon')
+		} else if (isCardTopupLedgerTx) {
 			title = recentActivityTopupListTitle(tx.displayJson ?? '', title)
 		}
+		const redeemRouteId =
+			issuedNftClaim || isIssuedNftRedeemRow || isCardRedeemLedgerRow
+				? issuedNftClaimRouteIdentity(rawRecord.route)
+				: { cardAddress: '', tokenId: '' }
+		const claimCardAddress = redeemRouteId.cardAddress
 		const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 		const metaRaw = (tx as RawTxRecord).meta
 		const req =
@@ -940,7 +1178,6 @@ function appendIndexerPage(
 		const counterparty = amPayee ? (tx.payer ?? '') : (tx.payee ?? '')
 		const payerAddr = (tx.payer ?? '').toLowerCase()
 		const payeeAddr = (tx.payee ?? '').toLowerCase()
-		const rawRecord = tx as RawTxRecord
 		const merchantPayeeAddress = resolveIndexerPayeeAddress(rawRecord)
 		const isMerchantCharge = isRecentActivityMerchantChargeTx(rawRecord)
 		const merchantCardAddress = isMerchantCharge ? merchantChargeCardAddressFromRaw(rawRecord) : ''
@@ -981,7 +1218,10 @@ function appendIndexerPage(
 					}
 				: topupCardAddress
 					? { merchantCardAddress: topupCardAddress }
-					: {}),
+					: claimCardAddress
+						? { merchantCardAddress: claimCardAddress }
+						: {}),
+			...(redeemRouteId.tokenId ? { issuedNftClaimTokenId: redeemRouteId.tokenId } : {}),
 			rawTransaction: rawRecord,
 			card: card?.image ? card : undefined,
 		})
@@ -1156,7 +1396,9 @@ export async function fetchMergedRecentActivityFromIndexer(
 		const chargeTipMerged = mergeRecentActivityTipRowsIntoCharges(topupMerged)
 		chargeTipMerged.sort((a, b) => b.timestampMs - a.timestampMs)
 		const sliced = chargeTipMerged.slice(0, maxReturn)
-		const enriched = await enrichMerchantChargeItemsWithIndexerRoutes(sliced)
+		const enriched = await enrichIssuedNftClaimItemsWithIndexerRoutes(
+			await enrichMerchantChargeItemsWithIndexerRoutes(sliced)
+		)
 		return { items: enriched, error: null, trusted: true }
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : String(e)

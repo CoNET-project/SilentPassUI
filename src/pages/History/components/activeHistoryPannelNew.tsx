@@ -32,12 +32,14 @@ import {
 	Zap,
 	Plus,
 	Gift,
+	Package,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import {
 	fetchMergedRecentActivityFromIndexer,
 	resolveTxViewBaseScanTxHash,
 	isRecentActivityCardTopupCategory,
+	isRecentActivityIssuedNftClaimTxView,
 	isMerchantChargeTxView,
 	merchantChargeCardAddressFromTxView,
 	merchantChargeCardAddressFromRaw,
@@ -57,6 +59,8 @@ import {
 	type RouteItemRecord,
 	type TxDisplayType,
 } from '@/pages/History/recentActivityIndexerMerge'
+import { indexerRouteCardAddress } from '@/utils/indexerCatalogRedeemClaim'
+import { useIssuedNftClaimSeriesTitle } from '@/hooks/useIssuedNftClaimSeriesTitle'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
 import { pickMerchantChargeListTitle, pickMerchantTopupListTitle, pickMerchantProgramDisplayName } from '@/utils/merchantCardDatabase'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -321,6 +325,31 @@ function isProvisionalRecentActivityTitle(text: string): boolean {
 	return false
 }
 
+function isLegacyMislabeledTopupTitle(text: string): boolean {
+	return /^top-up:\s*/i.test(String(text ?? '').trim())
+}
+
+function isLegacyTopupMembershipMislabel(text: string): boolean {
+	return /^top-up:\s*membership$/i.test(String(text ?? '').trim())
+}
+
+function isLegacyIndexerRedeemPlaceholderTitle(text: string): boolean {
+	return /^redeem\s+(?:new|upgrade(?:\s+new)?|top\s*-?\s*up)\s+card$/i.test(String(text ?? '').trim())
+}
+
+function isGenericIssuedNftClaimFallbackTitle(text: string): boolean {
+	return /^claim\s+(?:coupon|catalog)s?$/i.test(String(text ?? '').trim())
+}
+
+function isIssuedNftClaimActivityTitle(text: string): boolean {
+	const t = String(text ?? '').trim()
+	if (!t) return false
+	if (isLegacyIndexerRedeemPlaceholderTitle(t)) return false
+	if (isLegacyMislabeledTopupTitle(t)) return false
+	if (isGenericIssuedNftClaimFallbackTitle(t)) return false
+	return true
+}
+
 function useStableRecentActivityTitle(txId: string, candidate: string): string {
 	const ref = useRef<{ txId: string; title: string }>({ txId: '', title: '' })
 	if (ref.current.txId !== txId) {
@@ -328,10 +357,20 @@ function useStableRecentActivityTitle(txId: string, candidate: string): string {
 		return candidate
 	}
 	const prev = ref.current.title
+	const next = candidate
+	if (
+		(isLegacyMislabeledTopupTitle(prev) ||
+			isLegacyTopupMembershipMislabel(prev) ||
+			isLegacyIndexerRedeemPlaceholderTitle(prev) ||
+			isGenericIssuedNftClaimFallbackTitle(prev)) &&
+		isIssuedNftClaimActivityTitle(next)
+	) {
+		ref.current.title = next
+		return next
+	}
 	if (!isProvisionalRecentActivityTitle(prev)) {
 		return prev
 	}
-	const next = candidate
 	if (!isProvisionalRecentActivityTitle(next) || next.length > prev.length) {
 		ref.current.title = next
 		return next
@@ -607,6 +646,7 @@ const ActiveHistoryPannelNew = ({
 	const selectedTxCategoryLower = selectedTx
 		? String((selectedTx.rawTransaction as RawTxRecord | undefined)?.txCategory ?? '').toLowerCase()
 		: ''
+	const selectedIsIssuedNftClaimKind = selectedTx ? isRecentActivityIssuedNftClaimTxView(selectedTx) : false
 	useEffect(() => {
 		if (!selectedTx) return
 		if (isMerchantChargeTxView(selectedTx)) {
@@ -617,15 +657,30 @@ const ActiveHistoryPannelNew = ({
 			}
 			return
 		}
-		if (isRecentActivityCardTopupCategory(selectedTxCategoryLower)) {
+		if (selectedIsIssuedNftClaimKind) {
+			const raw = selectedTx.rawTransaction as RawTxRecord | undefined
+			const addr =
+				selectedTx.merchantCardAddress ?? indexerRouteCardAddress(raw?.route) ?? ''
+			if (addr) {
+				registerCardAddresses([addr])
+				void fetchCardMetadata(addr)
+			}
+		} else if (isRecentActivityCardTopupCategory(selectedTxCategoryLower)) {
 			const addr = topupCardAddressFromTxView(selectedTx)
 			if (addr) {
 				registerCardAddresses([addr])
 				void fetchCardMetadata(addr)
 			}
 		}
-	}, [selectedTx, selectedTxCategoryLower, registerCardAddresses, fetchCardMetadata])
-	const selectedIsCardTopupKind = isRecentActivityCardTopupCategory(selectedTxCategoryLower)
+	}, [
+		selectedTx,
+		selectedIsIssuedNftClaimKind,
+		selectedTxCategoryLower,
+		registerCardAddresses,
+		fetchCardMetadata,
+	])
+	const selectedIsCardTopupKind =
+		!selectedIsIssuedNftClaimKind && isRecentActivityCardTopupCategory(selectedTxCategoryLower)
 	const selectedIsMerchantChargeKind = selectedTx ? isMerchantChargeTxView(selectedTx) : false
 	const selectedIsProgramCardLedgerKind = selectedIsCardTopupKind || selectedIsMerchantChargeKind
 	const selectedChargeRaw = selectedTx?.rawTransaction as RawTxRecord | undefined
@@ -1222,6 +1277,10 @@ const ActiveHistoryPannelNew = ({
 				return <QrCode size={size} strokeWidth={2} />
 			case 'request_expired':
 				return <XCircle size={size} strokeWidth={2} />
+			case 'claim_coupon':
+				return <Gift size={size} strokeWidth={2} />
+			case 'claim_catalog':
+				return <Package size={size} strokeWidth={2} />
 			case 'topup':
 			case 'cardmint':
 				return <ArrowRightLeft size={size === 22 ? 20 : size} strokeWidth={2} />
@@ -1251,6 +1310,10 @@ const ActiveHistoryPannelNew = ({
 				return 'bg-[#FF9500]/10 text-[#FF9500]'
 			case 'request_expired':
 				return 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-400'
+			case 'claim_coupon':
+				return 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
+			case 'claim_catalog':
+				return 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300'
 			case 'topup':
 			case 'cardmint':
 			case 'internal_transfer':
@@ -1341,7 +1404,10 @@ const ActiveHistoryPannelNew = ({
 			: ''
 		const counterpartyLabel = fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
 		const rowTxCategory = String(rawTx?.txCategory ?? '').toLowerCase()
-		const isCardTopupLedgerTx = isRecentActivityCardTopupCategory(rowTxCategory)
+		const isIssuedNftClaimTx = isRecentActivityIssuedNftClaimTxView(tx)
+		const resolvedClaimSeriesTitle = useIssuedNftClaimSeriesTitle(tx, isIssuedNftClaimTx)
+		const isCardTopupLedgerTx =
+			!isIssuedNftClaimTx && isRecentActivityCardTopupCategory(rowTxCategory)
 		const isMerchantChargeLedgerTx = isMerchantChargeTxView(tx)
 		const merchantChargeParsed = useMemo(
 			() =>
@@ -1363,12 +1429,32 @@ const ActiveHistoryPannelNew = ({
 			() => (isCardTopupLedgerTx ? topupCardAddressFromTxView(tx) : ''),
 			[isCardTopupLedgerTx, tx.id, tx.merchantCardAddress, rawTx?.displayJson],
 		)
+		const claimCardAddr = useMemo(() => {
+			if (!isIssuedNftClaimTx) return ''
+			return tx.merchantCardAddress ?? indexerRouteCardAddress(rawTx?.route) ?? ''
+		}, [isIssuedNftClaimTx, tx.merchantCardAddress, rawTx?.route])
 		useEffect(() => {
-			const addr = merchantChargeCardAddr || topupCardAddr
+			const addr = merchantChargeCardAddr || topupCardAddr || claimCardAddr
 			if (!addr) return
 			registerCardAddresses([addr])
 			void fetchCardMetadata(addr)
-		}, [merchantChargeCardAddr, topupCardAddr, registerCardAddresses, fetchCardMetadata])
+		}, [merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, fetchCardMetadata])
+		const claimMerchantName = useMemo(() => {
+			if (!isIssuedNftClaimTx || !claimCardAddr) return ''
+			const addrKey = claimCardAddr.toLowerCase()
+			return pickMerchantProgramDisplayName({
+				displayNameFromDb: resolveDisplayName(claimCardAddr),
+				directoryName: recentActivityCardNameDirectory.get(addrKey),
+				displayJsonCardName: '',
+			})
+		}, [
+			isIssuedNftClaimTx,
+			claimCardAddr,
+			tx.title,
+			resolveDisplayName,
+			cardMap,
+			recentActivityCardNameDirectory,
+		])
 		const merchantChargeIconUrlCandidate = useMemo(() => {
 			if (!isMerchantChargeLedgerTx || !merchantChargeCardAddr) return undefined
 			return resolveMyBrandCardIconUrl(peekMetadata(merchantChargeCardAddr))
@@ -1430,7 +1516,9 @@ const ActiveHistoryPannelNew = ({
 		const paidToAA = payeeIsOther && !!beamioTag
 		// 无 originalPaymentHash 且为付款方时：Title = "Send to [beamio first lastname]"，subtitle = beamioTag
 		const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
-		const rawTitleText = isMerchantChargeLedgerTx
+		const rawTitleText = isIssuedNftClaimTx
+			? resolvedClaimSeriesTitle ?? tx.title
+			: isMerchantChargeLedgerTx
 			? merchantCardName || tx.title || 'Merchant Payment'
 			: isCardTopupLedgerTx
 			? topupListTitle || tx.title || 'Top-up'
@@ -1456,7 +1544,9 @@ const ActiveHistoryPannelNew = ({
 										? internalTitle
 										: tx.title
 		const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
-		const subtitleText = isMerchantChargeLedgerTx
+		const subtitleText = isIssuedNftClaimTx
+			? `${claimMerchantName || 'Claimed'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+			: isMerchantChargeLedgerTx
 			? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 			: isCardTopupLedgerTx
 			? `${recentActivityTopupPaymentLegLabel(rowTxCategory, topupDisplayJson)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
@@ -1480,7 +1570,11 @@ const ActiveHistoryPannelNew = ({
 									? (fullName ? (beamioTag ?? '') : '')
 									: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
 
-		const iconBg = isMerchantChargeLedgerTx
+		const iconBg = isIssuedNftClaimTx
+			? tx.type === 'claim_catalog'
+				? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300'
+				: 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
+			: isMerchantChargeLedgerTx
 			? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
 			: isCardTopupLedgerTx
 			? 'bg-[#34C759]/10 text-[#34C759] dark:bg-[#34C759]/20 dark:text-[#5EDB7B]'
@@ -1503,7 +1597,7 @@ const ActiveHistoryPannelNew = ({
 			? (isAddToExpressPay ? { amt: Math.abs(tx.amountFiat), green: true } : { amt: -Math.abs(tx.amountFiat), green: false })
 			: null
 		// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色。Vouchers 下则反转：EOA→AA 为 + 绿色
-		const amountIsGreen = isCardTopupLedgerTx
+		const amountIsGreen = isIssuedNftClaimTx || isCardTopupLedgerTx
 			? true
 			: tx.type === 'fuel_yield'
 			? false
@@ -1543,6 +1637,12 @@ const ActiveHistoryPannelNew = ({
 						<span className={RECENT_ACTIVITY_ROW_ICON_INNER_CLASS}>
 							{tx.type === 'fuel_yield' ? (
 								<ArrowUpRight size={16} strokeWidth={2} />
+							) : isIssuedNftClaimTx ? (
+								tx.type === 'claim_catalog' ? (
+									<Package size={16} strokeWidth={2} />
+								) : (
+									<Gift size={16} strokeWidth={2} />
+								)
 							) : isCardTopupLedgerTx ? (
 								<Plus size={16} strokeWidth={2.5} />
 							) : isEoaReceived && tx.type !== 'request_fulfilled' ? (

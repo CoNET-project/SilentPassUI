@@ -723,6 +723,8 @@ export type IssuedNftClaimWalletApiRow = {
 	wallet: string
 	holder: string
 	claimedAt: string
+	/** Latest on-chain burn (redeem/consume) timestamp; empty if not burned. */
+	burnedAt?: string
 	txHash: string
 	blockNumber?: number
 }

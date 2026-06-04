@@ -1530,13 +1530,22 @@ function memberDirectoryUserTypeCacheKey(eoaLower: string, viewerNormLower: stri
   return `eoa:${eoaLower}:biz:member-user-type-db:v1:${viewerNormLower}`
 }
 
-/** Ledger Customer & Source + Members directory: NFC when payer/member handle matches `verra_<digits>…`. */
-const LEDGER_NFC_BEAMIO_TAG_RE = /^verra_\d+/
+/** Legacy NFC auto-tags: `verra_<n>`. */
+const LEDGER_NFC_LEGACY_VERRA_BEAMIO_TAG_RE = /^verra_\d+/i
+/** Current NFC auto-tags: `beamio_nfc_<n>`. */
+const LEDGER_NFC_BEAMIO_NFC_BEAMIO_TAG_RE = /^beamio_nfc_\d+/i
+
+/** Ledger / Members directory: treat legacy `verra_*` and new `beamio_nfc_*` handles as NFC (not App). */
+function isLedgerNfcBeamioTagHandle(handle: string): boolean {
+  const h = handle.trim()
+  if (!h) return false
+  return LEDGER_NFC_LEGACY_VERRA_BEAMIO_TAG_RE.test(h) || LEDGER_NFC_BEAMIO_NFC_BEAMIO_TAG_RE.test(h)
+}
 
 function inferMemberDirectoryUserTypeFromBeamioTag(beamioTag: string | null | undefined): MemberDirectoryUserType {
   const handle = (beamioTag ?? '').replace(/^@/, '').trim()
   if (!handle) return 'unknown'
-  if (LEDGER_NFC_BEAMIO_TAG_RE.test(handle)) return 'nfc'
+  if (isLedgerNfcBeamioTagHandle(handle)) return 'nfc'
   return 'app'
 }
 
@@ -8391,7 +8400,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
   } = a;
   const baseScanTxHash = resolveTxDisplayRowBaseScanTxHash(tx);
   const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
-  const useNfcSubtitle = LEDGER_NFC_BEAMIO_TAG_RE.test(payerHandle);
+  const useNfcSubtitle = isLedgerNfcBeamioTagHandle(payerHandle);
   const tierPres =
     tierCap != null && tierCap.name ? infraTierCapsulePresentation(tierCap.backgroundColor) : null;
 
@@ -25759,7 +25768,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             const payerLowerM = payerAddrM.toLowerCase();
                             const payerTagM = payerLowerM ? resolveReportingBeamioTagLower(payerLowerM) : '';
                             const payerHandleM = payerTagM ? payerTagM.replace(/^@/, '') : '';
-                            const useNfcM = isCharge && LEDGER_NFC_BEAMIO_TAG_RE.test(payerHandleM);
+                            const useNfcM = isCharge && isLedgerNfcBeamioTagHandle(payerHandleM);
                             const tsM = txDisplayRowTimestampSec(tx);
                             const timeStrM =
                               (tx.time && tx.time.trim()) ||
@@ -26058,8 +26067,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                        : undefined;
                                    const tierPres =
                                      tierCap != null && tierCap.name ? infraTierCapsulePresentation(tierCap.backgroundColor) : null;
-                                   /** Charge / Top-Up / Tip: NFC when payer tag matches `LEDGER_NFC_BEAMIO_TAG_RE` (`/^verra_\\d+/`). */
-                                   const useNfcSubtitle = LEDGER_NFC_BEAMIO_TAG_RE.test(payerHandle)
+                                   /** Charge / Top-Up / Tip: NFC when payer tag is legacy `verra_*` or `beamio_nfc_*`. */
+                                   const useNfcSubtitle = isLedgerNfcBeamioTagHandle(payerHandle)
                                    return (
                                      <>
                                        <div className="flex items-center gap-2 flex-wrap min-w-0">

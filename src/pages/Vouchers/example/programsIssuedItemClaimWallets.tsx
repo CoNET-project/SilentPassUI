@@ -1,50 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { IpfsImg } from '@/components/IpfsImg';
+import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
 import type { IssuedNftClaimWalletApiRow } from '@/services/BeamioCard';
 
 const bizFocusRingClass =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
-
-function fmtAddr(addr: string): string {
-  if (!addr || addr.length < 10) return addr || '—';
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-function ClaimWalletAddressCapsule({
-  address,
-  className = '',
-}: {
-  address: string;
-  className?: string;
-}) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(async () => {
-    if (!address || address.length < 10) return;
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* ignore */
-    }
-  }, [address]);
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold transition-colors sm:text-[11px] ${className} ${bizFocusRingClass}`}
-      title="Copy wallet address"
-      aria-label={`Copy wallet address ${address}`}
-    >
-      <span className="truncate">{fmtAddr(address)}</span>
-      {copied ? (
-        <Check className="h-3 w-3 shrink-0 text-emerald-500" strokeWidth={2.5} aria-hidden />
-      ) : (
-        <Copy className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2} aria-hidden />
-      )}
-    </button>
-  );
-}
 
 function formatClaimWalletDate(iso: string | undefined): string {
   if (!iso?.trim()) return '—';
@@ -57,6 +18,57 @@ function formatClaimWalletDate(iso: string | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function displayNameFromCapsule(item: {
+  first_name?: string;
+  last_name?: string;
+  firstName?: string;
+  lastName?: string;
+  accountName?: string;
+  username?: string;
+}): string {
+  const first = (item.first_name ?? item.firstName ?? '').trim();
+  let last = (item.last_name ?? item.lastName ?? '').trim();
+  if (last.includes('\r\n')) last = last.split('\r\n')[0]?.trim() ?? '';
+  if (last.startsWith('{')) last = '';
+  const fullName = [first, last].filter(Boolean).join(' ').trim();
+  const tag = (item.accountName ?? item.username ?? '').trim();
+  return fullName || tag || '';
+}
+
+function ClaimWalletBeamioCapsule({
+  wallet,
+  className = '',
+}: {
+  wallet: string;
+  className?: string;
+}) {
+  const { toCapsuleItem, avatarImgUrl, resolveTag } = useBeamioTagDatabase();
+  const item = toCapsuleItem(wallet);
+  const tag = item ? (item.accountName ?? item.username) : undefined;
+  const beamioTag = tag ? `@${tag.replace(/^@+/, '')}` : resolveTag(wallet) || '@Beamio';
+  const name = item ? displayNameFromCapsule(item) : '';
+
+  return (
+    <div className={`inline-flex max-w-full min-w-0 items-center gap-2 ${className}`}>
+      <IpfsImg
+        src={item?.image ? item.image : avatarImgUrl(tag, wallet)}
+        alt={beamioTag}
+        className="h-8 w-8 shrink-0 rounded-full border border-[#abadaf]/40 object-cover"
+      />
+      <div className="flex min-w-0 flex-col items-start">
+        {name ? (
+          <span className="max-w-full truncate text-[12px] font-semibold leading-tight text-[#2c2f31]">
+            {name}
+          </span>
+        ) : null}
+        <span className="max-w-full truncate text-[11px] font-medium leading-tight text-[#0051d1]">
+          {beamioTag.startsWith('@') ? beamioTag : `@${beamioTag}`}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export type ProgramsIssuedItemClaimWalletsTheme = 'programs' | 'catalog';
@@ -80,8 +92,17 @@ export type ProgramsIssuedItemClaimWalletsSectionProps = {
 
 export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemClaimWalletsSectionProps) {
   const { theme, mintedCount, view, onPageChange, onRequestLoad } = props;
+  const { ensureProfilesForAddresses } = useBeamioTagDatabase();
   const mintedN = Number.parseInt(String(mintedCount ?? '').replace(/,/g, '').trim(), 10);
   const hasMinted = Number.isFinite(mintedN) && mintedN > 0;
+
+  const walletAddresses = useMemo(
+    () =>
+      view.items
+        .flatMap((row) => [row.wallet, row.holder].filter((a) => a && a.length >= 10))
+        .filter((a, i, arr) => arr.indexOf(a) === i),
+    [view.items]
+  );
 
   const initialLoadDoneRef = useRef(false);
   useEffect(() => {
@@ -94,15 +115,16 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
     onRequestLoad(1);
   }, [hasMinted, onRequestLoad]);
 
+  useEffect(() => {
+    if (walletAddresses.length === 0) return;
+    void ensureProfilesForAddresses(walletAddresses, { maxPerTick: walletAddresses.length });
+  }, [walletAddresses, ensureProfilesForAddresses]);
+
   const pageCount = Math.max(1, Math.ceil(view.total / Math.max(1, view.pageSize)));
   const page = Math.min(Math.max(1, view.page), pageCount);
   const borderClass = theme === 'catalog' ? 'border-[#ea580c]/10' : 'border-[#1562f0]/10';
   const headerBg = theme === 'catalog' ? 'bg-[#fff7ed]' : 'bg-[#f0f4fb]';
   const accentText = theme === 'catalog' ? 'text-[#ea580c]' : 'text-[#1562f0]';
-  const capsuleClass =
-    theme === 'catalog'
-      ? 'border-[#ea580c]/15 bg-white text-[#2c2f31]'
-      : 'border-[#1562f0]/15 bg-white text-[#2c2f31]';
   const focusRing =
     theme === 'catalog'
       ? 'focus-visible:ring-[#ea580c]/40'
@@ -137,18 +159,22 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
             <table className="min-w-full text-left text-[11px]">
               <thead className={`${headerBg} text-[9px] font-bold uppercase tracking-wider text-[#595c5e]`}>
                 <tr>
-                  <th className="px-2.5 py-2 sm:px-3">Wallet</th>
                   <th className="px-2.5 py-2 sm:px-3">Claimed</th>
+                  <th className="px-2.5 py-2 sm:px-3">Member</th>
+                  <th className="px-2.5 py-2 sm:px-3">Burned</th>
                 </tr>
               </thead>
               <tbody className={`divide-y ${borderClass} bg-white`}>
                 {view.items.map((row) => (
                   <tr key={`${row.wallet}-${row.txHash}`}>
-                    <td className="px-2.5 py-2 sm:px-3">
-                      <ClaimWalletAddressCapsule address={row.wallet} className={capsuleClass} />
-                    </td>
                     <td className="whitespace-nowrap px-2.5 py-2 text-[#595c5e] sm:px-3">
                       {formatClaimWalletDate(row.claimedAt)}
+                    </td>
+                    <td className="px-2.5 py-2 sm:px-3">
+                      <ClaimWalletBeamioCapsule wallet={row.wallet} />
+                    </td>
+                    <td className="whitespace-nowrap px-2.5 py-2 text-[#595c5e] sm:px-3">
+                      {formatClaimWalletDate(row.burnedAt)}
                     </td>
                   </tr>
                 ))}

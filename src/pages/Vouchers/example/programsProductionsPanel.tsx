@@ -49,6 +49,10 @@ import {
 } from './cardIssuanceProductions';
 import { IPFS_PRODUCTION_BACKGROUND_ACCEPT } from '@/utils/ipfsCardImageUpload';
 import {
+  ProgramsIssuedItemClaimWalletsSection,
+  type ProgramsIssuedItemClaimWalletsView,
+} from './programsIssuedItemClaimWallets';
+import {
   isProductionBackgroundYoutubeMedia,
   isYoutubeProductionVideoUrl,
   youtubeEmbedUrlFromProductionUrl,
@@ -348,6 +352,8 @@ export type ProgramsProductionsPanelProps = {
   onProductionRedeemCodeCopied?: (hash: string) => void;
   /** Aligns with coupon redeem grace before showing Redeemed from local `redeemedAt`. */
   productionRedeemChainConfirmGraceMs?: number;
+  getProductionClaimWalletView?: (productionId: string) => ProgramsIssuedItemClaimWalletsView;
+  onLoadProductionClaimWallets?: (productionId: string, tokenId: string, page: number) => void;
 };
 
 export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
@@ -440,6 +446,8 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     productionRedeemCopiedHash = null,
     onProductionRedeemCodeCopied,
     productionRedeemChainConfirmGraceMs = 3 * 60_000,
+    getProductionClaimWalletView,
+    onLoadProductionClaimWallets,
   } = props;
 
   const [productionRedeemPageById, setProductionRedeemPageById] = useState<Record<string, number>>({});
@@ -1111,6 +1119,22 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                 </div>
                               );
                             })()
+                          ) : null}
+                          {row.issued &&
+                          row.issuedTokenId?.trim() &&
+                          getProductionClaimWalletView &&
+                          onLoadProductionClaimWallets ? (
+                            <ProgramsIssuedItemClaimWalletsSection
+                              theme="catalog"
+                              mintedCount={row.issuedNftMintedCount}
+                              view={getProductionClaimWalletView(row.id)}
+                              onPageChange={(page) => {
+                                onLoadProductionClaimWallets(row.id, row.issuedTokenId!.trim(), page);
+                              }}
+                              onRequestLoad={(page) => {
+                                onLoadProductionClaimWallets(row.id, row.issuedTokenId!.trim(), page);
+                              }}
+                            />
                           ) : null}
                           {!row.issued ? (
                             <div className="border-t border-[#ea580c]/10 px-4 py-2">

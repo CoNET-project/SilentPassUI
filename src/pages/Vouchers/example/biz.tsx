@@ -88,6 +88,7 @@ import {
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
   fetchCardActiveIssuedProductionSeries,
+  fetchIssuedNftClaimWallets,
   getRedeemStatusBatchFromChain,
   removeNotFoundRedeems,
   type CardMetadataFromUri,
@@ -223,6 +224,10 @@ import {
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
+import {
+  ProgramsIssuedItemClaimWalletsSection,
+  type ProgramsIssuedItemClaimWalletsView,
+} from './programsIssuedItemClaimWallets';
 import { CatalogVideoOgOpenClaimSharePreview } from './businessCatalogListItemPreview';
 import {
   CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT,
@@ -9158,6 +9163,21 @@ function parseCardIssuanceCouponIssueLeftN(coupon: CardIssuanceCouponRow): numbe
 /** Redeem codes table: max rows per page in Programs coupon panel. */
 const CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE = 10;
 
+/** Claimed wallets table: max rows per page (server-paginated via /api/issuedNftClaimWallets). */
+const CARD_ISSUANCE_CLAIM_WALLET_PAGE_SIZE = 10;
+
+type CardIssuanceClaimWalletCacheEntry = {
+  items: ProgramsIssuedItemClaimWalletsView['items'];
+  total: number;
+  page: number;
+  loading: boolean;
+  error: string | null;
+};
+
+function cardIssuanceClaimWalletItemKey(kind: 'coupon' | 'production', id: string): string {
+  return `${kind}:${id}`;
+}
+
 /** Align with x402sdk `appendAppDownloadCacheBust` — `v` busts Meta/WhatsApp OG cache via og:url + /og/s token `b`. */
 function appendAppDownloadShareCacheBust(appDownloadUrl: string, cacheBustV: string): string {
   const vTrim = cacheBustV.trim();
@@ -10810,6 +10830,10 @@ const [cardIssuanceProductionRedeemRegisteringId, setCardIssuanceProductionRedee
 const [cardIssuanceCouponRedeemPageByCouponId, setCardIssuanceCouponRedeemPageByCouponId] = useState<
   Record<string, number>
 >({});
+const [cardIssuanceClaimWalletByItemKey, setCardIssuanceClaimWalletByItemKey] = useState<
+  Record<string, CardIssuanceClaimWalletCacheEntry>
+>({});
+const cardIssuanceClaimWalletInFlightRef = useRef(new Set<string>());
 const cardIssuanceCouponRedeemStatusesRef = useRef<Record<string, 'pending' | 'redeemed'>>({});
 const cardIssuanceCouponRedeemStatusHasLoadedRef = useRef(false);
 /** Hashes that returned active=true on chain at least once this session. */
@@ -11335,6 +11359,82 @@ const cardIssuanceProductionRedeemRowsByProductionId = useMemo(
   ]
 );
 
+const loadCardIssuanceClaimWallets = useCallback(
+  async (itemKey: string, tokenId: string, page: number) => {
+    const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+    const tokenTrim = tokenId?.trim() ?? '';
+    if (!cardAddress || !ethers.isAddress(cardAddress) || !tokenTrim) return;
+    const pageN = Math.max(1, Math.floor(Number(page) || 1));
+    const flightKey = `${itemKey}:${pageN}`;
+    if (cardIssuanceClaimWalletInFlightRef.current.has(flightKey)) return;
+    cardIssuanceClaimWalletInFlightRef.current.add(flightKey);
+    setCardIssuanceClaimWalletByItemKey((prev) => ({
+      ...prev,
+      [itemKey]: {
+        items: prev[itemKey]?.items ?? [],
+        total: prev[itemKey]?.total ?? 0,
+        page: pageN,
+        loading: true,
+        error: null,
+      },
+    }));
+    try {
+      const data = await fetchIssuedNftClaimWallets(
+        cardAddress,
+        tokenTrim,
+        pageN,
+        CARD_ISSUANCE_CLAIM_WALLET_PAGE_SIZE
+      );
+      if (!data?.ok) {
+        throw new Error(data?.error?.trim() || 'Failed to load claimed wallets');
+      }
+      setCardIssuanceClaimWalletByItemKey((prev) => ({
+        ...prev,
+        [itemKey]: {
+          items: data.items ?? [],
+          total: typeof data.total === 'number' ? data.total : 0,
+          page: data.page ?? pageN,
+          loading: false,
+          error: null,
+        },
+      }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load claimed wallets';
+      setCardIssuanceClaimWalletByItemKey((prev) => {
+        const prior = prev[itemKey];
+        return {
+          ...prev,
+          [itemKey]: {
+            items: prior?.items ?? [],
+            total: prior?.total ?? 0,
+            page: pageN,
+            loading: false,
+            error: message,
+          },
+        };
+      });
+    } finally {
+      cardIssuanceClaimWalletInFlightRef.current.delete(flightKey);
+    }
+  },
+  [cardIssuanceExistingCard?.cardAddress]
+);
+
+const getCardIssuanceClaimWalletView = useCallback(
+  (itemKey: string): ProgramsIssuedItemClaimWalletsView => {
+    const entry = cardIssuanceClaimWalletByItemKey[itemKey];
+    return {
+      items: entry?.items ?? [],
+      total: entry?.total ?? 0,
+      page: entry?.page ?? 1,
+      pageSize: CARD_ISSUANCE_CLAIM_WALLET_PAGE_SIZE,
+      loading: entry?.loading ?? false,
+      error: entry?.error ?? null,
+    };
+  },
+  [cardIssuanceClaimWalletByItemKey]
+);
+
 const cardIssuanceCouponRedeemStatusQueryItems = useMemo(() => {
   const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
   if (!cardAddress) return [];
@@ -11364,6 +11464,11 @@ const cardIssuanceCouponRedeemStatusQueryKey = useMemo(
 useEffect(() => {
   cardIssuanceCouponRedeemStatusHasLoadedRef.current = false;
   cardIssuanceCouponRedeemChainActiveConfirmedRef.current = new Set();
+}, [cardIssuanceExistingCard?.cardAddress]);
+
+useEffect(() => {
+  setCardIssuanceClaimWalletByItemKey({});
+  cardIssuanceClaimWalletInFlightRef.current.clear();
 }, [cardIssuanceExistingCard?.cardAddress]);
 
 useEffect(() => {
@@ -32277,6 +32382,29 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   )}
                                 </div>
                               ) : null}
+                              {coupon.issued && coupon.issuedTokenId?.trim() ? (
+                                <ProgramsIssuedItemClaimWalletsSection
+                                  theme="programs"
+                                  mintedCount={coupon.issuedNftMintedCount}
+                                  view={getCardIssuanceClaimWalletView(
+                                    cardIssuanceClaimWalletItemKey('coupon', coupon.id)
+                                  )}
+                                  onPageChange={(page) => {
+                                    void loadCardIssuanceClaimWallets(
+                                      cardIssuanceClaimWalletItemKey('coupon', coupon.id),
+                                      coupon.issuedTokenId!.trim(),
+                                      page
+                                    );
+                                  }}
+                                  onRequestLoad={(page) => {
+                                    void loadCardIssuanceClaimWallets(
+                                      cardIssuanceClaimWalletItemKey('coupon', coupon.id),
+                                      coupon.issuedTokenId!.trim(),
+                                      page
+                                    );
+                                  }}
+                                />
+                              ) : null}
                             </div>
                             );
                           })
@@ -37123,6 +37251,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       productionRedeemCopiedHash={cardIssuanceCouponRedeemCopiedHash}
       onProductionRedeemCodeCopied={setCardIssuanceCouponRedeemCopiedHash}
       productionRedeemChainConfirmGraceMs={CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS}
+      getProductionClaimWalletView={(productionId) =>
+        getCardIssuanceClaimWalletView(cardIssuanceClaimWalletItemKey('production', productionId))
+      }
+      onLoadProductionClaimWallets={(productionId, tokenId, page) => {
+        void loadCardIssuanceClaimWallets(
+          cardIssuanceClaimWalletItemKey('production', productionId),
+          tokenId,
+          page
+        );
+      }}
     />
 
     {cardIssuanceProductionRedeemShareOpen && cardIssuanceProductionRedeemShareRow ? (

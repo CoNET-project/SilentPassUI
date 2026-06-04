@@ -719,6 +719,65 @@ export async function fetchCardActiveIssuedProductionSeries(
 	}
 }
 
+export type IssuedNftClaimWalletApiRow = {
+	wallet: string
+	holder: string
+	claimedAt: string
+	txHash: string
+	blockNumber?: number
+}
+
+export type FetchIssuedNftClaimWalletsResult = {
+	ok: boolean
+	cardAddress?: string
+	tokenId?: string
+	page?: number
+	pageSize?: number
+	total?: number
+	items?: IssuedNftClaimWalletApiRow[]
+	error?: string
+}
+
+/** Wallets that completed mint/claim for an issued coupon or catalog NFT (chain IssuedNftMinted). */
+export async function fetchIssuedNftClaimWallets(
+	cardAddress: string,
+	tokenId: string,
+	page = 1,
+	pageSize = 10
+): Promise<FetchIssuedNftClaimWalletsResult | null> {
+	if (!cardAddress || !ethers.isAddress(cardAddress) || !tokenId?.trim()) return null
+	const pageN = Math.max(1, Math.floor(Number(page) || 1))
+	const pageSizeN = Math.min(50, Math.max(1, Math.floor(Number(pageSize) || 10)))
+	try {
+		const qs = new URLSearchParams({
+			card: ethers.getAddress(cardAddress),
+			tokenId: tokenId.trim(),
+			page: String(pageN),
+			pageSize: String(pageSizeN),
+		})
+		const res = await fetch(`${beamioApi}/api/issuedNftClaimWallets?${qs.toString()}`)
+		const json = (await res.json().catch(() => ({}))) as FetchIssuedNftClaimWalletsResult
+		if (!res.ok || json.ok !== true) {
+			return {
+				ok: false,
+				error: typeof json.error === 'string' ? json.error : `HTTP ${res.status}`,
+			}
+		}
+		return {
+			ok: true,
+			cardAddress: json.cardAddress,
+			tokenId: json.tokenId,
+			page: json.page ?? pageN,
+			pageSize: json.pageSize ?? pageSizeN,
+			total: typeof json.total === 'number' ? json.total : 0,
+			items: Array.isArray(json.items) ? json.items : [],
+		}
+	} catch (err: unknown) {
+		const message = err instanceof Error ? err.message : 'Network error'
+		return { ok: false, error: message }
+	}
+}
+
 async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
 	const wanted = couponId.trim()
 	if (!wanted) return null

@@ -547,7 +547,8 @@ function RecentActivityTxItemRow({
 	const isAASent = mySideIsAA && !tx.isInbound && !isInternalTransfer
 	const isEoaReceived = !mySideIsAA && tx.isInbound && !isInternalTransfer
 	const isAAReceived = mySideIsAA && tx.isInbound && !isInternalTransfer
-	const needsCounterparty = isEoaSent || isEoaReceived || tx.type === 'request_fulfilled'
+	const needsCounterparty =
+		isEoaSent || isEoaReceived || tx.type === 'request_fulfilled' || tx.type === 'merchant_gift'
 	const { fullName, beamioTag } = useCounterpartyProfile(needsCounterparty ? tx.counterpartyAddress : undefined)
 	const handleIsJson = (s: string | undefined) => !s || /^[\s]*\{/.test(s) || /"currency"/.test(s)
 	const safeHandle = handleIsJson(tx.handle) ? '' : tx.handle
@@ -560,13 +561,18 @@ function RecentActivityTxItemRow({
 	const resolvedClaimSeriesTitle = useIssuedNftClaimSeriesTitle(tx, isIssuedNftClaimTx)
 	const isCardTopupLedgerTx =
 		!isIssuedNftClaimTx && isRecentActivityCardTopupCategory(rowTxCategory)
-	const isMerchantChargeLedgerTx = isMerchantChargeTxView(tx)
+	const isMerchantGiftLedgerTx = tx.type === 'merchant_gift'
+	const isMerchantChargeLedgerTx = !isMerchantGiftLedgerTx && isMerchantChargeTxView(tx)
 	const merchantChargeParsed = useMemo(
 		() =>
 			isMerchantChargeLedgerTx && rawTx
 				? parseMerchantChargeDisplayJson(rawTx.displayJson ?? '')
 				: null,
 		[isMerchantChargeLedgerTx, rawTx?.displayJson]
+	)
+	const merchantGiftCardAddr = useMemo(
+		() => (isMerchantGiftLedgerTx ? merchantChargeCardAddressFromTxView(tx) : ''),
+		[isMerchantGiftLedgerTx, tx.id, tx.merchantCardAddress, rawTx]
 	)
 	const merchantChargeCardAddr = useMemo(
 		() => (isMerchantChargeLedgerTx ? merchantChargeCardAddressFromTxView(tx) : ''),
@@ -586,11 +592,11 @@ function RecentActivityTxItemRow({
 		return tx.merchantCardAddress ?? indexerRouteCardAddress(rawTx?.route) ?? ''
 	}, [isIssuedNftClaimTx, tx.merchantCardAddress, rawTx?.route])
 	useEffect(() => {
-		const addr = merchantChargeCardAddr || topupCardAddr || claimCardAddr
+		const addr = merchantGiftCardAddr || merchantChargeCardAddr || topupCardAddr || claimCardAddr
 		if (!addr) return
 		registerCardAddresses([addr])
 		void fetchCardMetadata(addr)
-	}, [merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, fetchCardMetadata])
+	}, [merchantGiftCardAddr, merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, fetchCardMetadata])
 	const claimMerchantName = useMemo(() => {
 		if (!isIssuedNftClaimTx || !claimCardAddr) return ''
 		const addrKey = claimCardAddr.toLowerCase()
@@ -613,17 +619,18 @@ function RecentActivityTxItemRow({
 	}, [isMerchantChargeLedgerTx, merchantChargeCardAddr, cardMap, peekMetadata])
 	const merchantChargeIconUrl = useStableMerchantIconUrl(tx.id, merchantChargeIconUrlCandidate)
 	const merchantCardName = useMemo(() => {
-		if (!isMerchantChargeLedgerTx) return ''
-		const addrKey = merchantChargeCardAddr.toLowerCase()
+		const cardAddr = isMerchantGiftLedgerTx ? merchantGiftCardAddr : merchantChargeCardAddr
+		if (!cardAddr || (!isMerchantGiftLedgerTx && !isMerchantChargeLedgerTx)) return ''
+		const addrKey = cardAddr.toLowerCase()
 		return pickMerchantChargeListTitle({
-			displayNameFromDb: merchantChargeCardAddr ? resolveDisplayName(merchantChargeCardAddr) : '',
-			directoryName: merchantChargeCardAddr
-				? recentActivityCardNameDirectory.get(addrKey)
-				: undefined,
-			displayJsonCardName: merchantChargeParsed?.cardName,
+			displayNameFromDb: resolveDisplayName(cardAddr),
+			directoryName: recentActivityCardNameDirectory.get(addrKey),
+			displayJsonCardName: isMerchantChargeLedgerTx ? merchantChargeParsed?.cardName : undefined,
 		})
 	}, [
+		isMerchantGiftLedgerTx,
 		isMerchantChargeLedgerTx,
+		merchantGiftCardAddr,
 		merchantChargeCardAddr,
 		merchantChargeParsed?.cardName,
 		resolveDisplayName,
@@ -670,6 +677,8 @@ function RecentActivityTxItemRow({
 	const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
 	const rawTitleText = isIssuedNftClaimTx
 		? resolvedClaimSeriesTitle ?? tx.title
+		: isMerchantGiftLedgerTx
+		? merchantCardName || tx.title || 'Merchant Gift'
 		: isMerchantChargeLedgerTx
 		? merchantCardName || tx.title || 'Merchant Payment'
 		: isCardTopupLedgerTx
@@ -698,6 +707,8 @@ function RecentActivityTxItemRow({
 	const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
 	const subtitleText = isIssuedNftClaimTx
 		? `${claimMerchantName || 'Claimed'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		: isMerchantGiftLedgerTx
+		? `${tx.isInbound ? `From ${counterpartyLabel}` : `To ${counterpartyLabel}`} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 		: isMerchantChargeLedgerTx
 		? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 		: isCardTopupLedgerTx
@@ -726,6 +737,8 @@ function RecentActivityTxItemRow({
 		? tx.type === 'claim_catalog'
 			? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300'
 			: 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
+		: isMerchantGiftLedgerTx
+		? 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
 		: isMerchantChargeLedgerTx
 		? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
 		: isCardTopupLedgerTx
@@ -749,7 +762,7 @@ function RecentActivityTxItemRow({
 		? (isAddToExpressPay ? { amt: Math.abs(tx.amountFiat), green: true } : { amt: -Math.abs(tx.amountFiat), green: false })
 		: null
 	// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色。Vouchers 下则反转：EOA→AA 为 + 绿色
-	const amountIsGreen = isIssuedNftClaimTx || isCardTopupLedgerTx
+	const amountIsGreen = isIssuedNftClaimTx || isCardTopupLedgerTx || (isMerchantGiftLedgerTx && tx.isInbound)
 		? true
 		: tx.type === 'fuel_yield'
 		? false
@@ -773,7 +786,13 @@ function RecentActivityTxItemRow({
 			className="relative flex items-center justify-between py-2.5 px-3 bg-white dark:bg-slate-800/80 rounded-[15px] shadow-[0_2px_9px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-transform duration-200 cursor-pointer border border-gray-100/50 dark:border-slate-700/50"
 		>
 			<div className="flex items-center gap-3">
-				{isMerchantChargeLedgerTx ? (
+				{isMerchantGiftLedgerTx ? (
+					<div className={`${RECENT_ACTIVITY_ROW_ICON_OUTER_CLASS} ${iconBg}`}>
+						<span className={RECENT_ACTIVITY_ROW_ICON_INNER_CLASS}>
+							<Gift size={16} strokeWidth={2} />
+						</span>
+					</div>
+				) : isMerchantChargeLedgerTx ? (
 					<MyBrandMerchantIcon
 						title={merchantCardName || 'Merchant'}
 						iconUrl={merchantChargeIconUrl}
@@ -856,6 +875,11 @@ function RecentActivityTxItemRow({
 						formatAmountWithCurrencyProtocol(Math.abs(tx.amountFiat), tx.currencyCode as ICurrency)
 					) : isCardTopupLedgerTx ? (
 						formatTopupListAmountPositive(tx.amountFiat, tx.currencyCode)
+					) : isMerchantGiftLedgerTx ? (
+						formatCurrencySigned(
+							tx.isInbound ? Math.abs(tx.amountFiat) : -Math.abs(tx.amountFiat),
+							tx.currencyCode,
+						)
 					) : isMerchantChargeLedgerTx ? (
 						formatMerchantChargeListAmountNegative(merchantChargeFiatAmount, merchantChargeCurrencyCode)
 					) : (
@@ -1614,8 +1638,15 @@ const ActiveHistoryPannelNew = ({
 	const filteredItems = items.filter((tx) => {
 		if (activeTab === 'All') return true
 		// Cash: Main Wallet 相关。internal_transfer、fuel_yield 虽 isAA 可能为 true，也需展示
-		if (activeTab === 'Cash') return !tx.isAA || tx.type === 'internal_transfer' || tx.type === 'fuel_yield'
-		if (activeTab === 'Vouchers') return tx.isAA
+		if (activeTab === 'Cash') {
+			return (
+				!tx.isAA ||
+				tx.type === 'internal_transfer' ||
+				tx.type === 'fuel_yield' ||
+				tx.type === 'merchant_gift'
+			)
+		}
+		if (activeTab === 'Vouchers') return tx.isAA || tx.type === 'merchant_gift'
 		return true
 	})
 
@@ -1682,6 +1713,8 @@ const ActiveHistoryPannelNew = ({
 		switch (type) {
 			case 'merchant_pay':
 				return <CreditCard size={size} strokeWidth={2} />
+			case 'merchant_gift':
+				return <Gift size={size} strokeWidth={2} />
 			case 'transfer_in':
 				return <ArrowDownLeft size={size} strokeWidth={2} />
 			case 'request_fulfilled':
@@ -1716,6 +1749,8 @@ const ActiveHistoryPannelNew = ({
 		switch (type) {
 			case 'merchant_pay':
 				return 'bg-[#1562f0]/10 text-[#1562f0]'
+			case 'merchant_gift':
+				return 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
 			case 'transfer_in':
 			case 'request_fulfilled':
 				return 'bg-[#34C759]/10 text-[#34C759]'
@@ -1748,6 +1783,8 @@ const ActiveHistoryPannelNew = ({
 		switch (type) {
 			case 'merchant_pay':
 				return 'bg-[#1562f0] text-white shadow-blue-200'
+			case 'merchant_gift':
+				return 'bg-fuchsia-500 text-white shadow-fuchsia-200'
 			case 'transfer_in':
 			case 'request_fulfilled':
 				return 'bg-[#34C759] text-white shadow-green-200'

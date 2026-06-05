@@ -82,6 +82,31 @@ const TX_USDC_TOPUP_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcTopupCard'))
 const TX_USDC_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcUpgradeNewCard'))
 const TX_TIP = ethers.keccak256(ethers.toUtf8Bytes('TX_TIP'))
 const TX_MERCHANT_PAY_TIP_UPDATED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:tip_updated'))
+/** keccak256("gift:confirmed") — consumer P2P merchant-card points gift (x402sdk MemberCard) */
+export const TX_GIFT_CONFIRMED = ethers.keccak256(ethers.toUtf8Bytes('gift:confirmed'))
+
+export function isGiftDisplayJson(displayJson: string | undefined | null): boolean {
+	if (!displayJson || !String(displayJson).trim()) return false
+	try {
+		const d = JSON.parse(String(displayJson)) as { source?: string; handle?: string; forText?: string }
+		const src = String(d.source ?? '').toLowerCase()
+		if (src === 'gift') return true
+		const handle = String(d.handle ?? d.forText ?? '')
+			.trim()
+			.toLowerCase()
+		return src === 'open-container' && handle === 'merchant gift'
+	} catch {
+		return false
+	}
+}
+
+/** User-to-user merchant program card points gift — not POS Charge / in-store payment. */
+export function isRecentActivityConsumerGiftTx(raw: RawTxRecord | undefined): boolean {
+	if (!raw) return false
+	const cat = String(raw.txCategory ?? '').toLowerCase()
+	if (cat !== '' && cat === TX_GIFT_CONFIRMED.toLowerCase()) return true
+	return isGiftDisplayJson(raw.displayJson ?? '')
+}
 
 const RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER = new Set(
 	[
@@ -211,6 +236,7 @@ export type MerchantChargeDisplayParsed = {
 }
 
 export function parseMerchantChargeDisplayJson(displayJson: string): MerchantChargeDisplayParsed | null {
+	if (isGiftDisplayJson(displayJson)) return null
 	try {
 		const j = JSON.parse(displayJson || '{}') as Record<string, unknown>
 		const source = String(j.source ?? '').trim()
@@ -268,11 +294,16 @@ function isRecentActivityTipTx(raw: RawTxRecord | undefined): boolean {
 /** List row / local cache may omit rawTransaction — use persisted TxView flags as fallback. */
 export function isMerchantChargeTxView(tx: TxView | undefined): boolean {
 	if (!tx) return false
+	if (tx.type === 'merchant_gift') return false
 	if (tx.isMerchantCharge) return true
 	if (tx.type === 'merchant_pay' && tx.isAA && !tx.isInbound) return true
 	if (isRecentActivityMerchantChargeTx(tx.rawTransaction)) return true
 	/** Legacy cache rows: stripped rawTransaction but title still from open-container displayJson */
 	if (!tx.rawTransaction) {
+		const giftHandle = String(tx.handle ?? tx.forText ?? '')
+			.trim()
+			.toLowerCase()
+		if (giftHandle === 'merchant gift') return false
 		const t = String(tx.title ?? '').trim()
 		if (/^(?:qr\s+)?merchant\s+payment$/i.test(t)) return true
 	}
@@ -853,6 +884,7 @@ const TX_BUINT_EXCLUDE = new Set(
 
 export type TxDisplayType =
 	| 'merchant_pay'
+	| 'merchant_gift'
 	| 'transfer_in'
 	| 'transfer_out'
 	| 'request_fulfilled'
@@ -875,6 +907,7 @@ function txCategoryToType(txCategory: string): TxDisplayType {
 	if (cat === TX_TRANSFER_OUT.toLowerCase()) return 'transfer_out'
 	if (cat === TX_TRANSFER_IN.toLowerCase()) return 'transfer_in'
 	if (cat === TX_MERCHANT_PAY.toLowerCase()) return 'merchant_pay'
+	if (cat === TX_GIFT_CONFIRMED.toLowerCase()) return 'merchant_gift'
 	if (cat === TX_REQUEST_FULFILLED.toLowerCase()) return 'request_fulfilled'
 	if (cat === TX_REQUEST_CREATE.toLowerCase()) return 'request_create'
 	if (cat === TX_REQUEST_EXPIRED.toLowerCase()) return 'request_expired'
@@ -1179,19 +1212,27 @@ function appendIndexerPage(
 		const payerAddr = (tx.payer ?? '').toLowerCase()
 		const payeeAddr = (tx.payee ?? '').toLowerCase()
 		const merchantPayeeAddress = resolveIndexerPayeeAddress(rawRecord)
-		const isMerchantCharge = isRecentActivityMerchantChargeTx(rawRecord)
+		const isConsumerGift = isRecentActivityConsumerGiftTx(rawRecord)
+		const isMerchantCharge = !isConsumerGift && isRecentActivityMerchantChargeTx(rawRecord)
+		const giftCardAddress = isConsumerGift ? merchantChargeCardAddressFromRaw(rawRecord) : ''
 		const merchantCardAddress = isMerchantCharge ? merchantChargeCardAddressFromRaw(rawRecord) : ''
 		const isEoaAaInternal =
 			!isMerchantCharge &&
+			!isConsumerGift &&
 			normalized.length >= 2 &&
 			normalized.some((a) => a.toLowerCase() === payerAddr) &&
 			normalized.some((a) => a.toLowerCase() === payeeAddr) &&
 			payerAddr !== payeeAddr
-		const resolvedType = isMerchantCharge
-			? 'merchant_pay'
-			: isEoaAaInternal
-				? 'internal_transfer'
-				: type
+		const resolvedType = isConsumerGift
+			? 'merchant_gift'
+			: isMerchantCharge
+				? 'merchant_pay'
+				: isEoaAaInternal
+					? 'internal_transfer'
+					: type
+		if (isConsumerGift) {
+			title = 'Merchant Gift'
+		}
 		merged.push({
 			id,
 			type: resolvedType,
@@ -1210,7 +1251,11 @@ function appendIndexerPage(
 			...(merchantPayeeAddress && (isMerchantCharge || isCardTopupLedgerTx)
 				? { merchantPayeeAddress }
 				: {}),
-			...(isMerchantCharge
+			...(isConsumerGift
+				? {
+						...(giftCardAddress ? { merchantCardAddress: giftCardAddress } : {}),
+					}
+				: isMerchantCharge
 				? {
 						isMerchantCharge: true as const,
 						merchantChargeInStore: resolveMerchantChargeInStore(rawRecord),

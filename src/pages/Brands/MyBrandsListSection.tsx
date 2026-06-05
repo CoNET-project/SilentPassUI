@@ -247,6 +247,39 @@ function shortMyBrandCardAddress(address: string): string {
 	return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`
 }
 
+function shortBaseScanTxHash(txHash: string): string {
+	const trimmed = txHash.trim()
+	if (trimmed.length < 12) return trimmed
+	return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`
+}
+
+/** Base 链上交易 hash 胶囊：点击打开 BaseScan tx 详情。 */
+export function RecentActivityTxHashCapsule({
+	txHash,
+	className = '',
+}: {
+	txHash: string
+	className?: string
+}) {
+	const normalized = String(txHash ?? '').trim()
+	if (!normalized || !/^0x[0-9a-fA-F]{40,64}$/i.test(normalized)) return null
+	const openBaseScan = () => {
+		openExternalUrl(`https://basescan.org/tx/${normalized}`)
+	}
+	return (
+		<button
+			type="button"
+			onClick={openBaseScan}
+			className={`inline-flex max-w-full shrink-0 items-center gap-1 rounded-full border border-[#c3c6d8]/40 bg-white/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#424655] transition hover:border-[#1562f0]/35 hover:bg-[#1562f0]/5 hover:text-[#1562f0] dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-400 dark:hover:border-[#6ba3ff]/40 dark:hover:bg-[#6ba3ff]/10 dark:hover:text-[#8db8ff] ${className}`}
+			aria-label={`View transaction on BaseScan: ${normalized}`}
+		>
+			<IpfsImg src={baseIcon} alt="Base" className="h-3.5 w-3.5 shrink-0 rounded-full object-contain" />
+			<span className="truncate">{shortBaseScanTxHash(normalized)}</span>
+			<ExternalLink className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2} aria-hidden />
+		</button>
+	)
+}
+
 /** BeamioUserCard 合约地址胶囊：Base 图标 + 短地址，点击打开 BaseScan。 */
 export function MyBrandCardAddressCapsule({
 	address,

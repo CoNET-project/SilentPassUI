@@ -108,6 +108,46 @@ export function isRecentActivityConsumerGiftTx(raw: RawTxRecord | undefined): bo
 	return isGiftDisplayJson(raw.displayJson ?? '')
 }
 
+/** Gift indexer note / handle — not a counterparty @beamioTag. */
+export function isMerchantGiftNoteLabel(text: string | null | undefined): boolean {
+	const t = String(text ?? '').trim().toLowerCase()
+	return t === 'merchant gift' || t === 'merchant program gift'
+}
+
+/** Gift row counterparty fallback: never use gift note as person label. */
+export function merchantGiftCounterpartyFallbackLabel(opts: {
+	fullName?: string
+	beamioTag?: string | null
+	shortAddr?: string
+	handle?: string
+	forText?: string
+}): string {
+	const fn = String(opts.fullName ?? '').trim()
+	if (fn) return fn
+	const bt = String(opts.beamioTag ?? '').trim()
+	if (bt) return bt.startsWith('@') ? bt : `@${bt}`
+	const safeHandle = isMerchantGiftNoteLabel(opts.handle) ? '' : String(opts.handle ?? '').trim()
+	if (safeHandle) return safeHandle
+	const safeFor = isMerchantGiftNoteLabel(opts.forText) ? '' : String(opts.forText ?? '').trim()
+	if (safeFor) return safeFor
+	return String(opts.shortAddr ?? '').trim() || 'Unknown'
+}
+
+/** Title still resolving @beamioTag (short addr / gift note / generic). */
+export function isProvisionalMerchantGiftActivityTitle(text: string): boolean {
+	const t = String(text ?? '').trim()
+	if (!t) return true
+	if (t === 'Merchant Gift') return true
+	const m = /^Gift (to|from) (.+)$/i.exec(t)
+	if (!m) return false
+	const who = String(m[2] ?? '').trim()
+	if (!who || who === 'Unknown') return true
+	if (isMerchantGiftNoteLabel(who)) return true
+	if (/^0x[a-f0-9]{4}…[a-f0-9]{4}$/i.test(who)) return true
+	if (!who.startsWith('@')) return true
+	return false
+}
+
 /** Recent Activity gift row: prefer @beamioTag; fallback short name / address label. */
 export function formatMerchantGiftCounterpartyTag(
 	beamioTag: string | null | undefined,
@@ -116,7 +156,11 @@ export function formatMerchantGiftCounterpartyTag(
 	const t = String(beamioTag ?? '').trim()
 	if (t) return t.startsWith('@') ? t : `@${t}`
 	const fb = String(fallbackLabel ?? '').trim()
-	return fb || 'Unknown'
+	if (fb && !isMerchantGiftNoteLabel(fb)) {
+		if (fb.startsWith('@') || /^0x[a-f0-9]{4}…[a-f0-9]{4}$/i.test(fb)) return fb
+		return fb
+	}
+	return 'Unknown'
 }
 
 /** Inbound: Gift from @tag; outbound: Gift to @tag (English UI). */
@@ -536,15 +580,26 @@ export function merchantChargeChannelLabel(
 		: 'Online shopping'
 }
 
-/** Paged indexer rows omit route[] / subordinate; Charge displayJson often lacks cardAddress — enrich from full tx. */
+function txNeedsIndexerRouteCardEnrichment(tx: TxView): boolean {
+	const persisted = String(tx.merchantCardAddress ?? '').trim()
+	if (persisted && ethers.isAddress(persisted)) return false
+
+	const raw = tx.rawTransaction
+	const isGift =
+		tx.type === 'merchant_gift' || (raw ? isRecentActivityConsumerGiftTx(raw) : false)
+	if (isGift) {
+		const fromRaw = raw ? merchantChargeCardAddressFromRaw(raw) : ''
+		return !fromRaw
+	}
+	if (!isMerchantChargeTxView(tx)) return false
+
+	const fromRaw = raw ? merchantChargeCardAddressFromRaw(raw) : ''
+	return !fromRaw
+}
+
+/** Paged indexer rows omit route[]; Charge/Gift displayJson often lacks cardAddress — enrich from full tx. */
 export async function enrichMerchantChargeItemsWithIndexerRoutes(items: TxView[]): Promise<TxView[]> {
-	const need = items.filter((tx) => {
-		const raw = tx.rawTransaction
-		if (!raw || !isRecentActivityMerchantChargeTx(raw)) return false
-		const missingCard = !merchantChargeCardAddressFromRaw(raw)
-		const missingSubordinate = !merchantChargeHasExplicitSubordinate(raw)
-		return missingCard || missingSubordinate
-	})
+	const need = items.filter(txNeedsIndexerRouteCardEnrichment)
 	if (need.length === 0) return items
 
 	const enrichmentByTxId = new Map<string, MerchantChargeFullEnrichment>()
@@ -559,12 +614,23 @@ export async function enrichMerchantChargeItemsWithIndexerRoutes(items: TxView[]
 
 	return items.map((tx) => {
 		const enrichment = enrichmentByTxId.get(tx.id)
+		if (!enrichment) return tx
 		const raw = tx.rawTransaction
-		if (!raw || !enrichment) return tx
-		const mergedRaw: RawTxRecord = {
-			...raw,
+		const routePatch: Pick<RawTxRecord, 'route' | 'subordinate'> = {
 			...(enrichment.route?.length ? { route: enrichment.route } : {}),
 			...(enrichment.subordinate ? { subordinate: enrichment.subordinate } : {}),
+		}
+		const mergedRaw: RawTxRecord = raw ? { ...raw, ...routePatch } : ({ ...routePatch } as RawTxRecord)
+		const isGift = tx.type === 'merchant_gift' || isRecentActivityConsumerGiftTx(mergedRaw)
+		if (isGift) {
+			const cardAddr = merchantChargeCardAddressFromRaw(mergedRaw) || tx.merchantCardAddress || ''
+			if (!cardAddr && !enrichment.route?.length) return tx
+			return {
+				...tx,
+				type: 'merchant_gift',
+				merchantCardAddress: cardAddr || tx.merchantCardAddress,
+				...(raw ? { rawTransaction: mergedRaw } : {}),
+			}
 		}
 		const isCharge = isMerchantChargeTxView(tx) || isRecentActivityMerchantChargeTx(mergedRaw)
 		if (!isCharge && !enrichment.route?.length && !enrichment.subordinate) return tx
@@ -576,9 +642,46 @@ export async function enrichMerchantChargeItemsWithIndexerRoutes(items: TxView[]
 			merchantCardAddress: cardAddr || tx.merchantCardAddress,
 			merchantChargeInStore,
 			type: isCharge ? 'merchant_pay' : tx.type,
-			rawTransaction: mergedRaw,
+			...(raw ? { rawTransaction: mergedRaw } : {}),
 		}
 	})
+}
+
+/** Merge route/cardAddress enrichment from a parallel fetch into an existing in-memory list. */
+export function mergeChargeRouteEnrichmentIntoTxViews(prev: TxView[], enriched: TxView[]): TxView[] {
+	if (prev.length === 0) return enriched
+	const patchById = new Map(
+		enriched
+			.filter(
+				(t) =>
+					String(t.merchantCardAddress ?? '').trim() ||
+					(t.rawTransaction?.route?.length ?? 0) > 0,
+			)
+			.map((t) => [t.id, t]),
+	)
+	if (patchById.size === 0) return prev
+	let changed = false
+	const next = prev.map((t) => {
+		const patch = patchById.get(t.id)
+		if (!patch) return t
+		const merged: TxView = {
+			...t,
+			merchantCardAddress: patch.merchantCardAddress || t.merchantCardAddress,
+			merchantChargeInStore: patch.merchantChargeInStore ?? t.merchantChargeInStore,
+			isMerchantCharge: patch.isMerchantCharge ?? t.isMerchantCharge,
+			type: patch.type ?? t.type,
+			rawTransaction: patch.rawTransaction ?? t.rawTransaction,
+		}
+		if (
+			merged.merchantCardAddress !== t.merchantCardAddress ||
+			merged.merchantChargeInStore !== t.merchantChargeInStore ||
+			merged.rawTransaction !== t.rawTransaction
+		) {
+			changed = true
+		}
+		return merged
+	})
+	return changed ? next : prev
 }
 
 function mergeIssuedNftClaimDisplayJson(
@@ -899,9 +1002,39 @@ const TX_BUINT_BURN = ethers.keccak256(ethers.toUtf8Bytes('buintBurn'))
 const TX_BUINT_BURN_KINDS = ['sendUSDC', 'cardTopup', 'issueCard', 'x402Send'].map((n) =>
 	ethers.keccak256(ethers.toUtf8Bytes(n))
 )
+/** Indexer standalone B-Unit service fee rows (`MemberCard` `*:bunitService`) — belong in Fuel/B-Unit ledger only. */
+const TX_BUINT_SERVICE_KINDS = [
+	'nfcTopup:bunitService',
+	'usdcTopup:bunitService',
+	'createIssuedNftCoupon:bunitService',
+	'createIssuedNftCatalog:bunitService',
+	'cardRedeem:bunitService',
+	'posCouponBurn:bunitService',
+	'charge:bunitService',
+].map((n) => ethers.keccak256(ethers.toUtf8Bytes(n)))
 const TX_BUINT_EXCLUDE = new Set(
-	[TX_BUINT_CLAIM, TX_REQUEST_ACCOUNTING, TX_BUINT_BURN, ...TX_BUINT_BURN_KINDS].map((h) => h.toLowerCase())
+	[
+		TX_BUINT_CLAIM,
+		TX_BUINT_USDC,
+		TX_REQUEST_ACCOUNTING,
+		TX_BUINT_BURN,
+		...TX_BUINT_BURN_KINDS,
+		...TX_BUINT_SERVICE_KINDS,
+	].map((h) => h.toLowerCase())
 )
+
+/** Recent Activity must not surface B-Unit ledger rows (claim / burn / fuel yield / `*:bunitService`). */
+export function isRecentActivityExcludedBunitCategory(txCategory: unknown): boolean {
+	const cat = String(txCategory ?? '').toLowerCase()
+	return cat !== '' && TX_BUINT_EXCLUDE.has(cat)
+}
+
+export function filterRecentActivityExcludedBunitRows(items: TxView[]): TxView[] {
+	return items.filter((tx) => {
+		if (tx.type === 'fuel_yield') return false
+		return !isRecentActivityExcludedBunitCategory(tx.rawTransaction?.txCategory)
+	})
+}
 
 export type TxDisplayType =
 	| 'merchant_pay'
@@ -1138,8 +1271,7 @@ function appendIndexerPage(
 ): void {
 	for (const tx of list) {
 		if (!tx?.exists) continue
-		const cat = String(tx.txCategory ?? '').toLowerCase()
-		if (TX_BUINT_EXCLUDE.has(cat)) continue
+		if (isRecentActivityExcludedBunitCategory(tx.txCategory)) continue
 		const id =
 			typeof tx.id === 'string'
 				? tx.id
@@ -1253,6 +1385,9 @@ function appendIndexerPage(
 					: type
 		if (isConsumerGift) {
 			title = 'Merchant Gift'
+		}
+		if (isMerchantCharge) {
+			title = 'Merchant Payment'
 		}
 		merged.push({
 			id,
@@ -1465,7 +1600,7 @@ export async function fetchMergedRecentActivityFromIndexer(
 		const enriched = await enrichIssuedNftClaimItemsWithIndexerRoutes(
 			await enrichMerchantChargeItemsWithIndexerRoutes(sliced)
 		)
-		return { items: enriched, error: null, trusted: true }
+		return { items: filterRecentActivityExcludedBunitRows(enriched), error: null, trusted: true }
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : String(e)
 		return { items: [], error: msg, trusted: false }

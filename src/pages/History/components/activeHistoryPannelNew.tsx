@@ -41,6 +41,8 @@ import {
 	isRecentActivityCardTopupCategory,
 	isRecentActivityIssuedNftClaimTxView,
 	merchantGiftListTitle,
+	merchantGiftCounterpartyFallbackLabel,
+	isProvisionalMerchantGiftActivityTitle,
 	isMerchantChargeTxView,
 	merchantChargeCardAddressFromTxView,
 	merchantChargeCardAddressFromRaw,
@@ -63,7 +65,14 @@ import {
 import { indexerRouteCardAddress } from '@/utils/indexerCatalogRedeemClaim'
 import { useIssuedNftClaimSeriesTitle } from '@/hooks/useIssuedNftClaimSeriesTitle'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
-import { pickMerchantChargeListTitle, pickMerchantTopupListTitle, pickMerchantProgramDisplayName } from '@/utils/merchantCardDatabase'
+import {
+	isGenericMerchantCardDisplayName,
+	pickMerchantChargeListTitle,
+	pickMerchantTopupListTitle,
+	pickMerchantProgramDisplayName,
+	merchantChargeProgramDisplayName,
+	isIndexerMerchantChargePlaceholderTitle,
+} from '@/utils/merchantCardDatabase'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { searchUsername } from '@/services/beamio'
 import { conetDepinProvider, beamioApi, baseEndpoint } from '@/utils/constants'
@@ -76,6 +85,7 @@ import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
 import {
 	MyBrandCardAddressCapsule,
+	RecentActivityTxHashCapsule,
 	MyBrandMerchantIcon,
 	resolveMyBrandCardIconUrl,
 } from '@/pages/Brands/MyBrandsListSection'
@@ -355,9 +365,10 @@ function isProvisionalRecentActivityTitle(text: string): boolean {
 	const t = String(text ?? '').trim()
 	if (!t) return true
 	if (t === 'Unknown') return true
-	if (t === 'Merchant Payment' || t === 'Top-up') return true
+	if (isIndexerMerchantChargePlaceholderTitle(t) || t === 'Top-up') return true
 	if (/^Top-up:\s*$/i.test(t)) return true
 	if (/0x[a-f0-9]{4}…[a-f0-9]{4}/i.test(t)) return true
+	if (isProvisionalMerchantGiftActivityTitle(t)) return true
 	return false
 }
 
@@ -404,6 +415,22 @@ function useStableRecentActivityTitle(txId: string, candidate: string): string {
 		ref.current.title = next
 		return next
 	}
+	if (isProvisionalMerchantGiftActivityTitle(prev) && !isProvisionalMerchantGiftActivityTitle(next)) {
+		ref.current.title = next
+		return next
+	}
+	if (isIndexerMerchantChargePlaceholderTitle(prev) && !isIndexerMerchantChargePlaceholderTitle(next)) {
+		ref.current.title = next
+		return next
+	}
+	if (
+		isIndexerMerchantChargePlaceholderTitle(prev) &&
+		/^payment to /i.test(String(next ?? '').trim()) &&
+		next.length > prev.length
+	) {
+		ref.current.title = next
+		return next
+	}
 	if (!isProvisionalRecentActivityTitle(prev)) {
 		return prev
 	}
@@ -426,6 +453,46 @@ function useStableMerchantIconUrl(txId: string, candidate: string | undefined): 
 		return candidate
 	}
 	return ref.current.url
+}
+
+/** Recent Activity 列表行 subtitle：可选标签 + 交易 hash 胶囊 + 时间 */
+function RecentActivityRowSubtitleMeta({
+	label,
+	txHash,
+	timestampMs,
+}: {
+	label?: string
+	txHash?: string
+	timestampMs: number
+}) {
+	const trimmedLabel = String(label ?? '').trim()
+	const trimmedHash = String(txHash ?? '').trim()
+	const timeLabel = formatBeamioTransactionTimeLabel(timestampMs)
+	return (
+		<>
+			{trimmedLabel ? (
+				<span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium truncate max-w-[96px]">
+					{trimmedLabel}
+				</span>
+			) : null}
+			{trimmedHash ? (
+				<span
+					className="shrink-0"
+					onClick={(e) => e.stopPropagation()}
+					onKeyDown={(e) => e.stopPropagation()}
+					role="presentation"
+				>
+					<RecentActivityTxHashCapsule txHash={trimmedHash} className="max-w-[96px]" />
+				</span>
+			) : null}
+			{trimmedLabel || trimmedHash ? (
+				<span className="text-[10px] text-gray-400 dark:text-slate-500" aria-hidden>
+					•
+				</span>
+			) : null}
+			<span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium shrink-0">{timeLabel}</span>
+		</>
+	)
 }
 
 /** Recent Activity 行左侧 icon 槽 — 固定 36px，避免 Lucide 尺寸差导致垂直跳动 */
@@ -556,13 +623,21 @@ function RecentActivityTxItemRow({
 	const shortAddr = tx.counterpartyAddress && tx.counterpartyAddress.length >= 10
 		? `${tx.counterpartyAddress.slice(0, 6)}…${tx.counterpartyAddress.slice(-4)}`
 		: ''
-	const counterpartyLabel = fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
+	const isMerchantGiftLedgerTx = tx.type === 'merchant_gift'
+	const counterpartyLabel = isMerchantGiftLedgerTx
+		? merchantGiftCounterpartyFallbackLabel({
+				fullName,
+				beamioTag,
+				shortAddr,
+				handle: tx.handle,
+				forText: tx.forText,
+			})
+		: fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
 	const rowTxCategory = String(rawTx?.txCategory ?? '').toLowerCase()
 	const isIssuedNftClaimTx = isRecentActivityIssuedNftClaimTxView(tx)
 	const resolvedClaimSeriesTitle = useIssuedNftClaimSeriesTitle(tx, isIssuedNftClaimTx)
 	const isCardTopupLedgerTx =
 		!isIssuedNftClaimTx && isRecentActivityCardTopupCategory(rowTxCategory)
-	const isMerchantGiftLedgerTx = tx.type === 'merchant_gift'
 	const isMerchantChargeLedgerTx = !isMerchantGiftLedgerTx && isMerchantChargeTxView(tx)
 	const merchantChargeParsed = useMemo(
 		() =>
@@ -619,25 +694,54 @@ function RecentActivityTxItemRow({
 		return resolveMyBrandCardIconUrl(peekMetadata(merchantChargeCardAddr))
 	}, [isMerchantChargeLedgerTx, merchantChargeCardAddr, cardMap, peekMetadata])
 	const merchantChargeIconUrl = useStableMerchantIconUrl(tx.id, merchantChargeIconUrlCandidate)
-	const merchantCardName = useMemo(() => {
-		const cardAddr = isMerchantGiftLedgerTx ? merchantGiftCardAddr : merchantChargeCardAddr
-		if (!cardAddr || (!isMerchantGiftLedgerTx && !isMerchantChargeLedgerTx)) return ''
+	const rowBaseScanTxHash = useMemo(
+		() => resolveTxViewBaseScanTxHash(tx),
+		[tx.id, tx.txHash, rawTx?.displayJson, rawTx?.originalPaymentHash],
+	)
+	const merchantGiftCardDisplayName = useMemo(() => {
+		if (!isMerchantGiftLedgerTx || !merchantGiftCardAddr) return ''
+		const metaName = String(peekMetadata(merchantGiftCardAddr)?.name ?? '').trim()
+		if (metaName && !isGenericMerchantCardDisplayName(metaName)) return metaName
+		return pickMerchantProgramDisplayName({
+			displayNameFromDb: resolveDisplayName(merchantGiftCardAddr),
+			directoryName: recentActivityCardNameDirectory.get(merchantGiftCardAddr.toLowerCase()),
+		})
+	}, [
+		isMerchantGiftLedgerTx,
+		merchantGiftCardAddr,
+		peekMetadata,
+		cardMap,
+		resolveDisplayName,
+		recentActivityCardNameDirectory,
+	])
+	const merchantChargeProgramName = useMemo(() => {
+		if (isMerchantGiftLedgerTx) return merchantGiftCardDisplayName
+		const cardAddr = merchantChargeCardAddr
+		if (!cardAddr || !isMerchantChargeLedgerTx) return ''
 		const addrKey = cardAddr.toLowerCase()
-		return pickMerchantChargeListTitle({
+		const metaName = String(peekMetadata(cardAddr)?.name ?? '').trim()
+		return merchantChargeProgramDisplayName({
+			cardAddress: cardAddr,
 			displayNameFromDb: resolveDisplayName(cardAddr),
 			directoryName: recentActivityCardNameDirectory.get(addrKey),
-			displayJsonCardName: isMerchantChargeLedgerTx ? merchantChargeParsed?.cardName : undefined,
+			displayJsonCardName: merchantChargeParsed?.cardName,
+			metadataName: metaName,
 		})
 	}, [
 		isMerchantGiftLedgerTx,
 		isMerchantChargeLedgerTx,
-		merchantGiftCardAddr,
+		merchantGiftCardDisplayName,
 		merchantChargeCardAddr,
 		merchantChargeParsed?.cardName,
-		resolveDisplayName,
+		peekMetadata,
 		cardMap,
+		resolveDisplayName,
 		recentActivityCardNameDirectory,
 	])
+	const merchantCardName = useMemo(() => {
+		if (!merchantChargeProgramName) return ''
+		return `Payment to ${merchantChargeProgramName}`
+	}, [merchantChargeProgramName])
 	const merchantChargeCurrencyCode =
 		rawTx && isMerchantChargeLedgerTx
 			? merchantChargeListCurrencyCode(rawTx, tx.currencyCode)
@@ -681,7 +785,7 @@ function RecentActivityTxItemRow({
 		: isMerchantGiftLedgerTx
 		? merchantGiftListTitle(tx.isInbound, beamioTag, counterpartyLabel)
 		: isMerchantChargeLedgerTx
-		? merchantCardName || tx.title || 'Merchant Payment'
+		? merchantCardName || 'Merchant Payment'
 		: isCardTopupLedgerTx
 		? topupListTitle || tx.title || 'Top-up'
 		: tx.type === 'fuel_yield'
@@ -706,14 +810,14 @@ function RecentActivityTxItemRow({
 									? internalTitle
 									: tx.title
 	const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
-	const subtitleText = isIssuedNftClaimTx
-		? `${claimMerchantName || 'Claimed'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+	const rowSubtitleLabel = isIssuedNftClaimTx
+		? (claimMerchantName || 'Claimed')
 		: isMerchantGiftLedgerTx
-		? `${merchantCardName || 'Merchant program'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		? merchantGiftCardDisplayName
 		: isMerchantChargeLedgerTx
-		? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		? merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)
 		: isCardTopupLedgerTx
-		? `${recentActivityTopupPaymentLegLabel(rowTxCategory, topupDisplayJson)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		? recentActivityTopupPaymentLegLabel(rowTxCategory, topupDisplayJson)
 		: tx.type === 'fuel_yield'
 		? 'USDC Top-up'
 		: isReqExpired
@@ -795,7 +899,7 @@ function RecentActivityTxItemRow({
 					</div>
 				) : isMerchantChargeLedgerTx ? (
 					<MyBrandMerchantIcon
-						title={merchantCardName || 'Merchant'}
+						title={merchantChargeProgramName || 'Merchant'}
 						iconUrl={merchantChargeIconUrl}
 						sizeClassName="h-9 w-9 rounded-[10px] shadow-sm"
 						letterClassName="text-sm font-bold text-[#1562f0] dark:text-[#6ba3ff]"
@@ -831,12 +935,12 @@ function RecentActivityTxItemRow({
 					>
 						{titleText}
 					</h3>
-					<div className="flex items-center gap-1 flex-wrap">
-						{subtitleText ? (
-							<span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium truncate max-w-[180px]">
-								{subtitleText}
-							</span>
-						) : null}
+					<div className="flex items-center gap-1 flex-wrap min-w-0">
+						<RecentActivityRowSubtitleMeta
+							label={rowSubtitleLabel}
+							txHash={rowBaseScanTxHash}
+							timestampMs={tx.timestampMs}
+						/>
 						{tx.type === 'request_fulfilled' && (
 							<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">
 								Request
@@ -1063,12 +1167,17 @@ const ActiveHistoryPannelNew = ({
 					const chargeParsed = selectedRaw
 						? parseMerchantChargeDisplayJson(selectedRaw.displayJson ?? '')
 						: null
+					const chargeMetaName = chargeAddr
+						? String(peekMetadata(chargeAddr)?.name ?? '').trim()
+						: ''
 					const chargeTitle = pickMerchantChargeListTitle({
+						cardAddress: chargeAddr,
 						displayNameFromDb: chargeAddr ? resolveDisplayName(chargeAddr) : '',
 						directoryName: chargeAddr
 							? recentActivityCardNameDirectory.get(chargeAddr.toLowerCase())
 							: undefined,
 						displayJsonCardName: chargeParsed?.cardName,
+						metadataName: chargeMetaName,
 					})
 					if (chargeTitle) return chargeTitle
 					return ''
@@ -1088,12 +1197,17 @@ const ActiveHistoryPannelNew = ({
 					)
 				}
 				if (selectedTx.type === 'merchant_gift') {
-					const safeHandle = handleIsJson(selectedTx.handle) ? '' : (selectedTx.handle ?? '')
 					const shortAddr =
 						selectedTx.counterpartyAddress && selectedTx.counterpartyAddress.length >= 10
 							? `${selectedTx.counterpartyAddress.slice(0, 6)}…${selectedTx.counterpartyAddress.slice(-4)}`
 							: ''
-					const counterpartyLabel = detailFullName || detailBeamioTag || safeHandle || shortAddr || 'Unknown'
+					const counterpartyLabel = merchantGiftCounterpartyFallbackLabel({
+						fullName: detailFullName,
+						beamioTag: detailBeamioTag,
+						shortAddr,
+						handle: selectedTx.handle,
+						forText: selectedTx.forText,
+					})
 					return merchantGiftListTitle(selectedTx.isInbound, detailBeamioTag, counterpartyLabel)
 				}
 				if (selectedTx.type === 'internal_transfer' && eoa && aa) {
@@ -1124,6 +1238,14 @@ const ActiveHistoryPannelNew = ({
 	const selectedIsIssuedNftClaimKind = selectedTx ? isRecentActivityIssuedNftClaimTxView(selectedTx) : false
 	useEffect(() => {
 		if (!selectedTx) return
+		if (selectedTx.type === 'merchant_gift') {
+			const addr = merchantChargeCardAddressFromTxView(selectedTx)
+			if (addr) {
+				registerCardAddresses([addr])
+				void fetchCardMetadata(addr)
+			}
+			return
+		}
 		if (isMerchantChargeTxView(selectedTx)) {
 			const addr = merchantChargeCardAddressFromTxView(selectedTx)
 			if (addr) {
@@ -1157,7 +1279,32 @@ const ActiveHistoryPannelNew = ({
 	const selectedIsCardTopupKind =
 		!selectedIsIssuedNftClaimKind && isRecentActivityCardTopupCategory(selectedTxCategoryLower)
 	const selectedIsMerchantChargeKind = selectedTx ? isMerchantChargeTxView(selectedTx) : false
+	const selectedIsMerchantGiftKind = selectedTx?.type === 'merchant_gift'
 	const selectedIsProgramCardLedgerKind = selectedIsCardTopupKind || selectedIsMerchantChargeKind
+	const selectedGiftCardAddress = useMemo(
+		() => (selectedIsMerchantGiftKind && selectedTx ? merchantChargeCardAddressFromTxView(selectedTx) : ''),
+		[selectedIsMerchantGiftKind, selectedTx],
+	)
+	const selectedGiftBaseScanTxHash = useMemo(
+		() => (selectedIsMerchantGiftKind && selectedTx ? resolveTxViewBaseScanTxHash(selectedTx) : ''),
+		[selectedIsMerchantGiftKind, selectedTx?.id, selectedTx?.txHash, selectedTx?.rawTransaction],
+	)
+	const selectedGiftCardDisplayName = useMemo(() => {
+		if (!selectedIsMerchantGiftKind || !selectedGiftCardAddress) return ''
+		const metaName = String(peekMetadata(selectedGiftCardAddress)?.name ?? '').trim()
+		if (metaName && !isGenericMerchantCardDisplayName(metaName)) return metaName
+		return pickMerchantProgramDisplayName({
+			displayNameFromDb: resolveDisplayName(selectedGiftCardAddress),
+			directoryName: recentActivityCardNameDirectory.get(selectedGiftCardAddress.toLowerCase()),
+		})
+	}, [
+		selectedIsMerchantGiftKind,
+		selectedGiftCardAddress,
+		peekMetadata,
+		cardMap,
+		resolveDisplayName,
+		recentActivityCardNameDirectory,
+	])
 	const selectedChargeRaw = selectedTx?.rawTransaction as RawTxRecord | undefined
 	const selectedChargeParsed = useMemo(
 		() => (selectedChargeRaw ? parseMerchantChargeDisplayJson(selectedChargeRaw.displayJson ?? '') : null),
@@ -1166,19 +1313,24 @@ const ActiveHistoryPannelNew = ({
 	const selectedChargeDetailProgramTitle = useMemo(() => {
 		if (!selectedTx || !selectedIsMerchantChargeKind) return ''
 		const chargeAddr = merchantChargeCardAddressFromTxView(selectedTx)
+		const chargeMetaName = chargeAddr ? String(peekMetadata(chargeAddr)?.name ?? '').trim() : ''
 		return (
 			pickMerchantChargeListTitle({
+				cardAddress: chargeAddr,
 				displayNameFromDb: chargeAddr ? resolveDisplayName(chargeAddr) : '',
 				directoryName: chargeAddr
 					? recentActivityCardNameDirectory.get(chargeAddr.toLowerCase())
 					: undefined,
 				displayJsonCardName: selectedChargeParsed?.cardName,
+				metadataName: chargeMetaName,
 			}) || ''
 		)
 	}, [
 		selectedTx,
 		selectedIsMerchantChargeKind,
 		selectedChargeParsed?.cardName,
+		peekMetadata,
+		cardMap,
 		resolveDisplayName,
 		recentActivityCardNameDirectory,
 	])
@@ -2236,6 +2388,26 @@ const ActiveHistoryPannelNew = ({
 								{selectedIsProgramCardLedgerKind && selectedProgramCardDetailSubtitle ? (
 									<p className="text-[14px] font-medium text-gray-500 dark:text-slate-400 mt-1">{selectedProgramCardDetailSubtitle}</p>
 								) : null}
+								{selectedIsMerchantGiftKind ? (
+									<div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+										{selectedGiftCardDisplayName ? (
+											<span className="max-w-[160px] truncate text-[14px] font-medium text-gray-500 dark:text-slate-400">
+												{selectedGiftCardDisplayName}
+											</span>
+										) : null}
+										{selectedGiftBaseScanTxHash ? (
+											<RecentActivityTxHashCapsule txHash={selectedGiftBaseScanTxHash} className="max-w-[120px]" />
+										) : null}
+										{(selectedGiftCardDisplayName || selectedGiftBaseScanTxHash) ? (
+											<span className="text-[14px] font-medium text-gray-400 dark:text-slate-500" aria-hidden>
+												•
+											</span>
+										) : null}
+										<span className="text-[14px] font-medium text-gray-500 dark:text-slate-400">
+											{formatBeamioTransactionTimeLabel(selectedTx.timestampMs)}
+										</span>
+									</div>
+								) : null}
 								{((selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && (isRequestExpired(selectedTx) || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
 									<p className="text-[18px] font-semibold text-gray-500 dark:text-slate-400 mt-1">
 										{formatAmountWithCurrencyProtocol(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)}
@@ -2271,7 +2443,7 @@ const ActiveHistoryPannelNew = ({
 									</p>
 								)
 							})()}
-							{!selectedIsProgramCardLedgerKind ? (
+							{!selectedIsProgramCardLedgerKind && !selectedIsMerchantGiftKind ? (
 								<p className="text-[15px] font-medium text-gray-500 dark:text-slate-400 mt-1">
 									{formatBeamioTransactionTimeLabel(selectedTx.timestampMs)}
 								</p>

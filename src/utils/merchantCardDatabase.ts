@@ -12,7 +12,10 @@ import {
   merchantProgramCardDisplayNameFromMetadataRoot,
   type CardMetadataFromUri,
 } from '@/services/BeamioCard';
-import { rememberCardBasicMetadataTrusted } from '@/utils/cardBasicMetadataGlobalCache';
+import {
+  peekCardBasicMetadata,
+  rememberCardBasicMetadataTrusted,
+} from '@/utils/cardBasicMetadataGlobalCache';
 import {
   type MerchantCardRecord,
   loadMerchantCardMap,
@@ -71,13 +74,54 @@ export function pickMerchantProgramDisplayName(opts: {
   return db || directory || json || '';
 }
 
-/** Recent Activity Charge list title — merchant name only (no prefix). */
-export function pickMerchantChargeListTitle(opts: {
+export type MerchantChargeTitleOpts = {
+  cardAddress?: string;
   displayNameFromDb?: string;
   directoryName?: string;
   displayJsonCardName?: string;
-}): string {
-  return pickMerchantProgramDisplayName(opts);
+  /** On-chain/API metadata.name — preferred when DB row is still warming. */
+  metadataName?: string;
+};
+
+/** Sync read from global card metadata cache (localStorage + memory). */
+export function resolveMerchantCardMetadataName(cardAddress: string | undefined): string {
+  const key = normalizeCardAddressKey(cardAddress);
+  if (!key) return '';
+  const name = String(peekCardBasicMetadata(key)?.name ?? '').trim();
+  if (name && !isGenericMerchantCardDisplayName(name)) return name;
+  return '';
+}
+
+/** Merchant program name for Charge rows (icon / subtitle), without list prefix. */
+export function merchantChargeProgramDisplayName(opts: MerchantChargeTitleOpts): string {
+  const fromArg = String(opts.metadataName ?? '').trim();
+  const fromGlobal = resolveMerchantCardMetadataName(opts.cardAddress);
+  const meta =
+    fromArg && !isGenericMerchantCardDisplayName(fromArg)
+      ? fromArg
+      : fromGlobal;
+  return pickMerchantProgramDisplayName({
+    displayNameFromDb:
+      meta && !isGenericMerchantCardDisplayName(meta) ? meta : opts.displayNameFromDb,
+    directoryName: opts.directoryName,
+    displayJsonCardName: opts.displayJsonCardName,
+  });
+}
+
+/** Recent Activity Charge list title — `Payment to {merchant metadata.name}`. */
+export function pickMerchantChargeListTitle(opts: MerchantChargeTitleOpts): string {
+  const program = merchantChargeProgramDisplayName(opts);
+  if (program) return `Payment to ${program}`;
+  return '';
+}
+
+/** Indexer displayJson titles that must not stick once card metadata is known. */
+export function isIndexerMerchantChargePlaceholderTitle(text: string | undefined | null): boolean {
+  const t = String(text ?? '').trim();
+  if (!t) return true;
+  if (t === 'Merchant Payment') return true;
+  if (/^(?:qr\s+)?merchant\s+payment$/i.test(t)) return true;
+  return false;
 }
 
 /** Recent Activity Top-up list title — `Top-up: {merchant name}` (same name source as Charge). */

@@ -25,7 +25,13 @@ import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import { getUsdcBalanceFromApi } from '@/services/beamio'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
-import { fetchMergedRecentActivityFromIndexer, type TxView } from '@/pages/History/recentActivityIndexerMerge'
+import {
+	enrichMerchantChargeItemsWithIndexerRoutes,
+	fetchMergedRecentActivityFromIndexer,
+	filterRecentActivityExcludedBunitRows,
+	mergeChargeRouteEnrichmentIntoTxViews,
+	type TxView,
+} from '@/pages/History/recentActivityIndexerMerge'
 import {
   loadMyBrandsFeedLocalCache,
   saveMyBrandsFeedLocalCache,
@@ -1108,11 +1114,21 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
     const hit = loadRecentActivityLocalCache(eoaLower)
     if (hit?.length) {
-      const restored = txViewsFromLocalCache(hit)
+      const restored = filterRecentActivityExcludedBunitRows(txViewsFromLocalCache(hit))
       recentActivityNoAaSettledRef.current = true
       setRecentActivityNoAaItems(restored)
       setRecentActivityNoAaError(null)
       setRecentActivityNoAaLoading(false)
+      void enrichMerchantChargeItemsWithIndexerRoutes(restored).then((enriched) => {
+        setRecentActivityNoAaItems((prev) => {
+          const next = mergeChargeRouteEnrichmentIntoTxViews(
+            prev.length > 0 ? prev : restored,
+            enriched,
+          )
+          if (next.length > 0) saveRecentActivityLocalCache(eoaLower, next)
+          return next
+        })
+      })
     } else {
       recentActivityNoAaSettledRef.current = false
       setRecentActivityNoAaItems([])

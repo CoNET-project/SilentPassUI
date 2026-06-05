@@ -78,6 +78,7 @@ import greenCard from "./assets/greenCard.png"
 import blackCard from "./assets/BlackCard.png"
 import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
 import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPromo.png"
+import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
@@ -96,9 +97,51 @@ const DISCOVER_FEATURE_FALLBACK_IMAGES = [
 	"https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
 ] as const
 
-/** Bundled hero overrides when on-chain metadata has no `merchantImage`. Key: card address lowercased. */
+/**
+ * Curated Featured Brands hero (large card image). Key: card address lowercased.
+ * Takes precedence over on-chain `merchantImage` / metadata background to avoid load-time flicker.
+ */
 const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
 	"0x30d80cd71fd1ffd346737b387da11c7412363eff": longdhangStoreCardBg,
+}
+
+function resolveDiscoverFeaturedHeroImage(
+	cardAddress: string,
+	opts: {
+		programBackgroundImage?: string | null
+		merchantImage?: string | null
+		dbImage?: string | null
+		fallbackIndex: number
+	},
+): string {
+	const override = DISCOVER_CARD_HERO_OVERRIDES[cardAddress.toLowerCase()]?.trim()
+	if (override) return override
+	return (
+		opts.programBackgroundImage?.trim() ||
+		opts.merchantImage?.trim() ||
+		opts.dbImage?.trim() ||
+		DISCOVER_FEATURE_FALLBACK_IMAGES[opts.fallbackIndex % DISCOVER_FEATURE_FALLBACK_IMAGES.length]
+	)
+}
+
+/** Featured Brands list hero — bundled assets render synchronously (no IPFS hook flash). */
+function DiscoverFeaturedBrandHeroImage({
+	src,
+	alt,
+	className,
+}: {
+	src: string
+	alt: string
+	className?: string
+}) {
+	const trimmed = src.trim()
+	if (!trimmed) {
+		return <div className={className} aria-hidden />
+	}
+	if (!isIpfsFragmentImageUrl(trimmed)) {
+		return <img src={trimmed} alt={alt} className={className} draggable={false} />
+	}
+	return <IpfsImg src={trimmed} alt={alt} className={className} draggable={false} />
 }
 
 /** All-filter list: pinned to top first (in array order). */
@@ -2042,7 +2085,11 @@ function DiscoverMerchantDetailFullScreen({
 		<div className="flex h-full min-h-0 flex-col bg-[#f5f7f9] dark:bg-slate-950 text-[#1f2328] dark:text-slate-100">
 			<div className="relative shrink-0">
 				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
-					<IpfsImg src={item.image} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+					<DiscoverFeaturedBrandHeroImage
+						src={item.image}
+						alt=""
+						className="absolute inset-0 h-full w-full object-cover"
+					/>
 					<div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30" />
 					{heroRechargeBonusPill ? (
 						<DiscoverRechargeBonusHeroChip
@@ -2420,14 +2467,12 @@ export default function Market() {
 				categoryId: card.categoryId,
 			})
 			const isFood = category === "food-beverage"
-			const hero =
-				card.programBackgroundImage?.trim() ||
-				card.merchantImage?.trim() ||
-				dbImage
-			const cardHeroOverride =
-				DISCOVER_CARD_HERO_OVERRIDES[card.cardAddress.toLowerCase()]
-			const fallback =
-				DISCOVER_FEATURE_FALLBACK_IMAGES[idx % DISCOVER_FEATURE_FALLBACK_IMAGES.length]
+			const hero = resolveDiscoverFeaturedHeroImage(card.cardAddress, {
+				programBackgroundImage: card.programBackgroundImage,
+				merchantImage: card.merchantImage,
+				dbImage,
+				fallbackIndex: idx,
+			})
 			const subtitleOverride =
 				DISCOVER_CARD_SUBTITLE_OVERRIDES[card.cardAddress.toLowerCase()]
 			const primaryBonus =
@@ -2454,7 +2499,7 @@ export default function Market() {
 						? `${card.topTierName} · ${card.topTierMinDisplay}`
 						: card.topTierName ?? card.topTierMinDisplay ?? "Member Benefits",
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
-				image: hero || cardHeroOverride || fallback,
+				image: hero,
 				logo: card.programIconUrl ?? card.logoUrl ?? (dbImage || null),
 				currency: card.currency,
 				primaryRechargeBonus: primaryBonus,
@@ -2555,11 +2600,10 @@ export default function Market() {
 						className="w-full min-w-0 text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f5f7f9] dark:focus-visible:ring-offset-slate-950 active:scale-[0.99] transition-transform"
 					>
 						<div className="relative">
-							<IpfsImg
+							<DiscoverFeaturedBrandHeroImage
 								src={item.image}
 								alt={item.title}
 								className="w-full aspect-[16/9] object-cover"
-								draggable={false}
 							/>
 							{item.rechargeBonusSidePill ? (
 								<DiscoverRechargeBonusHeroChip

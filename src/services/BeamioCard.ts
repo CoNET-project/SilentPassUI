@@ -45,18 +45,23 @@ const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,
 	pointsHuman: string,
-	cardAddress: string
-  ) => {
+	cardAddress: string,
+	toEOA?: string
+) => {
 	const signer = new ethers.Wallet(userPrivateKey)
-  
+	const card = ethers.getAddress(cardAddress)
+	const to =
+		toEOA && ethers.isAddress(toEOA) ? ethers.getAddress(toEOA) : ethers.ZeroAddress
+
 	const now = Math.floor(Date.now() / 1000)
-	const validAfter = BigInt(now - 60)          // 给 30s 容错
-	const validBefore = BigInt(now + 360)        // 3 分钟
-  
+	const validAfter = BigInt(now - 60)
+	const validBefore = BigInt(now + 360)
+
 	const nonce = ethers.hexlify(ethers.randomBytes(32)) as `0x${string}`
-  
-	const tokenID = 0n // 这里必须等于合约的 POINTS_ID（你现在用 0，确认一下确实是 0）
-	const maxAmount = ethers.parseUnits(pointsHuman, 6)
+
+	const tokenID = 0n
+	const amount6 = ethers.parseUnits(pointsHuman, 6)
+	const maxAmount = amount6
   
 	// 1) 对齐 Solidity: keccak256(abi.encode(...))
 	const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
@@ -64,7 +69,7 @@ export const signOfflineTransferERC3009 = async (
 	  [
 		"OpenTransfer",
 		BeamioUserCardGatewayAddress,
-		cardAddress,
+		card,
 		chainId8453,
 		signer.address,
 		tokenID,
@@ -74,23 +79,64 @@ export const signOfflineTransferERC3009 = async (
 		nonce,
 	  ]
 	)
-  
+
 	const hash = ethers.keccak256(encoded)
-  
-	// 2) 对齐 Solidity: toEthSignedMessageHash(hash) + recover
 	const signature = await signer.signMessage(ethers.getBytes(hash))
-  
+
 	return {
-	  fromEOA: signer.address,
-	  id: tokenID.toString(),
-	  maxAmount: maxAmount.toString(),
-	  validAfter: validAfter.toString(),
-	  validBefore: validBefore.toString(),
-	  nonce,
-	  signature,
-	  digest: hash,
+		fromEOA: signer.address,
+		to,
+		id: tokenID.toString(),
+		amount: amount6.toString(),
+		maxAmount: maxAmount.toString(),
+		validAfter: validAfter.toString(),
+		validBefore: validBefore.toString(),
+		nonce,
+		signature,
+		digest: hash,
+		cardAddress: card,
 	}
-  }
+}
+
+const cardOpenTransferEndpoint = `${beamioApi}/api/cardOpenTransfer`
+const cardOpenTransferPreCheckEndpoint = `${beamioApi}/api/cardOpenTransferPreCheck`
+
+export type CardOpenTransferSignPayload = Awaited<ReturnType<typeof signOfflineTransferERC3009>>
+
+export const postCardOpenTransferPreCheck = async (
+	payload: CardOpenTransferSignPayload
+): Promise<{ success: boolean; error?: string }> => {
+	try {
+		const res = await fetch(cardOpenTransferPreCheckEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
+		if (!res.ok) return { success: false, error: data.error ?? `HTTP ${res.status}` }
+		return { success: data.success !== false, error: data.error }
+	} catch (e) {
+		return { success: false, error: (e as Error)?.message ?? 'Pre-check failed' }
+	}
+}
+
+export const postCardOpenTransfer = async (
+	payload: CardOpenTransferSignPayload
+): Promise<{ success: boolean; tx?: string; error?: string }> => {
+	try {
+		const res = await fetch(cardOpenTransferEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		})
+		const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; tx?: string }
+		if (!res.ok) return { success: false, error: data.error ?? `HTTP ${res.status}` }
+		if (data.success === false) return { success: false, error: data.error ?? 'Gift transfer failed' }
+		return { success: true, tx: data.tx }
+	} catch (e) {
+		return { success: false, error: (e as Error)?.message ?? 'Gift transfer failed' }
+	}
+}
 
 /**
  * 构造购卡请求：用户支付 usdcAmountHuman USDC（该 USDC 已由链上 currency→USD→USDC 得到）。
@@ -3270,6 +3316,23 @@ export async function getMerchantProgramCardDisplayName(cardAddress: string): Pr
 
 export type GetCardMetadataOptions = { bypassMemoryCache?: boolean }
 
+/** EIP-1155 `uri()` 模板中的 `{id}`：64 位小写十六进制（tokenId=0 为全零）。与 `beamioServer` `ERC1155_METADATA_PATH_RE` 一致。 */
+export function erc1155MetadataIdHex(tokenId: bigint | number | string = 0): string {
+	return BigInt(tokenId).toString(16).padStart(64, '0').toLowerCase()
+}
+
+/** 将链上 `…/api/metadata/0x{40hex}{id}.json` 模板展开为可请求的 URL。 */
+export function resolveBeamioErc1155MetadataUrl(baseUri: string, tokenId: bigint | number = 0): string {
+	if (!baseUri.includes('{id}')) return baseUri
+	return baseUri.replace(/{id}/gi, erc1155MetadataIdHex(tokenId))
+}
+
+/** `GET /api/metadata/0x{card}{64hexTokenId}.json`（卡级 metadata 用 tokenId=0）。 */
+export function beamioApiErc1155MetadataUrl(cardAddress: string, tokenId: bigint | number = 0): string {
+	const hex40 = ethers.getAddress(cardAddress).slice(2).toLowerCase()
+	return `${beamioApi}/api/metadata/0x${hex40}${erc1155MetadataIdHex(tokenId)}.json`
+}
+
 /** 从 beamioApi 拉取 card_owner + metadata_json，转为 CardMetadataFromUri。优先用此接口，不依赖链上 uri 与 RPC。 */
 export const getCardMetadataFromApi = async (
 	cardAddress: string,
@@ -3385,10 +3448,17 @@ export const getCardMetadataFromUri = async (
 		)
 		const baseUri = await card.uri(0)
 		if (!baseUri || typeof baseUri !== 'string') return null
-		// ERC1155: 将 {id} 替换为 tokenId（0 = POINTS_ID，用于卡级 metadata）
-		// 链上可能存完整 URL（如 https://api.beamio.io/metadata/0x{owner}.json），无 {id} 则不再替换
-		const url = baseUri.includes('{id}') ? baseUri.replace(/{id}/gi, '0') : baseUri
-		const res = await fetch(url)
+		// ERC1155: `{id}` → 64 位 hex（勿用字面量 "0"，否则 /api/metadata 路由 404）
+		const primaryUrl = resolveBeamioErc1155MetadataUrl(baseUri, 0)
+		const canonicalUrl = beamioApiErc1155MetadataUrl(cardAddress, 0)
+		let res = await fetch(primaryUrl)
+		if (!res.ok && primaryUrl !== canonicalUrl) {
+			res = await fetch(canonicalUrl)
+		}
+		if (!res.ok) {
+			const hex40 = ethers.getAddress(cardAddress).slice(2).toLowerCase()
+			res = await fetch(`${beamioApi}/metadata/0x${hex40}0.json`)
+		}
 		if (!res.ok) return null
 		const json = (await res.json()) as Record<string, unknown>
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers

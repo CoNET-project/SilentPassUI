@@ -64,6 +64,7 @@ import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import FuelView from './FuelView'
+import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from './MerchantAssetGiftSheet'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 
 /** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
@@ -265,7 +266,7 @@ const Home = (_props: HomeProps) => {
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails, myBrandsFeedLoading, homeTotalPowerCad,
-		aaAccountUsdcBalance,
+		aaAccountUsdcBalance, refreshRecentActivityNoAa,
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
@@ -295,6 +296,7 @@ const Home = (_props: HomeProps) => {
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
+	const [showMerchantGiftSheet, setShowMerchantGiftSheet] = useState(false)
 	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
 	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(false)
 	const [payReceiveQrMode, setPayReceiveQrMode] = useState<'pay' | 'receive'>('receive')
@@ -1693,6 +1695,42 @@ const Home = (_props: HomeProps) => {
 		return cadPartsFromNumber(pointsCad)
 	}, [myBrandCardDetails, currencyData])
 
+	const merchantGiftCardOptions = useMemo((): MerchantGiftCardOption[] => {
+		const out: MerchantGiftCardOption[] = []
+		for (const uc of myBrandCards) {
+			const addrKey = uc.cardAddress.toLowerCase()
+			const detail = myBrandCardDetails[addrKey]
+			const pts = Number(detail?.assets?.points ?? 0)
+			if (!Number.isFinite(pts) || pts <= 0) continue
+			const title =
+				(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
+			out.push({
+				cardAddress: uc.cardAddress,
+				title,
+				points: pts,
+				currency: detail?.assets?.cardCurrency ?? uc.currency ?? 'CAD',
+			})
+		}
+		return out.sort((a, b) => b.points - a.points)
+	}, [myBrandCards, myBrandCardDetails])
+
+	const merchantGiftEnabled = useMemo(() => {
+		if (merchantGiftCardOptions.length > 0) return true
+		const cad = Number(`${homeHubMerchantCad.whole}.${homeHubMerchantCad.frac}`)
+		return Number.isFinite(cad) && cad > 0
+	}, [merchantGiftCardOptions.length, homeHubMerchantCad])
+
+	const closeMerchantGiftSheet = useCallback(() => {
+		setShowMerchantGiftSheet(false)
+		setShowFooter(true)
+	}, [setShowFooter])
+
+	const openMerchantGiftSheetTap = useReliableTapHandler(() => {
+		if (!merchantGiftEnabled || merchantGiftCardOptions.length === 0) return
+		setShowMerchantGiftSheet(true)
+		setShowFooter(false)
+	})
+
 	return (
 		<div
 			className="
@@ -2041,6 +2079,25 @@ const Home = (_props: HomeProps) => {
 										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Top Up</p>
 									</div>
 									</button>
+									<button
+										type="button"
+										data-touch-priority="1"
+										{...openMerchantGiftSheetTap}
+										disabled={!merchantGiftEnabled || merchantGiftCardOptions.length === 0}
+										className={`flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS} ${
+											merchantGiftEnabled && merchantGiftCardOptions.length > 0
+												? 'active:scale-95 active:bg-[#e7e8e9] dark:active:bg-slate-800'
+												: 'cursor-not-allowed opacity-45'
+										}`}
+										aria-label="Gift merchant balance"
+									>
+										<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
+											<Gift size={22} strokeWidth={2} aria-hidden />
+										</div>
+										<div>
+											<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Gift</p>
+										</div>
+									</button>
 								</section>
 							</div>
 
@@ -2157,6 +2214,54 @@ const Home = (_props: HomeProps) => {
 											setShowPayMeSheet(false)
 											setShowFuelView(true)
 										}}
+									/>
+								</div>
+							</motion.div>
+						</>
+					)}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{/* Gift merchant points — bottom sheet */}
+			{createPortal(
+				<AnimatePresence>
+					{showMerchantGiftSheet && merchantGiftCardOptions.length > 0 && (
+						<>
+							<motion.div
+								className="fixed inset-0 z-[9997] bg-black/40"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.2 }}
+								onClick={closeMerchantGiftSheet}
+							/>
+							<motion.div
+								className="fixed left-0 right-0 bottom-0 z-[9998] flex max-h-[92dvh] flex-col rounded-t-[24px] bg-white pb-[calc(env(safe-area-inset-bottom)+2rem)] shadow-2xl dark:bg-slate-900"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="flex shrink-0 items-center justify-between px-4 py-2">
+									<div className="w-10" />
+									<div className="h-1 w-10 rounded-full bg-gray-300 dark:bg-slate-600" />
+									<button
+										type="button"
+										onClick={closeMerchantGiftSheet}
+										className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700"
+										aria-label="Close"
+									>
+										<X className="h-5 w-5" aria-hidden />
+									</button>
+								</div>
+								<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2">
+									<MerchantAssetGiftSheet
+										onClose={closeMerchantGiftSheet}
+										cards={merchantGiftCardOptions}
+										profile={profiles?.[0]}
+										onSuccess={() => void refreshRecentActivityNoAa()}
 									/>
 								</div>
 							</motion.div>

@@ -4622,7 +4622,40 @@ const TX_TIP_LEDGER_CATEGORY = ethers.keccak256(ethers.toUtf8Bytes('TX_TIP'))
 /** keccak256("TX_Terminal_RESET") - Settlement clear 标点（Indexer；payee = Terminal EOA） */
 const TX_TERMINAL_RESET_LEDGER_CATEGORY = ethers.keccak256(ethers.toUtf8Bytes('TX_Terminal_RESET'))
 const TX_MERCHANT_PAY_CONFIRMED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:confirmed'))
+/** keccak256("gift:confirmed") — consumer P2P points gift on merchant program card (x402sdk MemberCard) */
+const TX_GIFT_CONFIRMED = ethers.keccak256(ethers.toUtf8Bytes('gift:confirmed'))
 const TX_CATEGORY_ZERO = ethers.ZeroHash
+
+/** Indexer row is user-to-user Gift (not merchant Charge / Top-up). Legacy rows: open-container + Merchant gift. */
+function indexerRowIsConsumerGift(tx: { txCategory?: string; displayJson?: string }): boolean {
+  const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
+  if (cat !== '' && cat === TX_GIFT_CONFIRMED.toLowerCase()) return true
+  const dj = typeof tx.displayJson === 'string' ? tx.displayJson.trim() : ''
+  if (!dj) return false
+  try {
+    const d = JSON.parse(dj) as { source?: string; handle?: string; forText?: string }
+    const src = String(d.source ?? '').toLowerCase()
+    if (src === 'gift') return true
+    const handle = String(d.handle ?? d.forText ?? '')
+      .trim()
+      .toLowerCase()
+    return src === 'open-container' && handle === 'merchant gift'
+  } catch {
+    return false
+  }
+}
+
+function txDisplayRowIsConsumerGift(tx: TxDisplayRow): boolean {
+  const raw = tx.raw as { txCategory?: unknown; displayJson?: unknown }
+  const cat = raw.txCategory != null ? String(raw.txCategory) : ''
+  const displayJson =
+    typeof raw.displayJson === 'string'
+      ? raw.displayJson
+      : typeof tx.raw?.displayJson === 'string'
+        ? (tx.raw.displayJson as string)
+        : ''
+  return indexerRowIsConsumerGift({ txCategory: cat, displayJson })
+}
 
 /** NFC executeForAdmin 单笔 legacy（无卡/现/赠拆分）— UI 归为 Cash 口径 */
 const INDEXER_NFC_TOPUP_LEGACY_LUMP_LOWER = new Set([
@@ -4776,7 +4809,12 @@ function isIndexerFetchedRowBunitLedger(tx: { txCategory: string; payee: string 
 }
 
 /** True = omit row from raw ingest. `*:bunitService` 保留；展示时按主业务合并或单独成行。 */
-function shouldSkipIndexerRowForMerchantTxTable(tx: { txCategory: string; payee: string }): boolean {
+function shouldSkipIndexerRowForMerchantTxTable(tx: {
+  txCategory: string
+  payee: string
+  displayJson?: string
+}): boolean {
+  if (indexerRowIsConsumerGift(tx)) return true
   const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
   /** Keep USDC request-accounting rows in memory so Wallet Recent Activity can render bookkeeping items. */
   if (cat === TX_BUINT_REQUEST_ACCOUNTING.toLowerCase()) return false
@@ -5618,6 +5656,7 @@ function txDisplayRowIsUsdcRequestAccounting(tx: TxDisplayRow): boolean {
 }
 
 function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFilterCtx): boolean {
+  if (txDisplayRowIsConsumerGift(tx)) return false
   if (txDisplayRowIsIndexerBunitLedger(tx)) return false
   if (txDisplayRowIsTerminalSettlementReset(tx)) return false
   if (ctx.activeLedger === 'AA' && !ctx.hasAaAccount) return false
@@ -21749,7 +21788,14 @@ const refreshIndexerTransactions = useCallback(
                 : '';
             for (const tx of page ?? []) {
               if (!tx?.exists || !tx?.id) continue;
-              if (shouldSkipIndexerRowForMerchantTxTable({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' })) continue;
+              if (
+                shouldSkipIndexerRowForMerchantTxTable({
+                  txCategory: String(tx.txCategory),
+                  payee: tx.payee ?? '',
+                  displayJson: tx.displayJson ?? '',
+                })
+              )
+                continue;
               const idKey = String(tx.id).toLowerCase();
               if (seen.has(idKey)) {
                 if (assetLower) {
@@ -21810,7 +21856,14 @@ const refreshIndexerTransactions = useCallback(
             const out: string[] = [];
             for (const tx of page ?? []) {
               if (!tx?.exists || !tx?.id) continue;
-              if (shouldSkipIndexerRowForMerchantTxTable({ txCategory: String(tx.txCategory), payee: tx.payee ?? '' })) continue;
+              if (
+                shouldSkipIndexerRowForMerchantTxTable({
+                  txCategory: String(tx.txCategory),
+                  payee: tx.payee ?? '',
+                  displayJson: tx.displayJson ?? '',
+                })
+              )
+                continue;
               out.push(String(tx.id).toLowerCase());
             }
             return out;

@@ -39,6 +39,7 @@ import {
 	fetchMergedRecentActivityFromIndexer,
 	resolveTxViewBaseScanTxHash,
 	isRecentActivityCardTopupCategory,
+	isRecentActivityCardTopupTxView,
 	isRecentActivityIssuedNftClaimTxView,
 	merchantGiftListTitle,
 	merchantGiftCounterpartyFallbackLabel,
@@ -431,6 +432,10 @@ function useStableRecentActivityTitle(txId: string, candidate: string): string {
 		ref.current.title = next
 		return next
 	}
+	if (/^received from /i.test(String(prev ?? '').trim()) && /^top-up:/i.test(String(next ?? '').trim())) {
+		ref.current.title = next
+		return next
+	}
 	if (!isProvisionalRecentActivityTitle(prev)) {
 		return prev
 	}
@@ -616,7 +621,8 @@ function RecentActivityTxItemRow({
 	const isEoaReceived = !mySideIsAA && tx.isInbound && !isInternalTransfer
 	const isAAReceived = mySideIsAA && tx.isInbound && !isInternalTransfer
 	const needsCounterparty =
-		isEoaSent || isEoaReceived || tx.type === 'request_fulfilled' || tx.type === 'merchant_gift'
+		tx.type !== 'topup' &&
+		(isEoaSent || isEoaReceived || tx.type === 'request_fulfilled' || tx.type === 'merchant_gift')
 	const { fullName, beamioTag } = useCounterpartyProfile(needsCounterparty ? tx.counterpartyAddress : undefined)
 	const handleIsJson = (s: string | undefined) => !s || /^[\s]*\{/.test(s) || /"currency"/.test(s)
 	const safeHandle = handleIsJson(tx.handle) ? '' : tx.handle
@@ -636,8 +642,7 @@ function RecentActivityTxItemRow({
 	const rowTxCategory = String(rawTx?.txCategory ?? '').toLowerCase()
 	const isIssuedNftClaimTx = isRecentActivityIssuedNftClaimTxView(tx)
 	const resolvedClaimSeriesTitle = useIssuedNftClaimSeriesTitle(tx, isIssuedNftClaimTx)
-	const isCardTopupLedgerTx =
-		!isIssuedNftClaimTx && isRecentActivityCardTopupCategory(rowTxCategory)
+	const isCardTopupLedgerTx = !isIssuedNftClaimTx && isRecentActivityCardTopupTxView(tx)
 	const isMerchantChargeLedgerTx = !isMerchantGiftLedgerTx && isMerchantChargeTxView(tx)
 	const merchantChargeParsed = useMemo(
 		() =>
@@ -964,7 +969,7 @@ function RecentActivityTxItemRow({
 					</div>
 				</div>
 			</div>
-			<div className="text-right flex flex-col items-end shrink-0">
+			<div className="text-right flex flex-col items-end shrink-0 min-w-[4.75rem]">
 				<div
 					className={`text-[12px] font-semibold tracking-tight ${
 						isReqExpired || isReqCanceled ? 'text-gray-500 dark:text-slate-400 opacity-50' :
@@ -1141,7 +1146,7 @@ const ActiveHistoryPannelNew = ({
 	const selectedMerchantPayeeAddress = useMemo(() => {
 		if (!selectedTx) return undefined
 		const cat = String((selectedTx.rawTransaction as RawTxRecord | undefined)?.txCategory ?? '').toLowerCase()
-		if (!isRecentActivityCardTopupCategory(cat) && !isMerchantChargeTxView(selectedTx)) return undefined
+		if (!isRecentActivityCardTopupTxView(selectedTx) && !isMerchantChargeTxView(selectedTx)) return undefined
 		const raw = (fullTransactionFromChain ?? selectedTx.rawTransaction) as RawTxRecord | undefined
 		const fromRaw = resolveIndexerPayeeAddress(raw)
 		if (fromRaw) return fromRaw
@@ -1182,7 +1187,7 @@ const ActiveHistoryPannelNew = ({
 					if (chargeTitle) return chargeTitle
 					return ''
 				}
-				if (isRecentActivityCardTopupCategory(selectedCat)) {
+				if (isRecentActivityCardTopupTxView(selectedTx)) {
 					const topupAddr = topupCardAddressFromTxView(selectedTx)
 					const topupParsed = parseRecentActivityTopupDisplayJson(selectedRaw?.displayJson ?? '')
 					return (
@@ -1262,7 +1267,7 @@ const ActiveHistoryPannelNew = ({
 				registerCardAddresses([addr])
 				void fetchCardMetadata(addr)
 			}
-		} else if (isRecentActivityCardTopupCategory(selectedTxCategoryLower)) {
+		} else if (isRecentActivityCardTopupTxView(selectedTx)) {
 			const addr = topupCardAddressFromTxView(selectedTx)
 			if (addr) {
 				registerCardAddresses([addr])
@@ -1277,7 +1282,7 @@ const ActiveHistoryPannelNew = ({
 		fetchCardMetadata,
 	])
 	const selectedIsCardTopupKind =
-		!selectedIsIssuedNftClaimKind && isRecentActivityCardTopupCategory(selectedTxCategoryLower)
+		selectedTx != null && !selectedIsIssuedNftClaimKind && isRecentActivityCardTopupTxView(selectedTx)
 	const selectedIsMerchantChargeKind = selectedTx ? isMerchantChargeTxView(selectedTx) : false
 	const selectedIsMerchantGiftKind = selectedTx?.type === 'merchant_gift'
 	const selectedIsProgramCardLedgerKind = selectedIsCardTopupKind || selectedIsMerchantChargeKind

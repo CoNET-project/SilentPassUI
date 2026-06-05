@@ -200,6 +200,36 @@ export function isRecentActivityCardTopupCategory(txCategory: string): boolean {
 	return cat !== '' && RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER.has(cat)
 }
 
+function displayJsonLooksLikeCardTopup(displayJson: string): boolean {
+	try {
+		const j = JSON.parse(displayJson || '{}') as {
+			topupCategory?: string
+			topupPaymentLeg?: string
+			source?: string
+		}
+		if (String(j.topupCategory ?? '').trim()) return true
+		if (String(j.topupPaymentLeg ?? '').trim()) return true
+		if (/topup/i.test(String(j.source ?? ''))) return true
+	} catch {
+		/* ignore */
+	}
+	return false
+}
+
+/** Card top-up row — includes local-cache TxView rows without rawTransaction (type + merchantCardAddress). */
+export function isRecentActivityCardTopupTxView(tx: TxView): boolean {
+	if (isRecentActivityIssuedNftClaimTxView(tx)) return false
+	if (tx.type === 'topup') return true
+	const raw = tx.rawTransaction
+	if (raw) {
+		if (isRecentActivityCardTopupCategory(String(raw.txCategory ?? ''))) return true
+		if (displayJsonLooksLikeCardTopup(raw.displayJson ?? '')) return true
+	}
+	if (tx.merchantCardAddress && /^top-up:/i.test(String(tx.title ?? '').trim())) return true
+	if (tx.topupActualPaymentFiat != null || tx.topupBonusFiat != null) return true
+	return false
+}
+
 /** Claim coupon/catalog row — includes paged `cardRedeem` before enrich adds `type` + metadata title. */
 export function isRecentActivityIssuedNftClaimTxView(tx: TxView): boolean {
 	if (tx.type === 'claim_coupon' || tx.type === 'claim_catalog') return true
@@ -410,7 +440,15 @@ export function parseDisplayJsonCardIdentity(displayJson: string): { cardAddress
 export function buildRecentActivityCardNameDirectory(items: TxView[]): Map<string, string> {
 	const out = new Map<string, string>()
 	for (const tx of items) {
-		const { cardAddress, cardName } = parseDisplayJsonCardIdentity(tx.rawTransaction?.displayJson ?? '')
+		let { cardAddress, cardName } = parseDisplayJsonCardIdentity(tx.rawTransaction?.displayJson ?? '')
+		if (!cardAddress) {
+			const persisted = String(tx.merchantCardAddress ?? '').trim()
+			if (persisted && ethers.isAddress(persisted)) cardAddress = ethers.getAddress(persisted)
+		}
+		if (!cardName) {
+			const m = String(tx.title ?? '').match(/^Top-up:\s*(.+)$/i)
+			if (m?.[1]) cardName = m[1].trim()
+		}
 		if (!cardAddress || !cardName) continue
 		const key = cardAddress.toLowerCase()
 		const cleaned = cardName.replace(/\s*card\s*$/i, '').trim()

@@ -172,6 +172,41 @@ function formatMerchantChargeTipSubtitleAmount(amountFiat: number, currencyCode:
 	return `${prefix}${formatted}`
 }
 
+function extractTxRecordAddr(v: unknown): string {
+	return typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
+}
+
+/** 判断 request 类记录是否已过期（request_expired 或 request_create 逾 validDays） */
+function isRequestExpired(tx: TxView): boolean {
+	if (tx.type === 'request_expired') return true
+	if (tx.type !== 'request_create') return false
+	const raw = tx.rawTransaction as RawTxRecord | undefined
+	const displayJsonStr = raw?.displayJson ?? ''
+	try {
+		const j = JSON.parse(displayJsonStr || '{}')
+		const validity = j.validity as { expiresAt?: number; validDays?: number } | undefined
+		const tsRaw = raw?.timestamp ?? 0n
+		const tsSec = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) : Number(tsRaw) / 1000
+		const expiresAtSec = validity?.expiresAt ?? (validity?.validDays ? tsSec + validity.validDays * 86400 : 0)
+		return expiresAtSec > 0 && Date.now() / 1000 > expiresAtSec
+	} catch {
+		return false
+	}
+}
+
+/** 从 rawTransaction 提取 originalPaymentHash（hex 字符串），用于分组 */
+function getOriginalPaymentHash(tx: TxView): string {
+	const raw = tx.rawTransaction as RawTxRecord | undefined
+	const oph = raw?.originalPaymentHash
+	if (!oph) return ''
+	const hex = typeof oph === 'string' ? oph : ethers.hexlify(oph as ethers.BytesLike)
+	return hex === ethers.ZeroHash ? '' : hex
+}
+
+function amountFiatSigned(tx: TxView): number {
+	return tx.isInbound ? tx.amountFiat : -tx.amountFiat
+}
+
 /** Charge routing 商户行：有 tip 时展示 subtotal，使 商户行 + tip = Total */
 function resolveMerchantChargeRoutingLineFiat(
 	legFiat: number,
@@ -461,6 +496,412 @@ function useCounterpartyProfile(address: string | undefined) {
 	}, [address, beamioUsers, setbBeamioUsers])
 
 	return { fullName, beamioTag }
+}
+
+type RecentActivityTxItemRowProps = {
+	tx: TxView
+	activeTab?: 'All' | 'Cash' | 'Vouchers'
+	eoa?: string
+	aa?: string
+	myAddress?: string
+	canceledHashes: Set<string>
+	recentActivityCardNameDirectory: Map<string, string>
+	onSelect: (tx: TxView) => void
+	iconForType: (type: TxDisplayType, size: number, tx?: TxView) => React.ReactNode
+	colorForType: (type: TxDisplayType) => string
+}
+
+function RecentActivityTxItemRow({
+	tx,
+	activeTab: rowActiveTab,
+	eoa,
+	aa,
+	myAddress,
+	canceledHashes,
+	recentActivityCardNameDirectory,
+	onSelect,
+	iconForType,
+	colorForType,
+}: RecentActivityTxItemRowProps) {
+	const { resolveDisplayName, registerCardAddresses, fetchCardMetadata, cardMap, peekMetadata } =
+		useMerchantCardDatabase()
+	const isInternalTransfer = tx.type === 'internal_transfer' && !isMerchantChargeTxView(tx)
+	const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
+	const isReqCanceled = tx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(tx))
+	const rawTx = tx.rawTransaction as RawTxRecord | undefined
+	const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
+	const payerAddr = extractTxRecordAddr(rawTx?.payer) ?? ''
+	const payeeAddr = extractTxRecordAddr(rawTx?.payee) ?? ''
+	const eoaAddr = (eoa ?? myAddress ?? '').toLowerCase()
+	const aaAddr = (aa ?? '').toLowerCase()
+
+	// payee 决定资金流向：payee=EOA → Express Pay → Main Wallet (AA→EOA)，payee=AA → Main Wallet → Express Pay (EOA→AA)
+	const internalTitle = isInternalTransfer && eoaAddr && aaAddr
+		? (payeeAddr.toLowerCase() === eoaAddr ? 'Express Pay → Main Wallet' : payeeAddr.toLowerCase() === aaAddr ? 'Main Wallet → Express Pay' : 'Internal Transfer')
+		: tx.title
+
+	const isAddToExpressPay = isInternalTransfer && payeeAddr.toLowerCase() === aaAddr
+	// 根据 payer/payee 判断我方使用的钱包类型：收款时看 payee，付款时看 payer（indexer 的 isAAAccount 可能不准确）
+	const mySideIsAA = tx.isInbound ? (payeeAddr.toLowerCase() === aaAddr) : (payerAddr.toLowerCase() === aaAddr)
+	const isEoaSent = !mySideIsAA && !tx.isInbound && !isInternalTransfer
+	const isAASent = mySideIsAA && !tx.isInbound && !isInternalTransfer
+	const isEoaReceived = !mySideIsAA && tx.isInbound && !isInternalTransfer
+	const isAAReceived = mySideIsAA && tx.isInbound && !isInternalTransfer
+	const needsCounterparty = isEoaSent || isEoaReceived || tx.type === 'request_fulfilled'
+	const { fullName, beamioTag } = useCounterpartyProfile(needsCounterparty ? tx.counterpartyAddress : undefined)
+	const handleIsJson = (s: string | undefined) => !s || /^[\s]*\{/.test(s) || /"currency"/.test(s)
+	const safeHandle = handleIsJson(tx.handle) ? '' : tx.handle
+	const shortAddr = tx.counterpartyAddress && tx.counterpartyAddress.length >= 10
+		? `${tx.counterpartyAddress.slice(0, 6)}…${tx.counterpartyAddress.slice(-4)}`
+		: ''
+	const counterpartyLabel = fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
+	const rowTxCategory = String(rawTx?.txCategory ?? '').toLowerCase()
+	const isIssuedNftClaimTx = isRecentActivityIssuedNftClaimTxView(tx)
+	const resolvedClaimSeriesTitle = useIssuedNftClaimSeriesTitle(tx, isIssuedNftClaimTx)
+	const isCardTopupLedgerTx =
+		!isIssuedNftClaimTx && isRecentActivityCardTopupCategory(rowTxCategory)
+	const isMerchantChargeLedgerTx = isMerchantChargeTxView(tx)
+	const merchantChargeParsed = useMemo(
+		() =>
+			isMerchantChargeLedgerTx && rawTx
+				? parseMerchantChargeDisplayJson(rawTx.displayJson ?? '')
+				: null,
+		[isMerchantChargeLedgerTx, rawTx?.displayJson]
+	)
+	const merchantChargeCardAddr = useMemo(
+		() => (isMerchantChargeLedgerTx ? merchantChargeCardAddressFromTxView(tx) : ''),
+		[isMerchantChargeLedgerTx, tx.id, tx.merchantCardAddress, rawTx]
+	)
+	const topupDisplayJson = rawTx?.displayJson ?? ''
+	const topupParsed = useMemo(
+		() => (isCardTopupLedgerTx ? parseRecentActivityTopupDisplayJson(topupDisplayJson) : null),
+		[isCardTopupLedgerTx, topupDisplayJson],
+	)
+	const topupCardAddr = useMemo(
+		() => (isCardTopupLedgerTx ? topupCardAddressFromTxView(tx) : ''),
+		[isCardTopupLedgerTx, tx.id, tx.merchantCardAddress, rawTx?.displayJson],
+	)
+	const claimCardAddr = useMemo(() => {
+		if (!isIssuedNftClaimTx) return ''
+		return tx.merchantCardAddress ?? indexerRouteCardAddress(rawTx?.route) ?? ''
+	}, [isIssuedNftClaimTx, tx.merchantCardAddress, rawTx?.route])
+	useEffect(() => {
+		const addr = merchantChargeCardAddr || topupCardAddr || claimCardAddr
+		if (!addr) return
+		registerCardAddresses([addr])
+		void fetchCardMetadata(addr)
+	}, [merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, fetchCardMetadata])
+	const claimMerchantName = useMemo(() => {
+		if (!isIssuedNftClaimTx || !claimCardAddr) return ''
+		const addrKey = claimCardAddr.toLowerCase()
+		return pickMerchantProgramDisplayName({
+			displayNameFromDb: resolveDisplayName(claimCardAddr),
+			directoryName: recentActivityCardNameDirectory.get(addrKey),
+			displayJsonCardName: '',
+		})
+	}, [
+		isIssuedNftClaimTx,
+		claimCardAddr,
+		tx.title,
+		resolveDisplayName,
+		cardMap,
+		recentActivityCardNameDirectory,
+	])
+	const merchantChargeIconUrlCandidate = useMemo(() => {
+		if (!isMerchantChargeLedgerTx || !merchantChargeCardAddr) return undefined
+		return resolveMyBrandCardIconUrl(peekMetadata(merchantChargeCardAddr))
+	}, [isMerchantChargeLedgerTx, merchantChargeCardAddr, cardMap, peekMetadata])
+	const merchantChargeIconUrl = useStableMerchantIconUrl(tx.id, merchantChargeIconUrlCandidate)
+	const merchantCardName = useMemo(() => {
+		if (!isMerchantChargeLedgerTx) return ''
+		const addrKey = merchantChargeCardAddr.toLowerCase()
+		return pickMerchantChargeListTitle({
+			displayNameFromDb: merchantChargeCardAddr ? resolveDisplayName(merchantChargeCardAddr) : '',
+			directoryName: merchantChargeCardAddr
+				? recentActivityCardNameDirectory.get(addrKey)
+				: undefined,
+			displayJsonCardName: merchantChargeParsed?.cardName,
+		})
+	}, [
+		isMerchantChargeLedgerTx,
+		merchantChargeCardAddr,
+		merchantChargeParsed?.cardName,
+		resolveDisplayName,
+		cardMap,
+		recentActivityCardNameDirectory,
+	])
+	const merchantChargeCurrencyCode =
+		rawTx && isMerchantChargeLedgerTx
+			? merchantChargeListCurrencyCode(rawTx, tx.currencyCode)
+			: tx.currencyCode
+	const merchantChargeFiatAmount =
+		rawTx && isMerchantChargeLedgerTx ? merchantChargeDisplayFiatAmount(rawTx) : 0
+	const chargeRewardDisplay = isMerchantChargeLedgerTx
+		? resolveChargeRewardDisplayFromTxView(tx, rawTx)
+		: null
+	const chargeRewardValue = formatChargeRewardPointValue(chargeRewardDisplay)
+	const merchantChargeTipFiat = isMerchantChargeLedgerTx ? Math.max(0, Number(tx.merchantChargeTipFiat ?? 0)) : 0
+	const merchantChargeTipCurrencyCode = tx.merchantChargeTipCurrencyCode || merchantChargeCurrencyCode
+	const topupListTitle = useMemo(() => {
+		if (!isCardTopupLedgerTx) return ''
+		const addrKey = topupCardAddr.toLowerCase()
+		return pickMerchantTopupListTitle({
+			displayNameFromDb: topupCardAddr ? resolveDisplayName(topupCardAddr) : '',
+			directoryName: topupCardAddr ? recentActivityCardNameDirectory.get(addrKey) : undefined,
+			displayJsonCardName: topupParsed?.cardName,
+			fallbackTitle: tx.title,
+		})
+	}, [
+		isCardTopupLedgerTx,
+		topupCardAddr,
+		topupParsed?.cardName,
+		tx.title,
+		resolveDisplayName,
+		cardMap,
+		recentActivityCardNameDirectory,
+	])
+	const isPendingRequesting = (tx.type === 'request_create' || tx.type === 'request_expired') && !isReqExpired && !isReqCanceled
+	const isRequestFulfilled = tx.type === 'request_fulfilled'
+	// 自己是支付方且对方是 AA 账户时：Title = "Paid to @beamioTag"，subtitle = forText（payee 非己方地址且能解析出 beamioTag 时，视为对方为 Beamio/AA 用户）
+	const amPayer = !isInternalTransfer && !tx.isInbound
+	const payeeIsOther = amPayer && payeeAddr && payeeAddr !== eoaAddr && payeeAddr !== aaAddr
+	const paidToAA = payeeIsOther && !!beamioTag
+	// 无 originalPaymentHash 且为付款方时：Title = "Send to [beamio first lastname]"，subtitle = beamioTag
+	const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
+	const rawTitleText = isIssuedNftClaimTx
+		? resolvedClaimSeriesTitle ?? tx.title
+		: isMerchantChargeLedgerTx
+		? merchantCardName || tx.title || 'Merchant Payment'
+		: isCardTopupLedgerTx
+		? topupListTitle || tx.title || 'Top-up'
+		: tx.type === 'fuel_yield'
+		? 'Fuel Yield (1:100)'
+		: isReqExpired
+			? 'Request Expired'
+			: isReqCanceled
+				? 'Request Canceled'
+				: isPendingRequesting
+				? 'Payment QR'
+				: isRequestFulfilled
+					? 'Payment Received'
+					: sendToNoOph
+						? `Send to ${fullName || beamioTag || counterpartyLabel}`
+						: paidToAA
+							? `Paid to ${beamioTag || counterpartyLabel}`
+							: isEoaSent || isAASent
+							? `Sent to ${counterpartyLabel}`
+							: isEoaReceived
+								? `Received from ${counterpartyLabel}`
+								: isInternalTransfer
+									? internalTitle
+									: tx.title
+	const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
+	const subtitleText = isIssuedNftClaimTx
+		? `${claimMerchantName || 'Claimed'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		: isMerchantChargeLedgerTx
+		? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		: isCardTopupLedgerTx
+		? `${recentActivityTopupPaymentLegLabel(rowTxCategory, topupDisplayJson)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		: tx.type === 'fuel_yield'
+		? 'USDC Top-up'
+		: isReqExpired
+			? ((tx.forText ?? '').trim() || 'Link Invalidated')
+			: isReqCanceled
+				? ((tx.forText ?? '').trim() || '')
+				: isPendingRequesting
+				? ((tx.forText ?? '').trim() || 'QR Generated')
+				: isRequestFulfilled
+					? (beamioTag ? `Paid by ${beamioTag}` : `Paid by ${fullName || shortAddr || '…'}`)
+					: isInternalTransfer
+						? 'Internal Transfer'
+						: sendToNoOph
+							? (beamioTag ?? '')
+							: paidToAA
+								? ((tx.forText ?? '').trim() || '')
+								: isEoaSent || isEoaReceived
+								? (fullName ? (beamioTag ?? '') : '')
+								: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
+
+	const iconBg = isIssuedNftClaimTx
+		? tx.type === 'claim_catalog'
+			? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300'
+			: 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
+		: isMerchantChargeLedgerTx
+		? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
+		: isCardTopupLedgerTx
+		? 'bg-[#34C759]/10 text-[#34C759] dark:bg-[#34C759]/20 dark:text-[#5EDB7B]'
+		: tx.type === 'fuel_yield'
+		? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
+		: isInternalTransfer
+		? (payeeAddr.toLowerCase() === eoaAddr
+			? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
+			: 'bg-[#AF52DE]/10 text-[#AF52DE] dark:bg-[#AF52DE]/20 dark:text-[#c77dff]')
+		: isReqExpired || isReqCanceled
+			? 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-400'
+			: isEoaReceived
+				? 'bg-[#34C759]/10 text-[#34C759]'
+				: colorForType(tx.type)
+
+	// AA→EOA (Withdraw to Main): 收入，数字显示绿色 +（以 payee=EOA 为准，不受合并顺序影响）
+	const isWithdrawToMain = isInternalTransfer && payeeAddr.toLowerCase() === eoaAddr
+	// Vouchers 下：Main Wallet → Express Pay 显示 + 绿色，Express Pay → Main Wallet 显示 - 黑色
+	const vouchersInternalAmount = rowActiveTab === 'Vouchers' && isInternalTransfer
+		? (isAddToExpressPay ? { amt: Math.abs(tx.amountFiat), green: true } : { amt: -Math.abs(tx.amountFiat), green: false })
+		: null
+	// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色。Vouchers 下则反转：EOA→AA 为 + 绿色
+	const amountIsGreen = isIssuedNftClaimTx || isCardTopupLedgerTx
+		? true
+		: tx.type === 'fuel_yield'
+		? false
+		: vouchersInternalAmount
+			? vouchersInternalAmount.green
+			: !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
+	const fuelYieldSpentUsdc = tx.amountUSDC > 0 ? tx.amountUSDC : Math.abs(tx.amountFiat) / 100
+	const topupBonusFiat = isCardTopupLedgerTx ? Math.max(0, Number(tx.topupBonusFiat ?? 0)) : 0
+
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			onClick={() => onSelect(tx)}
+			onKeyDown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault()
+					onSelect(tx)
+				}
+			}}
+			className="relative flex items-center justify-between py-2.5 px-3 bg-white dark:bg-slate-800/80 rounded-[15px] shadow-[0_2px_9px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-transform duration-200 cursor-pointer border border-gray-100/50 dark:border-slate-700/50"
+		>
+			<div className="flex items-center gap-3">
+				{isMerchantChargeLedgerTx ? (
+					<MyBrandMerchantIcon
+						title={merchantCardName || 'Merchant'}
+						iconUrl={merchantChargeIconUrl}
+						sizeClassName="h-9 w-9 rounded-[10px] shadow-sm"
+						letterClassName="text-sm font-bold text-[#1562f0] dark:text-[#6ba3ff]"
+					/>
+				) : (
+				<div className={`${RECENT_ACTIVITY_ROW_ICON_OUTER_CLASS} ${iconBg}`}>
+					<span className={RECENT_ACTIVITY_ROW_ICON_INNER_CLASS}>
+						{tx.type === 'fuel_yield' ? (
+							<ArrowUpRight size={16} strokeWidth={2} />
+						) : isIssuedNftClaimTx ? (
+							tx.type === 'claim_catalog' ? (
+								<Package size={16} strokeWidth={2} />
+							) : (
+								<Gift size={16} strokeWidth={2} />
+							)
+						) : isCardTopupLedgerTx ? (
+							<Plus size={16} strokeWidth={2.5} />
+						) : isEoaReceived && tx.type !== 'request_fulfilled' ? (
+							<ArrowDownLeft size={16} strokeWidth={2} />
+						) : isEoaSent || isAASent ? (
+							<ArrowUpRight size={16} strokeWidth={2} />
+						) : (
+							iconForType(tx.type, 16, tx)
+						)}
+					</span>
+				</div>
+				)}
+				<div className="flex flex-col gap-0.5 min-w-0">
+					<h3
+						className={`min-h-[15px] text-[12px] font-semibold leading-[15px] tracking-tight truncate ${
+							isReqExpired || isReqCanceled ? 'text-gray-400 dark:text-slate-500' : 'text-black dark:text-white'
+						}`}
+					>
+						{titleText}
+					</h3>
+					<div className="flex items-center gap-1 flex-wrap">
+						{subtitleText ? (
+							<span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium truncate max-w-[180px]">
+								{subtitleText}
+							</span>
+						) : null}
+						{tx.type === 'request_fulfilled' && (
+							<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">
+								Request
+							</span>
+						)}
+						{tx.type === 'request_create' && !isReqExpired && !isReqCanceled && (
+							<span className="text-[8px] font-semibold text-[#FF9500] bg-[#FF9500]/10 px-1 py-0 rounded-[4px]">
+								Waiting
+							</span>
+						)}
+						{isReqCanceled && (
+							<span className="text-[8px] font-semibold text-gray-400 bg-gray-200 dark:bg-slate-600 dark:text-slate-400 px-1 py-0 rounded-[4px]">
+								Canceled
+							</span>
+						)}
+						{isReqExpired && (
+							<span className="text-[8px] font-semibold text-gray-400 bg-gray-200 dark:bg-slate-600 dark:text-slate-400 px-1 py-0 rounded-[4px]">
+								Expired
+							</span>
+						)}
+					</div>
+				</div>
+			</div>
+			<div className="text-right flex flex-col items-end shrink-0">
+				<div
+					className={`text-[12px] font-semibold tracking-tight ${
+						isReqExpired || isReqCanceled ? 'text-gray-500 dark:text-slate-400 opacity-50' :
+						amountIsGreen ? 'text-[#34C759]' :
+						'text-black dark:text-white'
+					}`}
+				>
+					{tx.type === 'request_create' && !isReqExpired && !isReqCanceled ? (
+						<span className="text-[#FF9500]">Pending</span>
+					) : tx.type === 'fuel_yield' ? (
+						<>-{formatAmount(fuelYieldSpentUsdc, 'USDC')}</>
+					) : isReqExpired || isReqCanceled ? (
+						formatAmountWithCurrencyProtocol(Math.abs(tx.amountFiat), tx.currencyCode as ICurrency)
+					) : isCardTopupLedgerTx ? (
+						formatTopupListAmountPositive(tx.amountFiat, tx.currencyCode)
+					) : isMerchantChargeLedgerTx ? (
+						formatMerchantChargeListAmountNegative(merchantChargeFiatAmount, merchantChargeCurrencyCode)
+					) : (
+						formatCurrencySigned(
+							vouchersInternalAmount
+								? vouchersInternalAmount.amt
+								: isWithdrawToMain ? Math.abs(tx.amountFiat) : isAddToExpressPay ? -Math.abs(tx.amountFiat) : amountFiatSigned(tx),
+							tx.currencyCode
+						)
+					)}
+				</div>
+				{tx.type === 'fuel_yield' ? (
+					<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">USDC</span>
+				) : isCardTopupLedgerTx && topupBonusFiat > 0 ? (
+					<span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-semibold text-[#FF9500]">
+						<span>Incl</span>
+						<span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
+							<Gift size={9} strokeWidth={2.5} />
+						</span>
+						<span>{formatTopupBonusSubtitleAmount(topupBonusFiat, tx.currencyCode)}</span>
+					</span>
+				) : isMerchantChargeLedgerTx ? (
+					<>
+						{chargeRewardValue ? (
+							<span className="mt-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
+								{chargeRewardValue}
+							</span>
+						) : null}
+						{merchantChargeTipFiat > 0 ? (
+							<span className="mt-0.5 text-[9px] font-medium text-gray-500 dark:text-slate-400">
+								incl tip{' '}
+								{formatMerchantChargeTipSubtitleAmount(
+									merchantChargeTipFiat,
+									merchantChargeTipCurrencyCode,
+								)}
+							</span>
+						) : null}
+					</>
+				) : !isCardTopupLedgerTx && !isMerchantChargeLedgerTx && tx.amountUSDC !== 0 && tx.type !== 'request_create' && tx.type !== 'request_expired' ? (
+					<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
+						{Math.abs(tx.amountUSDC).toFixed(2)} USDC
+					</span>
+				) : null}
+			</div>
+		</div>
+	)
 }
 
 interface ActiveHistoryPannelNewProps {
@@ -1178,32 +1619,6 @@ const ActiveHistoryPannelNew = ({
 		return true
 	})
 
-	/** 判断 request 类记录是否已过期（request_expired 或 request_create 逾 validDays） */
-	const isRequestExpired = (tx: TxView): boolean => {
-		if (tx.type === 'request_expired') return true
-		if (tx.type !== 'request_create') return false
-		const raw = tx.rawTransaction as RawTxRecord | undefined
-		const displayJsonStr = raw?.displayJson ?? ''
-		try {
-			const j = JSON.parse(displayJsonStr || '{}')
-			const validity = j.validity as { expiresAt?: number; validDays?: number } | undefined
-			const tsRaw = raw?.timestamp ?? 0n
-			const tsSec = Number(tsRaw) < 10_000_000_000 ? Number(tsRaw) : Number(tsRaw) / 1000
-			const expiresAtSec = validity?.expiresAt ?? (validity?.validDays ? tsSec + validity.validDays * 86400 : 0)
-			return expiresAtSec > 0 && Date.now() / 1000 > expiresAtSec
-		} catch {
-			return false
-		}
-	}
-
-	/** 从 rawTransaction 提取 originalPaymentHash（hex 字符串），用于分组 */
-	const getOriginalPaymentHash = (tx: TxView): string => {
-		const raw = tx.rawTransaction as RawTxRecord | undefined
-		const oph = raw?.originalPaymentHash
-		if (!oph) return ''
-		const hex = typeof oph === 'string' ? oph : ethers.hexlify(oph as ethers.BytesLike)
-		return hex === ethers.ZeroHash ? '' : hex
-	}
 
 	/** 已取消的 request 的 originalPaymentHash 集合（来自 request_cancel 交易） */
 	const canceledHashes = useMemo(() => {
@@ -1368,394 +1783,6 @@ const ActiveHistoryPannelNew = ({
 	}
 
 	/** 带符号的法币金额，用于展示（使用 meta.currencyFiat 对应币种） */
-	const amountFiatSigned = (tx: TxView) => (tx.isInbound ? tx.amountFiat : -tx.amountFiat)
-
-	function TxItemRow({ tx, activeTab: rowActiveTab }: { tx: TxView; activeTab?: 'All' | 'Cash' | 'Vouchers' }) {
-		const { resolveDisplayName, registerCardAddresses, fetchCardMetadata, cardMap, peekMetadata } =
-			useMerchantCardDatabase()
-		const isInternalTransfer = tx.type === 'internal_transfer' && !isMerchantChargeTxView(tx)
-		const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
-		const isReqCanceled = tx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(tx))
-		const rawTx = tx.rawTransaction as RawTxRecord | undefined
-		const extractAddr = (v: unknown) => typeof v === 'string' ? v : (Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
-		const payerAddr = extractAddr(rawTx?.payer) ?? ''
-		const payeeAddr = extractAddr(rawTx?.payee) ?? ''
-		const eoaAddr = (eoa ?? myAddress ?? '').toLowerCase()
-		const aaAddr = (aa ?? '').toLowerCase()
-
-		// payee 决定资金流向：payee=EOA → Express Pay → Main Wallet (AA→EOA)，payee=AA → Main Wallet → Express Pay (EOA→AA)
-		const internalTitle = isInternalTransfer && eoaAddr && aaAddr
-			? (payeeAddr.toLowerCase() === eoaAddr ? 'Express Pay → Main Wallet' : payeeAddr.toLowerCase() === aaAddr ? 'Main Wallet → Express Pay' : 'Internal Transfer')
-			: tx.title
-
-		const isAddToExpressPay = isInternalTransfer && payeeAddr.toLowerCase() === aaAddr
-		// 根据 payer/payee 判断我方使用的钱包类型：收款时看 payee，付款时看 payer（indexer 的 isAAAccount 可能不准确）
-		const mySideIsAA = tx.isInbound ? (payeeAddr.toLowerCase() === aaAddr) : (payerAddr.toLowerCase() === aaAddr)
-		const isEoaSent = !mySideIsAA && !tx.isInbound && !isInternalTransfer
-		const isAASent = mySideIsAA && !tx.isInbound && !isInternalTransfer
-		const isEoaReceived = !mySideIsAA && tx.isInbound && !isInternalTransfer
-		const isAAReceived = mySideIsAA && tx.isInbound && !isInternalTransfer
-		const needsCounterparty = isEoaSent || isEoaReceived || tx.type === 'request_fulfilled'
-		const { fullName, beamioTag } = useCounterpartyProfile(needsCounterparty ? tx.counterpartyAddress : undefined)
-		const handleIsJson = (s: string | undefined) => !s || /^[\s]*\{/.test(s) || /"currency"/.test(s)
-		const safeHandle = handleIsJson(tx.handle) ? '' : tx.handle
-		const shortAddr = tx.counterpartyAddress && tx.counterpartyAddress.length >= 10
-			? `${tx.counterpartyAddress.slice(0, 6)}…${tx.counterpartyAddress.slice(-4)}`
-			: ''
-		const counterpartyLabel = fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
-		const rowTxCategory = String(rawTx?.txCategory ?? '').toLowerCase()
-		const isIssuedNftClaimTx = isRecentActivityIssuedNftClaimTxView(tx)
-		const resolvedClaimSeriesTitle = useIssuedNftClaimSeriesTitle(tx, isIssuedNftClaimTx)
-		const isCardTopupLedgerTx =
-			!isIssuedNftClaimTx && isRecentActivityCardTopupCategory(rowTxCategory)
-		const isMerchantChargeLedgerTx = isMerchantChargeTxView(tx)
-		const merchantChargeParsed = useMemo(
-			() =>
-				isMerchantChargeLedgerTx && rawTx
-					? parseMerchantChargeDisplayJson(rawTx.displayJson ?? '')
-					: null,
-			[isMerchantChargeLedgerTx, rawTx?.displayJson]
-		)
-		const merchantChargeCardAddr = useMemo(
-			() => (isMerchantChargeLedgerTx ? merchantChargeCardAddressFromTxView(tx) : ''),
-			[isMerchantChargeLedgerTx, tx.id, tx.merchantCardAddress, rawTx]
-		)
-		const topupDisplayJson = rawTx?.displayJson ?? ''
-		const topupParsed = useMemo(
-			() => (isCardTopupLedgerTx ? parseRecentActivityTopupDisplayJson(topupDisplayJson) : null),
-			[isCardTopupLedgerTx, topupDisplayJson],
-		)
-		const topupCardAddr = useMemo(
-			() => (isCardTopupLedgerTx ? topupCardAddressFromTxView(tx) : ''),
-			[isCardTopupLedgerTx, tx.id, tx.merchantCardAddress, rawTx?.displayJson],
-		)
-		const claimCardAddr = useMemo(() => {
-			if (!isIssuedNftClaimTx) return ''
-			return tx.merchantCardAddress ?? indexerRouteCardAddress(rawTx?.route) ?? ''
-		}, [isIssuedNftClaimTx, tx.merchantCardAddress, rawTx?.route])
-		useEffect(() => {
-			const addr = merchantChargeCardAddr || topupCardAddr || claimCardAddr
-			if (!addr) return
-			registerCardAddresses([addr])
-			void fetchCardMetadata(addr)
-		}, [merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, fetchCardMetadata])
-		const claimMerchantName = useMemo(() => {
-			if (!isIssuedNftClaimTx || !claimCardAddr) return ''
-			const addrKey = claimCardAddr.toLowerCase()
-			return pickMerchantProgramDisplayName({
-				displayNameFromDb: resolveDisplayName(claimCardAddr),
-				directoryName: recentActivityCardNameDirectory.get(addrKey),
-				displayJsonCardName: '',
-			})
-		}, [
-			isIssuedNftClaimTx,
-			claimCardAddr,
-			tx.title,
-			resolveDisplayName,
-			cardMap,
-			recentActivityCardNameDirectory,
-		])
-		const merchantChargeIconUrlCandidate = useMemo(() => {
-			if (!isMerchantChargeLedgerTx || !merchantChargeCardAddr) return undefined
-			return resolveMyBrandCardIconUrl(peekMetadata(merchantChargeCardAddr))
-		}, [isMerchantChargeLedgerTx, merchantChargeCardAddr, cardMap, peekMetadata])
-		const merchantChargeIconUrl = useStableMerchantIconUrl(tx.id, merchantChargeIconUrlCandidate)
-		const merchantCardName = useMemo(() => {
-			if (!isMerchantChargeLedgerTx) return ''
-			const addrKey = merchantChargeCardAddr.toLowerCase()
-			return pickMerchantChargeListTitle({
-				displayNameFromDb: merchantChargeCardAddr ? resolveDisplayName(merchantChargeCardAddr) : '',
-				directoryName: merchantChargeCardAddr
-					? recentActivityCardNameDirectory.get(addrKey)
-					: undefined,
-				displayJsonCardName: merchantChargeParsed?.cardName,
-			})
-		}, [
-			isMerchantChargeLedgerTx,
-			merchantChargeCardAddr,
-			merchantChargeParsed?.cardName,
-			resolveDisplayName,
-			cardMap,
-			recentActivityCardNameDirectory,
-		])
-		const merchantChargeCurrencyCode =
-			rawTx && isMerchantChargeLedgerTx
-				? merchantChargeListCurrencyCode(rawTx, tx.currencyCode)
-				: tx.currencyCode
-		const merchantChargeFiatAmount =
-			rawTx && isMerchantChargeLedgerTx ? merchantChargeDisplayFiatAmount(rawTx) : 0
-		const chargeRewardDisplay = isMerchantChargeLedgerTx
-			? resolveChargeRewardDisplayFromTxView(tx, rawTx)
-			: null
-		const chargeRewardValue = formatChargeRewardPointValue(chargeRewardDisplay)
-		const merchantChargeTipFiat = isMerchantChargeLedgerTx ? Math.max(0, Number(tx.merchantChargeTipFiat ?? 0)) : 0
-		const merchantChargeTipCurrencyCode = tx.merchantChargeTipCurrencyCode || merchantChargeCurrencyCode
-		const topupListTitle = useMemo(() => {
-			if (!isCardTopupLedgerTx) return ''
-			const addrKey = topupCardAddr.toLowerCase()
-			return pickMerchantTopupListTitle({
-				displayNameFromDb: topupCardAddr ? resolveDisplayName(topupCardAddr) : '',
-				directoryName: topupCardAddr ? recentActivityCardNameDirectory.get(addrKey) : undefined,
-				displayJsonCardName: topupParsed?.cardName,
-				fallbackTitle: tx.title,
-			})
-		}, [
-			isCardTopupLedgerTx,
-			topupCardAddr,
-			topupParsed?.cardName,
-			tx.title,
-			resolveDisplayName,
-			cardMap,
-			recentActivityCardNameDirectory,
-		])
-		const isPendingRequesting = (tx.type === 'request_create' || tx.type === 'request_expired') && !isReqExpired && !isReqCanceled
-		const isRequestFulfilled = tx.type === 'request_fulfilled'
-		// 自己是支付方且对方是 AA 账户时：Title = "Paid to @beamioTag"，subtitle = forText（payee 非己方地址且能解析出 beamioTag 时，视为对方为 Beamio/AA 用户）
-		const amPayer = !isInternalTransfer && !tx.isInbound
-		const payeeIsOther = amPayer && payeeAddr && payeeAddr !== eoaAddr && payeeAddr !== aaAddr
-		const paidToAA = payeeIsOther && !!beamioTag
-		// 无 originalPaymentHash 且为付款方时：Title = "Send to [beamio first lastname]"，subtitle = beamioTag
-		const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
-		const rawTitleText = isIssuedNftClaimTx
-			? resolvedClaimSeriesTitle ?? tx.title
-			: isMerchantChargeLedgerTx
-			? merchantCardName || tx.title || 'Merchant Payment'
-			: isCardTopupLedgerTx
-			? topupListTitle || tx.title || 'Top-up'
-			: tx.type === 'fuel_yield'
-			? 'Fuel Yield (1:100)'
-			: isReqExpired
-				? 'Request Expired'
-				: isReqCanceled
-					? 'Request Canceled'
-					: isPendingRequesting
-					? 'Payment QR'
-					: isRequestFulfilled
-						? 'Payment Received'
-						: sendToNoOph
-							? `Send to ${fullName || beamioTag || counterpartyLabel}`
-							: paidToAA
-								? `Paid to ${beamioTag || counterpartyLabel}`
-								: isEoaSent || isAASent
-								? `Sent to ${counterpartyLabel}`
-								: isEoaReceived
-									? `Received from ${counterpartyLabel}`
-									: isInternalTransfer
-										? internalTitle
-										: tx.title
-		const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
-		const subtitleText = isIssuedNftClaimTx
-			? `${claimMerchantName || 'Claimed'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
-			: isMerchantChargeLedgerTx
-			? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
-			: isCardTopupLedgerTx
-			? `${recentActivityTopupPaymentLegLabel(rowTxCategory, topupDisplayJson)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
-			: tx.type === 'fuel_yield'
-			? 'USDC Top-up'
-			: isReqExpired
-				? ((tx.forText ?? '').trim() || 'Link Invalidated')
-				: isReqCanceled
-					? ((tx.forText ?? '').trim() || '')
-					: isPendingRequesting
-					? ((tx.forText ?? '').trim() || 'QR Generated')
-					: isRequestFulfilled
-						? (beamioTag ? `Paid by ${beamioTag}` : `Paid by ${fullName || shortAddr || '…'}`)
-						: isInternalTransfer
-							? 'Internal Transfer'
-							: sendToNoOph
-								? (beamioTag ?? '')
-								: paidToAA
-									? ((tx.forText ?? '').trim() || '')
-									: isEoaSent || isEoaReceived
-									? (fullName ? (beamioTag ?? '') : '')
-									: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
-
-		const iconBg = isIssuedNftClaimTx
-			? tx.type === 'claim_catalog'
-				? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300'
-				: 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
-			: isMerchantChargeLedgerTx
-			? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
-			: isCardTopupLedgerTx
-			? 'bg-[#34C759]/10 text-[#34C759] dark:bg-[#34C759]/20 dark:text-[#5EDB7B]'
-			: tx.type === 'fuel_yield'
-			? 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
-			: isInternalTransfer
-			? (payeeAddr.toLowerCase() === eoaAddr
-				? 'bg-[#1562f0]/10 text-[#1562f0] dark:bg-[#1562f0]/20 dark:text-[#4d8dff]'
-				: 'bg-[#AF52DE]/10 text-[#AF52DE] dark:bg-[#AF52DE]/20 dark:text-[#c77dff]')
-			: isReqExpired || isReqCanceled
-				? 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-400'
-				: isEoaReceived
-					? 'bg-[#34C759]/10 text-[#34C759]'
-					: colorForType(tx.type)
-
-		// AA→EOA (Withdraw to Main): 收入，数字显示绿色 +（以 payee=EOA 为准，不受合并顺序影响）
-		const isWithdrawToMain = isInternalTransfer && payeeAddr.toLowerCase() === eoaAddr
-		// Vouchers 下：Main Wallet → Express Pay 显示 + 绿色，Express Pay → Main Wallet 显示 - 黑色
-		const vouchersInternalAmount = rowActiveTab === 'Vouchers' && isInternalTransfer
-			? (isAddToExpressPay ? { amt: Math.abs(tx.amountFiat), green: true } : { amt: -Math.abs(tx.amountFiat), green: false })
-			: null
-		// Add to Express Pay (EOA→AA): 负数用黑色，不显示绿色。Vouchers 下则反转：EOA→AA 为 + 绿色
-		const amountIsGreen = isIssuedNftClaimTx || isCardTopupLedgerTx
-			? true
-			: tx.type === 'fuel_yield'
-			? false
-			: vouchersInternalAmount
-				? vouchersInternalAmount.green
-				: !isAddToExpressPay && ((tx.isInbound && tx.amountUSDC > 0) || (isWithdrawToMain && tx.amountUSDC > 0))
-		const fuelYieldSpentUsdc = tx.amountUSDC > 0 ? tx.amountUSDC : Math.abs(tx.amountFiat) / 100
-		const topupBonusFiat = isCardTopupLedgerTx ? Math.max(0, Number(tx.topupBonusFiat ?? 0)) : 0
-
-		return (
-			<div
-				role="button"
-				tabIndex={0}
-				onClick={() => {
-					setShowJson(false)
-					setSelectedTx(tx)
-				}}
-				onKeyDown={(e) => {
-					if (e.key === 'Enter' || e.key === ' ') {
-						e.preventDefault()
-						setShowJson(false)
-						setSelectedTx(tx)
-					}
-				}}
-				className="relative flex items-center justify-between py-2.5 px-3 bg-white dark:bg-slate-800/80 rounded-[15px] shadow-[0_2px_9px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-transform duration-200 cursor-pointer border border-gray-100/50 dark:border-slate-700/50"
-			>
-				<div className="flex items-center gap-3">
-					{isMerchantChargeLedgerTx ? (
-						<MyBrandMerchantIcon
-							title={merchantCardName || 'Merchant'}
-							iconUrl={merchantChargeIconUrl}
-							sizeClassName="h-9 w-9 rounded-[10px] shadow-sm"
-							letterClassName="text-sm font-bold text-[#1562f0] dark:text-[#6ba3ff]"
-						/>
-					) : (
-					<div className={`${RECENT_ACTIVITY_ROW_ICON_OUTER_CLASS} ${iconBg}`}>
-						<span className={RECENT_ACTIVITY_ROW_ICON_INNER_CLASS}>
-							{tx.type === 'fuel_yield' ? (
-								<ArrowUpRight size={16} strokeWidth={2} />
-							) : isIssuedNftClaimTx ? (
-								tx.type === 'claim_catalog' ? (
-									<Package size={16} strokeWidth={2} />
-								) : (
-									<Gift size={16} strokeWidth={2} />
-								)
-							) : isCardTopupLedgerTx ? (
-								<Plus size={16} strokeWidth={2.5} />
-							) : isEoaReceived && tx.type !== 'request_fulfilled' ? (
-								<ArrowDownLeft size={16} strokeWidth={2} />
-							) : isEoaSent || isAASent ? (
-								<ArrowUpRight size={16} strokeWidth={2} />
-							) : (
-								iconForType(tx.type, 16, tx)
-							)}
-						</span>
-					</div>
-					)}
-					<div className="flex flex-col gap-0.5 min-w-0">
-						<h3
-							className={`min-h-[15px] text-[12px] font-semibold leading-[15px] tracking-tight truncate ${
-								isReqExpired || isReqCanceled ? 'text-gray-400 dark:text-slate-500' : 'text-black dark:text-white'
-							}`}
-						>
-							{titleText}
-						</h3>
-						<div className="flex items-center gap-1 flex-wrap">
-							{subtitleText ? (
-								<span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium truncate max-w-[180px]">
-									{subtitleText}
-								</span>
-							) : null}
-							{tx.type === 'request_fulfilled' && (
-								<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">
-									Request
-								</span>
-							)}
-							{tx.type === 'request_create' && !isReqExpired && !isReqCanceled && (
-								<span className="text-[8px] font-semibold text-[#FF9500] bg-[#FF9500]/10 px-1 py-0 rounded-[4px]">
-									Waiting
-								</span>
-							)}
-							{isReqCanceled && (
-								<span className="text-[8px] font-semibold text-gray-400 bg-gray-200 dark:bg-slate-600 dark:text-slate-400 px-1 py-0 rounded-[4px]">
-									Canceled
-								</span>
-							)}
-							{isReqExpired && (
-								<span className="text-[8px] font-semibold text-gray-400 bg-gray-200 dark:bg-slate-600 dark:text-slate-400 px-1 py-0 rounded-[4px]">
-									Expired
-								</span>
-							)}
-						</div>
-					</div>
-				</div>
-				<div className="text-right flex flex-col items-end shrink-0">
-					<div
-						className={`text-[12px] font-semibold tracking-tight ${
-							isReqExpired || isReqCanceled ? 'text-gray-500 dark:text-slate-400 opacity-50' :
-							amountIsGreen ? 'text-[#34C759]' :
-							'text-black dark:text-white'
-						}`}
-					>
-						{tx.type === 'request_create' && !isReqExpired && !isReqCanceled ? (
-							<span className="text-[#FF9500]">Pending</span>
-						) : tx.type === 'fuel_yield' ? (
-							<>-{formatAmount(fuelYieldSpentUsdc, 'USDC')}</>
-						) : isReqExpired || isReqCanceled ? (
-							formatAmountWithCurrencyProtocol(Math.abs(tx.amountFiat), tx.currencyCode as ICurrency)
-						) : isCardTopupLedgerTx ? (
-							formatTopupListAmountPositive(tx.amountFiat, tx.currencyCode)
-						) : isMerchantChargeLedgerTx ? (
-							formatMerchantChargeListAmountNegative(merchantChargeFiatAmount, merchantChargeCurrencyCode)
-						) : (
-							formatCurrencySigned(
-								vouchersInternalAmount
-									? vouchersInternalAmount.amt
-									: isWithdrawToMain ? Math.abs(tx.amountFiat) : isAddToExpressPay ? -Math.abs(tx.amountFiat) : amountFiatSigned(tx),
-								tx.currencyCode
-							)
-						)}
-					</div>
-					{tx.type === 'fuel_yield' ? (
-						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">USDC</span>
-					) : isCardTopupLedgerTx && topupBonusFiat > 0 ? (
-						<span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-semibold text-[#FF9500]">
-							<span>Incl</span>
-							<span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
-								<Gift size={9} strokeWidth={2.5} />
-							</span>
-							<span>{formatTopupBonusSubtitleAmount(topupBonusFiat, tx.currencyCode)}</span>
-						</span>
-					) : isMerchantChargeLedgerTx ? (
-						<>
-							{chargeRewardValue ? (
-								<span className="mt-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
-									{chargeRewardValue}
-								</span>
-							) : null}
-							{merchantChargeTipFiat > 0 ? (
-								<span className="mt-0.5 text-[9px] font-medium text-gray-500 dark:text-slate-400">
-									incl tip{' '}
-									{formatMerchantChargeTipSubtitleAmount(
-										merchantChargeTipFiat,
-										merchantChargeTipCurrencyCode,
-									)}
-								</span>
-							) : null}
-						</>
-					) : !isCardTopupLedgerTx && !isMerchantChargeLedgerTx && tx.amountUSDC !== 0 && tx.type !== 'request_create' && tx.type !== 'request_expired' ? (
-						<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">
-							{Math.abs(tx.amountUSDC).toFixed(2)} USDC
-						</span>
-					) : null}
-				</div>
-			</div>
-		)
-	}
-
 	const useBareStyle = bare || embeddedInDrawer
 	const outerClassName = useBareStyle
 		? 'overflow-hidden'
@@ -1962,7 +1989,22 @@ const ActiveHistoryPannelNew = ({
 			{!error && items.length > 0 && (
 				<div className="space-y-2 pb-3">
 					{displayItems.map((tx) => (
-						<TxItemRow key={tx.id} tx={tx} activeTab={activeTab} />
+						<RecentActivityTxItemRow
+							key={tx.id}
+							tx={tx}
+							activeTab={activeTab}
+							eoa={eoa}
+							aa={aa}
+							myAddress={myAddress}
+							canceledHashes={canceledHashes}
+							recentActivityCardNameDirectory={recentActivityCardNameDirectory}
+							onSelect={(t) => {
+								setShowJson(false)
+								setSelectedTx(t)
+							}}
+							iconForType={iconForType}
+							colorForType={colorForType}
+						/>
 					))}
 				</div>
 			)}

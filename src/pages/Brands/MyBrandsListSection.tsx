@@ -64,16 +64,21 @@ export function MyBrandMerchantIcon({
 		<div
 			className={`relative flex shrink-0 items-center justify-center overflow-hidden border border-[#c3c6d8]/25 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-900 ${sizeClassName} ${className}`}
 		>
-			<span
-				className={`absolute inset-0 flex items-center justify-center transition-opacity duration-150 ${letterClassName} ${
-					showImage ? 'opacity-0' : 'opacity-100'
-				}`}
-				aria-hidden
-			>
-				{letter}
-			</span>
-			{showImage ? (
-				<img src={displaySrc} alt={title} className="relative z-[1] h-full w-full object-cover" draggable={false} />
+			{!showImage ? (
+				<span
+					className={`absolute inset-0 flex items-center justify-center ${letterClassName}`}
+					aria-hidden
+				>
+					{letter}
+				</span>
+			) : null}
+			{resolved ? (
+				<img
+					src={displaySrc || undefined}
+					alt={title}
+					className={`relative z-[1] h-full w-full object-cover ${showImage ? 'opacity-100' : 'opacity-0'}`}
+					draggable={false}
+				/>
 			) : null}
 		</div>
 	)

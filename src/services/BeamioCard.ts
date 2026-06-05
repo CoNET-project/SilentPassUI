@@ -138,6 +138,120 @@ export const postCardOpenTransfer = async (
 	}
 }
 
+const GIFT_OPEN_CONTAINER_DEADLINE_SEC = 300
+
+/** 与 BeamioContainerStorageV07.openRelayedNonce 槽位一致（base + 1） */
+function openRelayedNonceStorageSlot(): bigint {
+	return BigInt(ethers.keccak256(ethers.toUtf8Bytes('beamio.container.module.storage.v07'))) + 1n
+}
+
+async function readOpenRelayedNonce(aaAccount: string): Promise<bigint> {
+	const raw = await baseEndpoint.getStorage(ethers.getAddress(aaAccount), openRelayedNonceStorageSlot())
+	return BigInt(raw)
+}
+
+export type MerchantGiftOpenContainerPayload = {
+	account: string
+	to: string
+	items: { kind: number; asset: string; amount: string; tokenId: string; data: string }[]
+	currencyType: number
+	maxAmount: string
+	nonce: string
+	deadline: string
+	signature: string
+}
+
+/** Merchant Gift：OpenContainer 离线签（EIP-712 OpenContainerMain），由 AA Factory relay 代付 gas。 */
+export const signMerchantGiftOpenContainer = async (opts: {
+	userPrivateKey: string
+	senderAA: string
+	recipientEOA: string
+	cardAddress: string
+	amountHuman: string
+	currencyCode: string
+}): Promise<MerchantGiftOpenContainerPayload> => {
+	const wallet = new ethers.Wallet(opts.userPrivateKey)
+	const senderAA = ethers.getAddress(opts.senderAA)
+	const card = ethers.getAddress(opts.cardAddress)
+	const to = ethers.getAddress(opts.recipientEOA)
+	const cur = CURRENCY_TO_ENUM[opts.currencyCode.toUpperCase()]
+	if (cur === undefined) throw new Error(`Unsupported currency: ${opts.currencyCode}`)
+	const amount6 = ethers.parseUnits(opts.amountHuman, 6)
+	if (amount6 <= 0n) throw new Error('Amount must be greater than zero')
+
+	const nonce = await readOpenRelayedNonce(senderAA)
+	const deadline = BigInt(Math.floor(Date.now() / 1000) + GIFT_OPEN_CONTAINER_DEADLINE_SEC)
+	const domain = {
+		name: 'BeamioAccount',
+		version: '1',
+		chainId: chainId8453,
+		verifyingContract: senderAA as `0x${string}`,
+	}
+	const types = {
+		OpenContainerMain: [
+			{ name: 'account', type: 'address' },
+			{ name: 'currencyType', type: 'uint8' },
+			{ name: 'maxAmount', type: 'uint256' },
+			{ name: 'nonce', type: 'uint256' },
+			{ name: 'deadline', type: 'uint256' },
+		],
+	}
+	const message = {
+		account: senderAA,
+		currencyType: cur,
+		maxAmount: 0n,
+		nonce,
+		deadline,
+	}
+	const signature = await wallet.signTypedData(domain, types, message)
+	return {
+		account: senderAA,
+		to,
+		items: [{ kind: 1, asset: card, amount: amount6.toString(), tokenId: '0', data: '0x' }],
+		currencyType: cur,
+		maxAmount: '0',
+		nonce: nonce.toString(),
+		deadline: deadline.toString(),
+		signature,
+	}
+}
+
+const merchantGiftAatoEoaEndpoint = `${beamioApi}/api/AAtoEOA`
+
+export const postMerchantGiftAAtoEOA = async (opts: {
+	openContainerPayload: MerchantGiftOpenContainerPayload
+	currency: string
+	currencyAmount: string
+	cardAddress: string
+}): Promise<{ success: boolean; tx?: string; error?: string }> => {
+	try {
+		const res = await fetch(merchantGiftAatoEoaEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				openContainerPayload: opts.openContainerPayload,
+				currency: opts.currency,
+				currencyAmount: opts.currencyAmount,
+				merchantCardAddress: ethers.getAddress(opts.cardAddress),
+				forText: 'Merchant gift',
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as {
+			success?: boolean
+			error?: string
+			USDC_tx?: string
+			txHash?: string
+			tx?: string
+		}
+		if (!res.ok) return { success: false, error: data.error ?? `HTTP ${res.status}` }
+		if (data.success === false) return { success: false, error: data.error ?? 'Gift transfer failed' }
+		const tx = data.USDC_tx ?? data.txHash ?? data.tx
+		return { success: true, tx }
+	} catch (e) {
+		return { success: false, error: (e as Error)?.message ?? 'Gift transfer failed' }
+	}
+}
+
 /**
  * 构造购卡请求：用户支付 usdcAmountHuman USDC（该 USDC 已由链上 currency→USD→USDC 得到）。
  * 后端用 quotePointsForUSDC(cardAddress, usdcAmount) 得到应铸造的 points。

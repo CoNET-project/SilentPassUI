@@ -14,9 +14,16 @@ import NavigateLeftButton from '@/components/navigate'
 import { collectDeepLinkSearchParams, isCouponOpenClaimDeepLink, isRedeemDeepLink } from '@/utils/beamioDeepLinkParams'
 import ScanButton, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
 import { isCashTreesNativeWebView, scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
+import {
+	BeamioSearchResultRow,
+	beamioSearchAvatarUrl,
+	beamioSearchDisplayName,
+	beamioSearchShortAddress,
+	formatBeamioSearchUserDate,
+	makeBeamioSearchAddressOnlyResult,
+} from '@/components/Home/beamioSearchResultPresentation'
 
-const getImg = (avatarSeed: string) =>
-	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
+const getImg = beamioSearchAvatarUrl
 type Props = {
 	closeWindow: (path: string | searchResult) => void
 	select?: boolean
@@ -30,14 +37,8 @@ type Props = {
 	dropdownDownward?: boolean
 }
 
-const displayName = (item: searchResult) => {
-	const lastname = (item.last_name ?? '').split('\r\n')
-	const fullName = `${item.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
-	return fullName || item.username || item.address
-}
-
-const shortAddress = (addr: string) =>
-	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
+const displayName = beamioSearchDisplayName
+const shortAddress = beamioSearchShortAddress
 
 /** 商家 bill paymentUrl：Amount、currency、acceptTokens 必选；与扫码 QR workflow 一致 */
 const isPaymentUrl = (raw: string): boolean => {
@@ -56,24 +57,7 @@ const isPaymentUrl = (raw: string): boolean => {
 	}
 }
 
-function formatUserDate(timestamp?: string | number): string {
-	if (!timestamp) return ""
-
-	const num = Number(timestamp)
-	if (!num) return ""
-
-	const ms = num < 10_000_000_000 ? num * 1000 : num
-	const d = new Date(ms)
-	if (isNaN(d.getTime())) return ""
-
-	return d.toLocaleDateString("en-US", {
-		year: "numeric",
-		month: "short",
-		day: "numeric"
-	})
-}
-
-
+const formatUserDate = formatBeamioSearchUserDate
 
 // ✅ 改成 forwardRef：对外暴露 focus()
 const SearchInputWithDropdown = 
@@ -281,7 +265,7 @@ const SearchInputWithDropdown =
 			}
 		} else {
 			if (ethers.isAddress(lower)) {
-			filted.push(makeOutlandItem(lower))
+			filted.push(makeBeamioSearchAddressOnlyResult(lower))
 			}
 		}
 
@@ -290,20 +274,6 @@ const SearchInputWithDropdown =
 
 		// ✅ 只有 >=2 才打开 dropdown
 		setShowDropdown(true)
-		}
-
-		const makeOutlandItem = (address: string) => {
-			const subitem: searchResult = {
-				username: 'unknow',
-				image: '',
-				address,
-				created_at: 0,
-				first_name: '',
-				last_name: '',
-				follow_count: '',
-				follower_count: ''
-			}
-			return subitem
 		}
 
 		const pillClass = [
@@ -813,57 +783,13 @@ const SearchInputWithDropdown =
 
 								{/* 结果列表 */}
 								{!loading &&
-									results.map(item => {
-										
-										return (
-											<button
-												key={item.address}
-												type="button"
-												className="
-													w-full flex items-center
-													px-3 py-2.5 text-left
-													hover:bg-slate-50
-												"
-												onClick={() => handleSelect(item)}
-											>
-												{/* 头像 */}
-												
-													<IpfsImg
-														src={item.image? item.image : getImg(item.username)}
-														alt={item.username}
-														className="w-7 h-7 rounded-full object-cover mr-2 flex-shrink-0 bg-slate-200"
-													/>
-												
-
-												{/* 中间 + 右侧整体：左右布局 */}
-												<div className="flex-1 flex items-start justify-between gap-3 min-w-0">
-													{/* 文本区域（左侧） */}
-													<div className="flex flex-col min-w-0">
-														{/* 第一行：姓名 或 username */}
-														<span className="text-[13px] text-slate-900 truncate">
-															{displayName(item)}
-														</span>
-
-														{/* 第二行：@username · 短地址 */}
-														<span className="text-[11px] text-slate-500 truncate">
-															@{item.username} · {shortAddress(item.address)}
-														</span>
-
-														{/* 第三行：following / followers */}
-														<span className="text-[11px] text-slate-400 mt-0.5 truncate">
-															{Number(item.follow_count || '0').toLocaleString()} following ·{' '}
-															{Number(item.follower_count || '0').toLocaleString()} followers
-														</span>
-													</div>
-
-													{/* 右侧：创建日期 */}
-													<span className="text-[10px] text-slate-400 whitespace-nowrap">
-														{formatUserDate(item.created_at)}
-													</span>
-												</div>
-											</button>
-										)
-									})}
+									results.map((item) => (
+										<BeamioSearchResultRow
+											key={item.address}
+											item={item}
+											onSelect={handleSelect}
+										/>
+									))}
 
 								{!loading && results.length === 0 && (
 									<div className="px-3 py-2.5 text-[12px] text-slate-400">

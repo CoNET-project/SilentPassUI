@@ -108,6 +108,27 @@ export function isRecentActivityConsumerGiftTx(raw: RawTxRecord | undefined): bo
 	return isGiftDisplayJson(raw.displayJson ?? '')
 }
 
+/** Recent Activity gift row: prefer @beamioTag; fallback short name / address label. */
+export function formatMerchantGiftCounterpartyTag(
+	beamioTag: string | null | undefined,
+	fallbackLabel: string,
+): string {
+	const t = String(beamioTag ?? '').trim()
+	if (t) return t.startsWith('@') ? t : `@${t}`
+	const fb = String(fallbackLabel ?? '').trim()
+	return fb || 'Unknown'
+}
+
+/** Inbound: Gift from @tag; outbound: Gift to @tag (English UI). */
+export function merchantGiftListTitle(
+	isInbound: boolean,
+	beamioTag: string | null | undefined,
+	fallbackLabel: string,
+): string {
+	const who = formatMerchantGiftCounterpartyTag(beamioTag, fallbackLabel)
+	return isInbound ? `Gift from ${who}` : `Gift to ${who}`
+}
+
 const RECENT_ACTIVITY_CARD_TOPUP_CATEGORIES_LOWER = new Set(
 	[
 		TX_ISSUE_NEW_CARD,

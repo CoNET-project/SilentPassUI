@@ -40,6 +40,7 @@ import {
 	resolveTxViewBaseScanTxHash,
 	isRecentActivityCardTopupCategory,
 	isRecentActivityIssuedNftClaimTxView,
+	merchantGiftListTitle,
 	isMerchantChargeTxView,
 	merchantChargeCardAddressFromTxView,
 	merchantChargeCardAddressFromRaw,
@@ -678,7 +679,7 @@ function RecentActivityTxItemRow({
 	const rawTitleText = isIssuedNftClaimTx
 		? resolvedClaimSeriesTitle ?? tx.title
 		: isMerchantGiftLedgerTx
-		? merchantCardName || tx.title || 'Merchant Gift'
+		? merchantGiftListTitle(tx.isInbound, beamioTag, counterpartyLabel)
 		: isMerchantChargeLedgerTx
 		? merchantCardName || tx.title || 'Merchant Payment'
 		: isCardTopupLedgerTx
@@ -708,7 +709,7 @@ function RecentActivityTxItemRow({
 	const subtitleText = isIssuedNftClaimTx
 		? `${claimMerchantName || 'Claimed'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 		: isMerchantGiftLedgerTx
-		? `${tx.isInbound ? `From ${counterpartyLabel}` : `To ${counterpartyLabel}`} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
+		? `${merchantCardName || 'Merchant program'} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 		: isMerchantChargeLedgerTx
 		? `${merchantChargeChannelLabel(rawTx, tx.merchantChargeInStore)} • ${formatBeamioTransactionTimeLabel(tx.timestampMs)}`
 		: isCardTopupLedgerTx
@@ -1085,6 +1086,15 @@ const ActiveHistoryPannelNew = ({
 							fallbackTitle: selectedTx.title,
 						}) || selectedTx.title
 					)
+				}
+				if (selectedTx.type === 'merchant_gift') {
+					const safeHandle = handleIsJson(selectedTx.handle) ? '' : (selectedTx.handle ?? '')
+					const shortAddr =
+						selectedTx.counterpartyAddress && selectedTx.counterpartyAddress.length >= 10
+							? `${selectedTx.counterpartyAddress.slice(0, 6)}…${selectedTx.counterpartyAddress.slice(-4)}`
+							: ''
+					const counterpartyLabel = detailFullName || detailBeamioTag || safeHandle || shortAddr || 'Unknown'
+					return merchantGiftListTitle(selectedTx.isInbound, detailBeamioTag, counterpartyLabel)
 				}
 				if (selectedTx.type === 'internal_transfer' && eoa && aa) {
 					const rawTx = selectedTx.rawTransaction as RawTxRecord | undefined

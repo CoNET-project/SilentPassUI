@@ -39,8 +39,8 @@ export const isCardExcludedFromDisplay = (cardAddress: string): boolean =>
 
 export { loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 
-/** AA Factory 作为 UserCard gateway（与 config/chainAddresses BASE_AA_FACTORY 一致） */
-const BeamioUserCardGatewayAddress = BASE_MAINNET_FACTORIES.AA_FACTORY.toLowerCase()
+/** User Card Factory = card.factoryGateway()；OpenTransfer 验签须与 redeemOpenTransfer 同源 */
+const BeamioUserCardGatewayAddress = ethers.getAddress(BASE_MAINNET_FACTORIES.CARD_FACTORY)
 const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,

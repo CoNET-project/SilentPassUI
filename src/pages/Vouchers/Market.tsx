@@ -38,8 +38,9 @@ import {
 	LayoutGrid,
 	Loader2,
 	Medal,
-	ExternalLink,
-	Gift,
+  ExternalLink,
+  Gift,
+  Copy,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -50,7 +51,19 @@ import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage } from "@/services/beamio"
-import { currencyAmountToSafeUsdc6, getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
+import {
+	eoaCanSelfFundDiscoverTopup,
+	eoaMeetsExternalFundingTarget,
+	parseDiscoverTopupAmountInput,
+	pollEoaUsdcFundingThenTopup,
+	readEoaUsdcBalance6,
+	resolveDiscoverTopupRequiredUsdc6,
+} from "@/utils/discoverEoaUsdcTopup"
+import {
+	buildDiscoverUsdcClientTopupQrUrl,
+	discoverClientTopupPaymentHint,
+} from "@/utils/discoverUsdcTopupSession"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
 import { fiatPrefix, formatAmount } from "@/services/currency"
@@ -1818,6 +1831,20 @@ function DiscoverMerchantDetailFullScreen({
 	>({})
 	const [couponClaimErrorById, setCouponClaimErrorById] = useState<Record<string, string>>({})
 	const couponClaimStatusTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+	const [usdcTopupPhase, setUsdcTopupPhase] = useState<'idle' | 'amount' | 'receive'>('idle')
+	const [usdcTopupAmountText, setUsdcTopupAmountText] = useState('')
+	const [usdcTopupFiatAmount, setUsdcTopupFiatAmount] = useState('')
+	const [usdcTopupQrValue, setUsdcTopupQrValue] = useState('')
+	const [usdcTopupUsdcDisplay, setUsdcTopupUsdcDisplay] = useState('')
+	const [usdcTopupBaselineUsdc6, setUsdcTopupBaselineUsdc6] = useState<bigint>(0n)
+	const [usdcTopupUserEoa, setUsdcTopupUserEoa] = useState('')
+	const [usdcTopupRequiredUsdc6, setUsdcTopupRequiredUsdc6] = useState<bigint>(0n)
+	const [usdcTopupProgress, setUsdcTopupProgress] = useState('')
+	const [usdcTopupSubmitting, setUsdcTopupSubmitting] = useState(false)
+	const [usdcTopupError, setUsdcTopupError] = useState('')
+	const [usdcTopupUrlCopied, setUsdcTopupUrlCopied] = useState(false)
+	const usdcTopupPollAbortRef = useRef<AbortController | null>(null)
+	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const ccy = (item.currency || "CAD").toUpperCase()
 	const merchantInfoPanel =
 		item.cardAddress != null
@@ -1866,6 +1893,246 @@ function DiscoverMerchantDetailFullScreen({
 			return null
 		}
 	}, [profile])
+
+	const refreshMerchantAssets = useCallback(() => {
+		if (!profile?.keyID || !item.cardAddress) return
+		getMyAssets(profile, item.cardAddress)
+			.then((res) => {
+				if (res != null) setMerchantAssets(res)
+			})
+			.catch(() => {
+				/* untrusted — keep last trusted */
+			})
+	}, [profile, item.cardAddress])
+
+	const resetUsdcTopupFlow = useCallback(() => {
+		usdcTopupPollAbortRef.current?.abort()
+		usdcTopupPollAbortRef.current = null
+		if (usdcTopupUrlCopiedTimerRef.current != null) {
+			clearTimeout(usdcTopupUrlCopiedTimerRef.current)
+			usdcTopupUrlCopiedTimerRef.current = null
+		}
+		setUsdcTopupUrlCopied(false)
+		setUsdcTopupPhase('idle')
+		setUsdcTopupAmountText('')
+		setUsdcTopupFiatAmount('')
+		setUsdcTopupQrValue('')
+		setUsdcTopupUsdcDisplay('')
+		setUsdcTopupBaselineUsdc6(0n)
+		setUsdcTopupUserEoa('')
+		setUsdcTopupRequiredUsdc6(0n)
+		setUsdcTopupProgress('')
+		setUsdcTopupSubmitting(false)
+		setUsdcTopupError('')
+	}, [])
+
+	const submitDiscoverEoaTopup = useCallback(
+		async (requiredUsdc6: bigint): Promise<boolean> => {
+			const cardAddress = item.cardAddress?.trim() ?? ''
+			if (!cardAddress || !profile?.keyID || !profile?.privateKeyArmor) return false
+			if (requiredUsdc6 <= 0n) return false
+			const ret = await postUSDCUserCardTopup({
+				profile: profile as profile,
+				cardAddress,
+				usdcAmount: safeUsdc6ToAmountString(requiredUsdc6),
+				intent: 'topup',
+			})
+			if (!ret.success) {
+				setUsdcTopupError(ret.error ?? 'Top-up failed')
+				return false
+			}
+			if (ret.assets) setMerchantAssets(ret.assets as Awaited<ReturnType<typeof getMyAssets>>)
+			else refreshMerchantAssets()
+			Toast.show({ content: 'Top-up completed!', position: 'top' })
+			resetUsdcTopupFlow()
+			return true
+		},
+		[item.cardAddress, profile, refreshMerchantAssets, resetUsdcTopupFlow],
+	)
+
+	const handleUsdcTopupContinue = useCallback(async () => {
+		const cardAddress = item.cardAddress?.trim() ?? ''
+		if (!cardAddress || !ethers.isAddress(cardAddress)) {
+			setUsdcTopupError('Merchant card is unavailable.')
+			return
+		}
+		if (!profile?.keyID || !profile?.privateKeyArmor) {
+			Toast.show({
+				content: 'Unlock your wallet with your access password to top up.',
+				position: 'top',
+			})
+			navigate('/settings')
+			return
+		}
+		const parsed = parseDiscoverTopupAmountInput(usdcTopupAmountText, displayCurrency)
+		if (!parsed.ok) {
+			setUsdcTopupError(parsed.error)
+			return
+		}
+		const userEoa = resolveUserEoa()
+		if (!userEoa) {
+			Toast.show({
+				content: 'Unlock your wallet with your access password to top up.',
+				position: 'top',
+			})
+			navigate('/settings')
+			return
+		}
+		setUsdcTopupSubmitting(true)
+		setUsdcTopupError('')
+		try {
+			const [requiredUsdc6, baselineUsdc6] = await Promise.all([
+				resolveDiscoverTopupRequiredUsdc6(cardAddress, displayCurrency, parsed.apiAmount),
+				readEoaUsdcBalance6(profile as profile),
+			])
+			if (requiredUsdc6 <= 0n) {
+				setUsdcTopupError('Invalid top-up amount.')
+				return
+			}
+			const usdcDisplay = safeUsdc6ToAmountString(requiredUsdc6)
+			setUsdcTopupFiatAmount(parsed.apiAmount)
+			setUsdcTopupRequiredUsdc6(requiredUsdc6)
+			setUsdcTopupBaselineUsdc6(baselineUsdc6)
+			setUsdcTopupUsdcDisplay(usdcDisplay)
+
+			if (eoaCanSelfFundDiscoverTopup(baselineUsdc6, requiredUsdc6)) {
+				setUsdcTopupProgress('Completing top-up…')
+				await submitDiscoverEoaTopup(requiredUsdc6)
+				return
+			}
+
+			let cardOwner: string
+			try {
+				cardOwner = await getCardOwner(cardAddress)
+			} catch {
+				setUsdcTopupError('Cannot resolve merchant card owner. Please retry.')
+				return
+			}
+			if (!cardOwner || cardOwner === ethers.ZeroAddress) {
+				setUsdcTopupError('Cannot resolve merchant card owner. Please retry.')
+				return
+			}
+			const qrValue = buildDiscoverUsdcClientTopupQrUrl({
+				cardAddress,
+				cardOwner,
+				amount: parsed.apiAmount,
+				currency: displayCurrency,
+				beneficiaryEoa: userEoa,
+			})
+			setUsdcTopupUserEoa(userEoa)
+			setUsdcTopupQrValue(qrValue)
+			setUsdcTopupProgress('Waiting for USDC on your wallet…')
+			setUsdcTopupPhase('receive')
+		} catch (e: unknown) {
+			setUsdcTopupError(e instanceof Error ? e.message : 'Failed to prepare receive QR')
+		} finally {
+			setUsdcTopupSubmitting(false)
+		}
+	}, [displayCurrency, item.cardAddress, navigate, profile, resolveUserEoa, submitDiscoverEoaTopup, usdcTopupAmountText])
+
+	const copyUsdcTopupUrl = useCallback(async () => {
+		if (!usdcTopupQrValue) return
+		try {
+			await navigator.clipboard.writeText(usdcTopupQrValue)
+			setUsdcTopupUrlCopied(true)
+			if (usdcTopupUrlCopiedTimerRef.current != null) {
+				clearTimeout(usdcTopupUrlCopiedTimerRef.current)
+			}
+			usdcTopupUrlCopiedTimerRef.current = setTimeout(() => {
+				setUsdcTopupUrlCopied(false)
+				usdcTopupUrlCopiedTimerRef.current = null
+			}, 2000)
+		} catch {
+			Toast.show({ content: 'Failed to copy URL', position: 'top' })
+		}
+	}, [usdcTopupQrValue])
+
+	const runDiscoverEoaTopupNow = useCallback(async () => {
+		const cardAddress = item.cardAddress?.trim() ?? ''
+		if (!cardAddress || !profile?.keyID || !profile?.privateKeyArmor) return
+		if (usdcTopupRequiredUsdc6 <= 0n || !usdcTopupFiatAmount) return
+		usdcTopupPollAbortRef.current?.abort()
+		setUsdcTopupSubmitting(true)
+		setUsdcTopupError('')
+		try {
+			const current6 = await readEoaUsdcBalance6(profile as profile)
+			const funded =
+				eoaCanSelfFundDiscoverTopup(current6, usdcTopupRequiredUsdc6) ||
+				eoaMeetsExternalFundingTarget(current6, usdcTopupBaselineUsdc6, usdcTopupRequiredUsdc6)
+			if (!funded) {
+				setUsdcTopupError('USDC has not arrived yet. Ask the payer to complete the payment link.')
+				return
+			}
+			setUsdcTopupProgress('Completing top-up…')
+			await submitDiscoverEoaTopup(usdcTopupRequiredUsdc6)
+		} catch (e: unknown) {
+			setUsdcTopupError(e instanceof Error ? e.message : 'Top-up failed')
+		} finally {
+			setUsdcTopupSubmitting(false)
+		}
+	}, [
+		item.cardAddress,
+		profile,
+		submitDiscoverEoaTopup,
+		usdcTopupBaselineUsdc6,
+		usdcTopupFiatAmount,
+		usdcTopupRequiredUsdc6,
+	])
+
+	useEffect(() => {
+		if (usdcTopupPhase !== 'receive' || !item.cardAddress || !profile?.keyID) return
+		if (usdcTopupRequiredUsdc6 <= 0n || !usdcTopupFiatAmount) return
+		usdcTopupPollAbortRef.current?.abort()
+		const ac = new AbortController()
+		usdcTopupPollAbortRef.current = ac
+		const cardAddress = item.cardAddress
+
+		void (async () => {
+			const outcome = await pollEoaUsdcFundingThenTopup({
+				profile: profile as profile,
+				cardAddress,
+				baselineUsdc6: usdcTopupBaselineUsdc6,
+				requiredUsdc6: usdcTopupRequiredUsdc6,
+				signal: ac.signal,
+				onProgress: setUsdcTopupProgress,
+			})
+			if (ac.signal.aborted) return
+
+			if (outcome.status === 'success') {
+				refreshMerchantAssets()
+				Toast.show({ content: 'Top-up completed!', position: 'top' })
+				resetUsdcTopupFlow()
+				return
+			}
+			if (outcome.status === 'error') {
+				setUsdcTopupError(outcome.message)
+				return
+			}
+			if (outcome.status === 'timeout') {
+				setUsdcTopupError('Timed out waiting for USDC. You can retry after the transfer completes.')
+			}
+		})()
+
+		return () => {
+			ac.abort()
+		}
+	}, [
+		item.cardAddress,
+		profile,
+		refreshMerchantAssets,
+		resetUsdcTopupFlow,
+		usdcTopupBaselineUsdc6,
+		usdcTopupFiatAmount,
+		usdcTopupPhase,
+		usdcTopupRequiredUsdc6,
+	])
+
+	useEffect(
+		() => () => {
+			usdcTopupPollAbortRef.current?.abort()
+		},
+		[],
+	)
 
 	const scheduleCouponClaimStatusReset = useCallback((rowId: string) => {
 		const prev = couponClaimStatusTimersRef.current.get(rowId)
@@ -2162,10 +2429,160 @@ function DiscoverMerchantDetailFullScreen({
 								<Radio className="h-5 w-5" strokeWidth={2} aria-hidden />
 							</span>
 						</div>
-						<p className="mt-5 text-[14px] font-medium text-slate-500 dark:text-slate-400">Available Balance</p>
-						<p className="mt-1 text-[32px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+						<div className="mt-5 flex items-end justify-between gap-3">
+							<p className="text-[14px] font-medium text-slate-500 dark:text-slate-400">Available Balance</p>
+							{item.cardAddress && usdcTopupPhase === 'idle' ? (
+								<button
+									type="button"
+									onClick={() => {
+										setUsdcTopupError('')
+										setUsdcTopupAmountText('')
+										setUsdcTopupPhase('amount')
+									}}
+									className="shrink-0 rounded-full border border-[#1562f0]/25 bg-[#1562f0]/10 px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
+								>
+									USDC topup
+								</button>
+							) : null}
+						</div>
+						<p className="mt-1 text-right text-[32px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
 							{balanceDisplay}
 						</p>
+
+						{usdcTopupPhase === 'amount' ? (
+							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+								<label htmlFor="discover-usdc-topup-amount" className="block text-[13px] font-semibold text-slate-600 dark:text-slate-400">
+									Top-up amount ({displayCurrency})
+								</label>
+								<input
+									id="discover-usdc-topup-amount"
+									type="number"
+									inputMode="decimal"
+									autoComplete="off"
+									enterKeyHint="done"
+									value={usdcTopupAmountText}
+									onChange={(e) => {
+										setUsdcTopupAmountText(e.target.value)
+										if (usdcTopupError) setUsdcTopupError('')
+									}}
+									onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+										if (
+											e.key === 'ArrowUp' ||
+											e.key === 'ArrowDown' ||
+											e.key === 'PageUp' ||
+											e.key === 'PageDown' ||
+											e.key === 'Home' ||
+											e.key === 'End'
+										) {
+											e.preventDefault()
+											e.stopPropagation()
+										}
+									}}
+									onWheel={(e: React.WheelEvent<HTMLInputElement>) => {
+										e.preventDefault()
+										e.stopPropagation()
+									}}
+									placeholder="0.00"
+									className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-right text-[18px] font-semibold text-[#1f2328] outline-none ring-[#1562f0]/30 focus:border-[#1562f0] focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+								/>
+								{usdcTopupError ? (
+									<p className="text-[13px] font-medium text-amber-600 dark:text-amber-400">{usdcTopupError}</p>
+								) : null}
+								<div className="flex gap-2">
+									<button
+										type="button"
+										onClick={resetUsdcTopupFlow}
+										className="flex-1 rounded-full border border-slate-200 px-4 py-2.5 text-[14px] font-semibold text-slate-600 transition active:scale-[0.98] dark:border-slate-700 dark:text-slate-300"
+									>
+										Cancel
+									</button>
+									<button
+										type="button"
+										disabled={usdcTopupSubmitting}
+										onClick={() => void handleUsdcTopupContinue()}
+										className="flex-1 rounded-full bg-[#1562f0] px-4 py-2.5 text-[14px] font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+									>
+										{usdcTopupSubmitting ? (
+											<span className="inline-flex items-center justify-center gap-2">
+												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+												Continue
+											</span>
+										) : (
+											'Continue'
+										)}
+									</button>
+								</div>
+							</div>
+						) : null}
+
+						{usdcTopupPhase === 'receive' && usdcTopupQrValue ? (
+							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+								<p className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
+									{discoverClientTopupPaymentHint()}
+								</p>
+								<p className="text-[12px] text-slate-500 dark:text-slate-400">
+									Merchant top-up: {fiatPrefix(displayCurrency)}{usdcTopupFiatAmount} {displayCurrency} → {usdcTopupUsdcDisplay} USDC
+								</p>
+								{usdcTopupProgress ? (
+									<p className="text-[13px] font-medium text-[#1562f0]">{usdcTopupProgress}</p>
+								) : null}
+								{usdcTopupError ? (
+									<p className="text-[13px] font-medium text-amber-600 dark:text-amber-400">{usdcTopupError}</p>
+								) : null}
+								<ShowPayQR
+									successUrl={usdcTopupQrValue}
+									beamio={null}
+									qrValue={usdcTopupQrValue}
+									amount={usdcTopupUsdcDisplay}
+									currency="$"
+									hideActions
+									hideName
+								/>
+								<div className="flex flex-col items-center gap-1.5">
+									<button
+										type="button"
+										onClick={() => void copyUsdcTopupUrl()}
+										className={[
+											'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+											'border border-slate-200 bg-white text-slate-600 shadow-sm',
+											'dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+											'transition active:scale-[0.96]',
+										].join(' ')}
+										aria-label="Copy payment URL"
+										title={usdcTopupUrlCopied ? 'Copied' : 'Copy URL'}
+									>
+										{usdcTopupUrlCopied ? (
+											<Check className="h-[17px] w-[17px] text-emerald-500" strokeWidth={2.5} aria-hidden />
+										) : (
+											<Copy className="h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
+										)}
+									</button>
+									<p className="text-[12px] text-slate-500 dark:text-slate-400">Copy URL for another wallet app</p>
+								</div>
+								<button
+									type="button"
+									disabled={usdcTopupSubmitting}
+									onClick={() => void runDiscoverEoaTopupNow()}
+									className="w-full rounded-full bg-[#1562f0] px-4 py-2.5 text-[14px] font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{usdcTopupSubmitting ? (
+										<span className="inline-flex items-center justify-center gap-2">
+											<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+											Complete top-up
+										</span>
+									) : (
+										'Complete top-up'
+									)}
+								</button>
+								<button
+									type="button"
+									onClick={resetUsdcTopupFlow}
+									className="w-full rounded-full border border-slate-200 px-4 py-2.5 text-[14px] font-semibold text-slate-600 transition active:scale-[0.98] dark:border-slate-700 dark:text-slate-300"
+								>
+									Close
+								</button>
+							</div>
+						) : null}
 					</div>
 
 					<div className="space-y-4">

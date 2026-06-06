@@ -20,6 +20,20 @@ export type MyBrandsOwnedCouponSnapshot = {
 	validBeforeSec: number | null
 }
 
+export type MyBrandsOwnedCatalogSnapshot = {
+	id: string
+	cardAddress: string
+	tokenId: string
+	productionId: string
+	globalCategory: string
+	title: string
+	subtitle: string
+	iconUrl: string
+	backgroundImage: string
+	backgroundColorHex: string
+	validBeforeSec: number | null
+}
+
 export type MyBrandsFeedDetailsSnapshot = Record<
 	string,
 	{
@@ -30,6 +44,12 @@ export type MyBrandsFeedDetailsSnapshot = Record<
 			firstTitle?: string
 			firstCoupon?: MyBrandsOwnedCouponSnapshot | null
 			coupons?: MyBrandsOwnedCouponSnapshot[]
+		} | null
+		ownedCatalogs?: {
+			count: number
+			firstTitle?: string
+			firstCatalog?: MyBrandsOwnedCatalogSnapshot | null
+			catalogs?: MyBrandsOwnedCatalogSnapshot[]
 		} | null
 	}
 >

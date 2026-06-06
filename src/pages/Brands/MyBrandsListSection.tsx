@@ -14,8 +14,11 @@ import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/
 import baseIcon from '@/components/assets/base-logo.png'
 import {
 	resolveMyBrandSecondarySubtitle,
+	resolveMyBrandsOwnedCatalogDisplays,
 	resolveMyBrandsOwnedCouponDisplays,
+	type MyBrandsOwnedCatalogSnapshot,
 } from '@/utils/myBrandsFeedState'
+import { ownedCatalogGlobalCategoryLabel } from '@/utils/myBrandsOwnedCatalog'
 import { resolveMyBrandMerchantCategoryLabel } from '@/utils/discoverMerchantCategory'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { fiatPrefix } from '@/services/currency'
@@ -180,7 +183,22 @@ export function sortMyBrandCardsForList(cards: UserCardInfo[]): UserCardInfo[] {
 	return [...cards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en'))
 }
 
-/** My Brands 列表项：先展示全部商户卡行，再展示全部 owned 优惠券 ticket。 */
+function mapOwnedCatalogToTicketItem(item: MyBrandsOwnedCatalogSnapshot): ActiveCouponListItem {
+	return {
+		id: item.id,
+		cardAddress: item.cardAddress,
+		tokenId: item.tokenId,
+		couponId: item.productionId,
+		title: item.title,
+		subtitle: item.subtitle,
+		iconUrl: item.iconUrl,
+		backgroundImage: item.backgroundImage,
+		backgroundColorHex: item.backgroundColorHex,
+		validBeforeSec: item.validBeforeSec,
+	}
+}
+
+/** My Brands 列表项：商户卡行 → owned 优惠券 ticket → owned Global Category 目录资产 ticket。 */
 export function MyBrandListEntries({
 	cards,
 	details,
@@ -205,6 +223,24 @@ export function MyBrandListEntries({
 			if (seenCouponIds.has(key)) continue
 			seenCouponIds.add(key)
 			allCoupons.push(ownedCoupon)
+		}
+	}
+
+	const allCatalogs: Array<{ item: ActiveCouponListItem; categoryLabel: string }> = []
+	const seenCatalogIds = new Set<string>()
+	for (const uc of cards) {
+		const detail = details[uc.cardAddress.toLowerCase()]
+		const ownedCatalogs = resolveMyBrandsOwnedCatalogDisplays(uc.cardAddress, detail?.ownedCatalogs)
+		for (const ownedCatalog of ownedCatalogs) {
+			const key =
+				ownedCatalog.id ||
+				`${ownedCatalog.cardAddress.toLowerCase()}:${ownedCatalog.tokenId || ownedCatalog.productionId}`
+			if (seenCatalogIds.has(key)) continue
+			seenCatalogIds.add(key)
+			allCatalogs.push({
+				item: mapOwnedCatalogToTicketItem(ownedCatalog),
+				categoryLabel: ownedCatalogGlobalCategoryLabel(ownedCatalog.globalCategory),
+			})
 		}
 	}
 
@@ -234,6 +270,17 @@ export function MyBrandListEntries({
 					showOpenClaimShareButton
 					metadataBelowBackgroundImage
 					aria-label={`Owned coupon ${ownedCoupon.title}`}
+					punchBgClassName={punchBgClassName}
+				/>
+			))}
+			{allCatalogs.map(({ item, categoryLabel }) => (
+				<ActiveCouponTicketItem
+					key={item.id}
+					row={item}
+					actionLabel={categoryLabel}
+					disabled
+					metadataBelowBackgroundImage
+					aria-label={`Owned ${categoryLabel.toLowerCase()} ${item.title}`}
 					punchBgClassName={punchBgClassName}
 				/>
 			))}
@@ -354,6 +401,12 @@ export type MyBrandCardDetailLike = {
 			firstCoupon?: ActiveCouponListItem | null
 			coupons?: ActiveCouponListItem[]
 		} | null
+	ownedCatalogs?: {
+		count: number
+		firstTitle?: string
+		firstCatalog?: MyBrandsOwnedCatalogSnapshot | null
+		catalogs?: MyBrandsOwnedCatalogSnapshot[]
+	} | null
 }
 
 export type MyBrandBonusRuleRow = {

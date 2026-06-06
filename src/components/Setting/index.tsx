@@ -1,11 +1,12 @@
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { ethers } from 'ethers'
+import { useNavigate } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { Popup } from 'antd-mobile'
 import { CoNET_Data } from '../../utils/globals'
 import Privatekey from './PrivateKey/PrivateKey'
-import { Copy,Check, Bell, Settings, QrCode, Sun, Moon } from 'lucide-react'
+import { Copy, Check, Bell, Settings, QrCode, Sun, Moon, X } from 'lucide-react'
 import BeamioSettingsScreen from './setup'
 import BeamioReceiveScreen from './BeamioReceiveScreen'
 import { getBalanceProcess, getMyFollowStatus, postBeamio } from '@/services/beamio'
@@ -129,7 +130,64 @@ const shortenAddress = (addr: string) => {
 	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
+type ProfileWalletAddressKind = 'eoa' | 'aa'
+
+function ProfileWalletAddressCapsule({
+	address,
+	kind,
+	copied,
+	onCopy,
+}: {
+	address: string
+	kind: ProfileWalletAddressKind
+	copied: boolean
+	onCopy: () => void
+}) {
+	const shellClass =
+		kind === 'aa'
+			? 'bg-violet-500/25 border border-violet-200/20'
+			: 'bg-black/20'
+
+	return (
+		<button
+			type="button"
+			className={`
+				inline-flex items-center gap-2
+				px-4 py-1.5 rounded-full
+				text-[12px] font-medium text-white/95
+				backdrop-blur-sm
+				transition-transform duration-150 ease-out
+				${shellClass}
+				${copied ? 'scale-95' : 'hover:scale-[1.02] active:scale-95'}
+			`}
+			onClick={onCopy}
+			aria-label={kind === 'aa' ? 'Copy Express Pay address' : 'Copy Main Wallet address'}
+		>
+			{kind === 'aa' ? (
+				<span className="rounded-full bg-violet-400/35 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/90">
+					AA
+				</span>
+			) : null}
+			<span className="tracking-wide font-mono">{shortenAddress(address)}</span>
+			<span
+				className={`
+					w-6 h-6 rounded-full flex items-center justify-center
+					transition-colors duration-150
+					${copied ? 'bg-emerald-500' : 'bg-black/20'}
+				`}
+			>
+				{copied ? (
+					<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
+				) : (
+					<Copy className="w-3.5 h-3.5 text-white/95" strokeWidth={2} />
+				)}
+			</span>
+		</button>
+	)
+}
+
 export default function BeamioMeMainScreen() {
+	const navigate = useNavigate()
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, 
 		profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, 
 		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray } = useDaemonContext()
@@ -145,7 +203,7 @@ export default function BeamioMeMainScreen() {
 	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'|'Region'|'Account'|'Notifications'|'Help'|'RecoveryBackupScreen'|'PayRequest'>('')
 	const [setFollowOpen, setSetFollowOpen] = useState<'following' | 'followers'|''>('')
 	const [receiveOpen, setReceiveOpen] = useState(false)     // 控制 Receive 全屏页
-	const [copied, setCopied] = React.useState(false)
+	const [copiedWalletKind, setCopiedWalletKind] = useState<ProfileWalletAddressKind | null>(null)
 	const [followingCount, setFollowingCount] = useState(0)
 	const [followerCount, setFollowerCount] = useState(0)
 	/** Language & Currency 行：本地缓存优先，beamio 到达后再对齐并落盘 */
@@ -154,6 +212,35 @@ export default function BeamioMeMainScreen() {
 	const [lastName, setLastName] = useState('')
 	const [createAt, setCreatedAt] = useState(0)
 	const [copiedUsername, setCopiedUsername] = useState(false)
+
+	const closeProfileScreen = () => {
+		setSettingsOpen('')
+		setReceiveOpen(false)
+		setNavigateLeftButtonArray([])
+		setShowFooter(true)
+		navigate('/')
+	}
+
+	const aaWalletAddress = useMemo(() => {
+		const raw = profiles?.[0]?.aaAccount?.trim() ?? ''
+		if (!raw || !ethers.isAddress(raw)) return ''
+		try {
+			return ethers.getAddress(raw)
+		} catch {
+			return ''
+		}
+	}, [profiles?.[0]?.aaAccount])
+
+	const copyWalletAddress = (kind: ProfileWalletAddressKind, address: string) => {
+		if (!navigator?.clipboard || !address) return
+		navigator.clipboard
+			.writeText(address)
+			.then(() => {
+				setCopiedWalletKind(kind)
+				setTimeout(() => setCopiedWalletKind(null), 2000)
+			})
+			.catch(() => {})
+	}
 
 	// 头像：优先使用 beamio.image（自定义/IPFS/DiceBear URL），否则用 accountName 生成 DiceBear
 	const displayAvatarSrc = beamio?.image?.trim()
@@ -389,9 +476,22 @@ export default function BeamioMeMainScreen() {
 				shadow-[0_8px_24px_rgba(15,23,42,0.35)]
 			"
 			>
-			{/* 顶部右侧（你如果要放设置按钮，在这里恢复即可） */}
-			<div className="-mx-5 flex items-start justify-end gap-3 px-5 min-w-0">
-				<div className="flex items-center gap-2 mt-2 min-w-0 max-w-full">
+			<div className="-mx-5 flex items-start justify-between gap-3 px-5 min-w-0">
+				<button
+					type="button"
+					tabIndex={-1}
+					onClick={closeProfileScreen}
+					aria-label="Close"
+					className="
+						mt-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full
+						border border-white/40 bg-white/20 text-white/80 backdrop-blur-md
+						shadow-[0_1px_3px_rgba(0,0,0,0.12)]
+						transition active:scale-[0.96] hover:bg-white/30
+					"
+				>
+					<X className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
+				</button>
+				<div className="flex items-center gap-2 mt-2 min-w-0 max-w-[50%]">
 					<span className="text-white/15 text-right break-all">{version}</span>
 				</div>
 			</div>
@@ -483,46 +583,25 @@ export default function BeamioMeMainScreen() {
 
 				</div>
 
-				{/* address pill */}
-				{beamio && (
-				<button
-					type="button"
-					className={`
-					mt-3 inline-flex items-center gap-2
-					px-4 py-1.5 rounded-full
-					bg-black/20 text-[12px] font-medium text-white/95
-					backdrop-blur-sm
-					transition-transform duration-150 ease-out
-					${copied ? 'scale-95' : 'hover:scale-[1.02] active:scale-95'}
-					`}
-					onClick={() => {
-					if (!navigator?.clipboard || !myAddress) return
-
-					navigator.clipboard
-						.writeText(myAddress)
-						.then(() => {
-						setCopied(true)
-						setTimeout(() => setCopied(false), 2000)
-						})
-						.catch(() => {})
-					}}
-				>
-					<span className="tracking-wide">{shortenAddress(myAddress)}</span>
-
-					<span
-					className={`
-						w-6 h-6 rounded-full flex items-center justify-center
-						transition-colors duration-150
-						${copied ? 'bg-emerald-500' : 'bg-black/20'}
-					`}
-					>
-					{copied ? (
-						<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
-					) : (
-						<Copy className="w-3.5 h-3.5 text-white/95" strokeWidth={2} />
-					)}
-					</span>
-				</button>
+				{/* EOA + AA address capsules */}
+				{beamio && myAddress && (
+					<div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+						<ProfileWalletAddressCapsule
+							address={myAddress}
+							kind="eoa"
+							copied={copiedWalletKind === 'eoa'}
+							onCopy={() => copyWalletAddress('eoa', myAddress)}
+						/>
+						{aaWalletAddress &&
+						aaWalletAddress.toLowerCase() !== myAddress.toLowerCase() ? (
+							<ProfileWalletAddressCapsule
+								address={aaWalletAddress}
+								kind="aa"
+								copied={copiedWalletKind === 'aa'}
+								onCopy={() => copyWalletAddress('aa', aaWalletAddress)}
+							/>
+						) : null}
+					</div>
 				)}
 
 				{/* following / followers */}

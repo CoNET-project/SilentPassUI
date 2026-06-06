@@ -1,5 +1,11 @@
 import type { UserCardInfo } from '@/services/BeamioCard'
-import type { MyBrandsFeedDetailsSnapshot, MyBrandsOwnedCouponSnapshot } from '@/utils/myBrandsFeedLocalCache'
+import type {
+	MyBrandsFeedDetailsSnapshot,
+	MyBrandsOwnedCatalogSnapshot,
+	MyBrandsOwnedCouponSnapshot,
+} from '@/utils/myBrandsFeedLocalCache'
+
+export type { MyBrandsOwnedCatalogSnapshot }
 
 export type MyBrandCardFeedDetailsMap = MyBrandsFeedDetailsSnapshot
 
@@ -98,6 +104,51 @@ export function resolveMyBrandsOwnedCouponDisplays(
 	return out
 }
 
+export function resolveMyBrandsOwnedCatalogDisplays(
+	cardAddress: string,
+	owned:
+		| {
+				count: number
+				firstTitle?: string
+				firstCatalog?: MyBrandsOwnedCatalogSnapshot | null
+				catalogs?: MyBrandsOwnedCatalogSnapshot[]
+		  }
+		| null
+		| undefined,
+): MyBrandsOwnedCatalogSnapshot[] {
+	if (!owned || owned.count <= 0) return []
+	const seen = new Set<string>()
+	const out: MyBrandsOwnedCatalogSnapshot[] = []
+	for (const item of owned.catalogs ?? []) {
+		const key = item.id || `${item.cardAddress.toLowerCase()}:${item.tokenId || item.productionId}`
+		if (seen.has(key)) continue
+		seen.add(key)
+		out.push(item)
+	}
+	if (owned.firstCatalog) {
+		const key =
+			owned.firstCatalog.id ||
+			`${owned.firstCatalog.cardAddress.toLowerCase()}:${owned.firstCatalog.tokenId || owned.firstCatalog.productionId}`
+		if (!seen.has(key)) out.push(owned.firstCatalog)
+	}
+	if (out.length === 0 && owned.firstTitle) {
+		out.push({
+			id: `${cardAddress.toLowerCase()}:owned-catalog`,
+			cardAddress,
+			tokenId: '',
+			productionId: owned.firstTitle,
+			globalCategory: 'Service',
+			title: owned.firstTitle,
+			subtitle: 'Catalog item',
+			iconUrl: '',
+			backgroundImage: '',
+			backgroundColorHex: '',
+			validBeforeSec: null,
+		})
+	}
+	return out
+}
+
 /** 卡列表是否仅地址集合变化（忽略顺序） */
 export function myBrandCardListSignature(cards: UserCardInfo[]): string {
 	return [...cards.map((c) => c.cardAddress.toLowerCase())].sort().join('|')
@@ -154,6 +205,22 @@ function detailRowDisplayKey(row: MyBrandCardFeedDetailsMap[string] | undefined)
 				row.claimableCoupons.firstCoupon.validBeforeSec,
 			].join('|')
 			: null,
+		catalogs: row.ownedCatalogs?.count ?? 0,
+		catalogTitle: row.ownedCatalogs?.firstTitle ?? null,
+		catalogItems: (row.ownedCatalogs?.catalogs ?? [])
+			.map((item) =>
+				[
+					item.id,
+					item.title,
+					item.subtitle,
+					item.globalCategory,
+					item.iconUrl,
+					item.backgroundImage,
+					item.backgroundColorHex,
+					item.validBeforeSec,
+				].join('|')
+			)
+			.join('||'),
 		nft: nftTierDisplaySig(row.assets?.nfts),
 		tiers: Array.isArray(metaTiers) ? metaTiers.length : 0,
 	})

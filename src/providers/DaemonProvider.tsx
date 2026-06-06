@@ -6,6 +6,7 @@ import { ethers } from 'ethers'
 import {
 	getCardsOfOwnerWithDetailsForProfile,
 	fetchMyBrandsCouponSeriesForUser,
+	fetchMyBrandsProductionSeriesForUser,
 	fetchOwnedCouponsForKnownCards,
 	fetchOwnedCouponsFromRecentSeriesForUser,
 	fetchOwnedCouponsFromWalletAssetsForCards,
@@ -16,7 +17,6 @@ import {
 	getAAAccount,
 	rememberCardBasicMetadataTrusted,
 	type UserCardInfo,
-	type CardMetadataFromUri,
 	type CardActiveIssuedCouponSeriesItem,
 } from '@/services/BeamioCard'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
@@ -48,6 +48,10 @@ import {
 	myBrandCardListSignature,
 	type MyBrandCardFeedDetailsMap,
 } from '@/utils/myBrandsFeedState'
+import {
+	summarizeOwnedCatalogCards,
+	type OwnedCatalogSummary,
+} from '@/utils/myBrandsOwnedCatalog'
 import { syncNativeFooterChatBadge } from '@/utils/cashTreesNativeAppStateBridge'
 
 export type { MyBrandCardFeedDetailsMap }
@@ -214,6 +218,28 @@ function couponFallbackCardInfo(cardAddressLower: string, summary: ClaimableCoup
 		priceE6: '1000000',
 		ptsPer1Currency: '1',
 	}
+}
+
+function catalogFallbackCardInfo(cardAddressLower: string, summary: OwnedCatalogSummary): UserCardInfo {
+	return {
+		cardAddress: ethers.getAddress(cardAddressLower),
+		name: summary.firstTitle ? 'Merchant catalog' : 'Catalog item',
+		currency: 'CAD',
+		priceE6: '1000000',
+		ptsPer1Currency: '1',
+	}
+}
+
+function resolveOwnedCatalogsForCard(
+	cardKey: string,
+	catalogSummaries: Map<string, OwnedCatalogSummary> | null,
+	catalogRows: CardActiveIssuedCouponSeriesItem[] | null,
+	prevRow: MyBrandCardFeedDetailsMap[string] | undefined
+): OwnedCatalogSummary | null {
+	if (catalogSummaries === null || catalogRows === null) {
+		return prevRow?.ownedCatalogs ?? null
+	}
+	return catalogSummaries.get(cardKey) ?? null
 }
 
 /** /home「Total Power」：仅 CAD 展示用（whole.frac）；由全局 wallet 喂料写入 */
@@ -699,6 +725,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     })
   }, [])
   const profiles = profilesState
+  const profileWalletKeyId = profiles?.[0]?.keyID
   const profilesRef = useRef(profiles)
   useEffect(() => {
     profilesRef.current = profiles
@@ -732,7 +759,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   /** EOA 切换或登出：从本地恢复 My Brands；无缓存则保持直至首轮拉取（不清空已有 state 除非无效 profile） */
   useLayoutEffect(() => {
-    const raw = profiles?.[0]?.keyID?.trim() ?? ''
+    const raw = profileWalletKeyId?.trim() ?? ''
     const eoaLower = raw.toLowerCase()
     if (!eoaLower || !ethers.isAddress(eoaLower)) {
       myBrandHolderUnionCardsRef.current = []
@@ -754,7 +781,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       setMyBrandCards([])
       setMyBrandCardDetails({})
     }
-  }, [profiles?.[0]?.keyID])
+  }, [profileWalletKeyId])
 
   const runMyBrandsFeedTick = useCallback(async (): Promise<MyBrandCardFeedDetailsMap | null> => {
     if (myBrandsFeedInFlight.current) return null
@@ -827,7 +854,20 @@ export function DaemonProvider({ children }: DaemonProps) {
           )
         }
       }
+      let catalogRows: CardActiveIssuedCouponSeriesItem[] | null = null
+      if (eoaForCoupons && ethers.isAddress(eoaForCoupons)) {
+        const eoaNorm = ethers.getAddress(eoaForCoupons)
+        const aaNorm =
+          aaForCoupons && ethers.isAddress(aaForCoupons) ? ethers.getAddress(aaForCoupons) : null
+        catalogRows = await fetchMyBrandsProductionSeriesForUser(
+          50,
+          eoaNorm,
+          aaNorm,
+          knownCouponCardAddresses
+        ).catch(() => null)
+      }
       const couponSummaries = summarizeClaimableCouponCards(couponRows)
+      const catalogSummaries = summarizeOwnedCatalogCards(catalogRows)
       const nextHolderUnionMap = new Map<string, UserCardInfo>()
       for (const c of myBrandHolderUnionCardsRef.current) {
         nextHolderUnionMap.set(c.cardAddress.toLowerCase(), c)
@@ -864,6 +904,22 @@ export function DaemonProvider({ children }: DaemonProps) {
           if (seenCards.has(key)) continue
           const prevCoupon = myBrandCardDetailsRef.current[key]?.claimableCoupons
           if (!prevCoupon || prevCoupon.count <= 0) continue
+          seenCards.add(key)
+          cards.push(c)
+        }
+      }
+      if (catalogSummaries) {
+        for (const [key, summary] of catalogSummaries) {
+          if (seenCards.has(key)) continue
+          seenCards.add(key)
+          cards.push(catalogFallbackCardInfo(key, summary))
+        }
+      } else {
+        for (const c of myBrandCardsRef.current) {
+          const key = c.cardAddress.toLowerCase()
+          if (seenCards.has(key)) continue
+          const prevCatalog = myBrandCardDetailsRef.current[key]?.ownedCatalogs
+          if (!prevCatalog || prevCatalog.count <= 0) continue
           seenCards.add(key)
           cards.push(c)
         }
@@ -941,9 +997,14 @@ export function DaemonProvider({ children }: DaemonProps) {
       }
 
       const claimableByCardKey = new Map<string, ClaimableCouponSummary | null>()
+      const ownedCatalogByCardKey = new Map<string, OwnedCatalogSummary | null>()
       for (const uc of cards) {
         const key = uc.cardAddress.toLowerCase()
         claimableByCardKey.set(key, await resolveCouponsForCardKey(key, uc.cardAddress, prevDetails[key]))
+        ownedCatalogByCardKey.set(
+          key,
+          resolveOwnedCatalogsForCard(key, catalogSummaries, catalogRows, prevDetails[key])
+        )
       }
 
       await Promise.all(
@@ -951,6 +1012,7 @@ export function DaemonProvider({ children }: DaemonProps) {
           const key = uc.cardAddress.toLowerCase()
           const prevRow = prevDetails[key]
           const claimableCoupons = claimableByCardKey.get(key) ?? null
+          const ownedCatalogs = ownedCatalogByCardKey.get(key) ?? prevRow?.ownedCatalogs ?? null
           const [assetsFromMyAssets, meta] = await Promise.all([
             getMyAssets(profile, uc.cardAddress).catch(() => null),
             getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress).catch(() => prevRow?.meta ?? null),
@@ -979,6 +1041,7 @@ export function DaemonProvider({ children }: DaemonProps) {
             meta: meta ?? prevRow?.meta ?? null,
             assets: assetsFromMyAssets ?? assetsFromWallet ?? prevRow?.assets ?? null,
             claimableCoupons: couponsForRow,
+            ownedCatalogs,
           }
           if (meta) rememberCardBasicMetadataTrusted(uc.cardAddress, meta)
         })
@@ -1103,7 +1166,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   /** EOA 切换：从本地恢复 Recent Activity；无缓存则等首轮拉取 */
   useLayoutEffect(() => {
-    const raw = profiles?.[0]?.keyID?.trim() ?? ''
+    const raw = profileWalletKeyId?.trim() ?? ''
     const eoaLower = raw.toLowerCase()
     if (!eoaLower || !ethers.isAddress(eoaLower)) {
       recentActivityNoAaSettledRef.current = false
@@ -1134,7 +1197,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaError(null)
     }
-  }, [profiles?.[0]?.keyID])
+  }, [profileWalletKeyId])
 
   /** AA 检测 + indexer Recent Activity + EOA USDC + Total Power CAD；与 My Brands 同轨 6s setTimeout 链 */
   const runNoAaWalletFeedTick = useCallback(async (cardDetails: MyBrandCardFeedDetailsMap | null) => {

@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
-import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, ASSET_CARD_ADDRESSES } from "../utils/constants";
+import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
 import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
@@ -12,10 +12,9 @@ import { discoverCategoryFieldsFromMetadataRoot } from "@/utils/discoverMerchant
 import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
-import { BeamioAAAcountFactoryAbi, cardAbi } from "../utils/abis";
+import { cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
-import { Theater } from "lucide-react";
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
@@ -785,22 +784,31 @@ export async function getCardActiveIssuedCouponSeries(cardAddress: string, limit
 	return trusted ?? []
 }
 
-export async function getCardActiveIssuedProductionSeries(
+/** null = untrusted; [] = trusted empty. */
+export async function fetchCardActiveIssuedProductionSeriesTrusted(
 	cardAddress: string,
 	limit = 50
-): Promise<CardActiveIssuedCouponSeriesItem[]> {
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
 	if (!cardAddress || !ethers.isAddress(cardAddress)) return []
 	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
 	try {
 		const res = await fetch(
 			`${beamioApi}/api/cardActiveIssuedProductionSeries?card=${encodeURIComponent(ethers.getAddress(cardAddress))}&limit=${normalizedLimit}`
 		)
-		if (!res.ok) return []
+		if (!res.ok) return null
 		const json = (await res.json().catch(() => ({}))) as { items?: CardActiveIssuedCouponSeriesItem[] }
 		return Array.isArray(json.items) ? json.items : []
 	} catch {
-		return []
+		return null
 	}
+}
+
+export async function getCardActiveIssuedProductionSeries(
+	cardAddress: string,
+	limit = 50
+): Promise<CardActiveIssuedCouponSeriesItem[]> {
+	const trusted = await fetchCardActiveIssuedProductionSeriesTrusted(cardAddress, limit)
+	return trusted ?? []
 }
 
 /** 从全站 recent 系列 API 拉取完整行（含 metadata），供 My Brands 已持有券检测 */
@@ -902,9 +910,6 @@ export async function fetchOngoingClaimableCouponSeries(
 const MY_BRANDS_COUPON_BALANCE_ABI = [
 	'function balanceOf(address account,uint256 id) view returns (uint256)',
 ] as const
-
-/** 串行 balanceOf，避免浏览器 / RPC 并发过高导致整批失败 */
-const MY_BRANDS_COUPON_BALANCE_RPC_CONCURRENCY = 1
 
 /**
  * Redeem / open-claim mint to the user's Beamio AA (`cardSelfToAccount`), not EOA.
@@ -1256,6 +1261,103 @@ export async function fetchMyBrandsCouponSeriesForUser(
 	}
 
 	return scanOwnedCouponSeriesWithBalanceCheck([...cardSet], normalizedLimit, userEOA, userAA)
+}
+
+async function scanOwnedProductionSeriesWithBalanceCheck(
+	cardList: string[],
+	normalizedLimit: number,
+	userEOA?: string | null,
+	userAA?: string | null
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	if (!cardList.length) return []
+
+	const responses = await Promise.all(
+		cardList.map((cardLower) => fetchCardActiveIssuedProductionSeriesTrusted(cardLower, normalizedLimit))
+	)
+	if (!responses.some((r) => r !== null)) return null
+
+	const uniqueAccounts = await resolveMyBrandsCouponHolderAccounts(userEOA, userAA)
+	if (!uniqueAccounts.length) return []
+
+	type BalanceCheckJob = {
+		cardLower: string
+		cardAddress: string
+		row: CardActiveIssuedCouponSeriesItem
+		tokenId: bigint
+	}
+	const jobs: BalanceCheckJob[] = []
+	for (let i = 0; i < cardList.length; i++) {
+		const rows = responses[i]
+		if (!rows) continue
+		const cardLower = cardList[i]!
+		const cardAddress = ethers.getAddress(cardLower)
+		for (const row of rows) {
+			let tokenId: bigint
+			try {
+				tokenId = BigInt(row.tokenId)
+			} catch {
+				continue
+			}
+			jobs.push({ cardLower, cardAddress, row: { ...row, cardAddress }, tokenId })
+		}
+	}
+	if (!jobs.length) return []
+
+	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
+	let balanceCheckFailures = 0
+	let balanceCheckSuccesses = 0
+	const contractByCard = new Map<string, ethers.Contract>()
+	for (const job of jobs) {
+		let cardRead = contractByCard.get(job.cardLower)
+		if (!cardRead) {
+			cardRead = new ethers.Contract(job.cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, baseEndpoint)
+			contractByCard.set(job.cardLower, cardRead)
+		}
+		for (const account of uniqueAccounts) {
+			try {
+				const bal = (await cardRead.balanceOf(account, job.tokenId)) as bigint
+				balanceCheckSuccesses++
+				if (bal > 0n) {
+					merged.set(`${job.cardLower}:${job.row.tokenId}`, job.row)
+					break
+				}
+			} catch {
+				balanceCheckFailures++
+			}
+		}
+	}
+
+	if (merged.size === 0 && balanceCheckSuccesses === 0 && balanceCheckFailures > 0) return null
+
+	return sortOwnedCouponSeriesRows([...merged.values()])
+}
+
+/** My Brands: owned catalog / production NFTs (Global Category ≠ Coupon). */
+export async function fetchMyBrandsProductionSeriesForUser(
+	limit = 50,
+	userEOA?: string | null,
+	userAA?: string | null,
+	extraCardAddresses?: string[] | null
+): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
+	const normalizedLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)))
+	const prioritySet = new Set<string>()
+	for (const raw of extraCardAddresses ?? []) {
+		const trimmed = raw?.trim() ?? ''
+		if (trimmed && ethers.isAddress(trimmed)) prioritySet.add(ethers.getAddress(trimmed).toLowerCase())
+	}
+	if (prioritySet.size === 0) return []
+
+	if (prioritySet.size > 0) {
+		const priorityResult = await scanOwnedProductionSeriesWithBalanceCheck(
+			[...prioritySet],
+			normalizedLimit,
+			userEOA,
+			userAA
+		)
+		if (priorityResult && priorityResult.length > 0) return priorityResult
+	}
+
+	return scanOwnedProductionSeriesWithBalanceCheck([...prioritySet], normalizedLimit, userEOA, userAA)
 }
 
 async function resolveOpenClaimTokenIdByCouponId(cardAddress: string, couponId: string): Promise<string | null> {
@@ -1635,23 +1737,6 @@ function mergeDiscoveredHolderCards(
 		seen.add(key)
 		holderCards.push(c)
 		merged.push(c)
-	}
-}
-
-/** Holder 卡：优先 getWalletAssets；不可信时回退 latestCards + 浏览器 RPC。 */
-async function discoverHolderCardsForEOA(
-	eoa: string,
-	seen: Set<string>,
-	aa?: string | null
-): Promise<{ holderCards: UserCardInfo[]; walletSnapshot: MyBrandsWalletAssetsSnapshot | null }> {
-	const eoaNorm = ethers.getAddress(eoa)
-	const walletSnapshot = await fetchMyBrandsWalletAssetsSnapshot(eoaNorm, seen)
-	if (walletSnapshot !== null) {
-		return { holderCards: walletSnapshot.holderCards, walletSnapshot }
-	}
-	return {
-		holderCards: await fetchHeldCardsFromLatestForEOA(eoaNorm, seen, aa),
-		walletSnapshot: null,
 	}
 }
 
@@ -2739,9 +2824,6 @@ export const getRedeemDetailsForDisplay = async (
     }
 }
 
-/** Multicall3 地址（Base 等链通用） */
-const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11'
-
 /**
  * 通过 API 批量查询 redeem 状态（仅支持批量）。优先使用，可减轻前端 RPC 压力。
  */
@@ -2781,7 +2863,6 @@ export const getRedeemStatusBatchFromChain = async (
             arr.push({ hash: it.hash, code: it.code })
             byCard.set(it.cardAddress, arr)
         }
-        const iface = new ethers.Interface(getRedeemStatusAbi)
         for (const [cardAddress, cardItems] of byCard) {
             const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, baseEndpoint)
             const hashes = cardItems.map((i) =>
@@ -4168,9 +4249,8 @@ export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<se
 		const account = await searchUsername(owner)
 		if (account?.results?.[0]) {
 			return account.results[0]
-		}	
+		}
 		return null
-        return owner
     } catch (error: any) {
         console.log(`❌ getCardOwnerByCardAddress Failed: ${error.message}`);
         return null

@@ -58,11 +58,13 @@ import {
 	parseDiscoverTopupAmountInput,
 	pollEoaUsdcFundingThenTopup,
 	readEoaUsdcBalance6,
-	resolveDiscoverTopupRequiredUsdc6,
+	usdc6ToExactTransferAmount,
 } from "@/utils/discoverEoaUsdcTopup"
 import {
 	buildDiscoverUsdcClientTopupQrUrl,
 	discoverClientTopupPaymentHint,
+	fetchDiscoverClientTopupQuotedUsdc6,
+	formatQuotedUsdc6ForDisplay,
 } from "@/utils/discoverUsdcTopupSession"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
@@ -1927,14 +1929,17 @@ function DiscoverMerchantDetailFullScreen({
 	}, [])
 
 	const submitDiscoverEoaTopup = useCallback(
-		async (requiredUsdc6: bigint): Promise<boolean> => {
+		async (requiredUsdc6: bigint, transferAmountStr?: string): Promise<boolean> => {
 			const cardAddress = item.cardAddress?.trim() ?? ''
 			if (!cardAddress || !profile?.keyID || !profile?.privateKeyArmor) return false
 			if (requiredUsdc6 <= 0n) return false
+			const usdcAmount =
+				transferAmountStr?.trim() ||
+				usdc6ToExactTransferAmount(requiredUsdc6)
 			const ret = await postUSDCUserCardTopup({
 				profile: profile as profile,
 				cardAddress,
-				usdcAmount: safeUsdc6ToAmountString(requiredUsdc6),
+				usdcAmount,
 				intent: 'topup',
 			})
 			if (!ret.success) {
@@ -1981,23 +1986,27 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupSubmitting(true)
 		setUsdcTopupError('')
 		try {
-			const [requiredUsdc6, baselineUsdc6] = await Promise.all([
-				resolveDiscoverTopupRequiredUsdc6(cardAddress, displayCurrency, parsed.apiAmount),
-				readEoaUsdcBalance6(profile as profile),
-			])
-			if (requiredUsdc6 <= 0n) {
+			const baselineUsdc6 = await readEoaUsdcBalance6(profile as profile)
+			const selfFundUsdc6 = await currencyAmountToSafeUsdc6(
+				cardAddress,
+				displayCurrency,
+				parsed.apiAmount,
+			)
+			if (selfFundUsdc6 <= 0n) {
 				setUsdcTopupError('Invalid top-up amount.')
 				return
 			}
-			const usdcDisplay = safeUsdc6ToAmountString(requiredUsdc6)
-			setUsdcTopupFiatAmount(parsed.apiAmount)
-			setUsdcTopupRequiredUsdc6(requiredUsdc6)
-			setUsdcTopupBaselineUsdc6(baselineUsdc6)
-			setUsdcTopupUsdcDisplay(usdcDisplay)
 
-			if (eoaCanSelfFundDiscoverTopup(baselineUsdc6, requiredUsdc6)) {
+			if (eoaCanSelfFundDiscoverTopup(baselineUsdc6, selfFundUsdc6)) {
+				setUsdcTopupFiatAmount(parsed.apiAmount)
+				setUsdcTopupRequiredUsdc6(selfFundUsdc6)
+				setUsdcTopupBaselineUsdc6(baselineUsdc6)
+				setUsdcTopupUsdcDisplay(safeUsdc6ToAmountString(selfFundUsdc6))
 				setUsdcTopupProgress('Completing top-up…')
-				await submitDiscoverEoaTopup(requiredUsdc6)
+				await submitDiscoverEoaTopup(
+					selfFundUsdc6,
+					safeUsdc6ToAmountString(selfFundUsdc6),
+				)
 				return
 			}
 
@@ -2012,6 +2021,19 @@ function DiscoverMerchantDetailFullScreen({
 				setUsdcTopupError('Cannot resolve merchant card owner. Please retry.')
 				return
 			}
+
+			const quotedUsdc6 = await fetchDiscoverClientTopupQuotedUsdc6({
+				cardAddress,
+				cardOwner,
+				amount: parsed.apiAmount,
+				currency: displayCurrency,
+			})
+			const usdcDisplay = formatQuotedUsdc6ForDisplay(quotedUsdc6)
+			setUsdcTopupFiatAmount(parsed.apiAmount)
+			setUsdcTopupRequiredUsdc6(quotedUsdc6)
+			setUsdcTopupBaselineUsdc6(baselineUsdc6)
+			setUsdcTopupUsdcDisplay(usdcDisplay)
+
 			const qrValue = buildDiscoverUsdcClientTopupQrUrl({
 				cardAddress,
 				cardOwner,
@@ -2021,6 +2043,18 @@ function DiscoverMerchantDetailFullScreen({
 			})
 			setUsdcTopupUserEoa(userEoa)
 			setUsdcTopupQrValue(qrValue)
+
+			const currentAfterQuote = await readEoaUsdcBalance6(profile as profile)
+			const alreadyFunded =
+				eoaCanSelfFundDiscoverTopup(currentAfterQuote, quotedUsdc6) ||
+				eoaMeetsExternalFundingTarget(currentAfterQuote, baselineUsdc6, quotedUsdc6)
+			if (alreadyFunded) {
+				setUsdcTopupProgress('USDC received — completing top-up…')
+				setUsdcTopupPhase('receive')
+				await submitDiscoverEoaTopup(quotedUsdc6, usdc6ToExactTransferAmount(quotedUsdc6))
+				return
+			}
+
 			setUsdcTopupProgress('Waiting for USDC on your wallet…')
 			setUsdcTopupPhase('receive')
 		} catch (e: unknown) {
@@ -2064,7 +2098,10 @@ function DiscoverMerchantDetailFullScreen({
 				return
 			}
 			setUsdcTopupProgress('Completing top-up…')
-			await submitDiscoverEoaTopup(usdcTopupRequiredUsdc6)
+			await submitDiscoverEoaTopup(
+				usdcTopupRequiredUsdc6,
+				usdc6ToExactTransferAmount(usdcTopupRequiredUsdc6),
+			)
 		} catch (e: unknown) {
 			setUsdcTopupError(e instanceof Error ? e.message : 'Top-up failed')
 		} finally {

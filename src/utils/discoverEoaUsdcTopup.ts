@@ -1,9 +1,7 @@
 import { ethers } from 'ethers'
 import {
-	currencyAmountToSafeUsdc6,
 	getEOAUSDCBalance,
 	postUSDCUserCardTopup,
-	safeUsdc6ToAmountString,
 } from '@/services/BeamioCard'
 import { BASE_MAINNET_CHAIN_ID, USDC_BASE } from '@/config/chainAddresses'
 
@@ -51,13 +49,19 @@ export function eoaCanSelfFundDiscoverTopup(balanceUsdc6: bigint, requiredUsdc6:
 	return requiredUsdc6 > 0n && balanceUsdc6 >= requiredUsdc6
 }
 
-/** After third-party transfer, balance must increase by the full required amount from baseline. */
+/** After third-party transfer, balance must increase by the quoted payment amount from baseline. */
 export function eoaMeetsExternalFundingTarget(
 	currentUsdc6: bigint,
 	baselineUsdc6: bigint,
 	requiredUsdc6: bigint,
 ): boolean {
-	return currentUsdc6 >= baselineUsdc6 + requiredUsdc6
+	return requiredUsdc6 > 0n && currentUsdc6 >= baselineUsdc6 + requiredUsdc6
+}
+
+/** Exact USDC human amount for EIP-3009 transfer — do not round up (safeUsdc6ToAmountString would). */
+export function usdc6ToExactTransferAmount(usdc6: bigint): string {
+	if (usdc6 <= 0n) return '0'
+	return ethers.formatUnits(usdc6, 6)
 }
 
 export type DiscoverEoaUsdcTopupPollOutcome =
@@ -73,7 +77,7 @@ export async function pollEoaUsdcFundingThenTopup(params: {
 	onProgress?: (label: string) => void
 	signal?: AbortSignal
 }): Promise<DiscoverEoaUsdcTopupPollOutcome> {
-	const usdcAmountStr = safeUsdc6ToAmountString(params.requiredUsdc6)
+	const usdcAmountStr = usdc6ToExactTransferAmount(params.requiredUsdc6)
 
 	const isFunded = (current6: bigint) =>
 		eoaCanSelfFundDiscoverTopup(current6, params.requiredUsdc6) ||
@@ -130,13 +134,4 @@ export async function pollEoaUsdcFundingThenTopup(params: {
 	}
 
 	return { status: 'timeout' }
-}
-
-/** Resolve required USDC6 for a fiat top-up amount on a merchant card. */
-export async function resolveDiscoverTopupRequiredUsdc6(
-	cardAddress: string,
-	cardCurrency: string,
-	fiatAmount: string,
-): Promise<bigint> {
-	return currencyAmountToSafeUsdc6(cardAddress, cardCurrency, fiatAmount)
 }

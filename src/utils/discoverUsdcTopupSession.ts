@@ -59,6 +59,44 @@ export function discoverClientTopupPaymentHint(): string {
 	return 'Ask the payer to scan this QR or open the link to pay USDC on Base. USDC is sent to your wallet; this app completes the merchant top-up after funds arrive.'
 }
 
+type NfcUsdcTopupQuoteResponse = {
+	success?: boolean
+	error?: string
+	quotedUsdc6?: string
+	quotedUsdc?: string
+}
+
+/** Same quote as beamio.app/usdc-topup payment page — must match what the payer actually sends. */
+export async function fetchDiscoverClientTopupQuotedUsdc6(params: {
+	cardAddress: string
+	cardOwner: string
+	amount: string
+	currency: string
+}): Promise<bigint> {
+	const url = new URL(`${beamioApi}/api/nfcUsdcTopupQuote`)
+	url.searchParams.set('card', params.cardAddress)
+	url.searchParams.set('owner', params.cardOwner)
+	url.searchParams.set('amount', params.amount)
+	url.searchParams.set('currency', params.currency.toUpperCase())
+	url.searchParams.set('paymentToken', 'USDC')
+	const res = await fetch(url.toString())
+	const json = (await res.json().catch(() => ({}))) as NfcUsdcTopupQuoteResponse
+	if (!res.ok || json.success === false) {
+		throw new Error(json.error ?? `Quote failed (HTTP ${res.status})`)
+	}
+	const raw = String(json.quotedUsdc6 ?? '').trim()
+	if (!/^\d+$/.test(raw) || BigInt(raw) <= 0n) {
+		throw new Error('Invalid quote from server')
+	}
+	return BigInt(raw)
+}
+
+export function formatQuotedUsdc6ForDisplay(usdc6: bigint): string {
+	const human = ethers.formatUnits(usdc6, 6)
+	const n = Number(human)
+	return Number.isFinite(n) ? n.toFixed(6).replace(/\.?0+$/, '') || '0' : human
+}
+
 export function newDiscoverUsdcTopupSessionId(): string {
 	if (typeof crypto !== 'undefined' && crypto.randomUUID) {
 		return crypto.randomUUID().toLowerCase()

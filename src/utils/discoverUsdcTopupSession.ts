@@ -11,8 +11,10 @@ import {
 const POLL_INTERVAL_MS = 2500
 const MAX_TICKS = 600
 
-/** Non-admin consumer: verra only settles USDC to beneficiary; card top-up is completed in-app. */
+/** Non-admin consumer: payment page only settles USDC to beneficiary; card top-up is completed in-app. */
 export const DISCOVER_USDC_CLIENT_TOPUP_WORKFLOW = 'clientTopup'
+
+const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
 
 /** POS admin session QR (sid+pos) — do not use for Discover consumers who are not card admin. */
 export function buildDiscoverUsdcTopupQrUrl(params: {
@@ -23,7 +25,7 @@ export function buildDiscoverUsdcTopupQrUrl(params: {
 	sid: string
 	pos: string
 }): string {
-	const url = new URL('https://verra.network/usdc-topup')
+	const url = new URL(BEAMIO_USDC_TOPUP_URL)
 	url.searchParams.set('card', params.cardAddress)
 	url.searchParams.set('owner', params.cardOwner)
 	url.searchParams.set('amount', params.amount)
@@ -34,7 +36,7 @@ export function buildDiscoverUsdcTopupQrUrl(params: {
 	return url.toString()
 }
 
-/** Discover consumer top-up: same verra host as POS, but transfer-only (no sid/pos session / no server mint). */
+/** Discover consumer top-up: beamio.app payment page, transfer-only (no sid/pos session / no server mint). */
 export function buildDiscoverUsdcClientTopupQrUrl(params: {
 	cardAddress: string
 	cardOwner: string
@@ -42,7 +44,7 @@ export function buildDiscoverUsdcClientTopupQrUrl(params: {
 	currency: string
 	beneficiaryEoa: string
 }): string {
-	const url = new URL('https://verra.network/usdc-topup')
+	const url = new URL(BEAMIO_USDC_TOPUP_URL)
 	url.searchParams.set('card', params.cardAddress)
 	url.searchParams.set('owner', params.cardOwner)
 	url.searchParams.set('amount', params.amount)

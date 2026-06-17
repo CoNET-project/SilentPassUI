@@ -15,7 +15,7 @@ import {ShowPrint} from './ShowPrint'
 import { motion, useMotionValue, animate } from 'framer-motion'
 import { QrCode, Link } from 'lucide-react'
 import { BeamioSegmentedDrag } from './components/beamioSegmented'
-import type { OpenContainerRelayPayload } from '@/services/AAaccount'
+import { encodeOpenContainerRelayQrPayload, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { X } from 'lucide-react'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 
@@ -324,7 +324,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 					<ShowPayQR
 						successUrl={successUrl}
 						beamio={beamio}
-						qrValue={JSON.stringify({ ...relayPayload, validBefore: relayPayload.deadline })}
+						qrValue={encodeOpenContainerRelayQrPayload(relayPayload)}
 						hideActions
 						hideUrl
 						hideName={hideName}

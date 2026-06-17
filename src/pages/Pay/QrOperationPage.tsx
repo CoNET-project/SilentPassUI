@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { X, CreditCard, Share2, Copy, Check, Loader2 } from "lucide-react"
 import { QRCodeCanvas } from "qrcode.react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from "@/services/AAaccount"
+import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from "@/services/AAaccount"
 import type { OpenContainerRelayPayload } from "@/services/AAaccount"
 import bIcon from "@/components/assets/logo512.png"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
@@ -93,8 +93,8 @@ export default function QrOperationPage() {
 
   useEffect(() => {
     if (merchantExpireSec <= 0) return
-    const t = setInterval(() => setMerchantExpireSec((s) => Math.max(0, s - 1)), 1000)
-    return () => clearInterval(t)
+    const t = setTimeout(() => setMerchantExpireSec((s) => Math.max(0, s - 1)), 1000)
+    return () => clearTimeout(t)
   }, [merchantExpireSec])
 
   const onCopyAddress = async (value: string) => {
@@ -228,6 +228,10 @@ export default function QrOperationPage() {
                 </div>
               ) : merchantPayload ? (
                 <div className="flex flex-col items-center w-full">
+                  {(() => {
+                    const merchantQrValue = encodeOpenContainerRelayQrPayload(merchantPayload)
+                    return (
+                      <>
                   <div className="flex items-center justify-center w-full mb-3">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-400" />
@@ -236,9 +240,9 @@ export default function QrOperationPage() {
                   </div>
                   <div className="relative">
                     <QRCodeCanvas
-                      value={JSON.stringify({ ...merchantPayload, validBefore: merchantPayload.deadline })}
+                      value={merchantQrValue}
                       size={QR_SIZE}
-                      level="H"
+                      level="M"
                       includeMargin
                       bgColor="#ffffff"
                       fgColor="#000000"
@@ -272,7 +276,7 @@ export default function QrOperationPage() {
                   <div className="mt-6 sm:mt-8 w-full flex gap-2 sm:gap-3">
                     <button
                       type="button"
-                      onClick={() => onCopyQr(merchantPayload ? JSON.stringify(merchantPayload) : payMeUrl)}
+                      onClick={() => onCopyQr(merchantQrValue)}
                       disabled={!merchantPayload}
                       className={[
                         "flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm",
@@ -291,7 +295,7 @@ export default function QrOperationPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => onShare(merchantPayload ? JSON.stringify(merchantPayload) : payMeUrl)}
+                      onClick={() => onShare(merchantQrValue)}
                       disabled={!merchantPayload}
                       className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm bg-black dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 active:scale-[0.98] transition disabled:opacity-50 disabled:pointer-events-none"
                     >
@@ -299,6 +303,9 @@ export default function QrOperationPage() {
                       <span>Share</span>
                     </button>
                   </div>
+                      </>
+                    )
+                  })()}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center flex-1 min-h-[400px] text-center">

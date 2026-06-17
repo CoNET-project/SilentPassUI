@@ -855,14 +855,15 @@ const pickRouteNodesByArmoredKey = (nodes: nodeInfo[], routerArmoredPublicKey: s
 }
 
 const probeGossipNode = async (node: nodeInfo, timeoutMs = 4_000) => {
-	// Probe HTTPS root page (served by CoNET-SI server.ts) to validate domain reachability.
+	// Probe HTTPS reachability. Some CoNET-SI nginx roots legitimately return 404,
+	// but a completed TLS+HTTP response still proves the browser can reach the node.
 	const url = `https://${node.domain}.conet.network/`
 	try {
 		const res = await postWithTimeout(url, {
 			method: 'GET',
 			headers: { 'Accept': 'text/html' }
 		}, timeoutMs)
-		if (res.ok) {
+		if (res.status > 0 && res.status < 500) {
 			markGossipNodeHealthy(node.domain)
 			return true
 		}

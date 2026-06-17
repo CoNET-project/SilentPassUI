@@ -68,7 +68,7 @@ import TenKeyInputV2 from '@/pages/Pay/components/TenKeyInputV2'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
-import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
+import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
 import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromApi, getCardMetadataFrom1155Json, getNftMetadataFromApi, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, signExecuteForOwner, encodeCreateIssuedNft, postCardCreateIssuedNft, getTierIndexForRedeemAmount, isCardExcludedFromDisplay, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch, type CardTierMetadata, type NftTierMetadata, type CardMetadataFromUri } from '@/services/BeamioCard'
 import { postToIPFS } from '@/services/beamio'
@@ -3512,10 +3512,7 @@ export default function MyWalletDashboardNew() {
 								<ShowPayQR
 									successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
 									beamio={beamio ?? null}
-									qrValue={JSON.stringify({
-										...aaRelayQRPayload,
-										validBefore: aaRelayQRPayload.deadline,
-									})}
+									qrValue={encodeOpenContainerRelayQrPayload(aaRelayQRPayload)}
 									hideActions
 									hideUrl
 									hideName

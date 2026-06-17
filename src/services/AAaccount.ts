@@ -3,8 +3,9 @@
  * account 必须通过 UserCard 工厂链路与链上扣点一致，见 resolveBeamioAaForEoaWithFallback。
  */
 import { ethers } from 'ethers'
-import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
-import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory'
+import { baseEndpoint, conetDepinProvider, USDCContract_BASE } from '../utils/constants'
+import { CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
+import { resolveBeamioAaForEoaWithFallback, resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
 
 const USDC_ADDRESS_BASE = USDCContract_BASE
 
@@ -28,6 +29,12 @@ export type OpenContainerRelayPayload = {
 	nonce: string
 	deadline: string
 	signature: string
+	chain?: 'base' | 'conet'
+	chainId?: number
+	openContainerPayloads?: {
+		base?: OpenContainerRelayPayload
+		conet?: OpenContainerRelayPayload
+	}
 }
 
 /** containerMainRelayed（绑定 to）：与 bizSite / BeamioContainerModuleV07 一致 */
@@ -40,6 +47,46 @@ export type ContainerRelayPayload = {
 	signature: string
 }
 
+function compactOpenContainerPayloadForQr(payload: OpenContainerRelayPayload): Record<string, unknown> {
+	return {
+		a: payload.account,
+		c: payload.currencyType,
+		m: payload.maxAmount,
+		n: payload.nonce,
+		d: payload.deadline,
+		s: payload.signature,
+	}
+}
+
+function legacyOpenContainerPayloadForQr(payload: OpenContainerRelayPayload): Record<string, unknown> {
+	return {
+		account: payload.account,
+		to: payload.to,
+		items: [],
+		currencyType: payload.currencyType,
+		maxAmount: payload.maxAmount,
+		nonce: payload.nonce,
+		deadline: payload.deadline,
+		validBefore: payload.deadline,
+		signature: payload.signature,
+	}
+}
+
+export function encodeOpenContainerRelayQrPayload(payload: OpenContainerRelayPayload): string {
+	if (payload.openContainerPayloads) {
+		const encoded: Record<string, unknown> = {}
+		if (payload.openContainerPayloads.base) {
+			encoded.b = compactOpenContainerPayloadForQr(payload.openContainerPayloads.base)
+		}
+		if (payload.openContainerPayloads.conet) {
+			encoded.c = compactOpenContainerPayloadForQr(payload.openContainerPayloads.conet)
+		}
+		const legacyPrimary = payload.openContainerPayloads.conet ?? payload.openContainerPayloads.base ?? payload
+		return JSON.stringify({ ...legacyOpenContainerPayloadForQr(legacyPrimary), v: 1, p: encoded })
+	}
+	return JSON.stringify(legacyOpenContainerPayloadForQr(payload))
+}
+
 const DOMAIN_NAME = 'BeamioAccount'
 const DOMAIN_VERSION = '1'
 const BASE_CHAIN_ID = 8453
@@ -47,6 +94,8 @@ const BASE_CHAIN_ID = 8453
 const BEAMIO_ACCOUNT_ABI = [
 	'function owner() view returns (address)',
 	'function containerModule() view returns (address)',
+	'function relayedNonce() view returns (uint256)',
+	'function openRelayedNonce() view returns (uint256)',
 ]
 
 function normalizeBytesLike(data: string | Uint8Array): Uint8Array {
@@ -75,28 +124,25 @@ function hashItems(items: ContainerItemLike[]): string {
 	return ethers.keccak256(encoded)
 }
 
-function slotBase(): bigint {
-	const slotHex = ethers.keccak256(ethers.toUtf8Bytes('beamio.container.module.storage.v07'))
-	return BigInt(slotHex)
-}
-
 export async function readContainerNonceFromAAStorage(
 	provider: ethers.Provider,
 	aaAccount: string,
 	kind: 'relayed' | 'openRelayed'
 ): Promise<bigint> {
-	const base = slotBase()
-	const slot = kind === 'relayed' ? base : base + 1n
-	const raw = await provider.getStorage(aaAccount, slot)
+	const aa = new ethers.Contract(ethers.getAddress(aaAccount), BEAMIO_ACCOUNT_ABI, provider)
+	const raw = kind === 'relayed'
+		? await aa.relayedNonce()
+		: await aa.openRelayedNonce()
 	return BigInt(raw)
 }
 
 async function resolveSigningAaAccount(
 	provider: ethers.Provider,
 	profileAa: string | undefined,
-	signerEoa: string
+	signerEoa: string,
+	resolveCanonical: (provider: ethers.Provider, eoa: string) => Promise<string | null> = resolveBeamioAaForEoaWithFallback
 ): Promise<string> {
-	const canonical = await resolveBeamioAaForEoaWithFallback(provider, signerEoa)
+	const canonical = await resolveCanonical(provider, signerEoa)
 	if (!canonical) {
 		throw new Error(
 			'No Beamio AA for this EOA on the UserCard factory path. Create or link a smart account, or check factory config.'
@@ -113,6 +159,95 @@ async function resolveSigningAaAccount(
 		)
 	}
 	return aa
+}
+
+async function signOpenContainerForChain(params: {
+	profile: { privateKeyArmor: string; aaAccount?: string }
+	amountUSDC: string
+	provider: ethers.Provider
+	chainId: number
+	chain: 'base' | 'conet'
+	to?: string
+	deadlineSeconds?: number
+	resolveCanonical?: (provider: ethers.Provider, eoa: string) => Promise<string | null>
+}): Promise<OpenContainerRelayPayload> {
+	const signer = new ethers.Wallet(params.profile.privateKeyArmor, params.provider)
+	const aaAccount = await resolveSigningAaAccount(
+		params.provider,
+		params.profile.aaAccount,
+		signer.address,
+		params.resolveCanonical
+	)
+
+	const code = await params.provider.getCode(aaAccount)
+	if (!code || code === '0x' || code.length <= 2) {
+		throw new Error(`AA account has no code: ${aaAccount}`)
+	}
+
+	const aa = new ethers.Contract(aaAccount, BEAMIO_ACCOUNT_ABI, params.provider)
+	const owner = (await aa.owner()) as string
+	if (owner.toLowerCase() !== signer.address.toLowerCase()) {
+		throw new Error(`AA owner does not match signer: owner=${owner} signer=${signer.address}`)
+	}
+
+	const nonce = await readContainerNonceFromAAStorage(params.provider, aaAccount, 'openRelayed')
+	const now = Math.floor(Date.now() / 1000)
+	const deadline = BigInt(now + (params.deadlineSeconds ?? 300))
+	const amountWei = ethers.parseUnits(params.amountUSDC, 6)
+	const to = params.to && ethers.isAddress(params.to) ? params.to : signer.address
+
+	const items: ContainerItemLike[] = [
+		{ kind: 0, asset: USDC_ADDRESS_BASE, amount: amountWei, tokenId: 0n, data: '0x' },
+	]
+
+	const currencyType = 4
+	const maxAmount = 0n
+
+	const domain = {
+		name: DOMAIN_NAME,
+		version: DOMAIN_VERSION,
+		chainId: params.chainId,
+		verifyingContract: aaAccount,
+	}
+
+	const types = {
+		OpenContainerMain: [
+			{ name: 'account', type: 'address' },
+			{ name: 'currencyType', type: 'uint8' },
+			{ name: 'maxAmount', type: 'uint256' },
+			{ name: 'nonce', type: 'uint256' },
+			{ name: 'deadline', type: 'uint256' },
+		],
+	}
+
+	const value = {
+		account: aaAccount,
+		currencyType,
+		maxAmount,
+		nonce,
+		deadline,
+	}
+
+	const signature = await signer.signTypedData(domain, types, value)
+
+	return {
+		account: aaAccount,
+		to,
+		items: items.map((it) => ({
+			kind: it.kind,
+			asset: it.asset,
+			amount: it.amount.toString(),
+			tokenId: it.tokenId.toString(),
+			data: typeof it.data === 'string' ? it.data : ethers.hexlify(it.data),
+		})),
+		currencyType,
+		maxAmount: maxAmount.toString(),
+		nonce: nonce.toString(),
+		deadline: deadline.toString(),
+		signature,
+		chain: params.chain,
+		chainId: params.chainId,
+	}
 }
 
 /**
@@ -196,75 +331,38 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 	amountUSDC: string,
 	options?: { provider?: ethers.Provider; to?: string; deadlineSeconds?: number }
 ): Promise<OpenContainerRelayPayload> {
-	const prov = baseEndpoint
-	const signer = new ethers.Wallet(profile.privateKeyArmor, prov)
-	const aaAccount = await resolveSigningAaAccount(prov, profile.aaAccount, signer.address)
-
-	const code = await prov.getCode(aaAccount)
-	if (!code || code === '0x' || code.length <= 2) {
-		throw new Error(`AA account has no code: ${aaAccount}`)
-	}
-
-	const aa = new ethers.Contract(aaAccount, BEAMIO_ACCOUNT_ABI, prov)
-	const owner = (await aa.owner()) as string
-	if (owner.toLowerCase() !== signer.address.toLowerCase()) {
-		throw new Error(`AA owner does not match signer: owner=${owner} signer=${signer.address}`)
-	}
-
-	const nonce = await readContainerNonceFromAAStorage(prov, aaAccount, 'openRelayed')
-	const now = Math.floor(Date.now() / 1000)
-	const deadline = BigInt(now + (options?.deadlineSeconds ?? 300))
-	const amountWei = ethers.parseUnits(amountUSDC, 6)
-	const to = options?.to && ethers.isAddress(options.to) ? options.to : signer.address
-
-	const items: ContainerItemLike[] = [
-		{ kind: 0, asset: USDC_ADDRESS_BASE, amount: amountWei, tokenId: 0n, data: '0x' },
-	]
-
-	const currencyType = 4
-	const maxAmount = 0n
-
-	const domain = {
-		name: DOMAIN_NAME,
-		version: DOMAIN_VERSION,
+	const basePayload = await signOpenContainerForChain({
+		profile,
+		amountUSDC,
+		provider: options?.provider ?? baseEndpoint,
 		chainId: BASE_CHAIN_ID,
-		verifyingContract: aaAccount,
-	}
+		chain: 'base',
+		to: options?.to,
+		deadlineSeconds: options?.deadlineSeconds,
+		resolveCanonical: resolveBeamioAaForEoaWithFallback,
+	})
 
-	const types = {
-		OpenContainerMain: [
-			{ name: 'account', type: 'address' },
-			{ name: 'currencyType', type: 'uint8' },
-			{ name: 'maxAmount', type: 'uint256' },
-			{ name: 'nonce', type: 'uint256' },
-			{ name: 'deadline', type: 'uint256' },
-		],
+	let conetPayload: OpenContainerRelayPayload | undefined
+	try {
+		conetPayload = await signOpenContainerForChain({
+			profile,
+			amountUSDC,
+			provider: conetDepinProvider,
+			chainId: CONET_MAINNET_CHAIN_ID,
+			chain: 'conet',
+			to: options?.to,
+			deadlineSeconds: options?.deadlineSeconds,
+			resolveCanonical: resolveBeamioAaOnConet,
+		})
+	} catch (e) {
+		console.warn('[AAaccount] CoNET OpenContainer pay QR unavailable; emitting Base-only QR:', e)
 	}
-
-	const value = {
-		account: aaAccount,
-		currencyType,
-		maxAmount,
-		nonce,
-		deadline,
-	}
-
-	const signature = await signer.signTypedData(domain, types, value)
 
 	return {
-		account: aaAccount,
-		to,
-		items: items.map((it) => ({
-			kind: it.kind,
-			asset: it.asset,
-			amount: it.amount.toString(),
-			tokenId: it.tokenId.toString(),
-			data: typeof it.data === 'string' ? it.data : ethers.hexlify(it.data),
-		})),
-		currencyType,
-		maxAmount: maxAmount.toString(),
-		nonce: nonce.toString(),
-		deadline: deadline.toString(),
-		signature,
+		...basePayload,
+		openContainerPayloads: {
+			base: basePayload,
+			...(conetPayload ? { conet: conetPayload } : {}),
+		},
 	}
 }

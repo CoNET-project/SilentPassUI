@@ -32,3 +32,16 @@ export async function getCardFactoryGatewayForEip712(cardAddress: string): Promi
 	const c = new ethers.Contract(ethers.getAddress(cardAddress), ['function factoryGateway() view returns (address)'], provider)
 	return ethers.getAddress(await c.factoryGateway())
 }
+
+export function beamioUserCardAddressExplorerUrl(address: string, chainId: number): string {
+	const normalized = ethers.getAddress(address)
+	if (chainId === CONET_MAINNET_CHAIN_ID) {
+		return `https://scan.conet.network/address/${normalized}`
+	}
+	return `https://basescan.org/address/${normalized}`
+}
+
+export async function resolveBeamioUserCardAddressExplorerUrl(cardAddress: string): Promise<string> {
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
+	return beamioUserCardAddressExplorerUrl(cardAddress, chainId)
+}

@@ -86,6 +86,15 @@ import {
 	type DiscoverCategoryTab,
 } from "@/utils/discoverMerchantCategory"
 import { BeamioCircularBackButton } from "@/components/BeamioCircularBackButton"
+import {
+	BASE_MAINNET_CHAIN_ID,
+} from "@/config/chainAddresses"
+import {
+	beamioUserCardAddressExplorerUrl,
+	CONET_MAINNET_CHAIN_ID,
+	eip712ChainIdForBeamioUserCard,
+	resolveBeamioUserCardAddressExplorerUrl,
+} from "@/utils/beamioUserCardChain"
 import { mapActiveCouponRow, ActiveCouponTicketItem, type ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
@@ -381,15 +390,47 @@ function shortDiscoverContractAddress(address: string): string {
 }
 
 function DiscoverMerchantCardAddressCapsule({ address }: { address: string }) {
-	const openBaseScan = () => {
-		openExternalUrl(`https://basescan.org/address/${address}`)
-	}
+	const [explorerUrl, setExplorerUrl] = useState<string | null>(null)
+	const [explorerLabel, setExplorerLabel] = useState<"BaseScan" | "CoNET Scan">("BaseScan")
+
+	useEffect(() => {
+		let cancelled = false
+		void (async () => {
+			try {
+				const chainId = await eip712ChainIdForBeamioUserCard(address)
+				if (cancelled) return
+				setExplorerUrl(beamioUserCardAddressExplorerUrl(address, chainId))
+				setExplorerLabel(chainId === CONET_MAINNET_CHAIN_ID ? "CoNET Scan" : "BaseScan")
+			} catch {
+				if (cancelled) return
+				setExplorerUrl(beamioUserCardAddressExplorerUrl(address, BASE_MAINNET_CHAIN_ID))
+				setExplorerLabel("BaseScan")
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [address])
+
+	const openBlockExplorer = useCallback(async () => {
+		if (explorerUrl) {
+			openExternalUrl(explorerUrl)
+			return
+		}
+		try {
+			const url = await resolveBeamioUserCardAddressExplorerUrl(address)
+			openExternalUrl(url)
+		} catch {
+			openExternalUrl(beamioUserCardAddressExplorerUrl(address, BASE_MAINNET_CHAIN_ID))
+		}
+	}, [address, explorerUrl])
+
 	return (
 		<button
 			type="button"
-			onClick={openBaseScan}
+			onClick={() => void openBlockExplorer()}
 			className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[12px] font-semibold text-white/90 backdrop-blur-sm transition hover:bg-white/25"
-			aria-label={`View contract on BaseScan: ${address}`}
+			aria-label={`View contract on ${explorerLabel}: ${address}`}
 		>
 			<span className="truncate">{shortDiscoverContractAddress(address)}</span>
 			<ExternalLink className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />

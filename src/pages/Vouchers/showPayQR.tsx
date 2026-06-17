@@ -59,15 +59,21 @@ export default function ShowPayQR({
 	const valueForQR = qrValue ?? successUrl
 	const isData = useMemo(() => isDataMode(valueForQR), [valueForQR])
 
-	// 从 JSON 中解析 ERC3009 数据
+	// 从 JSON 中解析离线支付数据；支持旧字段和短字段 Scan-to-Pay QR。
 	const erc3009Data = useMemo(() => {
 		if (!qrValue || !isData) return null
 		try {
-			const parsed = JSON.parse(qrValue) as { 
+			const parsed = JSON.parse(qrValue) as {
 				validBefore?: string
 				maxAmount?: string
+				o?: { d?: string; m?: string }
+				p?: { b?: { d?: string; m?: string }; c?: { d?: string; m?: string } }
 			}
-			return parsed
+			const firstCompact = parsed.o ?? parsed.p?.c ?? parsed.p?.b
+			return {
+				validBefore: parsed.validBefore ?? firstCompact?.d,
+				maxAmount: parsed.maxAmount ?? firstCompact?.m,
+			}
 		} catch {
 			return null
 		}
@@ -104,14 +110,15 @@ export default function ShowPayQR({
 	useEffect(() => {
 		if (validBeforeSec == null) return
 		setSecondsLeft(Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000)))
-		const timer = setInterval(() => {
-			setSecondsLeft((prev) => {
-				const next = Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000))
-				return next
-			})
-		}, 1000)
-		return () => clearInterval(timer)
 	}, [validBeforeSec])
+
+	useEffect(() => {
+		if (validBeforeSec == null || secondsLeft <= 0) return
+		const timer = window.setTimeout(() => {
+			setSecondsLeft(Math.max(0, validBeforeSec - Math.floor(Date.now() / 1000)))
+		}, 1000)
+		return () => window.clearTimeout(timer)
+	}, [secondsLeft, validBeforeSec])
 
 	const onCopyPayLink = async () => {
 		const ok = await copyText(valueForQR)
@@ -209,7 +216,7 @@ export default function ShowPayQR({
 										<QRCodeCanvas
 											value={valueForQR}
 											size={264}
-											level="H"
+											level={isData ? "M" : "H"}
 											includeMargin={false}
 											bgColor="white"
 											fgColor="#000000"

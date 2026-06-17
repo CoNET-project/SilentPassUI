@@ -65,7 +65,7 @@ import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import FuelView from './FuelView'
 import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from './MerchantAssetGiftSheet'
-import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
+import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 
 /** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
 const CASH_TREES_HERO_BACKGROUNDS = [cashTreesHeroBg1, cashTreesHeroBg2, cashTreesHeroBg3] as const
@@ -1536,7 +1536,7 @@ const Home = (_props: HomeProps) => {
 	const payQrDisplayValue = useMemo(
 		() =>
 			payRelayQRPayload
-				? JSON.stringify({ ...payRelayQRPayload, validBefore: payRelayQRPayload.deadline })
+				? encodeOpenContainerRelayQrPayload(payRelayQRPayload)
 				: '',
 		[payRelayQRPayload]
 	)
@@ -2764,7 +2764,7 @@ const Home = (_props: HomeProps) => {
 																	<QRCodeCanvas
 																		value={payQrDisplayValue}
 																		size={paySheetQrSize}
-																		level="H"
+																		level="M"
 																		includeMargin={false}
 																		bgColor="#ffffff"
 																		fgColor="#000000"

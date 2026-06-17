@@ -19864,7 +19864,11 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
    }
  }, [selectedProduct, runMerchantKitStripeCheckout]);
 
- /** AA sync: DaemonProvider polls `fetchTrustedCanonicalAaFromRpc` globally (setTimeout chain). */
+ /** AA sync: DaemonProvider polls CoNET AA + ensure; Wallet tab also triggers refresh. */
+ useEffect(() => {
+   if (activeTab !== 'Wallets') return;
+   void handleRefreshAARef.current?.();
+ }, [activeTab, profiles?.[0]?.keyID, myAddress]);
 
  /** Fetch subordinate admins from chain.
   * - Card owner: full `getAdminListWithMetadata` (trusted). Roster strictly follows chain: removes local-only rows; adds on-chain admins. Display fields may reuse prior cache when metadata is empty.

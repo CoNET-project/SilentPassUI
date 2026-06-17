@@ -7,7 +7,8 @@ import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData } f
 import { setCoNET_Data } from '@/utils/globals'
 import { initChat } from '@/services/chat'
 import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
-import { baseEndpoint } from '@/utils/constants'
+import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
+import { conetDepinProvider } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
@@ -94,7 +95,7 @@ const assembleEncryptKeysObject = async (
 				} else {
 					const cached = profiles[0].aaAccount?.trim()
 					if (cached && ethers.isAddress(cached)) {
-						const code = await baseEndpoint.getCode(cached)
+						const code = await conetDepinProvider.getCode(cached)
 						if (!code || code === '0x' || code.length <= 2) {
 							nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: undefined } : p))
 							changed = true
@@ -109,6 +110,17 @@ const assembleEncryptKeysObject = async (
 		}
 	} catch {
 		// Keep last trusted; RPC failure does not overwrite
+	}
+
+	try {
+		const ensuredAa = await ensureConetAaForProfileAndPersist(temp.profiles[0], setProfiles)
+		if (ensuredAa) {
+			temp.profiles = hydrateProfilesWithSessionSecrets(
+				(temp.profiles ?? []).map((p, i) => (i === 0 ? { ...p, aaAccount: ensuredAa } : p))
+			)
+		}
+	} catch {
+		/* non-fatal */
 	}
 
 	setCoNET_Data(temp)

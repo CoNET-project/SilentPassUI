@@ -4,7 +4,8 @@ import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanBut
 import { ethers } from 'ethers'
 import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS, storeSystemData } from "@/services/beamio"
 import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
-import { baseEndpoint, conetDepinProvider } from '@/utils/constants'
+import { ensureConetAaForEoa } from '@/utils/ensureConetAa'
+import { conetDepinProvider } from '@/utils/constants'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
 /**
@@ -657,6 +658,29 @@ export function DaemonProvider({ children }: DaemonProps) {
           return
         }
 
+        const ensured = await ensureConetAaForEoa(eoa).catch(() => null)
+        if (cancelled) return
+        if (ensured && ethers.isAddress(ensured)) {
+          const chainAa = ethers.getAddress(ensured)
+          if (!p0) {
+            await persist([{ keyID: ethers.getAddress(eoa), aaAccount: chainAa } as profile])
+            return
+          }
+          const cached = p0.aaAccount?.trim()
+          if (
+            !cached ||
+            !ethers.isAddress(cached) ||
+            ethers.getAddress(cached).toLowerCase() !== chainAa.toLowerCase()
+          ) {
+            const baseList = list ?? []
+            const nextProfiles = baseList.map((p: profile, i: number) =>
+              i === 0 ? { ...p, aaAccount: chainAa } : p
+            )
+            await persist(nextProfiles)
+          }
+          return
+        }
+
         if (!p0) {
           nextDelayMs = AA_SYNC_RESCHEDULE_AFTER_CONET_BLOCK
           return
@@ -667,7 +691,7 @@ export function DaemonProvider({ children }: DaemonProps) {
           nextDelayMs = AA_SYNC_RESCHEDULE_AFTER_CONET_BLOCK
           return
         }
-        const code = await baseEndpoint.getCode(cached)
+        const code = await conetDepinProvider.getCode(cached)
         if (cancelled) return
         if (code && code !== '0x' && code.length > 2) return
         if (cancelled) return

@@ -18,6 +18,7 @@ import ScanBtn from '@/components/scanBtn/ScanButton'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
 import { BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
+import WorkspaceCreatingOverlay, { awaitWorkspaceCreatingPaint } from '@/pages/Home/WorkspaceCreatingOverlay'
 import {
 	BEAMIO_TAG_ALLOWED_RE,
 	BEAMIO_TAG_RULE_HINT,
@@ -127,6 +128,7 @@ const RestoreEntryScreen = ({
 		setLoadingTag(true)
 		setErrorTag('')
 		onWorkspaceCreatingChange?.(true)
+		await awaitWorkspaceCreatingPaint()
 		try {
 			const canRestore = await restoreWithUserPin(trimmed, password)
 			if (!canRestore || typeof canRestore === 'boolean') {
@@ -154,6 +156,7 @@ const RestoreEntryScreen = ({
 
 		setLoadingKey(true)
 		onWorkspaceCreatingChange?.(true)
+		await awaitWorkspaceCreatingPaint()
 		try {
 			const canRestore = await restoreWithRedeem(recoveryCode, '')
 			if (!canRestore) {
@@ -169,8 +172,8 @@ const RestoreEntryScreen = ({
 		}
 	}
 
-	if ((loadingTag || loadingKey) && onWorkspaceCreatingChange) {
-		return <div className="min-h-full w-full max-w-full bg-[#f5f7f9]" aria-hidden />
+	if (loadingTag || loadingKey) {
+		return <WorkspaceCreatingOverlay />
 	}
 
 	return (

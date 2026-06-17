@@ -22,7 +22,6 @@ import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BusinessIdentityForm, { type BusinessIdentitySuccess } from './BusinessIdentityForm'
-import WorkspaceCreatingOverlay from './WorkspaceCreatingOverlay'
 import RecoveryQRScreen from './RecoveryQRScreen'
 import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
@@ -146,6 +145,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const homeCalledRef = useRef(false)
 	const [redeemActivating, setRedeemActivating] = useState(false)
 	const [redeemPostCreateInProgress, setRedeemPostCreateInProgress] = useState(false)
+
+	useEffect(() => {
+		setShowFooter?.(!workspaceCreating)
+		return () => setShowFooter?.(true)
+	}, [workspaceCreating, setShowFooter])
 
 	useEffect(() => {
 		if (!isInitialEntry) return
@@ -1046,13 +1050,6 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		</div>
 	)
 
-	const wrapWithWorkspaceCreatingOverlay = (node: React.ReactNode) => (
-		<>
-			{workspaceCreating ? <WorkspaceCreatingOverlay /> : null}
-			{node}
-		</>
-	)
-
 	if (showBizLogin) {
 		return <BizHome />
 	}
@@ -1060,11 +1057,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	
 	// 首次进入（无钱包）：Select Type → Details（单列）→ Identity（Create/Restore）
 	if (isInitialEntry && !settingsOpen && showOnboardingCover) {
-		return wrapWithWorkspaceCreatingOverlay(onboardingCoverScreen)
+		return onboardingCoverScreen
 	}
 
 	if (isInitialEntry && !settingsOpen && showOnboardingBusinessDetails) {
-		return wrapWithWorkspaceCreatingOverlay(
+		return (
 			<OnboardingBusinessDetailsScreen
 				appVersion={APP_VERSION}
 				detailBusinessName={detailBusinessName}
@@ -1078,15 +1075,15 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 				detailProvince={detailProvince}
 				setDetailProvince={setDetailProvince}
 				onContinue={() => setShowOnboardingBusinessDetails(false)}
-			/>,
+			/>
 		)
 	}
 
 	if (isInitialEntry && !settingsOpen) {
-		return wrapWithWorkspaceCreatingOverlay(initialEntryScreen)
+		return initialEntryScreen
 	}
 
-	return wrapWithWorkspaceCreatingOverlay((
+	return (
 		<div className="
 				min-h-screen w-full bg-white dark:bg-slate-900
 				/* 👇 安全区补偿 */
@@ -1232,5 +1229,5 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			</AnimatePresence>
 
 		</div>
-	))
+	)
 }

@@ -266,7 +266,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	}
 
 	if (!routes) {
-		const node = getRandomNode(allNodes)
+		const node = await pickReachableGossipNode(allNodes)
 		if (node) {
 			await regiestChatRoute(
 				profile.privateKeyArmor,
@@ -279,7 +279,6 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		}
 	}
 
-
 	profile.chatManager = chatManager
 	temp.profiles[0] = profile
 	setProfiles(profiles)
@@ -291,7 +290,8 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		return
 	}
 	
-		connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
+		const started = await connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
+		if (!started) setGossip(false)
 	} catch (ex: unknown) {
 		setGossip(false)
 		const msg = ex instanceof Error ? ex.message : String(ex)
@@ -377,7 +377,7 @@ function startGossip(
 
   const node = getRandomNode(nodes)!
   const config: TimeoutConfig = {
-    connectTimeout: 5_000,
+    connectTimeout: 12_000,
     idleTimeout: 60_000,
     readOperationTimeout: 20_000,
     retryDelay: 2_000,
@@ -444,6 +444,7 @@ function startGossip(
       clearTimeout(connectTimer);
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
+      markGossipNodeHealthy(node.domain)
       console.log(`[SSE] Connected [${node.ip_addr}]`);
       reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -533,6 +534,9 @@ function startGossip(
       if (err.name !== 'AbortError') {
           console.error(`[SSE] Connection Error:`, msg);
           callback?.(msg);
+      }
+      if (msg === 'connect_timeout' || msg === 'idle_timeout' || msg === 'Failed to fetch') {
+        markGossipNodeBad(node.domain)
       }
       
       triggerRelaunch();
@@ -627,6 +631,62 @@ startGossip(nodeInfo, body, callback, {
 */
 export let currentGossipAbortController: AbortController | null = null;
 
+const normalizeArmoredKey = (v?: string) => (v || '').replace(/\r/g, '').trim()
+
+const pickRouteNodesByArmoredKey = (nodes: nodeInfo[], routerArmoredPublicKey: string) => {
+	const target = normalizeArmoredKey(routerArmoredPublicKey)
+	if (!target) return []
+	return nodes.filter(n => normalizeArmoredKey(n.armoredPublicKey) === target)
+}
+
+const gossipHealthyCache = new Map<string, number>()
+const GOSSIP_HEALTH_TTL_MS = 120_000
+
+const markGossipNodeHealthy = (domain: string) => {
+	gossipHealthyCache.set(domain, Date.now() + GOSSIP_HEALTH_TTL_MS)
+}
+
+const markGossipNodeBad = (domain: string) => {
+	gossipHealthyCache.delete(domain)
+}
+
+const isGossipNodeHealthy = (domain: string) => {
+	const exp = gossipHealthyCache.get(domain) || 0
+	return exp > Date.now()
+}
+
+const probeGossipNode = async (node: nodeInfo, timeoutMs = 4_000) => {
+	const url = `https://${node.domain}.conet.network/`
+	try {
+		const res = await postWithTimeout(url, {
+			method: 'GET',
+			headers: { Accept: 'text/html' },
+		}, timeoutMs)
+		if (res.status > 0 && res.status < 500) {
+			markGossipNodeHealthy(node.domain)
+			return true
+		}
+	} catch {
+		// Network/TLS/CORS timeout means the browser cannot reach this node.
+	}
+	markGossipNodeBad(node.domain)
+	return false
+}
+
+const pickHealthyGossipNodes = async (nodes: nodeInfo[]): Promise<nodeInfo[]> => {
+	if (!nodes.length) return []
+	const cached = nodes.filter(n => isGossipNodeHealthy(n.domain))
+	if (cached.length >= 2 || cached.length === nodes.length) return cached
+	const sample = getRandomNodes(nodes, Math.min(10, nodes.length))
+	const checks = await Promise.all(sample.map(async node => ({ node, ok: await probeGossipNode(node) })))
+	return checks.filter(n => n.ok).map(n => n.node)
+}
+
+const pickReachableGossipNode = async (nodes: nodeInfo[]): Promise<nodeInfo | null> => {
+	const healthy = await pickHealthyGossipNodes(nodes)
+	return getRandomNode(healthy)
+}
+
 export const connectToGossipNode = async (
 	nodeArmoredPublicKey: string,
 	privateKeyArmor: string,
@@ -634,7 +694,7 @@ export const connectToGossipNode = async (
 	pgpPrivateKey: string,
 	pgpPublicArmored: string,
 	newMessage: (val: string) => void
-) => {
+): Promise<boolean> => {
   // ==========================================
   // 2. 关键修复：清理旧连接
   // ==========================================
@@ -652,6 +712,11 @@ export const connectToGossipNode = async (
   const rootSignal = myController.signal;
 
   try {
+      const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
+      if (!routeNodes.length) {
+        console.error('[Gossip] No route node matches router public key')
+        return false
+      }
       // ... (加密/准备逻辑保持不变) ...
       const wallet = new ethers.Wallet(privateKeyArmor);
       const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
@@ -668,12 +733,19 @@ export const connectToGossipNode = async (
       decryptedPrivateKey = pk.isDecrypted() ? pk : await decryptKey({ privateKey: pk, passphrase: "" });
 
       const userPgpKeyID = pgpPublicArmored ? await getPublicKeyArmoredKeyID(pgpPublicArmored) : '';
+      // Listen command is encrypted to B (route node), but the HTTP/SSE entry can be
+      // any healthy CoNET entry C. C forwards the encrypted command to B by key id.
+      const healthyEntryNodes = await pickHealthyGossipNodes(nodes)
+      if (!healthyEntryNodes.length) {
+        console.error('[Gossip] No healthy entry node for gossip listen')
+        return false
+      }
 
       console.log("🚀 [Gossip] Starting new connection...");
 
       // 启动递归循环，传入 nodes 数组，重连时随机换 node
       startGossip(
-        nodes, 
+        healthyEntryNodes, 
         JSON.stringify({ data: postData }), 
         async (err, _data) => {
             // 回调卫语句：如果总开关关了，不要处理任何数据
@@ -718,9 +790,11 @@ export const connectToGossipNode = async (
         },
         rootSignal // <--- 必须传入这个信号
       );
+      return true
 
   } catch (ex: any) {
       console.error("Init Error:", ex);
+      return false
   }
 }
 

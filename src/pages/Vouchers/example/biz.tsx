@@ -179,6 +179,7 @@ import {
   DEFAULT_PRODUCTION_SERVICE_CATEGORY_OPTIONS,
   catalogGlobalCategoryLabel,
   catalogProductionBaseScanNftLabel,
+  catalogProductionNftExplorerDisplayName,
   catalogProductionNftExplorerLink,
   catalogProductionNftExplorerTitle,
   productionItemCategoryLabel,
@@ -11096,6 +11097,7 @@ const handlePublishCardIssuanceRef = useRef<
     metadataOnly?: boolean;
     loadingScope?: 'default' | 'bonusEditor';
     skipOnChainRefresh?: boolean;
+    publishErrorSink?: (message: string) => void;
   }) => Promise<boolean>
 >(async () => false);
  const [cardIssuanceShareImageUrl, setCardIssuanceShareImageUrl] = useState('');
@@ -11123,6 +11125,8 @@ const handlePublishCardIssuanceRef = useRef<
     kind: 'ok' | 'warn';
     text: string;
   } | null>(null);
+ /** Resolved L1 for `cardIssuanceExistingCard` (Base 8453 vs CoNET 224422) — NFT explorer links. */
+ const [cardIssuanceUserCardChainId, setCardIssuanceUserCardChainId] = useState<number | null>(null);
  const cardIssuanceIconFileRef = useRef<HTMLInputElement>(null);
  const cardIssuanceMerchantIconIssuedPanelFileRef = useRef<HTMLInputElement>(null);
  const settingsMerchantLogoFileRef = useRef<HTMLInputElement>(null);
@@ -11931,6 +11935,21 @@ useEffect(() => {
   cardIssuanceMinTopupCurrencyFloor,
   cardIssuanceMaxTopupCurrencyCap,
 ]);
+
+useEffect(() => {
+  const cardAddr = cardIssuanceExistingCard?.cardAddress?.trim();
+  if (!cardAddr) {
+    setCardIssuanceUserCardChainId(null);
+    return;
+  }
+  let cancelled = false;
+  void providerForBeamioUserCard(cardAddr).then(({ chainId }) => {
+    if (!cancelled) setCardIssuanceUserCardChainId(chainId);
+  });
+  return () => {
+    cancelled = true;
+  };
+}, [cardIssuanceExistingCard?.cardAddress]);
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
@@ -13532,12 +13551,20 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             'This coupon is issued but its series id is not loaded yet. Wait for program data to finish loading, then try Save again.'
           );
         } else {
+          let publishMetadataError = '';
           const ok = await handlePublishCardIssuanceRef.current({
             couponsOverride: nextCoupons,
             loadingScope: 'bonusEditor',
+            metadataOnly: true,
+            publishErrorSink: (message) => {
+              publishMetadataError = message;
+            },
           });
           if (!ok) {
             saveOk = false;
+            if (publishMetadataError) {
+              setCardIssuanceCouponEditorError(publishMetadataError);
+            }
           }
         }
         if (!saveOk) {
@@ -13778,9 +13805,14 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       nextCoupons = [...prev, finalRow];
       return nextCoupons;
     });
+    let publishMetadataError = '';
     const metadataOk = await handlePublishCardIssuanceRef.current({
       couponsOverride: nextCoupons,
       loadingScope: 'bonusEditor',
+      metadataOnly: true,
+      publishErrorSink: (message) => {
+        publishMetadataError = message;
+      },
     });
     if (metadataOk) {
       void postRequestExplorerNftMetadataRefresh({ cardAddress: cardAddr, tokenId: tokenIdStr });
@@ -13788,7 +13820,8 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       setCardIssuanceEditingCouponId(null);
     } else {
       setCardIssuanceCouponEditorError(
-        'Coupon was saved on-chain, but updating share metadata failed. Try again from Publish or retry Add Coupon.'
+        publishMetadataError ||
+          'Coupon was saved on-chain, but updating share metadata failed. Try again from Publish or retry Add Coupon.'
       );
     }
     if (redeemErr) {
@@ -13945,6 +13978,7 @@ const commitCardIssuanceServiceCategories = useCallback(
         itemCategoryOverride: categories,
         ...(productionsChanged ? { productionsOverride: nextProductions } : {}),
         loadingScope: 'bonusEditor',
+        metadataOnly: true,
         skipOnChainRefresh: true,
       });
       if (!ok) {
@@ -14667,13 +14701,19 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
           setCardIssuanceProductions(nextProductions);
         }
 
+        let publishMetadataError = '';
         const ok = await handlePublishCardIssuanceRef.current({
           productionsOverride: nextProductions,
           loadingScope: 'bonusEditor',
+          metadataOnly: true,
+          publishErrorSink: (message) => {
+            publishMetadataError = message;
+          },
         });
         if (!ok) {
           setCardIssuanceProductionEditorError(
-            'Could not save service changes. Fix any publish validation errors and try again.'
+            publishMetadataError ||
+              'Could not save service changes. Fix any publish validation errors and try again.'
           );
         } else {
           const productionsPayload = buildCardIssuanceProductionMetadataPayload(nextProductions);
@@ -14766,9 +14806,14 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
       return;
     }
     setCardIssuanceProductions(nextProductions);
+    let publishMetadataError = '';
     const metadataOk = await handlePublishCardIssuanceRef.current({
       productionsOverride: nextProductions,
       loadingScope: 'bonusEditor',
+      metadataOnly: true,
+      publishErrorSink: (message) => {
+        publishMetadataError = message;
+      },
     });
     if (metadataOk) {
       queueExplorerRefreshForIssuedProgramNfts(cardAddr, [], nextProductions);
@@ -14787,7 +14832,8 @@ const submitCardIssuanceProductionEditor = useCallback(async () => {
       resetCardIssuanceProductionEditorFields();
     } else {
       setCardIssuanceProductionEditorError(
-        'Service was saved on-chain, but updating share metadata failed. Try Publish again.'
+        publishMetadataError ||
+          'Service was saved on-chain, but updating share metadata failed. Try Publish again.'
       );
     }
     if (issuedBaseRes.redeemErr) {
@@ -15893,33 +15939,38 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
        loadingScope?: 'default' | 'bonusEditor';
       /** Metadata-only publish that already patches local card meta (e.g. itemCategory chips). */
       skipOnChainRefresh?: boolean;
+      /** Optional sink for publish validation/API errors (e.g. coupon editor). */
+      publishErrorSink?: (message: string) => void;
      }
    ): Promise<boolean> => {
    const loadingScope = opts?.loadingScope ?? 'default';
+   const publishFail = (message: string): false => {
+     setCardIssuanceCreateError(message);
+     opts?.publishErrorSink?.(message);
+     return false;
+   };
    setCardIssuanceCreateError('');
    setCardIssuanceCreateResult(null);
    setCardIssuanceCategoryIndexSummary(null);
    setCardIssuanceOwnerAdminNotice(null);
    const ownerRaw = (profiles?.[0]?.aaAccount ?? profiles?.[0]?.keyID ?? '').trim();
    if (!ownerRaw) {
-     setCardIssuanceCreateError('Owner address not loaded. Ensure your account is ready in Settings.');
-     return false;
+     return publishFail('Owner address not loaded. Ensure your account is ready in Settings.');
    }
    let owner: string;
    try {
      owner = ethers.getAddress(ownerRaw);
    } catch {
-     setCardIssuanceCreateError('Owner address is invalid.');
-     return false;
+     return publishFail('Owner address is invalid.');
    }
+   const metadataOnlyExistingCard = Boolean(opts?.metadataOnly && cardIssuanceExistingCard?.cardAddress);
    const metaName =
      cardIssuanceProgramName.trim() ||
      cardIssuanceExistingCard?.meta?.name?.trim() ||
      cardIssuanceExistingCard?.userCard?.name?.trim() ||
      '';
    if (!metaName) {
-     setCardIssuanceCreateError('Card name is required.');
-     return false;
+     return publishFail('Card name is required.');
    }
    const useQuickDefaultRewardsNewCard =
      !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
@@ -15934,38 +15985,40 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(cardIssuanceNewCardMinTopupFloor))
       : cardIssuanceTiers);
    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish);
-   if (tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
-     setCardIssuanceCreateError('Each tier must have a name.');
-     return false;
+   if (!metadataOnlyExistingCard && tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
+     return publishFail('Each tier must have a name.');
    }
+   if (!metadataOnlyExistingCard) {
    for (const row of tiersRowsForPublish) {
      const tierName = row.name.trim();
      if (!tierName) continue;
      const tr = row.threshold.replace(/,/g, '').trim();
      if (tr === '') {
-       setCardIssuanceCreateError(`Tier "${tierName}": threshold is required.`);
-       return false;
+       return publishFail(`Tier "${tierName}": threshold is required.`);
      }
      const tInt = Number.parseInt(tr, 10);
      const tFloat = parseFloat(tr);
      if (!Number.isFinite(tFloat) || !Number.isFinite(tInt) || tFloat !== tInt) {
-       setCardIssuanceCreateError(`Tier "${tierName}": threshold must be a whole number (no decimals).`);
-       return false;
+       return publishFail(`Tier "${tierName}": threshold must be a whole number (no decimals).`);
      }
      const bgRaw = row.backgroundColor.trim();
      if (bgRaw && !tierBackgroundColorForPayload(row.backgroundColor)) {
-       setCardIssuanceCreateError(
+       return publishFail(
          `Tier "${tierName}": background must be a valid CSS hex color (#RGB or #RRGGBB).`
        );
-       return false;
      }
    }
+   }
    const minTopupRaw = (
-    opts?.minTopupOverride ?? (useQuickDefaultRewardsNewCard ? String(cardIssuanceNewCardMinTopupFloor) : cardIssuanceMinTopup)
+    opts?.minTopupOverride ??
+    (metadataOnlyExistingCard && cardIssuanceExistingCard?.meta?.minimumTopupCad != null
+      ? String(Math.round(Number(cardIssuanceExistingCard.meta.minimumTopupCad)))
+      : useQuickDefaultRewardsNewCard
+        ? String(cardIssuanceNewCardMinTopupFloor)
+        : cardIssuanceMinTopup)
    ).replace(/,/g, '').trim();
    if (minTopupRaw === '') {
-     setCardIssuanceCreateError('Minimum top-up is required.');
-     return false;
+     return publishFail('Minimum top-up is required.');
    }
    const minTopupN = Number.parseInt(minTopupRaw, 10);
    const minTopupAsFloat = parseFloat(minTopupRaw);
@@ -15974,71 +16027,67 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      !Number.isFinite(minTopupN) ||
      minTopupAsFloat !== minTopupN
    ) {
-     setCardIssuanceCreateError('Minimum top-up must be a whole number (no decimals).');
-     return false;
+     return publishFail('Minimum top-up must be a whole number (no decimals).');
    }
    const maxTopupRaw = (
-    useQuickDefaultRewardsNewCard ? String(cardIssuanceNewCardMaxTopupCap) : cardIssuanceMaxTopup
+    metadataOnlyExistingCard && cardIssuanceExistingCard?.meta?.maximumTopupCad != null
+      ? String(Math.round(Number(cardIssuanceExistingCard.meta.maximumTopupCad)))
+      : useQuickDefaultRewardsNewCard
+        ? String(cardIssuanceNewCardMaxTopupCap)
+        : cardIssuanceMaxTopup
    ).replace(/,/g, '').trim();
    if (maxTopupRaw === '') {
-     setCardIssuanceCreateError('Maximum top-up is required.');
-     return false;
+     return publishFail('Maximum top-up is required.');
    }
    const maxTopupN = Number.parseInt(maxTopupRaw, 10);
    const maxTopupAsFloat = parseFloat(maxTopupRaw);
   if (minTopupN < publishTopupMinFloor) {
-     setCardIssuanceCreateError(
+     return publishFail(
       `Minimum top-up must be at least ${cardIssuanceDisplayMoneyPrefix}${publishTopupMinFloor.toLocaleString('en-US')} (${CARD_ISSUANCE_MIN_TOPUP_USDC_MIN.toLocaleString('en-US')} USDC equivalent).`
      );
-     return false;
    }
    if (
      !Number.isFinite(maxTopupAsFloat) ||
      !Number.isFinite(maxTopupN) ||
      maxTopupAsFloat !== maxTopupN
    ) {
-     setCardIssuanceCreateError('Maximum top-up must be a whole number (no decimals).');
-     return false;
+     return publishFail('Maximum top-up must be a whole number (no decimals).');
    }
   if (maxTopupN > publishTopupMaxCap) {
-     setCardIssuanceCreateError(
+     return publishFail(
       cardIssuanceExistingCard
         ? `Maximum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
         : `Maximum top-up must not exceed ${cardIssuanceDisplayMoneyPrefix}${publishTopupMaxCap.toLocaleString('en-US')} (${CARD_ISSUANCE_MAX_TOPUP_MAX.toLocaleString('en-US')} USDC equivalent).`
      );
-     return false;
    }
   if (minTopupN > publishTopupMaxCap) {
-    setCardIssuanceCreateError(
+    return publishFail(
       cardIssuanceExistingCard
         ? `Minimum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
         : `Minimum top-up must not exceed ${cardIssuanceDisplayMoneyPrefix}${publishTopupMaxCap.toLocaleString('en-US')} (${CARD_ISSUANCE_MAX_TOPUP_MAX.toLocaleString('en-US')} USDC equivalent).`
     );
-    return false;
   }
    if (minTopupN > maxTopupN) {
-     setCardIssuanceCreateError('Minimum top-up cannot be greater than maximum top-up.');
-     return false;
+     return publishFail('Minimum top-up cannot be greater than maximum top-up.');
    }
    const tierRuleForPublish: CardIssuanceTierRule = useQuickDefaultRewardsNewCard
      ? 'single'
      : cardIssuanceTierRule;
    const tierThresholdBoundedByMaxTopup = tierRuleForPublish !== 'cumulative';
    const metadataMaxTopupCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
-   if (metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap)) {
+   if (!metadataOnlyExistingCard && metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap)) {
      if (maxTopupN > metadataMaxTopupCap) {
-       setCardIssuanceCreateError(
+       return publishFail(
          `Maximum top-up cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`
        );
-       return false;
      }
      if (minTopupN > metadataMaxTopupCap) {
-       setCardIssuanceCreateError(
+       return publishFail(
          `Minimum top-up cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`
        );
-       return false;
      }
    }
+   if (!metadataOnlyExistingCard) {
    for (const row of tiersRowsForPublish) {
      const tierName = row.name.trim();
      if (!tierName) continue;
@@ -16048,10 +16097,9 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      const tFloat = parseFloat(tr);
      if (!Number.isFinite(tFloat) || !Number.isFinite(tInt) || tFloat !== tInt) continue;
     if (tierThresholdBoundedByMaxTopup && tInt > maxTopupN) {
-       setCardIssuanceCreateError(
+       return publishFail(
          `Tier "${tierName}": threshold cannot exceed maximum top-up (${maxTopupN} ${CARD_ISSUANCE_BEAMIO_CURRENCY}).`
        );
-       return false;
      }
     if (
       tierThresholdBoundedByMaxTopup &&
@@ -16059,11 +16107,11 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
       Number.isFinite(metadataMaxTopupCap) &&
       tInt > metadataMaxTopupCap
     ) {
-       setCardIssuanceCreateError(
+       return publishFail(
          `Tier "${tierName}": threshold cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (maximum top-up from card metadata).`
        );
-       return false;
      }
+   }
    }
    const shouldClearCardConfiguratorDraft = !cardIssuanceExistingCard;
    if (loadingScope === 'default') {
@@ -16141,15 +16189,13 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
       if (!opts?.metadataOnly && tiersPayload && tiersPayload.length > 0) {
          const pk = profiles?.[0]?.privateKeyArmor;
          if (!pk) {
-           setCardIssuanceCreateError('Wallet key not available. Unlock your wallet to update tiers on-chain.');
-           return false;
+           return publishFail('Wallet key not available. Unlock your wallet to update tiers on-chain.');
          }
          const cardAddrNorm = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
          const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
          const chainOwner = await getCardOwner(cardAddrNorm);
          if (ethers.getAddress(chainOwner) !== signerAddr) {
-           setCardIssuanceCreateError('Tier updates require the card owner wallet. Switch to the owner wallet or re-issue the program card.');
-           return false;
+           return publishFail('Tier updates require the card owner wallet. Switch to the owner wallet or re-issue the program card.');
          }
          const chainTiers = tiersPayload.map((t) => ({
            minUsdc6: t.minUsdc6,
@@ -16304,11 +16350,9 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
        );
        return true;
      }
-     setCardIssuanceCreateError(res.error ?? 'Publish failed.');
-     return false;
+     return publishFail(res.error ?? 'Publish failed.');
    } catch (e: any) {
-     setCardIssuanceCreateError(e?.message ?? String(e));
-     return false;
+     return publishFail(e?.message ?? String(e));
    } finally {
      if (loadingScope === 'default') {
        setCardIssuanceCreateLoading(false);
@@ -19139,7 +19183,8 @@ useEffect(() => {
        const userEOAGuard = (profiles?.[0]?.keyID ?? myAddress)?.trim();
        const userAAGuard = profiles?.[0]?.aaAccount?.trim();
        const signerCandidates = [userEOAGuard, userAAGuard].filter((a): a is string => !!a && ethers.isAddress(a));
-       await assertTerminalRegistrationPrecheckAlignedWithCluster(baseRpcProviderDirect, {
+      const { provider } = await providerForBeamioUserCard(programCard);
+      await assertTerminalRegistrationPrecheckAlignedWithCluster(provider, {
          programCard,
          posNorm,
          signerAdminCandidates: signerCandidates,
@@ -23976,7 +24021,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
        }
        const userAAGuard = profiles?.[0]?.aaAccount?.trim();
        const signerCandidates = [userEOA, userAAGuard].filter((a): a is string => !!a && ethers.isAddress(a));
-       await assertTerminalRegistrationPrecheckAlignedWithCluster(baseRpcProviderDirect, {
+      const { provider: cardReadProvider } = await providerForBeamioUserCard(cardAddress);
+      await assertTerminalRegistrationPrecheckAlignedWithCluster(cardReadProvider, {
          programCard: cardAddress,
          posNorm,
          signerAdminCandidates: signerCandidates,
@@ -23996,7 +24042,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          allowedTopupMethods: allowedTopupMethodsPayload,
          terminalOnboardingReloadUnlimited: effReloadUnlimited,
        });
-       const cardDirect = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+      const cardDirect = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, cardReadProvider);
        const cardOwner = (await cardDirect.owner()) as string;
        const ownerNorm = cardOwner ? ethers.getAddress(cardOwner) : '';
        const userAA = profiles?.[0]?.aaAccount?.trim();
@@ -32175,7 +32221,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 ? catalogProductionNftExplorerLink(
                                     cardIssuanceExistingCard?.cardAddress,
                                     coupon.issuedTokenId,
-                                    coupon.issuedNftMintedCount
+                                    coupon.issuedNftMintedCount,
+                                    cardIssuanceUserCardChainId ?? undefined
                                   )
                                 : null;
                             return (
@@ -32223,14 +32270,32 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 {coupon.description.trim() ? (
                                   <p className="mt-1 line-clamp-2 text-[11px] text-[#595c5e]">{coupon.description}</p>
                                 ) : null}
+                                {coupon.issued || couponNftExplorerLink ? (
+                                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    {coupon.issued ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
+                                        <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+                                        Issued
+                                      </span>
+                                    ) : null}
+                                    {couponNftExplorerLink ? (
+                                      <a
+                                        href={couponNftExplorerLink.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-white px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-[#f8fafc] ${bizFocusRingClass}`}
+                                        aria-label={`View ${catalogProductionBaseScanNftLabel(coupon.issuedTokenId)} on ${catalogProductionNftExplorerDisplayName(couponNftExplorerLink.explorer)}`}
+                                        title={catalogProductionNftExplorerTitle(couponNftExplorerLink.explorer)}
+                                      >
+                                        {catalogProductionBaseScanNftLabel(coupon.issuedTokenId)}
+                                        <ExternalLink className="h-3 w-3 opacity-70" strokeWidth={2.2} aria-hidden />
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                               </div>
                               <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
-                                {coupon.issued ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
-                                    <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
-                                    Issued
-                                  </span>
-                                ) : (
+                                {!coupon.issued ? (
                                   <button
                                     type="button"
                                     onClick={() => issueCardIssuanceCoupon(coupon.id)}
@@ -32238,19 +32303,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   >
                                     Issue
                                   </button>
-                                )}
-                                {couponNftExplorerLink ? (
-                                  <a
-                                    href={couponNftExplorerLink.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-white px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-[#f8fafc] ${bizFocusRingClass}`}
-                                    aria-label={`View ${catalogProductionBaseScanNftLabel(coupon.issuedTokenId)} on ${couponNftExplorerLink.explorer === 'blockscout' ? 'Blockscout' : 'BaseScan'}`}
-                                    title={catalogProductionNftExplorerTitle(couponNftExplorerLink.explorer)}
-                                  >
-                                    {catalogProductionBaseScanNftLabel(coupon.issuedTokenId)}
-                                    <ExternalLink className="h-3 w-3 opacity-70" strokeWidth={2.2} aria-hidden />
-                                  </a>
                                 ) : null}
                                 {coupon.issued && !coupon.requiresRedeemCode ? (
                                   <button
@@ -35069,11 +35121,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    }
                    const userNorm = ethers.getAddress(userEOA);
                    const cardAddress = ethers.getAddress(staffProgramBeamioCardAddress);
-                   const cardDirect = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+                   const { provider: cardReadProvider } = await providerForBeamioUserCard(cardAddress);
+                   const cardDirect = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, cardReadProvider);
                    const posIsAdmin = await isCardAdmin(cardAddress, posNorm);
                    if (posIsAdmin) {
                      const adminListAbi = ['function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)'];
-                     const cardList = new ethers.Contract(cardAddress, adminListAbi, baseRpcProviderDirect);
+                     const cardList = new ethers.Contract(cardAddress, adminListAbi, cardReadProvider);
                      const [admins] = (await cardList.getAdminListWithMetadata()) as [string[]];
                      const n = (admins ?? []).length;
                      if (n <= 1) {
@@ -37259,6 +37312,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       onOpenEdit={openCardIssuanceProductionEdit}
       onOpenShare={openCardIssuanceProductionShare}
       programCardAddress={cardIssuanceExistingCard?.cardAddress}
+      programUserCardChainId={cardIssuanceUserCardChainId ?? undefined}
       catalogPublisherBeamioTag={
         beamio?.accountName?.trim() ||
         (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ||

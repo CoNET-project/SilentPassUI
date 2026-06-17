@@ -899,7 +899,8 @@ export const checkRedeemAdminCodeValid = async (
 export const isCardAdmin = async (cardAddress: string, eoa: string): Promise<boolean> => {
 	if (!cardAddress || !eoa || !ethers.isAddress(cardAddress) || !ethers.isAddress(eoa)) return false
 	const cardAbi = ['function isAdmin(address) view returns (bool)']
-	const card = new ethers.Contract(cardAddress, cardAbi, baseRpcProviderDirect)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const card = new ethers.Contract(cardAddress, cardAbi, provider)
 	return Boolean(await card.isAdmin(ethers.getAddress(eoa)))
 }
 

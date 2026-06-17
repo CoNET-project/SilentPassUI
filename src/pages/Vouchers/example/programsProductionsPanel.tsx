@@ -30,6 +30,7 @@ import {
   groupCatalogBaseProductionsByGlobalCategory,
   catalogPackageDealsForBase,
   catalogProductionBaseScanNftLabel,
+  catalogProductionNftExplorerDisplayName,
   catalogProductionNftExplorerLink,
   catalogProductionNftExplorerTitle,
   catalogProductionDisplayPrice,
@@ -263,6 +264,8 @@ export type ProgramsProductionsPanelProps = {
   onOpenShare?: (id: string) => void;
   /** BeamioUserCard address — used for Blockscout NFT links on live catalog items. */
   programCardAddress?: string;
+  /** L1 chain id for program card (8453 Base vs 224422 CoNET) — NFT explorer target. */
+  programUserCardChainId?: number;
   /** Merchant @beamioTag for video catalog rows (publisher line under YouTube OG body). */
   catalogPublisherBeamioTag?: string;
   productions: CardIssuanceProductionRow[];
@@ -368,6 +371,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
     onOpenEdit,
     onOpenShare,
     programCardAddress,
+    programUserCardChainId,
     catalogPublisherBeamioTag,
     productions,
     serviceCategories,
@@ -734,7 +738,8 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           ? catalogProductionNftExplorerLink(
                               programCardAddress,
                               row.issuedTokenId,
-                              row.issuedNftMintedCount
+                              row.issuedNftMintedCount,
+                              programUserCardChainId
                             )
                           : null;
                       const catalogVideoOgListLayout = catalogProductionHasVideoBackgroundMedia(row);
@@ -805,7 +810,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-[#f8fafc] px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-white ${bizFocusRingClass}`}
-                                aria-label={`View ${catalogProductionBaseScanNftLabel(row.issuedTokenId)} on ${nftExplorerLink.explorer === 'blockscout' ? 'Blockscout' : 'BaseScan'}`}
+                                aria-label={`View ${catalogProductionBaseScanNftLabel(row.issuedTokenId)} on ${catalogProductionNftExplorerDisplayName(nftExplorerLink.explorer)}`}
                                 title={catalogProductionNftExplorerTitle(nftExplorerLink.explorer)}
                               >
                                 {catalogProductionBaseScanNftLabel(row.issuedTokenId)}

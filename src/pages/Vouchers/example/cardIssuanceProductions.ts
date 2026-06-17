@@ -135,12 +135,18 @@ export type ProductionServiceCategoryId = string;
 export const BEAMIO_CATALOG_BLOCKSCOUT_NFT_EXPLORER = 'https://base.blockscout.com/token' as const;
 
 /**
+ * CoNET Blockscout (scan.conet.network) ERC-1155 instance page.
+ * @see https://scan.conet.network/token/{contract}/instance/{tokenId}
+ */
+export const BEAMIO_CATALOG_CONET_NFT_EXPLORER = 'https://scan.conet.network/token' as const;
+
+/**
  * BaseScan NFT page works for issued series with zero mints; Blockscout `/instance/` does not.
  * @see https://basescan.org/nft/{contract}/{tokenId}
  */
 export const BEAMIO_CATALOG_BASESCAN_NFT_EXPLORER = 'https://basescan.org/nft' as const;
 
-export type CatalogNftExplorerKind = 'blockscout' | 'basescan';
+export type CatalogNftExplorerKind = 'blockscout' | 'basescan' | 'conet';
 
 export type CatalogNftExplorerLink = {
   url: string;
@@ -163,10 +169,14 @@ function parseIssuedNftMintedCountBigInt(raw: string | number | undefined): bigi
  * Blockscout only lists ERC-1155 instances after at least one mint (`issuedNftMintedCount > 0`).
  * Live series with zero mints must use BaseScan or the Blockscout instance SPA shows 404.
  */
+/** CoNET L1 chain id (224422) — merchant program cards default here. */
+export const BEAMIO_USER_CARD_CONET_CHAIN_ID = 224422;
+
 export function catalogProductionNftExplorerLink(
   cardAddress: string | undefined,
   issuedTokenId: string | number | undefined,
-  issuedNftMintedCount?: string | number | undefined
+  issuedNftMintedCount?: string | number | undefined,
+  userCardChainId?: number
 ): CatalogNftExplorerLink | null {
   const tid = normalizeCatalogIssuedNftTokenIdForExplorer(issuedTokenId);
   if (!tid) return null;
@@ -174,6 +184,12 @@ export function catalogProductionNftExplorerLink(
   if (!card || !/^0x[a-fA-F0-9]{40}$/i.test(card)) return null;
   try {
     const cardNorm = ethers.getAddress(card);
+    if (userCardChainId === BEAMIO_USER_CARD_CONET_CHAIN_ID) {
+      return {
+        url: `${BEAMIO_CATALOG_CONET_NFT_EXPLORER}/${cardNorm}/instance/${tid}`,
+        explorer: 'conet',
+      };
+    }
     const minted = parseIssuedNftMintedCountBigInt(issuedNftMintedCount);
     if (minted != null && minted > 0n) {
       return {
@@ -190,8 +206,14 @@ export function catalogProductionNftExplorerLink(
   }
 }
 
+export function catalogProductionNftExplorerDisplayName(explorer: CatalogNftExplorerKind): string {
+  if (explorer === 'conet') return 'CoNET Explorer';
+  if (explorer === 'blockscout') return 'Blockscout';
+  return 'BaseScan';
+}
+
 export function catalogProductionNftExplorerTitle(explorer: CatalogNftExplorerKind): string {
-  return explorer === 'blockscout' ? 'View NFT on Blockscout' : 'View NFT on BaseScan';
+  return `View NFT on ${catalogProductionNftExplorerDisplayName(explorer)}`;
 }
 
 /** On-chain `createIssuedNft` tokenIds (not share token #0–#99). */
@@ -217,9 +239,13 @@ export function normalizeCatalogIssuedNftTokenIdForExplorer(
 export function catalogProductionBaseScanNftUrl(
   cardAddress: string | undefined,
   issuedTokenId: string | number | undefined,
-  issuedNftMintedCount?: string | number | undefined
+  issuedNftMintedCount?: string | number | undefined,
+  userCardChainId?: number
 ): string | null {
-  return catalogProductionNftExplorerLink(cardAddress, issuedTokenId, issuedNftMintedCount)?.url ?? null;
+  return (
+    catalogProductionNftExplorerLink(cardAddress, issuedTokenId, issuedNftMintedCount, userCardChainId)?.url ??
+    null
+  );
 }
 
 export function catalogProductionBaseScanNftLabel(issuedTokenId: string | number | undefined): string {

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
 import { AppButton } from "@/components/button/AppButton"
 import { ethers } from "ethers"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
@@ -10,7 +9,12 @@ import {
 	bizBrandInvalidFieldRingClass,
 	bizBrandOnboardingPrimaryBtnClass,
 } from "@/pages/Home/brandUi"
-import WorkspaceCreatingOverlay from "@/pages/Home/WorkspaceCreatingOverlay"
+import WorkspaceCreatingOverlay, {
+	awaitWorkspaceCreatingPaint,
+	WORKSPACE_CREATING_LEAD_MS,
+	WORKSPACE_CREATING_STEP_DURATION_MS,
+	WORKSPACE_CREATING_STEPS,
+} from "@/pages/Home/WorkspaceCreatingOverlay"
 import {
 	BEAMIO_TAG_ALLOWED_RE,
 	BEAMIO_TAG_RULE_HINT,
@@ -25,9 +29,6 @@ export type BusinessIdentitySuccess = {
 	temp: any
 	beamioTag: string
 }
-
-/** Let WorkspaceCreatingOverlay paint and start CSS animations before heavy createRecover work. */
-const WORKSPACE_CREATING_LEAD_MS = 300
 
 function passwordRuleChecks(password: string) {
 	const len8 = password.length >= 8
@@ -64,6 +65,7 @@ export default function BusinessIdentityForm({
 	const [confirmPassword, setConfirmPassword] = useState("")
 	const [showPassword, setShowPassword] = useState(false)
 	const [loading, setLoading] = useState(false)
+	const [creatingStep, setCreatingStep] = useState(0)
 	const [submitError, setSubmitError] = useState("")
 
 	const lastCheckedRef = useRef("")
@@ -139,6 +141,23 @@ export default function BusinessIdentityForm({
 
 	const canSubmit = tagOk && len8 && mixed && numbers && passwordsMatch && !loading && !isCheckingTag
 
+	useEffect(() => {
+		onWorkspaceCreatingChange?.(loading)
+	}, [loading, onWorkspaceCreatingChange])
+
+	useEffect(() => {
+		if (!loading) {
+			setCreatingStep(0)
+			return
+		}
+		const advance = () => setCreatingStep((prev) => Math.min(prev + 1, WORKSPACE_CREATING_STEPS.length - 1))
+		const timers: ReturnType<typeof setTimeout>[] = []
+		for (let i = 1; i < WORKSPACE_CREATING_STEPS.length; i++) {
+			timers.push(setTimeout(advance, WORKSPACE_CREATING_LEAD_MS + i * WORKSPACE_CREATING_STEP_DURATION_MS))
+		}
+		return () => timers.forEach((t) => clearTimeout(t))
+	}, [loading])
+
 	const handleContinue = async () => {
 		const tagOkNow = await validateAndCheckTag()
 		if (!tagOkNow) return
@@ -149,16 +168,17 @@ export default function BusinessIdentityForm({
 		if (!trimmedTag) return
 
 		setSubmitError("")
-		onWorkspaceCreatingChange?.(true)
 		setLoading(true)
-		await new Promise<void>((resolve) => {
-			window.setTimeout(resolve, WORKSPACE_CREATING_LEAD_MS)
-		})
-		const kks = await createRecover(trimmedTag, password, recoveryDraft)
+		await awaitWorkspaceCreatingPaint()
+
+		let kks: Awaited<ReturnType<typeof createRecover>> = null
+		try {
+			kks = await createRecover(trimmedTag, password, recoveryDraft)
+		} finally {
+			setLoading(false)
+		}
 
 		if (!kks) {
-			setLoading(false)
-			onWorkspaceCreatingChange?.(false)
 			setSubmitError("Could not create your workspace. Check your connection and try again.")
 			return
 		}
@@ -174,8 +194,6 @@ export default function BusinessIdentityForm({
 				/* 不可信失败：不阻断 onboarding；Daemon / Wallet 会重试 */
 			}
 		}
-
-		setLoading(false)
 
 		onSuccess({
 			qrDataUrl: kks.qrCode,
@@ -214,16 +232,7 @@ export default function BusinessIdentityForm({
 	}
 
 	if (loading) {
-		if (onWorkspaceCreatingChange) {
-			return <div className="min-h-[72vh] w-full max-w-full" aria-hidden />
-		}
-
-		return (
-			<>
-				{typeof document !== "undefined" ? createPortal(<WorkspaceCreatingOverlay />, document.body) : null}
-				<div className="min-h-[72vh] w-full max-w-full" aria-hidden />
-			</>
-		)
+		return <WorkspaceCreatingOverlay creatingStep={creatingStep} />
 	}
 
 	return (

@@ -468,7 +468,7 @@ async function resolveSigningAaAccount(
 	const canonical = await resolveBeamioAaForEoaWithFallback(provider, signerEoa)
 	if (!canonical) {
 		throw new Error(
-			'No Beamio AA for this EOA on the UserCard factory path. Create or link a smart account, or check BASE_CARD_FACTORY and on-chain _aaFactory().'
+			'No Beamio AA for this EOA on CoNET. Ensure smart account via ensureAAForEOA or refresh Wallet.'
 		)
 	}
 	const aa = ethers.getAddress(canonical)

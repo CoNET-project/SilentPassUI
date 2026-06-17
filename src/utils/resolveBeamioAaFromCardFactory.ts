@@ -1,10 +1,11 @@
 /**
- * Match x402sdk resolveBeamioAaViaUserCardFactory: only UserCardFactory._aaFactory() then beamioAccountOf / primaryAccountOf. No BASE_AA_FACTORY fallback.
+ * Match x402sdk resolveBeamioAaViaUserCardFactory: beamioAccountOf on BEAMIO_AA_FACTORY.
+ * New AA deploys only on CoNET (224422); Base no longer used for resolution or creation.
  */
 import { ethers } from 'ethers'
-import { BASE_CARD_FACTORY } from '../config/chainAddresses'
+import { BEAMIO_AA_FACTORY } from '../config/chainAddresses'
+import { conetDepinProvider } from '../utils/constants'
 
-const paymasterAbi = ['function _aaFactory() view returns (address)'] as const
 const aaFactoryAbi = [
 	'function beamioAccountOf(address) view returns (address)',
 	'function primaryAccountOf(address) view returns (address)',
@@ -26,15 +27,18 @@ async function aaFromFactory(provider: ethers.Provider, eoa: string, factoryAddr
 	}
 }
 
-export async function resolveBeamioAaForEoaWithFallback(provider: ethers.Provider, eoa: string): Promise<string | null> {
-	try {
-		const pm = new ethers.Contract(BASE_CARD_FACTORY, paymasterAbi, provider)
-		const fac = await pm._aaFactory()
-		if (fac && fac !== ethers.ZeroAddress) {
-			return aaFromFactory(provider, eoa, ethers.getAddress(fac))
-		}
-	} catch {
-		/* ignore */
-	}
-	return null
+/** CoNET 224422：跨链同址 BEAMIO_AA_FACTORY 上查已部署 AA（须 getCode 非空）。 */
+export async function resolveBeamioAaOnConet(
+	provider: ethers.Provider = conetDepinProvider,
+	eoa: string
+): Promise<string | null> {
+	return aaFromFactory(provider, eoa, BEAMIO_AA_FACTORY)
+}
+
+/** 解析 EOA → AA：仅 CoNET。`provider` 保留兼容，默认 conetDepinProvider。 */
+export async function resolveBeamioAaForEoaWithFallback(
+	provider: ethers.Provider = conetDepinProvider,
+	eoa: string
+): Promise<string | null> {
+	return resolveBeamioAaOnConet(provider, eoa)
 }

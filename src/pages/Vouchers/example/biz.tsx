@@ -105,8 +105,11 @@ import {
   BEAMIO_INDEXER_DIAMOND,
   CONET_BUINT,
   CONET_BUNIT_AIRDROP_ADDRESS,
+  CONET_CARD_FACTORY,
 } from '@/config/chainAddresses';
+import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
+import { ensureConetAaForEoa } from '@/utils/ensureConetAa';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi';
 import {
@@ -8951,6 +8954,16 @@ function cardIssuanceMaxTopupCapForCurrency(
   return CARD_ISSUANCE_MAX_TOPUP_MAX;
 }
 
+/** Matches x402sdk `createCardTopupLimitMaxUnitsForCurrency` (fixed 0.740 CAD oracle for createCard precheck). */
+function cardIssuanceServerTopupLimitMaxForCurrency(currencyRaw: string | undefined | null): number {
+  return cardIssuanceMaxTopupCapForCurrency(currencyRaw, ORACLE_CAD_USDC_FALLBACK);
+}
+
+/** Matches x402sdk `createCardTopupLimitMinUnitsForCurrency` (fixed 0.740 CAD oracle for createCard precheck). */
+function cardIssuanceServerTopupLimitMinForCurrency(currencyRaw: string | undefined | null): number {
+  return cardIssuanceMinTopupFloorForCurrency(currencyRaw, ORACLE_CAD_USDC_FALLBACK);
+}
+
 function cardIssuanceMinTopupFloorForCurrency(
   currencyRaw: string | undefined | null,
   oracleUsdcPerCad: number | null | undefined
@@ -9905,28 +9918,34 @@ function makeCardIssuanceBonusRuleRow(
 
 const CARD_ISSUANCE_FACTORY_LATEST_ABI = ['function latestCardOfOwner(address) view returns (address)'] as const;
 
-/** Prefer factory.latestCardOfOwner(AA) then EOA; fallback to last entry from merged cardsOfOwner list. */
+/** Prefer factory.latestCardOfOwner(AA) then EOA on CoNET then Base; fallback to last entry from merged cardsOfOwner list. */
 async function pickPrimaryIssuedCardAddressForBiz(
   profile: { aaAccount?: string | null; keyID?: string | null },
   ownedCards: UserCardInfo[],
-  provider: ethers.Provider
+  _provider: ethers.Provider
 ): Promise<string | null> {
   if (!ownedCards.length) return null;
   const setAddrs = new Set(ownedCards.map((c) => c.cardAddress.toLowerCase()));
-  try {
-    const factory = new ethers.Contract(BASE_CARD_FACTORY, CARD_ISSUANCE_FACTORY_LATEST_ABI, provider);
-    const aa = profile?.aaAccount?.trim();
-    const eoa = profile?.keyID?.trim();
-    for (const owner of [aa, eoa]) {
-      if (!owner || !ethers.isAddress(owner)) continue;
-      const lc = await factory.latestCardOfOwner(ethers.getAddress(owner));
-      if (lc && lc !== ethers.ZeroAddress) {
-        const a = ethers.getAddress(lc);
-        if (setAddrs.has(a.toLowerCase())) return a;
+  const factoryQueries = [
+    { factory: CONET_CARD_FACTORY, provider: conetDepinProvider },
+    { factory: BASE_CARD_FACTORY, provider: baseRpcProviderDirect },
+  ];
+  const aa = profile?.aaAccount?.trim();
+  const eoa = profile?.keyID?.trim();
+  for (const { factory, provider } of factoryQueries) {
+    try {
+      const factoryContract = new ethers.Contract(factory, CARD_ISSUANCE_FACTORY_LATEST_ABI, provider);
+      for (const owner of [aa, eoa]) {
+        if (!owner || !ethers.isAddress(owner)) continue;
+        const lc = await factoryContract.latestCardOfOwner(ethers.getAddress(owner));
+        if (lc && lc !== ethers.ZeroAddress) {
+          const a = ethers.getAddress(lc);
+          if (setAddrs.has(a.toLowerCase())) return a;
+        }
       }
+    } catch {
+      /* try other factory */
     }
-  } catch {
-    /* use fallback */
   }
   return ownedCards[ownedCards.length - 1]?.cardAddress ?? null;
 }
@@ -11029,12 +11048,12 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
    [tiersByLoyaltyRule, cardIssuanceTierRule]
  );
 const cardIssuanceNewCardMaxTopupCap = useMemo(
-  () => cardIssuanceMaxTopupCapForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY, oracleCadUsdc),
-  [oracleCadUsdc]
+  () => cardIssuanceServerTopupLimitMaxForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY),
+  []
 );
 const cardIssuanceNewCardMinTopupFloor = useMemo(
-  () => cardIssuanceMinTopupFloorForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY, oracleCadUsdc),
-  [oracleCadUsdc]
+  () => cardIssuanceServerTopupLimitMinForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY),
+  []
 );
  const setCardIssuanceTiers = useCallback((updater: SetStateAction<CardIssuanceTierRow[]>) => {
    setTiersByLoyaltyRule((prev) => {
@@ -11056,7 +11075,7 @@ const cardIssuanceNewCardMinTopupFloor = useMemo(
      ...prev,
      single: reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), minS),
    }));
- }, []);
+ }, [cardIssuanceNewCardMinTopupFloor, cardIssuanceNewCardMaxTopupCap]);
 const [cardIssuanceTierEditorOpen, setCardIssuanceTierEditorOpen] = useState(false);
 const [cardIssuanceEditingTierId, setCardIssuanceEditingTierId] = useState<string | null>(null);
 const [cardIssuanceTierEditorName, setCardIssuanceTierEditorName] = useState('');
@@ -15904,6 +15923,12 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    }
    const useQuickDefaultRewardsNewCard =
      !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
+  const publishTopupMaxCap = cardIssuanceExistingCard
+    ? cardIssuanceMaxTopupCurrencyCap
+    : cardIssuanceServerTopupLimitMaxForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY);
+  const publishTopupMinFloor = cardIssuanceExistingCard
+    ? cardIssuanceMinTopupCurrencyFloor
+    : cardIssuanceServerTopupLimitMinForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY);
   const tiersRowsForPublish = opts?.tiersOverride ??
     (useQuickDefaultRewardsNewCard
      ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(cardIssuanceNewCardMinTopupFloor))
@@ -15961,9 +15986,9 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    }
    const maxTopupN = Number.parseInt(maxTopupRaw, 10);
    const maxTopupAsFloat = parseFloat(maxTopupRaw);
-  if (minTopupN < cardIssuanceMinTopupCurrencyFloor) {
+  if (minTopupN < publishTopupMinFloor) {
      setCardIssuanceCreateError(
-      `Minimum top-up must be at least ${cardIssuanceMinTopupFloorLabel}.`
+      `Minimum top-up must be at least ${cardIssuanceDisplayMoneyPrefix}${publishTopupMinFloor.toLocaleString('en-US')} (${CARD_ISSUANCE_MIN_TOPUP_USDC_MIN.toLocaleString('en-US')} USDC equivalent).`
      );
      return false;
    }
@@ -15975,15 +16000,19 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      setCardIssuanceCreateError('Maximum top-up must be a whole number (no decimals).');
      return false;
    }
-  if (maxTopupN > cardIssuanceMaxTopupCurrencyCap) {
+  if (maxTopupN > publishTopupMaxCap) {
      setCardIssuanceCreateError(
-      `Maximum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
+      cardIssuanceExistingCard
+        ? `Maximum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
+        : `Maximum top-up must not exceed ${cardIssuanceDisplayMoneyPrefix}${publishTopupMaxCap.toLocaleString('en-US')} (${CARD_ISSUANCE_MAX_TOPUP_MAX.toLocaleString('en-US')} USDC equivalent).`
      );
      return false;
    }
-  if (minTopupN > cardIssuanceMaxTopupCurrencyCap) {
+  if (minTopupN > publishTopupMaxCap) {
     setCardIssuanceCreateError(
-      `Minimum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
+      cardIssuanceExistingCard
+        ? `Minimum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
+        : `Minimum top-up must not exceed ${cardIssuanceDisplayMoneyPrefix}${publishTopupMaxCap.toLocaleString('en-US')} (${CARD_ISSUANCE_MAX_TOPUP_MAX.toLocaleString('en-US')} USDC equivalent).`
     );
     return false;
   }
@@ -16313,6 +16342,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
   cardIssuanceMaxTopupCurrencyCap,
   cardIssuanceNewCardMinTopupFloor,
   cardIssuanceNewCardMaxTopupCap,
+  cardIssuanceDisplayMoneyPrefix,
    cardIssuanceExistingCard,
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardConfiguratorDraftEoaKey,
@@ -16510,13 +16540,14 @@ useEffect(() => {
       let upgradeType = -1;
       let chargeRewardRatioE6: string | null = null;
        try {
+         const { provider: cardProvider } = await providerForBeamioUserCard(primary);
          const card = new ethers.Contract(
            primary,
           [
             'function upgradeType() view returns (uint8)',
             'function chargeRewardRatioE6() view returns (uint256)',
           ],
-           baseRpcProviderDirect
+           cardProvider
          );
         const [raw, ratioRaw] = await Promise.all([
           card.upgradeType(),
@@ -19561,17 +19592,21 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
    }
    try {
      const profileForFetch = p0?.keyID?.trim() ? p0 : { ...(p0 ?? {}), keyID: myAddress };
-     const chainAa = await getAAAccount(profileForFetch);
+     let chainAa = await getAAAccount(profileForFetch);
      if (!chainAa || !ethers.isAddress(chainAa)) {
-       if (process.env.NODE_ENV !== 'production') console.warn('[handleRefreshAA] getAAAccount returned no valid AA for eoa:', eoa, 'chainAa:', chainAa);
+       chainAa = await ensureConetAaForEoa(eoa);
+     }
+     if (!chainAa || !ethers.isAddress(chainAa)) {
+       if (process.env.NODE_ENV !== 'production') console.warn('[handleRefreshAA] no CoNET AA for eoa:', eoa, 'chainAa:', chainAa);
        return;
      }
+     const validatedAa = ethers.getAddress(chainAa);
      if (p0) {
-       const nextProfiles = (profiles ?? []).map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
+       const nextProfiles = (profiles ?? []).map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: validatedAa } : p));
        setProfiles(nextProfiles);
        const temp = CoNET_Data;
        if (temp?.profiles?.length) {
-         temp.profiles = temp.profiles.map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: chainAa } : p));
+         temp.profiles = temp.profiles.map((p: profile, i: number) => (i === 0 ? { ...p, aaAccount: validatedAa } : p));
          setCoNET_Data(temp);
          try {
            await storeSystemData();
@@ -19580,10 +19615,10 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
          }
        }
      } else {
-       setProfiles([{ keyID: myAddress, aaAccount: chainAa } as profile]);
+       setProfiles([{ keyID: myAddress, aaAccount: validatedAa } as profile]);
        const temp = CoNET_Data;
        if (temp) {
-         temp.profiles = [{ keyID: myAddress, aaAccount: chainAa } as profile];
+         temp.profiles = [{ keyID: myAddress, aaAccount: validatedAa } as profile];
          setCoNET_Data(temp);
          try {
            await storeSystemData();

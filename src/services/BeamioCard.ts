@@ -8,8 +8,9 @@ import {
 	CONET_BUINT_REDEEM_AIRDROP,
 	CONET_BUSINESS_START_KET,
 	CONET_BUSINESS_START_KET_REDEEM,
+	CONET_CARD_FACTORY,
 } from "@/config/chainAddresses";
-import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
+import { resolveBeamioAaOnConet } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
@@ -454,13 +455,13 @@ const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
 const cardClearAdminMintCounterEndpoint = `${beamioApi}/api/cardClearAdminMintCounter`
 const cardTerminalSettlementClearEndpoint = `${beamioApi}/api/cardTerminalSettlementClear`
 
-/** 通过 Factory 预测 EOA 的 AA 地址（index=0）。用于离线签字前构建 adminManager(predictedAA,...)，无需先部署。Endpoint 收到 adminEOA 后会 ensureAAForEOA 再执行。 */
+/** 通过 Factory 预测 EOA 的 AA 地址（index=0，CoNET CREATE2）。用于离线签字前构建 adminManager(predictedAA,...)。 */
 export const getPredictedAAAddress = async (eoa: string): Promise<string> => {
 	if (!eoa?.trim() || !ethers.isAddress(eoa)) throw new Error('Invalid EOA')
 	const accountFactory = new ethers.Contract(
 		contracts.BeamioAAAcountFactory.address,
 		BeamioAAAcountFactoryAbi,
-		baseEndpoint
+		conetDepinProvider
 	)
 	const predicted = await accountFactory.getFunction('getAddress(address,uint256)')(ethers.getAddress(eoa.trim()), 0n)
 	if (!predicted || predicted === ethers.ZeroAddress) throw new Error('Factory returned invalid predicted AA address')
@@ -961,27 +962,56 @@ const cardAbiSlice = [
 	'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
 ]
 
-async function fetchCardsForOwner(ownerAddress: string): Promise<UserCardInfo[]> {
-	if (!ownerAddress || !ethers.isAddress(ownerAddress)) return []
-	const cards: string[] = await BeamioCardFactorySC.cardsOfOwner(ownerAddress)
-	if (!cards?.length) return []
-	const results: UserCardInfo[] = []
-	for (const addr of cards) {
-		const card = new ethers.Contract(addr, cardAbiSlice, baseEndpoint)
+const FACTORY_CARDS_OF_OWNER_ABI = ['function cardsOfOwner(address owner) view returns (address[])'] as const
+
+/** CoNET-first: new merchant cards deploy on 224422; legacy cards remain on Base. */
+const MERCHANT_CARD_FACTORY_QUERIES: Array<{ factory: string; provider: ethers.Provider }> = [
+	{ factory: CONET_CARD_FACTORY, provider: conetDepinProvider },
+	{ factory: BASE_MAINNET_FACTORIES.CARD_FACTORY, provider: baseEndpoint },
+]
+
+async function readUserCardInfoFromChain(addr: string): Promise<UserCardInfo | null> {
+	try {
+		const { provider } = await providerForBeamioUserCard(addr)
+		const card = new ethers.Contract(addr, cardAbiSlice, provider)
 		const [currencyNum, priceE6Raw] = await Promise.all([
 			card.currency(),
 			card.pointsUnitPriceInCurrencyE6(),
 		])
 		const currency = getICurrency(BigInt(currencyNum))
 		const priceE6 = Number(priceE6Raw)
-		const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
-		results.push({
-			cardAddress: addr,
+		const ptsPer1Currency = priceE6 > 0 ? 1_000_000 / priceE6 : 0
+		return {
+			cardAddress: ethers.getAddress(addr),
 			name: 'User Card',
 			currency,
 			priceE6: String(priceE6),
 			ptsPer1Currency: String(ptsPer1Currency),
-		})
+		}
+	} catch {
+		return null
+	}
+}
+
+async function fetchCardsForOwner(ownerAddress: string): Promise<UserCardInfo[]> {
+	if (!ownerAddress || !ethers.isAddress(ownerAddress)) return []
+	const seen = new Set<string>()
+	const results: UserCardInfo[] = []
+	for (const { factory: factoryAddr, provider } of MERCHANT_CARD_FACTORY_QUERIES) {
+		try {
+			const factory = new ethers.Contract(factoryAddr, FACTORY_CARDS_OF_OWNER_ABI, provider)
+			const cards: string[] = await factory.cardsOfOwner(ownerAddress)
+			if (!cards?.length) continue
+			for (const addr of cards) {
+				const key = ethers.getAddress(addr).toLowerCase()
+				if (seen.has(key)) continue
+				seen.add(key)
+				const info = await readUserCardInfoFromChain(addr)
+				if (info) results.push(info)
+			}
+		} catch {
+			/* try other factory */
+		}
 	}
 	return results
 }
@@ -1011,18 +1041,22 @@ export type GetCardsResult = { cards: UserCardInfo[]; trusted: boolean }
  */
 async function expandFactoryOwnerCandidatesForCardsOfOwner(addresses: string[]): Promise<string[]> {
 	const out = new Set(addresses.map((a) => ethers.getAddress(a)))
+	const ownerAbi = ['function owner() view returns (address)'] as const
 	for (const addr of addresses) {
 		const norm = ethers.getAddress(addr)
-		try {
-			const code = await baseRpcProviderDirect.getCode(norm)
-			if (!code || code === '0x' || code.length <= 2) continue
-			const acct = new ethers.Contract(norm, ['function owner() view returns (address)'], baseRpcProviderDirect)
-			const own = await acct.owner()
-			if (own && ethers.isAddress(own) && ethers.getAddress(own) !== ethers.ZeroAddress) {
-				out.add(ethers.getAddress(own))
+		for (const prov of [conetDepinProvider, baseRpcProviderDirect]) {
+			try {
+				const code = await prov.getCode(norm)
+				if (!code || code === '0x' || code.length <= 2) continue
+				const acct = new ethers.Contract(norm, ownerAbi, prov)
+				const own = await acct.owner()
+				if (own && ethers.isAddress(own) && ethers.getAddress(own) !== ethers.ZeroAddress) {
+					out.add(ethers.getAddress(own))
+				}
+				break
+			} catch {
+				/* try other chain */
 			}
-		} catch {
-			/* not AA / owner() unavailable */
 		}
 	}
 	return [...out]
@@ -3601,27 +3635,27 @@ async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 	}
 }
 
-/** 使用 AA Factory 预测 index=0 的 AA 地址，并在链上验证是否已部署。primaryAccountOf 与 API 均失败时的回退。 */
+/** 使用 AA Factory 预测 index=0 的 AA 地址，并在 CoNET 链上验证是否已部署。 */
 async function tryPredictedAAFromFactory(eoa: string): Promise<string | null> {
 	try {
 		const accountFactory = new ethers.Contract(
 			contracts.BeamioAAAcountFactory.address,
 			BeamioAAAcountFactoryAbi,
-			baseEndpoint
+			conetDepinProvider
 		)
 		const getAddressFn = accountFactory.getFunction('getAddress(address,uint256)')
 		const predicted = await getAddressFn(ethers.getAddress(eoa.trim()), 0n)
 		if (!predicted || predicted === ethers.ZeroAddress) return null
 		const addr = ethers.getAddress(predicted)
-		const code = await baseEndpoint.getCode(addr)
+		const code = await conetDepinProvider.getCode(addr)
 		if (!code || code === '0x') return null
 		try {
-			const aa = new ethers.Contract(addr, ['function factory() view returns (address)'], baseEndpoint)
+			const aa = new ethers.Contract(addr, ['function factory() view returns (address)'], conetDepinProvider)
 			await aa.factory()
 		} catch {
 			return null
 		}
-		if (_isDev) console.warn('[getAAAccount] fallback: predicted AA verified on-chain for', eoa)
+		if (_isDev) console.warn('[getAAAccount] fallback: predicted AA verified on CoNET for', eoa)
 		return addr
 	} catch {
 		return null
@@ -3629,15 +3663,15 @@ async function tryPredictedAAFromFactory(eoa: string): Promise<string | null> {
 }
 
 /**
- * 仅 RPC：`UserCardFactory._aaFactory` → `beamioAccountOf`（须有合约 code）；与 x402sdk `resolveBeamioAaForEoaWithFallback` 一致，**无**旧工厂回退。
- * 用于首页与 Merchant OS：仅在 `trusted === true` 时用结果比对并覆盖本地缓存的 `aaAccount`。
+ * 仅 RPC：CoNET BEAMIO_AA_FACTORY beamioAccountOf（须有合约 code）。
+ * 用于 Merchant OS：仅在 `trusted === true` 时用结果比对并覆盖本地缓存的 `aaAccount`。
  */
 export async function fetchTrustedCanonicalAaFromRpc(
 	eoa: string
 ): Promise<{ trusted: true; aa: string | null } | { trusted: false }> {
 	try {
 		const addr = ethers.getAddress(eoa.trim())
-		const aa = await resolveBeamioAaForEoaWithFallback(baseEndpoint, addr)
+		const aa = await resolveBeamioAaOnConet(conetDepinProvider, addr)
 		return { trusted: true, aa }
 	} catch {
 		return { trusted: false }
@@ -3911,24 +3945,30 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 		return null
 	}
 	try {
-		const account = await resolveBeamioAaForEoaWithFallback(baseEndpoint, eoa)
+		const account = await resolveBeamioAaOnConet(conetDepinProvider, eoa)
 		if (!account) {
-			if (_isDev) console.warn('[getAAAccount] resolve returned null for', eoa)
+			if (_isDev) console.warn('[getAAAccount] no CoNET AA for', eoa)
 			const fromApi = await fetchAAAccountFromApi(eoa)
-			if (fromApi && ethers.isAddress(fromApi)) return fromApi
+			if (fromApi && ethers.isAddress(fromApi)) {
+				const code = await conetDepinProvider.getCode(fromApi).catch(() => '0x')
+				if (code && code !== '0x') return fromApi
+			}
 			return tryPredictedAAFromFactory(eoa)
 		}
 		try {
-			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
+			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], conetDepinProvider)
 			await aa.factory()
 		} catch (e: any) {
 			throw new Error(`getAAAccount: factory() not available: ${e?.shortMessage ?? e?.message}`)
 		}
 		return account
 	} catch (error: any) {
-		console.warn(`[getAAAccount] RPC failed: ${error.message}, fallback to API`)
+		console.warn(`[getAAAccount] CoNET RPC failed: ${error.message}, fallback to API`)
 		const fromApi = await fetchAAAccountFromApi(eoa)
-		if (fromApi && ethers.isAddress(fromApi)) return fromApi
+		if (fromApi && ethers.isAddress(fromApi)) {
+			const code = await conetDepinProvider.getCode(fromApi).catch(() => '0x')
+			if (code && code !== '0x') return fromApi
+		}
 		return tryPredictedAAFromFactory(eoa)
 	}
 }

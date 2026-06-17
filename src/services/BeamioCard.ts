@@ -2,6 +2,11 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
+import {
+	eip712ChainIdForBeamioUserCard,
+	getCardFactoryGatewayForEip712,
+	providerForBeamioUserCard,
+} from "@/utils/beamioUserCardChain";
 import { resolveBeamioAaForEoaWithFallback, resolveBeamioAaOnConet } from "@/utils/resolveBeamioAaFromCardFactory";
 import { CONET_RPC_URL } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
@@ -39,9 +44,6 @@ export const isCardExcludedFromDisplay = (cardAddress: string): boolean =>
 
 export { loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 
-/** User Card Factory = card.factoryGateway()；OpenTransfer 验签须与 redeemOpenTransfer 同源 */
-const BeamioUserCardGatewayAddress = ethers.getAddress(BASE_MAINNET_FACTORIES.CARD_FACTORY)
-const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,
 	pointsHuman: string,
@@ -52,6 +54,8 @@ export const signOfflineTransferERC3009 = async (
 	const card = ethers.getAddress(cardAddress)
 	const to =
 		toEOA && ethers.isAddress(toEOA) ? ethers.getAddress(toEOA) : ethers.ZeroAddress
+	const { chainId } = await providerForBeamioUserCard(card)
+	const factoryGateway = await getCardFactoryGatewayForEip712(card)
 
 	const now = Math.floor(Date.now() / 1000)
 	const validAfter = BigInt(now - 60)
@@ -68,9 +72,9 @@ export const signOfflineTransferERC3009 = async (
 	  ["string","address","address","uint256","address","uint256","uint256","uint256","uint256","bytes32"],
 	  [
 		"OpenTransfer",
-		BeamioUserCardGatewayAddress,
+		factoryGateway,
 		card,
-		chainId8453,
+		BigInt(chainId),
 		signer.address,
 		tokenID,
 		maxAmount,
@@ -145,8 +149,8 @@ function openRelayedNonceStorageSlot(): bigint {
 	return BigInt(ethers.keccak256(ethers.toUtf8Bytes('beamio.container.module.storage.v07'))) + 1n
 }
 
-async function readOpenRelayedNonce(aaAccount: string): Promise<bigint> {
-	const raw = await baseEndpoint.getStorage(ethers.getAddress(aaAccount), openRelayedNonceStorageSlot())
+async function readOpenRelayedNonce(aaAccount: string, provider: ethers.Provider): Promise<bigint> {
+	const raw = await provider.getStorage(ethers.getAddress(aaAccount), openRelayedNonceStorageSlot())
 	return BigInt(raw)
 }
 
@@ -179,12 +183,13 @@ export const signMerchantGiftOpenContainer = async (opts: {
 	const amount6 = ethers.parseUnits(opts.amountHuman, 6)
 	if (amount6 <= 0n) throw new Error('Amount must be greater than zero')
 
-	const nonce = await readOpenRelayedNonce(senderAA)
+	const { provider, chainId } = await providerForBeamioUserCard(card)
+	const nonce = await readOpenRelayedNonce(senderAA, provider)
 	const deadline = BigInt(Math.floor(Date.now() / 1000) + GIFT_OPEN_CONTAINER_DEADLINE_SEC)
 	const domain = {
 		name: 'BeamioAccount',
 		version: '1',
-		chainId: chainId8453,
+		chainId,
 		verifyingContract: senderAA as `0x${string}`,
 	}
 	const types = {
@@ -1401,15 +1406,15 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			(await resolveOpenClaimTokenIdByCouponId(cardNorm, couponId))
 		if (!tokenId) return { success: false, error: 'Coupon not found or inactive on this card.' }
 
-		const cardRead = new ethers.Contract(cardNorm, ['function factoryGateway() view returns (address)'], baseEndpoint)
-		const verifyingContract = ethers.getAddress(await cardRead.factoryGateway())
+		const verifyingContract = await getCardFactoryGatewayForEip712(cardNorm)
+		const chainId = await eip712ChainIdForBeamioUserCard(cardNorm)
 		const deadline = Math.floor(Date.now() / 1000) + 15 * 60
 		const nonce = ethers.hexlify(ethers.randomBytes(32))
 		const userSignature = await signer.signTypedData(
 			{
 				name: 'BeamioUserCardFactory',
 				version: '1',
-				chainId: 8453,
+				chainId,
 				verifyingContract,
 			},
 			{
@@ -2185,7 +2190,8 @@ export const postUSDCUserCardTopup = async (params: {
 
 /** 获取卡的 owner 地址。executeForOwner 要求签名者必须等于 card.owner()，AA 为 owner 时需用 EOA 签会失败。 */
 export const getCardOwner = async (cardAddress: string): Promise<string> => {
-	const card = new ethers.Contract(cardAddress, ['function owner() view returns (address)'], baseEndpoint)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const card = new ethers.Contract(cardAddress, ['function owner() view returns (address)'], provider)
 	return ethers.getAddress(await card.owner())
 }
 
@@ -2198,12 +2204,14 @@ export const signExecuteForOwner = async (
     deadline: number,
     nonce: string
 ): Promise<string> => {
-    const wallet = new ethers.Wallet(ownerPrivateKey, baseEndpoint)
-    const factoryAddress = contracts.BeamioCardFactory.address
+    const { provider } = await providerForBeamioUserCard(cardAddress)
+    const wallet = new ethers.Wallet(ownerPrivateKey, provider)
+    const factoryAddress = await getCardFactoryGatewayForEip712(cardAddress)
+    const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
     const domain = {
         name: 'BeamioUserCardFactory',
         version: '1',
-        chainId: 8453,
+        chainId,
         verifyingContract: factoryAddress,
     }
     const types = {

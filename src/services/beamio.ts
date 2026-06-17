@@ -25,6 +25,7 @@ import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
 import { BASE_MAINNET_FACTORIES, CONET_ACCOUNT_REGISTRY, CONET_BUNIT_AIRDROP_ADDRESS, CONET_MAINNET_CHAIN_ID, CONET_RPC_URL } from '@/config/chainAddresses'
+import { eip712ChainIdForBeamioUserCard, getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 import {
@@ -285,26 +286,45 @@ export const fetchUIDAssets = async (uid: string): Promise<UIDAssetsResponse> =>
 const BASE_CARD_FACTORY = BASE_MAINNET_FACTORIES.CARD_FACTORY
 const BASE_CHAIN_ID = 8453
 
-/** NFC Topup Prepare：获取 executeForAdmin 所需的 cardAddr、data、deadline、nonce */
+/** NFC Topup Prepare：获取 executeForAdmin 所需的 cardAddr、data、deadline、nonce、factoryGateway（EIP-712 verifyingContract） */
 export const nfcTopupPrepare = async (params: { uid: string; amount: string; currency?: string }): Promise<{
 	cardAddr: string
 	data: string
 	deadline: number
 	nonce: string
+	factoryGateway: string
 } | { error: string }> => {
 	const res = await fetch(`${beamioApi}/api/nfcTopupPrepare`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(params),
 	})
-	const data = (await res.json().catch(() => ({}))) as { cardAddr?: string; data?: string; deadline?: number; nonce?: string; error?: string }
+	const data = (await res.json().catch(() => ({}))) as {
+		cardAddr?: string
+		data?: string
+		deadline?: number
+		nonce?: string
+		factoryGateway?: string
+		error?: string
+	}
 	if (!res.ok || data.error) return { error: data.error ?? res.statusText ?? 'Prepare failed' }
 	if (!data.cardAddr || !data.data || data.deadline == null || !data.nonce) return { error: 'Invalid prepare response' }
+	let factoryGateway: string = BASE_CARD_FACTORY
+	if (data.factoryGateway && ethers.isAddress(data.factoryGateway)) {
+		factoryGateway = ethers.getAddress(data.factoryGateway)
+	} else {
+		try {
+			factoryGateway = await getCardFactoryGatewayForEip712(data.cardAddr)
+		} catch {
+			/* keep BASE_CARD_FACTORY */
+		}
+	}
 	return {
 		cardAddr: data.cardAddr,
 		data: data.data,
 		deadline: Number(data.deadline),
 		nonce: data.nonce,
+		factoryGateway,
 	}
 }
 
@@ -315,15 +335,16 @@ export const nfcTopup = async (params: { uid: string; amount: string; currency?:
 	}
 	const prepare = await nfcTopupPrepare(params)
 	if ('error' in prepare) return { success: false, error: prepare.error }
-	const { cardAddr, data, deadline, nonce } = prepare
+	const { cardAddr, data, deadline, nonce, factoryGateway } = prepare
 	const privateKey = CoNET_Data.profiles[0].privateKeyArmor
 	const wallet = new ethers.Wallet(privateKey)
 	const dataHash = ethers.keccak256(data)
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddr)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
-		chainId: BASE_CHAIN_ID,
-		verifyingContract: BASE_CARD_FACTORY,
+		chainId,
+		verifyingContract: factoryGateway,
 	}
 	const types = {
 		ExecuteForAdmin: [

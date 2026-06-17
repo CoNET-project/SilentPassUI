@@ -1,4 +1,5 @@
 import { keccak256, Wallet } from 'ethers'
+import { eip712ChainIdForBeamioUserCard } from '@/utils/beamioUserCardChain'
 
 /** EIP-712 ExecuteForAdmin — aligned with POS `signExecuteForAdmin`. */
 export async function signExecuteForAdmin(params: {
@@ -15,10 +16,11 @@ export async function signExecuteForAdmin(params: {
 	if (!verifyingContract) {
 		throw new Error('Missing factory gateway for EIP-712 signature.')
 	}
+	const chainId = await eip712ChainIdForBeamioUserCard(params.cardAddress)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
-		chainId: 8453,
+		chainId,
 		verifyingContract,
 	}
 	const types = {

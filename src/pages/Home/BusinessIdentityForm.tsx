@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { AppButton } from "@/components/button/AppButton"
+import { ethers } from "ethers"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
+import { ensureConetAaForEoa } from "@/utils/ensureConetAa"
 import { Eye, EyeOff, AlertTriangle, Check, ArrowRight, ShieldCheck } from "lucide-react"
 import {
 	bizBrandFocusRingClass,
@@ -153,13 +155,27 @@ export default function BusinessIdentityForm({
 			window.setTimeout(resolve, WORKSPACE_CREATING_LEAD_MS)
 		})
 		const kks = await createRecover(trimmedTag, password, recoveryDraft)
-		setLoading(false)
 
 		if (!kks) {
+			setLoading(false)
 			onWorkspaceCreatingChange?.(false)
 			setSubmitError("Could not create your workspace. Check your connection and try again.")
 			return
 		}
+
+		const createEoa = kks.temp?.profiles?.[0]?.keyID?.trim()
+		if (createEoa && ethers.isAddress(createEoa)) {
+			try {
+				const aa = await ensureConetAaForEoa(ethers.getAddress(createEoa))
+				if (aa && kks.temp?.profiles?.[0]) {
+					kks.temp.profiles[0] = { ...kks.temp.profiles[0], aaAccount: aa }
+				}
+			} catch {
+				/* 不可信失败：不阻断 onboarding；Daemon / Wallet 会重试 */
+			}
+		}
+
+		setLoading(false)
 
 		onSuccess({
 			qrDataUrl: kks.qrCode,

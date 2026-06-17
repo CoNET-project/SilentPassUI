@@ -18,6 +18,7 @@ import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { getUserInfo, storeSystemData, checkStorage, restoreWithRedeem } from "@/services/beamio"
+import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BusinessIdentityForm, { type BusinessIdentitySuccess } from './BusinessIdentityForm'
@@ -253,6 +254,11 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		
 		setCoNET_Data(temp)
 		await storeSystemData()
+		try {
+			await ensureConetAaForProfileAndPersist(profiles[0], setProfiles)
+		} catch {
+			/* 不可信失败：保留 profile，Daemon 会重试 */
+		}
 		const eoa = profiles[0]?.keyID?.trim()
 		if (eoa && ethers.isAddress(eoa)) {
 			const eoaNorm = ethers.getAddress(eoa)
@@ -1134,6 +1140,14 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									} : async () => {
 										setWorkspaceCreating(false)
 										await init(temp, { dontClose: true })
+										const profileAfterInit = temp?.profiles?.[0]
+										if (profileAfterInit?.keyID && ethers.isAddress(profileAfterInit.keyID)) {
+											try {
+												await ensureConetAaForProfileAndPersist(profileAfterInit, setProfiles)
+											} catch {
+												/* 不可信失败：不阻断进入 Merchant OS */
+											}
+										}
 										// URL 带 redeemAdmin + redeemCode 时：校验 code 有效、EOA 非 admin 后，向 endpoint 完成 redeem admin
 										const redeemAdminParams = parseRedeemAdminFromUrl()
 										if (redeemAdminParams) {

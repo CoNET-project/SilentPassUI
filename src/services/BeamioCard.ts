@@ -21,6 +21,12 @@ import {
 	normalizeCardPreviewLogoDisplayTier,
 	type CardPreviewLogoDisplayTier,
 } from "@/utils/cardPreviewLogoDisplayTier";
+import {
+	CONET_MAINNET_CHAIN_ID,
+	DEFAULT_MERCHANT_CARD_FACTORY,
+	eip712ChainIdForBeamioUserCard,
+	providerForBeamioUserCard,
+} from "@/utils/beamioUserCardChain";
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
@@ -54,8 +60,8 @@ const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
 	cards.filter((c) => !USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()))
 
 /** User Card Factory = card.factoryGateway()；OpenTransfer 验签须与 redeemOpenTransfer 同源 */
-const BeamioUserCardGatewayAddress = ethers.getAddress(BASE_MAINNET_FACTORIES.CARD_FACTORY)
-const chainId8453 = 8453n
+const BeamioUserCardGatewayAddress = ethers.getAddress(DEFAULT_MERCHANT_CARD_FACTORY)
+const chainId8453 = BigInt(CONET_MAINNET_CHAIN_ID)
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,
 	pointsHuman: string,
@@ -818,15 +824,17 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			return { success: false, error: 'Coupon not found or inactive on this card.' }
 		}
 
-		const cardRead = new ethers.Contract(cardNorm, ['function factoryGateway() view returns (address)'], baseEndpoint)
+		const { provider } = await providerForBeamioUserCard(cardNorm)
+		const cardRead = new ethers.Contract(cardNorm, ['function factoryGateway() view returns (address)'], provider)
 		const verifyingContract = ethers.getAddress(await cardRead.factoryGateway())
+		const chainId = await eip712ChainIdForBeamioUserCard(cardNorm)
 		const deadline = Math.floor(Date.now() / 1000) + 15 * 60
 		const nonce = ethers.hexlify(ethers.randomBytes(32))
 		const userSignature = await signer.signTypedData(
 			{
 				name: 'BeamioUserCardFactory',
 				version: '1',
-				chainId: 8453,
+				chainId,
 				verifyingContract,
 			},
 			{
@@ -1663,13 +1671,15 @@ export const postBuyCardPoints = async (
 
 /** BeamioUserCard 记录在链上的 `factoryGateway()`，EIP-712 `verifyingContract` 须与其一致。 */
 export const getCardFactoryGatewayForEip712 = async (cardAddress: string): Promise<string> => {
-	const c = new ethers.Contract(ethers.getAddress(cardAddress), ['function factoryGateway() view returns (address)'], baseEndpoint)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const c = new ethers.Contract(ethers.getAddress(cardAddress), ['function factoryGateway() view returns (address)'], provider)
 	return ethers.getAddress(await c.factoryGateway())
 }
 
 /** 获取卡的 owner 地址。executeForOwner 要求签名者必须等于 card.owner()，AA 为 owner 时需用 EOA 签会失败。 */
 export const getCardOwner = async (cardAddress: string): Promise<string> => {
-	const card = new ethers.Contract(cardAddress, ['function owner() view returns (address)'], baseEndpoint)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const card = new ethers.Contract(cardAddress, ['function owner() view returns (address)'], provider)
 	return ethers.getAddress(await card.owner())
 }
 
@@ -1683,14 +1693,16 @@ export const signExecuteForAdmin = async (
 	nonce: string,
 	verifyingContract?: string,
 ): Promise<string> => {
-	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const wallet = new ethers.Wallet(adminPrivateKey, provider)
 	const factoryAddress = verifyingContract
 		? ethers.getAddress(verifyingContract)
 		: await withPromiseTimeout(getCardFactoryGatewayForEip712(cardAddress), 25_000, 'factoryGateway()')
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
-		chainId: 8453,
+		chainId,
 		verifyingContract: factoryAddress,
 	}
 	const types = {
@@ -1714,12 +1726,14 @@ export const signClearAdminMintCounter = async (
 	deadline: number,
 	nonceHex: string
 ): Promise<string> => {
-	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const wallet = new ethers.Wallet(adminPrivateKey, provider)
 	const factoryAddress = await getCardFactoryGatewayForEip712(cardAddress)
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
-		chainId: 8453,
+		chainId,
 		verifyingContract: factoryAddress,
 	}
 	const types = {
@@ -1751,12 +1765,14 @@ export const signTerminalSettlementClear = async (
 	deadline: number,
 	nonceHex: string
 ): Promise<string> => {
-	const wallet = new ethers.Wallet(adminPrivateKey, baseEndpoint)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const wallet = new ethers.Wallet(adminPrivateKey, provider)
 	const factoryAddress = await getCardFactoryGatewayForEip712(cardAddress)
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
-		chainId: 8453,
+		chainId,
 		verifyingContract: factoryAddress,
 	}
 	const types = {
@@ -1847,14 +1863,16 @@ export const signExecuteForOwner = async (
 	nonce: string,
 	verifyingContract?: string,
 ): Promise<string> => {
-	const wallet = new ethers.Wallet(ownerPrivateKey, baseEndpoint)
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const wallet = new ethers.Wallet(ownerPrivateKey, provider)
 	const vc = verifyingContract?.trim()
 		? ethers.getAddress(verifyingContract.trim())
 		: await withPromiseTimeout(getCardFactoryGatewayForEip712(cardAddress), 25_000, 'factoryGateway()')
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
-		chainId: 8453,
+		chainId,
 		verifyingContract: vc,
 	}
 	const types = {

@@ -35,6 +35,7 @@ import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
 import { BASE_MAINNET_FACTORIES, BEAMIO_ORACLE_CONET, CONET_ACCOUNT_REGISTRY, CONET_RPC_URL } from '@/config/chainAddresses'
+import { eip712ChainIdForBeamioUserCard, getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 import type { VerraBusinessProfileDraft } from '@/utils/verraBusinessProfileLocal'
@@ -319,9 +320,8 @@ export const nfcTopupPrepare = async (params: { uid: string; amount: string; cur
 		factoryGateway = ethers.getAddress(data.factoryGateway)
 	} else {
 		try {
-			const read = new ethers.Contract(ethers.getAddress(data.cardAddr), ['function factoryGateway() view returns (address)'], baseEndpoint)
-			factoryGateway = ethers.getAddress(await read.factoryGateway())
-		} catch (_) {
+			factoryGateway = await getCardFactoryGatewayForEip712(data.cardAddr)
+		} catch {
 			/* keep BASE_CARD_FACTORY */
 		}
 	}
@@ -345,10 +345,11 @@ export const nfcTopup = async (params: { uid: string; amount: string; currency?:
 	const privateKey = CoNET_Data.profiles[0].privateKeyArmor
 	const wallet = new ethers.Wallet(privateKey)
 	const dataHash = ethers.keccak256(data)
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddr)
 	const domain = {
 		name: 'BeamioUserCardFactory',
 		version: '1',
-		chainId: BASE_CHAIN_ID,
+		chainId,
 		verifyingContract: factoryGateway,
 	}
 	const types = {

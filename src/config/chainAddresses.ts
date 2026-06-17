@@ -22,9 +22,17 @@ export const CONET_BUNIT_AIRDROP_ADDRESS = '0xFd60936707cb4583c08D8AacBA19E4bfaE
 /** BuintRedeemAirdrop（CoNET）；与 x402sdk chainAddresses / 部署记录同步 */
 export const CONET_BUINT_REDEEM_AIRDROP = '0xd633E268bCcC5A38122873a8BeA3aD7Fd83a9966'
 /** BusinessStartKet ERC1155（CoNET）；用户持有的 Ket 在此合约 `balanceOf`；须与 Redeem 构造参数 `ket` / deployments 同步 */
-export const CONET_BUSINESS_START_KET = '0xe747faB957eD29ec07B81Edab546AF5C6724fCf2'
+export const CONET_BUSINESS_START_KET = '0xAcf20dbb4DE0992d8947Ef00b505bBc17E6A03b2'
 /** BusinessStartKetRedeem（CoNET）；Ket + B-Unit 兑换码 */
-export const CONET_BUSINESS_START_KET_REDEEM = '0x4C3995D1Cad52a9EE65024C8Ad80Ad6B51b098ce'
+export const CONET_BUSINESS_START_KET_REDEEM = '0xe9CeDC2c9F7DE7c0e6d1f1ba1F7e7126F0F1D3c8'
+/** CoNET UserCard Factory（224422） */
+export const CONET_CARD_FACTORY = '0xfA52a0CcC96C19cF4b6Ea864615F6d52BD0774FB'
+/** CoNET 默认 BeamioUserCard */
+export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
+/** CoNET USDC（ConetTreasury FactoryERC20） */
+export const CONET_USDC = '0x40E302aBC19f6c9f376D7Dee037192a7a203e3Aa'
+export const CONET_BEAMIO_USER_CARD_FORMATTING_LIB = '0x9727136BC5DAA5540e7397C9086e9980EBDD0e48'
+export const CONET_BEAMIO_USER_CARD_TRANSFER_LIB = '0xBcf3f8C5994B02B89fB743e1dee6AFDD5a49a664'
 /** BeamioOracle on CoNET mainnet (getRate returns 1 currency = X USD, E18) */
 export const BEAMIO_ORACLE_CONET = '0x77CB8358c5a37aB7190b0A2C7EaA7fEeDCF11008'
 /** CoNET PoS HTTP RPC — 与 deployments/conet-addresses.json `rpcUrl` 同步 */
@@ -58,5 +66,8 @@ export const CONTRACT_ADDRESSES = {
     buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
     businessStartKet: CONET_BUSINESS_START_KET,
     businessStartKetRedeem: CONET_BUSINESS_START_KET_REDEEM,
+    cardFactory: CONET_CARD_FACTORY,
+    defaultUserCard: CONET_BEAMIO_USER_CARD_DEFAULT,
+    usdc: CONET_USDC,
   },
 } as const

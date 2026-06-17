@@ -25,6 +25,7 @@ import {
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, getMyAssets } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
 import { dispatchBeamioWalletReady } from '@/utils/beamioWalletReadyEvent'
+import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 
 import { getUsdcBalanceFromApi, formatWithThousands, isStandalone } from "@/services/beamio"
 import { ethers } from "ethers"
@@ -44,6 +45,7 @@ import {
 	hasLocalPlaintextMnemonic,
 	knownBeamioAccountNameFromStorage,
 } from '@/utils/consumerWalletGate'
+import { ensureEphemeralWalletForCouponClaim } from '@/utils/ephemeralCouponClaimWallet'
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
@@ -601,6 +603,13 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		if (!first) return
 		first = false
 		const run = async () => {
+			const ephemeralReady = await ensureEphemeralWalletForCouponClaim()
+			if (ephemeralReady) {
+				await init(ephemeralReady)
+				home()
+				return
+			}
+
 			if (requireWalletRecover) {
 				const isAcc = await checkStorage()
 				if (isAcc && consumerAppNeedsWalletRecover(isAcc)) {
@@ -705,26 +714,16 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	}
 
 	const handleOnboardingEnterHome = async () => {
-		if (walletAddr && ethers.isAddress(walletAddr)) {
-			finishOnboardingToHome()
-			return
-		}
 		const profile = CoNET_Data?.profiles?.[0] ?? temp?.profiles?.[0]
-		if (!profile) {
-			setSettingsOpen('WalletReadyScreen')
-			return
-		}
-		try {
-			const aa = await getAAAccount(profile)
-			if (aa && ethers.isAddress(aa)) {
-				setWalletAddr(aa)
-				finishOnboardingToHome()
-				return
+		if (profile?.keyID && ethers.isAddress(profile.keyID)) {
+			try {
+				const aa = await ensureConetAaForProfileAndPersist(profile, setProfiles)
+				if (aa) setWalletAddr(aa)
+			} catch {
+				/* 不可信失败：仍进 Home，AppShell 会重试 ensure */
 			}
-		} catch {
-			// AA 查询不可信时仍展示激活引导页，避免误跳过
 		}
-		setSettingsOpen('WalletReadyScreen')
+		finishOnboardingToHome()
 	}
 
 	// Wallet Ready：获取 AA 地址与 USDC 余额，并记录 EOA 地址
@@ -1157,6 +1156,12 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 										setSettingsOpen('')
 									} : async () => {
 										await init(temp, { dontClose: true })
+										const profile = CoNET_Data?.profiles?.[0]
+										if (profile?.keyID && ethers.isAddress(profile.keyID)) {
+											void ensureConetAaForProfileAndPersist(profile, setProfiles).then((aa) => {
+												if (aa) setWalletAddr(aa)
+											})
+										}
 										setSettingsOpen('OnboardingWelcomeScreen')
 									}} />
 							}

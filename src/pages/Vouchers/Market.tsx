@@ -51,12 +51,15 @@ import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage } from "@/services/beamio"
-import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
+	discoverUsdcTopupRulesHintText,
 	eoaCanSelfFundDiscoverTopup,
 	eoaMeetsExternalFundingTarget,
+	fetchDiscoverUsdcTopupRules,
 	parseDiscoverTopupAmountInput,
 	pollEoaUsdcFundingThenTopup,
+	precheckDiscoverUsdcTopupUsdc6,
 	readEoaUsdcBalance6,
 	usdc6ToExactTransferAmount,
 } from "@/utils/discoverEoaUsdcTopup"
@@ -1844,6 +1847,8 @@ function DiscoverMerchantDetailFullScreen({
 	const [usdcTopupProgress, setUsdcTopupProgress] = useState('')
 	const [usdcTopupSubmitting, setUsdcTopupSubmitting] = useState(false)
 	const [usdcTopupError, setUsdcTopupError] = useState('')
+	const [usdcTopupRulesHint, setUsdcTopupRulesHint] = useState('')
+	const [usdcTopupIntent, setUsdcTopupIntent] = useState<USDCUserCardTopupIntent>('topup')
 	const [usdcTopupUrlCopied, setUsdcTopupUrlCopied] = useState(false)
 	const usdcTopupPollAbortRef = useRef<AbortController | null>(null)
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1926,10 +1931,16 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupProgress('')
 		setUsdcTopupSubmitting(false)
 		setUsdcTopupError('')
+		setUsdcTopupRulesHint('')
+		setUsdcTopupIntent('topup')
 	}, [])
 
 	const submitDiscoverEoaTopup = useCallback(
-		async (requiredUsdc6: bigint, transferAmountStr?: string): Promise<boolean> => {
+		async (
+			requiredUsdc6: bigint,
+			transferAmountStr?: string,
+			intentOverride?: USDCUserCardTopupIntent,
+		): Promise<boolean> => {
 			const cardAddress = item.cardAddress?.trim() ?? ''
 			if (!cardAddress || !profile?.keyID || !profile?.privateKeyArmor) return false
 			if (requiredUsdc6 <= 0n) return false
@@ -1940,7 +1951,7 @@ function DiscoverMerchantDetailFullScreen({
 				profile: profile as profile,
 				cardAddress,
 				usdcAmount,
-				intent: 'topup',
+				intent: intentOverride ?? usdcTopupIntent,
 			})
 			if (!ret.success) {
 				setUsdcTopupError(ret.error ?? 'Top-up failed')
@@ -1952,8 +1963,31 @@ function DiscoverMerchantDetailFullScreen({
 			resetUsdcTopupFlow()
 			return true
 		},
-		[item.cardAddress, profile, refreshMerchantAssets, resetUsdcTopupFlow],
+		[item.cardAddress, profile, refreshMerchantAssets, resetUsdcTopupFlow, usdcTopupIntent],
 	)
+
+	useEffect(() => {
+		if (usdcTopupPhase !== 'amount' || !item.cardAddress) return
+		const userEoa = resolveUserEoa()
+		if (!userEoa) return
+		let cancelled = false
+		void (async () => {
+			const rules = await fetchDiscoverUsdcTopupRules({
+				cardAddress: item.cardAddress!,
+				fromEoa: userEoa,
+			})
+			if (cancelled) return
+			if (!rules.ok) {
+				setUsdcTopupRulesHint('')
+				return
+			}
+			setUsdcTopupIntent(rules.intent)
+			setUsdcTopupRulesHint(discoverUsdcTopupRulesHintText(rules.preview))
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress, resolveUserEoa, usdcTopupPhase])
 
 	const handleUsdcTopupContinue = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
@@ -1997,6 +2031,17 @@ function DiscoverMerchantDetailFullScreen({
 				return
 			}
 
+			const selfPrecheck = await precheckDiscoverUsdcTopupUsdc6({
+				cardAddress,
+				fromEoa: userEoa,
+				usdc6: selfFundUsdc6,
+			})
+			if (!selfPrecheck.ok) {
+				setUsdcTopupError(selfPrecheck.error)
+				return
+			}
+			setUsdcTopupIntent(selfPrecheck.intent)
+
 			if (eoaCanSelfFundDiscoverTopup(baselineUsdc6, selfFundUsdc6)) {
 				setUsdcTopupFiatAmount(parsed.apiAmount)
 				setUsdcTopupRequiredUsdc6(selfFundUsdc6)
@@ -2006,6 +2051,7 @@ function DiscoverMerchantDetailFullScreen({
 				await submitDiscoverEoaTopup(
 					selfFundUsdc6,
 					safeUsdc6ToAmountString(selfFundUsdc6),
+					selfPrecheck.intent,
 				)
 				return
 			}
@@ -2028,6 +2074,16 @@ function DiscoverMerchantDetailFullScreen({
 				amount: parsed.apiAmount,
 				currency: displayCurrency,
 			})
+			const quotePrecheck = await precheckDiscoverUsdcTopupUsdc6({
+				cardAddress,
+				fromEoa: userEoa,
+				usdc6: quotedUsdc6,
+			})
+			if (!quotePrecheck.ok) {
+				setUsdcTopupError(quotePrecheck.error)
+				return
+			}
+			setUsdcTopupIntent(quotePrecheck.intent)
 			const usdcDisplay = formatQuotedUsdc6ForDisplay(quotedUsdc6)
 			setUsdcTopupFiatAmount(parsed.apiAmount)
 			setUsdcTopupRequiredUsdc6(quotedUsdc6)
@@ -2051,7 +2107,11 @@ function DiscoverMerchantDetailFullScreen({
 			if (alreadyFunded) {
 				setUsdcTopupProgress('USDC received — completing top-up…')
 				setUsdcTopupPhase('receive')
-				await submitDiscoverEoaTopup(quotedUsdc6, usdc6ToExactTransferAmount(quotedUsdc6))
+				await submitDiscoverEoaTopup(
+					quotedUsdc6,
+					usdc6ToExactTransferAmount(quotedUsdc6),
+					quotePrecheck.intent,
+				)
 				return
 			}
 
@@ -2130,6 +2190,7 @@ function DiscoverMerchantDetailFullScreen({
 				cardAddress,
 				baselineUsdc6: usdcTopupBaselineUsdc6,
 				requiredUsdc6: usdcTopupRequiredUsdc6,
+				intent: usdcTopupIntent,
 				signal: ac.signal,
 				onProgress: setUsdcTopupProgress,
 			})
@@ -2162,6 +2223,7 @@ function DiscoverMerchantDetailFullScreen({
 		usdcTopupFiatAmount,
 		usdcTopupPhase,
 		usdcTopupRequiredUsdc6,
+		usdcTopupIntent,
 	])
 
 	useEffect(
@@ -2491,6 +2553,11 @@ function DiscoverMerchantDetailFullScreen({
 								<label htmlFor="discover-usdc-topup-amount" className="block text-[13px] font-semibold text-slate-600 dark:text-slate-400">
 									Top-up amount ({displayCurrency})
 								</label>
+								{usdcTopupRulesHint ? (
+									<p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
+										{usdcTopupRulesHint}
+									</p>
+								) : null}
 								<input
 									id="discover-usdc-topup-amount"
 									type="number"

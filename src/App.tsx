@@ -18,6 +18,7 @@ import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
 import { checkStorage, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
+import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
@@ -45,6 +46,7 @@ import BeamioTransactions from '@/pages/Vouchers/example/uelCenter'
 import MobilePOS from '@/pages/Vouchers/example/Pos'
 import CardManager from '@/pages/cardManager'
 import WalletOverview from '@/pages/Wallet/WalletOverview'
+import BusinessStartKetRedeemAdminPage from '@/pages/Wallet/BusinessStartKetRedeemAdminPage'
 import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
@@ -63,6 +65,7 @@ import {
 } from "@/utils/beamioDeepLinkParams"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
+import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 
 global.Buffer = require("buffer").Buffer
 
@@ -143,6 +146,21 @@ function AppShell() {
   const routeLockApplyingRef = useRef(false)
 
   const navigate = useNavigate()
+  const location = useLocation()
+  const conetAaEnsureKeyRef = useRef<string>('')
+
+  /** 进入 Home（/）时：CoNET 无 AA 则静默经 API 创建，不再展示 Action Required 面板。 */
+  useEffect(() => {
+    if (isInitialLoading) return
+    if (location.pathname !== '/') return
+    const profile = profiles?.[0]
+    const eoa = profile?.keyID?.trim()
+    if (!eoa || !ethers.isAddress(eoa)) return
+    const key = eoa.toLowerCase()
+    if (conetAaEnsureKeyRef.current === key) return
+    conetAaEnsureKeyRef.current = key
+    void ensureConetAaForProfileAndPersist(profile, setProfiles)
+  }, [isInitialLoading, location.pathname, profiles?.[0]?.keyID, setProfiles])
   // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时先打开确认页
   useEffect(() => {
     if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
@@ -640,7 +658,15 @@ function AppShell() {
 	const init = async (source = 'mount', temp?: encrypt_keys_object) => {
 		publishNativePwaLog('info', `[AppShell] init start (${source})`)
 
-		const isAcc = await checkStorage()
+		let isAcc = temp ?? (await checkStorage())
+		if ((!isAcc || !hasLocalPlaintextMnemonic(isAcc)) && !temp) {
+			const provisioned = await ensureEphemeralWalletForCouponClaim()
+			if (provisioned) {
+				isAcc = provisioned
+				temp = provisioned
+			}
+		}
+
 		if (!isAcc) {
 			publishNativePwaLog('info', '[AppShell] init skip: no local wallet storage')
 			setIsInitialLoading(true)
@@ -1380,6 +1406,7 @@ function AppShell() {
 				<Route element={<AppEntryGate />}>
 					<Route path="/" element={<Home />} />
 					<Route path="/wallet" element={<WalletOverview />} />
+					<Route path="/wallet/business-start-ket-redeem" element={<BusinessStartKetRedeemAdminPage />} />
 					<Route path="/History" element={<History />} />
 					<Route path="/Pay" element={<Pay />} />
 					<Route path="/qr" element={<QrOperationPage />} />

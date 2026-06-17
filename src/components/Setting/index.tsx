@@ -6,7 +6,8 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { Popup } from 'antd-mobile'
 import { CoNET_Data } from '../../utils/globals'
 import Privatekey from './PrivateKey/PrivateKey'
-import { Copy, Check, Bell, Settings, QrCode, Sun, Moon, X } from 'lucide-react'
+import { Copy, Check, Bell, Settings, Sun, Moon, X } from 'lucide-react'
+import { ProfileWalletPanels } from './ProfileWalletPanels'
 import BeamioSettingsScreen from './setup'
 import BeamioReceiveScreen from './BeamioReceiveScreen'
 import { getBalanceProcess, getMyFollowStatus, postBeamio } from '@/services/beamio'
@@ -20,7 +21,6 @@ import BeamioAccountScreen from "./BeamioAccountScreen"
 import BeamioNotificationsSettingsScreen from "./BeamioNotificationsSettingsScreen";
 import { IpfsImg } from '@/components/IpfsImg';
 import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
-import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
 import packageJson from '../../../package.json'
 import {
@@ -124,73 +124,11 @@ const SettingRow = ({
 	)
 }
 
-const shortenAddress = (addr: string) => {
-	if (!addr) return ""
-	if (addr.length <= 10) return addr
-	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
-}
-
-type ProfileWalletAddressKind = 'eoa' | 'aa'
-
-function ProfileWalletAddressCapsule({
-	address,
-	kind,
-	copied,
-	onCopy,
-}: {
-	address: string
-	kind: ProfileWalletAddressKind
-	copied: boolean
-	onCopy: () => void
-}) {
-	const shellClass =
-		kind === 'aa'
-			? 'bg-violet-500/25 border border-violet-200/20'
-			: 'bg-black/20'
-
-	return (
-		<button
-			type="button"
-			className={`
-				inline-flex items-center gap-2
-				px-4 py-1.5 rounded-full
-				text-[12px] font-medium text-white/95
-				backdrop-blur-sm
-				transition-transform duration-150 ease-out
-				${shellClass}
-				${copied ? 'scale-95' : 'hover:scale-[1.02] active:scale-95'}
-			`}
-			onClick={onCopy}
-			aria-label={kind === 'aa' ? 'Copy Express Pay address' : 'Copy Main Wallet address'}
-		>
-			{kind === 'aa' ? (
-				<span className="rounded-full bg-violet-400/35 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/90">
-					AA
-				</span>
-			) : null}
-			<span className="tracking-wide font-mono">{shortenAddress(address)}</span>
-			<span
-				className={`
-					w-6 h-6 rounded-full flex items-center justify-center
-					transition-colors duration-150
-					${copied ? 'bg-emerald-500' : 'bg-black/20'}
-				`}
-			>
-				{copied ? (
-					<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
-				) : (
-					<Copy className="w-3.5 h-3.5 text-white/95" strokeWidth={2} />
-				)}
-			</span>
-		</button>
-	)
-}
-
 export default function BeamioMeMainScreen() {
 	const navigate = useNavigate()
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, 
 		profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, 
-		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray } = useDaemonContext()
+		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray, aaAccountUsdcBalance } = useDaemonContext()
 
 	const [avatarSeed, setAvatarSeed] = useState('')
 	const [avatarName, setAvatarName] = useState('')
@@ -200,10 +138,9 @@ export default function BeamioMeMainScreen() {
 	const [privatekeyVisible, setPrivatekeyVisible] = useState(false)
 	const [avatarEditorVisible, setAvatarEditorVisible] = useState(false)
 
-	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'|'Region'|'Account'|'Notifications'|'Help'|'RecoveryBackupScreen'|'PayRequest'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'|'Region'|'Account'|'Notifications'|'Help'|'RecoveryBackupScreen'>('')
 	const [setFollowOpen, setSetFollowOpen] = useState<'following' | 'followers'|''>('')
 	const [receiveOpen, setReceiveOpen] = useState(false)     // 控制 Receive 全屏页
-	const [copiedWalletKind, setCopiedWalletKind] = useState<ProfileWalletAddressKind | null>(null)
 	const [followingCount, setFollowingCount] = useState(0)
 	const [followerCount, setFollowerCount] = useState(0)
 	/** Language & Currency 行：本地缓存优先，beamio 到达后再对齐并落盘 */
@@ -221,7 +158,17 @@ export default function BeamioMeMainScreen() {
 		navigate('/')
 	}
 
-	const aaWalletAddress = useMemo(() => {
+	const eoaCapsuleAddress = useMemo(() => {
+		const raw = myAddress?.trim() ?? profiles?.[0]?.keyID?.trim() ?? ''
+		if (!raw || !ethers.isAddress(raw)) return ''
+		try {
+			return ethers.getAddress(raw)
+		} catch {
+			return ''
+		}
+	}, [myAddress, profiles?.[0]?.keyID])
+
+	const aaCapsuleAddress = useMemo(() => {
 		const raw = profiles?.[0]?.aaAccount?.trim() ?? ''
 		if (!raw || !ethers.isAddress(raw)) return ''
 		try {
@@ -230,17 +177,6 @@ export default function BeamioMeMainScreen() {
 			return ''
 		}
 	}, [profiles?.[0]?.aaAccount])
-
-	const copyWalletAddress = (kind: ProfileWalletAddressKind, address: string) => {
-		if (!navigator?.clipboard || !address) return
-		navigator.clipboard
-			.writeText(address)
-			.then(() => {
-				setCopiedWalletKind(kind)
-				setTimeout(() => setCopiedWalletKind(null), 2000)
-			})
-			.catch(() => {})
-	}
 
 	// 头像：优先使用 beamio.image（自定义/IPFS/DiceBear URL），否则用 accountName 生成 DiceBear
 	const displayAvatarSrc = beamio?.image?.trim()
@@ -498,34 +434,16 @@ export default function BeamioMeMainScreen() {
 
 			{/* 头像 + username + address + follow */}
 			<div className="flex flex-col items-center text-center">
-				<motion.button
-					type="button"
-					onClick={() => {
-						setSettingsOpen('PayRequest')
-						setShowFooter(false)
-						setNavigateLeftButtonArray([{
-							title: '',
-							action: [
-								// () => navigate('/History'),
-								() => setSettingsOpen(''),
-								() => setShowFooter(true)
-								
-							]
-
-						}])
-					}}
-					whileTap={{ scale: 0.95 }}
-					className="flex-shrink-0 mr-2"
-				>
+				<div className="mr-2 flex-shrink-0">
 				{displayAvatarSrc && (
 					<IpfsImg
 						key={displayAvatarSrc}
 						src={displayAvatarSrc}
 						alt={beamio?.accountName}
-						className="w-20 h-20 rounded-full object-cover"
+						className="h-20 w-20 rounded-full object-cover"
 					/>
 				)}
-				</motion.button>
+				</div>
 
 				{/* @username + copy */}
 				<div className="mt-4 flex flex-col items-center gap-1">
@@ -582,27 +500,6 @@ export default function BeamioMeMainScreen() {
 						
 
 				</div>
-
-				{/* EOA + AA address capsules */}
-				{beamio && myAddress && (
-					<div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-						<ProfileWalletAddressCapsule
-							address={myAddress}
-							kind="eoa"
-							copied={copiedWalletKind === 'eoa'}
-							onCopy={() => copyWalletAddress('eoa', myAddress)}
-						/>
-						{aaWalletAddress &&
-						aaWalletAddress.toLowerCase() !== myAddress.toLowerCase() ? (
-							<ProfileWalletAddressCapsule
-								address={aaWalletAddress}
-								kind="aa"
-								copied={copiedWalletKind === 'aa'}
-								onCopy={() => copyWalletAddress('aa', aaWalletAddress)}
-							/>
-						) : null}
-					</div>
-				)}
 
 				{/* following / followers */}
 				<div
@@ -676,40 +573,12 @@ export default function BeamioMeMainScreen() {
 
 							{/* ✅ 这块就是图里蓝色下方的两张白卡 */}
 							<div className="relative z-10 -mt-5 px-4 pb-10">
-							{/* My Beamio Code */}
-							<div className="rounded-[22px] bg-white shadow-[0_14px_40px_rgba(15,23,42,0.08)] px-5 py-4 flex items-center">
-								<div className="flex-1">
-								<div className="text-[18px] font-extrabold text-slate-900">My Beamio Code</div>
-								<div className="text-[14px] text-slate-500 mt-0.5">Share to receive money</div>
-								</div>
-
-								<button
-									type="button"
-									onClick={() => {
-										setNavigateLeftButtonArray([{
-												title: '',
-												action: [
-													// () => navigate('/History'),
-													() => setSettingsOpen(''),
-													() => setShowFooter(true)
-													
-												]
-
-											}])
-											setSettingsOpen('PayRequest')
-											setShowFooter(false)
-									}}
-									className="
-										h-12 w-12 rounded-[16px]
-										bg-slate-50
-										flex items-center justify-center
-										active:scale-[0.98]
-										transition
-									"
-								>
-								<QrCode className="w-6 h-6 text-blue-600" />
-								</button>
-							</div>
+							<ProfileWalletPanels
+								eoaAddress={eoaCapsuleAddress}
+								aaAddress={aaCapsuleAddress}
+								eoaBalanceUsdc={usdcbalance}
+								aaBalanceUsdc={aaAccountUsdcBalance}
+							/>
 
 							{/* Settings list */}
 							<div className="mt-5 rounded-[26px] bg-white shadow-[0_14px_40px_rgba(15,23,42,0.08)] overflow-hidden">
@@ -943,11 +812,6 @@ export default function BeamioMeMainScreen() {
 							}
 							{
 								settingsOpen === 'RecoveryBackupScreen' && <Security />
-							}
-
-							{
-								settingsOpen === 'PayRequest' && 
-								<BeamioPayMe showActiveTab={false}  />
 							}
 
 							{settingsOpen === 'CoinbaseRamp' && <CoinbaseRamps />}

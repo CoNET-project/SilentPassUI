@@ -2,7 +2,7 @@
  * Match x402sdk resolveBeamioAaViaUserCardFactory: only UserCardFactory._aaFactory() then beamioAccountOf / primaryAccountOf. No BASE_AA_FACTORY fallback.
  */
 import { ethers } from 'ethers'
-import { BASE_CARD_FACTORY } from '../config/chainAddresses'
+import { BASE_CARD_FACTORY, BEAMIO_AA_FACTORY } from '../config/chainAddresses'
 
 const paymasterAbi = ['function _aaFactory() view returns (address)'] as const
 const aaFactoryAbi = [
@@ -37,4 +37,9 @@ export async function resolveBeamioAaForEoaWithFallback(provider: ethers.Provide
 		/* ignore */
 	}
 	return null
+}
+
+/** CoNET 224422：跨链同址 BEAMIO_AA_FACTORY 上查已部署 AA（须 getCode 非空）。 */
+export async function resolveBeamioAaOnConet(provider: ethers.Provider, eoa: string): Promise<string | null> {
+	return aaFromFactory(provider, eoa, BEAMIO_AA_FACTORY)
 }

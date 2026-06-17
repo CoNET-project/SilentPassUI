@@ -2,7 +2,8 @@ import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
 import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
-import { resolveBeamioAaForEoaWithFallback } from "@/utils/resolveBeamioAaFromCardFactory";
+import { resolveBeamioAaForEoaWithFallback, resolveBeamioAaOnConet } from "@/utils/resolveBeamioAaFromCardFactory";
+import { CONET_RPC_URL } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import {
 	peekCardBasicMetadata,
@@ -3764,19 +3765,20 @@ async function fetchAAAccountFromApi(eoa: string): Promise<string | null> {
 export const getAAAccount = async (profile: profile): Promise<string | null> => {
 	const eoa = profile?.keyID?.trim()
 	if (!eoa || !ethers.isAddress(eoa)) return null
+	const conetProvider = new ethers.JsonRpcProvider(CONET_RPC_URL)
 	try {
-		const account = await resolveBeamioAaForEoaWithFallback(baseEndpoint, eoa)
-		if (!account) return fetchAAAccountFromApi(eoa)
+		const account = await resolveBeamioAaOnConet(conetProvider, eoa)
+		if (!account) return null
 		try {
-			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], baseEndpoint)
+			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], conetProvider)
 			await aa.factory()
 		} catch (e: any) {
 			throw new Error(`getAAAccount: factory() not available: ${e?.shortMessage ?? e?.message}`)
 		}
 		return account
 	} catch (error: any) {
-		console.warn(`[getAAAccount] RPC failed: ${error.message}, fallback to API`)
-		return fetchAAAccountFromApi(eoa)
+		console.warn(`[getAAAccount] CoNET RPC failed: ${error.message}`)
+		return null
 	}
 }
 

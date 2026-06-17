@@ -4,8 +4,10 @@
 
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Gift } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
+import { useBusinessStartKetRedeemAdmin } from '@/hooks/useBusinessStartKetRedeemAdmin'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import { WalletMerchantPassStack } from '@/pages/Wallet/WalletMerchantPassStack'
@@ -27,7 +29,11 @@ export default function WalletOverview() {
 		myBrandsFeedLoading,
 	} = useDaemonContext()
 
-	const eoaLower = profiles?.[0]?.keyID?.trim().toLowerCase() ?? ''
+	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
+	const eoaLower = eoa.toLowerCase()
+	const { isRedeemAdmin } = useBusinessStartKetRedeemAdmin(eoa)
+	const showRedeemAdminIcon = isRedeemAdmin === true
+
 	const merchantPassesView = useWalletMerchantPassesStickyDisplay(
 		eoaLower,
 		myBrandCards,
@@ -41,7 +47,7 @@ export default function WalletOverview() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-1 flex-col bg-[#F2F2F7] text-slate-900 dark:bg-slate-950 dark:text-slate-50">
-			{/* 顶栏：无返回；仅保留左侧 Wallet 胶囊 */}
+			{/* 顶栏：左侧 Wallet 胶囊；BusinessStartKetRedeem admin 可见右侧 redeem 入口 */}
 			<div
 				className="fixed left-4 right-4 z-40 flex items-center justify-between gap-2 transition-opacity duration-300"
 				style={{
@@ -65,6 +71,20 @@ export default function WalletOverview() {
 					<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Wallet</span>
 				</button>
 
+				{showRedeemAdminIcon ? (
+					<button
+						type="button"
+						onClick={() => navigate('/wallet/business-start-ket-redeem')}
+						className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${capsuleChrome} text-[#1562f0] transition-transform active:scale-[0.98] hover:bg-slate-50 dark:hover:bg-slate-700/50`}
+						style={{ pointerEvents: capsulePointer }}
+						aria-label="Redeem admin"
+						title="Redeem admin"
+					>
+						<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+					</button>
+				) : (
+					<span className="w-0 shrink-0" aria-hidden />
+				)}
 			</div>
 
 			<div

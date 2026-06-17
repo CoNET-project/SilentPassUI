@@ -16,6 +16,7 @@ import {
 	hasCompletedBeamioAccount,
 	hasLocalPlaintextMnemonic,
 } from '@/utils/consumerWalletGate'
+import { ensureEphemeralWalletForCouponClaim } from '@/utils/ephemeralCouponClaimWallet'
 
 export default function AppEntryGate() {
 	const { setIsInitialLoading } = useDaemonContext()
@@ -24,7 +25,10 @@ export default function AppEntryGate() {
 	const [splashVisible, setSplashVisible] = useState(true)
 
 	const init = async () => {
-		const CoNETData = await checkStorage()
+		let CoNETData = await checkStorage()
+		const provisioned = await ensureEphemeralWalletForCouponClaim()
+		if (provisioned) CoNETData = provisioned
+
 		const hasAccount = hasCompletedBeamioAccount(CoNETData)
 		const needsRecover = consumerAppNeedsWalletRecover(CoNETData)
 		const hasMnemonic = hasLocalPlaintextMnemonic(CoNETData)

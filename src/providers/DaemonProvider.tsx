@@ -1264,7 +1264,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       } catch {
         if (effectiveAa) {
           try {
-            const code = await baseEndpoint.getCode(effectiveAa)
+            const code = await conetProviderRef.current!.getCode(effectiveAa)
             const isEOA =
               profile.keyID && effectiveAa.toLowerCase() === profile.keyID.toLowerCase()
             if (!code || code === '0x' || code.length <= 2 || isEOA) {

@@ -2,6 +2,9 @@ import { ethers } from 'ethers'
 import {
 	getEOAUSDCBalance,
 	postUSDCUserCardTopup,
+	postUSDCUserCardTopupPreview,
+	type USDCUserCardTopupIntent,
+	type USDCUserCardTopupPreviewPayload,
 } from '@/services/BeamioCard'
 import { BASE_MAINNET_CHAIN_ID, USDC_BASE } from '@/config/chainAddresses'
 
@@ -64,6 +67,80 @@ export function usdc6ToExactTransferAmount(usdc6: bigint): string {
 	return ethers.formatUnits(usdc6, 6)
 }
 
+export function formatDiscoverUsdcTopupMinUsdcDisplay(requiredMinUsdc6: string): string {
+	try {
+		return Number(ethers.formatUnits(BigInt(requiredMinUsdc6), 6)).toFixed(2)
+	} catch {
+		return requiredMinUsdc6
+	}
+}
+
+export function discoverUsdcTopupRulesHintText(preview: USDCUserCardTopupPreviewPayload): string {
+	const min = formatDiscoverUsdcTopupMinUsdcDisplay(preview.requiredMinUsdc6)
+	if (preview.intent === 'first_purchase') {
+		return `First purchase requires at least ${min} USDC for this merchant card.`
+	}
+	return ''
+}
+
+export function discoverUsdcTopupAmountTooSmallError(
+	preview: USDCUserCardTopupPreviewPayload,
+	providedUsdc6: bigint,
+): string {
+	const need = formatDiscoverUsdcTopupMinUsdcDisplay(preview.requiredMinUsdc6)
+	const got = usdc6ToExactTransferAmount(providedUsdc6)
+	const intentLabel = preview.intent === 'first_purchase' ? 'first purchase' : preview.intent
+	return `Amount too small for ${intentLabel}. Minimum required is ${need} USDC (this top-up quotes ~${got} USDC).`
+}
+
+export type DiscoverUsdcTopupPrecheckResult =
+	| { ok: true; intent: USDCUserCardTopupIntent; preview: USDCUserCardTopupPreviewPayload }
+	| { ok: false; error: string }
+
+/** Load tier / first-purchase rules before the user signs or pays (read-only preview). */
+export async function fetchDiscoverUsdcTopupRules(params: {
+	cardAddress: string
+	fromEoa: string
+}): Promise<DiscoverUsdcTopupPrecheckResult> {
+	const res = await postUSDCUserCardTopupPreview({
+		cardAddress: params.cardAddress,
+		from: params.fromEoa,
+		intent: 'auto',
+	})
+	if (!res.success || !res.preview) {
+		return { ok: false, error: res.error ?? 'Unable to load top-up requirements' }
+	}
+	return { ok: true, intent: res.preview.intent, preview: res.preview }
+}
+
+/** Cluster-aligned amount check — `usdc6` must be atomic 6-decimal string units (same as `/api/usdcTopup`). */
+export async function precheckDiscoverUsdcTopupUsdc6(params: {
+	cardAddress: string
+	fromEoa: string
+	usdc6: bigint
+}): Promise<DiscoverUsdcTopupPrecheckResult> {
+	if (params.usdc6 <= 0n) {
+		return { ok: false, error: 'Enter a valid amount greater than 0' }
+	}
+	const res = await postUSDCUserCardTopupPreview({
+		cardAddress: params.cardAddress,
+		from: params.fromEoa,
+		intent: 'auto',
+		usdcAmount: params.usdc6.toString(),
+	})
+	if (!res.success || !res.preview) {
+		return { ok: false, error: res.error ?? 'Unable to validate top-up amount' }
+	}
+	if (res.amountCheck && !res.amountCheck.ok) {
+		return { ok: false, error: discoverUsdcTopupAmountTooSmallError(res.preview, params.usdc6) }
+	}
+	const required = BigInt(res.preview.requiredMinUsdc6)
+	if (params.usdc6 < required) {
+		return { ok: false, error: discoverUsdcTopupAmountTooSmallError(res.preview, params.usdc6) }
+	}
+	return { ok: true, intent: res.preview.intent, preview: res.preview }
+}
+
 export type DiscoverEoaUsdcTopupPollOutcome =
 	| { status: 'success'; txHash?: string }
 	| { status: 'error'; message: string }
@@ -74,6 +151,7 @@ export async function pollEoaUsdcFundingThenTopup(params: {
 	cardAddress: string
 	baselineUsdc6: bigint
 	requiredUsdc6: bigint
+	intent: USDCUserCardTopupIntent
 	onProgress?: (label: string) => void
 	signal?: AbortSignal
 }): Promise<DiscoverEoaUsdcTopupPollOutcome> {
@@ -125,7 +203,7 @@ export async function pollEoaUsdcFundingThenTopup(params: {
 			profile: params.profile,
 			cardAddress: params.cardAddress,
 			usdcAmount: usdcAmountStr,
-			intent: 'topup',
+			intent: params.intent,
 		})
 		if (!ret.success) {
 			return { status: 'error', message: ret.error ?? 'Top-up failed' }

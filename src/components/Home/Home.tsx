@@ -348,7 +348,6 @@ const Home = (_props: HomeProps) => {
 	const [nfcLinkActionTagId, setNfcLinkActionTagId] = useState<string | null>(null)
 	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
 	const cashTreesNfcReq = useRef(0)
-	const activateWalletPanelRef = useRef<HTMLDivElement | null>(null)
 	const [activateGiftVoucherScreen, setActivateGiftVoucherScreen] = useState<'' | 'activeCoupons' | 'redeemVoucher'>('')
 	const [cashTreesHeroBgIndex, setCashTreesHeroBgIndex] = useState(0)
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
@@ -422,8 +421,6 @@ const Home = (_props: HomeProps) => {
 	)
 
 	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
-	/** 已登录 EOA、尚未部署 AA 时在首页展示激活引导（与 renderAction Activate Wallet 对齐） */
-	const showActivateWalletPanel = Boolean(profiles?.[0]?.keyID) && !hasAAWallet
 
 	/** 与 BeamioPayMe `successUrl` 在 EOA 模式下一致：任意金额收款链接，wallet=EOA */
 	const activateWalletEoaQrValue = useMemo(() => {
@@ -439,21 +436,11 @@ const Home = (_props: HomeProps) => {
 		return `https://beamio.app?${params.toString()}`
 	}, [beamio?.accountName, myAddress, profiles?.[0]?.keyID])
 
-	/** Activate Wallet 引导展示期间隐藏全局 Footer（与 Pay/Receive 等底栏一致） */
-	useEffect(() => {
-		if (!showActivateWalletPanel) return
-		setShowFooter(false)
-		return () => setShowFooter(true)
-	}, [showActivateWalletPanel, setShowFooter])
-
 	useEffect(() => {
 		if (!activateGiftVoucherScreen) return
 		setShowFooter(false)
-		return () => {
-			if (showActivateWalletPanel) setShowFooter(false)
-			else setShowFooter(true)
-		}
-	}, [activateGiftVoucherScreen, showActivateWalletPanel, setShowFooter])
+		return () => setShowFooter(true)
+	}, [activateGiftVoucherScreen, setShowFooter])
 
 	const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(
 		avatarName
@@ -1390,23 +1377,12 @@ const Home = (_props: HomeProps) => {
 		if (!intent) return
 
 		if (intent === 'activate') {
-			if (!showActivateWalletPanel) {
-				try {
-					sessionStorage.removeItem(WALLET_READY_INTENT_KEY)
-				} catch {
-					/* ignore */
-				}
-				return
-			}
 			try {
 				sessionStorage.removeItem(WALLET_READY_INTENT_KEY)
 			} catch {
 				/* ignore */
 			}
-			const t = window.setTimeout(() => {
-				activateWalletPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-			}, 200)
-			return () => window.clearTimeout(t)
+			return
 		}
 
 		if (intent === 'nfcSync') {
@@ -1420,7 +1396,7 @@ const Home = (_props: HomeProps) => {
 			}, 200)
 			return () => window.clearTimeout(t)
 		}
-	}, [profiles?.[0]?.keyID, showActivateWalletPanel, startCashTreesPhysicalCardBind])
+	}, [profiles?.[0]?.keyID, startCashTreesPhysicalCardBind])
 
 	const cancelCashTreesNfcBind = () => {
 		getCashTreesNativeNfcBridge()?.cancelPhysicalCardBind?.()
@@ -1660,7 +1636,7 @@ const Home = (_props: HomeProps) => {
 	}, [showPayReceiveSheet, payReceiveQrMode, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.aaAccount])
 
 	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；改为单层 flex 链并写死 flex-basis */
-	const homeScrollUsesSingleFlexChain = showActivateWalletPanel && !openSearch
+	const homeScrollUsesSingleFlexChain = false
 
 	/** 与 DaemonProvider「points」折 CAD 同源，用于 Hub 双列（USDC / Merchant） */
 	const homeHubWalletCad = useMemo(() => {
@@ -1879,130 +1855,6 @@ const Home = (_props: HomeProps) => {
 
 							{/* Content — 浅底、白卡片、青柠强调 */}
 							<div className="space-y-8 px-5 pt-4">
-							{showActivateWalletPanel ? (
-								<div ref={activateWalletPanelRef} className="px-1 pt-2 pb-4">
-									{/* WebView：isolate 限制叠层；避免负 z-index 在部分 WebView 下吞掉后续兄弟节点绘制 */}
-									<div className="relative isolate flex flex-col items-center rounded-[2.5rem] border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-										<div className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest">
-											Action Required
-										</div>
-										<h2 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 text-center tracking-tight">
-											Activate Wallet
-										</h2>
-										<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center leading-relaxed">
-											Your app is currently in EOA mode. Load cash or sync a card to deploy your Smart Account.
-										</p>
-
-										<div className="w-full bg-gray-50 dark:bg-slate-800/80 rounded-3xl p-5 mb-4 border border-gray-200 dark:border-slate-600 flex flex-col items-center">
-											<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-												<Store size={14} aria-hidden /> Option 1: Store Deposit
-											</span>
-											<div
-												className="mb-3 flex flex-col items-center justify-center w-full max-w-[min(100%,280px)] select-none"
-												role="img"
-												aria-label="Store deposit payment QR code. Show to cashier to scan."
-											>
-												{/* 与 BeamioPayMe EOA 收款 QR 同款：仅展示，不触发 Pay Me 底栏 */}
-												<div className="mt-1 flex w-full justify-center">
-													<div className="relative">
-														<div
-															aria-hidden
-															className="pointer-events-none absolute inset-[-8px] z-0 rounded-[28px] bg-[radial-gradient(60%_60%_at_50%_40%,rgba(21,98,240,0.22),rgba(21,98,240,0.08)_55%,transparent_72%)] opacity-90"
-														/>
-														<div className="relative z-10 flex justify-center">
-															<div
-																className="
-																	rounded-[20px] bg-white
-																	p-2
-																	shadow-[0_26px_50px_rgba(21,98,240,0.22),0_10px_22px_rgba(0,0,0,0.08)]
-																	border-2 border-[#1562f0]
-																"
-															>
-																{activateWalletEoaQrValue ? (
-																	<div className="relative h-[180px] w-[180px]">
-																		<QRCodeCanvas
-																			value={activateWalletEoaQrValue}
-																			size={180}
-																			level="H"
-																			includeMargin={false}
-																			bgColor="#ffffff"
-																			fgColor="#000000"
-																			className="block"
-																		/>
-																		<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[18px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
-																			<IpfsImg
-																				src={APP_LOGO_SRC}
-																				alt="Beamio"
-																				className="h-full w-full rounded-[14px] object-contain"
-																				draggable={false}
-																			/>
-																		</div>
-																	</div>
-																) : (
-																	<div className="w-[180px] h-[180px] flex items-center justify-center text-xs text-gray-400 text-center px-4">
-																		Loading payment link…
-																	</div>
-																)}
-															</div>
-														</div>
-													</div>
-												</div>
-											</div>
-											<div className="flex items-center gap-1.5 bg-gray-200/50 dark:bg-slate-700/50 px-2 py-1 rounded-md mb-2 max-w-full">
-												<span className="text-[10px] text-gray-500 dark:text-slate-400 font-mono font-semibold truncate">
-													EOA: {eoaAddressShort}
-												</span>
-											</div>
-											<p className="text-xs text-gray-500 dark:text-slate-400 text-center font-medium">
-												Show QR to cashier to load cash.
-											</p>
-										</div>
-
-										{deviceHasNfcReadCapability ? (
-											<button
-												type="button"
-												onClick={() => startCashTreesPhysicalCardBind()}
-												className="w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex flex-col items-center cursor-pointer group text-left"
-												aria-label="Sync NFC card: start native NFC read"
-											>
-												<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-													<CreditCard size={14} aria-hidden /> Option 2: Got a Card?
-												</span>
-												<div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mb-2 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
-													<Radio size={20} className="text-[#1562f0]" aria-hidden />
-												</div>
-												<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Sync NFC Card</p>
-												<p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Tap funded card to phone.</p>
-											</button>
-										) : null}
-
-										<button
-											type="button"
-											onClick={() => setActivateGiftVoucherScreen('activeCoupons')}
-											className={`w-full bg-gray-50 dark:bg-slate-800/80 hover:bg-[#1562f0]/10 dark:hover:bg-[#1562f0]/15 transition-colors rounded-3xl p-5 border border-gray-200 dark:border-slate-600 flex items-center gap-4 cursor-pointer group text-left ${deviceHasNfcReadCapability ? 'mt-4' : 'mt-0'}`}
-											aria-label="Claim merchant coupon: browse active coupons"
-										>
-											<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900 shadow-sm border border-gray-100 dark:border-slate-600 group-hover:scale-110 transition-transform">
-												<Gift size={22} className="text-[#1562f0]" strokeWidth={2} aria-hidden />
-											</div>
-											<div className="min-w-0 flex-1">
-												<span className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-													{deviceHasNfcReadCapability ? 'Option 3' : 'Option 2'}: Gift Voucher
-												</span>
-												<p className="text-sm font-bold text-gray-900 dark:text-slate-100">Claim Merchant Coupon</p>
-												<p className="text-xs text-gray-500 dark:text-slate-400 mt-1 leading-snug">
-													Browse active coupons or enter a gift link.
-												</p>
-											</div>
-											<ChevronRight size={22} className="shrink-0 text-gray-400 group-hover:text-[#1562f0] transition-colors" aria-hidden />
-										</button>
-									</div>
-								</div>
-							) : (
-								<>
-							
-
-
 
 							{/* Universal Pay Hub（codingTemp.html）：NFC 独立 + 渐变卡 + 白底 Show Pay Code + Quick Actions */}
 							<div className="mb-10 flex flex-col gap-6 min-[480px]:gap-8">
@@ -2159,8 +2011,6 @@ const Home = (_props: HomeProps) => {
 								viewAllClassName="text-[#1562f0] hover:text-[#0e4cbb]"
 								onCompactViewAll={() => navigate('/Pay')}
 							/>
-								</>
-							)}
 						</div>
 
 							<div className="pointer-events-none h-[128px] shrink-0 pb-[env(safe-area-inset-bottom,0px)]" />
@@ -3721,7 +3571,7 @@ const Home = (_props: HomeProps) => {
 											const path = buildRedeemVoucherHistoryPath(voucherInput)
 											if (!path) return
 											setActivateGiftVoucherScreen('')
-											if (!showActivateWalletPanel) setShowFooter(true)
+											setShowFooter(true)
 											navigate(path)
 										}}
 									/>

@@ -24,7 +24,7 @@ import contracts from "../utils/contracts"
 import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
-import { BASE_MAINNET_FACTORIES, CONET_ACCOUNT_REGISTRY, CONET_BUNIT_AIRDROP_ADDRESS, CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
+import { BASE_MAINNET_FACTORIES, CONET_ACCOUNT_REGISTRY, CONET_BUNIT_AIRDROP_ADDRESS, CONET_MAINNET_CHAIN_ID, CONET_RPC_URL } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 import {
@@ -122,7 +122,7 @@ const ipfsEndpoint = `https://ipfs.conet.network/api/`
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
 
 /** Base 主网 BeamioOracle 合约，直接读取链上汇率，不再使用 API 服务器 */
-const BEAMIO_ORACLE_BASE = '0xDa4AE8301262BdAaf1bb68EC91259E6C512A9A2B'
+const BEAMIO_ORACLE_BASE = '0x77CB8358c5a37aB7190b0A2C7EaA7fEeDCF11008'
 const BeamioOracleAbi = ['function getRate(uint8 c) view returns (uint256)'] as const
 
 const storageNewUser = `${beamioApi}/api/addUser`
@@ -1503,7 +1503,7 @@ const beamioAccountContract = {
 	address: CONET_ACCOUNT_REGISTRY,
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 	
 }
 
@@ -1914,9 +1914,58 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	// const mnemonicPhraseBase64 = await aesGcmDecryptWithStored (kkk.img, pin + recoverCode.code, kkk.stored)
 	// const mnemonicPhraseB = fromBase64(mnemonicPhraseBase64)
 	// console.log (mnemonicPhraseB)
-	await newUser(BeamioName, [{hash: recoverCode.hash, encrypto: storageEncryptedImg}, {hash, encrypto: storageEncryptedImg1}], wallet)
+	const registered = await newUser(BeamioName, [{hash: recoverCode.hash, encrypto: storageEncryptedImg}, {hash, encrypto: storageEncryptedImg1}], wallet)
+	if (!registered) return null
 
 	return obj
+}
+
+/**
+ * Coupon open-claim deep link: auto 12-word wallet + `temp_${uuid}` registry, no user PIN/tag input.
+ * Replaces incomplete local wallet (no mnemonic) via `createOrGetWallet(null, true)`.
+ */
+export const provisionTempCouponClaimWallet = async (): Promise<encrypt_keys_object | null> => {
+	const temp = await createOrGetWallet(null, true)
+	if (!temp?.mnemonicPhrase || !temp?.profiles?.length) return null
+
+	const wallet = temp.profiles[0].privateKeyArmor
+	if (!isValidEthersPrivateKey(wallet)) return null
+
+	const beamioTag = `temp_${uuid62.v4()}`
+	const recoverCode = generateCODE('')
+	const pin = uuid62.v4()
+	const stored = hashPasswordBrowser(pin)
+	const phraseBase64 = toBase64(temp.mnemonicPhrase)
+	const img = await aesGcmEncryptWithStored(phraseBase64, recoverCode.code, stored)
+	const img1 = await aesGcmEncryptWithStored(phraseBase64, pin, stored)
+	const storageEncryptedImg = toBase64(JSON.stringify({ stored, img }))
+	temp.encryptedString = recoverCode.code
+	const hash = ethers.solidityPackedKeccak256(['string'], [beamioTag])
+	const storageEncryptedImg1 = toBase64(JSON.stringify({ stored, img: img1 }))
+
+	const registered = await newUser(
+		beamioTag,
+		[
+			{ hash: recoverCode.hash, encrypto: storageEncryptedImg },
+			{ hash, encrypto: storageEncryptedImg1 },
+		],
+		wallet,
+	)
+	if (!registered) return null
+
+	const keyID = temp.profiles[0].keyID
+	let userInfo: beamio | null = null
+	for (let attempt = 0; attempt < 20; attempt++) {
+		userInfo = await getUserInfo(keyID)
+		if (userInfo) break
+		await new Promise((resolve) => setTimeout(resolve, 1000))
+	}
+
+	temp.beamio = userInfo ?? buildMinimalBeamioFromAccountName(beamioTag)
+	temp.beamio.accountName = beamioTag
+	setCoNET_Data(temp)
+	await storeSystemData()
+	return temp
 }
 
 

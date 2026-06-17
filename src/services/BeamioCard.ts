@@ -53,8 +53,8 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
 	cards.filter((c) => !USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()))
 
-/** AA Factory 作为 UserCard gateway（与 config/chainAddresses BASE_AA_FACTORY 一致） */
-const BeamioUserCardGatewayAddress = BASE_MAINNET_FACTORIES.AA_FACTORY.toLowerCase()
+/** User Card Factory = card.factoryGateway()；OpenTransfer 验签须与 redeemOpenTransfer 同源 */
+const BeamioUserCardGatewayAddress = ethers.getAddress(BASE_MAINNET_FACTORIES.CARD_FACTORY)
 const chainId8453 = 8453n
 export const signOfflineTransferERC3009 = async (
 	userPrivateKey: string,
@@ -3447,7 +3447,22 @@ function parseNftTierMetadataJson(json: {
 	}
 }
 
-/** 从 BeamioUserCard 的 uri 获取 metadata（name、image、tiers）。创建卡时传入的 uri 如 https://api.beamio.io/metadata/{id}.json；tiers 含创建卡时配置的 name/description */
+/** EIP-1155 `uri()` 模板 `{id}` → 64 位小写 hex（与 beamio.app `/api/metadata/` 路由一致）。 */
+function erc1155MetadataIdHex(tokenId: bigint | number | string = 0): string {
+	return BigInt(tokenId).toString(16).padStart(64, '0').toLowerCase()
+}
+
+function resolveBeamioErc1155MetadataUrl(baseUri: string, tokenId: bigint | number = 0): string {
+	if (!baseUri.includes('{id}')) return baseUri
+	return baseUri.replace(/{id}/gi, erc1155MetadataIdHex(tokenId))
+}
+
+function beamioApiErc1155MetadataUrl(cardAddress: string, tokenId: bigint | number = 0): string {
+	const hex40 = ethers.getAddress(cardAddress).slice(2).toLowerCase()
+	return `${beamioApi}/api/metadata/0x${hex40}${erc1155MetadataIdHex(tokenId)}.json`
+}
+
+/** 从 BeamioUserCard 的 uri 获取 metadata（name、image、tiers）。base 为 `https://beamio.app/api/metadata/0x` + 卡地址 + `{id}.json`。 */
 export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
 	const key = cardAddress.toLowerCase()
 	const cached = cardMetadataCache.get(key)
@@ -3463,10 +3478,16 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		)
 		const baseUri = await card.uri(0)
 		if (!baseUri || typeof baseUri !== 'string') return null
-		// ERC1155: 将 {id} 替换为 tokenId（0 = POINTS_ID，用于卡级 metadata）
-		// 链上可能存完整 URL（如 https://api.beamio.io/metadata/0x{owner}.json），无 {id} 则不再替换
-		const url = baseUri.includes('{id}') ? baseUri.replace(/{id}/gi, '0') : baseUri
-		const res = await fetch(url)
+		const primaryUrl = resolveBeamioErc1155MetadataUrl(baseUri, 0)
+		const canonicalUrl = beamioApiErc1155MetadataUrl(cardAddress, 0)
+		let res = await fetch(primaryUrl)
+		if (!res.ok && primaryUrl !== canonicalUrl) {
+			res = await fetch(canonicalUrl)
+		}
+		if (!res.ok) {
+			const hex40 = ethers.getAddress(cardAddress).slice(2).toLowerCase()
+			res = await fetch(`${beamioApi}/metadata/0x${hex40}0.json`)
+		}
 		if (!res.ok) return null
 		const json = (await res.json()) as {
 			name?: string

@@ -34,7 +34,7 @@ import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
-import { BASE_MAINNET_FACTORIES, BEAMIO_ORACLE_CONET } from '@/config/chainAddresses'
+import { BASE_MAINNET_FACTORIES, BEAMIO_ORACLE_CONET, CONET_ACCOUNT_REGISTRY, CONET_RPC_URL } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 import type { VerraBusinessProfileDraft } from '@/utils/verraBusinessProfileLocal'
@@ -128,7 +128,7 @@ const ipfsEndpoint = `https://ipfs.conet.network/api/`
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
 
 /** Base 主网 BeamioOracle 合约，直接读取链上汇率，不再使用 API 服务器 */
-const BEAMIO_ORACLE_BASE = '0xDa4AE8301262BdAaf1bb68EC91259E6C512A9A2B'
+const BEAMIO_ORACLE_BASE = '0x77CB8358c5a37aB7190b0A2C7EaA7fEeDCF11008'
 const BeamioOracleAbi = ['function getRate(uint8 c) view returns (uint256)'] as const
 
 const storageNewUser = `${beamioApi}/api/addUser`
@@ -143,7 +143,7 @@ const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 const CONET_CHAIN_ID = 224422
 
 /** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
-const CONET_BUNIT_AIRDROP_ADDRESS = '0x67d01e0E9c859A89def4098aC7803f04BF0d77af'
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xFd60936707cb4583c08D8AacBA19E4bfaEE446B8'
 
 /** 检查是否可领取 BeamioBUnits */
 export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
@@ -1472,10 +1472,10 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 }
 
 const beamioAccountContract = {
-	address: '0x26626a515EDFb5DF9547ac1A32Ec1785352211Ba',
+	address: CONET_ACCOUNT_REGISTRY,
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 	
 }
 
@@ -2332,7 +2332,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 	
 }
 

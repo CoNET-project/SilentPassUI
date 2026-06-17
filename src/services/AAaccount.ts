@@ -129,10 +129,9 @@ export async function readContainerNonceFromAAStorage(
 	aaAccount: string,
 	kind: 'relayed' | 'openRelayed'
 ): Promise<bigint> {
-	const aa = new ethers.Contract(ethers.getAddress(aaAccount), BEAMIO_ACCOUNT_ABI, provider)
-	const raw = kind === 'relayed'
-		? await aa.relayedNonce()
-		: await aa.openRelayedNonce()
+	const base = BigInt(ethers.keccak256(ethers.toUtf8Bytes('beamio.container.module.storage.v07')))
+	const slot = kind === 'relayed' ? base : base + 1n
+	const raw = await provider.getStorage(ethers.getAddress(aaAccount), slot)
 	return BigInt(raw)
 }
 

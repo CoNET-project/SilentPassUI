@@ -146,8 +146,8 @@ export const postCardOpenTransfer = async (
 const GIFT_OPEN_CONTAINER_DEADLINE_SEC = 300
 
 async function readOpenRelayedNonce(aaAccount: string, provider: ethers.Provider): Promise<bigint> {
-	const aa = new ethers.Contract(ethers.getAddress(aaAccount), ['function openRelayedNonce() view returns (uint256)'], provider)
-	const raw = await aa.openRelayedNonce()
+	const base = BigInt(ethers.keccak256(ethers.toUtf8Bytes('beamio.container.module.storage.v07')))
+	const raw = await provider.getStorage(ethers.getAddress(aaAccount), base + 1n)
 	return BigInt(raw)
 }
 

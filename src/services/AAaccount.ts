@@ -365,3 +365,21 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 		},
 	}
 }
+
+/** CoNET-only OpenContainer QR for the Home "Show Pay Code" flow. */
+export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet(
+	profile: { privateKeyArmor: string; aaAccount?: string },
+	amountUSDC: string,
+	options?: { to?: string; deadlineSeconds?: number }
+): Promise<OpenContainerRelayPayload> {
+	return signOpenContainerForChain({
+		profile,
+		amountUSDC,
+		provider: conetDepinProvider,
+		chainId: CONET_MAINNET_CHAIN_ID,
+		chain: 'conet',
+		to: options?.to,
+		deadlineSeconds: options?.deadlineSeconds,
+		resolveCanonical: resolveBeamioAaOnConet,
+	})
+}

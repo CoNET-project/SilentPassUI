@@ -65,7 +65,8 @@ import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import FuelView from './FuelView'
 import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from './MerchantAssetGiftSheet'
-import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
+import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet, type OpenContainerRelayPayload } from '@/services/AAaccount'
+import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 
 /** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
 const CASH_TREES_HERO_BACKGROUNDS = [cashTreesHeroBg1, cashTreesHeroBg2, cashTreesHeroBg3] as const
@@ -1585,7 +1586,7 @@ const Home = (_props: HomeProps) => {
 			return
 		}
 		const profile = profiles?.[0]
-		if (!profile?.privateKeyArmor || !profile?.aaAccount) {
+		if (!profile?.privateKeyArmor) {
 			setPayRelayQRPayload(null)
 			setPayRelayQRLoading(false)
 			setPayRelaySecondsLeft(0)
@@ -1600,14 +1601,16 @@ const Home = (_props: HomeProps) => {
 				setPayRelayQRPayload(null)
 			}
 			try {
-				const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
-					{ privateKeyArmor: profile.privateKeyArmor, aaAccount: profile.aaAccount },
+				const aaAccount = await ensureConetAaForProfileAndPersist(profile, setProfiles)
+				if (!aaAccount) throw new Error('CoNET Smart Account is not available')
+				const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet(
+					{ privateKeyArmor: profile.privateKeyArmor, aaAccount },
 					'0',
 					{ deadlineSeconds: PAY_RELAY_QR_TTL_SECONDS }
 				)
 				if (!cancelled) setPayRelayQRPayload(payload)
 			} catch (e) {
-				console.error('[Home] signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen failed:', e)
+				console.error('[Home] signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet failed:', e)
 				if (isInitial && !cancelled) setPayRelayQRPayload(null)
 			} finally {
 				if (isInitial && !cancelled) setPayRelayQRLoading(false)
@@ -1633,7 +1636,7 @@ const Home = (_props: HomeProps) => {
 			setPayRelayQRPayload(null)
 			setPayRelayQRLoading(false)
 		}
-	}, [showPayReceiveSheet, payReceiveQrMode, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.aaAccount])
+	}, [showPayReceiveSheet, payReceiveQrMode, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.aaAccount, setProfiles])
 
 	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；改为单层 flex 链并写死 flex-basis */
 	const homeScrollUsesSingleFlexChain = false
@@ -2732,8 +2735,8 @@ const Home = (_props: HomeProps) => {
 												)}
 												{!payRelayQRLoading && !payRelayQRPayload && (
 													<p className="max-w-sm px-4 text-center text-sm text-amber-600 dark:text-amber-400">
-														{!profiles?.[0]?.aaAccount
-															? 'Smart Account required to show pay QR.'
+														{!profiles?.[0]?.privateKeyArmor
+															? 'Unlock your wallet to show pay QR.'
 															: 'Could not generate pay code. Close and try again.'}
 													</p>
 												)}

@@ -5,7 +5,7 @@
  */
 export const BASE_MAINNET_CHAIN_ID = 8453
 
-/** 跨链同址 BeamioFactoryPaymasterV07（Nick CREATE2；Base + CoNET 同值） */
+/** BeamioFactoryPaymasterV07 on Base. CoNET uses CONET_AA_FACTORY until the new bytecode is deployed on Base too. */
 export const BEAMIO_AA_FACTORY = '0xe58F457Cd5674516400013E8d338054be556A730'
 
 /** @deprecated 使用 BEAMIO_AA_FACTORY */
@@ -32,6 +32,8 @@ export const CONET_BUSINESS_START_KET = '0xAcf20dbb4DE0992d8947Ef00b505bBc17E6A0
 export const CONET_BUSINESS_START_KET_REDEEM = '0xe9CeDC2c9F7DE7c0e6d1f1ba1F7e7126F0F1D3c8'
 /** CoNET UserCard Factory（224422） */
 export const CONET_CARD_FACTORY = '0xfA52a0CcC96C19cF4b6Ea864615F6d52BD0774FB'
+/** CoNET EntryPoint-aware BeamioFactoryPaymasterV07（224422） */
+export const CONET_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
 /** CoNET 默认 BeamioUserCard（AA Factory `beamioUserCard`） */
 export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
 /** CoNET USDC（ConetTreasury FactoryERC20） */
@@ -68,7 +70,7 @@ export const CONTRACT_ADDRESSES = {
   },
   conet: {
     chainId: CONET_MAINNET_CHAIN_ID,
-    aaFactory: BEAMIO_AA_FACTORY,
+    aaFactory: CONET_AA_FACTORY,
     buint: CONET_BUINT,
     bUnitAirdrop: CONET_BUNIT_AIRDROP_ADDRESS,
     beamioIndexerDiamond: BEAMIO_INDEXER_DIAMOND,

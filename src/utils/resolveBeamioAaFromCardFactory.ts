@@ -3,7 +3,7 @@
  * New AA deploys only on CoNET (224422); Base no longer used for resolution or creation.
  */
 import { ethers } from 'ethers'
-import { BEAMIO_AA_FACTORY } from '../config/chainAddresses'
+import { CONET_AA_FACTORY } from '../config/chainAddresses'
 import { conetDepinProvider } from '../utils/constants'
 
 const aaFactoryAbi = [
@@ -27,12 +27,12 @@ async function aaFromFactory(provider: ethers.Provider, eoa: string, factoryAddr
 	}
 }
 
-/** CoNET 224422：跨链同址 BEAMIO_AA_FACTORY 上查已部署 AA（须 getCode 非空）。 */
+/** CoNET 224422：当前 CoNET AA Factory 上查已部署 AA（须 getCode 非空）。 */
 export async function resolveBeamioAaOnConet(
 	provider: ethers.Provider = conetDepinProvider,
 	eoa: string
 ): Promise<string | null> {
-	return aaFromFactory(provider, eoa, BEAMIO_AA_FACTORY)
+	return aaFromFactory(provider, eoa, CONET_AA_FACTORY)
 }
 
 /** 解析 EOA → AA：仅 CoNET。`provider` 保留兼容，默认 conetDepinProvider。 */

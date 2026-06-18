@@ -5,7 +5,7 @@
 export const BASE_MAINNET_CHAIN_ID = 8453
 
 /** BeamioFactoryPaymasterV07 on Base. CoNET uses CONET_AA_FACTORY until the new bytecode is deployed on Base too. */
-export const BEAMIO_AA_FACTORY = '0xe58F457Cd5674516400013E8d338054be556A730'
+export const BEAMIO_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
 
 /** @deprecated 使用 BEAMIO_AA_FACTORY */
 export const BASE_AA_FACTORY = BEAMIO_AA_FACTORY

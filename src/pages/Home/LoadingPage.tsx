@@ -504,6 +504,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	const redeemHandledByRecoveryRef = useRef(false)
 	const createUsernameRef = useRef<CreateUsernamePinScreenRef>(null)
 	const homeCalledRef = useRef(false)
+	const enterHomeInFlightRef = useRef(false)
 	const [redeemActivating, setRedeemActivating] = useState(false)
 	const [redeemPostCreateInProgress, setRedeemPostCreateInProgress] = useState(false)
 	/** Create Wallet 加密中：全屏居中 loading，隐藏 BeamioNavBack，避免顶光晕被裁切 */
@@ -714,16 +715,22 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	}
 
 	const handleOnboardingEnterHome = async () => {
-		const profile = CoNET_Data?.profiles?.[0] ?? temp?.profiles?.[0]
-		if (profile?.keyID && ethers.isAddress(profile.keyID)) {
-			try {
-				const aa = await ensureConetAaForProfileAndPersist(profile, setProfiles)
-				if (aa) setWalletAddr(aa)
-			} catch {
-				/* 不可信失败：仍进 Home，AppShell 会重试 ensure */
+		if (enterHomeInFlightRef.current) return
+		enterHomeInFlightRef.current = true
+		try {
+			const profile = CoNET_Data?.profiles?.[0] ?? temp?.profiles?.[0]
+			if (profile?.keyID && ethers.isAddress(profile.keyID)) {
+				try {
+					const aa = await ensureConetAaForProfileAndPersist(profile, setProfiles)
+					if (aa) setWalletAddr(aa)
+				} catch {
+					/* 不可信失败：仍进 Home，AppShell 会重试 ensure */
+				}
 			}
+			finishOnboardingToHome()
+		} finally {
+			enterHomeInFlightRef.current = false
 		}
-		finishOnboardingToHome()
 	}
 
 	// Wallet Ready：获取 AA 地址与 USDC 余额，并记录 EOA 地址

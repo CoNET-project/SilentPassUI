@@ -1,23 +1,33 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
   CheckCircle2,
   ShieldCheck,
   Wallet,
   Shield,
   ArrowRight,
+  Loader2,
 } from 'lucide-react'
 
 export type OnboardingWelcomeScreenProps = {
   beamioTag?: string
-  onEnterHome: () => void
+  onEnterHome: () => void | Promise<void>
 }
 
 /**
  * Post Security Backup — welcomrPage.html style success / welcome.
  */
 export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: OnboardingWelcomeScreenProps) {
+  const [entering, setEntering] = useState(false)
   const handle = (beamioTag || '').replace(/^@+/, '').trim()
   const displayHandle = handle ? `@${handle}` : '@you'
+
+  const handleEnterHome = () => {
+    if (entering) return
+    setEntering(true)
+    void Promise.resolve(onEnterHome()).catch(() => {
+      setEntering(false)
+    })
+  }
 
   return (
     <div className="relative flex h-full min-h-0 w-full max-h-full flex-col overflow-x-hidden overflow-y-hidden overscroll-none bg-[#f9f9fe] text-[#1a1c1f]">
@@ -85,11 +95,22 @@ export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: Onbo
         <div className="w-full max-w-sm shrink-0 space-y-2 sm:space-y-3">
           <button
             type="button"
-            onClick={onEnterHome}
-            className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] text-base font-bold text-white shadow-[0_8px_24px_rgba(21,98,240,0.25)] transition-all hover:opacity-90 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f9fe] sm:h-16 sm:gap-3 sm:text-lg"
+            onClick={handleEnterHome}
+            disabled={entering}
+            aria-busy={entering}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] text-base font-bold text-white shadow-[0_8px_24px_rgba(21,98,240,0.25)] transition-all hover:opacity-90 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f9fe] disabled:cursor-not-allowed disabled:opacity-80 sm:h-16 sm:gap-3 sm:text-lg"
           >
-            Enter Home
-            <ArrowRight className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.25} aria-hidden />
+            {entering ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" strokeWidth={2.25} aria-hidden />
+                Entering Home…
+              </>
+            ) : (
+              <>
+                Enter Home
+                <ArrowRight className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.25} aria-hidden />
+              </>
+            )}
           </button>
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#424655] sm:text-xs sm:tracking-[0.2em]">Next: Secure Account Activation</p>
         </div>

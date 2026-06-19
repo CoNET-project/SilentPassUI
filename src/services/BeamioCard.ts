@@ -454,6 +454,260 @@ const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
 const cardClearAdminMintCounterEndpoint = `${beamioApi}/api/cardClearAdminMintCounter`
 const cardTerminalSettlementClearEndpoint = `${beamioApi}/api/cardTerminalSettlementClear`
+const longDhangMigrationConfigEndpoint = `${beamioApi}/api/longDhangMigrationConfig`
+const longDhangMigrationPreviewEndpoint = `${beamioApi}/api/longDhangMigrationPreview`
+const longDhangMigrationCreateCardEndpoint = `${beamioApi}/api/longDhangMigrationCreateCard`
+const longDhangMigrationRunEndpoint = `${beamioApi}/api/longDhangMigrationRun`
+const longDhangMigrationVerifyEndpoint = `${beamioApi}/api/longDhangMigrationVerify`
+
+export const LONGDHANG_OLD_BASE_CARD = '0x30d80cD71Fd1FFD346737b387dA11C7412363EFF'
+export const LONGDHANG_OLD_CARD_OWNER = '0xA2d21FBd33F7D754D8d7A53fe2B4e5C39A008a1F'
+export const LONGDHANG_MIGRATION_VERSION = 'longdhang-conet-migration-v1'
+
+export type LongDhangMigrationSnapshotHolder = {
+	eoa: string
+	oldBaseAA: string
+	balanceE6: string
+	sourceHolder?: string
+}
+
+export type LongDhangMigrationSnapshot = {
+	version: string
+	oldBaseCard: string
+	oldBaseCardOwner: string
+	baseChainId: number
+	conetChainId: number
+	baseRpcUrl: string
+	baseFromBlock: number
+	baseToBlock: number
+	oldBaseAaFactory: string
+	holderCount: number
+	totalBalanceE6: string
+	excludedCount: number
+	holders: LongDhangMigrationSnapshotHolder[]
+	excluded: Array<{ holder: string; balanceE6: string; reason: string }>
+	anomalies: Array<{ holder: string; balanceE6: string; reason: string }>
+	snapshotHash: string
+	migrationAdmin: string
+	generatedAt: string
+}
+
+export type LongDhangMigrationRunResult = {
+	success: boolean
+	newCardAddress: string
+	snapshotHash: string
+	totalSnapshotRows: number
+	processed: number
+	minted: number
+	skipped: number
+	failed: number
+	rows: Array<LongDhangMigrationSnapshotHolder & {
+		conetAA?: string
+		status: 'minted' | 'skipped' | 'failed'
+		reason?: string
+		mintTx?: string
+		indexerTx?: string
+		txId?: string
+	}>
+	terminals?: {
+		total: number
+		registered: number
+		skipped: number
+		failed: number
+		rows: Array<{
+			posEoa: string
+			metadata: string
+			mintLimitE6: string
+			status: 'registered' | 'skipped' | 'failed'
+			txHash?: string
+			reason?: string
+		}>
+	}
+	error?: string
+}
+
+export function buildLongDhangMigrationAuthMessage(args: {
+	action: 'create-card' | 'run-migration'
+	ownerEoa: string
+	snapshotHash: string
+	newCardAddress?: string
+}): string {
+	const owner = ethers.getAddress(args.ownerEoa)
+	const snap = args.snapshotHash && ethers.isHexString(args.snapshotHash, 32) ? args.snapshotHash.toLowerCase() : ''
+	const newCard = args.newCardAddress && ethers.isAddress(args.newCardAddress)
+		? ethers.getAddress(args.newCardAddress)
+		: ethers.ZeroAddress
+	return [
+		'LongDhang CoNET Migration',
+		`version:${LONGDHANG_MIGRATION_VERSION}`,
+		`action:${args.action}`,
+		`owner:${owner}`,
+		`oldBaseCard:${ethers.getAddress(LONGDHANG_OLD_BASE_CARD)}`,
+		`newConetCard:${newCard}`,
+		`snapshotHash:${snap}`,
+		`conetChainId:${CONET_MAINNET_CHAIN_ID}`,
+	].join('\n')
+}
+
+export async function signLongDhangMigrationAuthorization(args: {
+	privateKeyArmor: string
+	action: 'create-card' | 'run-migration'
+	ownerEoa: string
+	snapshotHash: string
+	newCardAddress?: string
+}): Promise<string> {
+	const pk = args.privateKeyArmor.startsWith('0x') ? args.privateKeyArmor : `0x${args.privateKeyArmor}`
+	const wallet = new ethers.Wallet(pk)
+	const msg = buildLongDhangMigrationAuthMessage(args)
+	return wallet.signMessage(msg)
+}
+
+export async function fetchLongDhangMigrationConfig(): Promise<{
+	success: boolean
+	oldBaseCard?: string
+	oldBaseCardOwner?: string
+	migrationAdmin?: string
+	error?: string
+}> {
+	try {
+		const res = await fetch(longDhangMigrationConfigEndpoint)
+		const data = await res.json()
+		if (!res.ok || data?.success === false) return { success: false, error: data?.error ?? 'Migration config unavailable.' }
+		return {
+			success: true,
+			oldBaseCard: data.oldBaseCard,
+			oldBaseCardOwner: data.oldBaseCardOwner,
+			migrationAdmin: data.migrationAdmin,
+		}
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
+
+export async function previewLongDhangMigration(force = false): Promise<{
+	success: boolean
+	snapshot?: LongDhangMigrationSnapshot
+	error?: string
+}> {
+	try {
+		const signal = createFetchTimeoutSignal(240_000)
+		const res = await fetch(longDhangMigrationPreviewEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ force }),
+			...(signal ? { signal } : {}),
+		})
+		const data = await res.json()
+		if (!res.ok || !data?.success) return { success: false, error: data?.error ?? 'Snapshot preview failed.' }
+		return { success: true, snapshot: data.snapshot as LongDhangMigrationSnapshot }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
+
+export async function createLongDhangMigrationCard(payload: {
+	ownerEoa: string
+	snapshotHash: string
+	ownerSignature: string
+}): Promise<{ success: boolean; cardAddress?: string; txHash?: string; migrationAdmin?: string; error?: string }> {
+	try {
+		const signal = createFetchTimeoutSignal(240_000)
+		const res = await fetch(longDhangMigrationCreateCardEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+			...(signal ? { signal } : {}),
+		})
+		const data = await res.json()
+		if (!res.ok || !data?.success) return { success: false, error: data?.error ?? 'Create CoNET card failed.' }
+		return {
+			success: true,
+			cardAddress: data.cardAddress,
+			txHash: data.txHash,
+			migrationAdmin: data.migrationAdmin,
+		}
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
+
+export async function runLongDhangMigration(payload: {
+	newCardAddress: string
+	ownerEoa: string
+	snapshotHash: string
+	ownerSignature: string
+	limit?: number
+}): Promise<LongDhangMigrationRunResult> {
+	try {
+		const signal = createFetchTimeoutSignal(360_000)
+		const res = await fetch(longDhangMigrationRunEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+			...(signal ? { signal } : {}),
+		})
+		const data = await res.json()
+		if (!res.ok || !data?.success) {
+			if (data && Array.isArray(data.rows)) return data as LongDhangMigrationRunResult
+			return {
+				success: false,
+				newCardAddress: payload.newCardAddress,
+				snapshotHash: payload.snapshotHash,
+				totalSnapshotRows: 0,
+				processed: 0,
+				minted: 0,
+				skipped: 0,
+				failed: 0,
+				rows: [],
+				error: data?.error ?? 'Run migration failed.',
+			}
+		}
+		return data as LongDhangMigrationRunResult
+	} catch (e: any) {
+		return {
+			success: false,
+			newCardAddress: payload.newCardAddress,
+			snapshotHash: payload.snapshotHash,
+			totalSnapshotRows: 0,
+			processed: 0,
+			minted: 0,
+			skipped: 0,
+			failed: 0,
+			rows: [],
+			error: e?.message ?? String(e),
+		}
+	}
+}
+
+export async function verifyLongDhangMigration(newCardAddress: string): Promise<{
+	success: boolean
+	newCardAddress?: string
+	snapshotHash?: string
+	totalRows?: number
+	matches?: number
+	mismatches?: Array<LongDhangMigrationSnapshotHolder & { conetAA?: string; conetBalanceE6?: string; reason?: string }>
+	terminals?: {
+		total: number
+		matches: number
+		mismatches: Array<{ posEoa: string; reason: string; dbCardAddress?: string | null }>
+	}
+	error?: string
+}> {
+	try {
+		const signal = createFetchTimeoutSignal(240_000)
+		const res = await fetch(longDhangMigrationVerifyEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ newCardAddress }),
+			...(signal ? { signal } : {}),
+		})
+		const data = await res.json()
+		if (!res.ok || !data?.success) return { success: false, error: data?.error ?? 'Migration verification failed.' }
+		return data
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
 
 /** 通过 Factory 预测 EOA 的 AA 地址（index=0，CoNET CREATE2）。用于离线签字前构建 adminManager(predictedAA,...)。 */
 export const getPredictedAAAddress = async (eoa: string): Promise<string> => {

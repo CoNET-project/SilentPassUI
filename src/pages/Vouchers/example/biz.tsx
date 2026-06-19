@@ -35578,11 +35578,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    }
                    const programCardForReset = staffProgramBeamioCardAddress;
                    const chainSub = await resolveTerminalChainSubordinate(resetTerminalLimitModal.id);
-                   const card = new ethers.Contract(
-                     programCardForReset,
-                     USER_CARD_ADMIN_READ_ABI,
-                     baseRpcProviderDirect,
-                   );
+                  const { provider: resetCardProvider } = await providerForBeamioUserCard(programCardForReset);
+                  const card = new ethers.Contract(
+                    programCardForReset,
+                    USER_CARD_ADMIN_READ_ABI,
+                    resetCardProvider,
+                  );
                    const parent = (await card.adminParent(chainSub)) as string;
                    if (!parent || parent === ethers.ZeroAddress) {
                      throw new Error(

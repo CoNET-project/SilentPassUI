@@ -77,6 +77,9 @@ import {
   updateCardMerchantImage,
   persistCardProgramIconImage,
   updateIssuedCouponMetadata,
+  signExcludeUserCard,
+  postExcludeUserCard,
+  registerLocalApiExcludedUserCard,
   updateBeamioCardTiers,
   encodeSetTiers,
   fetchCardsByCategory,
@@ -84,6 +87,7 @@ import {
   queryBusinessStartKetRedeemOnChain,
   queryBusinessStartKetBalanceOfOnChain,
   postBusinessStartKetRedeemRedeem,
+  queryValidatorDepositRedeemAdminOnChain,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
@@ -229,6 +233,7 @@ import {
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
 import { LongDhangConetMigrationPanel } from './longDhangConetMigrationPanel';
+import { ValidatorDepositRedeemManagementPanel } from './validatorDepositRedeemManagementPanel';
 import {
   ProgramsIssuedItemClaimWalletsSection,
   type ProgramsIssuedItemClaimWalletsView,
@@ -15503,6 +15508,57 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
    }
  }, [cardIssuanceExistingCard?.cardAddress]);
 
+ const handleConfirmDeleteMerchantCard = useCallback(async () => {
+   const cardRaw = cardIssuanceExistingCard?.cardAddress?.trim();
+   if (!cardRaw || !ethers.isAddress(cardRaw)) {
+     setDeleteMerchantCardError('No issued program card to delete.');
+     return;
+   }
+   const privateKey = profiles?.[0]?.privateKeyArmor;
+   if (!privateKey) {
+     setDeleteMerchantCardError('Private key not available. Please unlock your wallet.');
+     return;
+   }
+   const ownerRaw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!ownerRaw || !ethers.isAddress(ownerRaw)) {
+     setDeleteMerchantCardError('Wallet address not available.');
+     return;
+   }
+   setDeleteMerchantCardError(null);
+   setDeleteMerchantCardLoading(true);
+   try {
+     const cardAddress = ethers.getAddress(cardRaw);
+     const ownerEOA = ethers.getAddress(ownerRaw);
+     const deadline = Math.floor(Date.now() / 1000) + 300;
+     const nonce = ethers.hexlify(ethers.randomBytes(32));
+     const pkHex = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+     const ownerSignature = await signExcludeUserCard(pkHex, cardAddress, deadline, nonce);
+     const res = await postExcludeUserCard({
+       cardAddress,
+       ownerEOA,
+       deadline,
+       nonce,
+       ownerSignature,
+     });
+     if (!res.success) {
+       throw new Error(res.error ?? 'Delete merchant card failed.');
+     }
+     registerLocalApiExcludedUserCard(cardAddress);
+     setCardIssuanceExistingCard(null);
+     setProfileOwnsIssuedBeamioCard(false);
+     setMerchantOwnCardAddress(null);
+     setDeleteMerchantCardConfirmOpen(false);
+     setCardIssuanceActiveProgramView('overview');
+     setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+     setCardIssuanceOnchainFetch('done');
+   } catch (e: unknown) {
+     const msg = e instanceof Error ? e.message : String(e);
+     setDeleteMerchantCardError(msg || 'Delete merchant card failed.');
+   } finally {
+     setDeleteMerchantCardLoading(false);
+   }
+ }, [cardIssuanceExistingCard?.cardAddress, myAddress, profiles]);
+
 const handleCardIssuanceProductionIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
     const input = e.currentTarget;
@@ -15954,7 +16010,8 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    setCardIssuanceCreateResult(null);
    setCardIssuanceCategoryIndexSummary(null);
    setCardIssuanceOwnerAdminNotice(null);
-   const ownerRaw = (profiles?.[0]?.aaAccount ?? profiles?.[0]?.keyID ?? '').trim();
+   // createCard: Ket #0 is minted/burned on owner EOA; pass EOA so Cluster Ket gate matches redeem (AA-only CoNET deploy may not resolve on degraded RPC).
+   const ownerRaw = (profiles?.[0]?.keyID ?? myAddress ?? profiles?.[0]?.aaAccount ?? '').trim();
    if (!ownerRaw) {
      return publishFail('Owner address not loaded. Ensure your account is ready in Settings.');
    }
@@ -17024,6 +17081,30 @@ useEffect(() => {
  const [buintRedeemSubmitLoading, setBuintRedeemSubmitLoading] = useState(false);
  const [buintRedeemUiError, setBuintRedeemUiError] = useState('');
  const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
+ const [isValidatorDepositRedeemAdmin, setIsValidatorDepositRedeemAdmin] = useState(false);
+ const [isValidatorDepositRedeemAdminFetched, setIsValidatorDepositRedeemAdminFetched] = useState(false);
+ useEffect(() => {
+   let cancelled = false;
+   const eoa = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!eoa || !ethers.isAddress(eoa)) {
+     setIsValidatorDepositRedeemAdmin(false);
+     setIsValidatorDepositRedeemAdminFetched(true);
+     return;
+   }
+   setIsValidatorDepositRedeemAdminFetched(false);
+   void queryValidatorDepositRedeemAdminOnChain(eoa).then((ok) => {
+     if (!cancelled) {
+       setIsValidatorDepositRedeemAdmin(ok);
+       setIsValidatorDepositRedeemAdminFetched(true);
+     }
+   }).catch(() => {
+     if (!cancelled) {
+       setIsValidatorDepositRedeemAdmin(false);
+       setIsValidatorDepositRedeemAdminFetched(true);
+     }
+   });
+   return () => { cancelled = true; };
+ }, [profiles?.[0]?.keyID, myAddress]);
  /** Checksummed EOA for Verra business profile local draft (`verra_business_profile_draft_v1:`). */
  const businessProfileEoaResolved = useMemo(() => {
    const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
@@ -18878,6 +18959,9 @@ useEffect(() => {
  const [deleteTerminalToRemove, setDeleteTerminalToRemove] = useState<{ id: string; tag: string; name: string; eoa: string } | null>(null);
  const [removeTerminalLoading, setRemoveTerminalLoading] = useState(false);
  const [removeTerminalError, setRemoveTerminalError] = useState<string | null>(null);
+ const [deleteMerchantCardConfirmOpen, setDeleteMerchantCardConfirmOpen] = useState(false);
+ const [deleteMerchantCardLoading, setDeleteMerchantCardLoading] = useState(false);
+ const [deleteMerchantCardError, setDeleteMerchantCardError] = useState<string | null>(null);
  const [resetTerminalLimitModal, setResetTerminalLimitModal] = useState<TerminalRecord | null>(null);
  const [resetTerminalLimitLoading, setResetTerminalLimitLoading] = useState(false);
  const [resetTerminalLimitError, setResetTerminalLimitError] = useState<string | null>(null);
@@ -24453,6 +24537,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          <NavItem icon={Award} label="Programs" isActive={navChromeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={Briefcase} label="Business" isActive={activeTab === 'Business'} onClick={() => handleTabChange('Business')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavItem icon={ShoppingBag} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         {isValidatorDepositRedeemAdminFetched && isValidatorDepositRedeemAdmin ? (
+           <NavItem icon={Shield} label="Validator Management" isActive={activeTab === 'Validator Management'} onClick={() => handleTabChange('Validator Management')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         ) : null}
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            Operations
          </NavSectionLabel>
@@ -24604,6 +24691,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   : navChromeTab === 'Wallets' ||
                       navChromeTab === 'MembersLoyalty' ||
                       navChromeTab === 'Market' ||
+                      activeTab === 'Validator Management' ||
                       navChromeTab === 'Transactions' ||
                       navChromeTab === 'Settings' ||
                       navChromeTab === 'Card Issuance Setup' ||
@@ -24620,6 +24708,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ? 'Programs'
                 : activeTab === 'Business'
                   ? 'Business'
+                : activeTab === 'Validator Management'
+                  ? 'Validator Management'
                 : activeTab === 'Wallets'
                   ? 'Wallet'
                   : activeTab === 'MembersLoyalty'
@@ -27108,6 +27198,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          )}
 
          {/* --- MARKET TAB (`newOnloading.html`: balance, refill packages, redeem) --- */}
+         {activeTab === 'Validator Management' && isValidatorDepositRedeemAdmin ? (
+           <div className="relative mx-auto w-full max-w-4xl animate-in fade-in duration-300 p-2 sm:p-4">
+             <ValidatorDepositRedeemManagementPanel
+               currentEoa={businessProfileEoaResolved || currentEoa}
+               privateKeyArmor={profiles?.[0]?.privateKeyArmor}
+             />
+           </div>
+         ) : null}
          {activeTab === 'Market' && (
            <div className="relative mx-auto w-full max-w-7xl animate-in fade-in duration-300">
              {/* Mobile — layout aligned with `marketExample.html` (search strip, billing card, provisioning, expansion, voucher) */}
@@ -31827,7 +31925,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        />
                        <header className="mb-3 flex items-center justify-between gap-2">
                          <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Program Overview</h3>
-                         <Info className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+                         <div className="flex shrink-0 items-center gap-2">
+                           <button
+                             type="button"
+                             onClick={() => {
+                               setDeleteMerchantCardError(null);
+                               setDeleteMerchantCardConfirmOpen(true);
+                             }}
+                             className={`inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-rose-700 transition-colors hover:bg-rose-100 sm:text-[11px] ${bizFocusRingClass}`}
+                           >
+                             <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                             Delete card
+                           </button>
+                           <Info className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
+                         </div>
                        </header>
                        <div className="space-y-3 sm:space-y-4">
                          <div>
@@ -35073,6 +35184,75 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <>Registration Device <ArrowRight size={18}/></>
               )}
             </button>
+         </div>
+       </div>
+     ) : null}
+
+     {/* --- DELETE MERCHANT CARD CONFIRMATION MODAL --- */}
+     {deleteMerchantCardConfirmOpen && cardIssuanceExistingCard?.cardAddress ? (
+       <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+         <div
+           className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+           onClick={() => !deleteMerchantCardLoading && (setDeleteMerchantCardConfirmOpen(false), setDeleteMerchantCardError(null))}
+         />
+         <div className="relative w-full max-w-md animate-in zoom-in-95 rounded-[40px] bg-white p-8 shadow-2xl duration-200">
+           <div className="mb-6 flex items-center justify-between">
+             <div className="flex items-center gap-3">
+               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
+                 <Trash2 size={24} />
+               </div>
+               <h2 className="text-xl font-bold tracking-tight text-black">Delete Merchant Card</h2>
+             </div>
+             <button
+               type="button"
+               onClick={() => !deleteMerchantCardLoading && (setDeleteMerchantCardConfirmOpen(false), setDeleteMerchantCardError(null))}
+               className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black disabled:opacity-50"
+               aria-label="Close"
+             >
+               <X size={20} />
+             </button>
+           </div>
+           <p className="mb-3 text-[15px] leading-relaxed text-slate-600">
+             This merchant card will be added to the Beamio API blacklist. All users will stop seeing this card&apos;s assets,
+             coupons, and Discover listings in SilentPassUI and other Beamio apps.
+           </p>
+           <p className="mb-4 text-[13px] leading-relaxed text-slate-500">
+             Contract{' '}
+             <span className="font-mono font-semibold text-slate-800">
+               {cardIssuanceExistingCard.cardAddress.slice(0, 6)}…{cardIssuanceExistingCard.cardAddress.slice(-4)}
+             </span>{' '}
+             remains on-chain; this action only hides it from Beamio product surfaces.
+           </p>
+           {deleteMerchantCardError ? (
+             <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] font-medium text-rose-700">
+               {deleteMerchantCardError}
+             </div>
+           ) : null}
+           <div className="flex gap-3">
+             <button
+               type="button"
+               onClick={() => !deleteMerchantCardLoading && (setDeleteMerchantCardConfirmOpen(false), setDeleteMerchantCardError(null))}
+               disabled={deleteMerchantCardLoading}
+               className="flex-1 rounded-2xl border border-slate-200 py-3.5 text-[15px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+             >
+               Cancel
+             </button>
+             <button
+               type="button"
+               onClick={() => void handleConfirmDeleteMerchantCard()}
+               disabled={deleteMerchantCardLoading}
+               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-rose-600 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+             >
+               {deleteMerchantCardLoading ? (
+                 <>
+                   <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                   Deleting…
+                 </>
+               ) : (
+                 'Continue'
+               )}
+             </button>
+           </div>
          </div>
        </div>
      ) : null}

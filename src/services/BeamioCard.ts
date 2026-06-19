@@ -9,6 +9,7 @@ import {
 	CONET_BUSINESS_START_KET,
 	CONET_BUSINESS_START_KET_REDEEM,
 	CONET_CARD_FACTORY,
+	CONET_VALIDATOR_DEPOSIT_REDEEM,
 } from "@/config/chainAddresses";
 import { resolveBeamioAaOnConet } from "@/utils/resolveBeamioAaFromCardFactory";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
@@ -22,6 +23,7 @@ import {
 	normalizeCardPreviewLogoDisplayTier,
 	type CardPreviewLogoDisplayTier,
 } from "@/utils/cardPreviewLogoDisplayTier";
+import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	DEFAULT_MERCHANT_CARD_FACTORY,
@@ -58,7 +60,13 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
-	cards.filter((c) => !USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()))
+	cards.filter(
+		(c) =>
+			!USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()) &&
+			!isApiExcludedUserCard(c.cardAddress)
+	)
+
+export { loadApiExcludedUserCards, registerLocalApiExcludedUserCard } from '@/utils/apiExcludedUserCards'
 
 /** User Card Factory = card.factoryGateway()；OpenTransfer 验签须与 redeemOpenTransfer 同源 */
 const BeamioUserCardGatewayAddress = ethers.getAddress(DEFAULT_MERCHANT_CARD_FACTORY)
@@ -459,6 +467,66 @@ const longDhangMigrationPreviewEndpoint = `${beamioApi}/api/longDhangMigrationPr
 const longDhangMigrationCreateCardEndpoint = `${beamioApi}/api/longDhangMigrationCreateCard`
 const longDhangMigrationRunEndpoint = `${beamioApi}/api/longDhangMigrationRun`
 const longDhangMigrationVerifyEndpoint = `${beamioApi}/api/longDhangMigrationVerify`
+const excludeUserCardEndpoint = `${beamioApi}/api/excludeUserCard`
+
+const EXCLUDE_USER_CARD_SIGN_PREFIX = 'Beamio excludeUserCard:v1'
+
+export function buildExcludeUserCardSignMessage(
+	cardAddress: string,
+	deadline: number,
+	nonce: string
+): string {
+	return `${EXCLUDE_USER_CARD_SIGN_PREFIX}\n${ethers.getAddress(cardAddress)}\n${deadline}\n${nonce}`
+}
+
+/** Owner EIP-191 signature for Programs delete → API blacklist. */
+export const signExcludeUserCard = async (
+	ownerPrivateKey: string,
+	cardAddress: string,
+	deadline: number,
+	nonce: string
+): Promise<string> => {
+	const wallet = new ethers.Wallet(ownerPrivateKey)
+	return wallet.signMessage(buildExcludeUserCardSignMessage(cardAddress, deadline, nonce))
+}
+
+/** Blacklist merchant program card — hides assets, Discover listing, and coupons for all users. */
+export const postExcludeUserCard = async (params: {
+	cardAddress: string
+	ownerEOA: string
+	deadline: number
+	nonce: string
+	ownerSignature: string
+}): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
+	try {
+		const body = JSON.stringify({
+			cardAddress: params.cardAddress,
+			ownerEOA: params.ownerEOA,
+			deadline: params.deadline,
+			nonce: params.nonce,
+			ownerSignature: params.ownerSignature,
+		})
+		const signal = createFetchTimeoutSignal(60_000)
+		const response = await fetch(excludeUserCardEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body,
+			...(signal ? { signal } : {}),
+		})
+		const data = await response.json().catch(() => ({}))
+		if (response.ok && data.success) {
+			await loadApiExcludedUserCards(true)
+			return { success: true, cardAddress: data.cardAddress as string | undefined }
+		}
+		return { success: false, error: (data.error as string) ?? 'Delete merchant card failed' }
+	} catch (e: unknown) {
+		if (e instanceof DOMException && e.name === 'AbortError') {
+			return { success: false, error: 'Delete merchant card timed out. Check your network and try again.' }
+		}
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg }
+	}
+}
 
 export const LONGDHANG_OLD_BASE_CARD = '0x30d80cD71Fd1FFD346737b387dA11C7412363EFF'
 export const LONGDHANG_OLD_CARD_OWNER = '0xA2d21FBd33F7D754D8d7A53fe2B4e5C39A008a1F'
@@ -4382,4 +4450,261 @@ export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<se
         console.log(`❌ getCardOwnerByCardAddress Failed: ${error.message}`);
         return null
     }
+}
+
+// ---------- ValidatorDepositRedeem (CoNET validator deposit redeem admin) ----------
+
+const VALIDATOR_DEPOSIT_REDEEM_ABI = [
+	'function redeemAdmins(address account) view returns (bool)',
+	'function redeemAdminNonces(address account) view returns (uint256)',
+	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, uint256 validatorCount, string targetNodeIp, string[] conetDepinNodeIps, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
+] as const
+
+export type ValidatorDepositRedeemOnChainStatus = {
+	valid: boolean
+	codeHash: string
+	allowedClaimer: string
+	validatorCount: string
+	targetNodeIp: string
+	conetDepinNodeIps: string[]
+	gbMiningNodeCount: string
+	validAfter: number
+	validBefore: number
+	active: boolean
+	consumed: boolean
+	error?: string
+}
+
+export function hashValidatorDepinNodeIps(ips: string[]): string {
+	const normalized = ips.map((ip) => ip.trim().toLowerCase())
+	const hashes = normalized.map((v) => ethers.keccak256(ethers.toUtf8Bytes(v)))
+	return ethers.keccak256(ethers.concat(hashes))
+}
+
+export function validatorDepositRedeemCodeHash(code: string): string {
+	return ethers.keccak256(ethers.toUtf8Bytes(code))
+}
+
+export function generateValidatorRedeemCode(byteLen = 24): string {
+	const bytes = ethers.randomBytes(byteLen)
+	return ethers.hexlify(bytes).slice(2)
+}
+
+export async function queryValidatorDepositRedeemAdminOnChain(eoa: string): Promise<boolean> {
+	if (!CONET_VALIDATOR_DEPOSIT_REDEEM || !ethers.isAddress(eoa)) return false
+	try {
+		const c = new ethers.Contract(CONET_VALIDATOR_DEPOSIT_REDEEM, VALIDATOR_DEPOSIT_REDEEM_ABI, conetDepinProvider)
+		return Boolean(await c.redeemAdmins!(ethers.getAddress(eoa)))
+	} catch {
+		return false
+	}
+}
+
+export async function queryValidatorDepositRedeemOnChain(code: string): Promise<ValidatorDepositRedeemOnChainStatus> {
+	const b = ethers.toUtf8Bytes(code || '')
+	if (!code || b.length === 0 || b.length > 512) {
+		return {
+			valid: false,
+			codeHash: '0x',
+			allowedClaimer: ethers.ZeroAddress,
+			validatorCount: '0',
+			targetNodeIp: '',
+			conetDepinNodeIps: [],
+			gbMiningNodeCount: '0',
+			validAfter: 0,
+			validBefore: 0,
+			active: false,
+			consumed: false,
+			error: 'Invalid redeem code length',
+		}
+	}
+	const codeHash = validatorDepositRedeemCodeHash(code)
+	const c = new ethers.Contract(CONET_VALIDATOR_DEPOSIT_REDEEM, VALIDATOR_DEPOSIT_REDEEM_ABI, conetDepinProvider)
+	try {
+		const r = await c.getRedeem!(codeHash)
+		const allowedClaimer = ethers.getAddress(r[0])
+		const validatorCount = (r[1] as bigint).toString()
+		const targetNodeIp = String(r[2] ?? '')
+		const conetDepinNodeIps = (r[3] as string[]) ?? []
+		const gbMiningNodeCount = (r[4] as bigint).toString()
+		const validAfter = Number(r[5] ?? 0)
+		const validBefore = Number(r[6] ?? 0)
+		const active = Boolean(r[7])
+		const consumed = Boolean(r[8])
+		return {
+			valid: true,
+			codeHash,
+			allowedClaimer,
+			validatorCount,
+			targetNodeIp,
+			conetDepinNodeIps,
+			gbMiningNodeCount,
+			validAfter,
+			validBefore,
+			active,
+			consumed,
+		}
+	} catch (e: unknown) {
+		const err = e as { shortMessage?: string; message?: string }
+		return {
+			valid: false,
+			codeHash,
+			allowedClaimer: ethers.ZeroAddress,
+			validatorCount: '0',
+			targetNodeIp: '',
+			conetDepinNodeIps: [],
+			gbMiningNodeCount: '0',
+			validAfter: 0,
+			validBefore: 0,
+			active: false,
+			consumed: false,
+			error: err?.shortMessage ?? err?.message ?? 'getRedeem failed',
+		}
+	}
+}
+
+export async function fetchValidatorDepositRedeemConfig(): Promise<{
+	success: boolean
+	contract?: string
+	chainId?: number
+	error?: string
+}> {
+	const res = await fetch(`${beamioApi}/api/validatorDepositRedeemConfig`)
+	const data = (await res.json().catch(() => ({}))) as { success?: boolean; contract?: string; chainId?: number; error?: string }
+	if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+	return { success: Boolean(data.success), contract: data.contract, chainId: data.chainId }
+}
+
+export async function fetchValidatorDepositRedeemAdminNonce(admin: string): Promise<{ ok: true; nonce: string } | { ok: false; error: string }> {
+	const addr = ethers.getAddress(admin.trim())
+	const res = await fetch(`${beamioApi}/api/validatorDepositRedeemAdminNonce?admin=${encodeURIComponent(addr)}`)
+	const data = (await res.json().catch(() => ({}))) as { success?: boolean; nonce?: string; error?: string }
+	if (!res.ok || !data.success || data.nonce == null) {
+		return { ok: false, error: data?.error ?? res.statusText }
+	}
+	return { ok: true, nonce: String(data.nonce) }
+}
+
+export function validatorDepositRedeemEip712Domain(verifyingContract: string) {
+	return {
+		name: 'ValidatorDepositRedeem',
+		version: '1',
+		chainId: CONET_MAINNET_CHAIN_ID,
+		verifyingContract: ethers.getAddress(verifyingContract),
+	} as const
+}
+
+export const validatorDepositRedeemCreateTypedDataTypes: Record<string, { name: string; type: string }[]> = {
+	CreateRedeem: [
+		{ name: 'admin', type: 'address' },
+		{ name: 'codeHash', type: 'bytes32' },
+		{ name: 'allowedClaimer', type: 'address' },
+		{ name: 'validatorCount', type: 'uint256' },
+		{ name: 'targetNodeIp', type: 'string' },
+		{ name: 'conetDepinNodeIpsHash', type: 'bytes32' },
+		{ name: 'gbMiningNodeCount', type: 'uint256' },
+		{ name: 'validAfter', type: 'uint256' },
+		{ name: 'validBefore', type: 'uint256' },
+		{ name: 'nonce', type: 'uint256' },
+		{ name: 'deadline', type: 'uint256' },
+	],
+}
+
+export const validatorDepositRedeemCancelTypedDataTypes: Record<string, { name: string; type: string }[]> = {
+	CancelRedeem: [
+		{ name: 'admin', type: 'address' },
+		{ name: 'codeHash', type: 'bytes32' },
+		{ name: 'nonce', type: 'uint256' },
+		{ name: 'deadline', type: 'uint256' },
+	],
+}
+
+export async function signValidatorDepositRedeemCreate(
+	adminPrivateKey: string,
+	args: {
+		admin: string
+		codeHash: string
+		allowedClaimer: string
+		validatorCount: bigint
+		targetNodeIp: string
+		conetDepinNodeIps: string[]
+		gbMiningNodeCount: bigint
+		validAfter: bigint
+		validBefore: bigint
+		nonce: bigint
+		deadline: bigint
+	}
+): Promise<string> {
+	const wallet = new ethers.Wallet(adminPrivateKey, conetDepinProvider)
+	const domain = validatorDepositRedeemEip712Domain(CONET_VALIDATOR_DEPOSIT_REDEEM)
+	const value = {
+		admin: ethers.getAddress(args.admin),
+		codeHash: args.codeHash,
+		allowedClaimer: ethers.getAddress(args.allowedClaimer),
+		validatorCount: args.validatorCount,
+		targetNodeIp: args.targetNodeIp.trim().toLowerCase(),
+		conetDepinNodeIpsHash: hashValidatorDepinNodeIps(args.conetDepinNodeIps),
+		gbMiningNodeCount: args.gbMiningNodeCount,
+		validAfter: args.validAfter,
+		validBefore: args.validBefore,
+		nonce: args.nonce,
+		deadline: args.deadline,
+	}
+	return wallet.signTypedData(domain, validatorDepositRedeemCreateTypedDataTypes, value)
+}
+
+export async function signValidatorDepositRedeemCancel(
+	adminPrivateKey: string,
+	args: { admin: string; codeHash: string; nonce: bigint; deadline: bigint }
+): Promise<string> {
+	const wallet = new ethers.Wallet(adminPrivateKey, conetDepinProvider)
+	const domain = validatorDepositRedeemEip712Domain(CONET_VALIDATOR_DEPOSIT_REDEEM)
+	const value = {
+		admin: ethers.getAddress(args.admin),
+		codeHash: args.codeHash,
+		nonce: args.nonce,
+		deadline: args.deadline,
+	}
+	return wallet.signTypedData(domain, validatorDepositRedeemCancelTypedDataTypes, value)
+}
+
+export async function postValidatorDepositRedeemAdminCreate(body: {
+	admin: string
+	codeHash: string
+	allowedClaimer: string
+	validatorCount: string
+	targetNodeIp: string
+	conetDepinNodeIps: string[]
+	gbMiningNodeCount: string
+	validAfter: string
+	validBefore: string
+	nonce: string
+	deadline: string
+	signature: string
+}): Promise<{ success: boolean; txHash?: string; error?: string }> {
+	const res = await fetch(`${beamioApi}/api/validatorDepositRedeemAdminCreate`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	})
+	const data = (await res.json().catch(() => ({}))) as { success?: boolean; txHash?: string; error?: string }
+	if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+	return { success: Boolean(data.success), txHash: data.txHash, error: data.error }
+}
+
+export async function postValidatorDepositRedeemAdminCancel(body: {
+	admin: string
+	codeHash: string
+	nonce: string
+	deadline: string
+	signature: string
+}): Promise<{ success: boolean; txHash?: string; error?: string }> {
+	const res = await fetch(`${beamioApi}/api/validatorDepositRedeemAdminCancel`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	})
+	const data = (await res.json().catch(() => ({}))) as { success?: boolean; txHash?: string; error?: string }
+	if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+	return { success: Boolean(data.success), txHash: data.txHash, error: data.error }
 }

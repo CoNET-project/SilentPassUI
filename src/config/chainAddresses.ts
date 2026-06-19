@@ -25,6 +25,8 @@ export const CONET_BUINT_REDEEM_AIRDROP = '0xd633E268bCcC5A38122873a8BeA3aD7Fd83
 export const CONET_BUSINESS_START_KET = '0xAcf20dbb4DE0992d8947Ef00b505bBc17E6A03b2'
 /** BusinessStartKetRedeem（CoNET）；Ket + B-Unit 兑换码 */
 export const CONET_BUSINESS_START_KET_REDEEM = '0xe9CeDC2c9F7DE7c0e6d1f1ba1F7e7126F0F1D3c8'
+/** ValidatorDepositRedeem（CoNET）；validator deposit 兑换码 */
+export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0xdcfFFDD58E8d1242b5ee52FBcdfeB698f4cd5681'
 /** CoNET UserCard Factory（224422） */
 export const CONET_CARD_FACTORY = '0xfA52a0CcC96C19cF4b6Ea864615F6d52BD0774FB'
 /** CoNET EntryPoint-aware BeamioFactoryPaymasterV07（224422） */
@@ -68,6 +70,7 @@ export const CONTRACT_ADDRESSES = {
     buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
     businessStartKet: CONET_BUSINESS_START_KET,
     businessStartKetRedeem: CONET_BUSINESS_START_KET_REDEEM,
+    validatorDepositRedeem: CONET_VALIDATOR_DEPOSIT_REDEEM,
     cardFactory: CONET_CARD_FACTORY,
     defaultUserCard: CONET_BEAMIO_USER_CARD_DEFAULT,
     usdc: CONET_USDC,

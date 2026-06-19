@@ -7,6 +7,7 @@ import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
 import { ensureConetAaForEoa } from '@/utils/ensureConetAa'
 import { conetDepinProvider } from '@/utils/constants'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import { loadApiExcludedUserCards } from '@/utils/apiExcludedUserCards'
 
 /**
  * AA “steady poll” path arms **after the next CoNET L1 block** (same metronome as `biz.tsx` overview feeder), not `setTimeout(6000)`.
@@ -528,6 +529,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 		EUR: 0,
 		TWD: 0
 	})
+
+  useEffect(() => {
+    void loadApiExcludedUserCards()
+  }, [])
 
   useEffect(() => {
     {

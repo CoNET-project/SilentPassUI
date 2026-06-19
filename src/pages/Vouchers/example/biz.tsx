@@ -19940,7 +19940,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
     }
   }
   try {
-    const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseEndpoint);
+    const { provider: staffProgramProvider } = await providerForBeamioUserCard(staffProgramBeamioCardAddress);
+    const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, staffProgramProvider);
     const cardOwner = await card.owner() as string;
     const userAA = profiles?.[0]?.aaAccount?.trim();
     const viewerNorm = ethers.getAddress(userEOA);
@@ -20001,10 +20002,10 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
       for (const row of chainRows) {
         const addr = row.chainAddr;
         let eoa: string;
-        const code = await baseEndpoint.getCode(addr);
+        const code = await staffProgramProvider.getCode(addr);
         if (code && code !== '0x' && code.length > 2) {
           try {
-            const ownerRes = await baseEndpoint.call({ to: addr, data: '0x8da5cb5b' });
+            const ownerRes = await staffProgramProvider.call({ to: addr, data: '0x8da5cb5b' });
             if (ownerRes && typeof ownerRes === 'string' && ownerRes.length >= 66) {
               eoa = ethers.getAddress('0x' + ownerRes.slice(-40));
             } else {
@@ -20079,7 +20080,8 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
      if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
        throw new Error('No issued program card.');
      }
-     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const { provider: staffProgramProvider } = await providerForBeamioUserCard(staffProgramBeamioCardAddress);
+     const card = new ethers.Contract(staffProgramBeamioCardAddress, USER_CARD_ADMIN_READ_ABI, staffProgramProvider);
      const cardOwner = (await card.owner()) as string;
      const userAA = profiles?.[0]?.aaAccount?.trim();
      const viewerNorm = ethers.getAddress(userEOA);
@@ -20092,7 +20094,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
        const [subordinates] = (await card.getAdminSubordinatesWithMetadata(parent)) as [string[]];
        for (const subAddr of subordinates ?? []) {
          if (!subAddr || !ethers.isAddress(subAddr)) continue;
-         const e = await resolveSubordinateAdminEoa(subAddr, baseRpcProviderDirect);
+         const e = await resolveSubordinateAdminEoa(subAddr, staffProgramProvider);
          if (e.toLowerCase() === want) {
            return ethers.getAddress(subAddr);
          }
@@ -21182,9 +21184,13 @@ useEffect(() => {
      const accountRaw = (feederAccountRef.current || feederEoa || '').trim();
      const account = accountRaw && ethers.isAddress(accountRaw) ? ethers.getAddress(accountRaw) : '';
      const programAddr = staffProgramBeamioCardAddress;
+    const programCardProvider =
+      programAddr && ethers.isAddress(programAddr)
+        ? (await providerForBeamioUserCard(programAddr)).provider
+        : baseRpcProviderDirect;
      const card =
        programAddr && ethers.isAddress(programAddr)
-         ? new ethers.Contract(programAddr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect)
+        ? new ethers.Contract(programAddr, USER_CARD_ADMIN_READ_ABI, programCardProvider)
          : null;
      const indexerAsset = new ethers.Contract(BEAMIO_INDEXER_DIAMOND, INDEXER_ASSET_STATS_ABI, conetDepinProvider);
      const ACCOUNT_MODE_ALL = 0;
@@ -21196,7 +21202,7 @@ useEffect(() => {
          try {
            const ccyKey = `card:${staffProgramCardCacheBucket}:beamio-currency-uint8`;
            const ct = await fetchWithCache(ccyKey, () =>
-             fetchBeamioUserCardCurrencyTypeOnly(programAddr, baseRpcProviderDirect)
+            fetchBeamioUserCardCurrencyTypeOnly(programAddr, programCardProvider)
            );
            if (!feederCancelledRef.current) setProgramCardBeamioCurrencyType(ct);
          } catch {
@@ -21374,7 +21380,7 @@ useEffect(() => {
          !feederCancelledRef.current
        ) {
          try {
-          const retained = await fetchCustomerHeldPointsToken0Display(programAddr, baseRpcProviderDirect);
+         const retained = await fetchCustomerHeldPointsToken0Display(programAddr, programCardProvider);
            if (Number.isFinite(retained) && !feederCancelledRef.current) {
              setRetainedCapitalDisplay(retained);
              saveTrustedCache(retainedCapitalTrustedCacheKey, retained);
@@ -21388,7 +21394,7 @@ useEffect(() => {
        if (account && ethers.isAddress(account) && programAddr && !feederCancelledRef.current) {
          const step3QuotaCacheKey = `card:${staffProgramCardCacheBucket}:admin:${ethers.getAddress(account).toLowerCase()}:quota-and-mint-counter`;
          const step3CachedQuota = loadTrustedCache<{ quota: number; mintCounterFromClear: number }>(step3QuotaCacheKey);
-         const cardDirect = new ethers.Contract(programAddr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+        const cardDirect = new ethers.Contract(programAddr, USER_CARD_ADMIN_READ_ABI, programCardProvider);
          try {
            const adminLower = ethers.getAddress(account).toLowerCase();
            const fetchStatsWithRawFallback = async (): Promise<{ mintCounterFromClear: bigint }> => {
@@ -21398,7 +21404,7 @@ useEffect(() => {
              } catch {
                const iface = new ethers.Interface([...USER_CARD_ADMIN_READ_ABI]);
                const calldata = iface.encodeFunctionData('getAdminStatsFull', [account, 0, 0, 0]);
-               const hex = await baseRpcProviderDirect.call({ to: programAddr, data: calldata });
+              const hex = await programCardProvider.call({ to: programAddr, data: calldata });
                const raw = (hex as string).replace(/^0x/, '');
                if (raw.length >= 1344) {
                  const structOffset = Number(BigInt('0x' + raw.slice(0, 64)));
@@ -21468,7 +21474,7 @@ useEffect(() => {
                (!!aaSync && ethers.isAddress(aaSync) && ownerNormSync === ethers.getAddress(aaSync));
              if (isOwnerSync) {
                const nextRoster = await buildStaffTerminalRowsForCardOwnerFromAdminList(
-                 baseRpcProviderDirect,
+                programCardProvider,
                  programAddr,
                  cardOwnerSync,
                  terminalsRef.current
@@ -21506,7 +21512,7 @@ useEffect(() => {
            for (const taddr of termAddrs) {
              if (feederCancelledRef.current) break;
              const k = taddr.toLowerCase();
-             next[k] = await fetchBizTerminalChainStats(card, baseRpcProviderDirect, programAddr, taddr);
+            next[k] = await fetchBizTerminalChainStats(card, programCardProvider, programAddr, taddr);
            }
            if (!feederCancelledRef.current) {
              setTerminalStats((prev) => {

@@ -10,7 +10,6 @@ import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { conetDepinProvider } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import MerchantOS from '@/pages/Vouchers/example/biz'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { BEAMIO_TAG_ALLOWED_RE, BEAMIO_TAG_RULE_HINT, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
@@ -41,11 +40,13 @@ const assembleEncryptKeysObject = async (
 	setCharts: React.Dispatch<React.SetStateAction<string[]>>,
 	setMyAddress: (val: string) => void,
 	onProgress?: (step: number) => void
-) => {
+): Promise<boolean> => {
 	const profiles = temp?.profiles
-	if (!temp || !profiles?.length) return
+	if (!temp || !profiles?.length) return false
 
-	if (!ingestSessionPrivateKeyFromProfiles(profiles)) return
+	if (!ingestSessionPrivateKeyFromProfiles(profiles)) return false
+	// Unlock workspace as soon as password restore succeeds — before slow getUserInfo/initChat.
+	markWorkspaceSessionUnlocked()
 	const hydratedProfiles = hydrateProfilesWithSessionSecrets(profiles)
 	temp.profiles = hydratedProfiles
 
@@ -70,7 +71,7 @@ const assembleEncryptKeysObject = async (
 	}
 
 	const userInfo = await loadUserInfo()
-	if (!userInfo?.accountName?.trim()) return
+	if (!userInfo?.accountName?.trim()) return false
 
 	const bo: beamio = userInfo
 	bo.initialLoading = false
@@ -143,7 +144,7 @@ const assembleEncryptKeysObject = async (
 		setMyAddress(eoa)
 	}
 	setProfiles(finalProfiles)
-	markWorkspaceSessionUnlocked()
+	return true
 }
 
 /** Post-login signing-in screen — `marketExample.html` (Beamio Business OS - Signing In) */
@@ -171,7 +172,6 @@ const BizHome = () => {
 	const [showPassword, setShowPassword] = useState(false)
 	const [isLoading, setIsLoading] = useState(false)
 	const [loginError, setLoginError] = useState('')
-	const [isLoggedIn, setIsLoggedIn] = useState(false)
 	const [showNewBiz, setShowNewBiz] = useState(false)
 	const [showRestoreAccess, setShowRestoreAccess] = useState(false)
 
@@ -190,8 +190,8 @@ const BizHome = () => {
 		if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) return
 		const p0 = profiles?.[0]
 		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
-		setIsLoggedIn(true)
-	}, [profiles])
+		navigate('/native-pos', { replace: true })
+	}, [profiles, navigate])
 
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault()
@@ -202,7 +202,6 @@ const BizHome = () => {
 			return
 		}
 		setIsLoading(true)
-		let willTransitionToHome = false
 		try {
 			const result = await restoreWithUserPin(username, password, false)
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
@@ -210,7 +209,7 @@ const BizHome = () => {
 				setLoginError(tu('invalid_beamio_tag_or_recovery_password_please_try_again'))
 				return
 			}
-			await assembleEncryptKeysObject(
+			const ready = await assembleEncryptKeysObject(
 				temp,
 				setProfiles,
 				setAllNodes,
@@ -221,17 +220,15 @@ const BizHome = () => {
 				setMyAddress,
 				undefined
 			)
-			willTransitionToHome = true
-			setTimeout(() => {
-				setIsLoggedIn(true)
-				setIsLoading(false)
-			}, 400)
+			if (!ready) {
+				setLoginError(tu('login_failed_please_try_again_later'))
+				return
+			}
+			navigate('/native-pos', { replace: true })
 		} catch {
 			setLoginError(tu('login_failed_please_try_again_later'))
 		} finally {
-			if (!willTransitionToHome) {
-				setIsLoading(false)
-			}
+			setIsLoading(false)
 		}
 	}
 
@@ -239,14 +236,13 @@ const BizHome = () => {
 		setLoginError('')
 		setShowRestoreAccess(false)
 		setIsLoading(true)
-		let willTransitionToHome = false
 		try {
 			const result = await restoreWithRedeem(recoveryCode.trim(), '')
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
 				throw new Error('Invalid recovery QR code')
 			}
-			await assembleEncryptKeysObject(
+			const ready = await assembleEncryptKeysObject(
 				temp,
 				setProfiles,
 				setAllNodes,
@@ -257,19 +253,15 @@ const BizHome = () => {
 				setMyAddress,
 				undefined
 			)
-			willTransitionToHome = true
-			setTimeout(() => {
-				setIsLoggedIn(true)
-				setIsLoading(false)
-			}, 400)
+			if (!ready) {
+				throw new Error('Could not prepare workspace after restore')
+			}
+			navigate('/native-pos', { replace: true })
 		} catch (err) {
 			setShowRestoreAccess(true)
-			setIsLoading(false)
 			throw new Error((err as Error)?.message ?? 'Restore failed, please try another recovery QR image.')
 		} finally {
-			if (!willTransitionToHome) {
-				setIsLoading(false)
-			}
+			setIsLoading(false)
 		}
 	}
 
@@ -284,10 +276,6 @@ const BizHome = () => {
 			/>
 		)
 	}
-	if (isLoggedIn) {
-		return <MerchantOS />
-	}
-
 	if (isLoading) {
 		return (
 			<>

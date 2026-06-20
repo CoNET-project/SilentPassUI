@@ -468,6 +468,7 @@ const longDhangMigrationCreateCardEndpoint = `${beamioApi}/api/longDhangMigratio
 const longDhangMigrationRunEndpoint = `${beamioApi}/api/longDhangMigrationRun`
 const longDhangMigrationVerifyEndpoint = `${beamioApi}/api/longDhangMigrationVerify`
 const longDhangMigrationExecuteAutoEndpoint = `${beamioApi}/api/longDhangMigrationExecuteAuto`
+const longDhangMigrationRepairTerminalsEndpoint = `${beamioApi}/api/longDhangMigrationRepairTerminals`
 const excludeUserCardEndpoint = `${beamioApi}/api/excludeUserCard`
 
 const EXCLUDE_USER_CARD_SIGN_PREFIX = 'Beamio excludeUserCard:v1'
@@ -531,13 +532,8 @@ export const postExcludeUserCard = async (params: {
 
 export const LONGDHANG_OLD_BASE_CARD = '0x30d80cD71Fd1FFD346737b387dA11C7412363EFF'
 export const LONGDHANG_OLD_CARD_OWNER = '0xA2d21FBd33F7D754D8d7A53fe2B4e5C39A008a1F'
-/** Partner merchant + migration test operator (same EOA). */
-export const LONGDHANG_MIGRATION_PARTNER_MERCHANT_EOA = '0xedb035E5D244a7bD987B950d3ac8d42afDe2D387'
-export const LONGDHANG_MIGRATION_AUTHORIZED_OWNER_EOAS = [
-	LONGDHANG_OLD_CARD_OWNER,
-	LONGDHANG_MIGRATION_PARTNER_MERCHANT_EOA,
-] as const
-export const LONGDHANG_MIGRATION_VERSION = 'longdhang-conet-migration-v1'
+export const LONGDHANG_MIGRATION_AUTHORIZED_OWNER_EOAS = [LONGDHANG_OLD_CARD_OWNER] as const
+export const LONGDHANG_MIGRATION_VERSION = 'longdhang-conet-migration-v2-frozen'
 
 const LONGDHANG_MIGRATION_NEW_CARD_LS_PREFIX = 'beamio:longdhang-migration-new-card:v1:'
 
@@ -583,12 +579,57 @@ async function waitForCardAdmin(cardAddress: string, adminEoa: string, maxMs = 1
 }
 
 export function isLongDhangMigrationOwnerEoa(rawEoa?: string | null): boolean {
+	return isLongDhangMigrationOwnerAmong(rawEoa, LONGDHANG_MIGRATION_AUTHORIZED_OWNER_EOAS)
+}
+
+/** Match current EOA against server `/api/longDhangMigrationConfig` authorizedOwnerEoa (preferred) or static fallback. */
+export function isLongDhangMigrationOwnerAmong(
+	rawEoa?: string | null,
+	authorizedOwners?: readonly string[] | null
+): boolean {
 	try {
 		if (!rawEoa?.trim()) return false
-		const norm = ethers.getAddress(rawEoa)
-		return LONGDHANG_MIGRATION_AUTHORIZED_OWNER_EOAS.some((a) => ethers.getAddress(a) === norm)
+		const norm = ethers.getAddress(rawEoa).toLowerCase()
+		const list = authorizedOwners?.length ? authorizedOwners : LONGDHANG_MIGRATION_AUTHORIZED_OWNER_EOAS
+		return list.some((a) => ethers.getAddress(a).toLowerCase() === norm)
 	} catch {
 		return false
+	}
+}
+
+function assertLongDhangMigrationSignerMatchesOwner(privateKeyArmor: string, ownerEoa: string): void {
+	const pk = privateKeyArmor.startsWith('0x') ? privateKeyArmor : `0x${privateKeyArmor}`
+	const wallet = new ethers.Wallet(pk)
+	const owner = ethers.getAddress(ownerEoa)
+	if (wallet.address !== owner) {
+		throw new Error(
+			`Unlocked wallet (${wallet.address}) does not match the LongDhang migration owner (${owner}). Lock workspace and sign in again with the owner @BeamioTag.`
+		)
+	}
+}
+
+/** Whether Start Migration is allowed (production owner: once per wallet). */
+export function canRunLongDhangMigration(eoa: string): boolean {
+	if (!ethers.isAddress(eoa)) return false
+	return !isLongDhangMigrationCompleted(eoa)
+}
+
+/** Full-screen / panel visibility for authorized migration owner. */
+export function shouldShowLongDhangMigrationUi(eoa: string): boolean {
+	if (!ethers.isAddress(eoa) || !isLongDhangMigrationOwnerEoa(eoa)) return false
+	if (isLongDhangMigrationDismissed(eoa)) return false
+	return !isLongDhangMigrationCompleted(eoa)
+}
+
+export function resetLongDhangMigrationLocalState(eoa: string): void {
+	if (typeof window === 'undefined' || !ethers.isAddress(eoa)) return
+	const ownerEoa = ethers.getAddress(eoa)
+	clearLongDhangMigrationNewCardStorage(ownerEoa)
+	try {
+		localStorage.removeItem(longDhangMigrationCompletedStorageKey(ownerEoa))
+		localStorage.removeItem(longDhangMigrationDismissStorageKey(ownerEoa))
+	} catch {
+		/* ignore */
 	}
 }
 
@@ -667,6 +708,72 @@ export function setLongDhangMigrationCompleted(
 	} catch {
 		/* ignore */
 	}
+}
+
+export type LongDhangMigrationAutoPhase =
+	| 'loading-members'
+	| 'creating-card'
+	| 'authorizing-admin'
+	| 'migrating'
+	| 'completed'
+	| 'failed'
+
+const LONGDHANG_MIGRATION_IN_FLIGHT_SS_KEY = 'beamio:longdhang-migration-in-flight:v1'
+
+export type LongDhangMigrationInFlightRecord = {
+	ownerEoa: string
+	phase: LongDhangMigrationAutoPhase
+	detail?: string
+	newCardAddress?: string
+	snapshotHash?: string
+	startedAt: string
+}
+
+export function writeLongDhangMigrationInFlight(record: LongDhangMigrationInFlightRecord): void {
+	if (typeof window === 'undefined') return
+	try {
+		sessionStorage.setItem(LONGDHANG_MIGRATION_IN_FLIGHT_SS_KEY, JSON.stringify(record))
+	} catch {
+		/* ignore */
+	}
+}
+
+export function clearLongDhangMigrationInFlight(): void {
+	if (typeof window === 'undefined') return
+	try {
+		sessionStorage.removeItem(LONGDHANG_MIGRATION_IN_FLIGHT_SS_KEY)
+	} catch {
+		/* ignore */
+	}
+}
+
+export function readLongDhangMigrationInFlight(ownerEoa: string): LongDhangMigrationInFlightRecord | null {
+	if (typeof window === 'undefined' || !ethers.isAddress(ownerEoa)) return null
+	try {
+		const raw = sessionStorage.getItem(LONGDHANG_MIGRATION_IN_FLIGHT_SS_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as LongDhangMigrationInFlightRecord
+		if (!parsed?.ownerEoa || ethers.getAddress(parsed.ownerEoa) !== ethers.getAddress(ownerEoa)) return null
+		return parsed
+	} catch {
+		return null
+	}
+}
+
+function isLikelyMigrationFetchDisconnectError(error?: string): boolean {
+	if (!error?.trim()) return false
+	const e = error.toLowerCase()
+	return (
+		e.includes('abort') ||
+		e.includes('failed to fetch') ||
+		e.includes('networkerror') ||
+		e.includes('network error') ||
+		e.includes('load failed') ||
+		e.includes('timed out') ||
+		e.includes('502') ||
+		e.includes('504') ||
+		e.includes('gateway')
+	)
 }
 
 /** If a prior run saved the new card but not the completed flag, verify once and persist completed. */
@@ -761,13 +868,28 @@ export type LongDhangMigrationRunResult = {
 	error?: string
 }
 
+export type LongDhangMigrationTerminalRow = {
+	posEoa: string
+	metadata: string
+	mintLimitE6: string
+	status: 'registered' | 'skipped' | 'failed'
+	txHash?: string
+	reason?: string
+}
+
 export type LongDhangMigrationAutoResult = {
 	success: boolean
 	newCardAddress: string
 	snapshotHash: string
 	phases: Array<{ phase: string; ok: boolean; detail?: string }>
 	members: { total: number; minted: number; skipped: number; failed: number }
-	admins: { total: number; registered: number; skipped: number; failed: number }
+	admins: {
+		total: number
+		registered: number
+		skipped: number
+		failed: number
+		rows?: LongDhangMigrationTerminalRow[]
+	}
 	verify?: {
 		success: boolean
 		memberMatches: number
@@ -778,16 +900,8 @@ export type LongDhangMigrationAutoResult = {
 	error?: string
 }
 
-export type LongDhangMigrationAutoPhase =
-	| 'loading-members'
-	| 'creating-card'
-	| 'authorizing-admin'
-	| 'migrating'
-	| 'completed'
-	| 'failed'
-
 export function buildLongDhangMigrationAuthMessage(args: {
-	action: 'create-card' | 'run-migration' | 'start-migration'
+	action: 'create-card' | 'run-migration' | 'start-migration' | 'repair-terminals'
 	ownerEoa: string
 	snapshotHash: string
 	newCardAddress?: string
@@ -811,21 +925,25 @@ export function buildLongDhangMigrationAuthMessage(args: {
 
 export async function signLongDhangMigrationAuthorization(args: {
 	privateKeyArmor: string
-	action: 'create-card' | 'run-migration' | 'start-migration'
+	action: 'create-card' | 'run-migration' | 'start-migration' | 'repair-terminals'
 	ownerEoa: string
 	snapshotHash: string
 	newCardAddress?: string
 }): Promise<string> {
+	const ownerEoa = ethers.getAddress(args.ownerEoa)
+	assertLongDhangMigrationSignerMatchesOwner(args.privateKeyArmor, ownerEoa)
 	const pk = args.privateKeyArmor.startsWith('0x') ? args.privateKeyArmor : `0x${args.privateKeyArmor}`
 	const wallet = new ethers.Wallet(pk)
-	const msg = buildLongDhangMigrationAuthMessage(args)
+	const msg = buildLongDhangMigrationAuthMessage({ ...args, ownerEoa })
 	return wallet.signMessage(msg)
 }
 
 export async function fetchLongDhangMigrationConfig(): Promise<{
 	success: boolean
+	version?: string
 	oldBaseCard?: string
 	oldBaseCardOwner?: string
+	authorizedOwnerEoa?: string[]
 	migrationAdmin?: string
 	error?: string
 }> {
@@ -833,10 +951,15 @@ export async function fetchLongDhangMigrationConfig(): Promise<{
 		const res = await fetch(longDhangMigrationConfigEndpoint)
 		const data = await res.json()
 		if (!res.ok || data?.success === false) return { success: false, error: data?.error ?? 'Migration config unavailable.' }
+		const authorizedOwnerEoa = Array.isArray(data.authorizedOwnerEoa)
+			? data.authorizedOwnerEoa.filter((a: unknown) => typeof a === 'string' && ethers.isAddress(a)).map((a: string) => ethers.getAddress(a))
+			: undefined
 		return {
 			success: true,
+			version: typeof data.version === 'string' ? data.version : undefined,
 			oldBaseCard: data.oldBaseCard,
 			oldBaseCardOwner: data.oldBaseCardOwner,
+			authorizedOwnerEoa,
 			migrationAdmin: data.migrationAdmin,
 		}
 	} catch (e: any) {
@@ -969,6 +1092,68 @@ export async function verifyLongDhangMigration(newCardAddress: string): Promise<
 	}
 }
 
+function migrationVerifyLooksComplete(verified: Awaited<ReturnType<typeof verifyLongDhangMigration>>): boolean {
+	if (!verified.success) return false
+	const memberTotal = verified.totalRows ?? 0
+	const memberMatches = verified.matches ?? 0
+	if (memberTotal <= 0 || memberMatches < memberTotal) return false
+	const termTotal = verified.terminals?.total ?? 0
+	const termMatches = verified.terminals?.matches ?? 0
+	return termTotal === 0 || termMatches >= termTotal
+}
+
+const LONGDHANG_VERIFY_POLL_MAX_MS = 30 * 60 * 1000
+
+/** Poll verify after HTTP disconnect while Master may still be migrating. */
+export async function waitForLongDhangServerMigrationVerify(args: {
+	newCardAddress: string
+	snapshotHash: string
+	onPhase?: (phase: LongDhangMigrationAutoPhase, detail?: string) => void
+	maxMs?: number
+}): Promise<LongDhangMigrationAutoResult | null> {
+	const newCard = ethers.getAddress(args.newCardAddress)
+	const maxMs = args.maxMs ?? LONGDHANG_VERIFY_POLL_MAX_MS
+	const started = Date.now()
+	while (Date.now() - started < maxMs) {
+		const elapsedSec = Math.round((Date.now() - started) / 1000)
+		args.onPhase?.(
+			'migrating',
+			`Server still processing - checking ${newCard.slice(0, 6)}...${newCard.slice(-4)} (${elapsedSec}s)...`
+		)
+		const verified = await verifyLongDhangMigration(newCard)
+		if (migrationVerifyLooksComplete(verified)) {
+			return {
+				success: true,
+				newCardAddress: newCard,
+				snapshotHash: verified.snapshotHash ?? args.snapshotHash,
+				phases: [{ phase: 'verify-recovered', ok: true, detail: `${verified.matches}/${verified.totalRows} members` }],
+				members: {
+					total: verified.totalRows ?? 0,
+					minted: verified.matches ?? 0,
+					skipped: 0,
+					failed: 0,
+				},
+				admins: {
+					total: verified.terminals?.total ?? 0,
+					registered: verified.terminals?.matches ?? 0,
+					skipped: 0,
+					failed: 0,
+					rows: [],
+				},
+				verify: {
+					success: true,
+					memberMatches: verified.matches ?? 0,
+					memberTotal: verified.totalRows ?? 0,
+					adminMatches: verified.terminals?.matches ?? 0,
+					adminTotal: verified.terminals?.total ?? 0,
+				},
+			}
+		}
+		await new Promise((r) => setTimeout(r, 8000))
+	}
+	return null
+}
+
 export async function executeLongDhangMigrationAuto(payload: {
 	ownerEoa: string
 	snapshotHash: string
@@ -1009,6 +1194,54 @@ export async function executeLongDhangMigrationAuto(payload: {
 	}
 }
 
+export async function repairLongDhangMigrationTerminals(args: {
+	privateKeyArmor: string
+	ownerEoa: string
+	newCardAddress: string
+	snapshotHash: string
+}): Promise<{
+	success: boolean
+	admins?: LongDhangMigrationAutoResult['admins']
+	verify?: { total: number; matches: number; mismatches: Array<{ posEoa: string; reason: string }> }
+	error?: string
+}> {
+	try {
+		const ownerEoa = ethers.getAddress(args.ownerEoa)
+		const newCardAddress = ethers.getAddress(args.newCardAddress)
+		const ownerSignature = await signLongDhangMigrationAuthorization({
+			privateKeyArmor: args.privateKeyArmor,
+			action: 'repair-terminals',
+			ownerEoa,
+			snapshotHash: args.snapshotHash,
+			newCardAddress,
+		})
+		const signal = createFetchTimeoutSignal(300_000)
+		const res = await fetch(longDhangMigrationRepairTerminalsEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ ownerEoa, snapshotHash: args.snapshotHash, ownerSignature, newCardAddress }),
+			...(signal ? { signal } : {}),
+		})
+		const data = await res.json()
+		if (!res.ok) return { success: false, error: data?.error ?? 'Terminal repair failed.' }
+		return data
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
+}
+
+/** Terminal EOAs successfully on-chain after migration (registered or already present). */
+export function listLongDhangMigratedTerminalEoa(result: LongDhangMigrationAutoResult): string[] {
+	const rows = result.admins?.rows ?? []
+	const out: string[] = []
+	for (const row of rows) {
+		if (row.status !== 'registered' && row.status !== 'skipped') continue
+		if (!row.posEoa || !ethers.isAddress(row.posEoa)) continue
+		out.push(ethers.getAddress(row.posEoa))
+	}
+	return out
+}
+
 /** One-click LongDhang Base → CoNET migration (owner signs in-process; no multi-step buttons). */
 export async function runLongDhangMigrationAuto(args: {
 	privateKeyArmor: string
@@ -1018,6 +1251,19 @@ export async function runLongDhangMigrationAuto(args: {
 	const pk = args.privateKeyArmor.trim()
 	if (!pk) throw new Error('Unlock wallet first.')
 	const ownerEoa = ethers.getAddress(args.currentEoa)
+	assertLongDhangMigrationSignerMatchesOwner(pk, ownerEoa)
+
+	const touchInFlight = (phase: LongDhangMigrationAutoPhase, detail?: string, newCardAddress?: string, snapshotHash?: string) => {
+		writeLongDhangMigrationInFlight({
+			ownerEoa,
+			phase,
+			detail,
+			newCardAddress,
+			snapshotHash,
+			startedAt: new Date().toISOString(),
+		})
+		args.onPhase?.(phase, detail)
+	}
 
 	if (isLongDhangMigrationCompleted(ownerEoa)) {
 		const done = getLongDhangMigrationCompleted(ownerEoa)!
@@ -1026,9 +1272,10 @@ export async function runLongDhangMigrationAuto(args: {
 		)
 	}
 
-	args.onPhase?.('loading-members', 'Reading Members directory and Base balances…')
+	touchInFlight('loading-members', 'Loading frozen Base snapshot (5 members, 3 terminals)…')
 	const preview = await previewLongDhangMigration(true)
 	if (!preview.success || !preview.snapshot) {
+		clearLongDhangMigrationInFlight()
 		throw new Error(preview.error ?? 'Failed to load Members snapshot.')
 	}
 	const snap = preview.snapshot
@@ -1041,7 +1288,7 @@ export async function runLongDhangMigrationAuto(args: {
 		/* ignore */
 	}
 
-	args.onPhase?.('creating-card', newCard ? `Using ${newCard}` : 'Creating CoNET program card…')
+	touchInFlight('creating-card', newCard ? `Using ${newCard}` : 'Creating CoNET program card…', newCard || undefined, snap.snapshotHash)
 	if (!newCard) {
 		const createSig = await signLongDhangMigrationAuthorization({
 			privateKeyArmor: pk,
@@ -1055,6 +1302,7 @@ export async function runLongDhangMigrationAuto(args: {
 			ownerSignature: createSig,
 		})
 		if (!created.success || !created.cardAddress) {
+			clearLongDhangMigrationInFlight()
 			throw new Error(created.error ?? 'Create CoNET card failed.')
 		}
 		newCard = ethers.getAddress(created.cardAddress)
@@ -1067,11 +1315,14 @@ export async function runLongDhangMigrationAuto(args: {
 		await assertCoNetMigrationCardOwnedBy(newCard, ownerEoa)
 	}
 
-	args.onPhase?.('authorizing-admin', 'Authorizing migration admin on new card…')
+	touchInFlight('authorizing-admin', 'Authorizing migration admin on new card…', newCard, snap.snapshotHash)
 	const config = await fetchLongDhangMigrationConfig()
 	const migrationAdmin =
 		config.migrationAdmin && ethers.isAddress(config.migrationAdmin) ? ethers.getAddress(config.migrationAdmin) : ''
-	if (!migrationAdmin) throw new Error('Migration admin is unavailable on the server.')
+	if (!migrationAdmin) {
+		clearLongDhangMigrationInFlight()
+		throw new Error('Migration admin is unavailable on the server.')
+	}
 
 	const alreadyMigrationAdmin = await isCardAdmin(newCard, migrationAdmin)
 	if (!alreadyMigrationAdmin) {
@@ -1094,17 +1345,19 @@ export async function runLongDhangMigrationAuto(args: {
 			adminEOA: migrationAdmin,
 		})
 		if (!authRes.success) {
+			clearLongDhangMigrationInFlight()
 			throw new Error(authRes.error ?? 'Authorize migration admin failed.')
 		}
 		const authorized = await waitForCardAdmin(newCard, migrationAdmin)
 		if (!authorized) {
+			clearLongDhangMigrationInFlight()
 			throw new Error(
 				`Migration admin ${migrationAdmin} is not authorized on ${newCard} yet. Wait a moment and press Start Migration again.`
 			)
 		}
 	}
 
-	args.onPhase?.('migrating', 'Migrating members, sub-admins, and verifying…')
+	touchInFlight('migrating', 'Migrating members, sub-admins, and verifying…', newCard, snap.snapshotHash)
 	const startSig = await signLongDhangMigrationAuthorization({
 		privateKeyArmor: pk,
 		action: 'start-migration',
@@ -1112,20 +1365,32 @@ export async function runLongDhangMigrationAuto(args: {
 		snapshotHash: snap.snapshotHash,
 		newCardAddress: newCard,
 	})
-	const result = await executeLongDhangMigrationAuto({
+	let result = await executeLongDhangMigrationAuto({
 		ownerEoa,
 		snapshotHash: snap.snapshotHash,
 		ownerSignature: startSig,
 		existingNewCardAddress: newCard,
 	})
+
+	if (!result.success && isLikelyMigrationFetchDisconnectError(result.error)) {
+		const recovered = await waitForLongDhangServerMigrationVerify({
+			newCardAddress: newCard,
+			snapshotHash: snap.snapshotHash,
+			onPhase: (phase, detail) => touchInFlight(phase, detail, newCard, snap.snapshotHash),
+		})
+		if (recovered) result = recovered
+	}
+
 	if (result.success) {
 		setLongDhangMigrationCompleted(ownerEoa, {
 			newCardAddress: result.newCardAddress || newCard,
 			snapshotHash: result.snapshotHash || snap.snapshotHash,
 		})
-		args.onPhase?.('completed', result.newCardAddress || newCard)
+		clearLongDhangMigrationInFlight()
+		touchInFlight('completed', result.newCardAddress || newCard)
 	} else {
-		args.onPhase?.('failed', result.error)
+		clearLongDhangMigrationInFlight()
+		touchInFlight('failed', result.error)
 	}
 	return result
 }
@@ -3008,10 +3273,12 @@ export const postCardAddAdmin = async (payload: {
         if (payload.adminEOA && ethers.isAddress(payload.adminEOA)) {
             body.adminEOA = ethers.getAddress(payload.adminEOA)
         }
+        const addAdminSignal = createFetchTimeoutSignal(600_000)
         const res = await fetch(cardAddAdminEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+            ...(addAdminSignal ? { signal: addAdminSignal } : {}),
         })
         const data = await res.json()
         if (!res.ok) return { success: false, error: data.error ?? 'cardAddAdmin failed' }

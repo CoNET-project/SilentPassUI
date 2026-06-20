@@ -19,7 +19,7 @@ import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { clearWorkspaceSessionUnlock, isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock';
 import { useReliableTapHandler } from '@/utils/reliableTap';
-import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
+import { hasSessionPrivateKeyArmor, getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
 import {
   storeSystemData,
   generateCODE,
@@ -88,11 +88,23 @@ import {
   queryBusinessStartKetBalanceOfOnChain,
   postBusinessStartKetRedeemRedeem,
   queryValidatorDepositRedeemAdminOnChain,
-  isLongDhangMigrationOwnerEoa,
+  isLongDhangMigrationOwnerAmong,
+  fetchLongDhangMigrationConfig,
   isLongDhangMigrationDismissed,
   setLongDhangMigrationDismissed,
   isLongDhangMigrationCompleted,
+  readLongDhangMigrationInFlight,
+  clearLongDhangMigrationInFlight,
+  longDhangMigrationNewCardStorageKey,
+  runLongDhangMigrationAuto,
+  waitForLongDhangServerMigrationVerify,
   syncLongDhangMigrationCompletedFromStoredCard,
+  getLongDhangMigrationCompleted,
+  repairLongDhangMigrationTerminals,
+  listLongDhangMigratedTerminalEoa,
+  verifyLongDhangMigration,
+  type LongDhangMigrationAutoResult,
+  type LongDhangMigrationAutoPhase,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
@@ -17071,13 +17083,37 @@ useEffect(() => {
  const [buintRedeemPrecheckLoading, setBuintRedeemPrecheckLoading] = useState(false);
  const [buintRedeemSubmitLoading, setBuintRedeemSubmitLoading] = useState(false);
  const [buintRedeemUiError, setBuintRedeemUiError] = useState('');
- const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
+ const currentEoa = useMemo(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return '';
+   return ethers.getAddress(raw);
+ }, [profiles?.[0]?.keyID, myAddress]);
+ const [longDhangAuthorizedOwnerEoa, setLongDhangAuthorizedOwnerEoa] = useState<string[] | null>(null);
+ useEffect(() => {
+   let cancelled = false;
+   void fetchLongDhangMigrationConfig().then((cfg) => {
+     if (cancelled) return;
+     if (cfg.success && cfg.authorizedOwnerEoa?.length) {
+       setLongDhangAuthorizedOwnerEoa(cfg.authorizedOwnerEoa);
+       return;
+     }
+     setLongDhangAuthorizedOwnerEoa([]);
+   });
+   return () => {
+     cancelled = true;
+   };
+ }, []);
  const isLongDhangMigrationOwner = useMemo(
-   () => isLongDhangMigrationOwnerEoa(currentEoa),
-   [currentEoa],
+   () => isLongDhangMigrationOwnerAmong(currentEoa, longDhangAuthorizedOwnerEoa),
+   [currentEoa, longDhangAuthorizedOwnerEoa],
  );
  const [longDhangMigrationDismissed, setLongDhangMigrationDismissedState] = useState(false);
  const [longDhangMigrationCompleted, setLongDhangMigrationCompletedState] = useState(false);
+ const [longDhangMigrationBusy, setLongDhangMigrationBusy] = useState(false);
+ const [longDhangMigrationPhase, setLongDhangMigrationPhase] = useState<LongDhangMigrationAutoPhase | null>(null);
+ const [longDhangMigrationPhaseDetail, setLongDhangMigrationPhaseDetail] = useState<string | null>(null);
+ const [longDhangMigrationResult, setLongDhangMigrationResult] = useState<LongDhangMigrationAutoResult | null>(null);
+ const longDhangMigrationResumeRef = useRef(false);
  useEffect(() => {
    if (!currentEoa || !ethers.isAddress(currentEoa)) {
      setLongDhangMigrationDismissedState(false);
@@ -17101,15 +17137,121 @@ useEffect(() => {
    };
  }, [isLongDhangMigrationOwner, currentEoa]);
  const showLongDhangMigrationFullScreen =
+   longDhangAuthorizedOwnerEoa != null &&
    isLongDhangMigrationOwner &&
    !longDhangMigrationDismissed &&
    !longDhangMigrationCompleted &&
    Boolean(currentEoa && ethers.isAddress(currentEoa));
- const syncLongDhangMigrationCompleted = useCallback(() => {
-   if (!currentEoa || !ethers.isAddress(currentEoa)) return;
-   setLongDhangMigrationCompletedState(isLongDhangMigrationCompleted(currentEoa));
-   setLongDhangMigrationDismissedState(isLongDhangMigrationDismissed(currentEoa));
- }, [currentEoa]);
+ const longDhangMigrationLastResultRef = useRef<LongDhangMigrationAutoResult | null>(null);
+ const longDhangTerminalRepairStartedRef = useRef(false);
+ const syncLongDhangMigrationCompleted = useCallback(
+   (result?: LongDhangMigrationAutoResult) => {
+     if (!currentEoa || !ethers.isAddress(currentEoa)) return;
+     setLongDhangMigrationCompletedState(isLongDhangMigrationCompleted(currentEoa));
+     setLongDhangMigrationDismissedState(isLongDhangMigrationDismissed(currentEoa));
+     if (result) longDhangMigrationLastResultRef.current = result;
+   },
+   [currentEoa],
+ );
+ const startLongDhangMigration = useCallback(async () => {
+   const pk = getSessionPrivateKeyArmor()?.trim() || profiles?.[0]?.privateKeyArmor?.trim();
+   if (!pk || !currentEoa || !ethers.isAddress(currentEoa) || longDhangMigrationBusy) return;
+   setLongDhangMigrationBusy(true);
+   setLongDhangMigrationResult(null);
+   setLongDhangMigrationPhase('loading-members');
+   setLongDhangMigrationPhaseDetail(null);
+   try {
+     const out = await runLongDhangMigrationAuto({
+       privateKeyArmor: pk,
+       currentEoa,
+       onPhase: (p, detail) => {
+         setLongDhangMigrationPhase(p);
+         setLongDhangMigrationPhaseDetail(detail ?? null);
+       },
+     });
+     setLongDhangMigrationResult(out);
+     if (out.success) {
+       setLongDhangMigrationPhase('completed');
+       setLongDhangMigrationPhaseDetail(out.newCardAddress);
+       syncLongDhangMigrationCompleted(out);
+     } else {
+       setLongDhangMigrationPhase('failed');
+       if (out.error) setLongDhangMigrationPhaseDetail(out.error);
+     }
+   } catch (e: any) {
+     setLongDhangMigrationPhase('failed');
+     setLongDhangMigrationPhaseDetail(e?.message ?? String(e));
+     setLongDhangMigrationResult({
+       success: false,
+       newCardAddress: ethers.ZeroAddress,
+       snapshotHash: '',
+       phases: [],
+       members: { total: 0, minted: 0, skipped: 0, failed: 0 },
+       admins: { total: 0, registered: 0, skipped: 0, failed: 0 },
+       error: e?.message ?? String(e),
+     });
+   } finally {
+     setLongDhangMigrationBusy(false);
+   }
+ }, [profiles?.[0]?.privateKeyArmor, currentEoa, longDhangMigrationBusy, syncLongDhangMigrationCompleted]);
+ useEffect(() => {
+   if (!currentEoa || !ethers.isAddress(currentEoa) || longDhangMigrationResumeRef.current || longDhangMigrationBusy) return;
+   const inflight = readLongDhangMigrationInFlight(currentEoa);
+   if (!inflight || inflight.phase === 'completed' || inflight.phase === 'failed') return;
+   let newCard = inflight.newCardAddress?.trim() ?? '';
+   if (!newCard || !ethers.isAddress(newCard)) {
+     try {
+       const stored = localStorage.getItem(longDhangMigrationNewCardStorageKey(currentEoa));
+       if (stored && ethers.isAddress(stored)) newCard = ethers.getAddress(stored);
+     } catch {
+       return;
+     }
+   }
+   if (!newCard || !ethers.isAddress(newCard)) return;
+   longDhangMigrationResumeRef.current = true;
+   setLongDhangMigrationBusy(true);
+   setLongDhangMigrationPhase(inflight.phase);
+   setLongDhangMigrationPhaseDetail(inflight.detail ?? 'Resuming migration status…');
+   let cancelled = false;
+   void (async () => {
+     const recovered = await waitForLongDhangServerMigrationVerify({
+       newCardAddress: newCard,
+       snapshotHash: inflight.snapshotHash ?? '',
+       onPhase: (p, detail) => {
+         if (cancelled) return;
+         setLongDhangMigrationPhase(p);
+         setLongDhangMigrationPhaseDetail(detail ?? null);
+       },
+     });
+     if (cancelled) return;
+     if (recovered?.success) {
+       setLongDhangMigrationResult(recovered);
+       setLongDhangMigrationPhase('completed');
+       setLongDhangMigrationPhaseDetail(recovered.newCardAddress);
+       syncLongDhangMigrationCompleted(recovered);
+     } else {
+       setLongDhangMigrationPhase('failed');
+       setLongDhangMigrationPhaseDetail(
+         'Migration may still be running on the server. Keep this page open or press Start Migration again in a few minutes.'
+       );
+       setLongDhangMigrationResult({
+         success: false,
+         newCardAddress: newCard,
+         snapshotHash: inflight.snapshotHash ?? '',
+         phases: [],
+         members: { total: 0, minted: 0, skipped: 0, failed: 0 },
+         admins: { total: 0, registered: 0, skipped: 0, failed: 0 },
+         error:
+           'Could not confirm migration completion yet. The server may still be processing — check again shortly.',
+       });
+     }
+     clearLongDhangMigrationInFlight();
+     setLongDhangMigrationBusy(false);
+   })();
+   return () => {
+     cancelled = true;
+   };
+ }, [currentEoa, longDhangMigrationBusy, syncLongDhangMigrationCompleted]);
  const [isValidatorDepositRedeemAdmin, setIsValidatorDepositRedeemAdmin] = useState(false);
  const [isValidatorDepositRedeemAdminFetched, setIsValidatorDepositRedeemAdminFetched] = useState(false);
  useEffect(() => {
@@ -20183,6 +20325,69 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   }
 }, [profiles, myAddress, linkedTerminalsCacheKey, staffProgramBeamioCardAddress]);
 
+ useEffect(() => {
+   if (!longDhangMigrationCompleted || !isLongDhangMigrationOwner) return;
+   if (!currentEoa || !ethers.isAddress(currentEoa)) return;
+   const pk = profiles?.[0]?.privateKeyArmor?.trim();
+   if (!pk) return;
+   const completed = getLongDhangMigrationCompleted(currentEoa);
+   if (!completed?.newCardAddress || !ethers.isAddress(completed.newCardAddress)) return;
+
+   const clearPendingForTerminalEoaList = (eoas: string[]) => {
+     if (eoas.length === 0 || posPermissionPartitionAddressesList.length === 0) return;
+     for (const posEoa of eoas) {
+       removePosTerminalPermissionPendingByChildEoaFromPartitions(posPermissionPartitionAddressesList, posEoa);
+     }
+     try {
+       window.dispatchEvent(new CustomEvent(POS_TERMINAL_PERMISSION_PENDING_EVENT));
+     } catch {
+       /* ignore */
+     }
+   };
+
+   const lastResult = longDhangMigrationLastResultRef.current;
+   if (lastResult?.success) {
+     clearPendingForTerminalEoaList(listLongDhangMigratedTerminalEoa(lastResult));
+     longDhangMigrationLastResultRef.current = null;
+   }
+
+   if (longDhangTerminalRepairStartedRef.current) return;
+   let cancelled = false;
+   void (async () => {
+     const verify = await verifyLongDhangMigration(completed.newCardAddress);
+     if (cancelled) return;
+     const termTotal = verify.terminals?.total ?? 0;
+     const termMatches = verify.terminals?.matches ?? 0;
+     if (termTotal > 0 && termMatches >= termTotal) {
+       void fetchTerminals({ silent: true });
+       return;
+     }
+     longDhangTerminalRepairStartedRef.current = true;
+     const repaired = await repairLongDhangMigrationTerminals({
+       privateKeyArmor: pk,
+       ownerEoa: currentEoa,
+       newCardAddress: completed.newCardAddress,
+       snapshotHash: completed.snapshotHash || verify.snapshotHash || '',
+     });
+     if (cancelled) return;
+     const rows = repaired.admins?.rows ?? [];
+     clearPendingForTerminalEoaList(
+       rows.filter((r) => r.status === 'registered' || r.status === 'skipped').map((r) => r.posEoa),
+     );
+     void fetchTerminals({ silent: true });
+   })();
+   return () => {
+     cancelled = true;
+   };
+ }, [
+   longDhangMigrationCompleted,
+   isLongDhangMigrationOwner,
+   currentEoa,
+   profiles?.[0]?.privateKeyArmor,
+   posPermissionPartitionAddressesList,
+   fetchTerminals,
+ ]);
+
  /** Map Staff terminal row (EOA id) to on-chain subordinate address (AA or EOA) for adminParent / clear counter. */
  const resolveTerminalChainSubordinate = useCallback(
    async (terminalEoaId: string): Promise<string> => {
@@ -22557,7 +22762,13 @@ useEffect(() => {
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** First-time merchant shell: no self-issued BeamioUserCard and no BusinessStartKet Ket #0 on CoNET. While issuer/Ket reads are in flight, keep legacy `!hasAaAccount` to avoid dashboard flash. */
  const showBizFirstMembershipOnboarding = useMemo(() => {
-   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed && !longDhangMigrationCompleted) return false;
+   if (
+     isLongDhangMigrationOwner &&
+     !longDhangMigrationDismissed &&
+     !longDhangMigrationCompleted
+   ) {
+     return false;
+   }
    const bothFetched = profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
    if (bothFetched) return !profileOwnsIssuedBeamioCard && !ownsBusinessStartKetToken0;
    return !hasAaAccount;
@@ -22643,9 +22854,21 @@ const programsMobileTopNavVisible =
  useLayoutEffect(() => {
    if (activeTab !== 'Overview') return;
    if (!ketNoCardProgramsEligible) return;
-   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed && !longDhangMigrationCompleted) return;
+   if (
+     isLongDhangMigrationOwner &&
+     !longDhangMigrationDismissed &&
+     !longDhangMigrationCompleted
+   ) {
+     return;
+   }
    setActiveTab('Card Issuance Setup');
- }, [activeTab, ketNoCardProgramsEligible, isLongDhangMigrationOwner, longDhangMigrationDismissed, longDhangMigrationCompleted]);
+ }, [
+   activeTab,
+   ketNoCardProgramsEligible,
+   isLongDhangMigrationOwner,
+   longDhangMigrationDismissed,
+   longDhangMigrationCompleted,
+ ]);
 
  /** Local draft complete AND on-chain recover acknowledged (restore / create / Continue push). */
  const verraLiteGateReleased = useMemo(() => {
@@ -24926,8 +25149,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           >
             <LongDhangConetMigrationPanel
               currentEoa={currentEoa}
-              privateKeyArmor={profiles?.[0]?.privateKeyArmor}
-              onMigrationCompleted={syncLongDhangMigrationCompleted}
+              privateKeyArmor={getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor}
+              authorizedOwnerEoa={longDhangAuthorizedOwnerEoa}
+              busy={longDhangMigrationBusy}
+              phase={longDhangMigrationPhase}
+              phaseDetail={longDhangMigrationPhaseDetail}
+              result={longDhangMigrationResult}
+              onStart={() => void startLongDhangMigration()}
             />
             {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && staffProgramBeamioCardAddress && showFixedCardMetadata && (
               <div className="flex justify-end">
@@ -37961,19 +38189,28 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
 
  if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) {
-   return <Navigate to="/" replace state={{ from: location.pathname }} />;
+   const pathNorm = location.pathname.replace(/\/+$/, '') || '/';
+   if (pathNorm !== '/') {
+     return <Navigate to="/" replace state={{ from: location.pathname }} />;
+   }
+   return null;
  }
 
  if (showLongDhangMigrationFullScreen && currentEoa && ethers.isAddress(currentEoa)) {
    return (
      <LongDhangConetMigrationFullScreen
        currentEoa={currentEoa}
-       privateKeyArmor={profiles?.[0]?.privateKeyArmor}
+       privateKeyArmor={getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor}
+       migrationBusy={longDhangMigrationBusy}
+       migrationPhase={longDhangMigrationPhase}
+       migrationPhaseDetail={longDhangMigrationPhaseDetail}
+       migrationResult={longDhangMigrationResult}
        onDismiss={() => {
+         if (longDhangMigrationBusy) return;
          setLongDhangMigrationDismissed(currentEoa, true);
          setLongDhangMigrationDismissedState(true);
        }}
-       onMigrationCompleted={syncLongDhangMigrationCompleted}
+       onStartMigration={() => void startLongDhangMigration()}
      />
    );
  }

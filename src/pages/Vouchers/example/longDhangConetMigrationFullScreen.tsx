@@ -3,12 +3,17 @@ import { ArrowLeft, Briefcase } from 'lucide-react'
 import { IpfsImg } from '@/components/IpfsImg'
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
 import { LongDhangConetMigrationPanel } from './longDhangConetMigrationPanel'
+import type { LongDhangMigrationAutoPhase, LongDhangMigrationAutoResult } from '@/services/BeamioCard'
 
 export type LongDhangConetMigrationFullScreenProps = {
 	currentEoa: string
 	privateKeyArmor?: string | null
+	migrationBusy?: boolean
+	migrationPhase: LongDhangMigrationAutoPhase | null
+	migrationPhaseDetail: string | null
+	migrationResult: LongDhangMigrationAutoResult | null
 	onDismiss: () => void
-	onMigrationCompleted?: () => void
+	onStartMigration: () => void
 }
 
 /**
@@ -18,8 +23,12 @@ export type LongDhangConetMigrationFullScreenProps = {
 export function LongDhangConetMigrationFullScreen({
 	currentEoa,
 	privateKeyArmor,
+	migrationBusy = false,
+	migrationPhase,
+	migrationPhaseDetail,
+	migrationResult,
 	onDismiss,
-	onMigrationCompleted,
+	onStartMigration,
 }: LongDhangConetMigrationFullScreenProps) {
 	const walletReady = Boolean(privateKeyArmor?.trim())
 
@@ -51,7 +60,8 @@ export function LongDhangConetMigrationFullScreen({
 				<button
 					type="button"
 					onClick={onDismiss}
-					className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#abadaf]/30 bg-white px-3 py-2 text-xs font-bold text-[#515c70] transition hover:bg-[#eef1f3]"
+					disabled={migrationBusy}
+					className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#abadaf]/30 bg-white px-3 py-2 text-xs font-bold text-[#515c70] transition hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					<ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
 					Workspace
@@ -87,7 +97,11 @@ export function LongDhangConetMigrationFullScreen({
 						currentEoa={currentEoa}
 						privateKeyArmor={privateKeyArmor}
 						className="shadow-md"
-						onMigrationCompleted={onMigrationCompleted}
+						busy={migrationBusy}
+						phase={migrationPhase}
+						phaseDetail={migrationPhaseDetail}
+						result={migrationResult}
+						onStart={onStartMigration}
 					/>
 				</div>
 			</main>

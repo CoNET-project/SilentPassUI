@@ -9,6 +9,7 @@ import {
 	stripSecretsForPersistence,
 	stripSecretsFromLoadedData,
 } from '@/utils/beamioSessionSecrets'
+import { markWorkspaceSessionUnlocked } from '@/utils/beamioWorkspaceLock'
 import {ethers, keccak256, toUtf8Bytes} from 'ethers' 
 import usdc_abi from './ABI/usdc_abi.json'
 import {
@@ -2029,6 +2030,7 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 		}
 
 		ingestSessionPrivateKeyFromProfiles(temp.profiles)
+		markWorkspaceSessionUnlocked()
 		temp.profiles = hydrateProfilesWithSessionSecrets(temp.profiles)
 		setCoNET_Data(temp)
 		

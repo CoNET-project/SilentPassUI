@@ -1,22 +1,24 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { AlertTriangle, Check, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
 import { ethers } from 'ethers'
 import {
 	LONGDHANG_OLD_BASE_CARD,
-	LONGDHANG_MIGRATION_PARTNER_MERCHANT_EOA,
-	isLongDhangMigrationOwnerEoa,
+	isLongDhangMigrationOwnerAmong,
 	isLongDhangMigrationCompleted,
-	type LongDhangMigrationAutoPhase,
 	type LongDhangMigrationAutoResult,
-	runLongDhangMigrationAuto,
+	type LongDhangMigrationAutoPhase,
 } from '@/services/BeamioCard'
 
 type LongDhangConetMigrationPanelProps = {
 	currentEoa?: string | null
 	privateKeyArmor?: string | null
+	authorizedOwnerEoa?: string[] | null
 	className?: string
-	/** Called after a successful one-shot migration (parent should hide migration chrome). */
-	onMigrationCompleted?: () => void
+	busy: boolean
+	phase: LongDhangMigrationAutoPhase | null
+	phaseDetail: string | null
+	result: LongDhangMigrationAutoResult | null
+	onStart: () => void
 }
 
 function shortAddr(address: string | undefined): string {
@@ -26,7 +28,7 @@ function shortAddr(address: string | undefined): string {
 }
 
 const PHASE_LABEL: Record<LongDhangMigrationAutoPhase, string> = {
-	'loading-members': 'Loading Members from Base card…',
+	'loading-members': 'Loading frozen Base snapshot (5 members, 3 terminals)…',
 	'creating-card': 'Creating CoNET card (inherits Base metadata)…',
 	'authorizing-admin': 'Authorizing migration admin…',
 	migrating: 'Airdropping member balances & migrating sub-admins…',
@@ -37,60 +39,25 @@ const PHASE_LABEL: Record<LongDhangMigrationAutoPhase, string> = {
 export function LongDhangConetMigrationPanel({
 	currentEoa,
 	privateKeyArmor,
+	authorizedOwnerEoa,
 	className = '',
-	onMigrationCompleted,
+	busy,
+	phase,
+	phaseDetail,
+	result,
+	onStart,
 }: LongDhangConetMigrationPanelProps) {
-	const isOwner = useMemo(() => isLongDhangMigrationOwnerEoa(currentEoa), [currentEoa])
+	const isOwner = useMemo(
+		() => isLongDhangMigrationOwnerAmong(currentEoa, authorizedOwnerEoa),
+		[currentEoa, authorizedOwnerEoa]
+	)
 	const alreadyCompleted = useMemo(
 		() => Boolean(currentEoa && ethers.isAddress(currentEoa) && isLongDhangMigrationCompleted(currentEoa)),
 		[currentEoa]
 	)
 	const walletReady = Boolean(privateKeyArmor?.trim())
-	const [busy, setBusy] = useState(false)
-	const [phase, setPhase] = useState<LongDhangMigrationAutoPhase | null>(null)
-	const [phaseDetail, setPhaseDetail] = useState<string | null>(null)
-	const [result, setResult] = useState<LongDhangMigrationAutoResult | null>(null)
 
-	if (!isOwner || alreadyCompleted) return null
-
-	const handleStart = async () => {
-		if (!walletReady || !currentEoa || busy) return
-		setBusy(true)
-		setResult(null)
-		setPhase('loading-members')
-		setPhaseDetail(null)
-		try {
-			const out = await runLongDhangMigrationAuto({
-				privateKeyArmor: privateKeyArmor!,
-				currentEoa,
-				onPhase: (p, detail) => {
-					setPhase(p)
-					setPhaseDetail(detail ?? null)
-				},
-			})
-			setResult(out)
-			if (out.success) {
-				setPhase('completed')
-				onMigrationCompleted?.()
-			} else {
-				setPhase('failed')
-			}
-		} catch (e: any) {
-			setPhase('failed')
-			setPhaseDetail(e?.message ?? String(e))
-			setResult({
-				success: false,
-				newCardAddress: ethers.ZeroAddress,
-				snapshotHash: '',
-				phases: [],
-				members: { total: 0, minted: 0, skipped: 0, failed: 0 },
-				admins: { total: 0, registered: 0, skipped: 0, failed: 0 },
-				error: e?.message ?? String(e),
-			})
-		} finally {
-			setBusy(false)
-		}
-	}
+	if (authorizedOwnerEoa == null || !isOwner || (alreadyCompleted && !busy && !phase)) return null
 
 	const primary =
 		'inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-3 text-sm font-extrabold text-white transition hover:bg-[#0f4ec4] disabled:cursor-not-allowed disabled:opacity-60'
@@ -114,7 +81,7 @@ export function LongDhangConetMigrationPanel({
 				<p className="mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-600">
 					One click: create a new CoNET card (inherits Base metadata), airdrop each Member&apos;s NFT #0 balance from{' '}
 					<span className="font-mono text-xs">{shortAddr(LONGDHANG_OLD_BASE_CARD)}</span>, and copy all sub-admin
-					terminals (including partner merchant {shortAddr(LONGDHANG_MIGRATION_PARTNER_MERCHANT_EOA)} when listed).
+					terminals from the frozen Base snapshot.
 				</p>
 			</div>
 
@@ -124,6 +91,13 @@ export function LongDhangConetMigrationPanel({
 				<p className="mt-1">3. Base sub-admin list + metadata → re-register on CoNET card.</p>
 			</div>
 
+			{busy ? (
+				<p className="mt-3 rounded-xl border border-[#1562f0]/20 bg-[#1562f0]/5 px-3 py-2 text-sm font-semibold text-[#0f4ec4]">
+					Migration is running — please keep this page open until you see success or an error (may take several
+					minutes).
+				</p>
+			) : null}
+
 			{!walletReady ? (
 				<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
 					Unlock with @BeamioTag and access password to start migration.
@@ -131,7 +105,7 @@ export function LongDhangConetMigrationPanel({
 			) : null}
 
 			<div className="mt-4 flex flex-col gap-2 sm:flex-row">
-				<button type="button" className={primary} disabled={!walletReady || busy} onClick={() => void handleStart()}>
+				<button type="button" className={primary} disabled={!walletReady || busy} onClick={onStart}>
 					{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
 					{busy ? 'Migration in progress…' : 'Start Migration'}
 				</button>

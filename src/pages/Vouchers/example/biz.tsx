@@ -91,6 +91,8 @@ import {
   isLongDhangMigrationOwnerEoa,
   isLongDhangMigrationDismissed,
   setLongDhangMigrationDismissed,
+  isLongDhangMigrationCompleted,
+  syncLongDhangMigrationCompletedFromStoredCard,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
@@ -17075,15 +17077,39 @@ useEffect(() => {
    [currentEoa],
  );
  const [longDhangMigrationDismissed, setLongDhangMigrationDismissedState] = useState(false);
+ const [longDhangMigrationCompleted, setLongDhangMigrationCompletedState] = useState(false);
  useEffect(() => {
    if (!currentEoa || !ethers.isAddress(currentEoa)) {
      setLongDhangMigrationDismissedState(false);
+     setLongDhangMigrationCompletedState(false);
      return;
    }
    setLongDhangMigrationDismissedState(isLongDhangMigrationDismissed(currentEoa));
+   setLongDhangMigrationCompletedState(isLongDhangMigrationCompleted(currentEoa));
  }, [currentEoa]);
+ useEffect(() => {
+   if (!isLongDhangMigrationOwner || !currentEoa || !ethers.isAddress(currentEoa)) return;
+   if (isLongDhangMigrationCompleted(currentEoa)) return;
+   let cancelled = false;
+   void syncLongDhangMigrationCompletedFromStoredCard(currentEoa).then((done) => {
+     if (cancelled || !done) return;
+     setLongDhangMigrationCompletedState(true);
+     setLongDhangMigrationDismissedState(true);
+   });
+   return () => {
+     cancelled = true;
+   };
+ }, [isLongDhangMigrationOwner, currentEoa]);
  const showLongDhangMigrationFullScreen =
-   isLongDhangMigrationOwner && !longDhangMigrationDismissed && Boolean(currentEoa && ethers.isAddress(currentEoa));
+   isLongDhangMigrationOwner &&
+   !longDhangMigrationDismissed &&
+   !longDhangMigrationCompleted &&
+   Boolean(currentEoa && ethers.isAddress(currentEoa));
+ const syncLongDhangMigrationCompleted = useCallback(() => {
+   if (!currentEoa || !ethers.isAddress(currentEoa)) return;
+   setLongDhangMigrationCompletedState(isLongDhangMigrationCompleted(currentEoa));
+   setLongDhangMigrationDismissedState(isLongDhangMigrationDismissed(currentEoa));
+ }, [currentEoa]);
  const [isValidatorDepositRedeemAdmin, setIsValidatorDepositRedeemAdmin] = useState(false);
  const [isValidatorDepositRedeemAdminFetched, setIsValidatorDepositRedeemAdminFetched] = useState(false);
  useEffect(() => {
@@ -22531,13 +22557,14 @@ useEffect(() => {
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** First-time merchant shell: no self-issued BeamioUserCard and no BusinessStartKet Ket #0 on CoNET. While issuer/Ket reads are in flight, keep legacy `!hasAaAccount` to avoid dashboard flash. */
  const showBizFirstMembershipOnboarding = useMemo(() => {
-   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed) return false;
+   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed && !longDhangMigrationCompleted) return false;
    const bothFetched = profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
    if (bothFetched) return !profileOwnsIssuedBeamioCard && !ownsBusinessStartKetToken0;
    return !hasAaAccount;
  }, [
    isLongDhangMigrationOwner,
    longDhangMigrationDismissed,
+   longDhangMigrationCompleted,
    profileOwnsIssuedBeamioCardFetched,
    ownsBusinessStartKetToken0Fetched,
    profileOwnsIssuedBeamioCard,
@@ -22616,9 +22643,9 @@ const programsMobileTopNavVisible =
  useLayoutEffect(() => {
    if (activeTab !== 'Overview') return;
    if (!ketNoCardProgramsEligible) return;
-   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed) return;
+   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed && !longDhangMigrationCompleted) return;
    setActiveTab('Card Issuance Setup');
- }, [activeTab, ketNoCardProgramsEligible, isLongDhangMigrationOwner, longDhangMigrationDismissed]);
+ }, [activeTab, ketNoCardProgramsEligible, isLongDhangMigrationOwner, longDhangMigrationDismissed, longDhangMigrationCompleted]);
 
  /** Local draft complete AND on-chain recover acknowledged (restore / create / Continue push). */
  const verraLiteGateReleased = useMemo(() => {
@@ -24900,6 +24927,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             <LongDhangConetMigrationPanel
               currentEoa={currentEoa}
               privateKeyArmor={profiles?.[0]?.privateKeyArmor}
+              onMigrationCompleted={syncLongDhangMigrationCompleted}
             />
             {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && staffProgramBeamioCardAddress && showFixedCardMetadata && (
               <div className="flex justify-end">
@@ -37945,6 +37973,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          setLongDhangMigrationDismissed(currentEoa, true);
          setLongDhangMigrationDismissedState(true);
        }}
+       onMigrationCompleted={syncLongDhangMigrationCompleted}
      />
    );
  }

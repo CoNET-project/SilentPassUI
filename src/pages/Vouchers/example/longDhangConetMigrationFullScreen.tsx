@@ -8,16 +8,18 @@ export type LongDhangConetMigrationFullScreenProps = {
 	currentEoa: string
 	privateKeyArmor?: string | null
 	onDismiss: () => void
+	onMigrationCompleted?: () => void
 }
 
 /**
- * Full-screen LongDhang Base → CoNET migration workspace (owner EOA only).
+ * Full-screen LongDhang Base → CoNET migration workspace (authorized owner EOAs only).
  * Shown instead of generic Lite onboarding / empty LoadingPage shell.
  */
 export function LongDhangConetMigrationFullScreen({
 	currentEoa,
 	privateKeyArmor,
 	onDismiss,
+	onMigrationCompleted,
 }: LongDhangConetMigrationFullScreenProps) {
 	const walletReady = Boolean(privateKeyArmor?.trim())
 
@@ -68,8 +70,8 @@ export function LongDhangConetMigrationFullScreen({
 									Migrate LongDhang to CoNET
 								</h1>
 								<p className="mt-1 text-sm font-medium leading-relaxed text-[#595c5e]">
-									Preview the Base AA holder snapshot, create a new CoNET merchant card, authorize the migration admin, then
-									batch-mint balances to each holder&apos;s CoNET AA.
+									Press <strong>Start Migration</strong> once — the system creates a CoNET card, copies Base metadata,
+									airdrops all Members&apos; balances, migrates sub-admins/terminals, and verifies automatically.
 								</p>
 							</div>
 						</div>
@@ -85,6 +87,7 @@ export function LongDhangConetMigrationFullScreen({
 						currentEoa={currentEoa}
 						privateKeyArmor={privateKeyArmor}
 						className="shadow-md"
+						onMigrationCompleted={onMigrationCompleted}
 					/>
 				</div>
 			</main>

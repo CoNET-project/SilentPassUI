@@ -148,29 +148,6 @@ const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
 	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: longdhangStoreCardBg,
 }
 
-/** Square logo — bundled for cards whose program icon is only on IPFS (e.g. LongDhang migration). */
-const DISCOVER_CARD_LOGO_OVERRIDES: Record<string, string> = {
-	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: longdhangStoreCardBg,
-}
-
-function resolveDiscoverFeaturedLogoImage(
-	cardAddress: string,
-	opts: {
-		programIconUrl?: string | null
-		logoUrl?: string | null
-		dbImage?: string | null
-	},
-): string | null {
-	const override = DISCOVER_CARD_LOGO_OVERRIDES[resolveDiscoverCardPanelKey(cardAddress)]?.trim()
-	if (override) return override
-	return (
-		opts.programIconUrl?.trim() ||
-		opts.logoUrl?.trim() ||
-		opts.dbImage?.trim() ||
-		null
-	)
-}
-
 function resolveDiscoverFeaturedHeroImage(
 	cardAddress: string,
 	opts: {
@@ -3133,11 +3110,7 @@ export default function Market() {
 						: card.topTierName ?? card.topTierMinDisplay ?? tu('member_benefits'),
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
 				image: hero,
-				logo: resolveDiscoverFeaturedLogoImage(card.cardAddress, {
-					programIconUrl: card.programIconUrl,
-					logoUrl: card.logoUrl,
-					dbImage,
-				}),
+				logo: card.programIconUrl ?? card.logoUrl ?? (dbImage || null),
 				currency: card.currency,
 				primaryRechargeBonus: primaryBonus,
 				rechargeBonusSidePill,

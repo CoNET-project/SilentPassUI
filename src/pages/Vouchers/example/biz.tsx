@@ -38201,6 +38201,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
      <LongDhangConetMigrationFullScreen
        currentEoa={currentEoa}
        privateKeyArmor={getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor}
+       authorizedOwnerEoa={longDhangAuthorizedOwnerEoa}
        migrationBusy={longDhangMigrationBusy}
        migrationPhase={longDhangMigrationPhase}
        migrationPhaseDetail={longDhangMigrationPhaseDetail}

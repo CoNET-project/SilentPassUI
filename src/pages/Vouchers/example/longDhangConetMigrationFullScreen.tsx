@@ -2,12 +2,23 @@ import React from 'react'
 import { ArrowLeft, Briefcase } from 'lucide-react'
 import { IpfsImg } from '@/components/IpfsImg'
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
+import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { LongDhangConetMigrationPanel } from './longDhangConetMigrationPanel'
 import type { LongDhangMigrationAutoPhase, LongDhangMigrationAutoResult } from '@/services/BeamioCard'
+
+const PHASE_LABEL: Record<LongDhangMigrationAutoPhase, string> = {
+	'loading-members': 'Loading frozen Base snapshot (5 members, 3 terminals)…',
+	'creating-card': 'Creating CoNET card (inherits Base metadata)…',
+	'authorizing-admin': 'Authorizing migration admin…',
+	migrating: 'Airdropping member balances & migrating sub-admins…',
+	completed: 'Migration complete',
+	failed: 'Migration failed',
+}
 
 export type LongDhangConetMigrationFullScreenProps = {
 	currentEoa: string
 	privateKeyArmor?: string | null
+	authorizedOwnerEoa?: string[] | null
 	migrationBusy?: boolean
 	migrationPhase: LongDhangMigrationAutoPhase | null
 	migrationPhaseDetail: string | null
@@ -23,6 +34,7 @@ export type LongDhangConetMigrationFullScreenProps = {
 export function LongDhangConetMigrationFullScreen({
 	currentEoa,
 	privateKeyArmor,
+	authorizedOwnerEoa,
 	migrationBusy = false,
 	migrationPhase,
 	migrationPhaseDetail,
@@ -93,9 +105,33 @@ export function LongDhangConetMigrationFullScreen({
 						</div>
 					) : null}
 
+					{migrationPhase ? (
+						<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+							<p className="flex items-center gap-2 text-sm font-extrabold text-slate-900">
+								{migrationBusy ? (
+									<Loader2 className="h-4 w-4 animate-spin text-[#1562f0]" aria-hidden />
+								) : migrationPhase === 'completed' ? (
+									<Check className="h-4 w-4 text-emerald-500" aria-hidden />
+								) : migrationPhase === 'failed' ? (
+									<AlertTriangle className="h-4 w-4 text-rose-500" aria-hidden />
+								) : null}
+								{PHASE_LABEL[migrationPhase]}
+							</p>
+							{migrationPhaseDetail ? (
+								<p className="mt-1 break-all text-xs font-semibold text-slate-500">{migrationPhaseDetail}</p>
+							) : null}
+							{migrationResult && !migrationResult.success ? (
+								<p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+									{migrationResult.error ?? migrationPhaseDetail ?? 'Migration failed.'}
+								</p>
+							) : null}
+						</div>
+					) : null}
+
 					<LongDhangConetMigrationPanel
 						currentEoa={currentEoa}
 						privateKeyArmor={privateKeyArmor}
+						authorizedOwnerEoa={authorizedOwnerEoa}
 						className="shadow-md"
 						busy={migrationBusy}
 						phase={migrationPhase}

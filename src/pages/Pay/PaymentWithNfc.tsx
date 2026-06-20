@@ -3,6 +3,7 @@ import { useNfcRead } from '@/hooks/useNfcRead'
 import { fetchNfcCardStatus } from '@/services/beamio'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import { SmartphoneNfc, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { tu } from '@/locale/beamioLocale'
 
 type Props = {
 	onClose: () => void
@@ -34,7 +35,7 @@ export default function PaymentWithNfc({ onClose }: Props) {
 
 	return (
 		<div className="flex flex-col min-h-full bg-white dark:bg-slate-900">
-			<BeamioNavBack title="Payment with NFC" onClose={onClose} onMore={() => {}} />
+			<BeamioNavBack title={tu('payment_with_nfc')} onClose={onClose} onMore={() => {}} />
 			<div className="flex-1 px-6 py-8 overflow-auto">
 				<div className="flex flex-col items-center gap-6">
 					<div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -60,7 +61,7 @@ export default function PaymentWithNfc({ onClose }: Props) {
 					</button>
 					{uid && (
 						<div className="w-full rounded-lg bg-slate-100 dark:bg-slate-800 px-4 py-3">
-							<p className="text-xs text-slate-500 dark:text-slate-400 mb-1">UID</p>
+							<p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{tu('uid')}</p>
 							<p className="font-mono text-sm break-all text-slate-800 dark:text-slate-200">{uid}</p>
 						</div>
 					)}

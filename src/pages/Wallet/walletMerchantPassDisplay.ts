@@ -25,7 +25,7 @@ export function buildWalletMerchantPassStackDisplay(
 	uc: UserCardInfo,
 	detail: MyBrandCardFeedDetailsMap[string] | undefined
 ): WalletMerchantPassStackDisplay {
-	const title = (detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
+	const title = (detail?.meta?.name && detail.meta.name.trim()) || uc.name || '商户卡'
 	const tierPres = resolveHeldTierPresentation(detail)
 	const tierLbl = tierPres.tierName.trim() || 'Loyalty Member'
 	const imgUrl = resolveCardImageUrl(detail?.meta?.image) ?? ''

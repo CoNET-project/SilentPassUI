@@ -1,8 +1,15 @@
 import { IpfsImg } from '@/components/IpfsImg';
+import { tu } from '@/locale/beamioLocale'
 
 import {AppButton} from '@/components/button/AppButton'
 import React, { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
+import {
+	getStoredBeamioUiLocale,
+	setBeamioUiLocale,
+	type BeamioUiLocale,
+} from '@/locale/i18n'
 import {
   ArrowLeft,
   Check,
@@ -68,10 +75,11 @@ function DropdownRow({
 
 
 export default function BeamioRegionCurrencyScreen({colse}:prof) {
+	const { t } = useTranslation()
 	const { currencyData, setBeamio, beamio, refreshOracle} = useDaemonContext()
 	const [exchangeSource, setExchangeSource] = useState<"coinbase">("coinbase")
 	const [stablecoin, setStablecoin] = useState<"usdc_base">("usdc_base")
-	const [language, setLanguage] = useState<"en">("en")
+	const [language, setLanguage] = useState<BeamioUiLocale>(() => getStoredBeamioUiLocale())
 	const [refreshing, setRefreshing] = useState(false);
 	const [currency, setCurrency] = useState<ICurrency>('USD')
 	const [fx, setFx] = useState<number>(fxRateUSDCToCurrency("USD"))
@@ -95,6 +103,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		setCoNET_Data(tmpData)
 		
 		await storeSystemData()
+		await setBeamioUiLocale(language)
 		setBeamio({...bo})
 		setLoading(false)
 		colse()
@@ -103,7 +112,12 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	const getAccountData = () => {
 		if (!beamio) return
 		setCurrency(beamio.currency)
-		setLanguage(beamio.language)
+		const stored = getStoredBeamioUiLocale()
+		const profileLang =
+			beamio.language === 'zh-CN' || beamio.language === 'en'
+				? beamio.language
+				: stored
+		setLanguage(profileLang)
 		setTax(beamio.tax||'0')
 	}
 
@@ -204,7 +218,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 			</div>
 
 			<div className="text-sm text-blue-900">
-				Payments settle in <span className="font-semibold">USDC</span> on Base.
+				付款在 Base 上以 <span className="font-semibold">USDC</span> 结算。
 			</div>
 			</div>
 		</div>
@@ -215,25 +229,28 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         {/* Region removed */}
 
         <DropdownRow
-			label="Language"
+			label={t('ui.language', { defaultValue: tu('language') })}
 			value={language}
-			onChange={(v) => setLanguage(v as any)}
-			options={[{ value: "en", label: "English" }]}
+			onChange={(v) => setLanguage(v as BeamioUiLocale)}
+			options={[
+				{ value: 'en', label: 'English' },
+				{ value: 'zh-CN', label: '简体中文' },
+			]}
         />
 
         <DropdownRow
-			label="Currency"
+			label="货币"
 			value={currency}
 			onChange={(v) => setCurrency(v as ICurrency)}
 			options={[
-				 { value: 'USD', label: 'USD · US Dollar' },
-				{ value: 'CAD', label: 'CAD · Canadian Dollar' },
-				{ value: 'EUR', label: 'EUR · Euro' },
-				{ value: 'JPY', label: 'JPY · Japanese Yen' },
-				{ value: 'CNY', label: 'CNY · Chinese Yuan' },
-				{ value: 'HKD', label: 'HKD · Hong Kong Dollar' },
-				{ value: 'SGD', label: 'SGD · Singapore Dollar' },
-				{ value: 'TWD', label: 'TWD · New Taiwan Dollar' }
+				 { value: 'USD', label: 'USD · 美元' },
+				{ value: 'CAD', label: 'CAD · 加元' },
+				{ value: 'EUR', label: 'EUR · 欧元' },
+				{ value: 'JPY', label: 'JPY · 日元' },
+				{ value: 'CNY', label: 'CNY · 人民币' },
+				{ value: 'HKD', label: 'HKD · 港币' },
+				{ value: 'SGD', label: 'SGD · 新加坡元' },
+				{ value: 'TWD', label: 'TWD · 新台币' }
 				
 
 			]}
@@ -242,13 +259,13 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         {/* Exchange rate with icon button */}
         <div>
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-zinc-900">Exchange rate</div>
+            <div className="text-sm font-semibold text-zinc-900">{tu('exchange_rate')}</div>
 
             <AppButton
               variant='secondary'
               onClick={manualRefreshFx}
 			  loading={loading}
-              aria-label="Refresh exchange rate"
+              aria-label="刷新汇率"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             </AppButton>
@@ -260,7 +277,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
               onChange={(e) => setExchangeSource(e.target.value as any)}
               className="w-full h-12 rounded-2xl border border-zinc-200 bg-white px-4 pr-10 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-blue-200 appearance-none"
             >
-              <option value="coinbase">Coinbase oracle</option>
+              <option value="coinbase">Coinbase 预言机</option>
             </select>
             <ChevronDown className="h-4 w-4 text-zinc-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -272,16 +289,16 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         </div>
 
         <DropdownRow
-          label="Default stablecoin"
+          label={tu('default_stablecoin')}
           value={stablecoin}
           onChange={(v) => setStablecoin(v as any)}
-          options={[{ value: "usdc_base", label: "USDC on Base" }]}
+          options={[{ value: "usdc_base", label: "Base 上的 USDC" }]}
         />
 
 		{/* Tax % input */}
 			<div className="space-y-2">
 			<label className="block text-sm font-medium text-slate-800">
-				Tax %
+				税率 %
 			</label>
 
 			<input
@@ -296,7 +313,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 				type="text"
 				inputMode="decimal"        // ✅ iOS / Android 数字键盘（含 .）
 				pattern="[0-9]*\.?[0-9]*"  // ✅ Web / PWA 兼容
-				placeholder="e.g. 8.25"
+				placeholder="例如 8.25"
 				className="
 				w-full
 				rounded-2xl
@@ -317,9 +334,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         <AppButton
           className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700"
           onClick={handleSaveAvatar}
-        >
-          Done
-        </AppButton>
+        >{tu('done')}</AppButton>
       </div>
 	  <div className="h-20" />
     </div>

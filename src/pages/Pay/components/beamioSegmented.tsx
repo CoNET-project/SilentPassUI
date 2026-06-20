@@ -7,8 +7,9 @@ import {
   useAnimation,
 } from 'framer-motion'
 import { QrCode, Link } from 'lucide-react'
+import { tu } from '@/locale/beamioLocale'
 
-type Mode = 'main' | 'PaymentLink'|'Print'
+type Mode = 'main' | 'PaymentLink'|'打印'
 
 export function BeamioSegmentedDrag({
   value,
@@ -179,7 +180,7 @@ export function BeamioSegmentedDrag({
               style={{ color: leftColor }}
               className="inline-flex items-center justify-center gap-1.5 text-[14px] font-semibold"
             >
-              <span>Any amount</span>
+              <span>任意金额</span>
               <QrCode className="w-4.5 h-4.5" strokeWidth={2.2} />
             </motion.span>
           </button>
@@ -193,7 +194,7 @@ export function BeamioSegmentedDrag({
               style={{ color: rightColor }}
               className="inline-flex items-center justify-center gap-1.5 text-[14px] font-semibold"
             >
-              <span>Fixed amount</span>
+              <span>固定金额</span>
               <Link className="w-4.5 h-4.5" strokeWidth={2.2} />
             </motion.span>
           </button>

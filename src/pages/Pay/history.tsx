@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {ethers} from 'ethers'
+import { tu } from '@/locale/beamioLocale'
 type Payed = {
   payTimestamp: number
   fromAddress: string
@@ -101,9 +102,7 @@ export const LinkHistoryTable: React.FC<HistoryTableProps> = ({itemClock}: Histo
               <button className="px-2 py-1 rounded-full bg-slate-900 text-white font-medium">
                 All
               </button>
-              <button className="px-2 py-1 rounded-full bg-white text-slate-600 border border-slate-200">
-                Send
-              </button>
+              <button className="px-2 py-1 rounded-full bg-white text-slate-600 border border-slate-200">{tu('send')}</button>
               <button className="px-2 py-1 rounded-full bg-white text-slate-600 border border-slate-200">
                 Receive
               </button>
@@ -179,7 +178,7 @@ export const LinkHistoryTable: React.FC<HistoryTableProps> = ({itemClock}: Histo
                         }
                       `}
                     >
-                      {isPaid ? "Paid" : "Pending"}
+                      {isPaid ? "Paid" : tu('pending')}
                     </span>
                   </td>
                 </tr>

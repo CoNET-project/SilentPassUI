@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { tu } from '@/locale/beamioLocale'
 import {
 	ActiveCouponTicketItem,
 	buildFallbackActiveCouponListItemForRedeem,
@@ -51,7 +52,7 @@ export default function RedeemClaimTicketPreview({
 	return (
 		<ActiveCouponTicketItem
 			row={row}
-			actionLabel="Redeem"
+			actionLabel={tu('redeem')}
 			disabled
 			actionStatus={submitting ? 'loading' : 'idle'}
 			aria-label={`Redeem coupon ${row.title}`}

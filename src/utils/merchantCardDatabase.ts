@@ -16,6 +16,7 @@ import {
   peekCardBasicMetadata,
   rememberCardBasicMetadataTrusted,
 } from '@/utils/cardBasicMetadataGlobalCache';
+import { tu } from '@/locale/beamioLocale'
 import {
   type MerchantCardRecord,
   loadMerchantCardMap,
@@ -111,7 +112,7 @@ export function merchantChargeProgramDisplayName(opts: MerchantChargeTitleOpts):
 /** Recent Activity Charge list title — `Payment to {merchant metadata.name}`. */
 export function pickMerchantChargeListTitle(opts: MerchantChargeTitleOpts): string {
   const program = merchantChargeProgramDisplayName(opts);
-  if (program) return `Payment to ${program}`;
+  if (program) return `${tu('payment_to')} ${program}`;
   return '';
 }
 
@@ -119,7 +120,7 @@ export function pickMerchantChargeListTitle(opts: MerchantChargeTitleOpts): stri
 export function isIndexerMerchantChargePlaceholderTitle(text: string | undefined | null): boolean {
   const t = String(text ?? '').trim();
   if (!t) return true;
-  if (t === 'Merchant Payment') return true;
+  if (t === tu('merchant_payment')) return true;
   if (/^(?:qr\s+)?merchant\s+payment$/i.test(t)) return true;
   return false;
 }

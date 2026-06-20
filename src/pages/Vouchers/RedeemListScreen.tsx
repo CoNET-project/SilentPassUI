@@ -20,6 +20,7 @@ import {
 } from '@/services/BeamioCard'
 import { CoNET_Data } from '@/utils/globals'
 import type { RedeemStatusChain, CardRedeemBatch } from '@/services/BeamioCard'
+import { tu } from '@/locale/beamioLocale'
 
 type Props = {
     onClose: () => void
@@ -152,7 +153,7 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound, refreshVer
                 })
                 onRemoveNotFound?.()
             } else {
-                setError(result.error ?? 'Cancel failed')
+                setError(result.error ?? tu('cancel_failed'))
             }
         } catch (e: any) {
             setError(e?.message ?? String(e))
@@ -219,9 +220,7 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound, refreshVer
                                                             <Loader className="w-3.5 h-3.5 animate-spin" strokeWidth={2.5} />
                                                         ) : (
                                                             <>
-                                                                <X className="w-3.5 h-3.5" strokeWidth={2.5} />
-                                                                Cancel
-                                                            </>
+                                                                <X className="w-3.5 h-3.5" strokeWidth={2.5} />{tu('cancel')}</>
                                                         )}
                                                     </button>
                                                 )}
@@ -315,7 +314,7 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound, refreshVer
                                             type="button"
                                             onClick={handleCopyRedeemUrl}
                                             className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 bg-white dark:bg-slate-700 ring-1 ring-slate-200 dark:ring-slate-600 hover:ring-[var(--beamio-brand,#2F78FF)] active:scale-95"
-                                            aria-label={qrCopied ? 'Copied' : 'Copy'}
+                                            aria-label={qrCopied ? '已复制' : tu('copy')}
                                         >
                                             <AnimatePresence mode="wait">
                                                 {qrCopied ? (

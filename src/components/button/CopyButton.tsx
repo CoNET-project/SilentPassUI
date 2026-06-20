@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Check } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
 
 interface CopyButtonProps {
   value: string            // ← 要复制的内容
@@ -16,7 +17,7 @@ const CopyButton = ({ value, className = "" }: CopyButtonProps) => {
 
       setTimeout(() => setCopied(false), 3000)
     } catch (err) {
-      console.error("Copy failed", err)
+      console.error(tu('copy_failed'), err)
     }
   }
 
@@ -34,7 +35,7 @@ const CopyButton = ({ value, className = "" }: CopyButtonProps) => {
       {copied ? (
         <Check className="w-3.5 h-3.5 text-emerald-500" />
       ) : (
-        "Copy"
+        tu('copy')
       )}
     </button>
   )

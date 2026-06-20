@@ -7,6 +7,7 @@ import { Toast } from 'antd-mobile'
 import { Copy } from 'lucide-react'   // ← 新增
 import usdcIcon from '../../assets/usdc.png'
 import baseIcon from '../../assets/base-logo.png'
+import { tu } from '@/locale/beamioLocale'
 
 type CryptoAssetsCardProps = {
 
@@ -35,12 +36,12 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
     try {
       await navigator.clipboard.writeText(address)
       Toast.show({
-        content: 'Address copied',
+        content: '地址已复制',
         duration: 1200,
       })
     } catch (err) {
       Toast.show({
-        content: 'Copy failed',
+        content: tu('copy_failed'),
         duration: 1200,
       })
     }

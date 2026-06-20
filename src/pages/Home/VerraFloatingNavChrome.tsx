@@ -1,5 +1,6 @@
 import { IpfsImg } from '@/components/IpfsImg';
 import { ChevronLeft } from 'lucide-react'
+import { tu } from '@/locale/beamioLocale'
 
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
@@ -35,7 +36,7 @@ export function VerraFloatingNavChrome({
 					compact ? 'flex h-9 w-9 items-center justify-center' : 'flex h-10 w-10 items-center justify-center',
 					FLOATING_BACK_BTN[tone],
 				].join(' ')}
-				aria-label="Back"
+				aria-label={tu('back')}
 			>
 				<ChevronLeft className={compact ? 'h-5 w-5' : 'h-6 w-6'} strokeWidth={2} aria-hidden />
 			</button>

@@ -158,7 +158,7 @@ export default function RecoverQRReveal({ close }: Props) {
                 active:scale-95
                 transition
               "
-              aria-label={pwVisible ? 'Hide password' : 'Show password'}
+              aria-label={pwVisible ? '隐藏密码' : '显示密码'}
             >
               {pwVisible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>

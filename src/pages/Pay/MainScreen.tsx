@@ -4,6 +4,7 @@ import payIcon from '@/pages/Pay/assets/Pay.svg'
 import cashcodeIcon from '@/pages/Pay/assets/cashcode.svg'
 import rlIcon from '@/pages/Pay/assets/requestLink.svg'
 import pmIcon from '@/pages/Pay/assets/linkP.svg'
+import { tu } from '@/locale/beamioLocale'
 
 type Action = 'pay' | 'cashcode' | 'request-link' | 'payme-qr'
 
@@ -44,15 +45,13 @@ export default function MainScreen({
       >
         <IpfsImg
           src={payIcon}
-          alt="Pay"
+          alt={tu('pay')}
           className="w-5 h-5 filter brightness-0 invert"
         />
       </div>
 
       <div className="text-left">
-        <div className="text-[15px] font-semibold text-slate-900">
-          Send
-        </div>
+        <div className="text-[15px] font-semibold text-slate-900">{tu('send')}</div>
         <div className="text-[12px] text-slate-500">
           To @BeamioTag or address
         </div>

@@ -1,5 +1,6 @@
 import React from "react"
 import { X, Zap, Sparkles, Users } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
 
 export function BeamioBetaAccess({
   onClose
@@ -27,7 +28,7 @@ export function BeamioBetaAccess({
             transition
             flex items-center justify-center
           "
-          aria-label="Close"
+          aria-label={tu('close')}
         >
           <X className="h-5 w-5 text-slate-600" strokeWidth={2.5} />
         </button>

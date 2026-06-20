@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { tu } from '@/locale/beamioLocale'
 import {
  Search,
  ShieldCheck,
@@ -345,9 +346,7 @@ const App = () => {
          <button
            onClick={proceedFromKeypad}
            className={`w-full h-[64px] rounded-[20px] font-semibold text-[19px] flex items-center justify-center transition-all duration-300 ${subtotal > 0 ? 'bg-[#1562f0] text-white active:scale-[0.98] shadow-lg shadow-[#1562f0]/20' : 'bg-[#E5E5EA] text-black/30 cursor-not-allowed'}`}
-         >
-           Continue
-         </button>
+         >{tu('continue')}</button>
        </div>
      )}
 
@@ -501,9 +500,7 @@ const App = () => {
                else setView('home');
              }}
              className="w-full bg-[#E5E5EA] text-black h-[64px] rounded-[20px] font-semibold text-[19px] active:bg-[#D1D1D6] transition-colors"
-           >
-             Cancel
-           </button>
+           >{tu('cancel')}</button>
          </div>
        </div>
      )}
@@ -592,7 +589,7 @@ const App = () => {
                  </span>
               </div>
               <div className="flex flex-col items-end gap-0.5">
-                 <span className="text-[12px] text-white/60 font-medium">Balance</span>
+                 <span className="text-[12px] text-white/60 font-medium">余额</span>
                  <span className={`text-[36px] leading-none font-bold tracking-tight ${view === 'result_charge' ? 'text-white' : (isBlackCard ? 'text-amber-400' : 'text-emerald-400')}`}>
                    ${view === 'result_issue' ? subtotal.toFixed(2) : view === 'result_topup' ? topUpBalance : view === 'result_charge' ? chargeBalance : baseBalance.toFixed(2)}
                  </span>
@@ -658,9 +655,7 @@ const App = () => {
            <button
              onClick={() => setView('home')}
              className="w-full h-[64px] bg-white text-[#1562f0] rounded-[20px] font-semibold text-[19px] active:bg-slate-50 transition-colors shadow-sm border border-slate-100"
-           >
-             Done
-           </button>
+           >{tu('done')}</button>
          </div>
        </div>
      )}

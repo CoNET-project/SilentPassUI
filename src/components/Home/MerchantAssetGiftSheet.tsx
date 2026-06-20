@@ -15,6 +15,7 @@ import {
 	makeBeamioSearchAddressOnlyResult,
 } from '@/components/Home/beamioSearchResultPresentation'
 import type { KeyboardEvent, WheelEvent } from 'react'
+import { tu } from '@/locale/beamioLocale'
 
 function preventNumericInputStepKeys(e: KeyboardEvent<HTMLInputElement>): void {
 	if (
@@ -225,7 +226,7 @@ export default function MerchantAssetGiftSheet({ onClose, cards, profile, onSucc
 				setSubmitError(result.error ?? 'Gift transfer failed')
 				return
 			}
-			Toast.show({ icon: 'success', content: 'Gift sent successfully' })
+			Toast.show({ icon: 'success', content: tu('gift_sent_successfully') })
 			onSuccess?.()
 			onClose()
 		} catch (e) {

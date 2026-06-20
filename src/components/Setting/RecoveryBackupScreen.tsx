@@ -9,6 +9,7 @@ import { getUserInfo, storeSystemData, RegenerateRecover } from "@/services/beam
 import RecoveryQRScreen from '@/pages/Home/RecoveryQRScreen'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { Eye } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
 
 type prof = {
 	colse: (val: IMenu) => void
@@ -416,9 +417,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 
 													handleSubmit()
 												}}
-											>
-												Cancel
-											</AppButton>
+											>{tu('cancel')}</AppButton>
 									}
 									
 
@@ -429,9 +428,7 @@ const RecoveryBackupScreen: React.FC<prof> = ({colse}) => {
 										onClick={() => {
 											handleSubmit()
 										}}
-									>
-										Continue
-									</AppButton>
+									>{tu('continue')}</AppButton>
 								</div>
 
 								

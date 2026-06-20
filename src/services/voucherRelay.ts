@@ -5,6 +5,7 @@
  */
 import type { OpenContainerRelayPayload } from '@/services/AAaccount'
 import { voucherRelayApi } from '@/utils/constants'
+import { tu } from '@/locale/beamioLocale'
 
 export type VoucherRelaySubmitBody = {
 	relayPayload: OpenContainerRelayPayload
@@ -35,6 +36,6 @@ export async function submitVoucherPayRelay(
 		}
 		return { ok: true }
 	} catch (e: any) {
-		return { ok: false, error: e?.message ?? 'Network error' }
+		return { ok: false, error: e?.message ?? tu('network_error') }
 	}
 }

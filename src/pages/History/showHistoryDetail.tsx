@@ -7,6 +7,7 @@ import {useState, useMemo} from 'react'
 import { ethers } from "ethers"
 import {AppButton} from '@/components/button/AppButton'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 const capitalize = (str: string) => {
   if (!str) return ''
@@ -171,7 +172,7 @@ export const RedeemOrLinkCard = ({
 			// 2 秒后恢复
 			setTimeout(() => setCopied(false), 2000)
 			} catch (e) {
-			console.error("Copy failed", e)
+			console.error(tu('copy_failed'), e)
 			}
 		}
 
@@ -223,7 +224,7 @@ export const RedeemOrLinkCard = ({
 						hover:bg-white/30 dark:hover:bg-slate-900/45
 						transition
 						"
-					aria-label="Close"
+					aria-label={tu('close')}
 				>
 					<X className="w-4 h-4" />
 				</button>

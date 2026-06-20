@@ -16,6 +16,7 @@ import {ethers} from 'ethers'
 import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, Loader, 
   ArrowUpRight, ArrowDownLeft,} from "lucide-react"
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
+import { tu } from '@/locale/beamioLocale'
 
 
 type Mode = "pay" | "request" | 'cashcode'
@@ -46,7 +47,7 @@ const unknowAcc = (address: string):searchResult => {
 		last_name: '',
 		follow_count: '',
 		follower_count: '',
-		username: 'Unknow',
+		username: '未知',
 		image: ''
 	}
 	return ret
@@ -131,7 +132,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 			)
 		}
 		// 如果 fromBeamio 已加载且不是 Unknow，显示头像
-		if (fromBeamio && fromBeamio.username !== 'Unknow') {
+		if (fromBeamio && fromBeamio.username !== '未知') {
 			const imgSrc = fromBeamio.image || getImg(fromBeamio.username)
 			return (
 				<IpfsImg
@@ -191,7 +192,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 						{isCashcodePending ? "You Cashcode is Active" : (fromBeamio ? displayName(fromBeamio) : "")}
 					</span>
 					{
-						fromBeamio?.username !=='Unknow' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
+						fromBeamio?.username !=='未知' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
 							@{fromBeamio?.username}
 						</span> : (
 							<span className="block text-[10px] text-slate-500 truncate leading-tight">
@@ -254,7 +255,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 						<IpfsImg
 							src={giftEnvelope}
 							className="w-5 block pointer-events-none"
-							alt="Gift Envelope"
+							alt={tu('gift_envelope')}
 						/>
 						</span>
 					</div>

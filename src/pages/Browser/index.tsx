@@ -9,6 +9,7 @@ import RedeemScreen from './RedeemScreen'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import PayMeLink from '@/pages/Pay/payPaymentLink'
+import { tu } from '@/locale/beamioLocale'
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -265,7 +266,7 @@ const Browser = ({}) => {
 												onClick={handlePaste}
 												className="px-2.5 py-1.5 rounded-full text-[11px] md:text-xs font-medium border border-slate-200 text-slate-700 hover:bg-slate-50"
 											>
-												{value ? 'Delete' : 'Paste'} 
+												{value ? tu('delete') : 'Paste'} 
 											</button>
 											<button
 												type="button"

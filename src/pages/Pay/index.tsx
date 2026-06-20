@@ -15,12 +15,13 @@ import BeamioPayMe from './BeamioPayMe'
 import PaymentWithNfc from './PaymentWithNfc'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
+import { tu } from '@/locale/beamioLocale'
 
 const PAY_FLOATING_TOP_CONTROLS_FALLBACK_SPACE = 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 12rem)'
 
 const Pay = ({}) => {
 	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<
-		'Pay' | '' | 'PayRequest' | 'Cashcode' | 'payme' | 'PaymentNfc'
+		'支付' | '' | '收款请求' | 'Cashcode' | 'payme' | 'PaymentNFC'
 	>('')
 	const {
 		setSendToMemo,
@@ -120,7 +121,7 @@ const Pay = ({}) => {
 				/>
 				<div className="px-4 pb-6">
 					<ActiveHistoryPannelNew
-						title="Recent Activity"
+						title={tu('recent_activity')}
 						compact={false}
 						bare
 						hideAccountScopeCapsule
@@ -145,7 +146,7 @@ const Pay = ({}) => {
 					close={(item) => {
 						setOpenSearch(false)
 						if (item && typeof item !== 'string') {
-							setShowAlphaHowItWorks('Pay')
+							setShowAlphaHowItWorks('支付')
 						}
 					}}
 				/>
@@ -164,15 +165,15 @@ const Pay = ({}) => {
 						>
 							<BeamioNavBack
 								title={
-									showAlphaHowItWorks === 'Pay'
+									showAlphaHowItWorks === '支付'
 										? ''
-										: showAlphaHowItWorks === 'PayRequest'
-											? 'Request'
+										: showAlphaHowItWorks === '收款请求'
+											? tu('request')
 											: showAlphaHowItWorks === 'Cashcode'
 												? 'Cashcode'
-												: showAlphaHowItWorks === 'PaymentNfc'
-													? 'Payment with NFC'
-													: 'Pay Me'
+												: showAlphaHowItWorks === 'PaymentNFC'
+													? tu('paymentnfc')
+													: tu('pay_me')
 								}
 								onClose={() => {
 									setShowAlphaHowItWorks('')
@@ -181,18 +182,18 @@ const Pay = ({}) => {
 							/>
 
 							<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-								{showAlphaHowItWorks === 'Pay' && (
+								{showAlphaHowItWorks === '支付' && (
 									<PayScreen
 										close={() => {
 											setShowAlphaHowItWorks('')
 										}}
 									/>
 								)}
-								{showAlphaHowItWorks === 'PayRequest' && <BeamioPayMe />}
+								{showAlphaHowItWorks === '收款请求' && <BeamioPayMe />}
 								{showAlphaHowItWorks === 'Cashcode' && (
 									<Cashcode close={() => setShowAlphaHowItWorks('')} />
 								)}
-								{showAlphaHowItWorks === 'PaymentNfc' && (
+								{showAlphaHowItWorks === 'PaymentNFC' && (
 									<PaymentWithNfc onClose={() => setShowAlphaHowItWorks('')} />
 								)}
 							</div>

@@ -18,6 +18,7 @@ import { InlineHistoryPreview } from "./InlineHistoryPreview"
 import { GenerateAvatarImageCard } from "./GenerateAvatarImageCard"
 import { getBUnitBalanceOnConet } from "@/services/BeamioCard"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { tu } from '@/locale/beamioLocale'
 
 const DICEBEAR_URL = "https://api.dicebear.com/8.x/fun-emoji/svg?seed="
 const CURRENCIES = ["USD", "USDC", "CAD", "JPY", "CNY", "HKD", "EUR", "SGD", "TWD"] as const
@@ -198,14 +199,12 @@ function EditProfileForm({
           disabled={saving}
           className="flex-1 py-3 rounded-xl bg-[#1562f0] text-white font-bold disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? "Saving..." : tu('save')}
         </button>
         <button
           onClick={onClose}
           className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold"
-        >
-          Cancel
-        </button>
+        >{tu('cancel')}</button>
       </div>
     </div>
   )
@@ -279,7 +278,7 @@ function SendChatCard({
           <MessageCircle size={24} className="text-blue-600" />
         </div>
         <div>
-          <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">Send Message</h3>
+          <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">{tu('send_message')}</h3>
           <p className="text-sm text-slate-500">
             To @{to}: {text.slice(0, 50)}{text.length > 50 ? "…" : ""}
           </p>
@@ -289,9 +288,7 @@ function SendChatCard({
         <button
           onClick={handleSend}
           className="w-full py-3 rounded-xl bg-[#1562f0] text-white font-bold"
-        >
-          Send
-        </button>
+        >{tu('send')}</button>
       )}
       {status === "sending" && (
         <div className="flex items-center justify-center gap-2 py-3 text-slate-600 dark:text-slate-300">
@@ -388,7 +385,7 @@ export function ActionRenderer({ action, onClose, onComplete, onActionClick }: A
               <Wallet size={24} className="text-emerald-600" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">Balance</h3>
+              <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">{tu('balance')}</h3>
               <p className="text-sm text-slate-500">Your USDC & B-Units</p>
             </div>
           </div>

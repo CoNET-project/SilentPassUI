@@ -5,6 +5,7 @@ import {getBalanceProcess, formatWithThousands, aesGcmDecrypt, searchUsername} f
 
 import { X } from "lucide-react"
 import { createPortal } from "react-dom"
+import { tu } from '@/locale/beamioLocale'
 import {
   useState,
   useEffect,
@@ -187,7 +188,7 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 						: "bg-slate-100 border-slate-200"
 				].join(" ")}
 				style={{ top: NAV_TOP }}
-				aria-label="Cancel"
+				aria-label={tu('cancel')}
 			>
 				<X className={[
 					"w-5 h-5 mx-auto translate-y-[2px]",

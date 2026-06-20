@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Check, Crown, Info, RefreshCw, Wallet, X } from "lucide-react"
 import { AppButton } from "@/components/button/AppButton"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { tu } from '@/locale/beamioLocale'
 import {
 	currencyAmountToSafeUsdc6,
 	getCardMetadataFromApi,
@@ -719,7 +720,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 					<button
 						className="absolute right-0 w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
 						onClick={() => onClose?.()}
-						aria-label="Close"
+						aria-label={tu('close')}
 					>
 						<X size={22} strokeWidth={2.5} />
 					</button>
@@ -761,7 +762,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 								<button
 									onClick={handleUpgradeModalDone}
 									className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
-									aria-label="Close"
+									aria-label={tu('close')}
 								>
 									<X size={22} strokeWidth={2.5} />
 								</button>
@@ -811,9 +812,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 							<button
 								onClick={handleUpgradeModalDone}
 								className="mt-6 w-full h-11 rounded-full bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-colors"
-							>
-								Done
-							</button>
+							>{tu('done')}</button>
 						</motion.div>
 					</motion.div>
 				)}
@@ -822,7 +821,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 				<button
 					className="absolute right-0 top-4 w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
 					onClick={() => onClose?.(assets)}
-					aria-label="Close"
+					aria-label={tu('close')}
 				>
 					<X size={22} strokeWidth={2.5} />
 				</button>
@@ -924,7 +923,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 							) : loadMoreHint ? (
 								<div className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-100 px-4 py-2.5 text-sm text-slate-600">
 									<Info size={18} className="shrink-0 text-slate-500" />
-									<span>{itemId === 201 ? "Unlock VIP" : itemId === 202 ? "Top-up" : `Load ${loadMoreHint.moreDisplay} more for ${loadMoreHint.nextTierName}`}</span>
+									<span>{itemId === 201 ? "Unlock VIP" : itemId === 202 ? tu('add_cash') : `Load ${loadMoreHint.moreDisplay} more for ${loadMoreHint.nextTierName}`}</span>
 								</div>
 							) : null}
 						</div>
@@ -949,9 +948,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose, quickOp
 							onClick={submit}
 							loading={submitting}
 							disabled={amountBelowRequirement || insufficientUsdcBalance || balanceCheckLoading}
-						>
-							Confirm
-						</AppButton>
+						>{tu('confirm')}</AppButton>
 					</>
 				)}
 			</div>

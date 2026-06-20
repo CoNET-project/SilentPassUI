@@ -23,6 +23,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import Security from './Security'
 import packageJson from '../../../package.json'
+import { tu } from '@/locale/beamioLocale'
 import {
 	loadSettingsFollowCounts,
 	saveSettingsFollowCounts,
@@ -138,7 +139,7 @@ export default function BeamioMeMainScreen() {
 	const [privatekeyVisible, setPrivatekeyVisible] = useState(false)
 	const [avatarEditorVisible, setAvatarEditorVisible] = useState(false)
 
-	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'|'Region'|'Account'|'Notifications'|'Help'|'RecoveryBackupScreen'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'BeamioSettings'|'FollowList'|'CoinbaseRamp'|'Region'|'Account'|'通知'|'Help'|'RecoveryBackupScreen'>('')
 	const [setFollowOpen, setSetFollowOpen] = useState<'following' | 'followers'|''>('')
 	const [receiveOpen, setReceiveOpen] = useState(false)     // 控制 Receive 全屏页
 	const [followingCount, setFollowingCount] = useState(0)
@@ -375,9 +376,9 @@ export default function BeamioMeMainScreen() {
 
 	const ProfileInformation = () => {
 		const info = {
-			title: 'Your Beamio profile',
-			description1: 'Manage account, security and payment settings from the gear icon in the top right.',
-			description2: 'Tap Following or Followers to see your connections.',
+			title: tu('your_beamio_profile'),
+			description1: tu('manage_account_security_and_payment_settings_from_the_gear_icon_in_the_t'),
+			description2: tu('tap_following_or_followers_to_see_your_connections'),
 		}
 		return (
 			<div className="rounded-2xl bg-white shadow-sm p-4 text-slate-800 leading-snug">
@@ -417,7 +418,7 @@ export default function BeamioMeMainScreen() {
 					type="button"
 					tabIndex={-1}
 					onClick={closeProfileScreen}
-					aria-label="Close"
+					aria-label={tu('close')}
 					className="
 						mt-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full
 						border border-white/40 bg-white/20 text-white/80 backdrop-blur-md
@@ -529,9 +530,7 @@ export default function BeamioMeMainScreen() {
 					className="flex flex-1 flex-col items-center justify-center active:opacity-70"
 				>
 					<span className="text-[15px] font-semibold">{followingCount}</span>
-					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
-						Following
-					</span>
+					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">{tu('following')}</span>
 				</button>
 
 				<div className="w-px h-8 bg-white/30" />
@@ -554,9 +553,7 @@ export default function BeamioMeMainScreen() {
 					className="flex flex-1 flex-col items-center justify-center active:opacity-70"
 				>
 					<span className="text-[15px] font-semibold">{followerCount}</span>
-					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
-						Followers
-					</span>
+					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">{tu('followers')}</span>
 				</button>
 				</div>
 			</div>
@@ -588,7 +585,7 @@ export default function BeamioMeMainScreen() {
 									<User className="w-5 h-5" />
 									</RowIcon>
 								}
-								title="Account Details"
+								title={tu('account_details')}
 								onClick={() => {
 
 									setSettingsOpen('Account')
@@ -614,13 +611,13 @@ export default function BeamioMeMainScreen() {
 										<Globe className="w-5 h-5" />
 										</RowIcon>
 									}
-									title="Language & Currency"
+									title={tu('language_currency')}
 									right={<span className="text-[15px] font-semibold text-slate-400">
 										{currencyDisplay}
 									</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{
-											title: 'Language & Currency',
+											title: '语言与货币',
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),
@@ -642,11 +639,11 @@ export default function BeamioMeMainScreen() {
 										<Shield className="w-5 h-5" />
 										</RowIcon>
 									}
-									title="Backup Wallet"
-									right={<span className="text-[15px] font-bold text-orange-500">High Priority</span>}
+									title={tu('backup_wallet')}
+									right={<span className="text-[15px] font-bold text-orange-500">{tu('high_priority')}</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{
-											title: 'Recovery & Backup',
+											title: tu('recovery_backup'),
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),
@@ -668,11 +665,11 @@ export default function BeamioMeMainScreen() {
 										<Bell className="w-5 h-5" />
 										</RowIcon>
 									}
-									title="Notifications"
-									right={<span className="text-[15px] font-semibold text-slate-400">On</span>}
+									title={tu('notifications')}
+									right={<span className="text-[15px] font-semibold text-slate-400">{tu('on')}</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{
-											title: 'Notifications',
+											title: tu('notifications'),
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),
@@ -681,7 +678,7 @@ export default function BeamioMeMainScreen() {
 											]
 
 										}])
-										setSettingsOpen('Notifications')
+										setSettingsOpen('通知')
 										setShowFooter(false)
 									}}
 								/> */}
@@ -694,10 +691,10 @@ export default function BeamioMeMainScreen() {
 									<HelpCircle className="w-5 h-5" />
 									</RowIcon>
 								}
-								title="Help & Support"
+								title={tu('help_support')}
 								onClick={() => {
 									setNavigateLeftButtonArray([{
-											title: 'Help & Support',
+											title: '帮助与支持',
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),
@@ -791,7 +788,7 @@ export default function BeamioMeMainScreen() {
 							}
 
 							{
-								settingsOpen === 'Notifications' && <BeamioNotificationsSettingsScreen colse={() => {
+								settingsOpen === '通知' && <BeamioNotificationsSettingsScreen colse={() => {
 									setSettingsOpen('')
 									setShowFooter(true)
 								}} />

@@ -22,6 +22,7 @@ import { fiatPrefix } from '@/services/currency'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData, flushStoreSystemData } from '@/services/beamio'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
+import { tu } from '@/locale/beamioLocale'
 
 type Props = {
     userCards: UserCardInfo[]
@@ -186,9 +187,7 @@ export default function TopUpRedeemForm({ userCards, onClose, onSuccess }: Props
                         type="button"
                         onClick={onClose}
                         className="w-full max-w-[320px] h-12 rounded-xl bg-[#1D5BFF] text-white font-bold text-[15px] active:scale-[0.99]"
-                    >
-                        Done
-                    </button>
+                    >{tu('done')}</button>
                 </div>
             </div>
         )

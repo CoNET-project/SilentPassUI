@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { VerraFloatingNavChrome } from './VerraFloatingNavChrome'
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from '@/ui/appContentSpacing'
+import { tu } from '@/locale/beamioLocale'
 
 type RestoreTab = 'login' | 'recovery'
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
@@ -426,7 +427,7 @@ export default function RestoreWalletUnifiedScreen({
 											autoCapitalize="none"
 											autoCorrect="off"
 											spellCheck={false}
-											autoComplete="username"
+											autoComplete="用户名"
 											className={`w-full rounded-2xl border-none bg-[#e2e2e7] py-2.5 pl-8 pr-3 text-sm font-medium text-[#1a1c1f] placeholder:text-[#737687] outline-none ring-0 transition focus:ring-2 focus:ring-inset focus:ring-[#1562f0] ${
 												loginError && !username.trim() ? 'ring-2 ring-inset ring-red-400/60' : ''
 											}`}
@@ -473,7 +474,7 @@ export default function RestoreWalletUnifiedScreen({
 											onClick={() => {
 												if (typeof window !== 'undefined' && 'ontouchstart' in window) setPeekPin(p => !p)
 											}}
-											aria-label={peekPin ? 'Hide password' : 'Show password'}
+											aria-label={peekPin ? '隐藏密码' : '显示密码'}
 										>
 											{peekPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
 										</button>
@@ -521,7 +522,7 @@ export default function RestoreWalletUnifiedScreen({
 								</button>
 								<div className="flex shrink-0 items-center gap-2 py-0.5">
 									<div className="h-px flex-1 bg-[#e8e8ed]" />
-									<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#424655]">OR</span>
+									<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#424655]">{tu('or')}</span>
 									<div className="h-px flex-1 bg-[#e8e8ed]" />
 								</div>
 								<div className="flex w-full shrink-0 flex-col">

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Check, Copy, ExternalLink, Hexagon, Wallet } from 'lucide-react'
 import { beamioWalletAccent, type BeamioWalletKind } from '@/utils/beamioWalletAccent'
+import { tu } from '@/locale/beamioLocale'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const basescanAddressUrl = (address: string) => `https://basescan.org/address/${address}`
@@ -35,8 +36,8 @@ function ProfileWalletAddressCopy({
 			type="button"
 			onClick={handleCopy}
 			className={`inline-flex shrink-0 items-center justify-center active:opacity-70 ${actionIconClass}`}
-			aria-label="Copy address"
-			title="Copy address"
+			aria-label={tu('copy_address')}
+			title={tu('copy_address')}
 		>
 			{copied ? (
 				<Check className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.25} />
@@ -60,8 +61,8 @@ function ProfileWalletBaseScanButton({
 			target="_blank"
 			rel="noopener noreferrer"
 			className={`inline-flex shrink-0 items-center justify-center active:opacity-70 ${actionIconClass}`}
-			aria-label="View on BaseScan"
-			title="View on BaseScan"
+			aria-label={tu('view_on_basescan')}
+			title={tu('view_on_basescan')}
 		>
 			<ExternalLink className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
 		</a>
@@ -78,7 +79,7 @@ function ProfileWalletPanelCard({
 	balanceUsdc: number | string
 }) {
 	const accent = beamioWalletAccent(kind)
-	const title = kind === 'aa' ? 'Smart Wallet' : 'Wallet'
+	const title = kind === 'aa' ? tu('smart_wallet') : tu('wallet')
 	const kindBadge = kind === 'aa' ? 'AA' : 'EOA'
 	const hasAddress = Boolean(address && address.length >= 10)
 
@@ -124,7 +125,7 @@ function ProfileWalletPanelCard({
 			</div>
 
 			<div className="mt-4 border-t border-slate-100 pt-3">
-				<div className="text-[11px] font-medium text-slate-400">Balance</div>
+				<div className="text-[11px] font-medium text-slate-400">{tu('balance')}</div>
 				<div className="mt-0.5 text-[22px] font-extrabold leading-tight tracking-tight text-slate-900">
 					{formatUsdcBalance(balanceUsdc)}{' '}
 					<span className="text-[17px] font-bold text-slate-900">USDC</span>

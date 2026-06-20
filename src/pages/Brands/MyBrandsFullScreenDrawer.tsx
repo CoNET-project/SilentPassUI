@@ -1,5 +1,5 @@
 /**
- * Full-screen My Brands — same slide-from-right + scroll-fade back as Recent Activity "View all".
+ * Full-screen My Brands — same slide-from-right + scroll-fade back as Recent Activity tu('view_all_2').
  */
 
 import React from 'react'
@@ -9,6 +9,7 @@ import { ChevronLeft } from 'lucide-react'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import { MyBrandsListSection } from './MyBrandsListSection'
+import { tu } from '@/locale/beamioLocale'
 
 export function MyBrandsFullScreenDrawer({
 	open,
@@ -41,7 +42,7 @@ export function MyBrandsFullScreenDrawer({
 							opacity: backBtnOpacity,
 							pointerEvents: backBtnOpacity < 0.05 ? 'none' : 'auto',
 						}}
-						aria-label="Back"
+						aria-label={tu('back')}
 					>
 						<ChevronLeft className="h-6 w-6 text-slate-900 dark:text-slate-100" strokeWidth={2.6} />
 					</button>
@@ -53,9 +54,7 @@ export function MyBrandsFullScreenDrawer({
 					>
 						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 						<div className="mx-auto max-w-2xl">
-							<h2 className="mb-4 text-base font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
-								My Brands
-							</h2>
+							<h2 className="mb-4 text-base font-bold tracking-tight text-[#0F172A] dark:text-slate-100">{tu('my_brands')}</h2>
 							<MyBrandsListSection onAddNewMerchantCard={onAddNewMerchantCard} />
 						</div>
 					</div>

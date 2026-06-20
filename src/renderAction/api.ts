@@ -3,6 +3,7 @@
  */
 import { beamioApi } from "@/utils/constants"
 import type { BeamioAction } from "./types"
+import { tu } from '@/locale/beamioLocale'
 
 export type AiChatMessage = { role: "user" | "assistant"; content: string }
 
@@ -17,7 +18,7 @@ export async function fetchBeamioAiChat(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    return { error: data?.error ?? res.statusText ?? "Request failed" }
+    return { error: data?.error ?? res.statusText ?? tu('request_failed') }
   }
   if (data?.action) {
     return { action: data.action as BeamioAction }

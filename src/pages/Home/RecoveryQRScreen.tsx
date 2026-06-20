@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { VerraBrandLockup } from '@/components/branding/VerraBrandLockup'
 import { getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
@@ -26,12 +27,23 @@ export const CASHTREES_PRIMARY_LIME = CASHTREES_PRIMARY_BRAND
 export const CASHTREES_PRIMARY_INK = '#0F172A'
 export const CASHTREES_PRIMARY_BRAND_SOFT = '#6ba3ff'
 
-export const ACTIVATING_STEPS = [
-  { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
-  { id: 1, title: 'Deploying Smart Vault', desc: 'Establishing storage on Base', icon: Lock },
-  { id: 2, title: 'Minting Membership', desc: 'Adding card to your wallet', icon: Wifi },
-  { id: 3, title: 'Verifying on Base L2', desc: 'Confirming on blockchain', icon: RefreshCw },
+export const ACTIVATING_STEP_DEFS = [
+  { id: 0, titleKey: 'generating_secure_id', descKey: 'creating_cryptographic_keys', icon: KeyRound },
+  { id: 1, titleKey: 'deploying_smart_vault', descKey: 'establishing_storage_on_base', icon: Lock },
+  { id: 2, titleKey: 'minting_membership', descKey: 'adding_card_to_your_wallet', icon: Wifi },
+  { id: 3, titleKey: 'verifying_on_base_l2', descKey: 'confirming_on_blockchain', icon: RefreshCw },
 ] as const
+
+export function getActivatingSteps() {
+  return ACTIVATING_STEP_DEFS.map((s) => ({
+    ...s,
+    title: tu(s.titleKey),
+    desc: tu(s.descKey),
+  }))
+}
+
+/** @deprecated 使用 getActivatingSteps() 以支持 locale 切换 */
+export const ACTIVATING_STEPS = getActivatingSteps()
 const STEP_DURATION_MS = 5000 // 4 steps × 5s ≈ 20s total
 type RecoveryQRScreenProps = {
   qrDataUrl: string
@@ -45,7 +57,7 @@ type RecoveryQRScreenProps = {
   /** 与 recoverQR.html 一致：顶栏「返回」；不设则由父级（如 ScreenShell）负责导航 */
   showTopAppBar?: boolean
   onBack?: () => void
-  /** 顶栏居中品牌文案，默认 Verra */
+  /** 顶栏居中品牌文案，默认 Beamio */
   topBarBrand?: string
 }
 
@@ -67,7 +79,7 @@ const RecoveryQRScreen = ({
   close,
   showTopAppBar = false,
   onBack,
-  topBarBrand = 'Verra',
+  topBarBrand = 'Beamio',
 }: RecoveryQRScreenProps) => {
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -79,6 +91,7 @@ const RecoveryQRScreen = ({
 
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
+  const activatingSteps = getActivatingSteps()
   const isActivating = (loading || redeemActivating) && isRedeemFlow
   useEffect(() => {
     if (!isActivating) {
@@ -86,10 +99,10 @@ const RecoveryQRScreen = ({
       return
     }
     const advance = () => {
-      setActivatingStep((prev) => Math.min(prev + 1, ACTIVATING_STEPS.length - 1))
+      setActivatingStep((prev) => Math.min(prev + 1, ACTIVATING_STEP_DEFS.length - 1))
     }
     const timers: ReturnType<typeof setTimeout>[] = []
-    for (let i = 1; i < ACTIVATING_STEPS.length; i++) {
+    for (let i = 1; i < ACTIVATING_STEP_DEFS.length; i++) {
       timers.push(setTimeout(advance, i * STEP_DURATION_MS))
     }
     return () => timers.forEach((t) => clearTimeout(t))
@@ -143,7 +156,7 @@ const RecoveryQRScreen = ({
       return
     }
     if (nativeSaveResult === 'failed') {
-      setSaveError('Unable to save to Photos. Please allow Photos access and try again.')
+      setSaveError(tu('unable_to_save_to_photos_please_allow_photos_access_and_try_again'))
       return
     }
 
@@ -182,7 +195,7 @@ const RecoveryQRScreen = ({
           <div className="absolute -inset-4 rounded-[40px] bg-[#1562f0] opacity-[0.12] blur-xl animate-pulse" />
         </div>
         <div className="w-full max-w-sm space-y-6">
-          {ACTIVATING_STEPS.map((step, idx) => {
+          {activatingSteps.map((step, idx) => {
             const isCompleted = idx < activatingStep
             const isActive = idx === activatingStep
             const Icon = step.icon
@@ -251,12 +264,12 @@ const RecoveryQRScreen = ({
             onClick={() => canUseTopBack && onBack?.()}
             disabled={!canUseTopBack}
             className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[#e8e8ed] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-            aria-label="Back"
+            aria-label={tu('back')}
           >
             <ArrowLeft className="h-6 w-6 text-[#1562f0]" strokeWidth={2.25} />
           </button>
           <div className="flex min-w-0 flex-1 justify-center px-1">
-            {topBarBrand === 'Verra' ? (
+            {topBarBrand === 'Beamio' ? (
               <VerraBrandLockup variant="onLight" size="compact" />
             ) : (
               <span className="text-lg font-bold tracking-tighter text-[#1a1c1f]">{topBarBrand}</span>
@@ -277,12 +290,12 @@ const RecoveryQRScreen = ({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="mb-5 shrink-0 text-center md:text-left [@media(max-height:760px)]:mb-4 [@media(max-height:700px)]:mb-3 [@media(max-height:640px)]:mb-2 [@media(max-height:560px)]:mb-1.5">
             <h1 className="mb-1 text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-[22px] [@media(max-height:640px)]:text-xl [@media(max-height:560px)]:text-lg">
-              Security Backup
+              {tu('security_backup')}
             </h1>
             <div className="space-y-0.5 text-sm font-medium leading-snug text-[#424655] [@media(max-height:700px)]:text-[13px] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:hidden">
-              <p>Your Recovery Code is your master key.</p>
-              <p>If you lose your phone,</p>
-              <p>this is the only way to get your funds back.</p>
+              <p>{tu('your_recovery_code_is_your_master_key')}</p>
+              <p>{tu('if_you_lose_your_phone')}</p>
+              <p>{tu('this_is_the_only_way_to_get_your_funds_back')}</p>
             </div>
           </div>
 
@@ -337,7 +350,7 @@ const RecoveryQRScreen = ({
               className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] px-6 py-3 text-base font-bold text-white shadow-md transition-transform hover:opacity-[0.96] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:from-[#737687] disabled:to-[#737687] [@media(max-height:700px)]:py-2.5 [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:py-2 [@media(max-height:640px)]:text-sm [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-[13px]"
             >
               <Download className="h-5 w-5 [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
-              Save to Photos
+              {tu('save_to_photos')}
             </button>
 
             {saveError ? (
@@ -356,12 +369,12 @@ const RecoveryQRScreen = ({
               {copied ? (
                 <>
                   <Check className="h-5 w-5 text-[#1562f0] [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
-                  Copied
+                  {tu('copied')}
                 </>
               ) : (
                 <>
                   <Copy className="h-5 w-5 [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
-                  Copy Recovery Code
+                  {tu('copy_recovery_code')}
                 </>
               )}
             </button>
@@ -396,7 +409,7 @@ const RecoveryQRScreen = ({
                 </div>
               </div>
               <span className="select-none text-sm font-medium text-[#1a1c1f] leading-snug [@media(max-height:700px)]:text-[13px] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:text-[11px]">
-                I have securely saved my recovery code
+                {tu('i_have_securely_saved_my_recovery_code')}
               </span>
             </label>
           </div>
@@ -420,7 +433,7 @@ const RecoveryQRScreen = ({
                     : '!cursor-not-allowed !bg-[#d9dade] !text-[#737687]'}
                 `}
               >
-                {isRedeemFlow ? 'Continue' : 'Next'}
+                {isRedeemFlow ? tu('continue') : tu('next')}
               </AppButton>
             </div>
           )}

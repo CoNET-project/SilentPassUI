@@ -14,6 +14,7 @@ import LockModeSegmented from './LockModeSegmented'
 import FeeInline from './FeeInline'
 import SuccessShow from './successShow'
 import {Onetime_reuse_Drag} from '../../Pay/components/onetimeReuseSwitch'
+import { tu } from '@/locale/beamioLocale'
 
 function fiatPrefix(ccy: ICurrency) {
 	if (ccy === "CAD") return "CA$"
@@ -32,7 +33,7 @@ const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/s
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const showPaylinkSite = 'https://beamio.app'
 
-const defaultTextTemp = `Sent with Beamio - no gas fees.`
+const defaultTextTemp = `通过 Beamio 发送，免 Gas 费。`
 
 // 0.8% fee, min 0.02, max 2 USDC
 function calcFeeFromNumber(base: number) {
@@ -409,7 +410,7 @@ return (
 						if (note === defaultNodeText) setNote("")
 					}}
 					readOnly={!!message}
-					placeholder="What's this for?"
+					placeholder={tu('whats_this_for')}
 					onChange={e => setNote(e.target.value)}
 					rows={2}
 					className="

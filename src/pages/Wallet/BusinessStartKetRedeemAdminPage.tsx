@@ -7,6 +7,7 @@ import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useBusinessStartKetRedeemAdmin } from '@/hooks/useBusinessStartKetRedeemAdmin'
 import { BeamioCircularBackButton, BEAMIO_CIRCULAR_BACK_ROW_CLASS } from '@/components/BeamioCircularBackButton'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
+import { tu } from '@/locale/beamioLocale'
 import {
 	formatBuintAmount6ForDisplay,
 	generateBusinessStartKetRedeemSecretCode,
@@ -96,7 +97,7 @@ export default function BusinessStartKetRedeemAdminPage() {
 				createdAt: Date.now(),
 			}
 			setCreatedRows((prev) => [row, ...prev])
-			Toast.show({ content: 'Redeem code created', position: 'top' })
+			Toast.show({ content: tu('redeem_code_created'), position: 'top' })
 		} finally {
 			setSubmitting(false)
 		}
@@ -108,7 +109,7 @@ export default function BusinessStartKetRedeemAdminPage() {
 			setCopiedId(row.id)
 			window.setTimeout(() => setCopiedId((cur) => (cur === row.id ? null : cur)), 2000)
 		} catch {
-			Toast.show({ content: 'Copy failed', position: 'top' })
+			Toast.show({ content: tu('copy_failed'), position: 'top' })
 		}
 	}, [])
 

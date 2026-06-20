@@ -5,6 +5,7 @@ import base_ex from '@/components/assets/base-ex.svg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import {AppButton} from '@/components/button/AppButton'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 type Prof = {
 	amount: string
@@ -57,15 +58,15 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							target="_blank"
 							rel="noreferrer"
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-							aria-label="View on BaseScan"
-							title="View on BaseScan"
+							aria-label={tu('view_on_basescan')}
+							title={tu('view_on_basescan')}
 							>
 							<IpfsImg
 								src={darkModle ? base_ex_dark : base_ex}
 								alt=""
 								className="w-4 h-4"
 							/>
-							<span className="sr-only">View on BaseScan</span>
+							<span className="sr-only">{tu('view_on_basescan')}</span>
 							</a>
 						</div>
 						</div>
@@ -85,15 +86,15 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							target="_blank"
 							rel="noreferrer"
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-							aria-label="View on BaseScan"
-							title="View on BaseScan"
+							aria-label={tu('view_on_basescan')}
+							title={tu('view_on_basescan')}
 							>
 							<IpfsImg
 								src={darkModle ? base_ex_dark : base_ex}
 								alt=""
 								className="w-4 h-4"
 							/>
-							<span className="sr-only">View on BaseScan</span>
+							<span className="sr-only">{tu('view_on_basescan')}</span>
 							</a>
 						</div>
 
@@ -102,9 +103,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 
 				{/* Transaction details */}
 				<section className="">
-				<div className="mb-4 text-xs text-center text-slate-500 dark:text-slate-400">
-					It may take a few seconds to appear on-chain.
-				</div>
+				<div className="mb-4 text-xs text-center text-slate-500 dark:text-slate-400">{tu('it_may_take_a_few_seconds_to_appear_on_chain')}</div>
 					{/* 按钮组 */}
 				<div className="w-full space-y-3">
 
@@ -116,9 +115,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 					onClick={() => {
 						viewClose()
 					}}
-				>
-					Done
-				</button>
+				>{tu('done')}</button>
 
 				{/* 查看交易按钮 */}
 				<button
@@ -135,12 +132,10 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 					>
 					<IpfsImg
 						src={base_ex}
-						alt="Base Explorer"
+						alt={tu('base_explorer')}
 						className="w-4 h-4 object-contain"
 					/>
-					<span>
-						View transaction
-					</span>
+					<span>{tu('view_transaction')}</span>
 				</button>
 				</div>
 					

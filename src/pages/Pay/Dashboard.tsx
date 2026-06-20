@@ -10,6 +10,7 @@ import {
   SmartphoneNfc
 } from "lucide-react"
 import PayScreen from '@/pages/Pay/send'
+import { tu } from '@/locale/beamioLocale'
 
 
 type DashItem = {
@@ -150,17 +151,17 @@ function DashboardTile({
   )
 }
 
-export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWorks: (val:'Pay'|''|'PayRequest'|'Cashcode'|'payme'|'PaymentNfc') => void}) {
+export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWorks: (val:'支付'|''|'收款请求'|'Cashcode'|'payme'|'PaymentNFC') => void}) {
   const nav = useNavigate()
 
   const items: DashItem[] = [
     {
       key: "send",
-      title: "Send",
+      title: tu('send'),
 	  //@ts-ignore
       Icon: ArrowUpRight,
       variant: "blue",
-      onClick: () => setShowAlphaHowItWorks('Pay')
+      onClick: () => setShowAlphaHowItWorks('支付')
     },
     {
       key: "payme",
@@ -168,7 +169,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
 	  //@ts-ignore
       Icon: QrCode,
       variant: "dark",
-      onClick: () => setShowAlphaHowItWorks('PayRequest')
+      onClick: () => setShowAlphaHowItWorks('收款请求')
     },
     {
       key: "links_reusable",
@@ -176,7 +177,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
 	  //@ts-ignore
       Icon: Link2,
       variant: "purple",
-      onClick: () => setShowAlphaHowItWorks('PayRequest')
+      onClick: () => setShowAlphaHowItWorks('收款请求')
     },
     {
       key: "links_onetime",
@@ -184,7 +185,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
 	  //@ts-ignore
       Icon: Link2,
       variant: "purple",
-      onClick: () => setShowAlphaHowItWorks('PayRequest')
+      onClick: () => setShowAlphaHowItWorks('收款请求')
     },
     {
 		key: "redeem_cashcodes",
@@ -192,7 +193,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
 		//@ts-ignore
 		Icon: Ticket,
 		variant: "orange",
-		onClick: () => setShowAlphaHowItWorks('PayRequest')
+		onClick: () => setShowAlphaHowItWorks('收款请求')
     },
     {
       key: "redeem_vouchers",
@@ -200,7 +201,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
 	  //@ts-ignore
       Icon: Gift,
       variant: "orange",
-      onClick: () => setShowAlphaHowItWorks('PayRequest')
+      onClick: () => setShowAlphaHowItWorks('收款请求')
     },
     {
       key: "payment_nfc",
@@ -208,7 +209,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
 	  //@ts-ignore
       Icon: SmartphoneNfc,
       variant: "blue",
-      onClick: () => setShowAlphaHowItWorks('PaymentNfc')
+      onClick: () => setShowAlphaHowItWorks('PaymentNFC')
     }
   ]
 

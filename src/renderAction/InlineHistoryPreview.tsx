@@ -10,6 +10,7 @@ import { ArrowUpRight, ArrowDownLeft, Loader2, History } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { conetDepinProvider } from "@/utils/constants"
 import contracts from "@/utils/contracts"
+import { tu } from '@/locale/beamioLocale'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? "0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9"
 const INDEXER_ABI = [
@@ -28,9 +29,9 @@ type TxItem = {
 function parseDisplayJson(displayJson: string): { title: string } {
   try {
     const j = JSON.parse(displayJson || "{}")
-    return { title: j.title ?? "Transaction" }
+    return { title: j.title ?? tu('transaction') }
   } catch {
-    return { title: "Transaction" }
+    return { title: tu('transaction') }
   }
 }
 
@@ -167,9 +168,7 @@ export function InlineHistoryPreview({
         <button
           onClick={handleOpenHistory}
           className="text-xs font-bold text-[#1562f0] hover:underline"
-        >
-          View all
-        </button>
+        >{tu('view_all_2')}</button>
       </div>
       <div className="space-y-1.5">
         {items.length === 0 ? (
@@ -187,7 +186,7 @@ export function InlineHistoryPreview({
                   <ArrowUpRight size={14} className="text-orange-500 shrink-0" />
                 )}
                 <span className="text-sm text-slate-700 dark:text-slate-200 truncate">
-                  {tx.title || "Transaction"}
+                  {tx.title || tu('transaction')}
                 </span>
               </div>
               <div className="flex items-center gap-2 shrink-0">

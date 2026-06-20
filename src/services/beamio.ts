@@ -28,6 +28,7 @@ import { BASE_MAINNET_FACTORIES, CONET_ACCOUNT_REGISTRY, CONET_BUNIT_AIRDROP_ADD
 import { eip712ChainIdForBeamioUserCard, getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
+import { tu } from '@/locale/beamioLocale'
 import {
 	peekBeamioTagBasicMetadataForQuery,
 	rememberBeamioTagBasicMetadata,
@@ -152,7 +153,7 @@ export const checkBUnitClaimEligibility = async (address: string): Promise<{ can
 			deadline: data.deadline != null ? Number(data.deadline) : undefined,
 		}
 	} catch (e) {
-		return { canClaim: false, error: (e as Error)?.message ?? 'Request failed' }
+		return { canClaim: false, error: (e as Error)?.message ?? tu('request_failed') }
 	}
 }
 
@@ -241,7 +242,7 @@ export const checkRequestStatus = async (
 		const { expired, fulfilled } = await res.json()
 		return { expired: !!expired, fulfilled: !!fulfilled }
 	} catch (e) {
-		return { expired: false, fulfilled: false, error: (e as Error)?.message ?? 'Request failed' }
+		return { expired: false, fulfilled: false, error: (e as Error)?.message ?? tu('request_failed') }
 	}
 }
 
@@ -1792,7 +1793,7 @@ export const postNfcLinkAppClaimWithKey = async (
 		success: res.ok && data.success === true,
 		address: data.address,
 		redeemTxHash: data.redeemTxHash,
-		error: data.error ?? (!res.ok ? 'Request failed' : undefined),
+		error: data.error ?? (!res.ok ? tu('request_failed') : undefined),
 	}
 }
 

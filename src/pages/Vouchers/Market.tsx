@@ -106,6 +106,8 @@ import blackCard from "./assets/BlackCard.png"
 import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
 import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPromo.png"
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
+import { tu } from '@/locale/beamioLocale'
+import { mapServerError } from '@/locale/mapServerError'
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
@@ -663,7 +665,7 @@ function DiscoverMerchantCouponOfferRow({
 				metadataBelowBackgroundImage
 				showOpenClaimShareButton
 				showActionButton={showClaimButton}
-				actionLabel="Claim"
+				actionLabel={tu('claim')}
 				actionStatus={ticketActionStatus}
 				actionError={claimError}
 				disabled={claimDisabled}
@@ -1490,7 +1492,7 @@ const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: ViewingItem;
       {step === "check" && <div className="flex-1 flex flex-col items-center justify-center p-8 text-center"><div className="w-16 h-16 rounded-full border-4 border-blue-500 border-t-transparent animate-spin mb-6" /><h2 className="text-2xl font-bold mb-2">Verifying Eligibility</h2><p className="text-gray-400">Checking whitelist status and wallet age...</p></div>}
       {step === "shipping" && <div className="flex-1 flex flex-col p-6"><h2 className="text-3xl font-bold mb-2 pt-12">Where should we send your Node?</h2><p className="text-gray-400 mb-8">This pack includes physical hardware.</p><div className="space-y-4"><div className="bg-white/5 border border-white/10 p-4 rounded-xl"><label className="text-xs uppercase text-gray-500 font-bold block mb-2">Full Name</label><input type="text" defaultValue="Felix Chen" className="w-full bg-transparent text-white font-bold text-lg outline-none" /></div><div className="bg-white/5 border border-white/10 p-4 rounded-xl"><label className="text-xs uppercase text-gray-500 font-bold block mb-2">Shipping Address</label><input type="text" defaultValue="1288 Alberni St, Vancouver, BC" className="w-full bg-transparent text-white font-bold text-lg outline-none" /></div></div><div className="mt-auto"><div className="flex justify-between items-center mb-6 text-sm"><span className="text-gray-400">Hardware Delivery</span><span className="text-green-400 flex items-center gap-1"><Truck size={14} /> Est. 2 Weeks</span></div><button onClick={() => setStep("paying")} className="w-full bg-[#1562f0] py-4 rounded-full font-bold text-lg shadow-[0_0_30px_rgba(21,98,240,0.4)]">Confirm & Pay $999</button></div></div>}
       {(step === "paying" || step === "minting") && <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden"><div className="absolute inset-0 opacity-20 bg-gradient-to-br from-blue-900/40 via-transparent to-purple-900/40 mix-blend-screen" /><div className="relative z-10 bg-black/50 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-2xl"><div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 mx-auto"><Cpu size={40} className="text-blue-400 animate-pulse" /></div><h2 className="text-3xl font-bold mb-2">{step === "paying" ? "Processing Payment" : "Minting Genesis NFT"}</h2><p className="text-gray-400 font-mono text-sm">{step === "paying" ? "Securing funds on Base L2..." : "Deploying contract 0x71...9a2"}</p></div></div>}
-      {step === "success" && <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-blue-900/20 to-[#020617]"><div className="w-32 h-32 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-2xl shadow-[0_0_60px_rgba(59,130,246,0.6)] flex items-center justify-center mb-8 rotate-12"><Server size={64} className="text-white" /></div><h1 className="text-4xl font-bold mb-2">Welcome, Node #248</h1><p className="text-gray-400 mb-8 max-w-xs">You are now a verified infrastructure partner of the Beamio Network.</p><div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-4 mb-8"><div className="flex justify-between py-2 border-b border-white/10"><span className="text-gray-500">Transaction</span><span className="font-mono text-blue-400">0x8a...2b9</span></div><div className="flex justify-between py-2"><span className="text-gray-500">Revenue Share</span><span className="text-green-400">Active</span></div></div><button onClick={onConfirm} className="w-full max-w-sm bg-white text-black py-4 rounded-full font-bold text-lg hover:bg-gray-200 transition-colors">Enter Dashboard</button></div>}
+      {step === "success" && <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-blue-900/20 to-[#020617]"><div className="w-32 h-32 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-2xl shadow-[0_0_60px_rgba(59,130,246,0.6)] flex items-center justify-center mb-8 rotate-12"><Server size={64} className="text-white" /></div><h1 className="text-4xl font-bold mb-2">Welcome, Node #248</h1><p className="text-gray-400 mb-8 max-w-xs">You are now a verified infrastructure partner of the Beamio Network.</p><div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-4 mb-8"><div className="flex justify-between py-2 border-b border-white/10"><span className="text-gray-500">{tu('transaction')}</span><span className="font-mono text-blue-400">0x8a...2b9</span></div><div className="flex justify-between py-2"><span className="text-gray-500">Revenue Share</span><span className="text-green-400">Active</span></div></div><button onClick={onConfirm} className="w-full max-w-sm bg-white text-black py-4 rounded-full font-bold text-lg hover:bg-gray-200 transition-colors">Enter Dashboard</button></div>}
     </div>
   )
 }
@@ -1538,7 +1540,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet, can
       </div>
       <div className="flex-1 px-6 py-8 pb-32">
         {count > 0 && <div onClick={onOpenWallet} className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 mb-6 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform shadow-sm"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#1562f0] shadow-sm"><Wallet size={20} /></div><div><h4 className="text-sm font-bold text-gray-900">You have {count} cards</h4><p className="text-xs text-gray-500">Tap to Use, Gift or Trade</p></div></div><ChevronRight size={18} className="text-blue-400" /></div>}
-        <div className="flex gap-6 mb-8 border-b border-gray-100 pb-8"><div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 text-gray-500"><MapPin size={20} /></div><div><div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">Location</div><div className="text-sm font-semibold text-gray-900">{heroItem.location || "Online"}</div></div></div><div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 text-gray-500"><ShieldCheck size={20} /></div><div><div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">Security</div><div className="text-sm font-semibold text-gray-900">Guaranteed</div></div></div></div>
+        <div className="flex gap-6 mb-8 border-b border-gray-100 pb-8"><div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 text-gray-500"><MapPin size={20} /></div><div><div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">Location</div><div className="text-sm font-semibold text-gray-900">{heroItem.location || "Online"}</div></div></div><div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 text-gray-500"><ShieldCheck size={20} /></div><div><div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">{tu('security')}</div><div className="text-sm font-semibold text-gray-900">Guaranteed</div></div></div></div>
         <h3 className="text-xl font-bold mb-3 text-gray-900">About</h3>
         <p className="leading-relaxed text-[17px] mb-8 text-gray-600">{heroItem.description}</p>
         {heroItem.features && <div className="rounded-2xl p-5 mb-8 bg-[#F2F2F7]"><h4 className="text-sm font-bold uppercase tracking-wide mb-4 text-gray-900">What&apos;s Included</h4><div className="space-y-3">{(heroItem.features ?? []).map((f: string, idx: number) => <div key={idx} className="flex items-center gap-3"><div className="w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 bg-green-500"><Check size={12} strokeWidth={4} /></div><span className="font-medium text-gray-700">{f}</span></div>)}</div></div>}
@@ -1813,7 +1815,7 @@ const PurchaseCreditsSheet = ({
             onClick={handleConfirm}
             className="w-full py-3.5 rounded-xl bg-[#1562f0] text-white text-[15px] font-bold disabled:opacity-50 active:scale-[0.98] transition-transform"
           >
-            {submitting ? "Processing…" : "Confirm"}
+            {submitting ? "Processing…" : tu('confirm')}
           </button>
         </div>
       </div>
@@ -2000,7 +2002,7 @@ function DiscoverMerchantDetailFullScreen({
 			}
 			if (ret.assets) setMerchantAssets(ret.assets as Awaited<ReturnType<typeof getMyAssets>>)
 			else refreshMerchantAssets()
-			Toast.show({ content: 'Top-up completed!', position: 'top' })
+			Toast.show({ content: tu('top_up_completed'), position: 'top' })
 			resetUsdcTopupFlow()
 			return true
 		},
@@ -2038,7 +2040,7 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		if (!profile?.keyID || !profile?.privateKeyArmor) {
 			Toast.show({
-				content: 'Unlock your wallet with your access password to top up.',
+				content: '请使用访问密码解锁钱包以充值。',
 				position: 'top',
 			})
 			navigate('/settings')
@@ -2052,7 +2054,7 @@ function DiscoverMerchantDetailFullScreen({
 		const userEoa = resolveUserEoa()
 		if (!userEoa) {
 			Toast.show({
-				content: 'Unlock your wallet with your access password to top up.',
+				content: '请使用访问密码解锁钱包以充值。',
 				position: 'top',
 			})
 			navigate('/settings')
@@ -2178,7 +2180,7 @@ function DiscoverMerchantDetailFullScreen({
 				usdcTopupUrlCopiedTimerRef.current = null
 			}, 2000)
 		} catch {
-			Toast.show({ content: 'Failed to copy URL', position: 'top' })
+			Toast.show({ content: tu('failed_to_copy_url'), position: 'top' })
 		}
 	}, [usdcTopupQrValue])
 
@@ -2239,7 +2241,7 @@ function DiscoverMerchantDetailFullScreen({
 
 			if (outcome.status === 'success') {
 				refreshMerchantAssets()
-				Toast.show({ content: 'Top-up completed!', position: 'top' })
+				Toast.show({ content: tu('top_up_completed'), position: 'top' })
 				resetUsdcTopupFlow()
 				return
 			}
@@ -2310,7 +2312,7 @@ function DiscoverMerchantDetailFullScreen({
 			}
 			if (!privateKeyArmor) {
 				Toast.show({
-					content: 'Unlock your wallet with your access password to claim coupons.',
+					content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
 					position: 'top',
 				})
 				navigate('/settings')
@@ -2320,7 +2322,7 @@ function DiscoverMerchantDetailFullScreen({
 			const couponId = row.couponId?.trim() ?? ''
 			const tokenId = row.tokenId?.trim() ?? ''
 			if (!cardAddress || !couponId || !tokenId || !ethers.isAddress(cardAddress)) {
-				Toast.show({ content: 'Coupon claim parameters are invalid', position: 'top' })
+				Toast.show({ content: tu('coupon_claim_parameters_are_invalid'), position: 'top' })
 				return
 			}
 			setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'loading' }))
@@ -2355,14 +2357,14 @@ function DiscoverMerchantDetailFullScreen({
 						setCouponClaimErrorById((s) => ({ ...s, [row.id]: err }))
 						scheduleCouponClaimStatusReset(row.id)
 					}
-					Toast.show({ content: err, position: 'top' })
+					Toast.show({ content: mapServerError(err), position: 'top' })
 				}
 			} catch (e: unknown) {
 				const err = e instanceof Error ? e.message : 'Coupon claim failed'
 				setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
 				setCouponClaimErrorById((s) => ({ ...s, [row.id]: err }))
 				scheduleCouponClaimStatusReset(row.id)
-				Toast.show({ content: err, position: 'top' })
+				Toast.show({ content: mapServerError(err), position: 'top' })
 			}
 		},
 		[couponClaimStatusById, profile, navigate, scheduleCouponClaimStatusReset, setProfiles],
@@ -2638,9 +2640,7 @@ function DiscoverMerchantDetailFullScreen({
 										type="button"
 										onClick={resetUsdcTopupFlow}
 										className="flex-1 rounded-full border border-slate-200 px-4 py-2.5 text-[14px] font-semibold text-slate-600 transition active:scale-[0.98] dark:border-slate-700 dark:text-slate-300"
-									>
-										Cancel
-									</button>
+									>{tu('cancel')}</button>
 									<button
 										type="button"
 										disabled={usdcTopupSubmitting}
@@ -2649,11 +2649,9 @@ function DiscoverMerchantDetailFullScreen({
 									>
 										{usdcTopupSubmitting ? (
 											<span className="inline-flex items-center justify-center gap-2">
-												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-												Continue
-											</span>
+												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />{tu('continue')}</span>
 										) : (
-											'Continue'
+											'继续'
 										)}
 									</button>
 								</div>
@@ -2694,7 +2692,7 @@ function DiscoverMerchantDetailFullScreen({
 											'transition active:scale-[0.96]',
 										].join(' ')}
 										aria-label="Copy payment URL"
-										title={usdcTopupUrlCopied ? 'Copied' : 'Copy URL'}
+										title={usdcTopupUrlCopied ? '已复制' : 'Copy URL'}
 									>
 										{usdcTopupUrlCopied ? (
 											<Check className="h-[17px] w-[17px] text-emerald-500" strokeWidth={2.5} aria-hidden />
@@ -2745,7 +2743,7 @@ function DiscoverMerchantDetailFullScreen({
 							{merchantOffersLoading && merchantCoupons == null ? (
 								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
 									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-									<span className="text-[14px] font-medium">Loading coupons…</span>
+									<span className="text-[14px] font-medium">正在加载优惠券…</span>
 								</div>
 							) : merchantCoupons != null && merchantCoupons.length > 0 ? (
 								<div className="space-y-3">
@@ -2779,7 +2777,7 @@ function DiscoverMerchantDetailFullScreen({
 							{showRewardTiersLoading ? (
 								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
 									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-									<span className="text-[14px] font-medium">Loading reward tiers…</span>
+									<span className="text-[14px] font-medium">正在加载奖励等级…</span>
 								</div>
 							) : hasRewardTierContent ? (
 								<div className="space-y-2.5">
@@ -3059,7 +3057,7 @@ export default function Market() {
 				assetLabel:
 					card.topTierName && card.topTierMinDisplay
 						? `${card.topTierName} · ${card.topTierMinDisplay}`
-						: card.topTierName ?? card.topTierMinDisplay ?? "Member Benefits",
+						: card.topTierName ?? card.topTierMinDisplay ?? tu('member_benefits'),
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
 				image: hero,
 				logo: card.programIconUrl ?? card.logoUrl ?? (dbImage || null),
@@ -3092,7 +3090,7 @@ export default function Market() {
 	const finalizeGenesis = () => {
 		setPurchasingGenesis(false)
 		const newId = "#GN-" + (248 + getOwnedInstances(999).length)
-		setInventory((prev) => ({ ...prev, 999: [...(prev[999] ?? []), { id: newId, date: "Just now", balance: "ACTIVE" }] }))
+		setInventory((prev) => ({ ...prev, 999: [...(prev[999] ?? []), { id: newId, date: tu('just_now'), balance: "ACTIVE" }] }))
 		setViewingItem(GENESIS_NODE_DATA)
 	}
 
@@ -3140,7 +3138,7 @@ export default function Market() {
 
 			<section className="py-4">
 				<div className="flex items-center gap-2 mb-4 flex-wrap">
-					<h3 className="font-bold text-[21px] leading-none tracking-tight text-[#202227] dark:text-slate-100">Featured Brands</h3>
+					<h3 className="font-bold text-[21px] leading-none tracking-tight text-[#202227] dark:text-slate-100">{tu('featured_brands')}</h3>
 				</div>
 
 				{/* untrusted 错误：仅在彻底无 cache rows 时提示，避免 cache 命中时干扰阅读 */}
@@ -3149,7 +3147,7 @@ export default function Market() {
 				) : null}
 				{/* loading 文案：仅在没有任何 trusted rows 可显示时出现；有 cache 立即跳过 */}
 				{latestCardsLoading && latestCardsRows.length === 0 ? (
-					<p className="text-[7px] text-slate-500 dark:text-slate-400 mb-4">Loading new cards…</p>
+					<p className="text-[7px] text-slate-500 dark:text-slate-400 mb-4">正在加载新卡…</p>
 				) : null}
 
 				<div className="grid grid-cols-1 gap-5">
@@ -3356,7 +3354,7 @@ export default function Market() {
 										}}
 									/>
 								) : topupContentReady && !topupCardAddress ? (
-									<div className="p-6 text-sm text-rose-600">Card address is unavailable.</div>
+									<div className="p-6 text-sm text-rose-600">卡地址不可用。</div>
 								) : null
 							)}
 							{settingsOpen === "showPayQR" && (

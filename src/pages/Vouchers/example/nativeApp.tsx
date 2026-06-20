@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { tu } from '@/locale/beamioLocale'
 import {
  Nfc,
  CheckCircle2,
@@ -304,7 +305,7 @@ export default function MobilePOS() {
      <div className="pt-14 px-4 pb-4 flex justify-between items-center bg-[#f5f5f7] shrink-0">
        <button onClick={() => setCurrentView('home')} className="flex items-center text-[#1562f0] active:opacity-50 transition-opacity">
          <ArrowLeft size={24} strokeWidth={2} />
-         <span className="text-[17px] ml-1 font-medium">Back</span>
+         <span className="text-[17px] ml-1 font-medium">返回</span>
        </button>
        <span className="font-semibold text-[17px] text-black">
          {mode === 'charge' ? 'Charge Amount' : 'Top-Up Amount'}
@@ -340,9 +341,7 @@ export default function MobilePOS() {
            ? 'bg-[#e5e5ea] text-[#86868b] cursor-not-allowed'
            : mode === 'charge' ? 'bg-black text-white shadow-md active:scale-[0.98]' : 'bg-[#1562f0] text-white shadow-md active:scale-[0.98]'
          }`}
-       >
-         Continue
-       </button>
+       >{tu('continue')}</button>
      </div>
    </div>
  );
@@ -353,7 +352,7 @@ export default function MobilePOS() {
      <div className="pt-14 px-4 pb-4 flex justify-between items-center bg-[#f5f5f7] shrink-0">
        <button onClick={() => setCurrentView('amount')} className="flex items-center text-[#1562f0] active:opacity-50 transition-opacity">
          <ArrowLeft size={24} strokeWidth={2} />
-         <span className="text-[17px] ml-1 font-medium">Back</span>
+         <span className="text-[17px] ml-1 font-medium">返回</span>
        </button>
        <span className="font-semibold text-[17px] text-black">Add Tip</span>
        <div className="w-16"></div>
@@ -429,7 +428,7 @@ export default function MobilePOS() {
              onClick={() => setScanMethod('qr')}
              className={`px-5 py-2.5 rounded-full text-[14px] font-semibold transition-all flex items-center gap-2 ${scanMethod === 'qr' ? 'bg-white text-black shadow-md' : 'text-white/70 hover:text-white'}`}
            >
-             <QrCode size={16} /> {mode === 'topup' ? 'Show QR' : 'Scan QR'}
+             <QrCode size={16} /> {mode === 'topup' ? tu('show_qr') : 'Scan QR'}
            </button>
          </div>
        </div>
@@ -452,7 +451,7 @@ export default function MobilePOS() {
               <Nfc size={40} strokeWidth={1.5} className={isScanning ? 'animate-pulse text-[#1562f0]' : 'text-white'} />
            </div>
            <h2 className="text-[24px] font-semibold tracking-tight mb-2 relative z-20">
-             {isScanning ? 'Verifying...' : 'Ready to Scan'}
+             {isScanning ? 'Verifying...' : '准备扫描'}
            </h2>
            <p className="text-[15px] font-normal text-[#86868b] text-center max-w-[260px] leading-relaxed relative z-20">
              Hold the customer's {mode === 'topup' ? '(blank) ' : ''}NTAG 424 DNA card near the top of iPhone.
@@ -480,7 +479,7 @@ export default function MobilePOS() {
              )}
            </div>
            <h2 className="text-[24px] font-semibold tracking-tight mb-3 text-center relative z-20">
-             {isScanning ? 'Payment Received' : 'Customer Scan to Pay'}
+             {isScanning ? tu('payment_received') : 'Customer Scan to Pay'}
            </h2>
            <div className="flex flex-col items-center">
              <p className="text-[15px] font-normal text-[#86868b] text-center max-w-[280px] leading-relaxed relative z-20">
@@ -539,9 +538,7 @@ export default function MobilePOS() {
        <button
          onClick={() => setCurrentView(mode === 'balance' ? 'home' : (mode === 'charge' ? 'tip' : 'amount'))}
          className="w-full py-4 text-[#1562f0] font-medium text-[17px] active:opacity-50 transition-opacity"
-       >
-         Cancel
-       </button>
+       >{tu('cancel')}</button>
      </div>
    </div>
  );
@@ -794,7 +791,7 @@ export default function MobilePOS() {
              className={`relative z-10 w-[64px] h-[64px] rounded-[20px] flex flex-col items-center justify-center transition-all ${isPrinting ? 'bg-white text-black' : 'bg-[#1c1c1e] border border-white/10 text-white hover:bg-[#2c2c2e] active:scale-95'}`}
            >
              <Printer size={24} strokeWidth={2} className={isPrinting ? "animate-bounce" : ""} />
-             <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">{isPrinting ? '...' : 'Print'}</span>
+             <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">{isPrinting ? '...' : tu('print')}</span>
            </button>
          </div>
 
@@ -868,7 +865,7 @@ export default function MobilePOS() {
            </div>
           
            <div className="px-5 py-4 border-b border-black/5 flex justify-between items-center bg-white">
-             <span className="text-[15px] text-[#86868b]">Security</span>
+             <span className="text-[15px] text-[#86868b]">安全</span>
              <span className="text-[15px] font-medium text-[#34C759] flex items-center gap-1">
                <ShieldCheck size={14}/>
                {scanMethod === 'nfc' ? 'NTAG 424 DNA' : 'Beamio App (Dynamic QR)'}
@@ -914,9 +911,7 @@ export default function MobilePOS() {
          <button
            onClick={() => setCurrentView('home')}
            className={`w-full ${mode === 'balance' ? 'bg-[#e5e5ea] text-black hover:bg-[#d1d1d6]' : 'bg-black text-white'} py-4 rounded-[16px] font-semibold text-[17px] active:scale-[0.98] transition-transform shadow-sm`}
-         >
-           Done
-         </button>
+         >{tu('done')}</button>
        </div>
      </div>
    );

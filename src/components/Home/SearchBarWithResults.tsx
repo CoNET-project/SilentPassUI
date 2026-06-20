@@ -14,6 +14,7 @@ import NavigateLeftButton from '@/components/navigate'
 import { collectDeepLinkSearchParams, isCouponOpenClaimDeepLink, isRedeemDeepLink } from '@/utils/beamioDeepLinkParams'
 import ScanButton, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
 import { isCashTreesNativeWebView, scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
+import { tu } from '@/locale/beamioLocale'
 import {
 	BeamioSearchResultRow,
 	beamioSearchAvatarUrl,
@@ -114,7 +115,7 @@ const SearchInputWithDropdown =
 				closeWindow('/History')
 				Toast.show({
 					icon: nfcLinkRes.success ? 'success' : 'fail',
-					content: nfcLinkRes.success ? 'NFC card linked to your wallet.' : (nfcLinkRes.error || 'Link failed'),
+					content: nfcLinkRes.success ? tu('nfc_card_linked_to_your_wallet') : (nfcLinkRes.error || tu('link_failed')),
 				})
 				navigate('/History')
 				return
@@ -305,7 +306,7 @@ const SearchInputWithDropdown =
 						return
 					}
 					if (!result.cancelled) {
-						Toast.show({ icon: 'fail', content: 'QR scan failed' })
+						Toast.show({ icon: 'fail', content: tu('qr_scan_failed') })
 					}
 				} finally {
 					setQrScanBusy(false)

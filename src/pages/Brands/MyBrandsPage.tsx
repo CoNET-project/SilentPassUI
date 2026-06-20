@@ -1,6 +1,6 @@
 /**
  * Full list of My Brands (BeamioUserCard) — route `/myBrands` (deep link / direct nav).
- * Slide-in matches MyBrandsFullScreenDrawer + Recent Activity "View all".
+ * Slide-in matches MyBrandsFullScreenDrawer + Recent Activity tu('view_all_2').
  */
 
 import React from 'react'
@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft } from 'lucide-react'
 import { MyBrandsListSection } from './MyBrandsListSection'
+import { tu } from '@/locale/beamioLocale'
 
 export default function MyBrandsPage() {
 	const navigate = useNavigate()
@@ -24,11 +25,11 @@ export default function MyBrandsPage() {
 					type="button"
 					onClick={() => navigate(-1)}
 					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-slate-200/70 active:scale-95 dark:hover:bg-slate-800/80"
-					aria-label="Back"
+					aria-label={tu('back')}
 				>
 					<ArrowLeft className="h-5 w-5" strokeWidth={2.25} />
 				</button>
-				<h1 className="min-w-0 flex-1 pr-10 text-center text-base font-bold tracking-tight">My Brands</h1>
+				<h1 className="min-w-0 flex-1 pr-10 text-center text-base font-bold tracking-tight">{tu('my_brands')}</h1>
 			</header>
 
 			<main className="mx-auto max-w-2xl px-4 pb-8 pt-[calc(3.25rem+env(safe-area-inset-top))]">

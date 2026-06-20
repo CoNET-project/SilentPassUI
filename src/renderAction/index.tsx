@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { IpfsImg } from '@/components/IpfsImg';
 import type { LucideIcon } from 'lucide-react';
+import { tu } from '@/locale/beamioLocale'
 import { 
   CreditCard, 
   Settings, 
@@ -209,7 +210,7 @@ export default function CashTreesApp() {
                 <Radio size={20} className="text-[#65A30D]" />
               </div>
               <p className="text-sm font-bold text-gray-900">Sync NFC Card</p>
-              <p className="text-xs text-gray-500 mt-1">Tap funded card to phone.</p>
+              <p className="text-xs text-gray-500 mt-1">将已充值的卡贴近手机。</p>
             </div>
           </div>
         </div>
@@ -249,7 +250,7 @@ export default function CashTreesApp() {
               
               <div className="relative z-10 flex justify-between items-end">
                 <div>
-                  <p className="text-sm text-gray-800 font-bold mb-0.5 opacity-90 tracking-wide">Total Balance</p>
+                  <p className="text-sm text-gray-800 font-bold mb-0.5 opacity-90 tracking-wide">{tu('total_balance')}</p>
                   <div className="flex items-baseline">
                     <span className="text-3xl font-bold mr-1 opacity-80">$</span>
                     <p className="text-[44px] font-extrabold tracking-tighter text-gray-900 leading-none">
@@ -279,7 +280,7 @@ export default function CashTreesApp() {
                 >
                   <Plus size={14} strokeWidth={2.5} />
                   <Radio size={14} />
-                  <span className="text-[12px] font-bold uppercase tracking-wider ml-0.5">Bind Physical Card</span>
+                  <span className="text-[12px] font-bold uppercase tracking-wider ml-0.5">{tu('bind_physical_card')}</span>
                 </button>
               </div>
             )}
@@ -317,7 +318,7 @@ export default function CashTreesApp() {
                       </div>
                     </div>
                     <div className="relative z-10">
-                      <p className="text-gray-300 text-xs font-medium mb-0.5">Store Balance (CAD)</p>
+                      <p className="text-gray-300 text-xs font-medium mb-0.5">{tu('store_balance_cad')}</p>
                       <p className="text-2xl font-extrabold text-white tracking-tight">${card.balanceCad.toFixed(2)}</p>
                     </div>
                   </div>
@@ -337,7 +338,7 @@ export default function CashTreesApp() {
                 className="snap-start min-w-[120px] bg-gray-50 border-2 border-dashed border-gray-300 rounded-[1.5rem] flex flex-col items-center justify-center text-gray-400 hover:bg-white hover:text-[#65A30D] hover:border-[#65A30D] transition-colors cursor-pointer flex-shrink-0"
               >
                 <Plus size={24} className="mb-2" />
-                <span className="text-xs font-bold uppercase tracking-wider">Discover</span>
+                <span className="text-xs font-bold uppercase tracking-wider">{tu('discover')}</span>
               </div>
             </div>
           </div>
@@ -350,7 +351,7 @@ export default function CashTreesApp() {
               <div className="w-12 h-12 bg-[#96EB3C] rounded-full flex items-center justify-center shadow-[0_4px_14px_rgba(150,235,60,0.4)]">
                 <Plus size={24} className="text-gray-900" />
               </div>
-              <span className="font-semibold text-xs text-gray-700">Add Cash</span>
+              <span className="font-semibold text-xs text-gray-700">{tu('add_cash')}</span>
             </button>
             
             <button 
@@ -360,7 +361,7 @@ export default function CashTreesApp() {
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-700">
                 <Send size={20} className="ml-1" />
               </div>
-              <span className="font-semibold text-xs text-gray-700">Send</span>
+              <span className="font-semibold text-xs text-gray-700">{tu('send')}</span>
             </button>
 
             <button 
@@ -376,8 +377,8 @@ export default function CashTreesApp() {
 
           <div className="px-6 mb-8 relative z-30">
             <div className="flex justify-between items-center mb-4 px-1">
-              <h2 className="text-lg font-bold text-gray-900 tracking-tight">Recent Activity</h2>
-              <button className="text-sm font-semibold text-[#65A30D] hover:text-[#4d7c1e] transition-colors">View all</button>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">{tu('recent_activity')}</h2>
+              <button className="text-sm font-semibold text-[#65A30D] hover:text-[#4d7c1e] transition-colors">{tu('view_all_2')}</button>
             </div>
             
             <div className="bg-white rounded-3xl p-2 shadow-sm border border-gray-100">
@@ -410,7 +411,7 @@ export default function CashTreesApp() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">- $20.00</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Yesterday</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{tu('yesterday')}</p>
                     </div>
                   </div>
                 </div>
@@ -429,7 +430,7 @@ export default function CashTreesApp() {
     <div className="animate-in fade-in duration-300 pb-32">
       <div className="px-6 pt-14 mb-6 flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Messages</h1>
+          <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">{tu('messages')}</h1>
           <div className="flex items-center mt-2 text-gray-500 bg-gray-100 px-2 py-1 rounded-md w-max">
             <Lock size={12} className="mr-1" />
             <span className="text-[11px] font-semibold uppercase tracking-wider">End-to-End Encrypted</span>
@@ -465,7 +466,7 @@ export default function CashTreesApp() {
   const renderStoreTab = () => (
     <div className="animate-in fade-in duration-300 pb-32">
       <div className="px-6 pt-14 mb-6">
-        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Discover</h1>
+        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">{tu('discover')}</h1>
         <div className="flex items-center mt-2 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-md w-max shadow-sm border border-yellow-200/50">
           <Sparkles size={12} className="mr-1.5" />
           <span className="text-[11px] font-bold uppercase tracking-wider">Alliance Members & Offers</span>
@@ -514,8 +515,8 @@ export default function CashTreesApp() {
             {/* 核心改动：展示为自动抵扣状态，无需手动 Add Pass */}
             <div className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl border border-gray-100">
               <div className="flex flex-col">
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">How to use</span>
-                <span className="text-sm font-bold text-gray-700">Pay with CashTrees</span>
+                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">使用方法</span>
+                <span className="text-sm font-bold text-gray-700">使用 CashTrees 付款</span>
               </div>
               <div className="bg-[#96EB3C]/20 text-[#65A30D] px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm">
                 <ShieldCheck size={14} /> Auto-Applied
@@ -595,7 +596,7 @@ export default function CashTreesApp() {
   const renderProfileTab = () => (
     <div className="animate-in fade-in duration-300 pb-32">
       <div className="px-6 pt-14 mb-6">
-        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Profile</h1>
+        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">{tu('profile')}</h1>
       </div>
       <div className="px-6 flex flex-col items-center mt-8">
         <div className="w-24 h-24 bg-gradient-to-tr from-[#96EB3C] to-[#65A30D] rounded-full flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-4">
@@ -689,12 +690,12 @@ export default function CashTreesApp() {
                   type="button"
                   onClick={() => setSelectedStoreCard(null)}
                   className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 font-bold flex items-center justify-center hover:bg-gray-200"
-                  aria-label="Close"
+                  aria-label={tu('close')}
                 >
                   ×
                 </button>
               </div>
-              <p className="text-sm text-gray-500 mb-2">Store Balance (CAD)</p>
+              <p className="text-sm text-gray-500 mb-2">{tu('store_balance_cad')}</p>
               <p className="text-3xl font-extrabold text-gray-900 mb-6">${selectedStoreCard.balanceCad.toFixed(2)}</p>
               <button
                 type="button"
@@ -727,7 +728,7 @@ export default function CashTreesApp() {
                   <div className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest">
                     Activation Required
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center tracking-tight">Receive to Activate</h3>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center tracking-tight">收款以激活</h3>
                   <p className="text-sm text-gray-500 mb-8 text-center px-4 leading-relaxed">
                     Your Smart Account is pending. Show this EOA QR to a cashier to make your first deposit.
                   </p>
@@ -742,9 +743,7 @@ export default function CashTreesApp() {
                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">EOA (Passkey) Address</span>
                       <span className="text-xs font-mono text-gray-700 truncate">{eoaAddress}</span>
                     </div>
-                    <button className="bg-white border border-gray-200 shadow-sm text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform">
-                      Copy
-                    </button>
+                    <button className="bg-white border border-gray-200 shadow-sm text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform">{tu('copy')}</button>
                   </div>
 
                   <button 
@@ -761,9 +760,7 @@ export default function CashTreesApp() {
                     <button 
                       onClick={() => { setQrMode('pay'); setQrReceiveState('default'); }}
                       className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 ${qrMode === 'pay' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      Pay
-                    </button>
+                    >{tu('pay')}</button>
                     <button 
                       onClick={() => { setQrMode('receive'); setQrReceiveState('default'); }}
                       className={`flex-1 py-2 text-sm font-bold rounded-full transition-all duration-300 ${qrMode === 'receive' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
@@ -775,7 +772,7 @@ export default function CashTreesApp() {
                   {qrMode === 'pay' ? (
                     <div className="flex flex-col items-center w-full min-h-[460px]">
                       <h3 className="text-2xl font-bold text-gray-900 mb-1 tracking-tight">Pay with {userBeamioTag}</h3>
-                      <p className="text-sm text-gray-500 mb-6 text-center">Show this code to cashier to pay.</p>
+                      <p className="text-sm text-gray-500 mb-6 text-center">向收银员出示此码付款。</p>
                       <div className="w-64 h-64 bg-white rounded-[2rem] p-4 mb-6 shadow-inner border border-gray-100 relative">
                         <div className="absolute inset-0 border-[6px] border-[#96EB3C] rounded-[2rem] opacity-30 scale-105 animate-pulse"></div>
                         <div className="w-full h-full border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center bg-gray-50">
@@ -786,9 +783,7 @@ export default function CashTreesApp() {
                         <div className="w-2 h-2 bg-[#65A30D] rounded-full animate-pulse"></div>
                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Auto-refreshes every minute</span>
                       </div>
-                      <button onClick={() => { setShowQR(false); setQrReceiveState('default'); }} className="w-full py-4 bg-gray-900 hover:bg-gray-800 active:scale-95 text-white rounded-full font-bold transition-all shadow-md mt-auto">
-                        Done
-                      </button>
+                      <button onClick={() => { setShowQR(false); setQrReceiveState('default'); }} className="w-full py-4 bg-gray-900 hover:bg-gray-800 active:scale-95 text-white rounded-full font-bold transition-all shadow-md mt-auto">{tu('done')}</button>
                     </div>
                   ) : (
                     <div className="w-full flex flex-col items-center min-h-[460px]">
@@ -803,7 +798,7 @@ export default function CashTreesApp() {
                           </div>
                           
                           <div className="flex items-center gap-2 mb-4 bg-purple-50 text-purple-700 px-3 py-1 rounded-md border border-purple-100">
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Smart Account</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider">{tu('smart_account')}</span>
                             <span className="text-xs font-mono font-semibold">{aaAddress}</span>
                           </div>
 
@@ -893,7 +888,7 @@ export default function CashTreesApp() {
                              <div className="w-16 h-16 border-4 border-gray-100 border-t-[#0055FF] rounded-full animate-spin"></div>
                              <Zap size={20} className="text-[#0055FF] absolute" />
                           </div>
-                          <p className="text-gray-500 font-medium">Creating payment request...</p>
+                          <p className="text-gray-500 font-medium">正在创建付款请求…</p>
                         </div>
                       )}
 
@@ -906,7 +901,7 @@ export default function CashTreesApp() {
                             >
                               <ChevronRight className="rotate-180" size={20} />
                             </button>
-                            <h3 className="text-lg font-bold text-gray-900 mx-auto">Ready to Scan</h3>
+                            <h3 className="text-lg font-bold text-gray-900 mx-auto">准备扫描</h3>
                           </div>
 
                           <div className="w-48 h-48 bg-white rounded-3xl p-3 mb-6 shadow-md border border-gray-100">
@@ -920,14 +915,12 @@ export default function CashTreesApp() {
 
                           <div className="w-full bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-6">
                             <div className="flex justify-between items-center mb-3">
-                              <span className="text-sm text-gray-500">Requesting</span>
+                              <span className="text-sm text-gray-500">{tu('requesting')}</span>
                               <span className="font-bold text-gray-900">CA$ {reqCadAmount.toFixed(2)}</span>
                             </div>
                             
                             <div className="flex justify-between items-center mb-4">
-                              <span className="text-sm text-gray-500 flex items-center">
-                                Fee (0.8%) 
-                                <Info size={12} className="ml-1 text-gray-400" />
+                              <span className="text-sm text-gray-500 flex items-center">{tu('fee_0_8')}<Info size={12} className="ml-1 text-gray-400" />
                               </span>
                               <div className="flex flex-col items-end">
                                 <span className="text-sm font-semibold text-gray-700">- {reqFeeUsdc.toFixed(2)} USDC</span>
@@ -940,7 +933,7 @@ export default function CashTreesApp() {
                             </div>
 
                             <div className="border-t border-gray-200 pt-3 pb-1 flex justify-between items-start">
-                              <span className="font-bold text-[#65A30D]">Est. Receive</span>
+                              <span className="font-bold text-[#65A30D]">{tu('est_receive')}</span>
                               <div className="flex flex-col items-end">
                                 <span className="font-bold text-[#65A30D] text-lg">{reqNetUsdc.toFixed(2)} USDC</span>
                                 <span className="text-xs text-gray-400 mt-0.5">≈ CA$ {(reqNetUsdc * EXCHANGE_RATE).toFixed(2)}</span>
@@ -952,9 +945,7 @@ export default function CashTreesApp() {
                             <button 
                               onClick={() => { setQrReceiveState('default'); setReceiveAmount(''); }}
                               className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 py-3.5 rounded-2xl font-bold transition-all flex items-center justify-center gap-2"
-                            >
-                              Cancel
-                            </button>
+                            >{tu('cancel')}</button>
                             <button className="flex-1 bg-[#0055FF] hover:bg-blue-700 text-white py-3.5 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-md">
                               <ArrowUpRight size={18} /> Share
                             </button>
@@ -979,11 +970,11 @@ export default function CashTreesApp() {
               
               {addCashMode === 'methods' ? (
                 <>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight text-center">Add Cash</h3>
-                  <p className="text-sm text-gray-500 mb-8 text-center">Select how you want to fund your balance</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight text-center">{tu('add_cash')}</h3>
+                  <p className="text-sm text-gray-500 mb-8 text-center">{tu('select_how_you_want_to_fund_your_balance')}</p>
 
                   <div className="space-y-3 mb-auto">
-                    <h4 className="text-sm font-bold text-gray-900 mb-3 px-1">Funding Source</h4>
+                    <h4 className="text-sm font-bold text-gray-900 mb-3 px-1">{tu('funding_source')}</h4>
                     
                     <div 
                       onClick={() => setAddCashMode('store_qr')}
@@ -995,8 +986,8 @@ export default function CashTreesApp() {
                            <Store className="text-gray-900" size={20} />
                         </div>
                         <div>
-                          <p className="font-bold text-gray-900">Deposit Cash at Store</p>
-                          <p className="text-xs text-gray-600">Give cash to an Alliance cashier</p>
+                          <p className="font-bold text-gray-900">{tu('deposit_cash_at_store')}</p>
+                          <p className="text-xs text-gray-600">{tu('give_cash_to_an_alliance_cashier')}</p>
                         </div>
                       </div>
                       <QrCode className="text-gray-900 relative z-10" size={20} />
@@ -1012,7 +1003,7 @@ export default function CashTreesApp() {
                         </div>
                         <div>
                           <p className="font-bold text-gray-900">Coinbase Pay</p>
-                          <p className="text-xs text-gray-500">Buy USDC securely with debit/credit</p>
+                          <p className="text-xs text-gray-500">{tu('buy_usdc_securely_with_debit_credit')}</p>
                         </div>
                       </div>
                       <ChevronRight className="text-gray-400" size={20} />
@@ -1027,8 +1018,8 @@ export default function CashTreesApp() {
                            <ArrowRightLeft className="text-blue-600" size={20} />
                         </div>
                         <div>
-                          <p className="font-bold text-gray-900">Top up with USDC</p>
-                          <p className="text-xs text-gray-500">Convert crypto to Network CA$</p>
+                          <p className="font-bold text-gray-900">使用 USDC 充值</p>
+                          <p className="text-xs text-gray-500">{tu('convert_crypto_to_network_ca')}</p>
                         </div>
                       </div>
                       <ChevronRight className="text-gray-400" size={20} />
@@ -1041,7 +1032,7 @@ export default function CashTreesApp() {
                     <button onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-6">
                       <ChevronRight className="rotate-180 mr-1" size={16} /> Back
                     </button>
-                    <h3 className="text-xl font-bold text-gray-900 tracking-tight mx-auto">Store Deposit</h3>
+                    <h3 className="text-xl font-bold text-gray-900 tracking-tight mx-auto">{tu('store_deposit')}</h3>
                   </div>
                   
                   <div className="flex flex-col items-center justify-center mb-auto pt-4">
@@ -1063,9 +1054,7 @@ export default function CashTreesApp() {
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Wallet Address</span>
                         <span className="text-xs font-mono text-gray-700 truncate">{!hasAAWallet ? eoaAddress : aaAddress}</span>
                       </div>
-                      <button className="bg-white border border-gray-200 shadow-sm text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform">
-                        Copy
-                      </button>
+                      <button className="bg-white border border-gray-200 shadow-sm text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-transform">{tu('copy')}</button>
                     </div>
 
                     <button 
@@ -1089,18 +1078,18 @@ export default function CashTreesApp() {
                     <div className="w-16 h-16 bg-[#0052FF] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-6">
                       C
                     </div>
-                    <h4 className="text-lg font-bold text-gray-900 mb-2">Buy USDC directly</h4>
+                    <h4 className="text-lg font-bold text-gray-900 mb-2">{tu('buy_usdc_directly')}</h4>
                     <p className="text-sm text-gray-500 mb-8 text-center px-4">
                       You will be securely redirected to Coinbase to complete your purchase. The USDC will be deposited to your Base network wallet automatically.
                     </p>
 
                     <div className="w-full max-w-[280px] bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-8 shadow-sm">
                       <div className="flex justify-between items-center mb-3">
-                        <span className="text-xs text-gray-500 font-medium">To Wallet</span>
+                        <span className="text-xs text-gray-500 font-medium">{tu('to_wallet')}</span>
                         <span className="text-xs font-mono text-gray-900 font-bold bg-white px-2 py-1 rounded shadow-sm border border-gray-100">{!hasAAWallet ? eoaAddress : aaAddress}</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-500 font-medium">Network</span>
+                        <span className="text-xs text-gray-500 font-medium">{tu('network')}</span>
                         <div className="flex items-center bg-white px-2 py-1 rounded shadow-sm border border-gray-100">
                           <div className="w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center mr-1.5"></div>
                           <span className="text-xs font-bold text-gray-900">Base</span>
@@ -1122,13 +1111,13 @@ export default function CashTreesApp() {
                     <button onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-6">
                       <ChevronRight className="rotate-180 mr-1" size={16} /> Back
                     </button>
-                    <h3 className="text-xl font-bold text-gray-900 tracking-tight mx-auto">Top Up</h3>
+                    <h3 className="text-xl font-bold text-gray-900 tracking-tight mx-auto">{tu('top_up')}</h3>
                   </div>
 
                   <div className="flex flex-col mb-auto pt-2 w-full">
                     <div className="bg-gray-50 border border-gray-200 rounded-3xl p-5 mb-2 relative shadow-inner">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-semibold text-gray-500">From (USDC)</span>
+                        <span className="text-sm font-semibold text-gray-500">{tu('from_usdc')}</span>
                         <span className="text-xs font-bold text-gray-400">Bal: 91.20</span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -1154,7 +1143,7 @@ export default function CashTreesApp() {
 
                     <div className="bg-white border border-[#96EB3C]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-semibold text-gray-500">To (Network Balance)</span>
+                        <span className="text-sm font-semibold text-gray-500">{tu('to_network_balance')}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-3xl font-bold text-[#65A30D]">
@@ -1172,10 +1161,10 @@ export default function CashTreesApp() {
                         <span className="font-semibold text-gray-900">1 USDC = 1.37 CAD</span>
                       </div>
                       <div className="flex justify-between items-center text-sm pt-2">
-                        <span className="text-gray-500">Network Fee</span>
+                        <span className="text-gray-500">{tu('network_fee')}</span>
                         <div className="flex flex-col items-end">
                           <span className="font-bold text-[#65A30D] bg-[#96EB3C]/20 px-2 py-0.5 rounded-md">Free</span>
-                          <span className="text-[10px] text-gray-400 mt-1">Sponsored by CashTrees</span>
+                          <span className="text-[10px] text-gray-400 mt-1">{tu('sponsored_by_cashtrees')}</span>
                         </div>
                       </div>
                     </div>
@@ -1201,8 +1190,8 @@ export default function CashTreesApp() {
             <div className="mt-auto bg-[#F1F8ED] rounded-t-[2.5rem] p-6 relative z-10 flex flex-col animate-in slide-in-from-bottom-full duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
               <div className="mx-auto w-12 h-1.5 bg-gray-300 rounded-full mb-6"></div>
               
-              <h3 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight text-center">Balance Details</h3>
-              <p className="text-sm text-gray-500 mb-8 text-center">Your purchasing power breakdown</p>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight text-center">{tu('balance_details')}</h3>
+              <p className="text-sm text-gray-500 mb-8 text-center">您的购买力明细</p>
               
               <div className="w-full bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col mb-8">
                 <div className="p-4 flex items-center justify-between bg-gradient-to-r from-[#96EB3C]/15 to-transparent border-b border-gray-100/50">
@@ -1212,7 +1201,7 @@ export default function CashTreesApp() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-gray-900 tracking-tight">Network Credit</span>
-                      <span className="text-[10px] text-[#65A30D] font-bold uppercase tracking-wider mt-0.5">Eligible for Store Discounts</span>
+                      <span className="text-[10px] text-[#65A30D] font-bold uppercase tracking-wider mt-0.5">{tu('eligible_for_store_discounts')}</span>
                     </div>
                   </div>
                   <div className="text-right">
@@ -1227,7 +1216,7 @@ export default function CashTreesApp() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-gray-700 tracking-tight">Standard Cash</span>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">No discounts (USDC)</span>
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">无折扣（USDC）</span>
                     </div>
                   </div>
                   <div className="text-right">
@@ -1301,7 +1290,7 @@ export default function CashTreesApp() {
                   <span className="text-sm font-bold text-gray-900">Instant</span>
                 </div>
                 <div className="flex justify-between items-center pt-3 border-t border-gray-200 border-dashed">
-                  <span className="text-sm text-gray-500 font-medium">Network Fee</span>
+                  <span className="text-sm text-gray-500 font-medium">{tu('network_fee')}</span>
                   <div className="text-right flex flex-col items-end">
                     {sendAsset === 'CAD' ? (
                       <>
@@ -1311,7 +1300,7 @@ export default function CashTreesApp() {
                     ) : (
                       <>
                         <span className="text-sm font-mono font-bold text-gray-900">0.02 USDC</span>
-                        <span className="text-[10px] text-gray-400 mt-0.5">Fixed flat fee</span>
+                        <span className="text-[10px] text-gray-400 mt-0.5">固定 flat 费用</span>
                       </>
                     )}
                   </div>
@@ -1322,9 +1311,7 @@ export default function CashTreesApp() {
                 onClick={() => setShowSendModal(false)} 
                 className="w-full py-4 bg-[#96EB3C] hover:bg-[#8ad936] active:scale-95 text-gray-900 rounded-2xl font-bold transition-all shadow-[0_4px_14px_rgba(150,235,60,0.4)] flex items-center justify-center gap-2 mt-6"
               >
-                <Send size={20} className="text-gray-900" />
-                Send
-              </button>
+                <Send size={20} className="text-gray-900" />{tu('send')}</button>
             </div>
           </div>
         )}

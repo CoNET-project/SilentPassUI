@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { tu } from '@/locale/beamioLocale'
 import {
  Scan,
  Home,
@@ -60,7 +61,7 @@ const CURRENCY_RATES = {
 // --- Type Definitions ---
 interface Transaction {
  id: string;
- type: 'Top Up' | 'Payment' | 'Transfer' | 'Internal';
+ type: '充值' | '支付' | 'Transfer' | 'Internal';
  amount: string;
  currency: string;
  date: string;
@@ -81,8 +82,8 @@ type Tab = 'home' | 'wallet' | 'scan' | 'chat' | 'store';
 
 
 const recentActivityData: Transaction[] = [
- { id: '1', type: 'Top Up', amount: '+ $100.00', currency: 'CAD', date: 'Feb 14', isPositive: true },
- { id: '2', type: 'Payment', amount: '- $12.50', currency: 'CAD', date: 'Feb 12', isPositive: false },
+ { id: '1', type: '充值', amount: '+ $100.00', currency: 'CAD', date: 'Feb 14', isPositive: true },
+ { id: '2', type: '支付', amount: '- $12.50', currency: 'CAD', date: 'Feb 12', isPositive: false },
  { id: '3', type: 'Transfer', amount: '- $50.00', currency: 'USDC', date: 'Feb 10', isPositive: false },
 ];
 
@@ -104,17 +105,17 @@ const INITIAL_VOUCHERS = [
      iconColor: '#fde68a',
      textColor: '#ffffff',
      benefits: [
-       { icon: Star, title: "Alliance Discount", desc: "10% off at 20+ participating restaurants." },
-       { icon: Zap, title: "Gas-Free", desc: "Zero transaction fees on Beamio network." },
+       { icon: Star, title: tu('alliance_discount'), desc: "10% off at 20+ participating restaurants." },
+       { icon: Zap, title: tu('gas_free'), desc: tu('zero_transaction_fees_on_beamio_network') },
        { icon: MapPin, title: "Universal Access", desc: "Valid across Toronto & Vancouver partners." }
      ],
      info: {
        issuer: "Canada Chinese Restaurant Alliance",
-       network: "Base Mainnet",
+       network: tu('base_mainnet'),
        standard: "ERC-1155",
        contract: "0x88...921a"
      },
-     history: [{ id: 1, title: 'Top Up', date: 'Feb 14', amount: '+ $100.00' }]
+     history: [{ id: 1, title: tu('add_cash'), date: 'Feb 14', amount: '+ $100.00' }]
    },
    {
      id: 'v_sen',
@@ -159,7 +160,7 @@ const INITIAL_VOUCHERS = [
      balance: 25.00,
      currency: 'CAD',
      memberNo: 'G-112233',
-     type: 'Gift Card',
+     type: tu('gift_card'),
      status: 'active',
      expiryDate: null,
      bg: '#006241',
@@ -175,7 +176,7 @@ const INITIAL_VOUCHERS = [
      balance: 25.00,
      currency: 'CAD',
      memberNo: 'G-998877',
-     type: 'Gift Card',
+     type: tu('gift_card'),
      status: 'active',
      expiryDate: null,
      bg: '#006241',
@@ -309,7 +310,7 @@ const InternalTransferOverlay = ({
 
    if (!amount || isNaN(numAmount) || numAmount <= 0) return;
    if (numAmount > sourceBalance) {
-     alert("Insufficient balance"); // Simplified feedback
+     alert(tu('insufficient_balance')); // Simplified feedback
      return;
    }
 
@@ -334,7 +335,7 @@ const InternalTransferOverlay = ({
        {step !== 'success' && (
          <div className="px-6 pt-6 pb-2 flex justify-between items-center z-10">
            <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><ChevronDown className="w-6 h-6 text-gray-600" /></button>
-           <span className="font-bold text-lg">Internal Transfer</span>
+           <span className="font-bold text-lg">内部转账</span>
            <div className="w-10"></div>
          </div>
        )}
@@ -354,7 +355,7 @@ const InternalTransferOverlay = ({
                  </span>
                </div>
                <div className="flex justify-between items-end">
-                 <span className="font-bold text-lg">{direction === 'vaultToSpending' ? 'Main Wallet (Vault)' : 'Express Pay'}</span>
+                 <span className="font-bold text-lg">{direction === 'vaultToSpending' ? 'Main Wallet (Vault)' : tu('express_pay')}</span>
                  <span className="font-mono text-sm opacity-80">
                    Avail: {direction === 'vaultToSpending' ? balances.vault.usdc.toFixed(2) : balances.spending.usdc.toFixed(2)} USDC
                  </span>
@@ -382,7 +383,7 @@ const InternalTransferOverlay = ({
                  </span>
                </div>
                <div className="flex justify-between items-end">
-                 <span className="font-bold text-lg">{direction === 'spendingToVault' ? 'Main Wallet (Vault)' : 'Express Pay'}</span>
+                 <span className="font-bold text-lg">{direction === 'spendingToVault' ? 'Main Wallet (Vault)' : tu('express_pay')}</span>
                  <span className="font-mono text-sm opacity-80">
                    Current: {direction === 'spendingToVault' ? balances.vault.usdc.toFixed(2) : balances.spending.usdc.toFixed(2)} USDC
                  </span>
@@ -447,7 +448,7 @@ const InternalTransferOverlay = ({
              </div>
              <h3 className="text-2xl font-bold text-gray-900 mb-2">Transfer Complete!</h3>
              <p className="text-gray-500 mb-8">Moved <span className="text-gray-900 font-bold">{parseFloat(amount).toFixed(2)} USDC</span> successfully.</p>
-             <button onClick={onClose} className="w-full bg-gray-900 text-white h-14 rounded-[20px] font-bold text-lg">Done</button>
+             <button onClick={onClose} className="w-full bg-gray-900 text-white h-14 rounded-[20px] font-bold text-lg">完成</button>
           </div>
        )}
 
@@ -484,7 +485,7 @@ const VoucherDetailModal = ({ voucher, onClose, onPay, onTopUp }: { voucher: any
                         {voucher.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}
                         <span className="text-xl font-medium ml-2 opacity-90">{voucher.currency}</span>
                       </h2>
-                      <p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">Balance</p>
+                      <p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">余额</p>
                    </div>
                    <div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
                       {voucher.memberNo}
@@ -509,8 +510,8 @@ const VoucherDetailModal = ({ voucher, onClose, onPay, onTopUp }: { voucher: any
             {/* Actions */}
             {voucher.status === 'active' ? (
                <div className="grid grid-cols-3 gap-3 mb-8">
-                   <button onClick={() => onPay(voucher)} className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-[#1562f0] rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-blue-200"><Scan className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">Pay</span></button>
-                   <button onClick={onTopUp} className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-green-200"><Plus className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">Top Up</span></button>
+                   <button onClick={() => onPay(voucher)} className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-[#1562f0] rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-blue-200"><Scan className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">支付</span></button>
+                   <button onClick={onTopUp} className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-green-200"><Plus className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">充值</span></button>
                    <button className="bg-white p-4 rounded-[20px] flex flex-col items-center justify-center shadow-sm active:scale-95 transition-transform"><div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white mb-2 shadow-lg shadow-orange-200"><Ticket className="w-5 h-5" /></div><span className="text-xs font-bold text-gray-700">Details</span></button>
                </div>
             ) : (
@@ -526,7 +527,7 @@ const VoucherDetailModal = ({ voucher, onClose, onPay, onTopUp }: { voucher: any
                <div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
                   <div className="flex items-center gap-2 mb-4">
                      <Star className="w-4 h-4 text-orange-500 fill-orange-500" />
-                     <h3 className="font-bold text-gray-900">Member Benefits</h3>
+                     <h3 className="font-bold text-gray-900">会员权益</h3>
                   </div>
                   <div className="space-y-4">
                      {voucher.benefits.map((benefit: any, idx: number) => (
@@ -546,8 +547,8 @@ const VoucherDetailModal = ({ voucher, onClose, onPay, onTopUp }: { voucher: any
 
 
             {/* Recent Activity */}
-            <div className="bg-white rounded-[24px] p-5 shadow-sm mb-4"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-900">Recent Activity</h3><span className="text-xs font-bold text-[#1562f0]">View All</span></div>
-               {voucher.history && voucher.history.length > 0 ? (<div className="space-y-4">{voucher.history.map((item: any) => (<div key={item.id} className="flex justify-between items-center"><div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"><History className="w-4 h-4" /></div><div><div className="text-sm font-bold text-gray-900">{item.title}</div><div className="text-xs text-gray-500">{item.date}</div></div></div><span className={`text-sm font-bold ${item.amount.startsWith('+') ? 'text-green-600' : 'text-gray-900'}`}>{item.amount}</span></div>))}</div>) : (<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>)}
+            <div className="bg-white rounded-[24px] p-5 shadow-sm mb-4"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-900">最近动态</h3><span className="text-xs font-bold text-[#1562f0]">查看全部</span></div>
+               {voucher.history && voucher.history.length > 0 ? (<div className="space-y-4">{voucher.history.map((item: any) => (<div key={item.id} className="flex justify-between items-center"><div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"><History className="w-4 h-4" /></div><div><div className="text-sm font-bold text-gray-900">{item.title}</div><div className="text-xs text-gray-500">{item.date}</div></div></div><span className={`text-sm font-bold ${item.amount.startsWith('+') ? 'text-green-600' : 'text-gray-900'}`}>{item.amount}</span></div>))}</div>) : (<div className="text-center py-8 text-gray-400 text-sm">暂无最近交易</div>)}
             </div>
 
 
@@ -556,16 +557,16 @@ const VoucherDetailModal = ({ voucher, onClose, onPay, onTopUp }: { voucher: any
                <div className="bg-white rounded-[24px] p-5 shadow-sm mb-12">
                   <div className="flex items-center gap-2 mb-4">
                      <Info className="w-4 h-4 text-gray-400" />
-                     <h3 className="font-bold text-gray-900">Card Information</h3>
+                     <h3 className="font-bold text-gray-900">卡信息</h3>
                   </div>
                   <div className="space-y-3">
-                     <div className="flex justify-between text-xs"><span className="text-gray-500">Issuer</span><span className="font-medium text-gray-900">{voucher.info.issuer}</span></div>
-                     <div className="flex justify-between text-xs"><span className="text-gray-500">Network</span><span className="font-medium text-gray-900">{voucher.info.network}</span></div>
-                     <div className="flex justify-between text-xs"><span className="text-gray-500">Standard</span><span className="font-medium text-gray-900">{voucher.info.standard}</span></div>
-                     <div className="flex justify-between text-xs"><span className="text-gray-500">Contract</span><span className="font-mono text-gray-500">{voucher.info.contract}</span></div>
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">发行方</span><span className="font-medium text-gray-900">{voucher.info.issuer}</span></div>
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">网络</span><span className="font-medium text-gray-900">{voucher.info.network}</span></div>
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">标准</span><span className="font-medium text-gray-900">{voucher.info.standard}</span></div>
+                     <div className="flex justify-between text-xs"><span className="text-gray-500">合约</span><span className="font-mono text-gray-500">{voucher.info.contract}</span></div>
                      <div className="flex justify-between text-xs items-center pt-2 border-t border-gray-100 mt-2">
                         <span className="text-gray-500 flex items-center gap-1"><ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status</span>
-                        <span className="font-bold text-green-600">Verified</span>
+                        <span className="font-bold text-green-600">已验证</span>
                      </div>
                   </div>
                </div>
@@ -590,7 +591,7 @@ const PayCodeOverlay = ({ isOpen, onClose, voucher }: { isOpen: boolean, onClose
            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[60px] pointer-events-none -mt-20 -mr-20"></div>
            <div className="w-12 h-1.5 bg-white/20 rounded-full mb-8"></div>
            <div className="text-center mb-8 relative z-10">
-              <h2 className="text-white font-bold text-2xl mb-1">Express Pay</h2>
+              <h2 className="text-white font-bold text-2xl mb-1">快捷支付</h2>
               <p className="text-white/70 text-sm">Scan to pay instantly</p>
            </div>
            <div className="bg-white p-6 rounded-[32px] shadow-2xl shadow-blue-900/50 mb-8 relative z-10 w-full max-w-[320px] aspect-square flex items-center justify-center">
@@ -724,7 +725,7 @@ const TopUpOverlay = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
                  </div>
                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Top Up Successful!</h3>
                  <p className="text-gray-500 mb-8">You have added <span className="text-gray-900 font-bold">${amount}.00</span> to your wallet.</p>
-                 <button onClick={onClose} className="w-full bg-gray-900 text-white h-14 rounded-[20px] font-bold text-lg">Done</button>
+                 <button onClick={onClose} className="w-full bg-gray-900 text-white h-14 rounded-[20px] font-bold text-lg">完成</button>
               </div>
            )}
         </div>
@@ -775,8 +776,8 @@ const ManageCardsOverlay = ({
      <div className="fixed inset-0 z-[100] bg-[#F2F2F7] flex flex-col animate-slide-up">
         {/* Header */}
         <div className="bg-white/80 backdrop-blur-md px-5 pt-14 pb-4 flex justify-between items-center border-b border-gray-200 sticky top-0 z-10">
-           <h1 className="text-lg font-bold">Manage Passes</h1>
-           <button onClick={onClose} className="text-[#1562f0] font-bold text-base">Done</button>
+           <h1 className="text-lg font-bold">管理 Pass</h1>
+           <button onClick={onClose} className="text-[#1562f0] font-bold text-base">完成</button>
         </div>
 
 
@@ -831,7 +832,7 @@ const ManageCardsOverlay = ({
                     </div>
                  );
               })}
-              {activeVouchers.length === 0 && <div className="p-6 text-center text-gray-400 text-sm">No active passes</div>}
+              {activeVouchers.length === 0 && <div className="p-6 text-center text-gray-400 text-sm">暂无有效 Pass</div>}
            </div>
 
 
@@ -852,7 +853,7 @@ const ManageCardsOverlay = ({
                        </div>
                        <div className="flex-1">
                           <h3 className="font-bold text-gray-900 text-sm">{voucher.nickname || voucher.name}</h3>
-                          <p className="text-xs text-gray-500">Archived by you</p>
+                          <p className="text-xs text-gray-500">由您归档</p>
                        </div>
                     </div>
                  );
@@ -1001,12 +1002,12 @@ export default function App() {
        </div>
      </div>
      <div className="grid grid-cols-3 gap-4">
-       <button onClick={() => handlePayAction(INITIAL_VOUCHERS[0])} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-[#1562f0] rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30"><Scan size={20} /></div><span className="text-xs font-bold text-gray-700">Pay</span></button>
-       <button onClick={handleTopUpTrigger} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/30"><Plus size={24} /></div><span className="text-xs font-bold text-gray-700">Top Up</span></button>
+       <button onClick={() => handlePayAction(INITIAL_VOUCHERS[0])} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-[#1562f0] rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/30"><Scan size={20} /></div><span className="text-xs font-bold text-gray-700">支付</span></button>
+       <button onClick={handleTopUpTrigger} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/30"><Plus size={24} /></div><span className="text-xs font-bold text-gray-700">充值</span></button>
        <button onClick={handleDetails} className="bg-white rounded-[24px] py-4 flex flex-col items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"><div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-orange-500/30"><CreditCard size={20} /></div><span className="text-xs font-bold text-gray-700">Details</span></button>
      </div>
      <div className="bg-white rounded-[32px] p-6 shadow-sm">
-       <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-gray-800">Recent Activity</h3><button className="text-[#1562f0] text-xs font-bold">View All</button></div>
+       <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-gray-800">最近动态</h3><button className="text-[#1562f0] text-xs font-bold">查看全部</button></div>
        <div className="space-y-6">
          {recentActivityData.map((tx) => (<div key={tx.id} className="flex items-center justify-between"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"><History size={18} /></div><div><p className="text-sm font-bold text-gray-900">{tx.type}</p><p className="text-xs text-gray-400">{tx.date}</p></div></div><span className={`text-sm font-bold ${tx.isPositive ? 'text-green-600' : 'text-gray-900'}`}>{tx.amount}</span></div>))}
        </div>
@@ -1023,23 +1024,23 @@ export default function App() {
    return (
      <div className="flex flex-col h-full bg-[#F2F2F7] pt-14 px-5 pb-44 overflow-y-auto hide-scrollbar">
        <div className="flex justify-between items-center mb-6 px-1">
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Wallet</h1>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">钱包</h1>
           <div className="flex items-center gap-3">
             <button onClick={onTransfer} className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center shadow-sm text-gray-700 active:scale-95 transition-transform"><ArrowRightLeft className="w-4 h-4" /></button>
-            <button onClick={onManage} className="text-[#1562f0] font-bold text-sm bg-blue-50 px-3 py-1.5 rounded-full">Edit</button>
+            <button onClick={onManage} className="text-[#1562f0] font-bold text-sm bg-blue-50 px-3 py-1.5 rounded-full">编辑</button>
             <button onClick={onAdd} className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-sm text-[#1562f0] active:scale-95 transition-transform"><Plus className="w-5 h-5" /></button>
           </div>
        </div>
        <div className="relative h-[650px] perspective-1000">
          {/* Main Vault */}
          <div onClick={() => setIsExpressExpanded(false)} className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isExpressExpanded ? 'scale-90 opacity-100 translate-y-4 brightness-50' : 'scale-95 translate-y-16'}`} style={{ background: 'linear-gradient(135deg, #2563eb, #9333ea, #db2777)', zIndex: 10 }}>
-           <div className="flex justify-between items-start mb-8"><div className="flex items-center space-x-2"><div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center"><div className="w-4 h-1 bg-white rounded-full"></div></div><span className="font-medium text-lg tracking-wide">USDC on Base</span></div><div className="p-2 bg-white/10 rounded-xl backdrop-blur-md border border-white/20"><QrCode className="w-5 h-5" /></div></div>
+           <div className="flex justify-between items-start mb-8"><div className="flex items-center space-x-2"><div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center"><div className="w-4 h-1 bg-white rounded-full"></div></div><span className="font-medium text-lg tracking-wide">Base 上的 USDC</span></div><div className="p-2 bg-white/10 rounded-xl backdrop-blur-md border border-white/20"><QrCode className="w-5 h-5" /></div></div>
            <div className="text-center mb-10"><div className="flex items-baseline justify-center"><span className="text-6xl font-bold tracking-tighter">{balances.vault.usdc.toFixed(2)}</span><span className="text-xl font-medium ml-2 opacity-80">USDC</span></div><div className="text-white/70 font-medium">≈ CA$ {(balances.vault.usdc * CURRENCY_RATES.CAD.rate).toFixed(2)}</div></div>
            <div className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm active:bg-black/30 transition-colors cursor-pointer mx-auto block w-fit"><span>{balances.vault.address}</span><Copy className="w-3 h-3 opacity-70" /></div>
          </div>
          {/* Express Pay */}
          <div onClick={() => setIsExpressExpanded(!isExpressExpanded)} className={`absolute top-0 w-full rounded-[32px] p-6 text-white shadow-[0_20px_50px_-12px_rgba(79,70,229,0.5)] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] cursor-pointer ${isExpressExpanded ? 'translate-y-[240px]' : 'translate-y-[150px]'}`} style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7, #3b82f6)', zIndex: 20 }}>
-           <div className="flex justify-between items-center mb-8"><div className="flex items-center space-x-2"><div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center"><Zap className="w-4 h-4 fill-current" /></div><span className="font-medium text-lg tracking-wide">Express Pay</span></div><button onClick={(e) => { e.stopPropagation(); handlePayAction(null); }} className="flex items-center space-x-2 border border-white/30 rounded-full px-4 py-1.5 backdrop-blur-md bg-white/5 active:bg-white/20 transition-colors"><QrCode className="w-4 h-4" /><span className="text-xs font-bold tracking-wider">PAY CODE</span></button></div>
+           <div className="flex justify-between items-center mb-8"><div className="flex items-center space-x-2"><div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center"><Zap className="w-4 h-4 fill-current" /></div><span className="font-medium text-lg tracking-wide">快捷支付</span></div><button onClick={(e) => { e.stopPropagation(); handlePayAction(null); }} className="flex items-center space-x-2 border border-white/30 rounded-full px-4 py-1.5 backdrop-blur-md bg-white/5 active:bg-white/20 transition-colors"><QrCode className="w-4 h-4" /><span className="text-xs font-bold tracking-wider">PAY CODE</span></button></div>
            <div className="text-center mb-10"><div className="flex items-baseline justify-center"><span className="text-6xl font-bold tracking-tighter text-[#4ade80]">{balances.spending.usdc.toFixed(2)}</span><span className="text-xl font-medium ml-2 opacity-80 text-[#4ade80]">USDC</span></div><div className="text-[#4ade80]/70 font-medium">≈ CA$ {(balances.spending.usdc * CURRENCY_RATES.CAD.rate).toFixed(2)}</div></div>
            <div className="bg-black/20 backdrop-blur-md px-4 py-2 rounded-full inline-flex items-center space-x-2 border border-white/10 font-mono text-sm active:bg-black/30 transition-colors mx-auto block w-fit" onClick={(e) => { e.stopPropagation(); /* Copy action here */ }}><span>{balances.spending.address}</span><Copy className="w-3 h-3 opacity-70" /></div>
            <div className="absolute bottom-4 right-6 opacity-50 animate-bounce">{isExpressExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}</div>

@@ -7,6 +7,7 @@ import AmountCurrency from '@/components/input/AmountCurrency'
 import FeeInline from './FeeInline'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { PaymentRequestCard } from '@/pages/chat/components/PaymentRequestCard'
+import { tu } from '@/locale/beamioLocale'
 
 type RedeemOrLinkCardProps = {
 	payAmount: string                  // 金额（用于 Redeem 侧显示）
@@ -95,7 +96,7 @@ const SuccessShow = ({
 							hover:bg-white/30 dark:hover:bg-slate-900/45
 							transition
 							"
-						aria-label="Close"
+						aria-label={tu('close')}
 					>
 						<X className="w-4 h-4" />
 					</button>

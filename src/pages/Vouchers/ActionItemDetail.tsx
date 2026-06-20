@@ -3,6 +3,7 @@ import { Link2, Layers, Copy, X } from 'lucide-react'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import { CCSA_Card_Address } from '@/utils/constants'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 const TOKEN_MINT = 1
 const TOKEN_TRANSFER = 3
@@ -180,7 +181,7 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
 
       {/* Total Paid */}
       <div className="flex justify-between items-center py-3 border-b border-slate-100">
-        <span className="text-[14px] text-slate-600">Total Paid</span>
+        <span className="text-[14px] text-slate-600">{tu('total_paid')}</span>
         <span className="text-[16px] font-semibold text-slate-900">{totalFiat}</span>
       </div>
 
@@ -225,13 +226,13 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           />
         )}
         <DetailRow
-          label="Exchange Rate"
+          label={tu('exchange_rate')}
           value={exchangeRate}
           labelClassName="text-slate-500"
           valueClassName="text-slate-500"
         />
         <DetailRow
-          label="Total Paid in USDC"
+          label={tu('total_paid_in_usdc')}
           value={totalUsdc}
           labelClassName="text-blue-600 font-bold"
           valueClassName="text-blue-600 font-bold"
@@ -275,13 +276,10 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
       {/* Network & Transaction ID */}
       <div className="mt-4 rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-black/5 px-4 py-4">
         <DetailRow
-          label="Network"
+          label={tu('network')}
           value={
             <span className="inline-flex items-center gap-1.5">
-				<span className="w-2 h-2 rounded-full bg-blue-500" aria-hidden />
-              Base Mainnet
-              
-            </span>
+				<span className="w-2 h-2 rounded-full bg-blue-500" aria-hidden />{tu('base_mainnet')}</span>
           }
         />
         <div className="flex justify-between items-center gap-3">
@@ -309,7 +307,7 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           </div>
         </div>
         {copied && (
-          <p className="text-[12px] text-emerald-600 mt-1 text-right">Copied</p>
+          <p className="text-[12px] text-emerald-600 mt-1 text-right">已复制</p>
         )}
       </div>
 

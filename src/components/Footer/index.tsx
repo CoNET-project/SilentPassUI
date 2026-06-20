@@ -19,6 +19,7 @@ import { Search } from 'lucide-react'
 import { searchUsername, storeSystemData } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import type { Transition } from 'framer-motion'
+import { tu } from '@/locale/beamioLocale'
 
 
 /** Footer 可点击 tab；首格 `/history` 对应首页 `/`；第二格为 Wallet */
@@ -285,7 +286,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				key: '/chat' as const,
 				iconGrey: <ChatGreyIcon className={ICON_CLASS} />,
 				iconBlue: <ChatBlueIcon className={ICON_CLASS} />,
-				title: '', //'Chat',
+				title: '', //tu('chat'),
 				badge: getBadge('/chat'),
 			},
 			{
@@ -623,7 +624,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						WebkitBackdropFilter: 'blur(1rem)',
 						backdropFilter: 'blur(1rem)'
 					}}
-					aria-label="Search"
+					aria-label={tu('search')}
 				>
 					<Search className="w-5 h-5" />
 				</button>

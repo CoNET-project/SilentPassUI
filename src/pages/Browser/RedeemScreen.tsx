@@ -12,6 +12,7 @@ import Securitycode from '@/components/input/Securitycode'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import ShowCard from '@/components/card/ShowCard'
 import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
+import { tu } from '@/locale/beamioLocale'
 
 
 
@@ -358,7 +359,7 @@ const RedeemScreen = ({close}: Prof) => {
 											group-hover:opacity-90
 											group-active:opacity-80
 										"
-										alt="Gift Envelope"
+										alt={tu('gift_envelope')}
 									/>
 								</button>
 							)}

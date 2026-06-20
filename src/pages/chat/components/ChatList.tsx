@@ -14,6 +14,7 @@ import {
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress, refreshChatRoutes } from '@/services/chat' 
 import {searchUsername, storeSystemData} from '@/services/beamio'
+import { tu } from '@/locale/beamioLocale'
 
 // 注意：不再接受 `list` prop。ChatList 内部直接从 useDaemonContext().profiles[0].chats
 // 读取并通过 useMemo 派生 items，避免与 profile.chats 出现两个数据源不一致的风险
@@ -42,7 +43,7 @@ function fmtListTime(ts?: number) {
   if (diff === 0) {
     return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
   }
-  if (diff === oneDay) return "Yesterday"
+  if (diff === oneDay) return tu('yesterday')
 
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, "0")
@@ -67,7 +68,7 @@ const unknowAcc = (address: string):searchResult => {
 		last_name: '',
 		follow_count: '',
 		follower_count: '',
-		username: 'Unknow',
+		username: '未知',
 		image: ''
 	}
 	return ret
@@ -302,9 +303,7 @@ export default function ChatList({
             type="button"
             onClick={onEdit}
             className="h-10 px-4 rounded-full bg-slate-100 text-slate-900 text-[18px] font-medium active:scale-[0.98] transition"
-          >
-            Edit
-          </button>
+          >{tu('edit')}</button>
 
           <button
             type="button"

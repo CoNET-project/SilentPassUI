@@ -2,8 +2,10 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './locale/i18n';
 import './index.css';
 import App from './App';
+import { BeamioLocaleRoot } from './locale/BeamioLocaleRoot';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'
 import { MerchantCardDatabaseProvider } from './providers/MerchantCardDatabaseProvider'
@@ -22,7 +24,9 @@ root.render(
 				<MerchantCardDatabaseProvider>
 					<BeamioTagDatabaseProvider>
 						<IpfsImageLibraryProvider>
-							<App />
+							<BeamioLocaleRoot>
+								<App />
+							</BeamioLocaleRoot>
 						</IpfsImageLibraryProvider>
 					</BeamioTagDatabaseProvider>
 				</MerchantCardDatabaseProvider>

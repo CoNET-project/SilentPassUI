@@ -11,6 +11,7 @@ import type { UINode, BeamioUI } from "./uiCatalog"
 import { isValidBeamioUI, isValidUINode, UI_CATALOG_SCHEMA } from "./uiCatalog"
 import type { BeamioAction } from "./types"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
+import { tu } from '@/locale/beamioLocale'
 
 /** True when ui has schema+root but root is empty/invalid (e.g. root: {}) */
 function hasSchemaButInvalidRoot(ui: unknown): boolean {
@@ -24,7 +25,7 @@ const FALLBACK_BALANCE_UI: BeamioUI = {
   schema: UI_CATALOG_SCHEMA,
   root: {
     type: "Card",
-    props: { title: "Balance" },
+    props: { title: "余额" },
     children: [
       { type: "BalanceDisplay" },
       { type: "ActionButton", props: { label: "Add USDC", actionType: "add-usdc" } },
@@ -184,7 +185,7 @@ function renderUINode(
         >
           <div className="flex items-center gap-2 mb-2">
             <Wallet size={18} className="text-emerald-600" />
-            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Balance</span>
+            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{tu('balance')}</span>
           </div>
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">

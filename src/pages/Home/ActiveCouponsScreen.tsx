@@ -7,6 +7,8 @@ import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
 import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
+import { t } from '@/locale/i18n'
+import { tu } from '@/locale/beamioLocale'
 import {
 	type CardActiveIssuedCouponSeriesItem,
 	fetchCardActiveIssuedCouponSeriesTrusted,
@@ -187,7 +189,7 @@ function CouponCardAddressCapsule({ address }: { address: string }) {
 			type="button"
 			onClick={handleCopy}
 			className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/15 bg-white/10 py-1 pl-2.5 pr-2 font-mono text-[10px] font-semibold text-white/80 transition-colors hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-			title="Copy address"
+			title={tu('copy_address')}
 			aria-label={`Copy card address ${short}`}
 		>
 			<span className="truncate">{short}</span>
@@ -200,26 +202,42 @@ function CouponCardAddressCapsule({ address }: { address: string }) {
 	)
 }
 
+
 export const formatCouponExpiryPill = (validBeforeSec: number | null): string => {
-	if (!Number.isFinite(validBeforeSec ?? NaN) || (validBeforeSec ?? 0) <= 0) return 'VALID NOW'
+	if (!Number.isFinite(validBeforeSec ?? NaN) || (validBeforeSec ?? 0) <= 0) {
+		return t('time.couponValidNow')
+	}
 	const now = Math.floor(Date.now() / 1000)
-	if ((validBeforeSec ?? 0) <= now) return 'EXPIRED'
+	if ((validBeforeSec ?? 0) <= now) return t('time.couponExpired')
 	const delta = (validBeforeSec ?? now) - now
-	if (delta >= 86_400) return `EXPIRES IN ${Math.ceil(delta / 86_400)}D`
-	if (delta >= 3_600) return `EXPIRES IN ${Math.ceil(delta / 3_600)}H`
-	return `EXPIRES IN ${Math.max(1, Math.ceil(delta / 60))}M`
+	if (delta >= 86_400) return t('time.couponExpiresDays', { count: Math.ceil(delta / 86_400) })
+	if (delta >= 3_600) return t('time.couponExpiresHours', { count: Math.ceil(delta / 3_600) })
+	return t('time.couponExpiresMinutes', { count: Math.max(1, Math.ceil(delta / 60)) })
 }
 
 /** Hide non-actionable open-ended status pills on coupon ticket UI. */
 export const shouldShowCouponExpiryPill = (expiresLabel: string): boolean => {
-	const normalized = expiresLabel.trim().toUpperCase()
+	const normalized = expiresLabel.trim()
 	if (!normalized) return false
-	return normalized !== 'VALID NOW' && normalized !== 'NO EXPIRY'
+	const hidden = new Set([
+		t('time.couponValidNow'),
+		t('time.couponNoExpiry'),
+		tu('valid_now'),
+		tu('no_expiry'),
+	])
+	return !hidden.has(normalized)
 }
 
 /** Same urgency rule as biz `cardIssuanceCouponEditorLivePreview` (hours / expired → red Clock + solid bg). */
-export const couponExpiryUsesUrgentVariant = (expiresLabel: string): boolean =>
-	expiresLabel === 'EXPIRED' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel)
+export const couponExpiryUsesUrgentVariant = (expiresLabel: string): boolean => {
+	const expired = t('time.couponExpired')
+	if (expiresLabel === expired) return true
+	return (
+		expiresLabel.includes(t('time.couponExpiresHours', { count: 1 }).replace('1', '')) ||
+		/\d+/.test(expiresLabel) &&
+			(expiresLabel.endsWith('H') || expiresLabel.includes('小时') || expiresLabel.includes('分钟'))
+	)
+}
 
 export function mapActiveCouponRow(cardAddress: string, row: CardActiveIssuedCouponSeriesItem): ActiveCouponListItem | null {
 	const meta = asRecord(row.metadata)
@@ -360,7 +378,7 @@ export function ActiveCouponTicketItem({
 	actionStatus = 'idle',
 	actionError,
 	onAction,
-	actionLabel = 'Claim',
+	actionLabel = tu('claim'),
 	disabled = false,
 	ariaLabel,
 	punchBgClassName = 'bg-[#f9f9fe]',
@@ -450,8 +468,8 @@ export function ActiveCouponTicketItem({
 		)
 	}
 
-	const usesPosClaimGiftButton = actionLabel === 'Claim'
-	const usesOwnedStatusCapsule = actionLabel === 'Owned'
+	const usesPosClaimGiftButton = actionLabel === tu('claim')
+	const usesOwnedStatusCapsule = actionLabel === tu('owned')
 	const claimActionAriaLabel =
 		ariaLabel ??
 		(actionStatus === 'success'
@@ -731,14 +749,14 @@ export default function ActiveCouponsScreen({
 		if (currentStatus !== 'idle') return
 		const privateKeyArmor = getPrivateKeyArmor()?.trim() ?? ''
 		if (!privateKeyArmor) {
-			Toast.show({ content: 'Wallet is not ready yet', position: 'top' })
+			Toast.show({ content: tu('wallet_is_not_ready_yet'), position: 'top' })
 			return
 		}
 		const cardAddress = row.cardAddress?.trim() ?? ''
 		const couponId = row.couponId?.trim() ?? ''
 		const tokenId = row.tokenId?.trim() ?? ''
 		if (!cardAddress || !couponId || !tokenId || !ethers.isAddress(cardAddress)) {
-			Toast.show({ content: 'Coupon claim parameters are invalid', position: 'top' })
+			Toast.show({ content: tu('coupon_claim_parameters_are_invalid'), position: 'top' })
 			return
 		}
 		setClaimStatusById((s) => ({ ...s, [row.id]: 'loading' }))
@@ -780,11 +798,11 @@ export default function ActiveCouponsScreen({
 						type="button"
 						onClick={onBack}
 						className="flex h-10 w-10 items-center justify-center rounded-full text-[#1562f0] transition-transform hover:bg-[#f3f3f8] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/35"
-						aria-label="Back"
+						aria-label={tu('back')}
 					>
 						<ArrowLeft className="h-5 w-5" strokeWidth={2.4} aria-hidden />
 					</button>
-					<h1 className="text-lg font-bold tracking-[-0.02em] text-[#1a1c1f]">Active Coupons</h1>
+					<h1 className="text-lg font-bold tracking-[-0.02em] text-[#1a1c1f]">{tu('active_coupons')}</h1>
 					<button
 						type="button"
 						onClick={handleRefresh}
@@ -809,7 +827,7 @@ export default function ActiveCouponsScreen({
 				<section className="space-y-2">
 					<div className="flex items-center gap-2">
 						<Gift className="h-5 w-5 text-[#1562f0]" strokeWidth={2.2} aria-hidden />
-						<h2 className="text-2xl font-black tracking-[-0.03em] text-[#1a1c1f]">Ongoing Coupons</h2>
+						<h2 className="text-2xl font-black tracking-[-0.03em] text-[#1a1c1f]">{tu('ongoing_coupons')}</h2>
 					</div>
 					<p className="leading-relaxed text-[#424655]">
 						Choose an active coupon below to claim it to your wallet, or enter a gift link manually.
@@ -818,7 +836,7 @@ export default function ActiveCouponsScreen({
 
 				<section className="space-y-3">
 					<div className="flex items-center justify-between px-1">
-						<span className="text-[10px] font-bold uppercase tracking-widest text-[#737687]">Available now</span>
+						<span className="text-[10px] font-bold uppercase tracking-widest text-[#737687]">现已可用</span>
 						<span className="rounded-full bg-[#e8e8ed] px-2 py-0.5 text-[10px] font-bold text-[#424655]">
 							{coupons.length} COUPON{coupons.length !== 1 ? 'S' : ''}
 						</span>
@@ -852,7 +870,7 @@ export default function ActiveCouponsScreen({
 										actionError={claimErrorById[row.id]}
 										disabled={claimButtonDisabled}
 										onAction={() => void handleClaim(row)}
-										actionLabel="Claim"
+										actionLabel={tu('claim')}
 										aria-label={`Claim coupon ${row.title}`}
 									/>
 								)
@@ -862,7 +880,7 @@ export default function ActiveCouponsScreen({
 				</section>
 
 				<section className="rounded-2xl border border-[#e8e8ed] bg-white p-5 shadow-sm">
-					<p className="text-sm font-semibold text-[#1a1c1f]">Have a redeem link or QR code?</p>
+					<p className="text-sm font-semibold text-[#1a1c1f]">有兑换链接或二维码？</p>
 					<p className="mt-1 text-[13px] leading-relaxed text-[#424655]">
 						Gift vouchers with a redeem code can be entered or scanned manually.
 					</p>

@@ -12,6 +12,8 @@ import CurrencyPicker from "@/components/input/SelectCurrent"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
+import { tu } from '@/locale/beamioLocale'
+import { mapServerError } from '@/locale/mapServerError'
 
 const CURRENCY_META: Record<CreateBeamioCardParams["currency"], { flag: string; sym: string }> = {
 	USD: { flag: "🇺🇸", sym: "$" },
@@ -246,11 +248,11 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			})
 			if (res.success && res.cardAddress) {
 				setResult({ cardAddress: res.cardAddress, hash: res.hash })
-				Toast.show({ content: "Card created successfully", icon: "success" })
+				Toast.show({ content: tu('card_created_successfully'), icon: "success" })
 				onCreated?.()
 			} else {
-				setError(res.error ?? "Create failed")
-				Toast.show({ content: res.error ?? "Create failed", icon: "fail" })
+				setError(res.error ?? tu('create_failed'))
+				Toast.show({ content: mapServerError(res.error, 'createFailed'), icon: "fail" })
 			}
 		} catch (e: any) {
 			const msg = e?.message ?? String(e)
@@ -298,7 +300,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			let blob: Blob = file
 			if (!isSvg && file.size > TARGET_MAX_BYTES) {
 				blob = await resizeToFitLimit(file, TARGET_MAX_BYTES)
-				Toast.show({ content: "Image resized to <37MB", icon: "success" })
+				Toast.show({ content: tu('image_resized_to_37mb'), icon: "success" })
 			}
 			const toDataUrl = (b: Blob) =>
 				new Promise<string>((resolve, reject) => {
@@ -313,7 +315,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 				hash = await postToIPFS(profile, dataUrl)
 			} catch (err: any) {
 				if (err?.message?.includes?.("413") && !isSvg) {
-					Toast.show({ content: "Compressing to JPEG…", icon: "loading" })
+					Toast.show({ content: tu('compressing_to_jpeg'), icon: "loading" })
 					blob = await compressToJpeg(blob, JPEG_RETRY_MAX_BYTES)
 					dataUrl = await toDataUrl(blob)
 					hash = await postToIPFS(profile, dataUrl)
@@ -324,14 +326,14 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			if (hash) {
 				const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`
 				updateTier(tierIndex, "image", url)
-				Toast.show({ content: "Tier image uploaded", icon: "success" })
+				Toast.show({ content: tu('tier_image_uploaded'), icon: "success" })
 			} else {
 				setError("Tier image upload failed")
-				Toast.show({ content: "Upload failed", icon: "fail" })
+				Toast.show({ content: tu('upload_failed'), icon: "fail" })
 			}
 		} catch (err: any) {
-			setError(err?.message ?? "Upload failed")
-			Toast.show({ content: err?.message ?? "Upload failed", icon: "fail" })
+			setError(err?.message ?? "上传失败")
+			Toast.show({ content: err?.message ?? "上传失败", icon: "fail" })
 		}
 	}
 
@@ -352,7 +354,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			let blob: Blob = file
 			if (!isSvg && file.size > TARGET_MAX_BYTES) {
 				blob = await resizeToFitLimit(file, TARGET_MAX_BYTES)
-				Toast.show({ content: "Image resized to <37MB", icon: "success" })
+				Toast.show({ content: tu('image_resized_to_37mb'), icon: "success" })
 			}
 			const toDataUrl = (b: Blob) =>
 				new Promise<string>((resolve, reject) => {
@@ -367,7 +369,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 				hash = await postToIPFS(profile, dataUrl)
 			} catch (err: any) {
 				if (err?.message?.includes?.("413") && !isSvg) {
-					Toast.show({ content: "Compressing to JPEG…", icon: "loading" })
+					Toast.show({ content: tu('compressing_to_jpeg'), icon: "loading" })
 					blob = await compressToJpeg(blob, JPEG_RETRY_MAX_BYTES)
 					dataUrl = await toDataUrl(blob)
 					hash = await postToIPFS(profile, dataUrl)
@@ -377,14 +379,14 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			}
 			if (hash) {
 				setMetaImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`)
-				Toast.show({ content: "Image uploaded", icon: "success" })
+				Toast.show({ content: tu('image_uploaded'), icon: "success" })
 			} else {
-				setError("Upload failed")
-				Toast.show({ content: "Upload failed", icon: "fail" })
+				setError("上传失败")
+				Toast.show({ content: tu('upload_failed'), icon: "fail" })
 			}
 		} catch (err: any) {
-			setError(err?.message ?? "Upload failed")
-			Toast.show({ content: err?.message ?? "Upload failed", icon: "fail" })
+			setError(err?.message ?? "上传失败")
+			Toast.show({ content: err?.message ?? "上传失败", icon: "fail" })
 		} finally {
 			setUploadingImage(false)
 			input.value = ""

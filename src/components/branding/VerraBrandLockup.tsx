@@ -24,7 +24,7 @@ const wordClass: Record<NonNullable<VerraBrandLockupProps['size']>, string> = {
 	compact: 'text-lg',
 }
 
-/** 全局统一：logo512 + 「Verra」字标（仅用于品牌条，勿与功能图标混用） */
+/** 全局统一：logo512 + 「Beamio」字标（仅用于品牌条，勿与功能图标混用） */
 export function VerraBrandLockup({
 	variant = 'onLight',
 	size = 'standard',
@@ -45,7 +45,7 @@ export function VerraBrandLockup({
 				draggable={false}
 			/>
 			<span className={['font-bold tracking-tighter', textClass[variant], wordClass[size]].join(' ')}>
-				Verra
+				Beamio
 			</span>
 		</div>
 	)

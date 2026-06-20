@@ -6,6 +6,7 @@ import React, { useMemo, useState, useEffect,useRef } from "react"
 import { Plus } from "lucide-react"
 import { JoinNowPill } from "./assets/JoinNowPill"
 import { fiatPrefix } from "@/services/currency"
+import { tu } from '@/locale/beamioLocale'
 
 const cls = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ")
 
@@ -381,7 +382,7 @@ export default function CCSACardVisual({
 								"shadow-[0_16px_28px_rgba(0,0,0,0.12)]",
 								"active:scale-[0.99] transition"
 							)}
-							aria-label="Show QR"
+							aria-label={tu('show_qr')}
 						>
 							<QrCode className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.2} />
 						</button>
@@ -423,7 +424,7 @@ export default function CCSACardVisual({
 						"shadow-[0_16px_28px_rgba(0,0,0,0.12)]",
 						"active:scale-[0.99] transition"
 					  )}
-					  aria-label="Show QR"
+					  aria-label={tu('show_qr')}
 					>
 					  <QrCode className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.2} />
 					</button>

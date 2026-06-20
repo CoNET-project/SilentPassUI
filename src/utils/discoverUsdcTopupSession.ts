@@ -2,6 +2,7 @@ import { ethers } from 'ethers'
 import { beamioApi, baseEndpoint } from '@/utils/constants'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { signExecuteForAdmin } from '@/utils/signExecuteForAdmin'
+import { tu } from '@/locale/beamioLocale'
 import {
 	fetchUsdcChargeSession,
 	submitUsdcChargeTopupAuth,
@@ -277,7 +278,7 @@ export async function nfcTopupPrepareForWallet(body: {
 			factoryGateway: String(json.factoryGateway ?? '').trim() || undefined,
 		}
 	} catch (e) {
-		return { error: e instanceof Error ? e.message : 'Network error' }
+		return { error: e instanceof Error ? e.message : tu('network_error') }
 	}
 }
 
@@ -313,7 +314,7 @@ export async function nfcTopupSubmitForWallet(body: {
 			txHash: json.txHash ? String(json.txHash) : undefined,
 		}
 	} catch (e) {
-		return { success: false, error: e instanceof Error ? e.message : 'Network error' }
+		return { success: false, error: e instanceof Error ? e.message : tu('network_error') }
 	}
 }
 

@@ -14,6 +14,7 @@ import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import CryptoAssetsCard from './CryptoAssetsCard/CryptoAssetsCard'
 import Privatekey from './PrivateKey/PrivateKey'
+import { tu } from '@/locale/beamioLocale'
 
 const defaultName = 'Beamio'
 const Setting = ({}) => {
@@ -153,7 +154,7 @@ const Setting = ({}) => {
 				<button
 					type="button"
 					className={styles.headerBtn}
-					aria-label="Toggle theme"
+					aria-label={tu('toggle_theme')}
 					onClick={() => setDarkModle(!darkModle)}
 				>
 					<span className={styles.headerBtnIcon}>
@@ -165,7 +166,7 @@ const Setting = ({}) => {
 				<button
 					type="button"
 					className={styles.headerBtn}
-					aria-label="Settings"
+					aria-label={tu('settings')}
 					onClick={() => setPrivatekeyVisible(true)}
 				>
 					<span className={styles.headerBtnIcon}>
@@ -186,7 +187,7 @@ const Setting = ({}) => {
 		>
 			<IpfsImg
 			src={currentAvatarSrc}
-			alt="AI avatar"
+			alt={tu('ai_avatar')}
 			className={styles.avatarImage}
 			/>
 		</div>
@@ -221,9 +222,7 @@ const Setting = ({}) => {
 		>
 			<div className={styles.avatarEditorPanel}>
 			<div className={styles.avatarEditorHeader}>
-				<h3 className={styles.avatarEditorTitle}>
-				Beamio settings
-				</h3>
+				<h3 className={styles.avatarEditorTitle}>{tu('beamio_settings')}</h3>
 				<button
 				type="button"
 				className={styles.avatarEditorClose}
@@ -237,7 +236,7 @@ const Setting = ({}) => {
 				<div className={styles.avatarWrapper}>
 				<IpfsImg
 					src={currentAvatarSrcTemp}
-					alt="Avatar preview"
+					alt={tu('avatar_preview')}
 					className={styles.avatarEditorImage}
 				/>
 
@@ -258,9 +257,7 @@ const Setting = ({}) => {
 			</div>
 
 			<div className={styles.avatarEditorField}>
-				<label className={styles.avatarEditorLabel}>
-				Beamio name
-				</label>
+				<label className={styles.avatarEditorLabel}>{tu('beamio_name')}</label>
 				<input
 				type="text"
 				value={avatarSeed}
@@ -270,22 +267,18 @@ const Setting = ({}) => {
 				}}
 
 				className={styles.avatarEditorInput}
-				placeholder='Let other beamioers can @ you'
+				placeholder={tu('let_other_beamioers_can_you')}
 				/>
 			</div>
 
 			<div className={styles.avatarEditorField}>
-				<label className={styles.avatarEditorLabel}>
-				Choose from photos
-				</label>
+				<label className={styles.avatarEditorLabel}>{tu('choose_from_photos')}</label>
 
 				<label
 				className={`${styles.avatarEditorUploadBtn} ${
 					darkModle ? styles.darkBtn : styles.lightBtn
 				}`}
-				>
-				Choose photo
-				<input
+				>{tu('choose_photo')}<input
 					id="avatarFileInput"
 					type="file"
 					accept="image/*"
@@ -301,16 +294,12 @@ const Setting = ({}) => {
 					type="button"
 					className={styles.avatarEditorCancel}
 					onClick={() => setAvatarEditorVisible(false)}
-				>
-					Cancel
-				</button>
+				>{tu('cancel')}</button>
 				<button
 					type="button"
 					className={styles.avatarEditorSave}
 					onClick={handleSaveAvatar}
-				>
-					Save
-				</button>
+				>{tu('save')}</button>
 			</div>
 			</div>
 		</Popup>

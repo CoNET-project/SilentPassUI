@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { tu } from '@/locale/beamioLocale'
 import {
   isEmbeddedPwaOtaSupported,
   readEmbeddedPwaPendingVersion,
@@ -34,7 +35,7 @@ export function EmbeddedPwaUpdateBanner(): React.ReactElement | null {
     const offApply = subscribeApplyEmbeddedPwaUpdateResult(({ ok, error: applyError }) => {
       setApplying(false)
       if (!ok) {
-        setError(applyError || 'Update failed')
+        setError(applyError || tu('update_failed'))
         return
       }
       setPendingVer('')
@@ -63,9 +64,9 @@ export function EmbeddedPwaUpdateBanner(): React.ReactElement | null {
       role="status"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">Update ready ({pendingVer})</p>
+        <p className="truncate font-medium">{tu('update_ready')} ({pendingVer})</p>
         {currentVer ? (
-          <p className="truncate text-xs text-white/70">Current: {currentVer}</p>
+          <p className="truncate text-xs text-white/70">{tu('current')}: {currentVer}</p>
         ) : null}
         {error ? <p className="truncate text-xs text-amber-300">{error}</p> : null}
       </div>
@@ -75,7 +76,7 @@ export function EmbeddedPwaUpdateBanner(): React.ReactElement | null {
         disabled={applying}
         onClick={onRestart}
       >
-        {applying ? 'Restarting…' : 'Restart'}
+        {applying ? tu('restarting') : tu('restart')}
       </button>
     </div>
   )

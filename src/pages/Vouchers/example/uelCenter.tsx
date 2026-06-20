@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { tu } from '@/locale/beamioLocale'
 import {
  Fuel,
  ArrowUpRight,
@@ -47,35 +48,35 @@ const P2P_GAS_COST = 2; // Flat 2 Units for P2P Send
 const generateExtendedLogs = () => {
  const baseLogs = [
    // 1. In-App Refuel (Atomically split)
-   { id: "LOG-YLD-01", title: "Fuel Yield (1:100)", subtitle: "Swap $5.00 USDC", amount: 500, time: "Just now", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
-   { id: "LOG-FEE-01", title: "Refuel Fee (Shadow Gas)", subtitle: "Underlying Tx Cost", amount: -2, time: "Just now", type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
+   { id: "LOG-YLD-01", title: tu('fuel_yield_1_100'), subtitle: "Swap $5.00 USDC", amount: 500, time: tu('just_now'), type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x8f2a...4b1c", network: tu('base_mainnet') },
+   { id: "LOG-FEE-01", title: "Refuel Fee (Shadow Gas)", subtitle: "Underlying Tx Cost", amount: -2, time: tu('just_now'), type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x8f2a...4b1c", network: tu('base_mainnet') },
   
    // 2. Consumption Tax
-   { id: "LOG-SVC-02", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "2h ago", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
+   { id: "LOG-SVC-02", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "2h ago", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x1c9d...9e2f", network: tu('base_mainnet') },
   
    // 3. P2P Transfer
-   { id: "LOG-P2P-03", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "5h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
+   { id: "LOG-P2P-03", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "5h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x4a1b...2c3d", network: tu('base_mainnet') },
   
    // 4. Operator Subsidy
-   { id: "LOG-OP-04", title: "CashTrees Top-up Bonus", subtitle: "Operator Subsidy", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" },
+   { id: "LOG-OP-04", title: "CashTrees Top-up Bonus", subtitle: "Operator Subsidy", amount: 100, time: tu('yesterday'), type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" },
   
    // 5. Card Activation
    { id: "LOG-CARD-05", title: "Hardware Minting Fee", subtitle: "Card Setup", amount: -99, time: "Feb 20", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0x5566...7788", network: "CoNET L1" },
   
    // 6. Asset Minting
-   { id: "LOG-DEP-06", title: "Deposit Network Fee", subtitle: "Top-up Card", amount: -2, time: "Feb 19", type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x99aa...bbcc", network: "Base Mainnet" },
+   { id: "LOG-DEP-06", title: "Deposit Network Fee", subtitle: "Top-up Card", amount: -2, time: "Feb 19", type: "gas", status: "Completed", linkedUsdc: "N/A", txHash: "0x99aa...bbcc", network: tu('base_mainnet') },
   
    // 7. Operator Payout
-   { id: "LOG-PAY-07", title: "Settlement Routing Fee", subtitle: "Operator Payout", amount: -2, time: "Feb 18", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0xddee...ff00", network: "Base Mainnet" },
+   { id: "LOG-PAY-07", title: "Settlement Routing Fee", subtitle: "Operator Payout", amount: -2, time: "Feb 18", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0xddee...ff00", network: tu('base_mainnet') },
   
    // 8. B2B Large Payment
-   { id: "LOG-B2B-08", title: "B2B Transfer Fee", subtitle: "Procurement Gas", amount: -500, time: "Feb 15", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0x1234...5678", network: "Base Mainnet" },
+   { id: "LOG-B2B-08", title: "B2B Transfer Fee", subtitle: "Procurement Gas", amount: -500, time: "Feb 15", type: "fee", status: "Completed", linkedUsdc: "N/A", txHash: "0x1234...5678", network: tu('base_mainnet') },
   
    // 9. Protocol Subsidy
    { id: "LOG-PROT-09", title: "Network Welcome Grant", subtitle: "Protocol Subsidy", amount: 20, time: "Feb 14", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x1122...3344", network: "CoNET L1" },
   
    // 10. Enterprise Fuel Pack
-   { id: "LOG-ENT-10", title: "Enterprise Fuel Allocation", subtitle: "Fuel Pack Purchase", amount: 100000, time: "Feb 10", type: "refuel", status: "Completed", linkedUsdc: "N/A", txHash: "0x8765...4321", network: "Base Mainnet" }
+   { id: "LOG-ENT-10", title: "Enterprise Fuel Allocation", subtitle: "Fuel Pack Purchase", amount: 100000, time: "Feb 10", type: "refuel", status: "Completed", linkedUsdc: "N/A", txHash: "0x8765...4321", network: tu('base_mainnet') }
  ];
   // Backfill with some generic historic data for pagination demo
  const extraLogs = Array.from({length: 15}).map((_, i) => {
@@ -83,7 +84,7 @@ const generateExtendedLogs = () => {
      const isRefuel = i % 7 === 0;
      return {
          id: `LOG-EXT-${i}`,
-         title: isRefuel ? "Fuel Yield (1:100)" : isFee ? "Service Fee (0.8%)" : "Network Gas",
+         title: isRefuel ? tu('fuel_yield_1_100') : isFee ? "Service Fee (0.8%)" : "Network Gas",
          subtitle: isRefuel ? "System Top-up" : `Historical Txn #${500 - i}`,
          amount: isRefuel ? 500 : isFee ? -45 : -2,
          time: `Jan ${28 - Math.floor(i/3)}, 10:00`,
@@ -91,7 +92,7 @@ const generateExtendedLogs = () => {
          status: "Completed",
          linkedUsdc: isFee ? "56.25 USDC" : "N/A",
          txHash: "0x" + Math.random().toString(16).substr(2, 8) + "..." + Math.random().toString(16).substr(2, 4),
-         network: "Base Mainnet"
+         network: tu('base_mainnet')
      };
  });
  return [...baseLogs, ...extraLogs];
@@ -144,7 +145,7 @@ const App = () => {
 
  // --- Dynamic Ledgers ---
  const [usdcLedger, setUsdcLedger] = useState([
-   { id: 'u1', name: "Payment Received", tag: "Paid by @Beamiot...", val: "+ 1.37 CAD", sub: "1.23 USDC", icon: <QrCode size={18} />, color: "text-green-500", type: "receive" },
+   { id: 'u1', name: tu('payment_received'), tag: "Paid by @Beamiot...", val: "+ 1.37 CAD", sub: "1.23 USDC", icon: <QrCode size={18} />, color: "text-green-500", type: "receive" },
    { id: 'u2', name: "Sent to @Simon", tag: "1.00 USD", val: "- 1.0000 USDC", sub: "1.00 USDC", icon: <ArrowUpRight size={18} />, color: "text-slate-900", type: "send" }
  ]);
 
@@ -197,14 +198,14 @@ const App = () => {
        {
          id: `LOG-FEE-${Math.floor(Math.random()*10000)}`,
          title: "Refuel Fee (Shadow Gas)", subtitle: `Underlying Tx Cost`,
-         amount: -REFUEL_GAS_COST, time: "Just now", type: "gas", status: "Completed",
-         linkedUsdc: "N/A", txHash: commonTxHash, network: "Base Mainnet"
+         amount: -REFUEL_GAS_COST, time: tu('just_now'), type: "gas", status: "Completed",
+         linkedUsdc: "N/A", txHash: commonTxHash, network: tu('base_mainnet')
        },
        {
          id: `LOG-YLD-${Math.floor(Math.random()*10000)}`,
-         title: "Fuel Yield (1:100)", subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
-         amount: (refuelAmount * 100), time: "Just now", type: "refuel", status: "Completed",
-         linkedUsdc: `-${refuelAmount.toFixed(2)} USDC`, txHash: commonTxHash, network: "Base Mainnet"
+         title: tu('fuel_yield_1_100'), subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
+         amount: (refuelAmount * 100), time: tu('just_now'), type: "refuel", status: "Completed",
+         linkedUsdc: `-${refuelAmount.toFixed(2)} USDC`, txHash: commonTxHash, network: tu('base_mainnet')
        },
        ...bUnitsLedger
      ]);
@@ -248,7 +249,7 @@ const App = () => {
 
      setUsdcLedger([{
        id: `u-${Date.now()}`,
-       name: `Sent to ${recipient.name}`,
+       name: `发送至 ${recipient.name}`,
        tag: recipient.tag,
        val: `- ${amountNum.toFixed(4)} USDC`,
        sub: `${amountNum.toFixed(2)} USDC`,
@@ -263,12 +264,12 @@ const App = () => {
        title: "Network Gas",
        subtitle: `P2P Send to ${recipient.tag}`,
        amount: -P2P_GAS_COST,
-       time: "Just now",
+       time: tu('just_now'),
        type: "gas",
        status: "Completed",
        linkedUsdc: `${amountNum.toFixed(2)} USDC`,
        txHash: "0x" + Math.random().toString(16).substr(2, 8) + "..." + Math.random().toString(16).substr(2, 4),
-       network: "Base Mainnet"
+       network: tu('base_mainnet')
      }, ...bUnitsLedger]);
 
 
@@ -336,7 +337,7 @@ const App = () => {
              <ArrowUpRight size={22} strokeWidth={2.5} />
            </div>
            <div className="text-left">
-             <p className="text-[17px] font-black leading-tight">Send</p>
+             <p className="text-[17px] font-black leading-tight">发送</p>
              <p className="text-[10px] font-medium opacity-80 mt-0.5 tracking-wide">0 Gas USDC</p>
            </div>
          </div>
@@ -350,7 +351,7 @@ const App = () => {
            <div className="flex-1 bg-white rounded-[1.8rem] px-5 flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer hover:border-blue-100 border border-transparent">
              <div className="flex items-center gap-3">
                <Plus size={22} className="text-slate-400" strokeWidth={2.5} />
-               <span className="font-black text-[15px] text-slate-800">Add Cash</span>
+               <span className="font-black text-[15px] text-slate-800">充值</span>
              </div>
            </div>
          </div>
@@ -360,7 +361,7 @@ const App = () => {
 
      <div className="mt-10 px-6 space-y-4">
        <div className="flex justify-between items-center">
-         <h3 className="text-[19px] font-black text-slate-900 tracking-tight">Recent Activity</h3>
+         <h3 className="text-[19px] font-black text-slate-900 tracking-tight">最近动态</h3>
          <button className="text-[13px] font-bold text-[#1562f0] flex items-center gap-0.5">
            View all <ChevronRight size={16} />
          </button>
@@ -441,7 +442,7 @@ const App = () => {
 
          <div className="bg-[#f8f9fc] p-5 rounded-[1.5rem] space-y-3">
            <div className="flex justify-between text-[13px] font-bold">
-             <span className="text-slate-400">Fuel Yield (1:100)</span>
+             <span className="text-slate-400">燃料收益 (1:100)</span>
              <span className="text-slate-800">+{refuelAmount * 100} B-Units</span>
            </div>
            <div className="flex justify-between text-[13px] font-bold">
@@ -794,7 +795,7 @@ const App = () => {
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paying From</p>
-                      <p className="text-[14px] font-black text-slate-800">Main Vault</p>
+                      <p className="text-[14px] font-black text-slate-800">主金库</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -899,7 +900,7 @@ const App = () => {
                <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center text-white shadow-[0_0_30px_rgba(34,197,94,0.4)] mb-6">
                  <CheckCircle2 size={40} strokeWidth={3} />
                </div>
-               <h3 className="text-[15px] font-bold text-slate-500">Successfully sent</h3>
+               <h3 className="text-[15px] font-bold text-slate-500">发送成功</h3>
                <p className="text-[32px] font-black text-slate-900 tracking-tighter mt-1">{parseFloat(sendAmount).toFixed(4)} USDC</p>
                <p className="text-[11px] font-medium text-slate-400 mt-2">Transaction is finalized on-chain.</p>
               
@@ -907,9 +908,7 @@ const App = () => {
                  <button
                    onClick={() => setSendModalOpen(false)}
                    className="w-full bg-[#1562f0] py-4 rounded-[1.2rem] text-white font-black text-[15px] active:scale-[0.98] transition-all"
-                 >
-                   Done
-                 </button>
+                 >{tu('done')}</button>
                  <button className="w-full bg-white border-2 border-slate-100 py-3.5 rounded-[1.2rem] text-slate-600 font-black text-[15px] hover:bg-slate-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
                    <ExternalLink size={18} /> View transaction
                  </button>
@@ -966,7 +965,7 @@ const App = () => {
                <span className="text-[13px] font-black text-[#1562f0]">{selectedLog.linkedUsdc}</span>
              </div>
              <div className="flex justify-between items-center">
-               <span className="text-[13px] font-bold text-slate-500">Network</span>
+               <span className="text-[13px] font-bold text-slate-500">网络</span>
                <span className="text-[13px] font-black text-slate-900">{selectedLog.network}</span>
              </div>
              <div className="h-[1px] w-full border-t border-dashed border-slate-200"></div>

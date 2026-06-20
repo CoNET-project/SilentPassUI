@@ -1,5 +1,6 @@
 import React from "react"
 import { X } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
 
 type Props = {
   onClick: () => void
@@ -15,7 +16,7 @@ type Props = {
 export default function IOSBounceCloseButton({
 	onClick,
 	className = "",
-	ariaLabel = "Close"
+	ariaLabel = tu('close')
 }: Props) {
   return (
     <>

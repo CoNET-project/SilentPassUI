@@ -5,6 +5,7 @@ import { purchaseBUnitFromBase, getUsdcBalanceFromApi } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import VscodeJsonBlock from '@/components/VscodeJsonBlock'
+import { tu } from '@/locale/beamioLocale'
 
 const MIN_PURCHASE_USD = 1  // Minimum $1, no purchase below $1
 
@@ -16,7 +17,7 @@ const hasBaseTxHash = (log: LogEntry) => !!(log as BUnitLedgerEntry & { baseTxHa
 const hasOriginalPaymentHash = (log: LogEntry) => !!(log as BUnitLedgerEntry & { originalPaymentHash?: string }).originalPaymentHash
 const displayTitle = (log: LogEntry) => (isBuintClaim(log) ? 'Network Welcome Grant' : log.title)
 /** Subtitle hidden for Network Welcome Grant and Fuel Yield (1:100) */
-const showSubtitle = (log: LogEntry) => !isBuintClaim(log) && log.title !== 'Fuel Yield (1:100)'
+const showSubtitle = (log: LogEntry) => !isBuintClaim(log) && log.title !== tu('fuel_yield_1_100')
 const BUNIT_LEDGER_CACHE_KEY_PREFIX = 'beamio:bunit-ledger:v3:'
 const BUNIT_LEDGER_RENDER_BATCH = 12
 const BUNIT_LEDGER_BATCH_INTERVAL_MS = 120
@@ -624,9 +625,9 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                   <span className="text-[13px] font-bold text-blue-500">{selectedDetail.linkedUsdc}</span>
                 </div>
                 <div className={`flex justify-between items-center px-4 py-3 ${(hasBaseTxHash(selectedDetail) || hasOriginalPaymentHash(selectedDetail)) ? 'border-b border-dashed border-slate-200 dark:border-slate-600' : ''}`}>
-                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">Network</span>
+                  <span className="text-[13px] font-bold text-slate-500 dark:text-slate-400">{tu('network')}</span>
                   <span className="text-[13px] font-bold text-slate-800 dark:text-slate-100">
-                    {hasBaseTxHash(selectedDetail) ? 'Base Mainnet' : hasOriginalPaymentHash(selectedDetail) ? 'CoNET L1' : selectedDetail.network}
+                    {hasBaseTxHash(selectedDetail) ? tu('base_mainnet') : hasOriginalPaymentHash(selectedDetail) ? 'CoNET L1' : selectedDetail.network}
                   </span>
                 </div>
                 {hasBaseTxHash(selectedDetail) && (
@@ -664,7 +665,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
                   onClick={() => setShowJson(!showJson)}
                   className="w-full py-3 border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 rounded-[16px] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50 dark:active:bg-slate-700 transition-colors"
                 >
-                  <Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
+                  <Code size={16} /> {showJson ? tu('hide_raw_data') : tu('view_smart_receipt')}
                 </button>
                 {showJson && (
                   <VscodeJsonBlock

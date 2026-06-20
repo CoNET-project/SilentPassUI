@@ -67,6 +67,7 @@ import FuelView from './FuelView'
 import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from './MerchantAssetGiftSheet'
 import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
+import { tu } from '@/locale/beamioLocale'
 
 /** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
 const CASH_TREES_HERO_BACKGROUNDS = [cashTreesHeroBg1, cashTreesHeroBg2, cashTreesHeroBg3] as const
@@ -270,7 +271,7 @@ const Home = (_props: HomeProps) => {
 		aaAccountUsdcBalance, refreshRecentActivityNoAa,
 	} = useDaemonContext()
 	const navigate = useNavigate()
-	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
+	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'支付'>('')
 	
 	const [avatarName, setAvatarName] = useState('')
 	const [processing, setProcessing] = useState(false)
@@ -282,7 +283,7 @@ const Home = (_props: HomeProps) => {
 	const [recipient, setRecipient] = useState('')
 	const [claimLoading, setClaimLoading] = useState(false)
 	const [currency, setCurrency] = useState<ICurrency>('USD')
-	const [language, setLanguage] = useState<"en">("en")
+	const [language, setLanguage] = useState<ILanguage>('en')
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
 	const [openSearch, setOpenSearch]= useState(false)
 	const [reflash, setReflash] = useState(false)
@@ -294,8 +295,8 @@ const Home = (_props: HomeProps) => {
 
 	const [activeItems, setActiveItems] = useState<TransferHistork[]>([])
 
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
-		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'支付'|'TransactionsItemDetail'|
+		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'搜索'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
 	const [showMerchantGiftSheet, setShowMerchantGiftSheet] = useState(false)
 	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
@@ -867,7 +868,7 @@ const Home = (_props: HomeProps) => {
 							/>
 						</button>
 						<span className="text-[15px] font-medium tracking-wide">
-							USDC on Base
+							{tu('usdc_on_base')}
 						</span>
 					</div>
 				</div>
@@ -967,7 +968,7 @@ const Home = (_props: HomeProps) => {
 									`}
 								>
 									<PlusCircle className="h-4 w-4 text-white/90" />
-									<span>Add funds</span>
+									<span>{tu('add_funds')}</span>
 								</button>
 
 								<button
@@ -982,7 +983,7 @@ const Home = (_props: HomeProps) => {
 									"
 								>
 									<ArrowDownCircle className="h-4 w-4 text-white/90" />
-									<span>Cash out</span>
+									<span>{tu('cash_out')}</span>
 								</button>
 							</div>
 						</div>
@@ -1054,20 +1055,16 @@ const Home = (_props: HomeProps) => {
 				<button
 					className="flex-1 h-9 rounded-full bg-white text-sm font-semibold text-[#1562f0] shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
 					onClick={() => {
-						setShowAlphaHowItWorks('Pay')
+						setShowAlphaHowItWorks('支付')
 					}}
-				>
-					Send
-				</button>
+				>{tu('send')}</button>
 				<button
 					className="flex-1 h-9 rounded-full border border-[#1562f0] text-sm font-semibold text-[#1562f0] bg-white/10 shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
 					onClick={() => {
 						setPayTag('request')
 						navigate('/Pay')
 					}}
-				>
-					Request
-				</button>
+				>{tu('request')}</button>
 			</div>	
 		)
 	}
@@ -1090,7 +1087,7 @@ const Home = (_props: HomeProps) => {
 					<div className="flex flex-wrap gap-2 mt-1">
 					<button className="flex-1 h-9 rounded-full border border-white/60 text-xs font-medium bg-white/10"
 						onClick={() => {
-							setShowAlphaHowItWorks('Search')
+							setShowAlphaHowItWorks('搜索')
 						}}
 					>
 						Start a payment
@@ -1682,7 +1679,7 @@ const Home = (_props: HomeProps) => {
 			const pts = Number(detail?.assets?.points ?? 0)
 			if (!Number.isFinite(pts) || pts <= 0) continue
 			const title =
-				(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
+				(detail?.meta?.name && detail.meta.name.trim()) || uc.name || '商户卡'
 			out.push({
 				cardAddress: uc.cardAddress,
 				title,
@@ -1720,7 +1717,7 @@ const Home = (_props: HomeProps) => {
 				<button
 					type="button"
 							className={styles.headerBtn}
-							aria-label="Toggle theme"
+							aria-label={tu('toggle_theme')}
 							onClick={() => setDarkModle(!darkModle)}
 				>
 					<span className={styles.headerBtnIcon}>
@@ -1873,7 +1870,7 @@ const Home = (_props: HomeProps) => {
 												<div className="mb-6 flex items-start justify-between">
 													<div className="space-y-1">
 														<p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
-															Total Purchasing Power
+															{tu('total_purchasing_power')}
 														</p>
 														<h2 className="text-4xl font-extrabold tabular-nums tracking-tight">
 															CA$ {homeTotalPowerCad.whole}.{homeTotalPowerCad.frac}
@@ -1883,7 +1880,7 @@ const Home = (_props: HomeProps) => {
 												<div className="grid grid-cols-2 gap-4">
 													<div className="space-y-1 text-left">
 														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-															USDC Balance
+															{tu('usdc_balance')}
 														</p>
 														<p className="text-lg font-bold tabular-nums">
 															CA$ {homeHubWalletCad.whole}.{homeHubWalletCad.frac}
@@ -1891,7 +1888,7 @@ const Home = (_props: HomeProps) => {
 													</div>
 													<div className="space-y-1 text-right">
 														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-															Merchant Assets
+															{tu('merchant_assets')}
 														</p>
 														<p className="text-lg font-bold tabular-nums">
 															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
@@ -1902,7 +1899,7 @@ const Home = (_props: HomeProps) => {
 											<div className="space-y-6 px-8 pb-8">
 												<div className="py-2 text-center">
 													<p className="text-sm font-medium leading-relaxed text-white/80">
-														Tap at any Beamio SoftPOS to pay seamlessly.
+														{tu('tap_at_any_beamio_softpos_to_pay_seamlessly')}
 													</p>
 												</div>
 												<button
@@ -1912,7 +1909,7 @@ const Home = (_props: HomeProps) => {
 													className={`relative z-10 flex w-full min-h-[48px] items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-[#1562f0] shadow-xl shadow-black/20 transition-transform duration-300 active:scale-[0.98] active:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1562f0] ${HOME_TOUCH_BUTTON_CLASS}`}
 												>
 													<QrCode className="h-6 w-6 shrink-0" strokeWidth={2.2} aria-hidden />
-													<span className="text-base font-bold uppercase tracking-widest">Show Pay Code</span>
+													<span className="text-base font-bold uppercase tracking-widest">{tu('show_pay_code')}</span>
 												</button>
 											</div>
 										</div>
@@ -1931,7 +1928,7 @@ const Home = (_props: HomeProps) => {
 										<Wallet size={22} strokeWidth={2} aria-hidden />
 									</div>
 									<div>
-										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Top Up</p>
+										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('top_up')}</p>
 									</div>
 									</button>
 									<button
@@ -1944,13 +1941,13 @@ const Home = (_props: HomeProps) => {
 												? 'active:scale-95 active:bg-[#e7e8e9] dark:active:bg-slate-800'
 												: 'cursor-not-allowed opacity-45'
 										}`}
-										aria-label="Gift merchant balance"
+										aria-label={tu('gift_merchant_balance')}
 									>
 										<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
 											<Gift size={22} strokeWidth={2} aria-hidden />
 										</div>
 										<div>
-											<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">Gift</p>
+											<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('gift')}</p>
 										</div>
 									</button>
 								</section>
@@ -1958,15 +1955,13 @@ const Home = (_props: HomeProps) => {
 
 							<section className="mb-10">
 									<div className="mb-4 flex items-end justify-between px-1">
-										<h2 className="text-xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
-											My Brands
-										</h2>
+										<h2 className="text-xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">{tu('my_brands')}</h2>
 										<button
 											type="button"
 											onClick={() => setShowMyBrandsDrawer(true)}
 											className="flex items-center gap-1 text-[12px] font-semibold text-[#1562f0] transition-colors hover:text-[#0e4cbb]"
 										>
-											See all
+											{tu('see_all')}
 											<ChevronRight size={16} strokeWidth={2.5} />
 										</button>
 									</div>
@@ -1982,7 +1977,7 @@ const Home = (_props: HomeProps) => {
 											</div>
 										) : myBrandCardsPreview.length === 0 ? (
 											<div className="rounded-lg p-3 text-sm font-medium text-[#424655] dark:text-slate-400">
-												No merchant brands yet.
+												{tu('no_merchant_brands_yet')}
 											</div>
 										) : (
 											<MyBrandListEntries
@@ -1995,18 +1990,19 @@ const Home = (_props: HomeProps) => {
 
 							{show200OK && (
 								<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
-									<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">Beamio Alpha Reward</p>
-									<h4 className="font-bold text-gray-900">You've claimed 0.1 USDC</h4>
+									<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">{tu('beamio_alpha_reward')}</p>
+									<h4 className="font-bold text-gray-900">{tu('youve_claimed_0_1_usdc')}</h4>
 									<p className="mt-1 text-[11px] text-gray-500 leading-snug">
-										Thank you for testing Beamio on Base. Your Beamio wallet has been funded with{" "}
-										<span className="font-semibold text-gray-900">0.1 USDC</span> so you can try your first gasless payment.
+										{tu('thank_you_for_testing_beamio_on_base_your_beamio_wallet_has_been_funded_with')}{' '}
+										<span className="font-semibold text-gray-900">0.1 USDC</span>{' '}
+										{tu('so_you_can_try_your_first_gasless_payment')}
 									</p>
 								</div>
 							)}
 
 							{/* Recent Activity - 与 Total Valuation、Send/Receive 同层级，左右边距统一 px-5；bare 无外层圆角/边框/边距，内部控件与上方对齐 */}
 							<ActiveHistoryPannelNew
-								title="Recent Activity"
+								title={tu('recent_activity')}
 								compact
 								compactLimit={RECENT_ACTIVITY_PREVIEW_COUNT}
 								bare
@@ -2053,7 +2049,7 @@ const Home = (_props: HomeProps) => {
 										type="button"
 										onClick={() => setShowPayMeSheet(false)}
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-										aria-label="Close"
+										aria-label={tu('close')}
 									>
 										<X className="w-5 h-5" />
 									</button>
@@ -2104,7 +2100,7 @@ const Home = (_props: HomeProps) => {
 										type="button"
 										onClick={closeMerchantGiftSheet}
 										className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700"
-										aria-label="Close"
+										aria-label={tu('close')}
 									>
 										<X className="h-5 w-5" aria-hidden />
 									</button>
@@ -2157,12 +2153,12 @@ const Home = (_props: HomeProps) => {
 										type="button"
 										onClick={() => setSelectedHomeStoreCard(null)}
 										className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-										aria-label="Close"
+										aria-label={tu('close')}
 									>
 										<X className="w-5 h-5" />
 									</button>
 								</div>
-								<p className="text-sm text-gray-500 dark:text-slate-400 mb-2">Store Balance (CAD)</p>
+								<p className="text-sm text-gray-500 dark:text-slate-400 mb-2">{tu('store_balance_cad')}</p>
 								<p className="text-3xl font-extrabold text-[#0F172A] dark:text-slate-100 mb-6">${selectedHomeStoreCard.balanceCad.toFixed(2)}</p>
 								<button
 									type="button"
@@ -2209,12 +2205,12 @@ const Home = (_props: HomeProps) => {
 							>
 								<div className="mx-auto w-12 h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full mb-6 shrink-0" />
 
-								<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">Balance Details</h3>
+								<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">{tu('balance_details')}</h3>
 								
 								{cashTreesBalanceLoading && (
 									<div className="flex flex-col items-center justify-center py-10 gap-3 mb-4">
 										<Loader2 className="w-10 h-10 text-[#1562f0] animate-spin" aria-hidden />
-										<span className="text-sm text-gray-500 dark:text-slate-400">Loading balances…</span>
+										<span className="text-sm text-gray-500 dark:text-slate-400">{tu('loading_balances')}</span>
 									</div>
 								)}
 
@@ -2234,8 +2230,8 @@ const Home = (_props: HomeProps) => {
 													</div>
 												</div>
 												<div className="flex flex-col min-w-0">
-													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">Wallet (USDC)</span>
-													<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-0.5">On Base</span>
+													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">{tu('wallet_usdc')}</span>
+													<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-0.5">{tu('on_base')}</span>
 												</div>
 											</div>
 											<div className="text-right shrink-0 pl-2">
@@ -2263,7 +2259,7 @@ const Home = (_props: HomeProps) => {
 												</div>
 												<div className="flex flex-col min-w-0">
 													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">Sen Pho + Cafe</span>
-													<span className="text-[10px] text-[#1562f0] dark:text-[#6ba3ff] font-bold uppercase tracking-wider mt-0.5">Eligible for Store Discounts</span>
+													<span className="text-[10px] text-[#1562f0] dark:text-[#6ba3ff] font-bold uppercase tracking-wider mt-0.5">{tu('eligible_for_store_discounts')}</span>
 												</div>
 											</div>
 											<div className="text-right shrink-0 pl-2">
@@ -2390,15 +2386,13 @@ const Home = (_props: HomeProps) => {
 											type="button"
 											onClick={() => cancelCashTreesNfcBind()}
 											className="w-full py-3.5 bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] dark:from-[#3d8ef5] dark:to-[#1562f0] text-white font-bold rounded-full shadow-md shadow-[#1562f0]/25 border border-[#1562f0]/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/80 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
-										>
-											Done
-										</button>
+										>{tu('done')}</button>
 									</div>
 								)}
 								{cashTreesNfcOverlay.phase === 'error' && (
 									<div className="flex flex-col p-6">
 										<p className="text-sm text-amber-700 dark:text-amber-400 text-center font-semibold mb-2">
-											{cashTreesNfcOverlay.errorMsg ?? 'Something went wrong'}
+											{cashTreesNfcOverlay.errorMsg ?? tu('something_went_wrong')}
 										</p>
 										{cashTreesNfcOverlay.ndefUri ? (
 											<p className="text-[10px] text-gray-400 text-center break-all line-clamp-3 mb-4" title={cashTreesNfcOverlay.ndefUri}>
@@ -2449,7 +2443,7 @@ const Home = (_props: HomeProps) => {
 							<button
 								type="button"
 								className="pointer-events-auto absolute inset-0 border-0 bg-gray-900/60 p-0 backdrop-blur-sm dark:bg-black/55"
-								aria-label="Close"
+								aria-label={tu('close')}
 								onClick={() => setShowCardManagementModal(false)}
 							/>
 							<motion.div
@@ -2462,12 +2456,12 @@ const Home = (_props: HomeProps) => {
 							>
 								<div className="mx-auto mb-5 h-1.5 w-12 shrink-0 rounded-full bg-[#c3c6d8] dark:bg-slate-600" />
 								<div className="mb-2 flex items-center justify-between gap-2">
-									<h3 className="text-2xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-50">Physical Keys</h3>
+									<h3 className="text-2xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-50">{tu('physical_keys')}</h3>
 									<button
 										type="button"
 										onClick={() => setShowCardManagementModal(false)}
 										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-blue-600 transition-colors hover:bg-black/5 dark:text-blue-400 dark:hover:bg-white/10"
-										aria-label="Close"
+										aria-label={tu('close')}
 									>
 										<X className="h-5 w-5" strokeWidth={2.2} aria-hidden />
 									</button>
@@ -2561,7 +2555,7 @@ const Home = (_props: HomeProps) => {
 															{card.linkState === 'active' ? 'Active' : 'Inactive'}
 														</span>
 														{isPrimary && card.linkState === 'active' && (
-															<p className="text-[10px] text-[#424655] dark:text-slate-500">Primary device</p>
+															<p className="text-[10px] text-[#424655] dark:text-slate-500">{tu('primary_device')}</p>
 														)}
 													</div>
 												</div>
@@ -2595,7 +2589,7 @@ const Home = (_props: HomeProps) => {
 															Set primary
 														</button>
 													) : (
-														<span className="px-2 text-sm font-semibold text-[#004bc3]/40 dark:text-slate-500">Settings</span>
+														<span className="px-2 text-sm font-semibold text-[#004bc3]/40 dark:text-slate-500">{tu('settings')}</span>
 													)}
 													<button
 														type="button"
@@ -2615,7 +2609,7 @@ const Home = (_props: HomeProps) => {
 									{!linkedNfcListLoading && linkedNfcCards.length === 0 && (
 										<div className="rounded-2xl border border-dashed border-[#c3c6d8] bg-white py-10 text-center dark:border-slate-600 dark:bg-slate-900">
 											<Smartphone size={32} className="mx-auto mb-2 text-[#c3c6d8] dark:text-slate-600" aria-hidden />
-											<p className="text-sm font-medium text-[#424655] dark:text-slate-500">No physical keys linked.</p>
+											<p className="text-sm font-medium text-[#424655] dark:text-slate-500">{tu('no_physical_keys_linked')}</p>
 										</div>
 									)}
 								</div>
@@ -2637,7 +2631,7 @@ const Home = (_props: HomeProps) => {
 								<div className="mt-10 flex gap-4 rounded-2xl border border-[#c3c6d8]/20 bg-[#edeeef] p-6 dark:border-slate-700 dark:bg-slate-800/80">
 									<ShieldCheck className="h-8 w-8 shrink-0 text-[#004bc3] dark:text-[#6ba3ff]" strokeWidth={2} aria-hidden />
 									<div>
-										<h4 className="mb-1 font-bold text-[#191c1d] dark:text-slate-100">Hardware Security Layer</h4>
+										<h4 className="mb-1 font-bold text-[#191c1d] dark:text-slate-100">{tu('hardware_security_layer')}</h4>
 										<p className="text-sm leading-relaxed text-[#424655] dark:text-slate-400">
 											Beamio keys use physical-layer encryption. Freezing a key immediately revokes access across all terminal endpoints globally.
 										</p>
@@ -2667,7 +2661,7 @@ const Home = (_props: HomeProps) => {
 								transition={{ duration: 0.2 }}
 								role="button"
 								tabIndex={-1}
-								aria-label="Close"
+								aria-label={tu('close')}
 								data-touch-priority="1"
 								{...closePayReceiveSheetTap}
 							/>
@@ -2703,7 +2697,7 @@ const Home = (_props: HomeProps) => {
 										data-touch-priority="1"
 										{...closePayReceiveSheetTap}
 										className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors active:bg-gray-100 dark:text-slate-400 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label="Close"
+										aria-label={tu('close')}
 									>
 										<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
 									</button>
@@ -2730,7 +2724,7 @@ const Home = (_props: HomeProps) => {
 												{payRelayQRLoading && !payRelayQRPayload && (
 													<div className="flex flex-col items-center gap-3 py-8">
 														<Loader2 className="h-12 w-12 animate-spin text-[#1562f0]" aria-hidden />
-														<span className="text-sm text-[#424655] dark:text-slate-400">Generating pay code…</span>
+														<span className="text-sm text-[#424655] dark:text-slate-400">{tu('generating_pay_code')}</span>
 													</div>
 												)}
 												{!payRelayQRLoading && !payRelayQRPayload && (
@@ -2935,7 +2929,7 @@ const Home = (_props: HomeProps) => {
 										type="button"
 										onClick={closeAddCashSheet}
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-										aria-label="Close"
+										aria-label={tu('close')}
 									>
 										
 									</button>
@@ -2962,7 +2956,7 @@ const Home = (_props: HomeProps) => {
 												Fund your self-custodial wallet or top up merchant cards.
 											</p>
 											<div className="space-y-3 mb-auto">
-												<h4 className="text-sm font-bold text-gray-900 dark:text-slate-100 mb-3 px-1">Funding Source</h4>
+												<h4 className="text-sm font-bold text-gray-900 dark:text-slate-100 mb-3 px-1">{tu('funding_source')}</h4>
 												<button
 													type="button"
 													onClick={() => setAddCashMode('store_qr')}
@@ -2974,8 +2968,8 @@ const Home = (_props: HomeProps) => {
 															<Store className="text-white" size={20} />
 														</div>
 														<div>
-															<p className="font-bold text-gray-900 dark:text-slate-100">Load Store Card via Cashier</p>
-															<p className="text-xs text-gray-600 dark:text-slate-400">Give physical cash to the issuing merchant</p>
+															<p className="font-bold text-gray-900 dark:text-slate-100">{tu('load_store_card_via_cashier')}</p>
+															<p className="text-xs text-gray-600 dark:text-slate-400">{tu('give_physical_cash_to_the_issuing_merchant')}</p>
 														</div>
 													</div>
 													<QrCode className="text-gray-900 dark:text-slate-100 relative z-10" size={20} />
@@ -2990,7 +2984,7 @@ const Home = (_props: HomeProps) => {
 															<span className="text-white font-bold text-xl">C</span>
 														</div>
 														<div>
-															<p className="font-bold text-gray-900 dark:text-slate-100">Buy USDC via Coinbase</p>
+															<p className="font-bold text-gray-900 dark:text-slate-100">{tu('buy_usdc_via_coinbase')}</p>
 															<p className="text-xs text-gray-500 dark:text-slate-400">3rd-party platform. Auto-deposits to wallet.</p>
 														</div>
 													</div>
@@ -3006,8 +3000,8 @@ const Home = (_props: HomeProps) => {
 															<ArrowRightLeft className="text-[#1562f0] dark:text-[#6ba3ff]" size={20} />
 														</div>
 														<div>
-															<p className="font-bold text-gray-900 dark:text-slate-100">Top Up Store Card</p>
-															<p className="text-xs text-gray-500 dark:text-slate-400">Use your USDC to fund a merchant card</p>
+															<p className="font-bold text-gray-900 dark:text-slate-100">{tu('top_up_store_card')}</p>
+															<p className="text-xs text-gray-500 dark:text-slate-400">{tu('use_your_usdc_to_fund_a_merchant_card')}</p>
 														</div>
 													</div>
 													<ChevronRight className="text-gray-400" size={20} />
@@ -3024,11 +3018,11 @@ const Home = (_props: HomeProps) => {
 												>
 													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
 												</button>
-												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Store Deposit</h3>
+												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">{tu('store_deposit')}</h3>
 											</div>
 											<div className="flex flex-col items-center justify-center mb-auto pt-4">
 												<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center max-w-[260px] leading-relaxed">
-													Show this code to the <span className="font-bold text-gray-900 dark:text-slate-100">issuing merchant</span> and hand
+													Show this code to the <span className="font-bold text-gray-900 dark:text-slate-100">{tu('issuing_merchant')}</span> and hand
 													them your paper cash.
 												</p>
 												<div className="w-64 h-64 bg-white dark:bg-slate-800 rounded-[2rem] p-4 mb-6 shadow-md border border-gray-100 dark:border-slate-600">
@@ -3063,20 +3057,20 @@ const Home = (_props: HomeProps) => {
 												<div className="w-16 h-16 bg-[#0052FF] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-6">
 													C
 												</div>
-												<h4 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Buy USDC directly</h4>
+												<h4 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">{tu('buy_usdc_directly')}</h4>
 												<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center px-4 leading-relaxed">
 													CashTrees is a self-custodial wallet and never touches your fiat. You will be securely redirected to Coinbase to
 													complete your purchase. USDC will auto-deposit to your wallet.
 												</p>
 												<div className="w-full max-w-[280px] bg-gray-50 dark:bg-slate-800/80 rounded-2xl p-4 border border-gray-200 dark:border-slate-600 mb-6 shadow-sm">
 													<div className="flex justify-between items-center mb-3 gap-2">
-														<span className="text-xs text-gray-500 dark:text-slate-400 font-medium shrink-0">To Wallet</span>
+														<span className="text-xs text-gray-500 dark:text-slate-400 font-medium shrink-0">{tu('to_wallet')}</span>
 														<span className="text-xs font-mono text-gray-900 dark:text-slate-100 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600 truncate max-w-[60%]">
 															{addCashDepositAddress || '—'}
 														</span>
 													</div>
 													<div className="flex justify-between items-center">
-														<span className="text-xs text-gray-500 dark:text-slate-400 font-medium">Network</span>
+														<span className="text-xs text-gray-500 dark:text-slate-400 font-medium">{tu('network')}</span>
 														<div className="flex items-center bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600">
 															<div className="w-3.5 h-3.5 bg-[#1562f0] rounded-full flex items-center justify-center mr-1.5" />
 															<span className="text-xs font-bold text-gray-900 dark:text-slate-100">Base</span>
@@ -3100,11 +3094,11 @@ const Home = (_props: HomeProps) => {
 														type="button"
 														onClick={() => setIsSelectingTopUpStore(false)}
 														className="absolute left-0 p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors"
-														aria-label="Back"
+														aria-label={tu('back')}
 													>
 														<ChevronLeft size={20} />
 													</button>
-													<h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mx-auto">Select Store Card</h3>
+													<h3 className="text-lg font-bold text-gray-900 dark:text-slate-100 mx-auto">{tu('select_store_card')}</h3>
 												</div>
 												<div className="space-y-4 overflow-y-auto pb-6">
 													{homeStoreCards.map((card) => {
@@ -3146,12 +3140,12 @@ const Home = (_props: HomeProps) => {
 													>
 														<ChevronRight className="rotate-180 mr-1" size={16} /> Back
 													</button>
-													<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Top Up Store Card</h3>
+													<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">{tu('top_up_store_card')}</h3>
 												</div>
 												<div className="flex flex-col mb-auto pt-2 w-full">
 													<div className="bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-3xl p-5 mb-2 relative shadow-inner">
 														<div className="flex justify-between items-center mb-2">
-															<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">From Vault (USDC)</span>
+															<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">{tu('from_vault_usdc')}</span>
 															<span className="text-xs font-bold text-gray-400 dark:text-slate-500">Bal: {addCashVaultUsdc.toFixed(2)}</span>
 														</div>
 														<div className="flex items-center justify-between gap-2">
@@ -3177,7 +3171,7 @@ const Home = (_props: HomeProps) => {
 													</div>
 													<div className="bg-white dark:bg-slate-800/80 border border-[#1562f0]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
 														<div className="flex justify-between items-center mb-2">
-															<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">To Store Card (CAD)</span>
+															<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">{tu('to_store_card_cad')}</span>
 															<button
 																type="button"
 																onClick={() => setIsSelectingTopUpStore(true)}
@@ -3211,7 +3205,7 @@ const Home = (_props: HomeProps) => {
 													</div>
 													<div className="mt-8 bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-gray-200 dark:border-slate-600">
 														<div className="flex justify-between items-start gap-2 text-sm mb-2">
-															<span className="text-gray-500 dark:text-slate-400 shrink-0">Exchange Rate</span>
+															<span className="text-gray-500 dark:text-slate-400 shrink-0">{tu('exchange_rate')}</span>
 															<div className="flex flex-col items-end gap-1 min-w-0">
 																<div className="flex items-center gap-2">
 																	<span className="font-semibold text-gray-900 dark:text-slate-100 text-right inline-flex items-center gap-1">
@@ -3341,7 +3335,7 @@ const Home = (_props: HomeProps) => {
 							showAlphaHowItWorks === 'BeamioAlphaHowItWorks' ? 'How Beamio Alpha works'
 							: showAlphaHowItWorks === 'BeamioLearnHowItWorksCard' ? 'How Beamio works'
 							: showAlphaHowItWorks === 'BeamioTestBalance' ? 'About this 0.2 USDC'
-							: showAlphaHowItWorks === 'Pay' ? 'Pay'
+							: showAlphaHowItWorks === '支付' ? '支付'
 							: ''
 						}
 						onClose={() => {
@@ -3375,7 +3369,7 @@ const Home = (_props: HomeProps) => {
 							{showAlphaHowItWorks === 'BeamioTestBalance' && <BeamioTestBalanceDetailsCard />}
 							
 							
-							{showAlphaHowItWorks === 'Pay' && <PayScreen 
+							{showAlphaHowItWorks === '支付' && <PayScreen 
 								beamioer={userPreviewItem||undefined}
 								close={path => {
 									setShowAlphaHowItWorks('')
@@ -3392,7 +3386,7 @@ const Home = (_props: HomeProps) => {
 								item={userPreviewItem} 
 								close={item => {
 									setShowAlphaHowItWorks('')
-									setSettingsOpen('Pay')
+									setSettingsOpen('支付')
 									setShowFooter(false)
 							}} />}
 
@@ -3513,7 +3507,7 @@ const Home = (_props: HomeProps) => {
 								setSettingsOpen('')
 							}} />}
 
-							{ settingsOpen === 'Pay' && (
+							{ settingsOpen === '支付' && (
 								<PayScreen 
 									beamioer={userPreviewItem ?? undefined}
 									close={() => {

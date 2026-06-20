@@ -66,6 +66,8 @@ import {
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
+import { tu } from '@/locale/beamioLocale'
+import { mapServerError } from '@/locale/mapServerError'
 
 global.Buffer = require("buffer").Buffer
 
@@ -193,13 +195,13 @@ function AppShell() {
     if (!redeemClaimIntent || redeemClaimSubmitting) return
     const cardAddress = redeemClaimIntent.cardAddress?.trim() ?? ''
     if (!cardAddress || !ethers.isAddress(cardAddress)) {
-      Toast.show({ content: 'Redeem link is missing a valid card address', position: 'top' })
+      Toast.show({ content: tu('redeem_link_is_missing_a_valid_card_address'), position: 'top' })
       return
     }
     const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
     const toUserEOA = (profiles?.[0]?.keyID ?? '').trim()
     if (!privateKeyArmor || !toUserEOA || !ethers.isAddress(toUserEOA)) {
-      Toast.show({ content: 'Unlock your wallet with your access password to continue.', position: 'top' })
+      Toast.show({ content: tu('unlock_your_wallet_with_your_access_password_to_continue'), position: 'top' })
       return
     }
     setRedeemClaimSubmitting(true)
@@ -213,12 +215,12 @@ function AppShell() {
         setRedeemResult({ success: true, tx: ret.tx })
         closeRedeemClaimPanel()
         void refreshRecentActivityNoAa()
-        Toast.show({ content: 'Redeem submitted successfully', position: 'top' })
+        Toast.show({ content: tu('redeem_submitted_successfully'), position: 'top' })
       } else {
-        Toast.show({ content: ret.error ?? 'Redeem failed', position: 'top' })
+        Toast.show({ content: mapServerError(ret.error, 'redeemFailed'), position: 'top' })
       }
     } catch (e: any) {
-      Toast.show({ content: e?.message ?? 'Redeem failed', position: 'top' })
+      Toast.show({ content: mapServerError(e?.message), position: 'top' })
     } finally {
       setRedeemClaimSubmitting(false)
     }
@@ -246,7 +248,7 @@ function AppShell() {
     if (!couponClaimIntent || couponClaimSubmitting) return
     const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
     if (!privateKeyArmor) {
-      Toast.show({ content: 'Unlock your wallet with your access password to claim coupons.', position: 'top' })
+      Toast.show({ content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'), position: 'top' })
       return
     }
     setCouponClaimSubmitting(true)
@@ -260,14 +262,14 @@ function AppShell() {
       Toast.show({
         content: ret.success
           ? `Coupon claimed${ret.tokenId ? ` (token ${ret.tokenId})` : ''}!`
-          : (ret.error ?? 'Coupon open claim failed'),
+          : (ret.error ?? tu('coupon_open_claim_failed')),
         position: 'top',
       })
       if (ret.success) {
         closeCouponClaimPanel()
       }
     } catch (e: any) {
-      Toast.show({ content: e?.message ?? 'Coupon open claim failed', position: 'top' })
+      Toast.show({ content: mapServerError(e?.message), position: 'top' })
     } finally {
       setCouponClaimSubmitting(false)
     }
@@ -295,7 +297,7 @@ function AppShell() {
       if (!r.canClaim || r.nonce == null || r.deadline == null) return
       const result = await signAndClaimBUnits(p0.privateKeyArmor!, claimant, r.nonce, r.deadline)
       if (result.success) {
-        Toast.show({ content: '20 B-Units claimed!', position: 'top' })
+        Toast.show({ content: tu('20_b_units_claimed'), position: 'top' })
       }
     }).catch(() => {})
   }, [profiles])
@@ -378,7 +380,7 @@ function AppShell() {
   }, [ROUTE_LOCK_ENABLED])
 
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] =
-    useState<"BeamioContactProfilePreview" | ""|'Pay'>("")
+    useState<"BeamioContactProfilePreview" | ""|'支付'>("")
   const [payFocusAmountOnMount, setPayFocusAmountOnMount] = useState(false)
 
   // 当 showFooter 为 true 或路由变化时恢复 footer 可见，避免 scroll 隐藏后、页面切换时 footerVisible 未重置
@@ -1118,7 +1120,7 @@ function AppShell() {
       navigate('/History')
       Toast.show({
         icon: nfcLinkRes.success ? 'success' : 'fail',
-        content: nfcLinkRes.success ? 'NFC card linked to your wallet.' : (nfcLinkRes.error || 'Link failed'),
+        content: nfcLinkRes.success ? tu('nfc_card_linked_to_your_wallet') : (nfcLinkRes.error || tu('link_failed')),
       })
       return
     }
@@ -1127,7 +1129,7 @@ function AppShell() {
     if (_redeemcode?.trim()) {
       const parsedRedeem = parseRedeemClaimFromParams(searchParams)
       if (!parsedRedeem) {
-        Toast.show({ content: 'Redeem link is invalid or wallet is not ready', position: 'top' })
+        Toast.show({ content: tu('redeem_link_is_invalid_or_wallet_is_not_ready'), position: 'top' })
         navigate('/History')
         return
       }
@@ -1142,7 +1144,7 @@ function AppShell() {
     if (_beamiocard?.trim() && _couponId && (!_claim || _claim === "open" || _claim === "1" || _claim === "true")) {
       const parsedCoupon = parseCouponOpenClaimFromParams(searchParams)
       if (!parsedCoupon) {
-        Toast.show({ content: "Coupon link is invalid or wallet is not ready", position: "top" })
+        Toast.show({ content: tu('coupon_link_is_invalid_or_wallet_is_not_ready'), position: "top" })
         navigate("/History")
         return
       }
@@ -1160,7 +1162,7 @@ function AppShell() {
 			navigate('/myWallet')
 			return
 		}
-		const _wallet = searchParams.get("wallet") ?? searchParams.get("Wallet") ?? ""
+		const _wallet = searchParams.get("wallet") ?? searchParams.get(tu('wallet')) ?? ""
 		const walletAddr = _wallet.trim() && ethers.isAddress(_wallet.trim()) ? ethers.getAddress(_wallet.trim()) : null
 		if (walletAddr) {
 			setPreferredPayeeWallet({ beamioAccount: _beamio.trim(), wallet: walletAddr })
@@ -1234,7 +1236,7 @@ function AppShell() {
           setShowFooter(false)
           navigate('/History')
         } else {
-          Toast.show({ content: 'Coupon link is invalid or wallet is not ready', position: 'top' })
+          Toast.show({ content: tu('coupon_link_is_invalid_or_wallet_is_not_ready'), position: 'top' })
         }
         return
       }
@@ -1254,7 +1256,7 @@ function AppShell() {
         setScanData('')
         Toast.show({
           icon: nfcLinkFromScan.success ? 'success' : 'fail',
-          content: nfcLinkFromScan.success ? 'NFC card linked to your wallet.' : (nfcLinkFromScan.error || 'Link failed'),
+          content: nfcLinkFromScan.success ? tu('nfc_card_linked_to_your_wallet') : (nfcLinkFromScan.error || tu('link_failed')),
         })
         return
       }
@@ -1282,7 +1284,7 @@ function AppShell() {
           }
           setUserPreviewItem(searchResultItem)
           setPayFocusAmountOnMount(true)
-          setShowAlphaHowItWorks('Pay')
+          setShowAlphaHowItWorks('支付')
           setShowFooter(false)
           navigate("/")
         } catch {
@@ -1297,7 +1299,7 @@ function AppShell() {
             image: '',
           })
           setPayFocusAmountOnMount(true)
-          setShowAlphaHowItWorks('Pay')
+          setShowAlphaHowItWorks('支付')
           setShowFooter(false)
           navigate("/")
         }
@@ -1516,7 +1518,7 @@ function AppShell() {
 											// 与扫码地址 workflow 一致：打开 Pay 底部栏，聚焦金额输入框
 											setUserPreviewItem(item)
 											setPayFocusAmountOnMount(true)
-											setShowAlphaHowItWorks('Pay')
+											setShowAlphaHowItWorks('支付')
 											setShowFooter(false)
 											navigate('/')
 										}}
@@ -1583,7 +1585,7 @@ function AppShell() {
 
 						{/* 内容区：内容少就不滚动；内容多才滚动 */}
 						<div className="px-4 pb-4 overflow-y-auto">
-							{showAlphaHowItWorks === "Pay" && userPreviewItem &&(
+							{showAlphaHowItWorks === '支付' && userPreviewItem &&(
 								<PayScreen 
 									beamioer={userPreviewItem}
 									preferredToAddress={
@@ -1627,8 +1629,8 @@ function AppShell() {
 					>
 						<div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-slate-200 dark:border-slate-800">
 							<div>
-								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Code</h2>
-								<p className="text-xs text-slate-500 dark:text-slate-400">Confirm before submitting on-chain redeem.</p>
+								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('redeem_code')}</h2>
+								<p className="text-xs text-slate-500 dark:text-slate-400">{tu('confirm_before_submitting_on_chain_redeem')}</p>
 							</div>
 							<button
 								type="button"
@@ -1652,10 +1654,8 @@ function AppShell() {
 								/>
 							) : (
 								<div className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-4">
-									<p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Missing card address</p>
-									<p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-										This redeem link must include a valid program card address.
-									</p>
+									<p className="text-sm font-semibold text-amber-800 dark:text-amber-200">{tu('missing_card_address')}</p>
+									<p className="text-xs text-amber-700 dark:text-amber-300 mt-1">{tu('this_redeem_link_must_include_a_valid_program_card_address')}</p>
 								</div>
 							)}
 						</div>
@@ -1667,7 +1667,7 @@ function AppShell() {
 								disabled={redeemClaimSubmitting || !redeemClaimIntent.cardAddress}
 								className="rounded-xl"
 							>
-								{redeemClaimSubmitting ? 'Redeeming...' : 'Redeem'}
+								{redeemClaimSubmitting ? tu('redeeming') : tu('redeem')}
 							</AppButton>
 						</div>
 					</motion.div>
@@ -1683,8 +1683,8 @@ function AppShell() {
 					>
 						<div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-slate-200 dark:border-slate-800">
 							<div>
-								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Coupon Claim</h2>
-								<p className="text-xs text-slate-500 dark:text-slate-400">Confirm before submitting on-chain claim.</p>
+								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('coupon_claim')}</h2>
+								<p className="text-xs text-slate-500 dark:text-slate-400">{tu('confirm_before_submitting_on_chain_claim')}</p>
 							</div>
 							<button
 								type="button"
@@ -1715,7 +1715,7 @@ function AppShell() {
 								disabled={couponClaimSubmitting}
 								className="rounded-xl"
 							>
-								{couponClaimSubmitting ? 'Claiming...' : 'Claim'}
+								{couponClaimSubmitting ? tu('claiming') : tu('claim')}
 							</AppButton>
 						</div>
 					</motion.div>
@@ -1749,8 +1749,8 @@ function AppShell() {
 												<Check className="w-6 h-6 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
 											</div>
 											<div>
-												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Successful</h3>
-												<p className="text-sm text-slate-600 dark:text-slate-400">Your reward has been added to your account.</p>
+												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('redeem_successful')}</h3>
+												<p className="text-sm text-slate-600 dark:text-slate-400">{tu('your_reward_has_been_added_to_your_account')}</p>
 											</div>
 										</div>
 										{redeemResult.tx && (
@@ -1758,9 +1758,7 @@ function AppShell() {
 												type="button"
 												onClick={() => openExternalUrl(`https://basescan.org/tx/${redeemResult.tx}`)}
 												className="block mb-4 text-sm text-[#1652f0] underline"
-											>
-												View transaction
-											</button>
+											>{tu('view_transaction')}</button>
 										)}
 									</>
 								) : (
@@ -1770,15 +1768,13 @@ function AppShell() {
 												<span className="text-xl text-rose-600 dark:text-rose-400">!</span>
 											</div>
 											<div>
-												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Failed</h3>
+												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('redeem_failed_2')}</h3>
 												<p className="text-sm text-rose-600 dark:text-rose-400">{redeemResult.error}</p>
 											</div>
 										</div>
 									</>
 								)}
-								<AppButton fullWidth onClick={() => setRedeemResult(null)} className="rounded-xl">
-									Done
-								</AppButton>
+								<AppButton fullWidth onClick={() => setRedeemResult(null)} className="rounded-xl">{tu('done')}</AppButton>
 							</div>
 						</motion.div>
 					</>

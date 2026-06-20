@@ -10,6 +10,7 @@ import styles from "./scanButton.module.scss"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { QrCode } from "lucide-react"
 import { emitWalletEvent } from "@/services/beamio"
+import { tu } from '@/locale/beamioLocale'
 
 export type ScanButtonHandle = {
   start: (options?: { hideModeSwitcher?: boolean }) => void
@@ -42,7 +43,7 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden,
         Modal.show({
           content: "Camera permission denied or unavailable",
           closeOnAction: true,
-          actions: [{ key: "confirm", text: "Confirm" }]
+          actions: [{ key: "confirm", text: tu('confirm') }]
         })
         setLoading(false)
         return
@@ -61,7 +62,7 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden,
         Modal.show({
           content: "Camera permission denied or unavailable",
           closeOnAction: true,
-          actions: [{ key: "confirm", text: "Confirm" }]
+          actions: [{ key: "confirm", text: tu('confirm') }]
         })
         setLoading(false)
       }

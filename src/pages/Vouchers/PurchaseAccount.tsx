@@ -14,6 +14,7 @@ import { CCSA_Card_Address } from "@/utils/constants"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import CardPurchaseProcessing from "./CardPurchaseProcessing"
 import CCSACardVisual from "./CardVisual"
+import { tu } from '@/locale/beamioLocale'
 
 type PayMethod = "beamio" | "card"
 type Flow = "PURCHASE" | "TOP_UP"
@@ -148,9 +149,7 @@ export default function PurchaseAccount({
 						setSuccessData(null)
 						onClose(assets)
 					}}
-				>
-					Done
-				</button>
+				>{tu('done')}</button>
 			</div>
 		)
 	}
@@ -334,7 +333,7 @@ export default function PurchaseAccount({
 				style={{ color: "rgba(22,82,240,0.6)" }}
 			  >
 				@
-				{cardOwner.username && cardOwner.username !== "Unknow"
+				{cardOwner.username && cardOwner.username !== '未知'
 				  ? cardOwner.username
 				  : cardOwner.address
 					? `${cardOwner.address.slice(0, 6)}…${cardOwner.address.slice(-4)}`
@@ -362,9 +361,7 @@ export default function PurchaseAccount({
 		{/* Payment Method - 列表更加精致 */}
 		{!loading && (
 		<div className="mt-6">
-		  <div className="px-1 text-[10px] tracking-[0.1em] font-bold text-slate-400 uppercase mb-3">
-			Payment Method
-		  </div>
+		  <div className="px-1 text-[10px] tracking-[0.1em] font-bold text-slate-400 uppercase mb-3">{tu('payment_method')}</div>
 		  <div className="space-y-2">
 			{[
 			  { id: "beamio", label: "Beamio Wallet", sub: beamioBalanceText, useUsdcBaseIcon: true as const, color: "bg-blue-50 text-blue-500", icon: null, iconSize: "h-5 w-5" },
@@ -453,7 +450,7 @@ export default function PurchaseAccount({
 											className={`h-4 w-4 ${refreshingRate ? 'animate-spin' : ''}`} 
 											strokeWidth={2.2} 
 										/>
-										<span>Exchange Rate</span>
+										<span>{tu('exchange_rate')}</span>
 									</button>
 
 									<div className="text-[13px] font-medium text-[#1D5BFF] tabular-nums">

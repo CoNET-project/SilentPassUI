@@ -7,6 +7,7 @@ import {AuthorizationSign} from '@/services/beamio'
 
 import {SendHistoryTable} from './SendHistory'
 import MyWalletDashboardNew from './MyWalletDashboardNew'
+import { tu } from '@/locale/beamioLocale'
 
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
@@ -161,12 +162,12 @@ const History = ({}) => {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? tu('rpc_error'))
 			}
 			return final(body)
 		} catch (ex) {
 			setProcessing (false)
-			return setProcessError('RPC Error!')
+			return setProcessError(tu('rpc_error'))
 			
 		}
 
@@ -195,7 +196,7 @@ const History = ({}) => {
 				<button
 					type="button"
 							className={styles.headerBtn}
-							aria-label="Toggle theme"
+							aria-label={tu('toggle_theme')}
 							onClick={() => setDarkModle(!darkModle)}
 				>
 					<span className={styles.headerBtnIcon}>

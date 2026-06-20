@@ -6,6 +6,7 @@ import {onWalletEvent} from '@/services/beamio'
 import {
 	Zap,
 	ChevronRight,
+	ChevronDown,
 	Fingerprint,
 	Gift,
 	Check,
@@ -61,6 +62,9 @@ import OnboardingWelcomeScreen from './OnboardingWelcomeScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
 import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
+import { tu } from '@/locale/beamioLocale'
+import { setBeamioUiLocale, type BeamioUiLocale } from '@/locale/i18n'
+import { useTranslation } from 'react-i18next'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
@@ -213,6 +217,87 @@ type InitialEntrySplashProps = {
 	onRestoreWallet: () => void
 }
 
+/** Top-left language picker on onboarding hero (EN / 简体中文). */
+function OnboardLocalePicker() {
+	const { i18n } = useTranslation()
+	const [open, setOpen] = useState(false)
+	const rootRef = useRef<HTMLDivElement | null>(null)
+	const locale = (i18n.language === 'en' ? 'en' : 'zh-CN') as BeamioUiLocale
+
+	useEffect(() => {
+		if (!open) return
+		const onPointerDown = (e: MouseEvent | TouchEvent) => {
+			const el = rootRef.current
+			if (el && e.target instanceof Node && !el.contains(e.target)) {
+				setOpen(false)
+			}
+		}
+		document.addEventListener('mousedown', onPointerDown)
+		document.addEventListener('touchstart', onPointerDown)
+		return () => {
+			document.removeEventListener('mousedown', onPointerDown)
+			document.removeEventListener('touchstart', onPointerDown)
+		}
+	}, [open])
+
+	const selectLocale = async (next: BeamioUiLocale) => {
+		setOpen(false)
+		if (next === locale) return
+		await setBeamioUiLocale(next)
+	}
+
+	return (
+		<div ref={rootRef} className="relative">
+			<button
+				type="button"
+				aria-label={tu('language')}
+				aria-haspopup="listbox"
+				aria-expanded={open}
+				onClick={() => setOpen((v) => !v)}
+				className="inline-flex h-9 items-center gap-1.5 rounded-full border border-white/30 bg-white/15 px-3 text-xs font-semibold text-white shadow-sm backdrop-blur-md transition-colors hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+			>
+				<Globe className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2} aria-hidden />
+				<span>{locale === 'zh-CN' ? '中文' : 'EN'}</span>
+				<ChevronDown
+					className={`h-3.5 w-3.5 shrink-0 opacity-80 transition-transform ${open ? 'rotate-180' : ''}`}
+					strokeWidth={2.5}
+					aria-hidden
+				/>
+			</button>
+			{open ? (
+				<div
+					role="listbox"
+					aria-label={tu('language')}
+					className="absolute left-0 mt-2 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/20 bg-[#0e4cbb]/95 py-1 shadow-lg backdrop-blur-md"
+				>
+					<button
+						type="button"
+						role="option"
+						aria-selected={locale === 'en'}
+						onClick={() => void selectLocale('en')}
+						className={`flex w-full items-center px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-white/10 ${
+							locale === 'en' ? 'text-[#fef9c3]' : 'text-white/90'
+						}`}
+					>
+						English
+					</button>
+					<button
+						type="button"
+						role="option"
+						aria-selected={locale === 'zh-CN'}
+						onClick={() => void selectLocale('zh-CN')}
+						className={`flex w-full items-center px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-white/10 ${
+							locale === 'zh-CN' ? 'text-[#fef9c3]' : 'text-white/90'
+						}`}
+					>
+						简体中文
+					</button>
+				</div>
+			) : null}
+		</div>
+	)
+}
+
 /** Must stay module-scoped: an inline component inside LoadingPage gets a new `type` every parent render → full remount and marquee reset. */
 function InitialEntrySplash({
 	appVersion,
@@ -230,17 +315,14 @@ function InitialEntrySplash({
 		>
 			<OnboardHeroMarquee />
 
-			{appVersion ? (
-				<div className="absolute right-4 top-[max(0.5rem,calc(env(safe-area-inset-top)+0.25rem))] z-[60] text-[11px] font-medium text-white/50 tabular-nums md:right-8">
-					v{appVersion}
-				</div>
-			) : null}
-
 			<nav
-				className="fixed top-0 z-50 flex w-full items-center justify-center px-6 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+				className="fixed top-0 z-50 flex w-full items-center px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 md:px-8"
 				aria-label="Beamio"
 			>
-				<div className="flex items-center gap-2.5 text-white">
+				<div className="flex min-w-0 flex-1 items-center justify-start">
+					<OnboardLocalePicker />
+				</div>
+				<div className="flex shrink-0 items-center gap-2.5 text-white">
 					<IpfsImg
 						src={ONBOARD_APP_LOGO_SRC}
 						alt="Beamio"
@@ -248,6 +330,11 @@ function InitialEntrySplash({
 						draggable={false}
 					/>
 					<span className="text-lg font-semibold tracking-[0.02em]">Beamio</span>
+				</div>
+				<div className="flex min-w-0 flex-1 items-center justify-end">
+					{appVersion ? (
+						<span className="text-[11px] font-medium tabular-nums text-white/50">v{appVersion}</span>
+					) : null}
 				</div>
 			</nav>
 
@@ -301,13 +388,13 @@ function InitialEntrySplash({
 
 					<div className={['relative z-20 max-w-2xl shrink-0', INITIAL_HEADLINE_TO_BODY_SPACE_Y].join(' ')}>
 						<h1 className="font-extrabold leading-tight tracking-tight text-[#fef9c3] text-[1.5rem] sm:text-3xl md:text-4xl [@media(max-height:720px)]:text-[1.35rem] [@media(max-height:720px)]:leading-snug">
-							<span className="block">Your community&apos;s heartbeat,</span>
-							<span className="block">found in your phone.</span>
+							<span className="block">{tu('your_communitys_heartbeat')}</span>
+							<span className="block">{tu('found_in_your_phone')}</span>
 						</h1>
 						<div className="mx-auto max-w-xl space-y-0 text-sm font-light leading-tight tracking-wide text-white/90 sm:text-base md:text-lg [&_p+p]:-mt-1 sm:[&_p+p]:-mt-1.5 [@media(max-height:720px)]:text-[13px] [@media(max-height:720px)]:leading-snug">
-							<p>Discover and connect with independent</p>
-							<p>businesses you love.</p>
-							<p>Every tap tells a local story.</p>
+							<p>{tu('discover_and_connect_with_independent')}</p>
+							<p>{tu('businesses_you_love')}</p>
+							<p>{tu('every_tap_tells_a_local_story')}</p>
 						</div>
 					</div>
 
@@ -319,8 +406,9 @@ function InitialEntrySplash({
 							].join(' ')}
 						>
 							<p className="text-[14px] font-medium leading-snug text-amber-50 [@media(max-height:720px)]:text-[13px]">
-								Opened from home screen? Wallet data from Safari doesn&apos;t transfer. Use{' '}
-								<strong className="text-white">Restore Wallet</strong> with your recovery code below.
+								{tu('opened_from_home_screen_wallet_data_from_safari_doesnt_transfer_use')}{' '}
+								<strong className="text-white">{tu('restore_wallet')}</strong>{' '}
+								{tu('with_your_recovery_code_below')}
 							</p>
 						</div>
 					) : null}
@@ -345,7 +433,7 @@ function InitialEntrySplash({
 							onClick={onGetStarted}
 						>
 							<span className="relative z-10 inline-flex items-center justify-center gap-2 uppercase">
-								Get Started
+								{tu('get_started')}
 								<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.5} aria-hidden />
 							</span>
 						</AppButton>
@@ -354,15 +442,15 @@ function InitialEntrySplash({
 							onClick={onRestoreWallet}
 							className="text-sm font-medium tracking-wide text-white/75 transition-colors hover:text-white focus:outline-none focus-visible:underline"
 						>
-							Already have a Beamio ID?{' '}
-							<span className="underline underline-offset-4">Restore Wallet</span>
+							{tu('already_have_a_beamio_id')}{' '}
+							<span className="underline underline-offset-4">{tu('restore_wallet')}</span>
 						</button>
 					</div>
 				</div>
 			</main>
 
 			<footer className="relative z-30 w-full shrink-0 px-6 pt-1 text-center pb-[calc(2rem+env(safe-area-inset-bottom))] [@media(max-height:720px)]:pt-0.5">
-				<p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/50">Powered by Beamio</p>
+				<p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/50">{tu('powered_by_beamio')}</p>
 			</footer>
 		</div>
 	)
@@ -411,7 +499,7 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 					<div className="flex items-center gap-2 bg-orange-50 border border-orange-200 px-4 py-3 rounded-2xl mb-8 w-full max-w-sm">
 						<AlertTriangle size={20} className="text-orange-600 shrink-0" />
 						<div>
-							<span className="text-[13px] font-bold text-orange-800 block">Invalid Redeem Code</span>
+							<span className="text-[13px] font-bold text-orange-800 block">{tu('invalid_redeem_code')}</span>
 							<span className="text-[12px] text-orange-700 leading-snug">
 								{redeemDetails?.status === 'not_found' ? 'This code has already been used or does not exist.' : redeemDetails?.status === 'cancelled' ? 'This redeem has been cancelled.' : 'Unable to verify this redeem code. Please check the link and try again.'}
 							</span>
@@ -420,12 +508,12 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 				) : (
 				<div className="flex items-center gap-2 bg-white/60 backdrop-blur-xl border border-white/40 px-4 py-2 rounded-full shadow-sm mb-8">
 					<div className="w-4 h-4 rounded-full bg-[#1562f0] flex items-center justify-center"><ShieldCheck size={10} className="text-white" /></div>
-					<span className="text-[11px] font-bold text-slate-800 uppercase tracking-wide">Verified Asset • Ready to Claim</span>
+					<span className="text-[11px] font-bold text-slate-800 uppercase tracking-wide">{tu('verified_asset_ready_to_claim')}</span>
 				</div>
 				)}
 				<div className="w-full max-w-[340px] perspective-1000 mb-10">
 					<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
-						<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+						<IpfsImg src={ccsabackphoto} alt={tu('ccsa_card')} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 						<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 						<div className="relative z-10 p-5 h-full flex flex-col justify-between">
 							<div className="flex justify-between items-start">
@@ -435,14 +523,14 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 								</div>
 								<div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold flex items-center gap-1 text-white"><Globe size={10} className="text-white" /> Membership</div>
 							</div>
-							<div><p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">Balance</p><div className="flex items-baseline gap-1"><span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{isValid && redeemDetails ? (() => { const pts = Number(redeemDetails.pointsHuman); const ptsPer1 = Number(redeemDetails.ptsPer1Currency); const amt = ptsPer1 ? pts / ptsPer1 : pts; return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined); })() : '100.00'}</span><span className="text-sm font-semibold opacity-90 text-[#fff2c6]">{isValid && redeemDetails ? (redeemDetails.currency as string) : 'CAD'}</span></div></div>
+							<div><p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">{tu('balance')}</p><div className="flex items-baseline gap-1"><span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{isValid && redeemDetails ? (() => { const pts = Number(redeemDetails.pointsHuman); const ptsPer1 = Number(redeemDetails.ptsPer1Currency); const amt = ptsPer1 ? pts / ptsPer1 : pts; return formatAmount(amt, redeemDetails.currency as any, amt > 0 && amt < 0.01 ? 4 : undefined); })() : '100.00'}</span><span className="text-sm font-semibold opacity-90 text-[#fff2c6]">{isValid && redeemDetails ? (redeemDetails.currency as string) : 'CAD'}</span></div></div>
 						</div>
 					</div>
 					<div className="w-[90%] h-4 mx-auto bg-[#1562f0]/20 blur-xl rounded-full mt-4" />
 				</div>
 				<div className="mt-4 text-center space-y-3 max-w-xs mx-auto">
-					<h1 className="text-3xl font-bold text-slate-900 tracking-tight">Activate Your Card.</h1>
-					<p className="text-slate-500 text-[15px] font-medium leading-relaxed">Create a secure CashTrees wallet to claim this membership. No app download required yet.</p>
+					<h1 className="text-3xl font-bold text-slate-900 tracking-tight">{tu('activate_your_card')}</h1>
+					<p className="text-slate-500 text-[15px] font-medium leading-relaxed">{tu('create_a_secure_cashtrees_wallet_to_claim_this_membership_no_app_downloa')}</p>
 				</div>
 			</div>
 			<div className="p-6 pb-10 mb-40 bg-gradient-to-t from-[#F5F5F7] to-transparent z-20">
@@ -452,7 +540,7 @@ function RedeemSplashStep({ onActivate, redeemDetails, redeemDetailsLoading }: R
 					disabled={isInvalid}
 					className={`group w-full h-16 rounded-full font-bold text-[17px] transition-all flex items-center justify-between px-2 pl-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 ${isValid ? 'bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] text-white shadow-lg shadow-[#1562f0]/35 active:scale-95' : isInvalid ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-[#1562f0] to-[#0e4cbb] text-white shadow-lg shadow-[#1562f0]/35 animate-pulse'}`}
 				>
-					<span>Activate Now</span>
+					<span>{tu('activate_now')}</span>
 					<div className={`w-12 h-12 rounded-full flex items-center justify-center ${isValid ? 'bg-white text-[#1562f0] group-hover:scale-105' : isInvalid ? 'bg-slate-100' : 'bg-white/90 text-[#1562f0]'}`}><ArrowRight size={24} strokeWidth={3} /></div>
 				</button>
 			</div>
@@ -789,7 +877,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 					const result = await postCardRedeem(redeemFromUrl.cardAddress, redeemFromUrl.redeemCode, toUserEOA)
 					if (!cancelled) {
 						setRedeemDone(true)
-						setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? 'Redeem failed' })
+						setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? tu('redeem_failed_2') })
 						if (result.success && profile) {
 							// 1. 使用正确的卡地址：redeem 目标卡（redeemFromUrl.cardAddress），自定义 beamiocard 时否则会查到错误卡
 							const cardAddr = redeemFromUrl.cardAddress || CCSA_Card_Address
@@ -828,7 +916,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 			.then((result) => {
 				if (cancelled) return
 				setRedeemDone(true)
-				setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? 'Redeem failed' })
+				setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? tu('redeem_failed_2') })
 				if (result.success && profile) {
 					// 1. 使用正确的卡地址：redeem 目标卡（redeemFromUrl.cardAddress），自定义 beamiocard 时否则会查到错误卡
 					const cardAddr = redeemFromUrl.cardAddress || CCSA_Card_Address
@@ -879,14 +967,14 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 									<div className="w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-[#1562f0] to-[#0e4cbb] shadow-lg shadow-[#1562f0]/35 mb-6">
 										<Check size={32} className="text-white" strokeWidth={4} />
 									</div>
-									<h1 className="text-[32px] font-bold text-slate-900 tracking-tight text-center leading-tight">Card Active!</h1>
-									<p className="text-slate-500 font-medium mt-2">Redemption complete. Funds available.</p>
+									<h1 className="text-[32px] font-bold text-slate-900 tracking-tight text-center leading-tight">{tu('card_active')}</h1>
+									<p className="text-slate-500 font-medium mt-2">{tu('redemption_complete_funds_available')}</p>
 								</div>
 
 								{/* CCSA 卡片 + READY badge */}
 								<div className="w-full max-w-[340px] mx-auto mb-10 relative">
 									<div className="rounded-[24px] overflow-hidden shadow-2xl relative" style={{ aspectRatio: '1.58 / 1' }}>
-										<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+										<IpfsImg src={ccsabackphoto} alt={tu('ccsa_card')} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 										<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 										<div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -30px 70px rgba(0,0,0,0.42)' }} />
 										<div className="relative z-10 p-5 h-full flex flex-col justify-between">
@@ -911,7 +999,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 											</div>
 											<div className="flex items-end justify-between gap-2 min-w-0">
 												<div>
-													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-[#fff2c6]">Balance</p>
+													<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5 text-[#fff2c6]">{tu('balance')}</p>
 													<div className="flex items-baseline gap-1">
 														{/* 2. 展示兜底：ccsaAssets 为空（getMyAssets 请求中/失败）但 redeem 已成功时，用 redeemDetails.pointsHuman */}
 														<span className="text-3xl font-medium tracking-tighter text-[#fff2c6]">{formatWithThousands(ccsaAssets?.points ?? (redeemResult?.success && redeemDetails?.pointsHuman ? redeemDetails.pointsHuman : '0'))}</span>
@@ -980,7 +1068,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 
 							{/* CCSA 卡片 */}
 							<div className="rounded-[24px] overflow-hidden shadow-lg mb-4 relative" style={{ aspectRatio: '1.58 / 1' }}>
-								<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+								<IpfsImg src={ccsabackphoto} alt={tu('ccsa_card')} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 								<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 								<div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -30px 70px rgba(0,0,0,0.42)' }} />
 								<div className="relative z-10 p-5 h-full flex flex-col justify-between">
@@ -1000,7 +1088,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 									</div>
 									<div className="flex items-end justify-between gap-2 min-w-0">
 										<div>
-											<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">Balance</p>
+											<p className="text-[10px] font-bold opacity-80 uppercase mb-0.5">{tu('balance')}</p>
 											<div className="flex items-baseline gap-1">
 												{redeeming ? (
 													<Loader className="w-6 h-6 text-[#fff2c6] animate-spin" strokeWidth={2.5} />
@@ -1045,7 +1133,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 										)}
 									</div>
 									<div className="flex-1 min-w-0">
-										<div className="font-bold text-slate-900 dark:text-slate-100 text-[15px]">REWARD RECEIVED</div>
+										<div className="font-bold text-slate-900 dark:text-slate-100 text-[15px]">{tu('reward_received')}</div>
 										<p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400 leading-snug">
 											{redeemDetails ? (() => {
 												const pts = Number(redeemDetails.pointsHuman)
@@ -1055,7 +1143,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 												return redeeming
 													? `Redeeming ${amtStr}...`
 													: `A ${amtStr} Welcome Voucher from CCSA has been added to your card pack.`
-											})() : redeemDetailsLoading ? 'Loading...' : 'A Welcome Voucher has been added to your card pack.'}
+											})() : redeemDetailsLoading ? tu('loading_2') : 'A Welcome Voucher has been added to your card pack.'}
 										</p>
 									</div>
 									<ChevronRight className="w-5 h-5 text-slate-400 shrink-0 mt-1" strokeWidth={2.5} />

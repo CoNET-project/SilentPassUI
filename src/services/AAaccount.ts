@@ -6,6 +6,7 @@ import { ethers } from 'ethers'
 import { baseEndpoint, conetDepinProvider, USDCContract_BASE } from '../utils/constants'
 import { CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
 import { resolveBeamioAaForEoaWithFallback, resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
+import { tu } from '@/locale/beamioLocale'
 
 const USDC_ADDRESS_BASE = USDCContract_BASE
 
@@ -366,7 +367,7 @@ export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen(
 	}
 }
 
-/** CoNET-only OpenContainer QR for the Home "Show Pay Code" flow. */
+/** CoNET-only OpenContainer QR for the Home tu('show_pay_code') flow. */
 export async function signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet(
 	profile: { privateKeyArmor: string; aaAccount?: string },
 	amountUSDC: string,

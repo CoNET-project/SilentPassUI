@@ -94,6 +94,7 @@ import AddAdminBottomSheet from './AddAdminBottomSheet'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import { useNfcRead } from '@/hooks/useNfcRead'
+import { tu } from '@/locale/beamioLocale'
 
 const HISTORY_BALANCE_CACHE_KEY_PREFIX = 'beamio:history:balance:v1:'
 const getHistoryBalanceCacheKey = (keyID: string) => `${HISTORY_BALANCE_CACHE_KEY_PREFIX}${keyID.toLowerCase()}`
@@ -227,7 +228,7 @@ function NfcCheckBalanceBottomSheet({
 				setStatus('error')
 			}
 		} catch (e) {
-			setError((e as Error)?.message ?? 'Request failed')
+			setError((e as Error)?.message ?? tu('request_failed'))
 			setStatus('error')
 		}
 	}, [])
@@ -286,7 +287,7 @@ function NfcCheckBalanceBottomSheet({
 						) : status === 'success' && assets ? (
 							<div className="w-full space-y-4">
 								<div className="relative w-full max-w-[340px] mx-auto rounded-2xl overflow-hidden shadow-lg aspect-[1.58/1]">
-									<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+									<IpfsImg src={ccsabackphoto} alt={tu('ccsa_card')} className="absolute inset-0 w-full h-full object-cover" draggable={false} />
 									<div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
 									<div className="absolute inset-0 p-5 flex flex-col justify-end text-white">
 										<div className="flex justify-between items-start mb-1">
@@ -297,7 +298,7 @@ function NfcCheckBalanceBottomSheet({
 														{(assets.cardCurrency as any) ?? 'CAD'}
 													</span>
 												</h2>
-												<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-0.5">Balance</p>
+												<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-0.5">{tu('balance')}</p>
 											</div>
 											{assets.nfts?.find((n) => Number(n.tokenId) > 0) && (
 												<div className="text-xs font-mono opacity-80 tracking-widest pt-1 text-right shrink-0">
@@ -310,7 +311,7 @@ function NfcCheckBalanceBottomSheet({
 									</div>
 								</div>
 								<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4">
-									<p className="text-xs text-slate-500 dark:text-slate-400 mb-2">UID</p>
+									<p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{tu('uid')}</p>
 									<p className="font-mono text-sm break-all text-slate-800 dark:text-slate-200">{uid}</p>
 								</div>
 								<button type="button" onClick={handleClose} className="w-full py-3.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
@@ -387,9 +388,7 @@ const RedeemActiveList = ({
 			<div className="flex items-center justify-between px-2 mb-3">
 				<div className="flex items-center gap-2">
 					<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-					<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-						Redeem Active List
-					</span>
+					<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">{tu('redeem_active_list')}</span>
 				</div>
 				<button
 					type="button"
@@ -595,10 +594,8 @@ const ManageCardsOverlay = ({
 	return (
 		<div className="fixed inset-0 z-[100] bg-[#F2F2F7] flex flex-col animate-slide-up">
 			<div className="bg-white/80 backdrop-blur-md px-5 pt-14 pb-4 flex justify-between items-center border-b border-gray-200 sticky top-0 z-10">
-				<h1 className="text-lg font-bold">Manage Passes</h1>
-				<button type="button" onClick={onClose} className="text-[#1562f0] font-bold text-base">
-					Done
-				</button>
+				<h1 className="text-lg font-bold">{tu('manage_passes')}</h1>
+				<button type="button" onClick={onClose} className="text-[#1562f0] font-bold text-base">{tu('done')}</button>
 			</div>
 			<div className="flex-1 overflow-y-auto p-5">
 				<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">
@@ -678,12 +675,12 @@ const ManageCardsOverlay = ({
 						)
 					})}
 					{activePasses.length === 0 && (
-						<div className="p-6 text-center text-gray-400 text-sm">No active passes</div>
+						<div className="p-6 text-center text-gray-400 text-sm">{tu('no_active_passes')}</div>
 					)}
 				</div>
 				{hiddenPasses.length > 0 && (
 					<>
-						<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">Hidden</p>
+						<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">{tu('hidden')}</p>
 						<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-8">
 							{hiddenPasses.map((pass) => {
 								const Icon = pass.id === 'ccsa' ? Globe : pass.id === CASH_TREES_CARD_ADDRESS ? TreePine : CreditCard
@@ -704,7 +701,7 @@ const ManageCardsOverlay = ({
 										</div>
 										<div className="flex-1">
 											<h3 className="font-bold text-gray-900 text-sm">{pass.nickname || pass.name}</h3>
-											<p className="text-xs text-gray-500">Archived by you</p>
+											<p className="text-xs text-gray-500">{tu('archived_by_you')}</p>
 										</div>
 									</div>
 								)
@@ -770,7 +767,7 @@ export default function MyWalletDashboardNew() {
 	const [ccsaReflash, setCcsaReflash] = useState(false)
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | 'ccsa' | null>(null)
 	const [copiedCardAddress, setCopiedCardAddress] = useState<string | null>(null)
-	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
+	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | '支付' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
 	/** Add Cash 后：父容器内显示 BeamioAddUSDCFlow 的 Coinbase 确认画面（204-221） */
 	const [eoaAddUsdcOpen, setEoaAddUsdcOpen] = useState(false)
 	/** CashTrees Add Cash 全屏底栏（对齐 renderAction Wallet Add Cash） */
@@ -778,7 +775,7 @@ export default function MyWalletDashboardNew() {
 	const [showAddCashModal, setShowAddCashModal] = useState(false)
 	const [addCashMode, setAddCashMode] = useState<AddCashSheetMode>('methods')
 	const [addAmount, setAddAmount] = useState('')
-	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Pay' | 'BeamioPayMeQR'>('')
+	const [aaPanelOpen, setAaPanelOpen] = useState<'' | '支付' | 'BeamioPayMeQR'>('')
 	const [ccsaCreateCardOpen, setCcsaCreateCardOpen] = useState(false)
 	const [topUpRedeemOpen, setTopUpRedeemOpen] = useState(false)
 	const [topUpRedeemKey, setTopUpRedeemKey] = useState(0)
@@ -897,7 +894,7 @@ export default function MyWalletDashboardNew() {
 		if (historyPayData) {
 			setPendingPayTarget(historyPayData)
 			setHistoryPayData(null)
-			setEoaPanelOpen('Pay')
+			setEoaPanelOpen('支付')
 			setPayScreenMode('eoa-pay')
 			setShowFooter(false)
 		}
@@ -1726,7 +1723,7 @@ export default function MyWalletDashboardNew() {
 	const cards: Card[] = [
 		{
 			id: 'eoa',
-			name: 'USDC on Base',
+			name: 'Base 上的 USDC',
 			balance: String(usdcbalance ?? 0),
 			balanceFiat: balanceFiat,
 			address: myAddress || '',
@@ -1736,7 +1733,7 @@ export default function MyWalletDashboardNew() {
 		},
 		{
 			id: 'aa',
-			name: 'Express Pay',
+			name: tu('express_pay'),
 			balance: aaAccountUsdcBalance,
 			balanceFiat: aaBalanceFiat,
 			address: profiles?.[0]?.aaAccount || '',
@@ -1747,7 +1744,7 @@ export default function MyWalletDashboardNew() {
 		},
 		{
 			id: 'ccsa',
-			name: 'CCSA Card',
+			name: 'CCSA 卡',
 			balance: ccsaBalance,
 			balanceFiat: ccsaBalanceFiat,
 			address: profiles?.[0]?.aaAccount || '',
@@ -1944,7 +1941,7 @@ export default function MyWalletDashboardNew() {
 
 	const handleNewNftSubmit = useCallback(async () => {
 		if (!cardAddressForDetails || !newNftTitle.trim()) {
-			setNewNftError('Please enter a title')
+			setNewNftError(tu('please_enter_a_title'))
 			return
 		}
 		const maxSupply = parseInt(newNftMaxSupply, 10)
@@ -2238,7 +2235,7 @@ export default function MyWalletDashboardNew() {
 					>
 						{/* Title 胶囊 */}
 						<div className="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
-							<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Wallet</h1>
+							<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">{tu('wallet')}</h1>
 						</div>
 						{/* 按钮组胶囊 */}
 						<div className="flex items-center gap-2 px-2 py-1 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
@@ -2247,11 +2244,11 @@ export default function MyWalletDashboardNew() {
 									type="button"
 									onClick={() => {
 										setPayScreenMode('aa-eoa-transfer')
-										setAaPanelOpen('Pay')
+										setAaPanelOpen('支付')
 										setShowFooter(false)
 									}}
 									className="w-9 h-9 rounded-full flex items-center justify-center text-[#65A30D] active:scale-95 transition-transform hover:bg-gray-50 dark:hover:bg-slate-700/50"
-									title="Transfer between Main Vault and Express Pay"
+									title={tu('transfer_between_main_vault_and_express_pay')}
 								>
 									<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
 								</button>
@@ -2303,7 +2300,7 @@ export default function MyWalletDashboardNew() {
 										<div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-gray-400 mb-6 shadow-sm border border-gray-100">
 											<Wallet size={36} strokeWidth={1.5} />
 										</div>
-										<h2 className="text-xl font-bold text-gray-900 mb-2">Get Started with CashTrees</h2>
+										<h2 className="text-xl font-bold text-gray-900 mb-2">{tu('get_started_with_cashtrees')}</h2>
 										<p className="text-sm text-gray-500 mb-8 leading-relaxed px-2">
 											Deploy a new smart wallet or sync your existing physical card.
 										</p>
@@ -2317,7 +2314,7 @@ export default function MyWalletDashboardNew() {
 										</button>
 										<div className="flex items-center w-full my-5 opacity-70">
 											<div className="flex-1 border-t border-gray-200" />
-											<span className="px-3 text-[10px] text-gray-400 font-bold uppercase tracking-widest">OR</span>
+											<span className="px-3 text-[10px] text-gray-400 font-bold uppercase tracking-widest">{tu('or')}</span>
 											<div className="flex-1 border-t border-gray-200" />
 										</div>
 										<button
@@ -2347,7 +2344,7 @@ export default function MyWalletDashboardNew() {
 													<Zap size={22} className="text-[#65A30D] fill-[#65A30D]" />
 												</div>
 												<div className="min-w-0">
-													<span className="font-extrabold text-xl block tracking-tight text-gray-900 dark:text-slate-100">Universal Pass</span>
+													<span className="font-extrabold text-xl block tracking-tight text-gray-900 dark:text-slate-100">{tu('universal_pass')}</span>
 													{profiles?.[0]?.aaAccount ? (
 														<button
 															type="button"
@@ -2371,14 +2368,14 @@ export default function MyWalletDashboardNew() {
 													}}
 													className="px-3 py-1.5 rounded-full bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 inline-flex items-center gap-2 transition-colors"
 													title="Pay QR (valid 5 min)"
-													aria-label="Pay QR"
+													aria-label={tu('pay_qr')}
 												>
 													{aaRelaySigning ? (
 														<Loader className="w-4 h-4 animate-spin text-gray-700 dark:text-slate-200 shrink-0" />
 													) : (
 														<QrCode className="w-4 h-4 text-gray-800 dark:text-slate-200 shrink-0" />
 													)}
-													<span className="text-xs font-semibold text-gray-900 dark:text-slate-100">Pay QR</span>
+													<span className="text-xs font-semibold text-gray-900 dark:text-slate-100">{tu('pay_qr')}</span>
 												</button>
 												<button
 													type="button"
@@ -2396,7 +2393,7 @@ export default function MyWalletDashboardNew() {
 											</div>
 										</div>
 										<div className="relative z-10 mt-8">
-											<p className="text-sm text-gray-500 dark:text-slate-400 font-semibold mb-1">Total Balance</p>
+											<p className="text-sm text-gray-500 dark:text-slate-400 font-semibold mb-1">{tu('total_balance')}</p>
 											<div className="flex items-baseline flex-wrap gap-x-1">
 												{universalPassCardCurrency === 'USDC' ? (
 													<span className="text-3xl font-semibold mr-1 text-gray-400 dark:text-slate-500">$</span>
@@ -2429,7 +2426,7 @@ export default function MyWalletDashboardNew() {
 											<div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mr-3 group-hover:bg-[#96EB3C]/20 transition-colors">
 												<Plus size={18} className="text-gray-500 group-hover:text-[#65A30D] transition-colors" />
 											</div>
-											<span className="font-bold tracking-tight text-[15px]">Bind Physical Card</span>
+											<span className="font-bold tracking-tight text-[15px]">{tu('bind_physical_card')}</span>
 										</button>
 									</div>
 								</div>
@@ -2462,7 +2459,7 @@ export default function MyWalletDashboardNew() {
 								type="button"
 								onClick={() => setActiveView(null)}
 								className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/90 border border-slate-200 hover:bg-white text-slate-700 transition-colors"
-								aria-label="Close"
+								aria-label={tu('close')}
 							>
 								<ChevronDown className="w-6 h-6" />
 							</button>
@@ -2472,8 +2469,8 @@ export default function MyWalletDashboardNew() {
 										type="button"
 										onClick={() => setShowNewNftForm(true)}
 										className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/90 border border-slate-200 hover:bg-white text-slate-700 transition-colors"
-										aria-label="New NFT"
-										title="New NFT"
+										aria-label={tu('new_nft')}
+										title={tu('new_nft')}
 									>
 										<Layers className="w-6 h-6" />
 									</button>
@@ -2482,7 +2479,7 @@ export default function MyWalletDashboardNew() {
 								type="button"
 								onClick={() => navigate('/settings')}
 								className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/90 border border-slate-200 hover:bg-white text-slate-700 transition-colors"
-								aria-label="Settings"
+								aria-label={tu('settings')}
 							>
 								<Settings className="w-6 h-6" />
 							</button>
@@ -2507,16 +2504,16 @@ export default function MyWalletDashboardNew() {
 									{selectedCard.id === 'eoa' ? (
 										<div className="flex items-start justify-between flex-wrap gap-4">
 											<MiniAction
-												label="Send"
+												label={tu('send')}
 												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setPayScreenMode('eoa-pay')
-													setEoaPanelOpen('Pay')
+													setEoaPanelOpen('支付')
 													setShowFooter(false)
 												}}
 											/>
 											<MiniAction
-												label="Request"
+												label={tu('request')}
 												icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setEoaPanelOpen('ShowPayQR')
@@ -2554,12 +2551,12 @@ export default function MyWalletDashboardNew() {
 												onClick={() => {
 													setPayScreenMode('aa-eoa-transfer')
 													setShowFooter(false)
-													setAaPanelOpen('Pay')
+													setAaPanelOpen('支付')
 												}}
 											/>
 											
 											<MiniAction
-												label="Pay bill"
+												label={tu('pay_bill')}
 												icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setScanData('')
@@ -2598,7 +2595,7 @@ export default function MyWalletDashboardNew() {
 										/* 发行方：Pay / Top Up / New NFT / Add Admin 四键网格 */
 										<div className="grid grid-cols-4 gap-3">
 											<ExpressAction
-												label="Pay"
+												label={tu('pay')}
 												iconBgClass="bg-[#1562f0] shadow-blue-600/30"
 												icon={<Scan className="w-5 h-5" />}
 												onClick={() => {
@@ -2627,7 +2624,7 @@ export default function MyWalletDashboardNew() {
 												}}
 											/>
 											<ExpressAction
-												label="New NFT"
+												label={tu('new_nft')}
 												iconBgClass="bg-indigo-500 shadow-indigo-500/30"
 												icon={<Layers className="w-5 h-5" />}
 												onClick={() => {
@@ -2667,7 +2664,7 @@ export default function MyWalletDashboardNew() {
 												}}
 											/>
 											<ExpressAction
-												label="Gift"
+												label={tu('gift')}
 												iconBgClass="bg-green-500 shadow-green-500/30"
 												icon={<Gift className="w-5 h-5" />}
 												onClick={() => {
@@ -2700,7 +2697,7 @@ export default function MyWalletDashboardNew() {
 													}}
 												/>
 											) : (
-												<div className="py-6 text-center text-gray-400 text-sm">No active items</div>
+												<div className="py-6 text-center text-gray-400 text-sm">{tu('no_active_items')}</div>
 											)}
 										</div>
 
@@ -2710,14 +2707,12 @@ export default function MyWalletDashboardNew() {
 										{/* Recent Activity */}
 										<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 											<div className="flex justify-between items-center mb-4">
-												<h3 className="font-bold text-gray-900">Recent Activity</h3>
+												<h3 className="font-bold text-gray-900">{tu('recent_activity')}</h3>
 												<button
 													type="button"
 													onClick={() => navigate('/HistoryAll')}
 													className="text-xs font-bold text-[#1562f0]"
-												>
-													View All
-												</button>
+												>{tu('view_all')}</button>
 											</div>
 											{history.length ? (
 												<div className="space-y-4">
@@ -2747,7 +2742,7 @@ export default function MyWalletDashboardNew() {
 													))}
 												</div>
 											) : (
-												<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+												<div className="text-center py-8 text-gray-400 text-sm">{tu('no_recent_transactions')}</div>
 											)}
 										</div>
 									</>
@@ -2760,7 +2755,7 @@ export default function MyWalletDashboardNew() {
 											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 												<div className="flex items-center gap-2 mb-4">
 													<Star className="w-4 h-4 text-orange-500 fill-orange-500" />
-													<h3 className="font-bold text-gray-900">Member Benefits</h3>
+													<h3 className="font-bold text-gray-900">{tu('member_benefits')}</h3>
 												</div>
 												<div className="space-y-4">
 													<div className="flex items-start gap-3">
@@ -2768,7 +2763,7 @@ export default function MyWalletDashboardNew() {
 															<Star className="w-4 h-4 text-[#1562f0]" />
 														</div>
 														<div>
-															<h4 className="text-sm font-bold text-gray-900">Alliance Discount</h4>
+															<h4 className="text-sm font-bold text-gray-900">{tu('alliance_discount')}</h4>
 															<p className="text-xs text-gray-500 leading-relaxed">10% off at participating restaurants.</p>
 														</div>
 													</div>
@@ -2777,8 +2772,8 @@ export default function MyWalletDashboardNew() {
 															<Zap className="w-4 h-4 text-[#1562f0]" />
 														</div>
 														<div>
-															<h4 className="text-sm font-bold text-gray-900">Gas-Free</h4>
-															<p className="text-xs text-gray-500 leading-relaxed">Zero transaction fees on Beamio network.</p>
+															<h4 className="text-sm font-bold text-gray-900">{tu('gas_free')}</h4>
+															<p className="text-xs text-gray-500 leading-relaxed">{tu('zero_transaction_fees_on_beamio_network')}</p>
 														</div>
 													</div>
 												</div>
@@ -2787,33 +2782,33 @@ export default function MyWalletDashboardNew() {
 											{/* Recent Activity */}
 											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 												<div className="flex justify-between items-center mb-4">
-													<h3 className="font-bold text-gray-900">Recent Activity</h3>
-													<span className="text-xs font-bold text-[#1562f0]">View All</span>
+													<h3 className="font-bold text-gray-900">{tu('recent_activity')}</h3>
+													<span className="text-xs font-bold text-[#1562f0]">{tu('view_all')}</span>
 												</div>
-												<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+												<div className="text-center py-8 text-gray-400 text-sm">{tu('no_recent_transactions')}</div>
 											</div>
 
 													{/* Card Information - VoucherDetailModal 风格（仅 CCSA） */}
 											<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 												<div className="flex items-center gap-2 mb-4">
 													<Info className="w-4 h-4 text-gray-400" />
-													<h3 className="font-bold text-gray-900">Card Information</h3>
+													<h3 className="font-bold text-gray-900">{tu('card_information')}</h3>
 												</div>
 												<div className="space-y-3">
 													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Issuer</span>
+														<span className="text-gray-500">{tu('issuer')}</span>
 														<span className="font-medium text-gray-900">Canada Chinese Restaurant Alliance</span>
 													</div>
 													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Network</span>
-														<span className="font-medium text-gray-900">Base Mainnet</span>
+														<span className="text-gray-500">{tu('network')}</span>
+														<span className="font-medium text-gray-900">{tu('base_mainnet')}</span>
 													</div>
 													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Standard</span>
+														<span className="text-gray-500">{tu('standard')}</span>
 														<span className="font-medium text-gray-900">ERC-1155</span>
 													</div>
 													<div className="flex justify-between text-xs">
-														<span className="text-gray-500">Contract</span>
+														<span className="text-gray-500">{tu('contract')}</span>
 														<span className="font-mono text-gray-500">
 															{CCSA_Card_Address ? `${CCSA_Card_Address.slice(0, 6)}...${CCSA_Card_Address.slice(-4)}` : '—'}
 														</span>
@@ -2822,7 +2817,7 @@ export default function MyWalletDashboardNew() {
 														<span className="text-gray-500 flex items-center gap-1">
 															<ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status
 														</span>
-														<span className="font-bold text-green-600">Verified</span>
+														<span className="font-bold text-green-600">{tu('verified')}</span>
 													</div>
 												</div>
 											</div>
@@ -2835,15 +2830,15 @@ export default function MyWalletDashboardNew() {
 												<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 													<div className="flex items-center gap-2 mb-4">
 														<Info className="w-4 h-4 text-gray-400" />
-														<h3 className="font-bold text-gray-900">Card Information</h3>
+														<h3 className="font-bold text-gray-900">{tu('card_information')}</h3>
 													</div>
 													<div className="space-y-3">
 														<div className="flex justify-between text-xs">
-															<span className="text-gray-500">Network</span>
-															<span className="font-medium text-gray-900">Base Mainnet</span>
+															<span className="text-gray-500">{tu('network')}</span>
+															<span className="font-medium text-gray-900">{tu('base_mainnet')}</span>
 														</div>
 														<div className="flex justify-between text-xs">
-															<span className="text-gray-500">Contract</span>
+															<span className="text-gray-500">{tu('contract')}</span>
 															<span className="font-mono text-gray-500" title={selectedCard.id}>
 																{selectedCard.id.slice(0, 10)}...{selectedCard.id.slice(-8)}
 															</span>
@@ -2885,9 +2880,7 @@ export default function MyWalletDashboardNew() {
 																setTopUpRedeemOpen(true)
 															}}
 															className="text-[12px] font-semibold text-[#1D5BFF] active:opacity-70 px-3 py-1.5 rounded-lg bg-blue-50"
-														>
-															Top Up
-														</button>
+														>{tu('top_up')}</button>
 													)}
 												</div>
 												{historyUserCardTiles.length > 0 ? (
@@ -2935,7 +2928,7 @@ export default function MyWalletDashboardNew() {
 																			copyCardAddress(card.cardAddress)
 																		}}
 																		className="shrink-0 rounded-md p-1 transition-colors active:scale-95 hover:bg-white/15"
-																		aria-label="Copy address"
+																		aria-label={tu('copy_address')}
 																	>
 																		<AnimatePresence mode="wait">
 																			{copiedCardAddress === card.cardAddress ? (
@@ -3010,12 +3003,12 @@ export default function MyWalletDashboardNew() {
 							</div>
 							<div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
 								<div className="flex items-center justify-between mb-4">
-									<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">New NFT</h2>
+									<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('new_nft')}</h2>
 									<button
 										type="button"
 										onClick={() => !newNftSubmitting && setShowNewNftForm(false)}
 										className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
-										aria-label="Close"
+										aria-label={tu('close')}
 									>
 										<X className="w-5 h-5" />
 									</button>
@@ -3031,7 +3024,7 @@ export default function MyWalletDashboardNew() {
 								)}
 								<div className="space-y-4">
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title (event name)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('title_event_name')}</label>
 										<input
 											type="text"
 											value={newNftTitle}
@@ -3041,7 +3034,7 @@ export default function MyWalletDashboardNew() {
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Description (EIP-1155)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('description_eip_1155')}</label>
 										<textarea
 											value={newNftDescription}
 											onChange={(e) => setNewNftDescription(e.target.value)}
@@ -3052,7 +3045,7 @@ export default function MyWalletDashboardNew() {
 									</div>
 									<div className="grid grid-cols-2 gap-3">
 										<div>
-											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Valid from (optional)</label>
+											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('valid_from_optional')}</label>
 											<input
 												type="datetime-local"
 												value={newNftValidAfter}
@@ -3061,7 +3054,7 @@ export default function MyWalletDashboardNew() {
 											/>
 										</div>
 										<div>
-											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Valid until (optional)</label>
+											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('valid_until_optional')}</label>
 											<input
 												type="datetime-local"
 												value={newNftValidBefore}
@@ -3071,7 +3064,7 @@ export default function MyWalletDashboardNew() {
 										</div>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Max supply</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('max_supply')}</label>
 										<input
 											type="number"
 											min={1}
@@ -3082,7 +3075,7 @@ export default function MyWalletDashboardNew() {
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Price (card currency, 0 = free)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('price_card_currency_0_free')}</label>
 										<input
 											type="number"
 											min={0}
@@ -3094,7 +3087,7 @@ export default function MyWalletDashboardNew() {
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Image (EIP-1155)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('image_eip_1155')}</label>
 										<div className="flex items-center gap-2 flex-wrap">
 											<input
 												ref={newNftImageInputRef}
@@ -3114,7 +3107,7 @@ export default function MyWalletDashboardNew() {
 											</button>
 											{newNftImageUrl ? (
 												<>
-													<a href={newNftImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1562f0] truncate max-w-[140px]" title={newNftImageUrl}>Link</a>
+													<a href={newNftImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1562f0] truncate max-w-[140px]" title={newNftImageUrl}>{tu('link')}</a>
 													<button type="button" onClick={() => setNewNftImageUrl('')} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400" aria-label="Remove image">
 														<Trash2 className="w-4 h-4" />
 													</button>
@@ -3128,7 +3121,7 @@ export default function MyWalletDashboardNew() {
 										)}
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Background color (optional, e.g. #6366f1)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">{tu('background_color_optional_e_g_6366f1')}</label>
 										<div className="flex items-center gap-2">
 											<input
 												type="color"
@@ -3167,17 +3160,17 @@ export default function MyWalletDashboardNew() {
 							type="button"
 							className="absolute inset-0 bg-gray-900/40 backdrop-blur-md border-0 cursor-default"
 							onClick={closeAddCashModal}
-							aria-label="Close"
+							aria-label={tu('close')}
 						/>
 						<div className="mt-auto bg-white dark:bg-slate-900 rounded-t-[2.5rem] p-6 relative z-10 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] h-[85dvh] max-h-[85dvh] pb-[env(safe-area-inset-bottom)] animate-slide-up overflow-hidden">
 							<div className="mx-auto w-12 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full mb-6 shrink-0" />
 							<div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
 								{addCashMode === 'methods' ? (
 									<>
-										<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">Add Cash</h3>
-										<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center">Select how you want to fund your balance</p>
+										<h3 className="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-2 tracking-tight text-center">{tu('add_cash')}</h3>
+										<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center">{tu('select_how_you_want_to_fund_your_balance')}</p>
 										<div className="space-y-3 mb-6">
-											<h4 className="text-sm font-bold text-gray-900 dark:text-slate-100 mb-3 px-1">Funding Source</h4>
+											<h4 className="text-sm font-bold text-gray-900 dark:text-slate-100 mb-3 px-1">{tu('funding_source')}</h4>
 											<button
 												type="button"
 												onClick={() => setAddCashMode('store_qr')}
@@ -3189,8 +3182,8 @@ export default function MyWalletDashboardNew() {
 														<Store className="text-gray-900" size={20} />
 													</div>
 													<div className="min-w-0">
-														<p className="font-bold text-gray-900 dark:text-slate-100">Deposit Cash at Store</p>
-														<p className="text-xs text-gray-600 dark:text-slate-400">Give cash to an Alliance cashier</p>
+														<p className="font-bold text-gray-900 dark:text-slate-100">{tu('deposit_cash_at_store')}</p>
+														<p className="text-xs text-gray-600 dark:text-slate-400">{tu('give_cash_to_an_alliance_cashier')}</p>
 													</div>
 												</div>
 												<QrCode className="text-gray-900 dark:text-slate-100 relative z-10 shrink-0" size={20} />
@@ -3206,7 +3199,7 @@ export default function MyWalletDashboardNew() {
 													</div>
 													<div className="min-w-0">
 														<p className="font-bold text-gray-900 dark:text-slate-100">Coinbase Pay</p>
-														<p className="text-xs text-gray-500 dark:text-slate-400">Buy USDC securely with debit/credit</p>
+														<p className="text-xs text-gray-500 dark:text-slate-400">{tu('buy_usdc_securely_with_debit_credit')}</p>
 													</div>
 												</div>
 												<ChevronRight className="text-gray-400 shrink-0" size={20} />
@@ -3221,8 +3214,8 @@ export default function MyWalletDashboardNew() {
 														<ArrowLeftRight className="text-blue-600 dark:text-blue-400" size={20} />
 													</div>
 													<div className="min-w-0">
-														<p className="font-bold text-gray-900 dark:text-slate-100">Top up with USDC</p>
-														<p className="text-xs text-gray-500 dark:text-slate-400">Convert crypto to Network CA$</p>
+														<p className="font-bold text-gray-900 dark:text-slate-100">使用 USDC 充值</p>
+														<p className="text-xs text-gray-500 dark:text-slate-400">{tu('convert_crypto_to_network_ca')}</p>
 													</div>
 												</div>
 												<ChevronRight className="text-gray-400 shrink-0" size={20} />
@@ -3235,7 +3228,7 @@ export default function MyWalletDashboardNew() {
 											<button type="button" onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-0">
 												<ChevronRight className="rotate-180 mr-1" size={16} /> Back
 											</button>
-											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Store Deposit</h3>
+											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">{tu('store_deposit')}</h3>
 										</div>
 										<div className="flex flex-col items-center justify-center pb-8 pt-4">
 											<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center max-w-[260px] leading-relaxed">
@@ -3251,7 +3244,7 @@ export default function MyWalletDashboardNew() {
 											</div>
 											<div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-5 py-3 rounded-full border border-gray-200 dark:border-slate-600 shadow-inner mt-2">
 												<div className="w-2 h-2 bg-[#65A30D] rounded-full animate-pulse" />
-												<span className="text-xs font-bold text-gray-600 dark:text-slate-300 tracking-wide uppercase">Waiting for cashier scan...</span>
+												<span className="text-xs font-bold text-gray-600 dark:text-slate-300 tracking-wide uppercase">{tu('waiting_for_cashier_scan')}</span>
 											</div>
 										</div>
 									</>
@@ -3265,19 +3258,19 @@ export default function MyWalletDashboardNew() {
 										</div>
 										<div className="flex flex-col items-center justify-center pt-4 w-full pb-8">
 											<div className="w-16 h-16 bg-[#0052FF] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-6">C</div>
-											<h4 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">Buy USDC directly</h4>
+											<h4 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-2">{tu('buy_usdc_directly')}</h4>
 											<p className="text-sm text-gray-500 dark:text-slate-400 mb-8 text-center px-4">
 												You will be securely redirected to Coinbase to complete your purchase. The USDC will be deposited to your Base network wallet automatically.
 											</p>
 											<div className="w-full max-w-[280px] bg-gray-50 dark:bg-slate-800 rounded-2xl p-4 border border-gray-200 dark:border-slate-600 mb-8 shadow-sm">
 												<div className="flex justify-between items-center mb-3 gap-2">
-													<span className="text-xs text-gray-500 font-medium shrink-0">To Wallet</span>
+													<span className="text-xs text-gray-500 font-medium shrink-0">{tu('to_wallet')}</span>
 													<span className="text-xs font-mono text-gray-900 dark:text-slate-100 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600 truncate max-w-[58%]">
 														{myAddress && ethers.isAddress(myAddress) ? `${myAddress.slice(0, 6)}…${myAddress.slice(-4)}` : '—'}
 													</span>
 												</div>
 												<div className="flex justify-between items-center">
-													<span className="text-xs text-gray-500 font-medium">Network</span>
+													<span className="text-xs text-gray-500 font-medium">{tu('network')}</span>
 													<div className="flex items-center bg-white dark:bg-slate-900 px-2 py-1 rounded shadow-sm border border-gray-100 dark:border-slate-600">
 														<div className="w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center mr-1.5" />
 														<span className="text-xs font-bold text-gray-900 dark:text-slate-100">Base</span>
@@ -3299,12 +3292,12 @@ export default function MyWalletDashboardNew() {
 											<button type="button" onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-0">
 												<ChevronRight className="rotate-180 mr-1" size={16} /> Back
 											</button>
-											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Top Up</h3>
+											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">{tu('top_up')}</h3>
 										</div>
 										<div className="flex flex-col pt-2 w-full pb-8">
 											<div className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl p-5 mb-2 relative shadow-inner">
 												<div className="flex justify-between items-center mb-2">
-													<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">From (USDC)</span>
+													<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">{tu('from_usdc')}</span>
 													<span className="text-xs font-bold text-gray-400">Bal: {formatWithThousands(String(usdcbalance ?? '0'))}</span>
 												</div>
 												<div className="flex items-center justify-between gap-2">
@@ -3330,7 +3323,7 @@ export default function MyWalletDashboardNew() {
 											</div>
 											<div className="bg-white dark:bg-slate-800 border border-[#96EB3C]/50 rounded-3xl p-5 mt-2 relative shadow-sm">
 												<div className="flex justify-between items-center mb-2">
-													<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">To (Network Balance)</span>
+													<span className="text-sm font-semibold text-gray-500 dark:text-slate-400">{tu('to_network_balance')}</span>
 												</div>
 												<div className="flex items-center justify-between gap-2">
 													<span className="text-3xl font-bold text-[#65A30D] tabular-nums">{addCashCadPreview}</span>
@@ -3347,10 +3340,10 @@ export default function MyWalletDashboardNew() {
 													</span>
 												</div>
 												<div className="flex justify-between items-center text-sm pt-2">
-													<span className="text-gray-500 dark:text-slate-400">Network Fee</span>
+													<span className="text-gray-500 dark:text-slate-400">{tu('network_fee')}</span>
 													<div className="flex flex-col items-end">
 														<span className="font-bold text-[#65A30D] bg-[#96EB3C]/20 px-2 py-0.5 rounded-md">Free</span>
-														<span className="text-[10px] text-gray-400 mt-1">Sponsored by CashTrees</span>
+														<span className="text-[10px] text-gray-400 mt-1">{tu('sponsored_by_cashtrees')}</span>
 													</div>
 												</div>
 											</div>
@@ -3386,7 +3379,7 @@ export default function MyWalletDashboardNew() {
 							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
 						</div>
 						<div className="px-4 pb-4 overflow-y-auto">
-							{eoaPanelOpen === 'Pay' && (
+							{eoaPanelOpen === '支付' && (
 								<PayScreen
 									mode="eoa-pay"
 									beamioer={pendingPayTarget ?? undefined}
@@ -3451,7 +3444,7 @@ export default function MyWalletDashboardNew() {
 							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
 						</div>
 						<div className="px-4 pb-4 overflow-y-auto">
-							{aaPanelOpen === 'Pay' && (
+							{aaPanelOpen === '支付' && (
 								<PayScreen
 									mode={payScreenMode}
 									close={() => closeAaPanel()}
@@ -3578,8 +3571,8 @@ export default function MyWalletDashboardNew() {
 									<div className="w-16 h-16 rounded-full bg-[#1652f0] flex items-center justify-center mb-6">
 										<Loader className="w-8 h-8 text-white animate-spin" strokeWidth={2.5} />
 									</div>
-									<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Minting to AA...</p>
-									<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Executing Logic Hook</p>
+									<p className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('minting_to_aa')}</p>
+									<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{tu('executing_logic_hook')}</p>
 								</div>
 							) : redeemSuccessTx ? (
 								/* Success: Redeemed Successfully */
@@ -3588,7 +3581,7 @@ export default function MyWalletDashboardNew() {
 										<div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center shrink-0">
 											<Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
 										</div>
-										<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeemed Successfully</p>
+										<p className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('redeemed_successfully')}</p>
 									</div>
 
 									{/* 卡面 - CCSA 或通用 BeamioUserCard（UserCard 使用 metadata 的 image、background） */}
@@ -3597,7 +3590,7 @@ export default function MyWalletDashboardNew() {
 											<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
 												{isCcsaCard(redeemCardNumberInput) ? (
 													<>
-														<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+														<IpfsImg src={ccsabackphoto} alt={tu('ccsa_card')} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 														<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 													</>
 												) : (
@@ -3657,15 +3650,15 @@ export default function MyWalletDashboardNew() {
 									<div className="rounded-2xl bg-slate-100 dark:bg-slate-800/50 p-4 space-y-3">
 										<div className="flex items-center justify-between">
 											<span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">New Transaction</span>
-											<span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-xs font-semibold">Confirmed</span>
+											<span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-xs font-semibold">{tu('confirmed')}</span>
 										</div>
 										<div className="rounded-xl bg-white dark:bg-slate-800 p-4 flex items-center gap-4">
 											<div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center shrink-0">
 												<ArrowDownLeft className="w-5 h-5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
 											</div>
 											<div className="flex-1 min-w-0">
-												<p className="font-semibold text-slate-900 dark:text-slate-100">Stored Value Added</p>
-												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Just now</p>
+												<p className="font-semibold text-slate-900 dark:text-slate-100">{tu('stored_value_added')}</p>
+												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{tu('just_now')}</p>
 											</div>
 											<div className="text-right shrink-0">
 												<p className="text-base font-bold text-emerald-600 dark:text-emerald-400">+ {redeemDetails ? (() => {
@@ -3701,15 +3694,13 @@ export default function MyWalletDashboardNew() {
 											refreshCcsaAssets()
 										}}
 										className="w-full py-4 rounded-2xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-base uppercase tracking-wide"
-									>
-										Done
-									</button>
+									>{tu('done')}</button>
 								</div>
 							) : (
 								<>
 							{/* Header */}
-							<h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-0.5 text-center">Redeem Asset</h3>
-							<p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">Mint to Express Pay (Smart Account)</p>
+							<h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-0.5 text-center">{tu('redeem_asset')}</h3>
+							<p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">{tu('mint_to_express_pay_smart_account')}</p>
 
 							{/* Asset Card - CCSA 风格（基础设施卡）或通用 BeamioUserCard 风格（使用 metadata image/background）；加载失败时显示错误提示 */}
 							{(redeemDetailsLoading || redeemDetails || (redeemCodeInput.trim() && !redeemDetailsLoading && !redeemDetails)) && (
@@ -3722,7 +3713,7 @@ export default function MyWalletDashboardNew() {
 										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
 											{isCcsaCard(redeemCardNumberInput) ? (
 												<>
-													<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+													<IpfsImg src={ccsabackphoto} alt={tu('ccsa_card')} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 													<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 												</>
 											) : (
@@ -3826,7 +3817,7 @@ export default function MyWalletDashboardNew() {
 
 							{/* Card address (optional) - 折叠或小字 */}
 							<details className="mb-4">
-								<summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">Card address (optional)</summary>
+								<summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">{tu('card_address_optional')}</summary>
 								<input
 									id="redeem-card-number"
 									type="text"
@@ -3872,7 +3863,7 @@ export default function MyWalletDashboardNew() {
 										if (result.success && result.tx) {
 											setRedeemSuccessTx(result.tx)
 										} else {
-											let err = result.error ?? 'Redeem failed'
+											let err = result.error ?? tu('redeem_failed_2')
 											if (result.status === 404) err = 'API endpoint not found (404). The cardRedeem API may not be deployed yet.'
 											else if (result.status && result.status >= 400) err = `Redeem failed: ${err}${result.status ? ` [HTTP ${result.status}]` : ''}`
 											setRedeemError(err)
@@ -3892,9 +3883,7 @@ export default function MyWalletDashboardNew() {
 												setRedeemDetails(null)
 											}}
 											className="flex-1 py-3.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-										>
-											Cancel
-										</button>
+										>{tu('cancel')}</button>
 										<button
 											type="submit"
 											disabled={redeemLoading || !redeemCodeInput.trim()}

@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 import {useState} from 'react'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 type RedeemOrLinkCardProps = {
   isPay: boolean                     // true = Redeem code 模式, false = Payment link 模式
@@ -109,7 +110,7 @@ export const RedeemOrLinkCard = ({
 						hover:bg-white/30 dark:hover:bg-slate-900/45
 						transition
 						"
-					aria-label="Close"
+					aria-label={tu('close')}
 				>
 					<X className="w-4 h-4" />
 				</button>

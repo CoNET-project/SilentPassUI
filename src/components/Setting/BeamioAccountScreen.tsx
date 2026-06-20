@@ -8,6 +8,7 @@ import { getKeysFromCoNETPGPSCByAddress } from '@/services/chat'
 import { ethers } from 'ethers'
 import { AppButton } from '@/components/button/AppButton'
 import GetPicture from '@/components/GetPicture/GetPicture'
+import { tu } from '@/locale/beamioLocale'
 const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
 const defaultName = 'Beamio'
 
@@ -254,7 +255,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
 						setAvatarFileName('')
 						setIpfsImageUrl(null)
 					}}
-					aria-label="Remove avatar image"
+					aria-label={tu('remove_avatar_image')}
 					className="
 						absolute -right-1 -bottom-1
 						h-10 w-10 rounded-full
@@ -279,7 +280,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
 						onClick={() => {
 							setOpenGetPicture(true)
 						}}
-						aria-label="Change avatar"
+						aria-label={tu('change_avatar')}
 						className="
 							absolute -right-1 -bottom-1
 							h-10 w-10 rounded-full
@@ -315,9 +316,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
         {/* AVATAR TEXT */}
         {!usingUploadedAvatar && (
 			<div className="mt-7">
-				<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">
-				AVATAR TEXT
-				</div>
+				<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">{tu('avatar_text')}</div>
 
 				<div
 				className="
@@ -350,24 +349,20 @@ export default function BeamioAccountScreen({ colse }: prof) {
 						shadow-[0_10px_20px_rgba(16,185,129,0.25)]
 						active:scale-95
 					"
-					aria-label="Confirm avatar text"
+					aria-label={tu('confirm_avatar_text')}
 					>
 					<Check className="h-5 w-5 text-white" strokeWidth={3} />
 					</button>
 				)}
 				</div>
 
-				<p className="mt-2 text-[12px] text-slate-500">
-				Change the letters to pick a different avatar.
-				</p>
+				<p className="mt-2 text-[12px] text-slate-500">{tu('change_the_letters_to_pick_a_different_avatar')}</p>
 			</div>
 			)}
 
         {/* BEAMIO HANDLE */}
         <div className="mt-7">
-          <div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">
-            BEAMIO HANDLE
-          </div>
+          <div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">{tu('beamio_handle')}</div>
 
           <div
             className="
@@ -381,22 +376,18 @@ export default function BeamioAccountScreen({ colse }: prof) {
               @{avatarName}
             </div>
 
-            <div className="rounded-xl bg-slate-200 px-4 py-2 text-[12px] font-semibold text-slate-500">
-              PERMANENT
-            </div>
+            <div className="rounded-xl bg-slate-200 px-4 py-2 text-[12px] font-semibold text-slate-500">{tu('permanent')}</div>
           </div>
         </div>
 
         {/* FIRST / LAST */}
 				<div className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2">
 				<div>
-					<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">
-						FIRST NAME
-					</div>
+					<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">{tu('first_name')}</div>
 					<input
 					value={firstName}
 					onChange={e => setFirstName(e.target.value)}
-					placeholder="Music"
+					placeholder={tu('music')}
 					className="
 						mt-3 w-full
 						rounded-2xl bg-white
@@ -411,13 +402,11 @@ export default function BeamioAccountScreen({ colse }: prof) {
 				</div>
 
 				<div>
-					<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">
-					LAST NAME
-					</div>
+					<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">{tu('last_name')}</div>
 					<input
 					value={lastName}
 					onChange={e => setLastName(e.target.value)}
-					placeholder="Stadium"
+					placeholder={tu('stadium')}
 					className="
 						mt-3 w-full
 						rounded-2xl bg-white
@@ -436,9 +425,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
         <div className="mt-10">
           {/* 如果你 AppButton 支持 className，建议给它这个样式；否则就包一层 div */}
           <div className="rounded-2xl shadow-[0_18px_50px_rgba(37,99,235,0.28)]">
-            <AppButton onClick={handleSaveAvatar} loading={loading} disabled={avatarUploadingIpfs} fullWidth>
-              Save Changes
-            </AppButton>
+            <AppButton onClick={handleSaveAvatar} loading={loading} disabled={avatarUploadingIpfs} fullWidth>{tu('save_changes')}</AppButton>
           </div>
         </div>
       </div>

@@ -13,9 +13,11 @@ import {
 	Shield,
 	ArrowRight,
 } from "lucide-react"
-import { ACTIVATING_STEPS } from "./RecoveryQRScreen"
+import { ACTIVATING_STEP_DEFS, getActivatingSteps } from "./RecoveryQRScreen"
 import { VerraFloatingNavChrome } from "./VerraFloatingNavChrome"
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from "@/ui/appContentSpacing"
+import { tu } from '@/locale/beamioLocale'
+import { getCurrentBeamioUiLocale } from '@/locale/i18n'
 
 const BEAMIO_TERMS_URL = "https://beamio.app/terms"
 const BEAMIO_PRIVACY_URL = "https://beamio.app/privacy"
@@ -36,9 +38,9 @@ function CreateIdentityDecorativeBg() {
 	)
 }
 
-const CREATING_STEPS = [
-	{ id: 0, title: "Generating Secure ID", desc: "Creating cryptographic keys", icon: KeyRound },
-	{ id: 1, title: "Finalizing Terminal", desc: "Preparing user interface", icon: RefreshCw },
+const CREATING_STEP_DEFS = [
+	{ id: 0, titleKey: 'generating_secure_id', descKey: 'creating_cryptographic_keys', icon: KeyRound },
+	{ id: 1, titleKey: 'finalizing_terminal', descKey: 'preparing_user_interface', icon: RefreshCw },
 ] as const
 const STEP_DURATION_MS = 2000
 const ACTIVATING_STEP_DURATION_MS = 5000
@@ -93,7 +95,11 @@ const CreateUsernamePinScreen = forwardRef<
 			: Math.round(window.visualViewport?.height ?? window.innerHeight)
 	)
 
-	const steps = isRedeemFlow ? ACTIVATING_STEPS : CREATING_STEPS
+	const steps = isRedeemFlow ? getActivatingSteps() : CREATING_STEP_DEFS.map((s) => ({
+				...s,
+				title: tu(s.titleKey),
+				desc: tu(s.descKey),
+			}))
 	const stepDuration = isRedeemFlow ? ACTIVATING_STEP_DURATION_MS : STEP_DURATION_MS
 	const isCompactHeight = viewportHeight > 0 && viewportHeight <= 760
 	const isVeryCompactHeight = viewportHeight > 0 && viewportHeight <= 620
@@ -108,9 +114,9 @@ const CreateUsernamePinScreen = forwardRef<
 
 	const localValidateTag = (raw: string) => {
 		const trimmed = normalizeBeamioTagInput(raw)
-		if (!trimmed) return { ok: false, v: "", msg: "Please enter a BeamioTag" }
+		if (!trimmed) return { ok: false, v: "", msg: tu('please_enter_a_beamiotag') }
 		if (!/^[a-zA-Z0-9_\.]{3,20}$/.test(trimmed)) {
-			return { ok: false, v: trimmed, msg: "Use 3–20 letters, numbers, dots, or underscores" }
+			return { ok: false, v: trimmed, msg: tu('use_3_20_letters_numbers_dots_or_underscores') }
 		}
 		return { ok: true, v: trimmed, msg: "" }
 	}
@@ -139,7 +145,7 @@ const CreateUsernamePinScreen = forwardRef<
 			const available = await checkBeamioAccountAPI(v)
 			if (!available) {
 				setTagStatus("invalid")
-				setTagError(`@${v} is already taken`)
+				setTagError(tu('tag_is_already_taken', { tag: v }))
 				return false
 			}
 			setTagStatus("valid")
@@ -147,7 +153,7 @@ const CreateUsernamePinScreen = forwardRef<
 			return true
 		} catch {
 			setTagStatus("invalid")
-			setTagError("Network error. Try again.")
+			setTagError(tu('network_error_try_again'))
 			return false
 		}
 	}
@@ -196,16 +202,16 @@ const CreateUsernamePinScreen = forwardRef<
 	const passwordStrengthPercent = passwordStrengthCount * 25
 	const passwordStrengthLabel =
 		passwordStrengthCount >= 3
-			? "Strong security"
+			? tu('strong_security')
 			: passwordStrengthCount >= 2
-				? "Building security"
+				? tu('building_security')
 				: passwordStrengthCount >= 1
-					? "Basic security"
-					: "Set a secure password"
+					? tu('basic_security')
+					: tu('set_a_secure_password')
 	const passwordIssues = [
-		!len8 ? "At least 8 characters" : "",
-		!mixed ? "Upper and lowercase letters" : "",
-		!numbers ? "At least one number" : "",
+		!len8 ? tu('at_least_8_characters') : "",
+		!mixed ? tu('upper_and_lowercase_letters') : "",
+		!numbers ? tu('at_least_one_number') : "",
 	].filter(Boolean)
 	const showPasswordIssues = passwordTouched && password.length > 0 && passwordIssues.length > 0
 
@@ -358,7 +364,7 @@ const CreateUsernamePinScreen = forwardRef<
 					    space-y-10 → 小屏 space-y-6 → 极小屏 space-y-4；步骤间距同步收缩 */}
 					<div className="w-full space-y-8 [@media(max-height:700px)]:space-y-5 [@media(max-height:640px)]:space-y-3">
 						<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-2xl [@media(max-height:640px)]:text-xl">
-							Securing your identity...
+							{tu('securing_your_identity')}
 						</h1>
 						<div className="mx-auto max-w-sm space-y-5 text-left [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
 							{steps.map((s, idx) => {
@@ -429,7 +435,7 @@ const CreateUsernamePinScreen = forwardRef<
 				<footer className="shrink-0 px-6 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] pt-3 text-center [@media(max-height:700px)]:pt-2 [@media(max-height:640px)]:pt-1.5">
 					<div className="mx-auto max-w-xs">
 						<p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#424655]/60">
-							DO NOT CLOSE THE APP DURING THIS PROCESS
+							{tu('do_not_close_the_app_during_this_process')}
 						</p>
 						<div className="mt-3 flex justify-center space-x-1 [@media(max-height:640px)]:mt-2" aria-hidden>
 							<div
@@ -456,7 +462,7 @@ const CreateUsernamePinScreen = forwardRef<
 			<CreateIdentityDecorativeBg />
 			<VerraFloatingNavChrome onBack={() => onRequestClose?.()} tone="create" />
 			<main
-				lang="en"
+				lang={getCurrentBeamioUiLocale() === 'zh-CN' ? 'zh-CN' : 'en'}
 				className={`flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 pb-[max(1rem,env(safe-area-inset-bottom))] [@media(max-height:700px)]:pb-[max(0.875rem,env(safe-area-inset-bottom))] [@media(max-height:640px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))] [@media(max-height:560px)]:px-5 [@media(max-height:560px)]:pb-[max(0.625rem,env(safe-area-inset-bottom))] ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
 				style={{ paddingTop: topInsetPadding }}
 			>
@@ -465,10 +471,10 @@ const CreateUsernamePinScreen = forwardRef<
 						className={`shrink-0 text-center ${APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB} [@media(max-height:780px)]:mb-8 [@media(max-height:700px)]:mb-6 [@media(max-height:640px)]:mb-4 [@media(max-height:560px)]:mb-3`}
 					>
 						<h1 className="mb-3 text-3xl font-extrabold tracking-tight text-[#1a1c1f] md:text-5xl [@media(max-height:780px)]:text-[2rem] [@media(max-height:700px)]:text-[1.75rem] [@media(max-height:640px)]:mb-2 [@media(max-height:640px)]:text-[1.5rem] [@media(max-height:560px)]:mb-1.5 [@media(max-height:560px)]:text-[1.3rem]">
-							Create your Beamio ID
+							{tu('create_your_beamio_id')}
 						</h1>
 						<p className="text-lg font-medium leading-relaxed text-[#424655] [@media(max-height:780px)]:text-base [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:text-sm [@media(max-height:640px)]:leading-snug [@media(max-height:560px)]:text-[12px] [@media(max-height:560px)]:leading-[1.25]">
-							Your unique identity in the Beamio network. Use it to connect with friends and local brands.
+							{tu('your_unique_identity_in_the_beamio_network_use_it_to_connect_with_friend')}
 						</p>
 					</div>
 
@@ -476,7 +482,7 @@ const CreateUsernamePinScreen = forwardRef<
 						<div className="space-y-5 [@media(max-height:780px)]:space-y-4 [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2.5 [@media(max-height:560px)]:space-y-2">
 						<div className="space-y-2 [@media(max-height:640px)]:space-y-1.5 [@media(max-height:560px)]:space-y-1">
 							<label htmlFor="create-beamio-tag-input" className="block px-4 text-xs font-bold uppercase tracking-widest text-[#424655] [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">
-								BeamioTag
+								{tu('beamiotag')}
 							</label>
 							<div className="relative">
 								<div className="pointer-events-none absolute inset-y-0 left-5 flex items-center [@media(max-height:560px)]:left-4">
@@ -494,7 +500,7 @@ const CreateUsernamePinScreen = forwardRef<
 									autoCorrect="off"
 									spellCheck={false}
 									enterKeyHint="next"
-									autoComplete="username"
+									autoComplete="用户名"
 									inputMode="text"
 									className={[
 										"w-full rounded-lg border-none bg-[#e2e2e7] py-5 pl-12 pr-12 text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 [@media(max-height:780px)]:py-4 [@media(max-height:700px)]:py-3.5 [@media(max-height:640px)]:py-3 [@media(max-height:640px)]:text-[15px] [@media(max-height:560px)]:rounded-[14px] [@media(max-height:560px)]:py-2.5 [@media(max-height:560px)]:pl-10 [@media(max-height:560px)]:pr-10 [@media(max-height:560px)]:text-[14px]",
@@ -503,7 +509,7 @@ const CreateUsernamePinScreen = forwardRef<
 										tagStatus === "invalid" ? "ring-2 ring-orange-400/80 focus:ring-orange-400/30" : "",
 									].join(" ")}
 									value={beamioName}
-									placeholder="username"
+									placeholder="Username"
 									onChange={(e) => {
 										if (tagChecking) return
 										const next = normalizeBeamioTagInput(e.currentTarget.value)
@@ -545,16 +551,16 @@ const CreateUsernamePinScreen = forwardRef<
 									<span className="text-[13px] font-semibold leading-snug [@media(max-height:560px)]:text-[11px]">{tagError}</span>
 								</div>
 							) : tagValid ? (
-								<p className="px-4 text-[13px] font-medium text-emerald-600 [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">This tag is available</p>
+								<p className="px-4 text-[13px] font-medium text-emerald-600 [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">{tu('this_tag_is_available')}</p>
 							) : (
-								<p className="px-4 text-[13px] font-medium text-[#424655] [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">Permanent. Cannot be changed later.</p>
+								<p className="px-4 text-[13px] font-medium text-[#424655] [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">{tu('permanent_cannot_be_changed_later')}</p>
 							)}
 						</div>
 
 						<div className="space-y-3.5 [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2.5 [@media(max-height:560px)]:space-y-2">
 							<div className="space-y-2 [@media(max-height:640px)]:space-y-1.5 [@media(max-height:560px)]:space-y-1">
 								<label htmlFor="create-wallet-password" className="block px-4 text-xs font-bold uppercase tracking-widest text-[#424655] [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">
-									Secure Password
+									{tu('secure_password')}
 								</label>
 								<div className="relative">
 									<input
@@ -582,7 +588,7 @@ const CreateUsernamePinScreen = forwardRef<
 										tabIndex={-1}
 										className="absolute inset-y-0 right-5 flex items-center rounded-lg p-1 text-[#424655] transition-colors hover:text-[#1a1c1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/30 [@media(max-height:560px)]:right-4"
 										onClick={() => setShowPassword(!showPassword)}
-										aria-label={showPassword ? "Hide password" : "Show password"}
+										aria-label={showPassword ? tu('hide_password') : tu('show_password')}
 									>
 										{showPassword ? <EyeOff className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} /> : <Eye className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} />}
 									</button>
@@ -611,7 +617,7 @@ const CreateUsernamePinScreen = forwardRef<
 								</div>
 								{showPasswordIssues ? (
 									<div className="space-y-1 rounded-xl bg-orange-50 px-3 py-2 text-orange-700">
-										<p className="text-[12px] font-bold leading-snug">Please fix:</p>
+										<p className="text-[12px] font-bold leading-snug">{tu('please_fix')}</p>
 										<ul className="space-y-0.5">
 											{passwordIssues.map((issue) => (
 												<li key={issue} className="flex items-center gap-1.5 text-[12px] font-semibold leading-snug">
@@ -630,15 +636,15 @@ const CreateUsernamePinScreen = forwardRef<
 							<div className="flex flex-col gap-3 rounded-lg bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] [@media(max-height:780px)]:p-4 [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
 								<Shield className="h-6 w-6 shrink-0 text-[#004bc3] [@media(max-height:640px)]:h-5 [@media(max-height:640px)]:w-5" fill="currentColor" strokeWidth={2} aria-hidden />
 								<div className="space-y-1">
-									<p className="text-xs font-bold uppercase tracking-widest text-[#424655]">Vault</p>
-									<p className="text-sm font-semibold leading-snug text-[#1a1c1f] [@media(max-height:640px)]:text-[13px]">Encrypted Local Storage</p>
+									<p className="text-xs font-bold uppercase tracking-widest text-[#424655]">{tu('vault')}</p>
+									<p className="text-sm font-semibold leading-snug text-[#1a1c1f] [@media(max-height:640px)]:text-[13px]">{tu('encrypted_local_storage')}</p>
 								</div>
 							</div>
 							<div className="flex flex-col gap-3 rounded-lg bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] [@media(max-height:780px)]:p-4 [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
 								<RefreshCw className="h-6 w-6 shrink-0 text-[#004bc3] [@media(max-height:640px)]:h-5 [@media(max-height:640px)]:w-5" fill="currentColor" strokeWidth={2} aria-hidden />
 								<div className="space-y-1">
-									<p className="text-xs font-bold uppercase tracking-widest text-[#424655]">Sync</p>
-									<p className="text-sm font-semibold leading-snug text-[#1a1c1f] [@media(max-height:640px)]:text-[13px]">Multi-device Continuity</p>
+									<p className="text-xs font-bold uppercase tracking-widest text-[#424655]">{tu('sync')}</p>
+									<p className="text-sm font-semibold leading-snug text-[#1a1c1f] [@media(max-height:640px)]:text-[13px]">{tu('multi_device_continuity')}</p>
 								</div>
 							</div>
 						</div>
@@ -646,7 +652,7 @@ const CreateUsernamePinScreen = forwardRef<
 
 						{!shouldHideNonCustodialNote ? (
 						<p className="px-1 text-center text-[13px] leading-snug text-[#424655] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:text-[11px] [@media(max-height:520px)]:hidden">
-							Verra is non-custodial. We cannot reset this password for you.
+							{tu('beamio_is_non_custodial_we_cannot_reset_this_password_for_you')}
 						</p>
 						) : null}
 						</div>
@@ -664,11 +670,9 @@ const CreateUsernamePinScreen = forwardRef<
 									: "!cursor-not-allowed !bg-[#c3c6d8] !text-[#737687] !shadow-none",
 							].join(" ")}
 							onClick={() => void onSubmitPress()}
-						>
-							Next
-						</AppButton>
+						>{tu('next')}</AppButton>
 						<div className="mt-4 flex max-w-md flex-col gap-1 px-4 text-center text-[13px] font-normal leading-snug text-[#424655] [@media(max-height:700px)]:mt-3 [@media(max-height:640px)]:mt-2 [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-0.5 [@media(max-height:560px)]:px-2 [@media(max-height:560px)]:text-[11px]">
-							<p>By continuing, you agree to our</p>
+							<p>{tu('by_continuing_you_agree_to_our')}</p>
 							<p>
 								<a
 									href={BEAMIO_TERMS_URL}
@@ -676,16 +680,16 @@ const CreateUsernamePinScreen = forwardRef<
 									rel="noopener noreferrer"
 									className="font-bold text-[#004bc3] hover:underline"
 								>
-									Terms of Service
+									{tu('terms_of_service')}
 								</a>
-								{" and "}
+								{tu('and')}
 								<a
 									href={BEAMIO_PRIVACY_URL}
 									target="_blank"
 									rel="noopener noreferrer"
 									className="font-bold text-[#004bc3] hover:underline"
 								>
-									Privacy Policy
+									{tu('privacy_policy')}
 								</a>
 								.
 							</p>

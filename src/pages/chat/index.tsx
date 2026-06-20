@@ -9,6 +9,7 @@ import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-
 import Chat from './chat'
 
 import ChatList from './components/ChatList'
+import { tu } from '@/locale/beamioLocale'
 
 /** 与 Wallet / Discover 顶栏胶囊圆标底色一致 */
 const CHAT_CAPSULE_ACCENT = '#1562f0'
@@ -80,7 +81,7 @@ const Home = () => {
 						>
 							<ChatBlueIcon className="h-[22px] w-[22px] block shrink-0" aria-hidden />
 						</div>
-						<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Chat</span>
+						<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">{tu('chat')}</span>
 					</div>
 				</div>
 
@@ -96,7 +97,7 @@ const Home = () => {
 						style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
 					/>
 					<ChatList
-						title="" // 你如果不要 "Messages" 大标题就留空
+						title="" // 你如果不要 tu('messages') 大标题就留空
 						onOpen={item => {
 							setChatData(item)      // ✅ 打开某个会话
 							setShowFooter(false)

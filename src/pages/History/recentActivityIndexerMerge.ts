@@ -28,6 +28,7 @@ import {
 	type IndexerIssuedNftRedeemProductKind,
 } from '@/utils/indexerCatalogRedeemClaim'
 import contracts from '@/utils/contracts'
+import { tu } from '@/locale/beamioLocale'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9'
 
@@ -130,18 +131,18 @@ export function merchantGiftCounterpartyFallbackLabel(opts: {
 	if (safeHandle) return safeHandle
 	const safeFor = isMerchantGiftNoteLabel(opts.forText) ? '' : String(opts.forText ?? '').trim()
 	if (safeFor) return safeFor
-	return String(opts.shortAddr ?? '').trim() || 'Unknown'
+	return String(opts.shortAddr ?? '').trim() || tu('unknown')
 }
 
 /** Title still resolving @beamioTag (short addr / gift note / generic). */
 export function isProvisionalMerchantGiftActivityTitle(text: string): boolean {
 	const t = String(text ?? '').trim()
 	if (!t) return true
-	if (t === 'Merchant Gift') return true
+	if (t === tu('merchant_gift')) return true
 	const m = /^Gift (to|from) (.+)$/i.exec(t)
 	if (!m) return false
 	const who = String(m[2] ?? '').trim()
-	if (!who || who === 'Unknown') return true
+	if (!who || who === tu('unknown')) return true
 	if (isMerchantGiftNoteLabel(who)) return true
 	if (/^0x[a-f0-9]{4}…[a-f0-9]{4}$/i.test(who)) return true
 	if (!who.startsWith('@')) return true
@@ -160,7 +161,7 @@ export function formatMerchantGiftCounterpartyTag(
 		if (fb.startsWith('@') || /^0x[a-f0-9]{4}…[a-f0-9]{4}$/i.test(fb)) return fb
 		return fb
 	}
-	return 'Unknown'
+	return tu('unknown')
 }
 
 /** Inbound: Gift from @tag; outbound: Gift to @tag (English UI). */
@@ -1180,13 +1181,13 @@ function parseDisplayJson(displayJson: string): {
 		const j = JSON.parse(displayJson || '{}')
 		const forText = typeof j.forText === 'string' ? j.forText.trim() : undefined
 		return {
-			title: j.title ?? 'Transaction',
+			title: j.title ?? tu('transaction'),
 			handle: j.handle ?? j.forText ?? j.note ?? '',
 			forText: forText || undefined,
 			card: j.card,
 		}
 	} catch {
-		return { title: 'Transaction', handle: displayJson?.slice(0, 40) ?? '' }
+		return { title: tu('transaction'), handle: displayJson?.slice(0, 40) ?? '' }
 	}
 }
 
@@ -1339,8 +1340,8 @@ function appendIndexerPage(
 			title = issuedNftClaim.title
 		}
 		if (String(tx.txCategory ?? '') === TX_BUINT_USDC && amPayee) {
-			title = 'Fuel Yield (1:100)'
-			handle = 'USDC Top-up'
+			title = tu('fuel_yield_1_100')
+			handle = tu('usdc_top_up')
 		}
 		const txCategoryLower = String(tx.txCategory ?? '').toLowerCase()
 		const isCardRedeemLedgerRow = isIndexerCardRedeemLedgerRow({
@@ -1422,15 +1423,15 @@ function appendIndexerPage(
 					? 'internal_transfer'
 					: type
 		if (isConsumerGift) {
-			title = 'Merchant Gift'
+			title = tu('merchant_gift')
 		}
 		if (isMerchantCharge) {
-			title = 'Merchant Payment'
+			title = tu('merchant_payment')
 		}
 		merged.push({
 			id,
 			type: resolvedType,
-			title: title ?? 'Transaction',
+			title: title ?? tu('transaction'),
 			handle: handle ?? '',
 			forText: forText || undefined,
 			timestamp: formatTime(tsRaw),

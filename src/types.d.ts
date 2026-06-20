@@ -187,7 +187,7 @@ type paymentCard = {
 	}
 
 	type ICurrency = 'CAD'|'USD'|'JPY'|'CNY'|'USDC'|'HKD'|'EUR'|'SGD'|'TWD'
-	type ILanguage = 'en'
+	type ILanguage = 'en' | 'zh-CN'
   
   interface SpClub {
 	memberId: string;

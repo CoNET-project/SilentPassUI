@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { fiatPrefix } from "@/services/currency"
+import { tu } from '@/locale/beamioLocale'
 
 type FXDetailProps = {
   open: boolean
@@ -105,7 +106,7 @@ export default function FXDetail({
           {/* backdrop */}
           <motion.button
 			type="button"
-			aria-label="Close"
+			aria-label={tu('close')}
 			onClick={onClose}
 			className="absolute inset-0 bg-black/60"
 			initial={{ opacity: 0 }}

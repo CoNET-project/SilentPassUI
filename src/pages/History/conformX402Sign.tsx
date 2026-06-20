@@ -10,6 +10,7 @@ import base_ex_dark from '@/components/assets/base-ex-dark.svg'
 import {ethers} from 'ethers'
 import styles from './send.module.scss'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 type ShowSignInfoProps = {
 	originUrl: string                             
@@ -155,7 +156,7 @@ export function ConformSignInfo({
 
 				{/* 左侧：Pay to */}
 				<div className="font-semibold">
-					{messageData?.payToTitle || 'Pay to'}
+					{messageData?.payToTitle || tu('pay_to')}
 				</div>
 
 				{/* 右侧：地址 + icon */}
@@ -168,15 +169,15 @@ export function ConformSignInfo({
 						type="button"
 						onClick={() => openExternalUrl(`https://basescan.org/address/${messageData?.showPayToAddress || messageData?.payTo}`)}
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-						aria-label="View on BaseScan"
-						title="View on BaseScan"
+						aria-label={tu('view_on_basescan')}
+						title={tu('view_on_basescan')}
 					>
 						<IpfsImg
 							src={darkModle ? base_ex_dark : base_ex}
 							alt=""
 							className="w-4 h-4"
 						/>
-						<span className="sr-only">View on BaseScan</span>
+						<span className="sr-only">{tu('view_on_basescan')}</span>
 					</button>
 				</div>
 
@@ -337,9 +338,7 @@ export function ConformSignInfo({
 						transition
 						hover:bg-slate-100 dark:hover:bg-white/10
 					`}
-				>
-					Cancel
-				</button>
+				>{tu('cancel')}</button>
 			)}
 
 			{/* Confirm */}
@@ -371,7 +370,7 @@ export function ConformSignInfo({
 						<span>Processing…</span>
 					</span>
 				) : (
-					'Confirm'
+					tu('confirm')
 				)}
 			</button>
 		</div>

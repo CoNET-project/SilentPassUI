@@ -185,7 +185,7 @@ export function isGenericIssuedNftClaimActivityTitle(title: unknown): boolean {
   return /^claim\s+(?:coupon|catalog)s?$/i.test(t);
 }
 
-/** Coupon/catalog product name only (no `Claim` prefix). */
+/** Coupon/catalog product name only (no `领取` prefix). */
 export function extractSeriesMetadataProductName(
   meta: Record<string, unknown> | null | undefined,
   product: IndexerIssuedNftRedeemProductKind

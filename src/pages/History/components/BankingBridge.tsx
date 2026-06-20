@@ -1,5 +1,6 @@
 import React from "react"
 import { ChevronRight, CreditCard, Building2 } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
 
 type BankingBridgeProps = {
   onAddCash: () => void
@@ -77,16 +78,16 @@ export default function BankingBridge({
       {/* Cards */}
       <div className="mt-4 space-y-3">
         <RowCard
-          title="Add Cash"
-          subtitle="Buy USDC via Coinbase"
+          title={tu('add_cash')}
+          subtitle={tu('buy_usdc_via_coinbase')}
           icon={<CreditCard className="w-6 h-6 text-[#2F6BFF]" strokeWidth={2.2} />}
           iconBgClass="bg-[#DCEBFF]"
           onClick={onAddCash}
         />
 
         <RowCard
-          title="Cash Out"
-          subtitle="Send to Bank Account"
+          title={tu('cash_out_2')}
+          subtitle={tu('send_to_bank_account')}
           icon={<Building2 className="w-6 h-6 text-slate-500" strokeWidth={2.2} />}
           iconBgClass="bg-slate-200/70"
           onClick={onCashOut}

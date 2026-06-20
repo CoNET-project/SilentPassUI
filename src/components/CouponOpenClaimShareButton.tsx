@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { Check, Share2 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
+import { tu } from '@/locale/beamioLocale'
 import {
 	buildCouponOpenClaimDistributionShareUrl,
 	shareCouponOpenClaimDistributionUrl,
@@ -24,7 +25,7 @@ export default function CouponOpenClaimShareButton({
 		async (e: React.MouseEvent) => {
 			e.stopPropagation()
 			if (!shareUrl) {
-				Toast.show({ content: 'Share URL is unavailable', position: 'top' })
+				Toast.show({ content: tu('share_url_is_unavailable'), position: 'top' })
 				return
 			}
 			const outcome = await shareCouponOpenClaimDistributionUrl(shareUrl, {
@@ -37,11 +38,11 @@ export default function CouponOpenClaimShareButton({
 			}
 			if (outcome === 'copied') {
 				setShared(true)
-				Toast.show({ content: 'Claim URL copied', position: 'top' })
+				Toast.show({ content: tu('claim_url_copied'), position: 'top' })
 				setTimeout(() => setShared(false), 2000)
 				return
 			}
-			Toast.show({ content: 'Could not share claim URL', position: 'top' })
+			Toast.show({ content: tu('could_not_share_claim_url'), position: 'top' })
 		},
 		[shareUrl, couponTitle]
 	)

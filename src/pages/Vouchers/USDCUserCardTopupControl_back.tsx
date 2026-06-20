@@ -475,7 +475,7 @@ export default function USDCUserCardTopupControl({ cardAddress, onClose }: Props
 		<div className="p-6 space-y-4">
 			<div className="flex items-center justify-between">
 				<h3 className="text-lg font-bold text-slate-900">USDC Top Up</h3>
-				<button className="text-sm text-slate-500 hover:text-slate-700" onClick={() => onClose?.(assets)}>Close</button>
+				<button className="text-sm text-slate-500 hover:text-slate-700" onClick={() => onClose?.(assets)}>关闭</button>
 			</div>
 			{!submitting ? (
 				<div className="rounded-xl border border-slate-200 bg-white p-4">

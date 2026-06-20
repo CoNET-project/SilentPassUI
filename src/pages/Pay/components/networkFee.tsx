@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { Sparkles, ChevronDown } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
 
 type NetworkFeeProps = {
   feeUsd?: number | string
@@ -36,7 +37,7 @@ export default function NetworkFeeGas({
 	const cells = [
 		Credits && { label: "Credits used", value: "1 STX" },
 		{ label: "Sponsor", value: sponsorName },
-		{ label: "Network", value: networkName },
+		{ label: tu('network'), value: networkName },
 		{ label: "Settlement", value: settlementText },
 		{ label: "Execution", value: executionText },
 	].filter(Boolean) as { label: string; value: string }[]

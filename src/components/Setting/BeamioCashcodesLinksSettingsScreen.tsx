@@ -1,5 +1,6 @@
 import { X, Smartphone, Info, Link2, Repeat } from "lucide-react";
 import {AppButton} from '@/components/button/AppButton'
+import { tu } from '@/locale/beamioLocale'
 
 type prof = {
 	colse: () => void
@@ -122,9 +123,7 @@ export default function BeamioCashcodesLinksSettingsScreen({colse}:prof) {
 						onClick={() => colse()}
 						
 						fullWidth
-					>
-						Done
-					</AppButton>
+					>{tu('done')}</AppButton>
         </footer>
       </aside>
     </div>

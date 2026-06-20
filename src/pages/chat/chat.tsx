@@ -42,6 +42,7 @@ import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/b
 import { fiatPrefix } from '@/services/currency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
+import { tu } from '@/locale/beamioLocale'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const baseExplorerTxUrl = (hash: string) => `https://basescan.org/tx/${hash}`
@@ -74,7 +75,7 @@ const unknowAcc = (address: string):searchResult => {
 		last_name: '',
 		follow_count: '',
 		follower_count: '',
-		username: 'Unknow',
+		username: '未知',
 		image: ''
 	}
 	return ret
@@ -112,9 +113,9 @@ type ChatSection = {
   function formatTimeLabel(ts: number): string {
 	const t = typeof ts === "number" && ts > 0 && ts < 1e12 ? ts * 1000 : ts
 	const d = new Date(t)
-	if (!isFinite(d.getTime())) return "Just now"
+	if (!isFinite(d.getTime())) return tu('just_now')
 	const now = Date.now()
-	if (now - t < 60 * 1000) return "Just now"
+	if (now - t < 60 * 1000) return tu('just_now')
 	const h = d.getHours()
 	const m = d.getMinutes()
 	const ampm = h >= 12 ? "p.m." : "a.m."
@@ -646,7 +647,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			const pay = BigInt(Number(message.maxAmountRequired).toFixed(0))
 			const paymentHeader = await AuthorizationSign(pay, message.payTo)
 			if (!paymentHeader) {
-				setPayTransferError('Sign failed')
+				setPayTransferError(tu('sign_failed'))
 				setPayTransferLoading(null)
 				return
 			}
@@ -1268,7 +1269,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 																	{hash && (
 																		<div className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2 py-1 mt-2">
 																			<code className="flex-1 text-[10px] text-slate-600 truncate" title={hash}>{hash.slice(0, 10)}…{hash.slice(-8)}</code>
-																			<button type="button" onClick={() => navigator.clipboard.writeText(hash)} className="p-1 text-slate-500 hover:text-slate-700" aria-label="Copy"><Copy className="w-3.5 h-3.5" /></button>
+																			<button type="button" onClick={() => navigator.clipboard.writeText(hash)} className="p-1 text-slate-500 hover:text-slate-700" aria-label={tu('copy')}><Copy className="w-3.5 h-3.5" /></button>
 																			<button type="button" onClick={() => openExternalUrl(baseExplorerTxUrl(hash))} className="p-1 text-slate-500 hover:text-slate-700" aria-label="Open explorer"><ExternalLink className="w-3.5 h-3.5" /></button>
 																		</div>
 																	)}
@@ -1284,22 +1285,20 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 																		Pay with EOA account USDC (converted at current rate): <span className="font-semibold tabular-nums">{usdcStr} USDC</span>
 																	</div>
 																	{insufficientBalance && (
-																		<div className="text-[11px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-																			Insufficient balance
-																		</div>
+																		<div className="text-[11px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">{tu('insufficient_balance')}</div>
 																	)}
 																	{payTransferError && (
 																		<div className="text-[11px] font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-2 py-1.5">{payTransferError}</div>
 																	)}
 																	<div className="flex gap-2">
-																		<button type="button" onClick={() => { setPayConfirmForSendId(null); setPayTransferError(null); }} disabled={prLoading} className="flex-1 py-2 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+																		<button type="button" onClick={() => { setPayConfirmForSendId(null); setPayTransferError(null); }} disabled={prLoading} className="flex-1 py-2 rounded-lg text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-50">{tu('cancel')}</button>
 																		{!insufficientBalance && (
 																		<button type="button" disabled={prLoading} onClick={() => {
 																			if (!m.sendId) return
 																			const origAmountStr = (pc.currency === 'JPY' || pc.currency === 'TWD') ? String(Math.round(Number(pc.amount))) : Number(pc.amount).toFixed(2)
 																			executePaymentRequestTransfer(m.sendId, usdcForConfirm, toAddress, pc.currency, origAmountStr)
 																		}} className="flex-1 py-2 rounded-lg text-xs font-semibold text-white bg-[#1652f0] hover:opacity-90 disabled:opacity-70 flex items-center justify-center gap-1.5">
-																			{prLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</> : 'Confirm'}
+																			{prLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</> : tu('confirm')}
 																		</button>
 																		)}
 																	</div>
@@ -1316,7 +1315,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 																			onClick={() => m.sendId && !prDeclineLoading && sendPaymentRequestCancel(m.sendId)}
 																			className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-70 flex items-center justify-center gap-1.5"
 																		>
-																			{prDeclineLoading ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" /> Cancelling…</> : 'Cancel'}
+																			{prDeclineLoading ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" /> Cancelling…</> : '取消'}
 																		</button>
 																	) : (
 																		<>
@@ -1333,9 +1332,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 																					type="button"
 																					onClick={() => setPayConfirmForSendId(m.sendId ?? m.id ?? '')}
 																					className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#1652f0] hover:opacity-90"
-																				>
-																					Pay
-																				</button>
+																				>{tu('pay')}</button>
 																			)}
 																		</>
 																	)}
@@ -1387,7 +1384,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 															)}
 															{actionBlock}
 															<div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-																<span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase">Secured by Beamio</span>
+																<span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase">由 Beamio 安全保护</span>
 																<button type="button" className="p-1 text-slate-400 hover:text-slate-600" aria-label="More">
 																	<MoreHorizontal className="w-4 h-4" />
 																</button>
@@ -1651,7 +1648,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											].join(" ")
 										: ["bg-transparent", "ring-1 ring-slate-300/70"].join(" ")
 									].join(" ")}
-									aria-label={canSend ? "Send" : "Voice message"}
+									aria-label={canSend ? tu('send') : "Voice message"}
 									>
 									{canSend ? (
 										<ArrowUp className="h-4 w-4 text-white/70" strokeWidth={2.8} />

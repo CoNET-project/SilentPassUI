@@ -1,4 +1,5 @@
 import {  ArrowLeft, MoreVertical } from 'lucide-react'
+import { tu } from '@/locale/beamioLocale'
 
 export default function BeamioNavBack({ title, onClose, onMore, showMore=false }: {title: string, onClose: () => void,  onMore: () => void, showMore?: boolean}) {
 	
@@ -26,7 +27,7 @@ export default function BeamioNavBack({ title, onClose, onMore, showMore=false }
 				active:scale-[0.96]
 				touch-manipulation
 				"
-				aria-label="Back"
+				aria-label={tu('back')}
 			>
 				<span
 				aria-hidden

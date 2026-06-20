@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { tu } from '@/locale/beamioLocale'
 import {
   CheckCircle2,
   ShieldCheck,
@@ -85,8 +86,8 @@ export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: Onbo
           <div className="flex flex-col gap-2 rounded-lg bg-[#f3f3f8] p-4 text-left sm:p-5">
             <Shield className="h-6 w-6 text-[#004bc3]" strokeWidth={2} aria-hidden />
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-[#424655]">Security Status</p>
-              <p className="font-semibold text-[#1a1c1f]">Fortified</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#424655]">{tu('security_status')}</p>
+              <p className="font-semibold text-[#1a1c1f]">{tu('fortified')}</p>
             </div>
           </div>
 
@@ -112,7 +113,7 @@ export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: Onbo
               </>
             )}
           </button>
-          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#424655] sm:text-xs sm:tracking-[0.2em]">Next: Secure Account Activation</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#424655] sm:text-xs sm:tracking-[0.2em]">{tu('next_secure_account_activation')}</p>
         </div>
       </main>
 
@@ -123,7 +124,7 @@ export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: Onbo
           style={{ WebkitBackdropFilter: 'blur(20px)' }}
         >
           <div className="h-2 w-2 rounded-full bg-[#004bc3]" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#424655]">Activation Pending</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#424655]">{tu('activation_pending')}</span>
         </div>
       </div>
     </div>

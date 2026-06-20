@@ -6,6 +6,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { X, Copy, Check, XCircle, DollarSign } from "lucide-react"
 import {useAutoFocus} from '@/components/input/useAutoFocus'
 import {BuyWithCoinbaseButton} from './BuyWithCoinbaseButton'
+import { tu } from '@/locale/beamioLocale'
 
 const remote = 'https://beamio.app'
 
@@ -106,9 +107,7 @@ const CoinbaseRamps: React.FC = () => {
 							? "bg-white shadow-sm text-slate-900"
 							: "text-slate-500"
 						}`}
-					>
-						Add funds
-					</button>
+					>{tu('add_funds')}</button>
 					<button
 						type="button"
 						onClick={() => resetFlow("offramp")}
@@ -117,9 +116,7 @@ const CoinbaseRamps: React.FC = () => {
 							? "bg-white shadow-sm text-slate-900"
 							: "text-slate-500"
 						}`}
-					>
-						Cash out
-					</button>
+					>{tu('cash_out')}</button>
 					{
 						error && (
 							<p className="text-[11px] text-rose-500">
@@ -240,9 +237,7 @@ const StepIntro: React.FC<{ mode: RampMode; onNext: () => void, url: string }> =
 				a.remove()
 			}}
 			className="w-full py-2.5 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800"
-		>
-			Continue
-		</button>
+		>{tu('continue')}</button>
 		</>
 	)
 	}

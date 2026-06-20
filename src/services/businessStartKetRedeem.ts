@@ -5,6 +5,7 @@ import {
 } from '@/config/chainAddresses'
 import { conetDepinProvider, beamioApi } from '@/utils/constants'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
+import { tu } from '@/locale/beamioLocale'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const uuid62 = require('uuid62') as { v4: () => string }
@@ -131,7 +132,7 @@ export async function postBusinessStartKetRedeemAdminCreate(body: {
 		return { success: true, txHash: data.txHash }
 	} catch (e: unknown) {
 		const err = e as { message?: string }
-		return { success: false, error: err?.message ?? 'Network error' }
+		return { success: false, error: err?.message ?? tu('network_error') }
 	}
 }
 

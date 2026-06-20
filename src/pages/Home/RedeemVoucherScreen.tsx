@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Camera, Gift, ShieldCheck, Ticket } from 'lucide-react'
 import ScanBtn, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
 import { onWalletEvent } from '@/services/beamio'
+import { tu } from '@/locale/beamioLocale'
 
 type RedeemVoucherScreenProps = {
 	onBack: () => void
@@ -41,7 +42,7 @@ export default function RedeemVoucherScreen({ onBack, onActivateVoucher }: Redee
 						type="button"
 						onClick={onBack}
 						className="flex h-10 w-10 items-center justify-center rounded-full text-[#1562f0] transition-transform hover:bg-[#f3f3f8] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/35"
-						aria-label="Back"
+						aria-label={tu('back')}
 					>
 						<ArrowLeft className="h-5 w-5" strokeWidth={2.4} aria-hidden />
 					</button>
@@ -99,7 +100,7 @@ export default function RedeemVoucherScreen({ onBack, onActivateVoucher }: Redee
 
 					<div className="flex items-center gap-6 py-4">
 						<div className="h-px flex-1 bg-[#e8e8ed]" />
-						<span className="text-xs font-black uppercase tracking-[0.2em] text-[#737687]">OR</span>
+						<span className="text-xs font-black uppercase tracking-[0.2em] text-[#737687]">{tu('or')}</span>
 						<div className="h-px flex-1 bg-[#e8e8ed]" />
 					</div>
 

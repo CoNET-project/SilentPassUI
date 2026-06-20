@@ -13,6 +13,7 @@ import {formatAmountReadable, formatWithThousands, estimateGasUSDC, Authorizatio
 import AmountCurrency from '@/components/input/AmountCurrencyV2'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 
 
@@ -266,7 +267,7 @@ const PayForm = ({code, closeWin}: Props) => {
 					<span className="text-slate-900 font-medium">{tipAmount} USDC</span>
 				</div> */}
 				<div className="flex justify-between">
-					<span>Network Fee</span>
+					<span>{tu('network_fee')}</span>
 					<span className="text-emerald-600 font-medium">Sponsored by Beamio</span>
 				</div>
 				<div className="flex justify-between pt-1 border-t border-slate-200 mt-1">
@@ -299,13 +300,13 @@ const PayForm = ({code, closeWin}: Props) => {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? tu('rpc_error'))
 			}
 			setSignx402Show(false)
 			return setSuccessPayLink(body.USDC_tx)
 		} catch (ex) {
 			setProcessing (false)
-			return setProcessError('RPC Error!')
+			return setProcessError(tu('rpc_error'))
 			
 		}
 
@@ -382,7 +383,7 @@ const PayForm = ({code, closeWin}: Props) => {
 	const payLinkClick = async () => {
 		const amount = Number(requestCurrency !== 'USDC' ? currencyToUsdcAmount(Number(amt), requestCurrency).toFixed(4): amt)
 		if ( amount === 0 || amount > usdcbalance) {
-			return setError('Insufficient balance')
+			return setError(tu('insufficient_balance'))
 		}
 		
 
@@ -427,7 +428,7 @@ const PayForm = ({code, closeWin}: Props) => {
 
 			if (response.status !== 402) {
 				setProcessing(false)
-				setError('RPC Error!')
+				setError(tu('rpc_error'))
 				return
 			}
 
@@ -449,7 +450,7 @@ const PayForm = ({code, closeWin}: Props) => {
 			// const gas: any = await estimateGasUSDC (totalAmount, recipient)
 			// if (!gas) {
 			// 	setProcessing(false)
-			// 	return setError('RPC Error!')
+			// 	return setError(tu('rpc_error'))
 			// }
 
 			// const gasCostEth = Number(ethers.formatEther(gas.gas * gas.price))
@@ -466,7 +467,7 @@ const PayForm = ({code, closeWin}: Props) => {
 			
 		} catch (ex) {
 			setProcessing(false)
-			setProcessError('RPC Error!')
+			setProcessError(tu('rpc_error'))
 		}
 		
 		
@@ -557,9 +558,7 @@ const PayForm = ({code, closeWin}: Props) => {
 						onClick={() => {
 							closeWin()
 						}}
-						>
-						Done
-						</AppButton>
+						>{tu('done')}</AppButton>
 
 						<AppButton
 						fullWidth
@@ -567,9 +566,7 @@ const PayForm = ({code, closeWin}: Props) => {
 						onClick={() => {
 							openExternalUrl(`https://basescan.org/tx/${successPayLink}`)
 						}}
-						>
-						View transaction
-						</AppButton>
+						>{tu('view_transaction')}</AppButton>
 					</div>
 					</main>
 			</div>
@@ -684,9 +681,7 @@ const PayForm = ({code, closeWin}: Props) => {
 									onClick={() => {
 										closeWin()
 									}}
-								>
-									Cancel
-								</AppButton>
+								>{tu('cancel')}</AppButton>
 							}
 							{
 								
@@ -708,7 +703,7 @@ const PayForm = ({code, closeWin}: Props) => {
 											signRequest(messageData)
 										}}
 									>
-										{!messageData ? 'Continue' : 'Pay'}
+										{!messageData ? tu('continue') : tu('payment')}
 									</AppButton>
 							}
 							</div>

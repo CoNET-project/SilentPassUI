@@ -23,6 +23,7 @@ import { resolveMyBrandMerchantCategoryLabel } from '@/utils/discoverMerchantCat
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { fiatPrefix } from '@/services/currency'
 import type { UserCardInfo } from '@/services/BeamioCard'
+import { tu } from '@/locale/beamioLocale'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -250,7 +251,7 @@ export function MyBrandListEntries({
 				const addrKey = uc.cardAddress.toLowerCase()
 				const detail = details[addrKey]
 				const title =
-					(detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant card'
+					(detail?.meta?.name && detail.meta.name.trim()) || uc.name || tu('merchant_card')
 				return (
 					<MyBrandCardRow
 						key={uc.cardAddress}
@@ -265,7 +266,7 @@ export function MyBrandListEntries({
 				<ActiveCouponTicketItem
 					key={ownedCoupon.id}
 					row={ownedCoupon}
-					actionLabel="Owned"
+					actionLabel={tu('owned')}
 					disabled
 					showOpenClaimShareButton
 					metadataBelowBackgroundImage
@@ -758,7 +759,7 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 				</div>
 			) : sorted.length === 0 ? (
 				<div className="rounded-xl border border-slate-200/80 bg-white/80 p-6 text-center dark:border-slate-700 dark:bg-slate-900/60">
-					<p className="text-sm font-medium text-slate-600 dark:text-slate-400">No merchant cards yet.</p>
+					<p className="text-sm font-medium text-slate-600 dark:text-slate-400">{tu('no_merchant_cards_yet')}</p>
 					<button
 						type="button"
 						onClick={handleAddNewMerchantCard}

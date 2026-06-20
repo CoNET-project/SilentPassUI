@@ -24,6 +24,7 @@ import {
  Route
 } from 'lucide-react';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
+import { tu } from '@/locale/beamioLocale'
 
 type RouteItem = {
 	asset: string
@@ -75,7 +76,7 @@ const TRANSACTIONS: Tx[] = [
    type: 'receive_static_aa',
    title: 'Paid by Frank',
    handle: '@frank_aa',
-   timestamp: 'Just now',
+   timestamp: tu('just_now'),
    amountFiat: 100.00,
    currencyFiat: 'USD',
    amountUSDC: 100.00,
@@ -112,9 +113,9 @@ const TRANSACTIONS: Tx[] = [
  {
    id: 'tx_007',
    type: 'request_create',
-   title: 'Payment QR',
+   title: tu('payment_qr'),
    handle: 'QR Generated',
-   timestamp: 'Just now',
+   timestamp: tu('just_now'),
    amountFiat: 0,
    currencyFiat: 'USD',
    amountUSDC: 0,
@@ -130,7 +131,7 @@ const TRANSACTIONS: Tx[] = [
  {
    id: 'tx_018',
    type: 'request_canceled',
-   title: 'Request Canceled',
+   title: tu('request_canceled'),
    handle: 'Manually Canceled',
    timestamp: '45 mins ago',
    amountFiat: 0,
@@ -357,8 +358,8 @@ const TRANSACTIONS: Tx[] = [
  {
    id: 'tx_010',
    type: 'internal_transfer',
-   title: 'Express Pay → Main Wallet',
-   handle: 'Internal Transfer',
+   title: tu('express_pay_main_wallet'),
+   handle: tu('internal_transfer'),
    timestamp: 'Today, 9:30 AM',
    amountFiat: 20.00,
    currencyFiat: 'USD',
@@ -387,7 +388,7 @@ const TRANSACTIONS: Tx[] = [
    accountType: 'EOA',
    isMixed: false,
    route: [
-     { asset: 'USDC', amount: 50.00, type: 'Cash', symbol: '$', source: 'Main Wallet' }
+     { asset: 'USDC', amount: 50.00, type: 'Cash', symbol: '$', source: tu('main_wallet') }
    ],
    fees: { gas: 0, service: 0, bUnits: 0, gasBUnits: 0 },
    hashes: { base: '0x7a2...b8c3', conet: '0x9e1...f2a4' }
@@ -395,8 +396,8 @@ const TRANSACTIONS: Tx[] = [
  {
    id: 'tx_003',
    type: 'fund_express_pay',
-   title: 'Main Wallet → Express Pay',
-   handle: 'Internal Transfer',
+   title: tu('main_wallet_express_pay'),
+   handle: tu('internal_transfer'),
    timestamp: 'Yesterday, 2:00 PM',
    amountFiat: 100.00,
    currencyFiat: 'USD',
@@ -414,13 +415,13 @@ const TRANSACTIONS: Tx[] = [
  {
    id: 'tx_009',
    type: 'request_expired',
-   title: 'Request Expired',
-   handle: 'Link Invalidated',
+   title: tu('request_expired'),
+   handle: tu('link_invalidated'),
    timestamp: 'Yesterday, 9:00 AM',
    amountFiat: 0,
    currencyFiat: 'USD',
    amountUSDC: 0,
-   status: 'Expired',
+   status: tu('expired_2'),
    category: 'Tools',
    accountType: 'AA',
    isMixed: false,
@@ -541,7 +542,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
 
    return (
      <div className="flex justify-between items-start text-[14px]">
-        <span className="text-gray-500 font-medium pt-0.5">Exchange Rate</span>
+        <span className="text-gray-500 font-medium pt-0.5">汇率</span>
         <div className="flex flex-col items-end gap-1">
           {voucherRoute && (
             <span className="font-semibold text-black">1 {tx.currencyFiat} = 1 {voucherRoute.asset.replace('-Black', '').replace('-Green', '')}</span>
@@ -629,7 +630,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
 
 
    tx.route.forEach((r: RouteItem, idx: number) => {
-     const isMainWallet = r.source?.includes('Main Wallet') ?? false;
+     const isMainWallet = r.source?.includes(tu('main_wallet')) ?? false;
      let belongsToTab = false;
      let isPos = false;
      let fiatValue = 0;
@@ -709,7 +710,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
        <div className="pt-16 pb-2 px-5 flex justify-between items-center bg-[#F2F2F7]/80 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
          <button className="flex items-center gap-1 text-[#1562f0] active:opacity-50 transition-opacity">
            <ChevronLeft size={26} strokeWidth={2.5} />
-           <span className="text-[17px] font-medium tracking-tight">Wallet</span>
+           <span className="text-[17px] font-medium tracking-tight">钱包</span>
          </button>
          <div className="flex gap-3">
             <button className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-900 active:scale-95 transition-transform">
@@ -748,7 +749,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
               {activeTab === 'Cash' && <Wallet size={12} className="text-[#1562f0]" />}
               {activeTab === 'Express' && <Wallet size={12} className="text-[#AF52DE]" />}
               <span className="text-[11px] font-medium text-gray-500">
-                {activeTab === 'Cash' ? 'Main Wallet (EOA)' : activeTab === 'Express' ? 'Express Pay (AA)' : 'All Accounts'}
+                {activeTab === 'Cash' ? 'Main Wallet (EOA)' : activeTab === 'Express' ? 'Express Pay (AA)' : tu('all_accounts')}
               </span>
             </div>
          </div>
@@ -790,7 +791,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                    {tx.type === 'transfer_in' && <ArrowDownLeft size={22} strokeWidth={2} />}
                    {tx.type === 'request_fulfilled' && <QrCode size={22} strokeWidth={2} />}
                    {tx.type === 'transfer_out' && <ArrowUpRight size={22} strokeWidth={2} />}
-                   {tx.type === 'request_create' && (tx.status === 'Pending' ? <Loader2 size={22} strokeWidth={2} className="animate-spin" /> : <QrCode size={22} strokeWidth={2} />)}
+                   {tx.type === 'request_create' && (tx.status === '待处理' ? <Loader2 size={22} strokeWidth={2} className="animate-spin" /> : <QrCode size={22} strokeWidth={2} />)}
                    {(tx.type === 'request_expired' || tx.type === 'request_canceled') && <Ban size={22} strokeWidth={2} />}
                    {tx.type === 'fund_express_pay' && <Wallet size={22} strokeWidth={2} />}
                    {tx.type === 'internal_transfer' && <Wallet size={22} strokeWidth={2} />}
@@ -830,7 +831,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                          Waiting
                        </span>
                      )}
-                     {tx.type === 'request_create' && tx.status === 'Pending' && (
+                     {tx.type === 'request_create' && tx.status === '待处理' && (
                         <span className="text-[10px] font-semibold text-white bg-[#1562f0] px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
                          <Clock size={10} /> Pending
                        </span>
@@ -846,7 +847,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                    (tx.type === 'request_expired' || tx.type === 'request_canceled') ? 'text-gray-400' : 'text-black'
                  }`}>
                     {tx.type === 'request_create' ? (
-                      <span className={tx.status === 'Pending' ? "text-[#1562f0]" : "text-[#FF9500]"}>
+                      <span className={tx.status === '待处理' ? "text-[#1562f0]" : "text-[#FF9500]"}>
                         {amountPrimary}
                       </span>
                     ) : (
@@ -865,7 +866,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
          })}
         
          <div className="pt-6 pb-2 text-center">
-           <span className="text-[12px] font-medium text-gray-400">Encrypted on CoNET L1</span>
+           <span className="text-[12px] font-medium text-gray-400">加密于 CoNET L1</span>
          </div>
        </div>
 
@@ -907,7 +908,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                  selectedTx.type === 'transfer_in' ? 'bg-[#34C759] text-white shadow-green-200' :
                  selectedTx.type === 'transfer_out' ? 'bg-black text-white shadow-gray-300' :
                  selectedTx.type === 'request_create' && selectedTx.status === 'Waiting' ? 'bg-[#FF9500] text-white shadow-orange-200' :
-                 selectedTx.type === 'request_create' && selectedTx.status === 'Pending' ? 'bg-[#1562f0] text-white shadow-blue-200' :
+                 selectedTx.type === 'request_create' && selectedTx.status === '待处理' ? 'bg-[#1562f0] text-white shadow-blue-200' :
                  (selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled') ? 'bg-gray-200 text-gray-500' :
                  selectedTx.type === 'fund_express_pay' ? 'bg-[#AF52DE] text-white shadow-purple-200' :
                  selectedTx.type === 'internal_transfer' ? 'bg-[#1562f0] text-white shadow-blue-200' :
@@ -921,7 +922,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                   {selectedTx.type === 'request_fulfilled' && <QrCode size={36} strokeWidth={1.5} />}
                   {selectedTx.type === 'transfer_out' && <ArrowUpRight size={36} strokeWidth={1.5} />}
                   {selectedTx.type === 'request_create' && selectedTx.status === 'Waiting' && <QrCode size={36} strokeWidth={1.5} />}
-                  {selectedTx.type === 'request_create' && selectedTx.status === 'Pending' && <Loader2 size={36} strokeWidth={1.5} className="animate-spin" />}
+                  {selectedTx.type === 'request_create' && selectedTx.status === '待处理' && <Loader2 size={36} strokeWidth={1.5} className="animate-spin" />}
                   {(selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled') && <Ban size={36} strokeWidth={1.5} />}
                   {selectedTx.type === 'fund_express_pay' && <Wallet size={36} strokeWidth={1.5} />}
                   {selectedTx.type === 'internal_transfer' && <Wallet size={36} strokeWidth={1.5} />}
@@ -930,7 +931,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
               
                <h2 className={`text-[28px] font-bold tracking-tight leading-tight ${(selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled') ? 'text-gray-400' : 'text-black'}`}>
                   {selectedTx.type === 'request_create' || selectedTx.type === 'request_expired' || selectedTx.type === 'request_canceled'
-                    ? `Requesting ${(selectedTx.meta?.requestAmount ?? 0).toFixed(2)} ${selectedTx.currencyFiat}`
+                    ? `请求中 ${(selectedTx.meta?.requestAmount ?? 0).toFixed(2)} ${selectedTx.currencyFiat}`
                     : selectedTx.amountFiat === 0 ? 'Redeemed'
                     : formatCurrency(selectedTx.type === 'reload_card' || selectedTx.type === 'upgrade_card' ? selectedTx.amountFiat : selectedTx.amountFiat, selectedTx.currencyFiat)
                   }
@@ -950,13 +951,13 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                {/* Status Chip */}
                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold mt-4 ${
                   selectedTx.status === 'Waiting' ? 'bg-[#FF9500]/10 text-[#FF9500]' :
-                  selectedTx.status === 'Pending' ? 'bg-[#1562f0]/10 text-[#1562f0]' :
-                  (selectedTx.status === 'Expired' || selectedTx.status === 'Canceled') ? 'bg-gray-100 text-gray-500' :
+                  selectedTx.status === '待处理' ? 'bg-[#1562f0]/10 text-[#1562f0]' :
+                  (selectedTx.status === '已过期' || selectedTx.status === 'Canceled') ? 'bg-gray-100 text-gray-500' :
                   'bg-[#34C759]/10 text-[#34C759]'
                }`}>
                   {selectedTx.status === 'Waiting' ? <Clock size={14} /> :
-                   selectedTx.status === 'Pending' ? <Loader2 size={14} className="animate-spin" /> :
-                   (selectedTx.status === 'Expired' || selectedTx.status === 'Canceled') ? <Ban size={14} /> :
+                   selectedTx.status === '待处理' ? <Loader2 size={14} className="animate-spin" /> :
+                   (selectedTx.status === '已过期' || selectedTx.status === 'Canceled') ? <Ban size={14} /> :
                    <CheckCircle2 size={14} />}
                   {selectedTx.status}
                </div>
@@ -968,15 +969,15 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                <div className="space-y-4 mb-8">
                  {selectedTx.type === 'request_create' ? (
                     <>
-                       <div className={`rounded-[20px] p-5 text-center border ${selectedTx.status === 'Pending' ? 'bg-[#1562f0]/5 border-[#1562f0]/20' : 'bg-[#FF9500]/5 border-[#FF9500]/20'}`}>
-                           <p className={`text-[15px] font-medium mb-4 ${selectedTx.status === 'Pending' ? 'text-[#1562f0]' : 'text-[#FF9500]'}`}>
-                             {selectedTx.status === 'Pending' ? 'Order locked. Someone is reviewing the checkout...' : 'Code is active. Waiting for payment.'}
+                       <div className={`rounded-[20px] p-5 text-center border ${selectedTx.status === '待处理' ? 'bg-[#1562f0]/5 border-[#1562f0]/20' : 'bg-[#FF9500]/5 border-[#FF9500]/20'}`}>
+                           <p className={`text-[15px] font-medium mb-4 ${selectedTx.status === '待处理' ? 'text-[#1562f0]' : 'text-[#FF9500]'}`}>
+                             {selectedTx.status === '待处理' ? tu('order_locked_someone_is_reviewing_the_checkout') : tu('code_is_active_waiting_for_payment')}
                            </p>
-                           <button disabled={selectedTx.status === 'Pending'} className={`w-full py-3.5 bg-white border rounded-[14px] font-bold text-[15px] flex items-center justify-center gap-2 shadow-sm transition-transform ${selectedTx.status === 'Pending' ? 'text-gray-400 border-gray-200 opacity-50' : 'text-[#FF9500] border-[#FF9500]/30 active:scale-95'}`}>
-                             <Share2 size={18} /> {selectedTx.status === 'Pending' ? 'Locked' : 'Share Again'}
+                           <button disabled={selectedTx.status === '待处理'} className={`w-full py-3.5 bg-white border rounded-[14px] font-bold text-[15px] flex items-center justify-center gap-2 shadow-sm transition-transform ${selectedTx.status === '待处理' ? 'text-gray-400 border-gray-200 opacity-50' : 'text-[#FF9500] border-[#FF9500]/30 active:scale-95'}`}>
+                             <Share2 size={18} /> {selectedTx.status === '待处理' ? tu('locked') : tu('share_again')}
                            </button>
                        </div>
-                       <button disabled={selectedTx.status === 'Pending'} className={`w-full py-3.5 font-semibold text-[15px] rounded-[14px] transition-colors ${selectedTx.status === 'Pending' ? 'text-gray-300' : 'text-red-500 active:bg-red-50'}`}>
+                       <button disabled={selectedTx.status === '待处理'} className={`w-full py-3.5 font-semibold text-[15px] rounded-[14px] transition-colors ${selectedTx.status === '待处理' ? 'text-gray-300' : 'text-red-500 active:bg-red-50'}`}>
                           Cancel Request (Fuel not refundable)
                        </button>
                     </>
@@ -1002,7 +1003,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${selectedTx.type === 'upgrade_card' ? 'bg-[#AF52DE]/20' : 'bg-[#FF9500]/20'}`}>
                        {selectedTx.type === 'upgrade_card' ? <ArrowRightLeft size={14} className="text-[#AF52DE]" /> : <Zap size={14} className="text-[#FF9500] fill-[#FF9500]" />}
                      </div>
-                     {selectedTx.type === 'upgrade_card' ? 'Asset Merge & Upgrade' : 'Smart Routing'}
+                     {selectedTx.type === 'upgrade_card' ? tu('asset_merge_upgrade') : tu('smart_routing')}
                    </h3>
                    <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-md tracking-wide">AUTO</span>
                  </div>
@@ -1058,11 +1059,11 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                 <div className="flex justify-between items-center text-[14px]">
                    <span className="text-gray-500 font-medium">
                      {(selectedTx.type === 'request_create' || selectedTx.type === 'request_canceled' || selectedTx.type === 'request_expired') ? 'Request Title' :
-                      selectedTx.category === 'Internal' ? 'Transaction Type' :
+                      selectedTx.category === 'Internal' ? tu('transaction_type') :
                       (selectedTx.type === 'receive_static_aa' || selectedTx.type === 'request_fulfilled') ? 'Paid By' :
-                      selectedTx.type === 'transfer_in' ? 'Received From' :
+                      selectedTx.type === 'transfer_in' ? tu('received_from') :
                       selectedTx.type === 'transfer_out' && selectedTx.accountType === 'EOA' ? 'Sent To' :
-                      'Paid To'}
+                      tu('paid_to')}
                    </span>
                   
                    <div className="flex items-center gap-2">
@@ -1133,7 +1134,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
              {/* Proofs */}
              <div className="space-y-3 mb-8">
                 <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 pl-2">
-                  {selectedTx.hashes.base ? 'Settlement Proof' : 'Creation Proof'}
+                  {selectedTx.hashes.base ? tu('settlement_proof') : tu('creation_proof')}
                 </h4>
                
                 {Array.isArray(selectedTx.hashes.base) ? (
@@ -1152,7 +1153,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                    <div className="flex items-center justify-between p-3.5 bg-white border border-gray-200 rounded-[16px] shadow-sm active:bg-gray-50 transition-colors cursor-pointer">
                        <div className="flex items-center gap-2.5">
                          <div className="w-2.5 h-2.5 bg-[#1562f0] rounded-full shadow-[0_0_8px_rgba(21,98,240,0.5)]"></div>
-                         <span className="text-[13px] font-semibold text-gray-700">Base L2 (Value)</span>
+                         <span className="text-[13px] font-semibold text-gray-700">Base L2（价值）</span>
                        </div>
                        <div className="flex items-center gap-2 text-[12px] font-mono text-[#1562f0]">
                          {selectedTx.hashes.base.substring(0, 10)}... <Copy size={12} />
@@ -1163,11 +1164,11 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
                        <div className="flex items-center gap-2.5">
                          <div className="w-2.5 h-2.5 bg-gray-400 rounded-full"></div>
                          <span className="text-[13px] font-semibold text-gray-500">
-                            {(selectedTx.status === 'Pending' || selectedTx.status === 'Canceled') ? 'Base L2 (Locked)' : 'Base L2 (Pending)'}
+                            {(selectedTx.status === '待处理' || selectedTx.status === 'Canceled') ? tu('base_l2_locked') : tu('base_l2_pending')}
                          </span>
                        </div>
                        <span className="text-[11px] font-medium text-gray-400">
-                          {selectedTx.status === 'Pending' ? 'Checkout in progress' : selectedTx.status === 'Canceled' ? 'Request Withdrawn' : 'Awaiting Payment'}
+                          {selectedTx.status === '待处理' ? tu('checkout_in_progress') : selectedTx.status === 'Canceled' ? tu('request_withdrawn') : tu('awaiting_payment_2')}
                        </span>
                    </div>
                 )}
@@ -1189,7 +1190,7 @@ export default function BeamioTransactions({ initialTab = 'All' }: { initialTab?
              {/* JSON Toggle */}
              <div>
                 <button onClick={() => setShowJson(!showJson)} className="w-full py-3 border border-gray-200 text-gray-500 rounded-[16px] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50 transition-colors">
-                  <Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
+                  <Code size={16} /> {showJson ? tu('hide_raw_data') : tu('view_smart_receipt')}
                 </button>
                 {showJson && (
                   <VscodeJsonBlock className="mt-4" data={selectedTx} />

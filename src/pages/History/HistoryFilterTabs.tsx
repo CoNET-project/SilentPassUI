@@ -1,3 +1,4 @@
+import { tu } from '@/locale/beamioLocale'
 
 
 type Mode = 'pay' | 'request' | 'cashcode'
@@ -132,7 +133,7 @@ export function HistoryFilterTabs({
         : key === 'received'
         ? 'Receive'
         : key === 'pending'
-        ? 'Pending'
+        ? tu('pending')
         : key === 'completed'
         ? 'Completed'
         : key === 'reject'

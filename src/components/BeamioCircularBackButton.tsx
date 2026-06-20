@@ -1,5 +1,6 @@
 import { ChevronLeft } from 'lucide-react'
 import type { ButtonHTMLAttributes } from 'react'
+import { tu } from '@/locale/beamioLocale'
 
 type BeamioCircularBackButtonProps = {
 	onClick: () => void
@@ -14,7 +15,7 @@ type BeamioCircularBackButtonProps = {
  */
 export function BeamioCircularBackButton({
 	onClick,
-	ariaLabel = 'Back',
+	ariaLabel = tu('back'),
 	className = '',
 	disabled = false,
 	...rest

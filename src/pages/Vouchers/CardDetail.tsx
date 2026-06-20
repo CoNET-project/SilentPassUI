@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import type { searchResult } from "@/pages/chat/components/ChatHeaderIOS"
+import { tu } from '@/locale/beamioLocale'
 
 const CCSA_IMAGE = "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&q=80&w=800"
 const CCSA_OVERLAY = "from-black/60 via-black/10 to-transparent"
@@ -102,9 +103,7 @@ export default function CardDetail({
               <ShieldCheck size={20} />
             </div>
             <div>
-              <div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">
-                Security
-              </div>
+              <div className="text-[11px] uppercase font-bold tracking-wide text-gray-400">{tu('security')}</div>
               <div className="text-sm font-semibold text-gray-900">Guaranteed</div>
             </div>
           </div>

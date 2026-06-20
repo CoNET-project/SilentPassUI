@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { IpfsImg } from '@/components/IpfsImg';
+import { tu } from '@/locale/beamioLocale'
 import {
  Search,
  MapPin,
@@ -656,7 +657,7 @@ const GenesisPurchaseModal = ({ item, onClose, onConfirm }: { item: GenesisItem;
 
             <div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-4 mb-8">
                <div className="flex justify-between py-2 border-b border-white/10">
-                  <span className="text-gray-500">Transaction</span>
+                  <span className="text-gray-500">交易</span>
                   <span className="font-mono text-blue-400">0x8a...2b9</span>
                </div>
                <div className="flex justify-between py-2">
@@ -745,7 +746,7 @@ const ProductDetailModal = ({ item, inventory, onClose, onBuy, onOpenWallet }: {
                  <ShieldCheck size={20} />
               </div>
               <div>
-                 <div className={`text-[11px] uppercase font-bold tracking-wide ${item.id === 999 ? 'text-gray-500' : 'text-gray-400'}`}>Security</div>
+                 <div className={`text-[11px] uppercase font-bold tracking-wide ${item.id === 999 ? 'text-gray-500' : 'text-gray-400'}`}>安全</div>
                  <div className={`text-sm font-semibold ${item.id === 999 ? 'text-white' : 'text-gray-900'}`}>Guaranteed</div>
               </div>
            </div>
@@ -844,7 +845,7 @@ const CardPickerModal = ({ item, instances, onClose, onSelect }: { item: Product
          <div className="px-6">
             <div className="flex justify-between items-center mb-6">
                <div>
-                  <h2 className="text-xl font-bold text-gray-900">My Wallet</h2>
+                  <h2 className="text-xl font-bold text-gray-900">我的钱包</h2>
                   <p className="text-xs text-gray-500">{instances.length} Cards Available</p>
                </div>
                <button onClick={onClose} className="bg-gray-200 p-1.5 rounded-full text-gray-500"><X size={16}/></button>
@@ -984,14 +985,14 @@ const PaymentSheet = ({ item, onConfirm, onCancel }: { item: ProductItem; onConf
              </div>
           </div>
           <div className="space-y-4 mb-8">
-             <div className="flex justify-between items-center pb-4 border-b border-gray-200/60"><span className="text-gray-500 text-[15px]">Pay with</span><div className="flex items-center gap-2"><div className="w-6 h-6 bg-[#2775CA] rounded-full flex items-center justify-center text-[8px] text-white font-bold">USDC</div><span className="text-gray-900 font-semibold text-[15px]">Balance</span></div></div>
-             <div className="flex justify-between items-center pb-4 border-b border-gray-200/60"><span className="text-gray-500 text-[15px]">Network Fee</span><span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-lg">COVERED</span></div>
+             <div className="flex justify-between items-center pb-4 border-b border-gray-200/60"><span className="text-gray-500 text-[15px]">Pay with</span><div className="flex items-center gap-2"><div className="w-6 h-6 bg-[#2775CA] rounded-full flex items-center justify-center text-[8px] text-white font-bold">USDC</div><span className="text-gray-900 font-semibold text-[15px]">余额</span></div></div>
+             <div className="flex justify-between items-center pb-4 border-b border-gray-200/60"><span className="text-gray-500 text-[15px]">网络费</span><span className="text-green-600 font-bold text-xs bg-green-100 px-2 py-1 rounded-lg">COVERED</span></div>
              <div className="flex justify-between items-center pt-2"><span className="text-gray-900 font-bold text-lg">Total</span><span className={`text-3xl font-bold tracking-tight ${isFree ? 'text-green-600' : 'text-gray-900'}`}>{isFree ? "FREE" : `$${item.price}`}</span></div>
           </div>
           <div className="relative h-[60px]">
              {step === 'review' && <button onClick={handlePay} className={`w-full h-full text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all ${isFree ? 'bg-green-600 shadow-green-500/30' : 'bg-[#1562f0] shadow-[0_10px_20px_rgba(21,98,240,0.3)]'}`}>{isFree ? "Confirm Claim" : "Confirm Payment"}</button>}
              {step === 'processing' && <div className="w-full h-full bg-black text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-3"><div className="w-5 h-5 border-[3px] border-white/30 border-t-white rounded-full animate-spin"></div>Processing on Base...</div>}
-             {step === 'success' && <div className="w-full h-full bg-green-500 text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 animate-scale-in"><Check size={28} strokeWidth={3} />{isFree ? "Claimed" : "Purchased"}</div>}
+             {step === 'success' && <div className="w-full h-full bg-green-500 text-white rounded-[20px] font-bold text-[17px] flex items-center justify-center gap-2 animate-scale-in"><Check size={28} strokeWidth={3} />{isFree ? tu('claimed') : "Purchased"}</div>}
           </div>
           <div className="text-center mt-6 flex justify-center items-center gap-1.5 opacity-50"><Lock size={12} className="text-gray-500" /><span className="text-[11px] text-gray-500 font-medium">Secured by ERC-4337 Smart Account</span></div>
        </div>
@@ -1049,7 +1050,7 @@ export default function BeamioMarketPage() {
    const newId = '#' + (100 + Math.floor(Math.random() * 900));
    const newItem = {
      id: newId,
-     date: 'Just now',
+     date: tu('just_now'),
      balance: confirmingItem.price === 0 ? 'CLAIMED' : '$' + confirmingItem.price
    };
   
@@ -1071,14 +1072,14 @@ export default function BeamioMarketPage() {
   
    // Add Genesis Node instance to inventory
    const newId = '#GN-' + (248 + getOwnedInstances(999).length);
-   const newItem = { id: newId, date: 'Just now', balance: 'ACTIVE' };
+   const newItem = { id: newId, date: tu('just_now'), balance: 'ACTIVE' };
   
    setInventory(prev => ({
       ...prev,
       999: [...(prev[999] || []), newItem]
    }));
   
-   // Re-open detail to show "My Wallet" state
+   // Re-open detail to show tu('my_wallet') state
    setViewingItem(GENESIS_NODE_DATA);
  };
 
@@ -1108,7 +1109,7 @@ export default function BeamioMarketPage() {
         
          <div className="px-6 pt-16 pb-4 flex justify-between items-end bg-[#F2F2F7]/90 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
            <h1 className="text-[34px] font-bold text-black tracking-tight leading-none">Market</h1>
-           <div className="w-10 h-10 rounded-full bg-gray-200 border border-white overflow-hidden active:scale-95 transition-transform cursor-pointer"><IpfsImg src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Profile" /></div>
+           <div className="w-10 h-10 rounded-full bg-gray-200 border border-white overflow-hidden active:scale-95 transition-transform cursor-pointer"><IpfsImg src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt={tu('profile')} /></div>
          </div>
 
 
@@ -1157,7 +1158,7 @@ export default function BeamioMarketPage() {
             ))}
          </div>
         
-         <div className="px-8 pb-10 text-center mt-8"><button className="text-gray-400 text-xs font-medium bg-gray-200/50 px-4 py-2 rounded-lg mb-4">Redeem Code</button><p className="text-[10px] text-gray-400 leading-relaxed">Prices may vary by location. All assets are secured on Base Mainnet. <br/> Beamio Inc. © 2026</p></div>
+         <div className="px-8 pb-10 text-center mt-8"><button className="text-gray-400 text-xs font-medium bg-gray-200/50 px-4 py-2 rounded-lg mb-4">兑换码</button><p className="text-[10px] text-gray-400 leading-relaxed">Prices may vary by location. All assets are secured on Base Mainnet. <br/> Beamio Inc. © 2026</p></div>
        </div>
 
 

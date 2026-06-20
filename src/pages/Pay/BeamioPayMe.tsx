@@ -18,6 +18,7 @@ import { BeamioSegmentedDrag } from './components/beamioSegmented'
 import { encodeOpenContainerRelayQrPayload, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { X } from 'lucide-react'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
+import { tu } from '@/locale/beamioLocale'
 
 const showPaylinkSite = 'https://beamio.app'
 /** B-Unit fee: 0.8% of amount in USDC, 100 B-Units = 1 USDC. Min 2, max 200 B-Units; >=5000 USDC → 500 B-Units */
@@ -31,7 +32,7 @@ const getImg = (avatarSeed: string|undefined) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio').toString()}`
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
-type Mode = 'main' | 'PaymentLink'|'Print'
+type Mode = 'main' | 'PaymentLink'|'打印'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 type BeamioPayMeProps = {
@@ -155,12 +156,12 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	const handleDoneAmount = async () => {
 		const amt = Number(billAmount)
 		if (!amt || amt <= 0) {
-			setAmountError("Please enter a valid amount")
+			setAmountError(tu('please_enter_a_valid_amount'))
 			return
 		}
 		const toAddress = (receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA)) ? merchantAA : myAddress
 		if (!toAddress || !ethers.isAddress(toAddress)) {
-			setAmountError("No receiving address found")
+			setAmountError(tu('no_receiving_address_found'))
 			return
 		}
 		setAmountError("")
@@ -198,7 +199,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 				const aaRead = new ethers.Contract(toAddress, ['function owner() view returns (address)'], baseEndpoint)
 				const owner = await aaRead.owner()
 				if (!owner || owner === ethers.ZeroAddress) {
-					setAccountingError('Cannot determine payee owner for B-Unit fee check')
+					setAccountingError(tu('cannot_determine_payee_owner_for_b_unit_fee_check'))
 					setAccountingStatus('error')
 					return
 				}
@@ -209,12 +210,12 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 
 			const { total } = await getBUnitBalanceFromConetRpc(payerEOA)
 			if (total < feeBUnits) {
-				setAccountingError(`Insufficient B-Units: payee needs ${feeBUnits} B-Units for requestAccounting (balance: ${total} B-Units)`)
+				setAccountingError(`B-Unit 不足：收款方需要 ${feeBUnits} B-Units for requestAccounting (balance: ${total} B-Units)`)
 				setAccountingStatus('error')
 				return
 			}
 		} catch (e) {
-			setAccountingError((e as Error)?.message ?? 'B-Unit balance check failed')
+			setAccountingError((e as Error)?.message ?? tu('b_unit_balance_check_failed'))
 			setAccountingStatus('error')
 			return
 		}
@@ -239,13 +240,13 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 					setAccountingStatus('success')
 					setAccountingSyncTx(data.syncTx)
 				} else {
-					const errMsg = (data && typeof data === 'object' && typeof data.error === 'string') ? data.error : (res.ok ? 'Failed to record' : 'Request failed')
+					const errMsg = (data && typeof data === 'object' && typeof data.error === 'string') ? data.error : (res.ok ? '记录失败' : tu('request_failed'))
 					setAccountingError(errMsg)
 					setAccountingStatus('error')
 				}
 			})
 			.catch((err) => {
-				setAccountingError(err instanceof Error ? err.message : 'Network error')
+				setAccountingError(err instanceof Error ? err.message : tu('network_error'))
 				setAccountingStatus('error')
 			})
 	}
@@ -282,7 +283,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   const onMessage = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: qrValue, url: qrValue })
+        await navigator.share({ title: tu('beamio_payme'), text: qrValue, url: qrValue })
         return
       } catch {
         // ignore
@@ -294,7 +295,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   const onShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: qrValue, url: qrValue })
+        await navigator.share({ title: tu('beamio_payme'), text: qrValue, url: qrValue })
         return
       } catch {
         // ignore
@@ -359,7 +360,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							const canToggle =
 								!hideEoaReceivingToggle &&
 								!!(merchantAA && ethers.isAddress(merchantAA) && myAddress && ethers.isAddress(myAddress))
-							const label = showAA ? 'Express Pay (Smart Account)' : 'Main Vault (EOA)'
+							const label = showAA ? tu('express_pay_smart_account') : tu('main_vault_eoa')
 							const content = (
 								<>
 									{!hideReceivingWalletHeading && (
@@ -416,7 +417,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 											className={`h-12 w-12 animate-spin ${receivePanelLimeButtons ? 'text-[#65A30D]' : 'text-sky-500'}`}
 											strokeWidth={2}
 										/>
-										<p className="mt-3 text-sm text-slate-600 dark:text-slate-400">Creating payment request…</p>
+										<p className="mt-3 text-sm text-slate-600 dark:text-slate-400">{tu('creating_payment_request')}</p>
 									</div>
 								)}
 
@@ -425,9 +426,9 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 									<div className="relative z-10 flex flex-col items-center rounded-[20px] sm:rounded-[28px] bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-[0_26px_50px_rgba(132,120,255,0.22),0_10px_22px_rgba(0,0,0,0.08)] max-w-[280px]">
 										<XCircle className="w-12 h-12 text-amber-500 dark:text-amber-400 shrink-0" />
 										<p className="mt-3 text-sm font-medium text-slate-900 dark:text-slate-100 text-center">
-											{accountingError && /insufficient b-units/i.test(accountingError) ? 'Insufficient B-Units' : 'Request failed'}
+											{accountingError && /insufficient b-units/i.test(accountingError) ? tu('insufficient_b_units') : tu('request_failed')}
 										</p>
-										<p className="mt-1 text-xs text-slate-600 dark:text-slate-400 text-center break-words">{accountingError ?? 'Unknown error'}</p>
+										<p className="mt-1 text-xs text-slate-600 dark:text-slate-400 text-center break-words">{accountingError ?? tu('unknown_error')}</p>
 										<div className="mt-4 w-full flex flex-col gap-2">
 											{accountingError && /insufficient b-units/i.test(accountingError) && onShowFuelCenter && (
 												<button
@@ -440,9 +441,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 													}}
 													className="w-full py-2.5 px-4 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-semibold text-sm hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors flex items-center justify-center gap-2"
 												>
-													<Fuel className="w-4 h-4" strokeWidth={2.5} />
-													Go to Fuel Center
-												</button>
+													<Fuel className="w-4 h-4" strokeWidth={2.5} />{tu('go_to_fuel_center')}</button>
 											)}
 											<button
 												type="button"
@@ -457,9 +456,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 														? limeSecondaryBtn
 														: 'w-full rounded-xl bg-sky-100 px-4 py-2.5 text-sm font-semibold text-blue-600 transition-colors hover:bg-sky-200 dark:bg-sky-900/40 dark:text-blue-400 dark:hover:bg-sky-900/60'
 												}
-											>
-												Try again
-											</button>
+											>{tu('try_again')}</button>
 										</div>
 									</div>
 								)}
@@ -520,16 +517,16 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								<div className="mt-2 sm:mt-6 rounded-2xl bg-white dark:bg-slate-800/80 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600 overflow-hidden">
 									<div className="px-3 sm:px-4 py-2 sm:py-2.5 space-y-1 sm:space-y-1.5">
 										<div className="flex justify-between items-center">
-											<span className="text-slate-500 dark:text-slate-400 text-sm">Requesting</span>
+											<span className="text-slate-500 dark:text-slate-400 text-sm">{tu('requesting')}</span>
 											<span className="font-semibold text-slate-900 dark:text-slate-100">{requestingDisplay}</span>
 										</div>
 										<div className="flex justify-between items-center">
-											<span className="text-slate-500 dark:text-slate-400 text-sm">Fee (0.8%)</span>
+											<span className="text-slate-500 dark:text-slate-400 text-sm">{tu('fee_0_8')}</span>
 											<span className="text-slate-500 dark:text-slate-400">- {feeBUnits} B-Units</span>
 										</div>
 										<div className="border-t border-slate-200 dark:border-slate-600 pt-2">
 											<div className="flex justify-between items-start">
-												<span className="font-semibold text-green-600 dark:text-green-400 text-sm">Est. Receive</span>
+												<span className="font-semibold text-green-600 dark:text-green-400 text-sm">{tu('est_receive')}</span>
 												<div className="text-right">
 													<span className="font-semibold text-green-600 dark:text-green-400">{formatAmount(amtUsdc, 'USDC')} USDC</span>
 													{billCurrency !== 'USDC' && currencyData?.USDC != null && currencyData?.[billCurrency] != null && (() => {
@@ -546,9 +543,9 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 										{accountingStatus !== 'idle' && (
 											<div className="border-t border-slate-200 dark:border-slate-600 pt-2">
 												<div className="flex justify-between items-center">
-													<span className="text-slate-500 dark:text-slate-400 text-sm">Recorded</span>
+													<span className="text-slate-500 dark:text-slate-400 text-sm">{tu('recorded')}</span>
 													{accountingStatus === 'loading' && (
-														<span className="text-amber-600 dark:text-amber-400 text-sm animate-pulse">Recording…</span>
+														<span className="text-amber-600 dark:text-amber-400 text-sm animate-pulse">{tu('recording')}</span>
 													)}
 													{accountingStatus === 'success' && accountingSyncTx && (
 														<a
@@ -562,7 +559,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 														</a>
 													)}
 													{accountingStatus === 'error' && (
-														<span className="text-slate-400 dark:text-slate-500 text-xs">Failed to record</span>
+														<span className="text-slate-400 dark:text-slate-500 text-xs">{tu('failed_to_record')}</span>
 													)}
 												</div>
 											</div>
@@ -596,7 +593,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								) : (
 									<Copy className="h-5 w-5 shrink-0 text-slate-600 dark:text-slate-400" />
 								)}
-								<span>Copy</span>
+								<span>{tu('copy')}</span>
 							</button>
 							<button
 								type="button"
@@ -604,7 +601,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								className={receivePanelLimeButtons ? limeShareBtn : defaultShareBtn}
 							>
 								<Share2 className="w-5 h-5 shrink-0" />
-								<span>Share</span>
+								<span>{tu('share')}</span>
 							</button>
 						</div>
 						)}
@@ -621,13 +618,13 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		
       </div>
 	  
-	  {showMode === 'Print' && (
+	  {showMode === '打印' && (
 			<ShowPrint
-				title="Your Beamio QR Kit"
-				merchantName={displayName(beamio) || "Demo"}
+				title={tu('your_beamio_qr_kit')}
+				merchantName={displayName(beamio) || tu('demo')}
 				handle={`@${beamio?.accountName || "BeamioDemo"}`}
-				payTitle="Beamio PayMe"
-				paySubtitle="USDC · Any amount"
+				payTitle={tu('beamio_payme')}
+				paySubtitle={tu('usdc_any_amount')}
 				payLink={successUrl}
 				qrValue={successUrl}
 				onDone={() => setShowMode('main')}

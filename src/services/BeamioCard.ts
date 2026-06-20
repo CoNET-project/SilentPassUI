@@ -22,6 +22,7 @@ import { storeSystemData } from "./beamio";
 import { cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
+import { tu } from '@/locale/beamioLocale'
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
@@ -4206,7 +4207,7 @@ export const getBUnitLedgerFromIndexer = async (
         entries.push({
           ...baseEntry,
           id: txIdHex,
-          title: "Fuel Yield (1:100)",
+          title: tu('fuel_yield_1_100'),
           subtitle: "System Top-up",
           amount: amountBUnits,
           type: "refuel",
@@ -4230,7 +4231,7 @@ export const getBUnitLedgerFromIndexer = async (
         const baseTxHash = !isRequestAccounting && ophHex && ethers.dataLength(ophHex) === 32 ? ophHex : undefined;
         const originalPaymentHash = isRequestAccounting && ophHex && ethers.dataLength(ophHex) === 32 ? ophHex : undefined;
         // TX_SEND_USDC / TX_X402_SEND: fixed 2 buint → Network Fee; requestAccounting: 0.8% protocol → Service Fee (0.8%)
-        const title = (isSendUSDC || isX402Send) ? "Network Fee" : isRequestAccounting ? "Service Fee (0.8%)" : "B-Unit Burn";
+        const title = (isSendUSDC || isX402Send) ? tu('network_fee') : isRequestAccounting ? "Service Fee (0.8%)" : "B-Unit Burn";
         const subtitle = isRequestAccounting
           ? `Payment Request ${ophHex ? ophHex.slice(-3) : "—"}`
           : (isSendUSDC || isX402Send)
@@ -4273,7 +4274,7 @@ function formatBUnitLedgerTime(ts: number): string {
   const diff = now - ts * 1000;
   if (diff < 60 * 60 * 1000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / 3600000)}h ago`;
-  if (diff < 48 * 60 * 60 * 1000) return "Yesterday";
+  if (diff < 48 * 60 * 60 * 1000) return tu('yesterday');
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
@@ -4408,7 +4409,7 @@ export async function postNfcLinkApp(body: {
 			redeemOnChain,
 		}
 	} catch (e: unknown) {
-		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+		return { ok: false, error: e instanceof Error ? e.message : tu('network_error') }
 	}
 }
 
@@ -4459,7 +4460,7 @@ export async function postNfcLinkAppClaimWithKey(body: {
 				: undefined,
 		}
 	} catch (e: unknown) {
-		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+		return { ok: false, error: e instanceof Error ? e.message : tu('network_error') }
 	}
 }
 
@@ -4558,7 +4559,7 @@ export async function postListLinkedNfcCards(walletRaw: string): Promise<ListLin
 			cards,
 		}
 	} catch (e: unknown) {
-		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+		return { ok: false, error: e instanceof Error ? e.message : tu('network_error') }
 	}
 }
 
@@ -4596,7 +4597,7 @@ export async function postNfcCardLinkStateSigned(params: {
 		}
 		return { ok: true }
 	} catch (e: unknown) {
-		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+		return { ok: false, error: e instanceof Error ? e.message : tu('network_error') }
 	}
 }
 
@@ -4651,6 +4652,6 @@ export async function postGetUidAssetsForNfcScan(body: {
 			error: errStr || undefined,
 		}
 	} catch (e: unknown) {
-		return { ok: false, error: e instanceof Error ? e.message : 'Network error' }
+		return { ok: false, error: e instanceof Error ? e.message : tu('network_error') }
 	}
 }

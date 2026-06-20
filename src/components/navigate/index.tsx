@@ -1,5 +1,6 @@
 import { ChevronLeft } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { tu } from '@/locale/beamioLocale'
 
 const NavigateLeftButton = () => {
   const { navigateLeftButtonArray, setNavigateLeftButtonArray } = useDaemonContext()
@@ -39,7 +40,7 @@ const NavigateLeftButton = () => {
 				active:scale-95
 				transition
 			"
-			aria-label="Back"
+			aria-label={tu('back')}
 			>
 			<ChevronLeft className="w-5 h-5 stroke-[2.5]" />
 			</button>

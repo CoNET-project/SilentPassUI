@@ -95,6 +95,7 @@ import bIcon from '@/components/assets/logo512.png'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import VscodeJsonBlock from '@/components/VscodeJsonBlock'
+import { tu } from '@/locale/beamioLocale'
 
 const BEAMIO_INDEXER = contracts.BeamioDiamond?.address ?? '0xd764eBA64536cFF1bbE7e7c7Bbc90F35620f72a9'
 
@@ -238,12 +239,12 @@ const ROUTE_ITEM_KEYS = ['asset', 'amountE6', 'assetType', 'source', 'tokenId', 
 /** RouteSource: 0=MainUSDC, 1=UserCardPoint, 2=UserCardCoupon, 3=UserCardCashVoucher, 4=TipAppend */
 function routeItemLabel(source: number, isAA: boolean): { primary: string; secondary: string } {
 	switch (source) {
-		case 0: return { primary: 'USDC', secondary: isAA ? 'Cash • Express Pay (AA)' : 'Cash • Main Wallet (EOA)' }
-		case 1: return { primary: 'Points', secondary: 'Points • Express Pay' }
-		case 2: return { primary: 'Coupon', secondary: 'Coupon • Express Pay' }
-		case 3: return { primary: 'Voucher', secondary: 'Voucher • Express Pay' }
+		case 0: return { primary: 'USDC', secondary: isAA ? tu('cash_express_pay_aa') : tu('cash_main_wallet_eoa_2') }
+		case 1: return { primary: 'Points', secondary: tu('points_express_pay') }
+		case 2: return { primary: 'Coupon', secondary: tu('coupon_express_pay') }
+		case 3: return { primary: 'Voucher', secondary: tu('voucher_express_pay') }
 		case 4: return { primary: 'Tip', secondary: 'Tip' }
-		default: return { primary: 'Asset', secondary: 'Express Pay' }
+		default: return { primary: 'Asset', secondary: tu('express_pay') }
 	}
 }
 
@@ -365,8 +366,8 @@ function parsePeerToDisplay(peer: searchResult) {
 function isProvisionalRecentActivityTitle(text: string): boolean {
 	const t = String(text ?? '').trim()
 	if (!t) return true
-	if (t === 'Unknown') return true
-	if (isIndexerMerchantChargePlaceholderTitle(t) || t === 'Top-up') return true
+	if (t === tu('unknown')) return true
+	if (isIndexerMerchantChargePlaceholderTitle(t) || t === '充值') return true
 	if (/^Top-up:\s*$/i.test(t)) return true
 	if (/0x[a-f0-9]{4}…[a-f0-9]{4}/i.test(t)) return true
 	if (isProvisionalMerchantGiftActivityTitle(t)) return true
@@ -610,7 +611,7 @@ function RecentActivityTxItemRow({
 
 	// payee 决定资金流向：payee=EOA → Express Pay → Main Wallet (AA→EOA)，payee=AA → Main Wallet → Express Pay (EOA→AA)
 	const internalTitle = isInternalTransfer && eoaAddr && aaAddr
-		? (payeeAddr.toLowerCase() === eoaAddr ? 'Express Pay → Main Wallet' : payeeAddr.toLowerCase() === aaAddr ? 'Main Wallet → Express Pay' : 'Internal Transfer')
+		? (payeeAddr.toLowerCase() === eoaAddr ? tu('express_pay_main_wallet') : payeeAddr.toLowerCase() === aaAddr ? tu('main_wallet_express_pay') : tu('internal_transfer'))
 		: tx.title
 
 	const isAddToExpressPay = isInternalTransfer && payeeAddr.toLowerCase() === aaAddr
@@ -638,7 +639,7 @@ function RecentActivityTxItemRow({
 				handle: tx.handle,
 				forText: tx.forText,
 			})
-		: fullName || beamioTag || safeHandle || shortAddr || 'Unknown'
+		: fullName || beamioTag || safeHandle || shortAddr || tu('unknown')
 	const rowTxCategory = String(rawTx?.txCategory ?? '').toLowerCase()
 	const isIssuedNftClaimTx = isRecentActivityIssuedNftClaimTxView(tx)
 	const resolvedClaimSeriesTitle = useIssuedNftClaimSeriesTitle(tx, isIssuedNftClaimTx)
@@ -745,7 +746,7 @@ function RecentActivityTxItemRow({
 	])
 	const merchantCardName = useMemo(() => {
 		if (!merchantChargeProgramName) return ''
-		return `Payment to ${merchantChargeProgramName}`
+		return `付款至 ${merchantChargeProgramName}`
 	}, [merchantChargeProgramName])
 	const merchantChargeCurrencyCode =
 		rawTx && isMerchantChargeLedgerTx
@@ -790,33 +791,33 @@ function RecentActivityTxItemRow({
 		: isMerchantGiftLedgerTx
 		? merchantGiftListTitle(tx.isInbound, beamioTag, counterpartyLabel)
 		: isMerchantChargeLedgerTx
-		? merchantCardName || 'Merchant Payment'
+		? merchantCardName || tu('merchant_payment')
 		: isCardTopupLedgerTx
-		? topupListTitle || tx.title || 'Top-up'
+		? topupListTitle || tx.title || tu('add_cash')
 		: tx.type === 'fuel_yield'
-		? 'Fuel Yield (1:100)'
+		? tu('fuel_yield_1_100')
 		: isReqExpired
-			? 'Request Expired'
+			? tu('request_expired')
 			: isReqCanceled
-				? 'Request Canceled'
+				? tu('request_canceled')
 				: isPendingRequesting
-				? 'Payment QR'
+				? '付款二维码'
 				: isRequestFulfilled
-					? 'Payment Received'
+					? tu('payment_received')
 					: sendToNoOph
-						? `Send to ${fullName || beamioTag || counterpartyLabel}`
+						? `发送至 ${fullName || beamioTag || counterpartyLabel}`
 						: paidToAA
-							? `Paid to ${beamioTag || counterpartyLabel}`
+							? `付款给 ${beamioTag || counterpartyLabel}`
 							: isEoaSent || isAASent
-							? `Sent to ${counterpartyLabel}`
+							? `发送至 ${counterpartyLabel}`
 							: isEoaReceived
-								? `Received from ${counterpartyLabel}`
+								? `收款自 ${counterpartyLabel}`
 								: isInternalTransfer
 									? internalTitle
 									: tx.title
 	const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
 	const rowSubtitleLabel = isIssuedNftClaimTx
-		? (claimMerchantName || 'Claimed')
+		? (claimMerchantName || tu('claimed'))
 		: isMerchantGiftLedgerTx
 		? merchantGiftCardDisplayName
 		: isMerchantChargeLedgerTx
@@ -824,9 +825,9 @@ function RecentActivityTxItemRow({
 		: isCardTopupLedgerTx
 		? recentActivityTopupPaymentLegLabel(rowTxCategory, topupDisplayJson)
 		: tx.type === 'fuel_yield'
-		? 'USDC Top-up'
+		? tu('usdc_top_up')
 		: isReqExpired
-			? ((tx.forText ?? '').trim() || 'Link Invalidated')
+			? ((tx.forText ?? '').trim() || tu('link_invalidated'))
 			: isReqCanceled
 				? ((tx.forText ?? '').trim() || '')
 				: isPendingRequesting
@@ -834,7 +835,7 @@ function RecentActivityTxItemRow({
 				: isRequestFulfilled
 					? (beamioTag ? `Paid by ${beamioTag}` : `Paid by ${fullName || shortAddr || '…'}`)
 					: isInternalTransfer
-						? 'Internal Transfer'
+						? tu('internal_transfer')
 						: sendToNoOph
 							? (beamioTag ?? '')
 							: paidToAA
@@ -904,7 +905,7 @@ function RecentActivityTxItemRow({
 					</div>
 				) : isMerchantChargeLedgerTx ? (
 					<MyBrandMerchantIcon
-						title={merchantChargeProgramName || 'Merchant'}
+						title={merchantChargeProgramName || '商户'}
 						iconUrl={merchantChargeIconUrl}
 						sizeClassName="h-9 w-9 rounded-[10px] shadow-sm"
 						letterClassName="text-sm font-bold text-[#1562f0] dark:text-[#6ba3ff]"
@@ -947,9 +948,7 @@ function RecentActivityTxItemRow({
 							timestampMs={tx.timestampMs}
 						/>
 						{tx.type === 'request_fulfilled' && (
-							<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">
-								Request
-							</span>
+							<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">{tu('request')}</span>
 						)}
 						{tx.type === 'request_create' && !isReqExpired && !isReqCanceled && (
 							<span className="text-[8px] font-semibold text-[#FF9500] bg-[#FF9500]/10 px-1 py-0 rounded-[4px]">
@@ -978,7 +977,7 @@ function RecentActivityTxItemRow({
 					}`}
 				>
 					{tx.type === 'request_create' && !isReqExpired && !isReqCanceled ? (
-						<span className="text-[#FF9500]">Pending</span>
+						<span className="text-[#FF9500]">待处理</span>
 					) : tx.type === 'fuel_yield' ? (
 						<>-{formatAmount(fuelYieldSpentUsdc, 'USDC')}</>
 					) : isReqExpired || isReqCanceled ? (
@@ -1005,7 +1004,7 @@ function RecentActivityTxItemRow({
 					<span className="text-[9px] font-medium text-gray-400 dark:text-slate-500">USDC</span>
 				) : isCardTopupLedgerTx && topupBonusFiat > 0 ? (
 					<span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-semibold text-[#FF9500]">
-						<span>Incl</span>
+						<span>{tu('incl')}</span>
 						<span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
 							<Gift size={9} strokeWidth={2.5} />
 						</span>
@@ -1039,7 +1038,7 @@ function RecentActivityTxItemRow({
 }
 
 interface ActiveHistoryPannelNewProps {
-	/** 可选标题，用于 Home Recent Activity 等场景，默认 "Indexer History" */
+	/** 可选标题，用于 Home Recent Activity 等场景，默认 tu('indexer_history') */
 	title?: string
 	/** 覆盖查询地址，调试或指定展示某地址时使用；传入时优先于 profiles */
 	overrideAddress?: string
@@ -1066,7 +1065,7 @@ interface ActiveHistoryPannelNewProps {
 }
 
 const ActiveHistoryPannelNew = ({
-	title = 'Indexer History',
+	title = tu('indexer_history'),
 	overrideAddress,
 	compact = false,
 	compactLimit = 5,
@@ -1164,7 +1163,7 @@ const ActiveHistoryPannelNew = ({
 	)
 	const detailTitleText = selectedTx
 		? (() => {
-				if (selectedTx.type === 'fuel_yield') return 'Fuel Yield (1:100)'
+				if (selectedTx.type === 'fuel_yield') return tu('fuel_yield_1_100')
 				const selectedRaw = selectedTx.rawTransaction as RawTxRecord | undefined
 				const selectedCat = String(selectedRaw?.txCategory ?? '').toLowerCase()
 				if (isMerchantChargeTxView(selectedTx)) {
@@ -1221,7 +1220,7 @@ const ActiveHistoryPannelNew = ({
 					const eoaAddr = (eoa ?? myAddress ?? '').toLowerCase()
 					const aaAddr = aa.toLowerCase()
 					// 与 TxItemRow 的 internalTitle 一致：payee 决定资金流向
-					return payeeAddr === eoaAddr ? 'Withdraw from Express Pay' : payeeAddr === aaAddr ? 'Add to Express Pay' : 'Internal Transfer'
+					return payeeAddr === eoaAddr ? tu('withdraw_from_express_pay') : payeeAddr === aaAddr ? tu('add_to_express_pay') : tu('internal_transfer')
 				}
 				const isEoaSent = !selectedTxMySideIsAA && !selectedTx.isInbound
 				const isEoaReceived = !selectedTxMySideIsAA && selectedTx.isInbound
@@ -1231,7 +1230,7 @@ const ActiveHistoryPannelNew = ({
 						selectedTx.counterpartyAddress && selectedTx.counterpartyAddress.length >= 10
 							? `${selectedTx.counterpartyAddress.slice(0, 6)}…${selectedTx.counterpartyAddress.slice(-4)}`
 							: ''
-					const counterpartyLabel = detailFullName || detailBeamioTag || safeHandle || shortAddr || 'Unknown'
+					const counterpartyLabel = detailFullName || detailBeamioTag || safeHandle || shortAddr || tu('unknown')
 					return isEoaSent ? `${counterpartyLabel}` : `${counterpartyLabel}`
 				}
 				return selectedTx.title
@@ -1414,7 +1413,7 @@ const ActiveHistoryPannelNew = ({
 		cardMap,
 		recentActivityCardNameDirectory,
 	])
-	const selectedCardUnitLabel = selectedCardName ? `$${selectedCardName}` : 'Card Voucher'
+	const selectedCardUnitLabel = selectedCardName ? `$${selectedCardName}` : tu('card_voucher')
 	const selectedCardAddress = useMemo(() => {
 		if (!selectedTx) return ''
 		if (selectedIsMerchantChargeKind) return merchantChargeCardAddressFromTxView(selectedTx)
@@ -1427,7 +1426,7 @@ const ActiveHistoryPannelNew = ({
 		return resolveMyBrandCardIconUrl(peekMetadata(selectedCardAddress))
 	}, [selectedIsMerchantChargeKind, selectedCardAddress, cardMap, peekMetadata])
 	const selectedMergedUnitLabel = useMemo(() => {
-		if (!selectedCardName) return 'Merged Voucher'
+		if (!selectedCardName) return tu('merged_voucher')
 		const base = selectedCardName.split('-')[0]?.trim() || selectedCardName
 		return `$${base}`
 	}, [selectedCardName])
@@ -1641,7 +1640,7 @@ const ActiveHistoryPannelNew = ({
 	const selectedTopupDetailProgramTitle = selectedTopupDetailTitle.replace(/^Top-up:?\s*/i, '').trim()
 	const selectedProgramCardDetailTitle =
 		selectedTopupDetailProgramTitle || selectedChargeDetailProgramTitle
-	const selectedCardDisplayLabel = selectedCardName || selectedProgramCardDetailTitle || 'Card Voucher'
+	const selectedCardDisplayLabel = selectedCardName || selectedProgramCardDetailTitle || tu('card_voucher')
 	const selectedCardDisplayInitial = (selectedCardDisplayLabel.trim().match(/[A-Za-z0-9]/)?.[0] ?? 'B').toUpperCase()
 	const selectedTopupBonusFiat = selectedIsCardTopupKind ? Math.max(0, Number(selectedTx?.topupBonusFiat ?? 0)) : 0
 	const selectedTopupDetailSubtitle = useMemo(
@@ -1978,9 +1977,9 @@ const ActiveHistoryPannelNew = ({
 
 	const getStatus = (tx: TxView) => {
 		if (tx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(tx))) return 'Canceled'
-		if (tx.type === 'request_create' && isRequestExpired(tx)) return 'Expired'
+		if (tx.type === 'request_create' && isRequestExpired(tx)) return tu('expired_2')
 		if (tx.type === 'request_create') return 'Waiting'
-		if (tx.type === 'request_expired') return 'Expired'
+		if (tx.type === 'request_expired') return tu('expired_2')
 		if (tx.type === 'request_cancel') return 'Canceled'
 		if (tx.type === 'voucher_burn' && tx.amountUSDC === 0) return 'Redeemed'
 		return tx.isInbound ? 'Received' : 'Finalized'
@@ -2044,7 +2043,7 @@ const ActiveHistoryPannelNew = ({
 							disabled={manualRefreshing}
 							className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/75 transition-colors hover:bg-white disabled:opacity-50 dark:bg-slate-700/75 dark:hover:bg-slate-700"
 							style={{ pointerEvents: floatingControlsInteractive ? 'auto' : 'none' }}
-							aria-label="Refresh"
+							aria-label={tu('refresh')}
 						>
 							{manualRefreshing ? (
 								<Loader size={13} className="animate-spin text-[#1562f0]" />
@@ -2099,7 +2098,7 @@ const ActiveHistoryPannelNew = ({
 						onClick={handleRefresh}
 						disabled={manualRefreshing}
 						className="w-[22.4px] h-[22.4px] flex items-center justify-center rounded-full bg-white dark:bg-slate-700 shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors disabled:opacity-50 shrink-0"
-						aria-label="Refresh"
+						aria-label={tu('refresh')}
 					>
 						{manualRefreshing ? (
 							<Loader size={13} className="animate-spin text-[#1562f0]" />
@@ -2122,9 +2121,7 @@ const ActiveHistoryPannelNew = ({
 							'flex items-center gap-1 text-[12px] font-semibold transition-colors',
 							viewAllClassName ?? 'text-[#1562f0] hover:text-[#0d47c7]',
 						].join(' ')}
-					>
-						View all
-						<ChevronRight size={16} strokeWidth={2.5} />
+					>{tu('view_all_2')}<ChevronRight size={16} strokeWidth={2.5} />
 					</button>
 				)}
 			</div>
@@ -2156,12 +2153,12 @@ const ActiveHistoryPannelNew = ({
 						onClick={handleRefresh}
 						disabled={manualRefreshing}
 						className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/60 dark:bg-slate-700/50 border border-white/40 dark:border-slate-600/50 hover:bg-white/80 dark:hover:bg-slate-700/70 active:scale-[0.98] transition-all disabled:opacity-60 disabled:pointer-events-none"
-						aria-label="Refresh"
+						aria-label={tu('refresh')}
 					>
 						{activeTab === 'Cash' && <Wallet size={12} className="text-[#1562f0]" />}
 						{activeTab === 'Vouchers' && <Ticket size={12} className="text-[#1562f0]" />}
 						<span className="text-[11px] font-medium text-gray-500 dark:text-slate-400">
-							{activeTab === 'Cash' ? 'Main Wallet (USDC)' : activeTab === 'Vouchers' ? 'Express Pay (Assets)' : 'All Accounts'}
+							{activeTab === 'Cash' ? tu('main_wallet_usdc') : activeTab === 'Vouchers' ? tu('express_pay_assets') : tu('all_accounts')}
 						</span>
 						{manualRefreshing ? (
 							<Loader size={14} className="animate-spin text-[#1562f0] shrink-0" />
@@ -2185,9 +2182,7 @@ const ActiveHistoryPannelNew = ({
 			)}
 
 			{!error && !loading && items.length === 0 && (
-				<div className="py-12 text-center text-sm text-gray-500 dark:text-slate-400">
-					No transactions this month
-				</div>
+				<div className="py-12 text-center text-sm text-gray-500 dark:text-slate-400">{tu('no_transactions_this_month')}</div>
 			)}
 
 			{!error && items.length > 0 && (
@@ -2215,7 +2210,7 @@ const ActiveHistoryPannelNew = ({
 
 			{items.length > 0 && !error && (
 				<div className="pt-2 pb-1 text-center">
-					<span className="text-[12px] font-medium text-gray-400 dark:text-slate-500">Encrypted on CoNET L1</span>
+					<span className="text-[12px] font-medium text-gray-400 dark:text-slate-500">{tu('encrypted_on_conet_l1')}</span>
 				</div>
 			)}
 
@@ -2240,7 +2235,7 @@ const ActiveHistoryPannelNew = ({
 										opacity: backBtnOpacity,
 										pointerEvents: backBtnOpacity < 0.05 ? 'none' : 'auto',
 									}}
-									aria-label="Back"
+									aria-label={tu('back')}
 								>
 									<ChevronLeft className="w-6 h-6 text-slate-900 dark:text-slate-100" strokeWidth={2.6} />
 								</button>
@@ -2253,7 +2248,7 @@ const ActiveHistoryPannelNew = ({
 									{/* 顶部留白：刘海 + 5rem，统一各页首内容距顶距离（Beamio 主设置 protocol） */}
 									<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 									<ActiveHistoryPannelNew
-										title="Activity"
+										title={tu('activity')}
 										overrideAddress={overrideAddress}
 										compact={false}
 										embeddedInDrawer
@@ -2283,7 +2278,7 @@ const ActiveHistoryPannelNew = ({
 						<button
 							onClick={() => setSelectedTx(null)}
 							className={`absolute top-6 right-6 z-10 ${CAPSULE_BTN_CLASS}`}
-							aria-label="Close"
+							aria-label={tu('close')}
 						>
 							<X className="w-6 h-6 text-slate-900 dark:text-slate-100" strokeWidth={2.6} />
 						</button>
@@ -2322,7 +2317,7 @@ const ActiveHistoryPannelNew = ({
 								if (selectedIsMerchantChargeKind) {
 									return (
 										<MyBrandMerchantIcon
-											title={selectedCardName || selectedCardMetadataName || 'Merchant'}
+											title={selectedCardName || selectedCardMetadataName || '商户'}
 											iconUrl={selectedChargeIconUrl}
 											sizeClassName="h-[72px] w-[72px] rounded-[24px] shadow-lg mb-5 mx-auto"
 											letterClassName="text-3xl font-bold text-[#1562f0] dark:text-[#6ba3ff]"
@@ -2370,13 +2365,13 @@ const ActiveHistoryPannelNew = ({
 									className={`text-[28px] font-bold tracking-tight leading-tight ${amountColorClass}`}
 								>
 									{selectedTx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(selectedTx))
-										? 'Request Canceled'
+										? tu('request_canceled')
 										: (selectedTx.type === 'request_create' || selectedTx.type === 'request_expired') && isRequestExpired(selectedTx)
-										? 'Request Expired'
+										? tu('request_expired')
 										: selectedTx.type === 'fuel_yield'
 										? `-${formatAmount(selectedTx.amountUSDC > 0 ? selectedTx.amountUSDC : (Math.abs(selectedTx.amountFiat) / 100), 'USDC')} USDC`
 										: selectedTx.type === 'request_create' || selectedTx.type === 'request_expired'
-										? `Requesting ${formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)} ${selectedTx.currencyCode}`
+										? `请求中 ${formatAmount(Math.abs(selectedTx.amountFiat), selectedTx.currencyCode as ICurrency)} ${selectedTx.currencyCode}`
 										: selectedIsCardTopupKind
 											? formatTopupListAmountPositive(selectedTx.amountFiat, selectedTx.currencyCode)
 										: selectedIsMerchantChargeKind
@@ -2457,13 +2452,13 @@ const ActiveHistoryPannelNew = ({
 								className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold mt-4 ${
 									getStatus(selectedTx) === 'Waiting' && !canceledHashes.has(getOriginalPaymentHash(selectedTx))
 										? 'bg-[#FF9500]/10 text-[#FF9500]' :
-									getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx))
+									getStatus(selectedTx) === '已过期' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx))
 										? 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400' :
 									'bg-[#34C759]/10 text-[#34C759]'
 								}`}
 							>
 								{getStatus(selectedTx) === 'Waiting' && !canceledHashes.has(getOriginalPaymentHash(selectedTx)) && <Clock size={14} />}
-								{(getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx))) && <Ban size={14} />}
+								{(getStatus(selectedTx) === '已过期' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx))) && <Ban size={14} />}
 								{(getStatus(selectedTx) === 'Received' || getStatus(selectedTx) === 'Finalized' || getStatus(selectedTx) === 'Redeemed') && (
 									<CheckCircle2 size={14} />
 								)}
@@ -2474,11 +2469,11 @@ const ActiveHistoryPannelNew = ({
 						{/* displayJson 附带的 title / forText 等文字信息：Fuel Yield / Top-up detail 中不显示旧 indexer title 卡片 */}
 						{selectedTx.type !== 'fuel_yield' && !selectedIsProgramCardLedgerKind && (selectedTx.forText ?? selectedTx.handle) && (
 							<div className="mb-6 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 px-4 py-3">
-								{selectedTx.title !== 'Transaction' && selectedTx.title !== 'Beamio Transfer' && (
+								{selectedTx.title !== tu('transaction') && selectedTx.title !== tu('beamio_transfer') && (
 									<p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedTx.title}</p>
 								)}
 								{!handleIsJson(selectedTx.forText ?? selectedTx.handle) && (
-									<p className={`text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap break-words ${selectedTx.title !== 'Transaction' && selectedTx.title !== 'Beamio Transfer' ? 'mt-1' : ''}`}>
+									<p className={`text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap break-words ${selectedTx.title !== tu('transaction') && selectedTx.title !== tu('beamio_transfer') ? 'mt-1' : ''}`}>
 										{selectedTx.forText ?? selectedTx.handle}
 									</p>
 								)}
@@ -2489,9 +2484,7 @@ const ActiveHistoryPannelNew = ({
 						{getStatus(selectedTx) === 'Waiting' && selectedTx.type === 'request_create' && !canceledHashes.has(getOriginalPaymentHash(selectedTx)) && !isRequestExpired(selectedTx) && (
 							<div className="mb-6">
 								<div className="rounded-[20px] bg-[#FFF5E0] dark:bg-amber-900/25 px-5 py-5 shadow-[0_2px_12px_rgba(255,153,0,0.08)]">
-									<p className="text-[15px] font-semibold text-[#FF9900] dark:text-amber-400 text-center mb-4">
-										Code is active. Waiting for payment.
-									</p>
+									<p className="text-[15px] font-semibold text-[#FF9900] dark:text-amber-400 text-center mb-4">{tu('code_is_active_waiting_for_payment')}</p>
 									{buildVouchersUrl(selectedTx) && (
 										<button
 											type="button"
@@ -2500,7 +2493,7 @@ const ActiveHistoryPannelNew = ({
 												if (!url) return
 												if (navigator.share) {
 													try {
-														await navigator.share({ title: 'Beamio Payment', url, text: url })
+														await navigator.share({ title: tu('beamio_payment'), url, text: url })
 													} catch {
 														await navigator.clipboard.writeText(url)
 													}
@@ -2510,9 +2503,7 @@ const ActiveHistoryPannelNew = ({
 											}}
 											className="w-full py-3 rounded-xl font-semibold text-sm bg-white text-[#FF9900] dark:text-amber-400 border border-gray-200/80 dark:border-slate-600/60 shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition"
 										>
-											<Share2 size={18} strokeWidth={2.5} />
-											Share Again
-										</button>
+											<Share2 size={18} strokeWidth={2.5} />{tu('share_again')}</button>
 									)}
 								</div>
 								{cancelRequestError && (
@@ -2525,7 +2516,7 @@ const ActiveHistoryPannelNew = ({
 										if (!reqHash || !ethers.isHexString(reqHash) || ethers.dataLength(reqHash) !== 32) return
 										const pk = profiles?.[0]?.privateKeyArmor
 										if (!pk || typeof pk !== 'string') {
-											setCancelRequestError('No signing key available')
+											setCancelRequestError(tu('no_signing_key_available'))
 											return
 										}
 										setCancelRequestLoading(true)
@@ -2544,10 +2535,10 @@ const ActiveHistoryPannelNew = ({
 												load()
 												setSelectedTx(null)
 											} else {
-												setCancelRequestError(data?.error || res.statusText || 'Cancel failed')
+												setCancelRequestError(data?.error || res.statusText || tu('cancel_failed'))
 											}
 										} catch (e: unknown) {
-											setCancelRequestError(e instanceof Error ? e.message : 'Cancel failed')
+											setCancelRequestError(e instanceof Error ? e.message : tu('cancel_failed'))
 										} finally {
 											setCancelRequestLoading(false)
 										}
@@ -2571,11 +2562,11 @@ const ActiveHistoryPannelNew = ({
 								>
 									{selectedTx.card.image && (
 										<div className="w-14 h-14 rounded-xl overflow-hidden bg-amber-100 dark:bg-amber-900/40 flex-shrink-0">
-											<IpfsImg src={selectedTx.card.image} alt={selectedTx.card.title ?? 'Gift'} className="w-full h-full object-cover" />
+											<IpfsImg src={selectedTx.card.image} alt={selectedTx.card.title ?? tu('gift')} className="w-full h-full object-cover" />
 										</div>
 									)}
 									<div className="flex-1 min-w-0 text-left">
-										<p className="font-semibold text-amber-900 dark:text-amber-200 truncate">{selectedTx.card.title || 'Gift Card'}</p>
+										<p className="font-semibold text-amber-900 dark:text-amber-200 truncate">{selectedTx.card.title || tu('gift_card')}</p>
 										{selectedTx.card.detail && (
 											<p className="text-[12px] text-amber-700 dark:text-amber-300 line-clamp-2 mt-0.5">{selectedTx.card.detail}</p>
 										)}
@@ -2616,7 +2607,7 @@ const ActiveHistoryPannelNew = ({
 										)}
 										{expiryText && (
 											<span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 dark:bg-slate-600/40 text-slate-700 dark:text-slate-300 rounded-full text-[12px] font-medium">
-												<Clock size={12} /> {selectedTx.type === 'request_expired' ? 'Expired' : 'Expires'}: {expiryText}
+												<Clock size={12} /> {selectedTx.type === 'request_expired' ? tu('expired_2') : 'Expires'}: {expiryText}
 											</span>
 										)}
 									</div>
@@ -2637,7 +2628,7 @@ const ActiveHistoryPannelNew = ({
 						{/* Settled 节：仅当 request 已完成支付时展示 Smart Routing；Request Expired、Waiting、Cancel 状态下不展示；EOA<>AA 内部互转不展示 */}
 						{(() => {
 							const status = getStatus(selectedTx)
-							if (status === 'Waiting' || status === 'Expired' || status === 'Canceled') return null
+							if (status === 'Waiting' || status === '已过期' || status === 'Canceled') return null
 							if (selectedTx.type === 'internal_transfer') return null
 							if (canceledHashes.has(getOriginalPaymentHash(selectedTx))) return null
 							const txWithRoute = fullTransactionFromChain ?? (selectedTx?.rawTransaction as unknown as Record<string, unknown>)
@@ -2670,7 +2661,7 @@ const ActiveHistoryPannelNew = ({
 											key: 'voucher-merged',
 											isVoucher: true,
 											primary: selectedMergedUnitLabel,
-											secondary: 'Voucher · Merged',
+											secondary: tu('voucher_merged'),
 											amountText: `-${(Number(selectedCardMetaAmounts.discountAmountFiat6) / 1e6).toFixed(2)}`,
 											amountClass: 'text-black dark:text-white',
 											iconBg: selectedUpgradeTierColors.mergedBg ?? '#A855F7',
@@ -2680,7 +2671,7 @@ const ActiveHistoryPannelNew = ({
 											key: 'cash',
 											isVoucher: false,
 											primary: 'USDC',
-											secondary: 'Cash · Main Wallet (EOA)',
+											secondary: tu('cash_main_wallet_eoa_2'),
 											amountText: `-${selectedCardTopupUSDCAmount.toFixed(2)}`,
 											amountClass: 'text-black dark:text-white',
 										},
@@ -2700,7 +2691,7 @@ const ActiveHistoryPannelNew = ({
 											key: 'cash',
 											isVoucher: false,
 											primary: 'USDC',
-											secondary: 'Cash · Main Wallet (EOA)',
+											secondary: tu('cash_main_wallet_eoa_2'),
 											amountText: `-${selectedCardTopupUSDCAmount.toFixed(2)}`,
 											amountClass: 'text-black dark:text-white',
 										},
@@ -2741,7 +2732,7 @@ const ActiveHistoryPannelNew = ({
 												) : (
 													<Zap size={16} className="text-[#1562f0]" />
 												)}
-												{selectedIsUpgradeNewCard ? 'Asset Merge & Upgrade' : 'Smart Routing'}
+												{selectedIsUpgradeNewCard ? tu('asset_merge_upgrade') : tu('smart_routing')}
 											</h3>
 											<span className="text-[11px] font-bold text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded-md tracking-wide">AUTO</span>
 										</div>
@@ -2923,7 +2914,7 @@ const ActiveHistoryPannelNew = ({
 										) : null}
 										<div className="border-t border-dashed border-gray-200 dark:border-slate-600 mt-4 pt-4 flex justify-between items-center">
 											<span className="text-[13px] font-medium text-gray-400 dark:text-slate-500 pl-9">
-												{selectedIsProgramCardLedgerKind ? 'Total' : 'Total Paid'}
+												{selectedIsProgramCardLedgerKind ? 'Total' : tu('total_paid')}
 											</span>
 											<span className={`text-[16px] font-bold ${
 												selectedIsCardTopupKind ? 'text-[#34C759]' : 'text-black dark:text-white'
@@ -2959,19 +2950,19 @@ const ActiveHistoryPannelNew = ({
 								const eoaAddr = (eoa ?? myAddress ?? '').toLowerCase()
 								const aaAddr = (aa ?? '').toLowerCase()
 								// 与 TxItemRow internalTitle 一致：EOA→AA 显示 Main Wallet → Express Pay，AA→EOA 显示 Express Pay → Main Wallet
-								const label = payeeAddr === eoaAddr ? 'Express Pay → Main Wallet' : payeeAddr === aaAddr ? 'Main Wallet → Express Pay' : 'Internal Transfer'
+								const label = payeeAddr === eoaAddr ? tu('express_pay_main_wallet') : payeeAddr === aaAddr ? tu('main_wallet_express_pay') : tu('internal_transfer')
 								return (
 									<div className="flex justify-between items-center text-[14px]">
-										<span className="text-gray-500 dark:text-slate-400 font-medium">Transaction Type</span>
+										<span className="text-gray-500 dark:text-slate-400 font-medium">{tu('transaction_type')}</span>
 										<span className="font-semibold text-black dark:text-white">{label}</span>
 									</div>
 								)
 							})()}
-							{selectedTx.type !== 'internal_transfer' && !(getOriginalPaymentHash(selectedTx) && (getStatus(selectedTx) === 'Waiting' || getStatus(selectedTx) === 'Expired' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
+							{selectedTx.type !== 'internal_transfer' && !(getOriginalPaymentHash(selectedTx) && (getStatus(selectedTx) === 'Waiting' || getStatus(selectedTx) === '已过期' || getStatus(selectedTx) === 'Canceled' || canceledHashes.has(getOriginalPaymentHash(selectedTx)))) && (
 							selectedIsProgramCardLedgerKind ? (
 								<>
 									<div className="flex justify-between items-center text-[14px]">
-										<span className="text-gray-500 dark:text-slate-400 font-medium">Program Card</span>
+										<span className="text-gray-500 dark:text-slate-400 font-medium">{tu('program_card')}</span>
 										<span className="flex min-w-0 items-center justify-end gap-1.5 font-semibold text-black dark:text-white">
 											{selectedCardAddress ? (
 												<MyBrandCardAddressCapsule address={selectedCardAddress} className="max-w-[112px]" />
@@ -2983,7 +2974,7 @@ const ActiveHistoryPannelNew = ({
 									</div>
 									<div className="flex justify-between items-center text-[14px]">
 										<span className="text-gray-500 dark:text-slate-400 font-medium">
-											{selectedIsMerchantChargeKind ? 'Payment Channel' : 'Payment Method'}
+											{selectedIsMerchantChargeKind ? tu('payment_channel') : tu('payment_method')}
 										</span>
 										<span className="font-semibold text-black dark:text-white">
 											{selectedIsMerchantChargeKind
@@ -2993,7 +2984,7 @@ const ActiveHistoryPannelNew = ({
 									</div>
 									{selectedPaidToLabel ? (
 										<div className="flex justify-between items-center text-[14px]">
-											<span className="text-gray-500 dark:text-slate-400 font-medium">Merchant</span>
+											<span className="text-gray-500 dark:text-slate-400 font-medium">{tu('merchant')}</span>
 											<span className="font-semibold text-black dark:text-white flex items-center gap-1.5">
 												{selectedMerchantPayeeAddress && ethers.isAddress(selectedMerchantPayeeAddress) && (
 													<button
@@ -3021,10 +3012,10 @@ const ActiveHistoryPannelNew = ({
 							) : (
 							<div className="flex justify-between items-center text-[14px]">
 								<span className="text-gray-500 dark:text-slate-400 font-medium">
-									{selectedTx.type === 'fuel_yield' ? 'Source' : selectedTx.isInbound ? 'Received From' : getOriginalPaymentHash(selectedTx) ? 'Paid To' : 'Send To'}
+									{selectedTx.type === 'fuel_yield' ? 'Source' : selectedTx.isInbound ? tu('received_from') : getOriginalPaymentHash(selectedTx) ? tu('paid_to') : tu('send_to')}
 								</span>
 								<span className="font-semibold text-black dark:text-white flex items-center gap-1.5">
-									{selectedTx.type === 'fuel_yield' ? 'USDC Top-up' : detailTitleText}
+									{selectedTx.type === 'fuel_yield' ? tu('usdc_top_up') : detailTitleText}
 									{selectedTx.type !== 'fuel_yield' && selectedTx.counterpartyAddress && ethers.isAddress(selectedTx.counterpartyAddress) && (
 										<button
 											type="button"
@@ -3049,7 +3040,7 @@ const ActiveHistoryPannelNew = ({
 							)}
 							{selectedTx.type !== 'fuel_yield' && selectedTx.currencyCode !== 'USDC' && Math.abs(selectedTx.amountFiat) > 0 && selectedTx.amountUSDC !== 0 && !(selectedIsCardTopupKind && !selectedTopupIsUsdcPayment) && (
 							<div className="flex justify-between items-center text-[14px]">
-								<span className="text-gray-500 dark:text-slate-400 font-medium">Exchange Rate</span>
+								<span className="text-gray-500 dark:text-slate-400 font-medium">{tu('exchange_rate')}</span>
 								<span className="font-semibold text-black dark:text-white text-right">
 									{selectedIsCardTopupKind ? (
 										<span className="flex flex-col items-end leading-tight gap-1">
@@ -3070,7 +3061,7 @@ const ActiveHistoryPannelNew = ({
 								return (
 									<>
 							<h4 className="text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-2 pl-2">
-								{baseScanTxHash ? 'Settlement Proof' : 'Creation Proof'}
+								{baseScanTxHash ? tu('settlement_proof') : tu('creation_proof')}
 							</h4>
 							{baseScanTxHash ? (
 								<button
@@ -3080,7 +3071,7 @@ const ActiveHistoryPannelNew = ({
 								>
 									<div className="flex items-center gap-2.5">
 										<div className="w-2.5 h-2.5 bg-[#1562f0] rounded-full shadow-[0_0_8px_rgba(21,98,240,0.5)]" />
-										<span className="text-[13px] font-semibold text-gray-700 dark:text-slate-300">Base L2 (Value)</span>
+										<span className="text-[13px] font-semibold text-gray-700 dark:text-slate-300">{tu('base_l2_value')}</span>
 									</div>
 									<div className="flex items-center gap-2 text-[12px] font-mono text-[#1562f0]">
 										{baseScanTxHash.substring(0, 7)}...{baseScanTxHash.slice(-5)} <ExternalLink size={12} />
@@ -3090,9 +3081,9 @@ const ActiveHistoryPannelNew = ({
 								<div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-600 rounded-[16px] border-dashed opacity-70">
 									<div className="flex items-center gap-2.5">
 										<div className="w-2.5 h-2.5 bg-gray-400 rounded-full" />
-										<span className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">Base L2 (Pending)</span>
+										<span className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">{tu('base_l2_pending')}</span>
 									</div>
-									<span className="text-[11px] font-medium text-gray-400">Awaiting Payment</span>
+									<span className="text-[11px] font-medium text-gray-400">{tu('awaiting_payment')}</span>
 								</div>
 							)}
 									</>
@@ -3110,7 +3101,7 @@ const ActiveHistoryPannelNew = ({
 									}}
 									className="flex-1 py-3 border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 rounded-[16px] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50 dark:active:bg-slate-700 transition-colors"
 								>
-									<Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
+									<Code size={16} /> {showJson ? tu('hide_raw_data') : tu('view_smart_receipt')}
 								</button>
 								{showJson && (
 									<button
@@ -3125,7 +3116,7 @@ const ActiveHistoryPannelNew = ({
 												setTimeout(() => setCopiedRawData(false), 2000)
 											} catch {}
 										}}
-										aria-label="Copy raw data"
+										aria-label={tu('copy_raw_data')}
 										className="flex-shrink-0 w-11 h-11 border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 rounded-[16px] flex items-center justify-center active:bg-gray-50 dark:active:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										{copiedRawData ? (
@@ -3141,7 +3132,7 @@ const ActiveHistoryPannelNew = ({
 									{fullTxLoading ? (
 										<div className="flex items-center justify-center gap-2 rounded-[16px] border border-[#d4d4d4] bg-white py-8 text-[#0451a5] shadow-inner dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#9cdcfe]">
 											<Loader size={20} className="animate-spin" />
-											<span className="text-[13px] font-medium">Loading full Transaction...</span>
+											<span className="text-[13px] font-medium">{tu('loading_full_transaction')}</span>
 										</div>
 									) : (
 										<VscodeJsonBlock data={buildSmartReceiptIndexerRowJson(selectedTx, fullTransactionFromChain)} />
@@ -3158,7 +3149,7 @@ const ActiveHistoryPannelNew = ({
 		{showGiftCard && selectedTx?.card?.image && (
 			<ShowCard
 				card={{
-					title: selectedTx.card.title ?? 'Gift Card',
+					title: selectedTx.card.title ?? tu('gift_card'),
 					detail: selectedTx.card.detail ?? '',
 					image: selectedTx.card.image,
 					currency: selectedTx.currencyCode as ICurrency,
@@ -3194,12 +3185,12 @@ const ActiveHistoryPannelNew = ({
 							type="button"
 							onClick={() => setShowVouchersQRSheet(false)}
 							className="absolute right-3 top-3 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition"
-							aria-label="Close"
+							aria-label={tu('close')}
 						>
 							<X className="w-5 h-5" />
 						</button>
 						<div className="text-center mb-4">
-							<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Payment QR</h3>
+							<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{tu('payment_qr')}</h3>
 						</div>
 						<div className="relative isolate flex justify-center">
 							{/* glow：强制放到最底层 */}

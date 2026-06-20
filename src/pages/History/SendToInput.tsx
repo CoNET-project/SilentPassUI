@@ -3,6 +3,7 @@ import SendTabs from "./SendTabs"
 import { ethers } from "ethers"
 import { Search } from "lucide-react"
 import styles from './send.module.scss'
+import { tu } from '@/locale/beamioLocale'
 
 type SendToInputProps = {
   	sendAction: (address: string) => void
@@ -187,7 +188,7 @@ const [loading, setLoading] = useState(false)
 				))}
 			</div>
 			) : (
-			'Confirm'
+			tu('confirm')
 			)}
 		</button>
       

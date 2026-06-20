@@ -18,6 +18,7 @@ import { QrCode, Link as LinkIcon, ZapOff, CalendarCheck, Banknote, HelpCircle, 
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 
 import {fiatPrefix, formatAmount, formatTimev2, statusStyleMap} from '@/services/currency'
+import { tu } from '@/locale/beamioLocale'
 
 type Prof = {
 	address: string
@@ -45,7 +46,7 @@ const unknowAcc = (address: string):searchResult => {
 		last_name: '',
 		follow_count: '',
 		follower_count: '',
-		username: 'Unknow',
+		username: '未知',
 		image: ''
 	}
 	return ret
@@ -132,7 +133,7 @@ const ListHeader = ({address, tx}: Prof) => {
 						{fiatPrefix(currency)} {formatAmount(showAmount, currency)} 
 					</span>
 					{/* {
-						fromBeamio?.username !=='Unknow' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
+						fromBeamio?.username !=='未知' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
 							@{fromBeamio?.username}
 						</span> : (
 							<span className="block text-[10px] text-slate-500 truncate leading-tight">
@@ -193,7 +194,7 @@ const ListHeader = ({address, tx}: Prof) => {
 							<IpfsImg
 								src={giftEnvelope}
 								className="w-5 block pointer-events-none"
-								alt="Gift Envelope"
+								alt={tu('gift_envelope')}
 							/>
 							</span>
 						</div> */}

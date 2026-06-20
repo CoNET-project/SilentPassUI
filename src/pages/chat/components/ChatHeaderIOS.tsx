@@ -3,6 +3,7 @@ import React, { useMemo } from "react"
 import { ethers } from "ethers"
 import { motion } from "framer-motion"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
 
 export type searchResult = {
   address: string
@@ -35,7 +36,7 @@ export function ChatHeaderIOS({
   online: boolean
   avatarSrc: string
 }) {
-  const isUnknown = !beamioer || beamioer.username === "Unknow"
+  const isUnknown = !beamioer || beamioer.username === '未知'
 
 
 
@@ -62,7 +63,7 @@ export function ChatHeaderIOS({
               "shadow-[0_18px_38px_rgba(15,23,42,0.14)]",
               "active:scale-[0.98] transition"
             ].join(" ")}
-            aria-label="Back"
+            aria-label={tu('back')}
           >
             <ChevronLeft className="w-6 h-6 text-slate-900" strokeWidth={2.6} />
           </button>

@@ -12,6 +12,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import { WalletMerchantPassStack } from '@/pages/Wallet/WalletMerchantPassStack'
 import { useWalletMerchantPassesStickyDisplay } from '@/pages/Wallet/useWalletMerchantPassesStickyDisplay'
+import { tu } from '@/locale/beamioLocale'
 
 /** 与 Home 顶栏左侧胶囊 `homeAccent` 一致 */
 const WALLET_CAPSULE_ACCENT = '#1562f0'
@@ -68,7 +69,7 @@ export default function WalletOverview() {
 					>
 						<WalletBlueIcon className="h-[22px] w-[22px] block shrink-0" aria-hidden />
 					</div>
-					<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Wallet</span>
+					<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">{tu('wallet')}</span>
 				</button>
 
 				{showRedeemAdminIcon ? (

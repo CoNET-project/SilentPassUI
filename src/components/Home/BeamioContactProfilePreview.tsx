@@ -13,6 +13,7 @@ import AmountCurrency from '@/components/input/AmountCurrency'
 import PayScreen from '@/pages/Pay/send/index'
 import ChatHome from '@/pages/chat/index'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { tu } from '@/locale/beamioLocale'
 
 type Props = {
   	item: searchResult
@@ -106,7 +107,7 @@ const ContactRow = ({ title, subtitle, amount }: ContactRowProps) => {
   )
 }
 
-const defaultNodeText = "Sent with Beamio - no gas fees."
+const defaultNodeText = tu('sent_with_beamio_no_gas_fees')
 
 
 const getDisplayName = (item: searchResult) => {
@@ -230,7 +231,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 			console.log(secondResponse.ok)
 			setLoading(false)
 			if (!secondResponse.ok) {
-				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? tu('rpc_error'))
 			}
 			setShowPayConfirm(false)
 			setShowChatSendAmount(false)
@@ -238,7 +239,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 
 		} catch (ex) {
 			setLoading(false)
-			return setProcessError('RPC Error!')
+			return setProcessError(tu('rpc_error'))
 			
 		}
 
@@ -273,7 +274,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 
 					{/* 成功文字 */}
 					<div className="font-semibold text-slate-600 dark:text-slate-300 mb-2 mt-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode Created' : 'Successfully sent' } 
+						{/cashcode/i.test(messageData?.sginTatle) ? tu('cashcode_created') : tu('successfully_sent') } 
 					</div>
 
 					{/* 金额 */}
@@ -283,7 +284,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 
 					{/* 提示 */}
 					<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'This may take a few seconds to appear for the receiver.' } 
+						{/cashcode/i.test(messageData?.sginTatle) ? tu('share_this_beamio_cashcode_as_a_link_qr_or_redeem_code') : 'This may take a few seconds to appear for the receiver.' } 
 					</div>
 
 				
@@ -300,9 +301,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 							onClick={() => {
 								close('/')
 							}}
-						>
-							Done
-						</button>
+						>{tu('done')}</button>
 
 						{/* 查看交易按钮 */}
 						<button
@@ -319,12 +318,10 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 						>
 						<IpfsImg
 							src={base_ex}
-							alt="Base Explorer"
+							alt={tu('base_explorer')}
 							className="w-4 h-4 object-contain"
 						/>
-						<span>
-							View transaction
-						</span>
+						<span>{tu('view_transaction')}</span>
 						</button>
 					</div>
 				</div>
@@ -361,13 +358,13 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 
 			if (response.status !== 402) {
 				setLoading(false)
-				return setComformError('RPC Error!')
+				return setComformError(tu('rpc_error'))
 			}
 
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
 			MessageData.reqUrl = requestEndpoint
-			MessageData.sginTatle = 'Send'
+			MessageData.sginTatle = '发送'
 			MessageData.note = sendNote
 			setMessageData(MessageData)
 			setShowPayConfirm(true)
@@ -375,7 +372,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 			
 		} catch (ex) {
 			setLoading(false)
-			setComformError('RPC Error!')
+			setComformError(tu('rpc_error'))
 		}
 	}
 
@@ -546,9 +543,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 												<span className="text-[15px] font-semibold text-white">
 												{followingCount}
 												</span>
-												<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
-													Following
-												</span>
+												<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">{tu('following')}</span>
 											</div>
 
 											{/* Followers */}
@@ -556,9 +551,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 												<span className="text-[15px] font-semibold text-white">
 													{followerCount}
 												</span>
-												<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
-													Followers
-												</span>
+												<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">{tu('followers')}</span>
 											</div>
 
 											{/* Follow 按钮 */}
@@ -576,7 +569,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 												{isFollowing
 													? removeFollowing
 													? "Remove"
-													: "Following"
+													: "关注"
 													: "Follow"}
 												</AppButton>
 											</div>
@@ -633,7 +626,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 														value={note}
 														onChange={e => setNote(e.target.value)}
 														className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
-														placeholder="What's this for?"
+														placeholder={tu('whats_this_for')}
 
 														readOnly={loading||showPayConfirm}
 													/>
@@ -710,9 +703,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 											onClick={() => {
 												signRequest()
 											}}
-										>
-											Send
-										</AppButton>
+										>{tu('send')}</AppButton>
 									</>
 								): (
 									<>
@@ -727,9 +718,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 														checkBalance()
 													}}
 													className="flex-1 h-9 rounded-full border border-slate-300 text-[13px] font-medium text-slate-700"
-												>
-													Cancel
-												</AppButton>
+												>{tu('cancel')}</AppButton>
 												<AppButton
 													className="flex-1 h-9 rounded-full bg-sky-600 text-[13px] font-medium text-white"
 													fullWidth
@@ -737,9 +726,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 													onClick={() => {
 														payClick()
 													}}
-												>
-													Send
-												</AppButton>
+												>{tu('send')}</AppButton>
 											</div>
 											
 
@@ -777,9 +764,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 													bg-sky-600 text-white text-[13px] font-semibold shadow-sm
 												"
 												onClick={() => close(item)}
-											>
-												Pay
-											</AppButton>
+											>{tu('pay')}</AppButton>
 
 											<AppButton
 												fullWidth
@@ -791,9 +776,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 												onClick={() => {
 													openChatProcess()
 												}}
-											>
-												Chat
-											</AppButton>
+											>{tu('chat')}</AppButton>
 
 											</div>
 											<div className="mt-2">

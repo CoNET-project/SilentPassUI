@@ -17,6 +17,7 @@ import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
 import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNodes} from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { calcFeeFromReceived, formatAmount } from "@/services/currency"
+import { tu } from '@/locale/beamioLocale'
 
 function fiatPrefix(ccy: ICurrency) {
 	if (ccy === "CAD") return "CA$"
@@ -35,7 +36,7 @@ const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/s
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const showPaylinkSite = 'https://beamio.app'
 
-const defaultTextTemp = `Sent with Beamio - no gas fees.`
+const defaultTextTemp = `通过 Beamio 发送，免 Gas 费。`
 
 // 0.8% fee, min 0.02, max 2 USDC
 
@@ -103,8 +104,8 @@ export default function PaymentLink ({close}: Props) {
 	const [addedNote, setAddedNote] = useState("")
 	const [currencyAmount, setCurrencyAmount] = useState("")
 	const [usdcAmount, setUsdcAmount] = useState("")
-	const [cardTitle, setCardTitle] = useState("Your dynamic text goes here")
-	const [cardDetail, setCardDetail] = useState("Write some detail…")
+	const [cardTitle, setCardTitle] = useState(tu('your_dynamic_text_goes_here'))
+	const [cardDetail, setCardDetail] = useState(tu('write_some_detail'))
 	const [linkTitle, setLinkTitle] = useState("")
 	const [titleTouched, setTitleTouched] = useState(false)
 
@@ -212,14 +213,14 @@ export default function PaymentLink ({close}: Props) {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? tu('rpc_error'))
 			}
 			setSuccessUrl(data.showUrl)
 			return setSuccessHash(body.USDC_tx)
 
 		} catch (ex) {
 			setProcessing (false)
-			return setProcessError('RPC Error!')
+			return setProcessError(tu('rpc_error'))
 			
 		}
 
@@ -362,7 +363,7 @@ export default function PaymentLink ({close}: Props) {
 			})
 			if (response.status !== 402) {
 				setProcessing(false)
-				return setProcessError('RPC Error!')
+				return setProcessError(tu('rpc_error'))
 			}
 
 			const { x402Version, accepts } = await response.json()
@@ -383,7 +384,7 @@ export default function PaymentLink ({close}: Props) {
 
 		} catch (ex: any) {
 			setProcessing(false)
-			setProcessError('RPC Error!')
+			setProcessError(tu('rpc_error'))
 		}
 		
 
@@ -458,9 +459,7 @@ export default function PaymentLink ({close}: Props) {
 								onClick={() => {
 								signRequest(message)
 								}}
-							>
-								Confirm
-							</AppButton>
+							>{tu('confirm')}</AppButton>
 							
 						</div>
 						</>
@@ -535,7 +534,7 @@ export default function PaymentLink ({close}: Props) {
 									<IpfsImg
 										src={giftEnvelope}
 										className="w-24 block"
-										alt="Gift Envelope"
+										alt={tu('gift_envelope')}
 									/>
 
 										<button
@@ -554,7 +553,7 @@ export default function PaymentLink ({close}: Props) {
 												transition
 												flex items-center justify-center
 											"
-											aria-label="Remove gift envelope"
+											aria-label={tu('remove_gift_envelope')}
 										>
 											<X className="w-4 h-4 text-black/30" />
 										</button>
@@ -564,17 +563,13 @@ export default function PaymentLink ({close}: Props) {
 
 							{showGiftImageError && (
 								<div className="flex justify-center">
-									<p className="text-sm text-rose-600">
-										An error occurred while uploading the image to IPFS. Please try again later.
-									</p>
+									<p className="text-sm text-rose-600">{tu('an_error_occurred_while_uploading_the_image_to_ipfs_please_try_again_lat')}</p>
 								</div>
 							)}
 
 							{uploadingIPFS && (
 								<div className="flex justify-center">
-									<p className="text-sm text-slate-600 flex items-center gap-1">
-									Uploading image to IPFS, please wait
-									<span className="inline-flex w-4">
+									<p className="text-sm text-slate-600 flex items-center gap-1">{tu('uploading_image_to_ipfs_please_wait')}<span className="inline-flex w-4">
 										<span className="animate-dot">.</span>
 										<span className="animate-dot delay-200">.</span>
 										<span className="animate-dot delay-400">.</span>
@@ -599,7 +594,7 @@ export default function PaymentLink ({close}: Props) {
 								onFocus={() => {
 									if (note === defaultNodeText) setNote('')
 								}}
-								placeholder="What's this for?"
+								placeholder={tu('whats_this_for')}
 								onChange={(e) => setNote(e.target.value)}
 								rows={2}
 								className="w-full rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
@@ -637,7 +632,7 @@ export default function PaymentLink ({close}: Props) {
 											transition
 											border border-white/50   /* ← 白色 1px 外框 */
 										"
-										aria-label="Open camera"
+										aria-label={tu('open_camera')}
 									>
 										<Camera
 											className="w-6 h-6 text-slate-900/20 opacity-80"

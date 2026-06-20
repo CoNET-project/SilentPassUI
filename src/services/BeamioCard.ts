@@ -715,6 +715,7 @@ export type LongDhangMigrationAutoPhase =
 	| 'creating-card'
 	| 'authorizing-admin'
 	| 'migrating'
+	| 'migrate-admins'
 	| 'completed'
 	| 'failed'
 
@@ -832,6 +833,8 @@ export type LongDhangMigrationSnapshot = {
 	snapshotHash: string
 	migrationAdmin: string
 	generatedAt: string
+	terminals?: Array<{ posEoa: string; metadata: string; mintLimitE6: string }>
+	terminalCount?: number
 }
 
 export type LongDhangMigrationRunResult = {
@@ -1208,23 +1211,43 @@ export async function repairLongDhangMigrationTerminals(args: {
 	try {
 		const ownerEoa = ethers.getAddress(args.ownerEoa)
 		const newCardAddress = ethers.getAddress(args.newCardAddress)
-		const ownerSignature = await signLongDhangMigrationAuthorization({
+		const preview = await previewLongDhangMigration(false)
+		if (!preview.success || !preview.snapshot) {
+			return { success: false, error: preview.error ?? 'Migration preview unavailable.' }
+		}
+		const terminals = preview.snapshot.terminals ?? []
+		if (terminals.length === 0) {
+			return { success: false, error: 'No migration terminals in snapshot.' }
+		}
+		const { registerMigrationTerminalsUnderOwnerAdmin } = await import('../utils/posTerminalAdminHierarchy')
+		const adminResult = await registerMigrationTerminalsUnderOwnerAdmin({
 			privateKeyArmor: args.privateKeyArmor,
-			action: 'repair-terminals',
+			cardAddress: newCardAddress,
 			ownerEoa,
-			snapshotHash: args.snapshotHash,
-			newCardAddress,
+			totalBalanceE6: preview.snapshot.totalBalanceE6,
+			terminals,
 		})
-		const signal = createFetchTimeoutSignal(300_000)
-		const res = await fetch(longDhangMigrationRepairTerminalsEndpoint, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ ownerEoa, snapshotHash: args.snapshotHash, ownerSignature, newCardAddress }),
-			...(signal ? { signal } : {}),
-		})
-		const data = await res.json()
-		if (!res.ok) return { success: false, error: data?.error ?? 'Terminal repair failed.' }
-		return data
+		const verified = await verifyLongDhangMigration(newCardAddress)
+		const rows = adminResult.rows.map((r) => ({
+			posEoa: r.posEoa,
+			metadata: '',
+			mintLimitE6: '0',
+			status: r.status === 'failed' ? ('failed' as const) : r.status === 'skipped' ? ('skipped' as const) : ('registered' as const),
+			reason: r.reason,
+			txHash: r.txHash,
+		}))
+		return {
+			success: adminResult.failed === 0 && (verified.terminals?.matches ?? 0) >= (verified.terminals?.total ?? 0),
+			admins: {
+				total: adminResult.total,
+				registered: adminResult.registered + adminResult.reparented,
+				skipped: adminResult.skipped,
+				failed: adminResult.failed,
+				rows,
+			},
+			verify: verified.terminals,
+			...(adminResult.failed > 0 ? { error: `${adminResult.failed} terminal(s) failed.` } : {}),
+		}
 	} catch (e: any) {
 		return { success: false, error: e?.message ?? String(e) }
 	}
@@ -1357,7 +1380,7 @@ export async function runLongDhangMigrationAuto(args: {
 		}
 	}
 
-	touchInFlight('migrating', 'Migrating members, sub-admins, and verifying…', newCard, snap.snapshotHash)
+	touchInFlight('migrating', 'Migrating members on CoNET…', newCard, snap.snapshotHash)
 	const startSig = await signLongDhangMigrationAuthorization({
 		privateKeyArmor: pk,
 		action: 'start-migration',
@@ -1371,6 +1394,56 @@ export async function runLongDhangMigrationAuto(args: {
 		ownerSignature: startSig,
 		existingNewCardAddress: newCard,
 	})
+
+	if (result.success) {
+		touchInFlight('migrate-admins', 'Registering POS terminals under merchant owner admin…', newCard, snap.snapshotHash)
+		const terminals = snap.terminals ?? []
+		if (terminals.length > 0) {
+			const { registerMigrationTerminalsUnderOwnerAdmin } = await import('../utils/posTerminalAdminHierarchy')
+			const adminResult = await registerMigrationTerminalsUnderOwnerAdmin({
+				privateKeyArmor: pk,
+				cardAddress: newCard,
+				ownerEoa,
+				totalBalanceE6: snap.totalBalanceE6,
+				terminals,
+			})
+			result = {
+				...result,
+				admins: {
+					total: adminResult.total,
+					registered: adminResult.registered + adminResult.reparented,
+					skipped: adminResult.skipped,
+					failed: adminResult.failed,
+					rows: adminResult.rows.map((r) => ({
+						posEoa: r.posEoa,
+						metadata: '',
+						mintLimitE6: '0',
+						status: r.status === 'failed' ? 'failed' : r.status === 'skipped' ? 'skipped' : 'registered',
+						reason: r.reason,
+						txHash: r.txHash,
+					})),
+				},
+			}
+			if (adminResult.failed > 0) {
+				result = { ...result, success: false, error: `${adminResult.failed} POS terminal(s) failed to register under owner admin.` }
+			} else {
+				const verified = await verifyLongDhangMigration(newCard)
+				result = {
+					...result,
+					verify: {
+						success: verified.success,
+						memberMatches: verified.matches ?? 0,
+						memberTotal: verified.totalRows ?? 0,
+						adminMatches: verified.terminals?.matches ?? 0,
+						adminTotal: verified.terminals?.total ?? 0,
+					},
+				}
+				if (!verified.success) {
+					result = { ...result, success: false, error: 'Verification failed after terminal registration.' }
+				}
+			}
+		}
+	}
 
 	if (!result.success && isLikelyMigrationFetchDisconnectError(result.error)) {
 		const recovered = await waitForLongDhangServerMigrationVerify({
@@ -2732,6 +2805,84 @@ export const signClearAdminMintCounter = async (
 	return wallet.signTypedData(domain, types, value)
 }
 
+/** EIP-712：卡主授权服务端用 pool parent admin 代签 ClearAdminMintCounter（migration 挂终端场景）。 */
+export const signOwnerDelegateClearAdminMintCounter = async (
+	ownerPrivateKey: string,
+	cardAddress: string,
+	subordinate: string,
+	deadline: number,
+	nonceHex: string
+): Promise<string> => {
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const wallet = new ethers.Wallet(ownerPrivateKey, provider)
+	const factoryAddress = await getCardFactoryGatewayForEip712(cardAddress)
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
+	const domain = {
+		name: 'BeamioUserCardFactory',
+		version: '1',
+		chainId,
+		verifyingContract: factoryAddress,
+	}
+	const types = {
+		OwnerDelegateClearAdminMintCounter: [
+			{ name: 'cardAddress', type: 'address' },
+			{ name: 'subordinate', type: 'address' },
+			{ name: 'deadline', type: 'uint256' },
+			{ name: 'nonce', type: 'bytes32' },
+		],
+	}
+	const n =
+		nonceHex.length === 66 && nonceHex.startsWith('0x')
+			? (nonceHex as `0x${string}`)
+			: (ethers.keccak256(ethers.toUtf8Bytes(nonceHex)) as `0x${string}`)
+	const value = {
+		cardAddress: ethers.getAddress(cardAddress),
+		subordinate: ethers.getAddress(subordinate),
+		deadline,
+		nonce: n,
+	}
+	return wallet.signTypedData(domain, types, value)
+}
+
+/** EIP-712：卡主授权服务端用 pool parent admin 代签 TerminalSettlementClear。 */
+export const signOwnerDelegateTerminalSettlementClear = async (
+	ownerPrivateKey: string,
+	cardAddress: string,
+	subordinate: string,
+	deadline: number,
+	nonceHex: string
+): Promise<string> => {
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const wallet = new ethers.Wallet(ownerPrivateKey, provider)
+	const factoryAddress = await getCardFactoryGatewayForEip712(cardAddress)
+	const chainId = await eip712ChainIdForBeamioUserCard(cardAddress)
+	const domain = {
+		name: 'BeamioUserCardFactory',
+		version: '1',
+		chainId,
+		verifyingContract: factoryAddress,
+	}
+	const types = {
+		OwnerDelegateTerminalSettlementClear: [
+			{ name: 'cardAddress', type: 'address' },
+			{ name: 'subordinate', type: 'address' },
+			{ name: 'deadline', type: 'uint256' },
+			{ name: 'nonce', type: 'bytes32' },
+		],
+	}
+	const n =
+		nonceHex.length === 66 && nonceHex.startsWith('0x')
+			? (nonceHex as `0x${string}`)
+			: (ethers.keccak256(ethers.toUtf8Bytes(nonceHex)) as `0x${string}`)
+	const value = {
+		cardAddress: ethers.getAddress(cardAddress),
+		subordinate: ethers.getAddress(subordinate),
+		deadline,
+		nonce: n,
+	}
+	return wallet.signTypedData(domain, types, value)
+}
+
 /** EIP-712：Terminal Settlement clear — 仅在 indexer 记 `TX_Terminal_RESET`（与 ClearAdminMintCounter 类型不同）。 */
 export const signTerminalSettlementClear = async (
 	adminPrivateKey: string,
@@ -2771,25 +2922,28 @@ export const signTerminalSettlementClear = async (
 	return wallet.signTypedData(domain, types, value)
 }
 
-/** Parent admin 签 ClearAdminMintCounter 后提交 Cluster → Master（Base Factory + CoNET Indexer）。 */
+/** Parent admin 签 ClearAdminMintCounter 后提交 Cluster → Master；或卡主 ownerSignature 由 pool parent 代签。 */
 export const postCardClearAdminMintCounter = async (payload: {
 	cardAddress: string
 	subordinate: string
 	deadline: number
 	nonce: string
-	adminSignature: string
+	adminSignature?: string
+	ownerSignature?: string
 }): Promise<{ success: boolean; tx?: string; error?: string }> => {
 	try {
+		const body: Record<string, unknown> = {
+			cardAddress: ethers.getAddress(payload.cardAddress),
+			subordinate: ethers.getAddress(payload.subordinate),
+			deadline: payload.deadline,
+			nonce: payload.nonce,
+		}
+		if (payload.adminSignature?.trim()) body.adminSignature = payload.adminSignature
+		if (payload.ownerSignature?.trim()) body.ownerSignature = payload.ownerSignature
 		const res = await fetch(cardClearAdminMintCounterEndpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				cardAddress: ethers.getAddress(payload.cardAddress),
-				subordinate: ethers.getAddress(payload.subordinate),
-				deadline: payload.deadline,
-				nonce: payload.nonce,
-				adminSignature: payload.adminSignature,
-			}),
+			body: JSON.stringify(body),
 		})
 		const data = await res.json()
 		if (!res.ok) return { success: false, error: data.error ?? 'cardClearAdminMintCounter failed' }
@@ -2799,25 +2953,28 @@ export const postCardClearAdminMintCounter = async (payload: {
 	}
 }
 
-/** Terminal settlement clear：仅 indexer TX_Terminal_RESET；Cluster/Master `/api/cardTerminalSettlementClear`。 */
+/** Terminal settlement clear：仅 indexer TX_Terminal_RESET；parent 或卡主 ownerSignature 代签。 */
 export const postCardTerminalSettlementClear = async (payload: {
 	cardAddress: string
 	subordinate: string
 	deadline: number
 	nonce: string
-	adminSignature: string
+	adminSignature?: string
+	ownerSignature?: string
 }): Promise<{ success: boolean; syncTx?: string; error?: string }> => {
 	try {
+		const body: Record<string, unknown> = {
+			cardAddress: ethers.getAddress(payload.cardAddress),
+			subordinate: ethers.getAddress(payload.subordinate),
+			deadline: payload.deadline,
+			nonce: payload.nonce,
+		}
+		if (payload.adminSignature?.trim()) body.adminSignature = payload.adminSignature
+		if (payload.ownerSignature?.trim()) body.ownerSignature = payload.ownerSignature
 		const res = await fetch(cardTerminalSettlementClearEndpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				cardAddress: ethers.getAddress(payload.cardAddress),
-				subordinate: ethers.getAddress(payload.subordinate),
-				deadline: payload.deadline,
-				nonce: payload.nonce,
-				adminSignature: payload.adminSignature,
-			}),
+			body: JSON.stringify(body),
 		})
 		const data = await res.json()
 		if (!res.ok) return { success: false, error: data.error ?? 'cardTerminalSettlementClear failed' }

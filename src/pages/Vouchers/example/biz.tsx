@@ -53,8 +53,10 @@ import {
   encodeRemoveAdmin,
   signExecuteForAdmin,
   signClearAdminMintCounter,
+  signOwnerDelegateClearAdminMintCounter,
   postCardClearAdminMintCounter,
   signTerminalSettlementClear,
+  signOwnerDelegateTerminalSettlementClear,
   postCardTerminalSettlementClear,
   signExecuteForOwner,
   encodeCreateIssuedNft,
@@ -8069,6 +8071,16 @@ async function fetchBeamioUserCardToken0BalanceDisplay(
   const card = new ethers.Contract(cardAddress, BEAMIO_USER_CARD_ERC1155_BALANCE_ABI, provider);
   const raw = await card.balanceOf(ethers.getAddress(account), DASHBOARD_POINTS_TOKEN_ID);
   return amountE6ToDisplayNumber(BigInt(raw.toString()));
+}
+
+/** Member directory balances must follow the card's deploy chain (CoNET vs Base). */
+function memberHolderToken0BalanceCacheKey(
+  partition: string,
+  cardLower: string,
+  chainId: number,
+  holderLower: string
+): string {
+  return `eoa:${partition}:card:${cardLower}:chain:${chainId}:holder:${holderLower}:balance0:v2`;
 }
 
 async function fetchConetBUnitBalanceDisplay(
@@ -21157,6 +21169,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
            if (!membersLoyaltyBgActiveRef.current) break;
            const addr = ethers.getAddress(uc.cardAddress);
            const cardLower = addr.toLowerCase();
+           const { provider: cardBalanceProvider, chainId: cardBalanceChainId } = await providerForBeamioUserCard(addr);
            const programName =
              nameByCardLower.get(cardLower) ||
              (typeof uc.name === 'string' && uc.name.trim()) ||
@@ -21229,14 +21242,19 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
              } catch {
                /* ignore */
              }
-            const cacheKeyBalance = `eoa:${membersFetchPartition}:card:${cardLower}:holder:${balanceAccount.toLowerCase()}:balance0:v1`;
+            const cacheKeyBalance = memberHolderToken0BalanceCacheKey(
+              membersFetchPartition,
+              cardLower,
+              cardBalanceChainId,
+              balanceAccount.toLowerCase()
+            );
             let currentBalance: number | null = trustedBalanceByScopedKey.get(scopedKey) ?? null;
             /** Dashboard KPI path should stay responsive: skip expensive holder balance RPC unless user is actually on `/Members`. */
             if (activeTab === 'MembersLoyalty') {
               const fetchedBalance = await Promise.race<number | null>([
                 fetchWithCache(
                   cacheKeyBalance,
-                  () => fetchBeamioUserCardToken0BalanceDisplay(addr, balanceAccount, baseRpcProviderDirect),
+                  () => fetchBeamioUserCardToken0BalanceDisplay(addr, balanceAccount, cardBalanceProvider),
                   FETCH_TTL_MS,
                   true
                 ),
@@ -21349,6 +21367,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
    if (activeTab !== 'MembersLoyalty') return;
    if (walletStoragePartitionLower) {
      invalidateFetchCache(`eoa:${walletStoragePartitionLower}:beamio:cardMemberTopups:directoryAll:v1:`);
+     invalidateFetchCache(`eoa:${walletStoragePartitionLower}:card:`);
    }
    void membersLoyaltyDirectoryTickRef.current?.();
  }, [activeTab, walletStoragePartitionLower]);
@@ -23353,6 +23372,9 @@ useEffect(() => {
       let directMemberActivations = 0;
       for (const program of fallbackPrograms) {
         const cardLower = ethers.getAddress(program.cardAddress).toLowerCase();
+        const { provider: cardBalanceProvider, chainId: cardBalanceChainId } = await providerForBeamioUserCard(
+          program.cardAddress
+        );
         const rollup = await fetchBeamioCardMemberTopupRollupHttp(program.cardAddress).catch(() => null);
         if (cancelled) return;
         if (rollup) {
@@ -23376,9 +23398,14 @@ useEffect(() => {
                 ? ethers.getAddress(row.memberAddress)
                 : '';
           if (!balanceAccount) continue;
-          const cacheKeyBalance = `eoa:${walletStoragePartitionLower || 'unknown'}:card:${cardLower}:holder:${balanceAccount.toLowerCase()}:balance0:v1`;
+          const cacheKeyBalance = memberHolderToken0BalanceCacheKey(
+            walletStoragePartitionLower || 'unknown',
+            cardLower,
+            cardBalanceChainId,
+            balanceAccount.toLowerCase()
+          );
           row.currentCardToken0Balance = await fetchWithCache(cacheKeyBalance, () =>
-            fetchBeamioUserCardToken0BalanceDisplay(program.cardAddress, balanceAccount, baseRpcProviderDirect)
+            fetchBeamioUserCardToken0BalanceDisplay(program.cardAddress, balanceAccount, cardBalanceProvider)
           , FETCH_TTL_MS, true).catch(() => null as number | null);
           if (cancelled) return;
         }
@@ -35815,38 +35842,62 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    }
                    const programCardAddr = staffProgramBeamioCardAddress;
                    const chainSub = await resolveTerminalChainSubordinate(settlementClearModal.id);
-                   const card = new ethers.Contract(
-                     programCardAddr,
-                     USER_CARD_ADMIN_READ_ABI,
-                     baseRpcProviderDirect,
-                   );
+                  const { provider: settlementCardProvider } = await providerForBeamioUserCard(programCardAddr);
+                  const card = new ethers.Contract(
+                    programCardAddr,
+                    USER_CARD_ADMIN_READ_ABI,
+                    settlementCardProvider,
+                  );
                    const parent = (await card.adminParent(chainSub)) as string;
                    if (!parent || parent === ethers.ZeroAddress) {
                      throw new Error(
                        'This terminal has no parent admin on-chain. Only a linked parent admin can settlement clear.',
                      );
                    }
-                   if (ethers.getAddress(parent) !== ethers.getAddress(userEOA)) {
-                     throw new Error(
-                       `Connect the parent admin wallet (${parent}) to continue. Current wallet: ${userEOA}.`,
-                     );
-                   }
+                   const cardOwner = (await card.owner()) as string;
+                   const userNorm = ethers.getAddress(userEOA);
+                   const userAA = profiles?.[0]?.aaAccount?.trim();
+                   const isCardOwner =
+                     (cardOwner && ethers.getAddress(cardOwner) === userNorm) ||
+                     (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
                    const deadline = Math.floor(Date.now() / 1000) + 600;
                    const nonce = ethers.hexlify(ethers.randomBytes(32));
-                   const adminSignature = await signTerminalSettlementClear(
-                     pk,
-                     programCardAddr,
-                     chainSub,
-                     deadline,
-                     nonce,
-                   );
-                   const res = await postCardTerminalSettlementClear({
-                     cardAddress: programCardAddr,
-                     subordinate: chainSub,
-                     deadline,
-                     nonce,
-                     adminSignature,
-                   });
+                   let res: { success: boolean; syncTx?: string; error?: string };
+                   if (ethers.getAddress(parent) === userNorm) {
+                     const adminSignature = await signTerminalSettlementClear(
+                       pk,
+                       programCardAddr,
+                       chainSub,
+                       deadline,
+                       nonce,
+                     );
+                     res = await postCardTerminalSettlementClear({
+                       cardAddress: programCardAddr,
+                       subordinate: chainSub,
+                       deadline,
+                       nonce,
+                       adminSignature,
+                     });
+                   } else if (isCardOwner) {
+                     const ownerSignature = await signOwnerDelegateTerminalSettlementClear(
+                       pk,
+                       programCardAddr,
+                       chainSub,
+                       deadline,
+                       nonce,
+                     );
+                     res = await postCardTerminalSettlementClear({
+                       cardAddress: programCardAddr,
+                       subordinate: chainSub,
+                       deadline,
+                       nonce,
+                       ownerSignature,
+                     });
+                   } else {
+                     throw new Error(
+                       `Connect the parent admin wallet (${parent}) or card owner to continue. Current wallet: ${userEOA}.`,
+                     );
+                   }
                    if (!res.success) {
                      throw new Error(res.error ?? 'Settlement clear failed');
                    }
@@ -35997,27 +36048,50 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        'This terminal has no parent admin on-chain. Owner-added admins cannot be cleared this way.',
                      );
                    }
-                   if (ethers.getAddress(parent) !== ethers.getAddress(userEOA)) {
-                     throw new Error(
-                       `Connect the parent admin wallet (${parent}) to reset this terminal. Current wallet: ${userEOA}.`,
-                     );
-                   }
+                   const cardOwner = (await card.owner()) as string;
+                   const userNorm = ethers.getAddress(userEOA);
+                   const userAA = profiles?.[0]?.aaAccount?.trim();
+                   const isCardOwner =
+                     (cardOwner && ethers.getAddress(cardOwner) === userNorm) ||
+                     (userAA && cardOwner && ethers.getAddress(cardOwner) === ethers.getAddress(userAA));
                    const deadline = Math.floor(Date.now() / 1000) + 600;
                    const nonce = ethers.hexlify(ethers.randomBytes(32));
-                   const adminSignature = await signClearAdminMintCounter(
-                     pk,
-                     programCardForReset,
-                     chainSub,
-                     deadline,
-                     nonce,
-                   );
-                   const res = await postCardClearAdminMintCounter({
-                     cardAddress: programCardForReset,
-                     subordinate: chainSub,
-                     deadline,
-                     nonce,
-                     adminSignature,
-                   });
+                   let res: { success: boolean; tx?: string; error?: string };
+                   if (ethers.getAddress(parent) === userNorm) {
+                     const adminSignature = await signClearAdminMintCounter(
+                       pk,
+                       programCardForReset,
+                       chainSub,
+                       deadline,
+                       nonce,
+                     );
+                     res = await postCardClearAdminMintCounter({
+                       cardAddress: programCardForReset,
+                       subordinate: chainSub,
+                       deadline,
+                       nonce,
+                       adminSignature,
+                     });
+                   } else if (isCardOwner) {
+                     const ownerSignature = await signOwnerDelegateClearAdminMintCounter(
+                       pk,
+                       programCardForReset,
+                       chainSub,
+                       deadline,
+                       nonce,
+                     );
+                     res = await postCardClearAdminMintCounter({
+                       cardAddress: programCardForReset,
+                       subordinate: chainSub,
+                       deadline,
+                       nonce,
+                       ownerSignature,
+                     });
+                   } else {
+                     throw new Error(
+                       `Connect the parent admin wallet (${parent}) or card owner to reset this terminal. Current wallet: ${userEOA}.`,
+                     );
+                   }
                    if (!res.success) {
                      throw new Error(res.error ?? 'Reset failed');
                    }

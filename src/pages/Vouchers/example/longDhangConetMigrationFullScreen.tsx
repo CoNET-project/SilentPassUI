@@ -10,7 +10,8 @@ const PHASE_LABEL: Record<LongDhangMigrationAutoPhase, string> = {
 	'loading-members': 'Loading frozen Base snapshot (5 members, 3 terminals)…',
 	'creating-card': 'Creating CoNET card (inherits Base metadata)…',
 	'authorizing-admin': 'Authorizing migration admin…',
-	migrating: 'Airdropping member balances & migrating sub-admins…',
+	migrating: 'Airdropping member balances on CoNET…',
+	'migrate-admins': 'Registering POS terminals under merchant owner admin…',
 	completed: 'Migration complete',
 	failed: 'Migration failed',
 }

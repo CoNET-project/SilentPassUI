@@ -1,5 +1,6 @@
 import { X, FileText, Info, CalendarDays, Download } from "lucide-react";
 import {AppButton} from '@/components/button/AppButton'
+import { tu } from '@/locale/beamioLocale'
 
 type prof = {
 	colse: () => void
@@ -55,9 +56,7 @@ export default function BeamioStatementsReportingScreen({colse}:prof) {
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-xs">
-              <button className="h-9 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
-                This month
-              </button>
+              <button className="h-9 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">{tu('this_month')}</button>
               <button className="h-9 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
                 Last month
               </button>
@@ -120,9 +119,7 @@ export default function BeamioStatementsReportingScreen({colse}:prof) {
 						onClick={() => colse()}
 						
 						fullWidth
-					>
-						Done
-					</AppButton>
+					>{tu('done')}</AppButton>
         </footer>
       </aside>
     </div>

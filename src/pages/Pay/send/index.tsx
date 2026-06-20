@@ -24,6 +24,7 @@ import { beamioApiBase, signAAtoEOA_USDC_with_BeamioContainerMainRelayed } from 
 import { getAAAccount } from '@/services/BeamioCard'
 import { baseEndpoint } from '@/utils/constants'
 import contracts from '@/utils/contracts'
+import { tu } from '@/locale/beamioLocale'
 
 
 
@@ -31,7 +32,7 @@ const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/s
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
 
-const defaultTextTemp = `Sent with Beamio - no gas fees.`
+const defaultTextTemp = `通过 Beamio 发送，免 Gas 费。`
 
 const displayName = (item: searchResult) => {
 	const lastname = item.last_name.split('\r\n')
@@ -84,7 +85,7 @@ const unknowAcc = (address: string): searchResult => ({
 	last_name: '',
 	follow_count: '',
 	follower_count: '',
-	username: 'Unknow',
+	username: '未知',
 	image: '',
 })
 
@@ -119,8 +120,8 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 	const [message, senMessage] = useState<any>(null)
 	const [successHash, setSuccessHash] = useState("")
 	const [cardCreate, setCardCreate] = useState(false)
-	const [cardTitle, setCardTitle] = useState("Your dynamic text goes here")
-	const [cardDetail, setCardDetail] = useState("Write some detail…")
+	const [cardTitle, setCardTitle] = useState("在此输入动态文字")
+	const [cardDetail, setCardDetail] = useState("填写详情…")
 	const [currentCurrency, setCurrentCurrency] = useState<ICurrency>('USD')
 	const [showGiftEnvelope, setShowGiftEnvelope] = useState(false)
 	const [showGiftImageError, setShowGiftImageError] = useState(false)
@@ -224,7 +225,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 		if (transferDirection === 'eoa-to-aa' && profiles[0].aaAccount) {
 			setItem({
 				address: profiles[0].aaAccount,
-				username: 'Express Pay',
+				username: '快捷支付',
 				first_name: '',
 				last_name: JSON.stringify({}),
 				image: '',
@@ -284,7 +285,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 
 				{/* 成功文字 */}
 				<div className="font-semibold text-slate-600 dark:text-slate-300 mb-2 mt-4">
-					{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode Created' : 'Successfully sent' } 
+					{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode 已创建' : '发送成功' } 
 				</div>
 
 				{/* 金额 */}
@@ -294,7 +295,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 
 				{/* 提示 */}
 				<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-					{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'It may take a few seconds to appear on-chain.' } 
+					{/cashcode/i.test(messageData?.sginTatle) ? '可将此 Beamio Cashcode 以链接、二维码或兑换码分享。' : '链上显示可能需要几秒钟。' } 
 				</div>
 
 			
@@ -311,9 +312,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 						onClick={() => {
 							close('')
 						}}
-					>
-						Done
-					</button>
+					>{tu('done')}</button>
 
 					{/* 查看交易按钮 */}
 					<button
@@ -330,12 +329,10 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 						>
 						<IpfsImg
 							src={base_ex}
-							alt="Base Explorer"
+							alt="Base 浏览器"
 							className="w-4 h-4 object-contain"
 						/>
-						<span>
-							View transaction
-						</span>
+						<span>{tu('view_transaction')}</span>
 					</button>
 				</div>
 			</div>
@@ -365,14 +362,14 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 
 			if (!secondResponse.ok) {
 				setProcessing(false)
-				return setSendError((body as { error?: string })?.error ?? 'RPC Error!')
+				return setSendError((body as { error?: string })?.error ?? 'RPC 错误！')
 			}
 			await sendMessageToClient()
 			setProcessing(false)
 			return setSuccessHash(body.USDC_tx)
 		} catch (ex) {
 			setProcessing(false)
-			return setSendError('RPC Error!')
+			return setSendError('RPC 错误！')
 		}
 	}
 
@@ -433,7 +430,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 			const currencyAmountDisplay = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(amount, currentCurrency), currentCurrency)
 			const aaBal = Number(aaAccountUsdcBalance ?? 0)
 			if (amount > aaBal) {
-				setSendError('Insufficient balance')
+				setSendError('余额不足')
 				return
 			}
 			setProcessing(true)
@@ -442,25 +439,25 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 			try {
 				const fromChain = await getAAAccount(profile)
 				if (!fromChain || !fromChain.startsWith('0x')) {
-					setSendError('No Express Pay found. Please create or link a Express Pay first.')
+					setSendError('未找到快捷支付，请先创建或关联快捷支付账户。')
 					setProcessing(false)
 					return
 				}
 				if (myAddress && fromChain.toLowerCase() === myAddress.toLowerCase()) {
-					setSendError('Express Pay address cannot be the same as your EOA. Please create or link a Express Pay first.')
+					setSendError('快捷支付地址不能与 EOA 相同，请先创建或关联快捷支付账户。')
 					setProcessing(false)
 					return
 				}
 				aaAccount = fromChain
 			} catch (e: any) {
-				setSendError(e?.message ?? 'Failed to get Express Pay address')
+				setSendError(e?.message ?? '获取快捷支付地址失败')
 				setProcessing(false)
 				return
 			}
 			try {
 				// 签字送出前检查 currency，避免记账时遗失
 				if (!currentCurrency || !String(currentCurrency).trim()) {
-					setSendError('Currency is required for accounting')
+					setSendError('记账需要指定币种')
 					setProcessing(false)
 					return
 				}
@@ -500,11 +497,11 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 					})
 					setSuccessHash(result.USDC_tx)
 				} else {
-					setSendError(result.error || 'AAtoEOA failed')
+					setSendError(result.error || 'AA 转 EOA 失败')
 				}
 			} catch (e: any) {
 				setProcessing(false)
-				setSendError(e?.message || 'AAtoEOA request failed')
+				setSendError(e?.message || 'AA 转 EOA 请求失败')
 			}
 			return
 		}
@@ -578,7 +575,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 
 		const currencyAmount = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
 		if (!currentCurrency || !String(currentCurrency).trim()) {
-			setSendError('Currency is required for accounting')
+			setSendError('记账需要指定币种')
 			return
 		}
 		// 协议：使用显式参数 currency/currencyAmount/usdcAmount，不再使用 payMe JSON
@@ -607,13 +604,13 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 
 			if (response.status !== 402) {
 				
-				return setSendError('RPC Error!')
+				return setSendError('RPC 错误！')
 			}
 
 			const { x402Version, accepts } = await response.json()
 			const MessageData = accepts[0]
 			// 收款人信息：以 toAddress 为准，保证与请求参数一致（EOA/AA 地址）
-			const receiveName = item?.username ?? (toAddress === profiles?.[0]?.aaAccount ? 'Express Pay' : shortAddress(toAddress))
+			const receiveName = item?.username ?? (toAddress === profiles?.[0]?.aaAccount ? '快捷支付' : shortAddress(toAddress))
 			const data: IMessageData = {
 				receive: {
 					accountName: receiveName,
@@ -643,7 +640,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 			
 		} catch (ex) {
 			setProcessing(false)
-			setSendError('RPC Error!')
+			setSendError('RPC 错误！')
 		}
 
 	}
@@ -730,7 +727,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 				active:scale-95
 				transition-colors
 			"
-			aria-label="Close"
+			aria-label="关闭"
 		>
 			<X className="w-5 h-5 text-slate-600 dark:text-slate-300" strokeWidth={2.5} />
 		</button>
@@ -940,7 +937,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 									autoEntry={!!!item}
 									readOnly={processing||!!message}
 									showLimit={0}
-									sendError={insufficientAaBalance ? 'Insufficient balance' : sendError}
+									sendError={insufficientAaBalance ? '余额不足' : sendError}
 									setSendError={setSendError}
 									showMax={true}
 									needBalance={true}
@@ -955,13 +952,13 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 								<section className="mt-4 flex justify-center">
 									<div className="inline-flex items-center gap-2 rounded-full bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-700/60 px-4 py-2.5">
 										<Zap size={18} className="text-violet-600 dark:text-violet-400 shrink-0" />
-										<span className="font-semibold text-violet-700 dark:text-violet-300">Smart Routing Analysis</span>
+										<span className="font-semibold text-violet-700 dark:text-violet-300">智能路由分析</span>
 									</div>
 								</section>
 							) : (
 							<section className="mt-4 rounded-2xl bg-white dark:bg-slate-800/50 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
 								<div className="flex items-center justify-between px-4 pt-3 pb-2">
-									<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">Paying from</span>
+									<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">付款来源</span>
 									{isAaEoaTransfer && (
 										<button
 											type="button"
@@ -979,7 +976,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 										</div>
 										<div className="min-w-0">
 											<div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-												{isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'Express Pay' : 'Main Vault'}
+												{isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? '快捷支付' : '主金库'}
 											</div>
 											<div className={`text-[12px] mt-0.5 ${isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'text-violet-600 dark:text-violet-400' : 'text-[#1562f0] dark:text-blue-400'}`}>
 												Secure • {isAaEoaTransfer && transferDirection === 'aa-to-eoa' ? 'AA' : 'EOA'}
@@ -1035,17 +1032,13 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 
 						{showGiftImageError && (
 							<div className="flex justify-center">
-								<p className="text-sm text-rose-600">
-								An error occurred while uploading the image to IPFS. Please try again later.
-								</p>
+								<p className="text-sm text-rose-600">{tu('an_error_occurred_while_uploading_the_image_to_ipfs_please_try_again_lat')}</p>
 						</div>
 						)}
 
 						{uploadingIPFS && (
 							<div className="flex justify-center">
-								<p className="text-sm text-slate-600 flex items-center gap-1">
-								Uploading image to IPFS, please wait
-								<span className="inline-flex w-4">
+								<p className="text-sm text-slate-600 flex items-center gap-1">{tu('uploading_image_to_ipfs_please_wait')}<span className="inline-flex w-4">
 									<span className="animate-dot">.</span>
 									<span className="animate-dot delay-200">.</span>
 									<span className="animate-dot delay-400">.</span>
@@ -1071,7 +1064,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 								<IpfsImg
 									src={giftEnvelope}
 									className="w-24 block"
-									alt="Gift Envelope"
+									alt="礼品信封"
 								/>
 
 								{!message && (
@@ -1091,7 +1084,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 										transition
 										flex items-center justify-center
 									"
-									aria-label="Remove gift envelope"
+									aria-label="移除礼品信封"
 									>
 									<X className="w-4 h-4 text-black/30" />
 									</button>
@@ -1107,7 +1100,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 										type="button"
 										onClick={() => setCardCreate(true)}
 										className="shrink-0 w-12 h-12 flex items-center justify-center border-r border-slate-200 dark:border-slate-700"
-										aria-label="Open camera"
+										aria-label="打开相机"
 									>
 										<Camera
 											className="w-6 h-6 text-slate-900/20 dark:text-slate-400/60 opacity-80"
@@ -1122,7 +1115,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 										if (note === defaultNodeText) setNote('')
 									}}
 									readOnly={!!message}
-									placeholder="What's this for?"
+									placeholder="备注（选填）"
 									onChange={(e) => setNote(e.target.value.replace(/[\r\n]/g, ''))}
 									onKeyDown={(e) => {
 										if (e.key === 'Enter') e.preventDefault()
@@ -1153,10 +1146,10 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 								errorText={sendError}
 							>
 								{message
-									? (sendError ? 'Retry' : 'Confirm & Sign')
+									? (sendError ? '重试' : '确认并签名')
 									: isAaEoaTransfer && transferDirection === 'aa-to-eoa' && sendError
-										? 'Retry'
-										: 'Send'}
+										? '重试'
+										: '发送'}
 							</AppButton>
 						</div>
 					</div>

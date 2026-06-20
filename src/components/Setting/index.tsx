@@ -21,6 +21,7 @@ import BeamioGetHelpSettingsScreen from "./BeamioGetHelpSettingsScreen";
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import Security from './Security'
 import packageJson from '../../../package.json'
+import { tu } from '@/locale/beamioLocale'
 
 const version = `Version ${(packageJson as { version?: string }).version ?? ''}`
 
@@ -317,9 +318,9 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 
 	const ProfileInformation = () => {
 		const info = {
-			title: 'Your Beamio profile',
-			description1: 'Manage account, security and payment settings from the gear icon in the top right.',
-			description2: 'Tap Following or Followers to see your connections.',
+			title: '您的 Beamio 资料',
+			description1: '点击右上角齿轮图标管理账户、安全与支付设置。',
+			description2: '点击关注或粉丝查看您的社交关系。',
 		}
 		return (
 			<div className="rounded-2xl bg-white shadow-sm p-4 text-slate-800 leading-snug">
@@ -518,9 +519,7 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 					className="flex flex-1 flex-col items-center justify-center active:opacity-70"
 				>
 					<span className="text-[15px] font-semibold">{followingCount}</span>
-					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
-						Following
-					</span>
+					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">{tu('following')}</span>
 				</button>
 
 				<div className="w-px h-8 bg-white/30" />
@@ -543,9 +542,7 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 					className="flex flex-1 flex-col items-center justify-center active:opacity-70"
 				>
 					<span className="text-[15px] font-semibold">{followerCount}</span>
-					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">
-						Followers
-					</span>
+					<span className="uppercase tracking-[0.16em] text-[10px] text-white/75">{tu('followers')}</span>
 				</button>
 				</div>
 			</div>
@@ -605,7 +602,7 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 									<User className="w-5 h-5" />
 									</RowIcon>
 								}
-								title="Account Details"
+								title="账户详情"
 								onClick={() => {
 
 									setSettingsOpen('Account')
@@ -631,13 +628,13 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 										<Globe className="w-5 h-5" />
 										</RowIcon>
 									}
-									title="Language & Currency"
+									title="语言与货币"
 									right={<span className="text-[15px] font-semibold text-slate-400">
 										{beamio?.currency||'USDC'}
 									</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{
-											title: 'Language & Currency',
+											title: '语言与货币',
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),
@@ -659,11 +656,11 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 										<Shield className="w-5 h-5" />
 										</RowIcon>
 									}
-									title="Backup Wallet"
-									right={<span className="text-[15px] font-bold text-orange-500">High Priority</span>}
+									title="备份钱包"
+									right={<span className="text-[15px] font-bold text-orange-500">高优先级</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{
-											title: 'Recovery & Backup',
+											title: '恢复与备份',
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),
@@ -686,7 +683,7 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 										</RowIcon>
 									}
 									title="Notifications"
-									right={<span className="text-[15px] font-semibold text-slate-400">On</span>}
+									right={<span className="text-[15px] font-semibold text-slate-400">开启</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{
 											title: 'Notifications',
@@ -711,10 +708,10 @@ export default function BeamioMeMainScreen({ embedInPanel = false }: BeamioMeMai
 									<HelpCircle className="w-5 h-5" />
 									</RowIcon>
 								}
-								title="Help & Support"
+								title="帮助与支持"
 								onClick={() => {
 									setNavigateLeftButtonArray([{
-											title: 'Help & Support',
+											title: '帮助与支持',
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),

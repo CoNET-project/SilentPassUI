@@ -51,6 +51,8 @@ import CardManager from '@/pages/cardManager'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
+import { tu } from '@/locale/beamioLocale'
+import { mapServerError } from '@/locale/mapServerError'
 
 global.Buffer = require("buffer").Buffer
 
@@ -195,11 +197,11 @@ function AppShell() {
       if (ret.success) {
         Toast.show({ content: `Coupon claimed${ret.tokenId ? ` (token ${ret.tokenId})` : ''}!`, position: 'top' })
       } else {
-        Toast.show({ content: ret.error ?? 'Coupon open claim failed', position: 'top' })
+        Toast.show({ content: mapServerError(ret.error), position: 'top' })
       }
       navigate('/History')
     }).catch((e: any) => {
-      Toast.show({ content: e?.message ?? 'Coupon open claim failed', position: 'top' })
+      Toast.show({ content: mapServerError(e?.message), position: 'top' })
       navigate('/History')
     })
   }, [isInitialLoading, profiles, navigate])
@@ -226,7 +228,7 @@ function AppShell() {
       if (!r.canClaim || r.nonce == null || r.deadline == null) return
       const result = await signAndClaimBUnits(p0.privateKeyArmor!, claimant, r.nonce, r.deadline)
       if (result.success) {
-        Toast.show({ content: '20 B-Units claimed!', position: 'top' })
+        Toast.show({ content: '已领取 20 B-Unit！', position: 'top' })
       }
     }).catch(() => {})
   }, [profiles])
@@ -234,7 +236,7 @@ function AppShell() {
   const { pathname } = useLocation()
 
   const [showAlphaHowItWorks, setShowAlphaHowItWorks] =
-    useState<"BeamioContactProfilePreview" | ""|'Pay'>("")
+    useState<"BeamioContactProfilePreview" | ""|'Payment'>("")
   const [payFocusAmountOnMount, setPayFocusAmountOnMount] = useState(false)
 
   // 当 showFooter 为 true 或路由变化时恢复 footer 可见，避免 scroll 隐藏后、页面切换时 footerVisible 未重置
@@ -798,7 +800,7 @@ function AppShell() {
       if (!raw || typeof raw !== 'string') return false
       const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
       const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
-      const currency = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
+      const currency = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
       const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
       if (!amount || Number(amount) <= 0) return false
       if (!currency || !acceptTokens) return false
@@ -852,7 +854,7 @@ function AppShell() {
 			navigate('/myWallet')
 			return
 		}
-		const _wallet = searchParams.get("wallet") ?? searchParams.get("Wallet") ?? ""
+		const _wallet = searchParams.get("wallet") ?? searchParams.get("Wallets") ?? ""
 		const walletAddr = _wallet.trim() && ethers.isAddress(_wallet.trim()) ? ethers.getAddress(_wallet.trim()) : null
 		if (walletAddr) {
 			setPreferredPayeeWallet({ beamioAccount: _beamio.trim(), wallet: walletAddr })
@@ -938,7 +940,7 @@ function AppShell() {
           }
           setUserPreviewItem(searchResultItem)
           setPayFocusAmountOnMount(true)
-          setShowAlphaHowItWorks('Pay')
+          setShowAlphaHowItWorks('Payment')
           setShowFooter(false)
           navigate("/")
         } catch {
@@ -953,7 +955,7 @@ function AppShell() {
             image: '',
           })
           setPayFocusAmountOnMount(true)
-          setShowAlphaHowItWorks('Pay')
+          setShowAlphaHowItWorks('Payment')
           setShowFooter(false)
           navigate("/")
         }
@@ -1165,7 +1167,7 @@ function AppShell() {
 											// 与扫码地址 workflow 一致：打开 Pay 底部栏，聚焦金额输入框
 											setUserPreviewItem(item)
 											setPayFocusAmountOnMount(true)
-											setShowAlphaHowItWorks('Pay')
+											setShowAlphaHowItWorks('Payment')
 											setShowFooter(false)
 											navigate('/')
 										}}
@@ -1232,7 +1234,7 @@ function AppShell() {
 
 						{/* 内容区：内容少就不滚动；内容多才滚动 */}
 						<div className="px-4 pb-4 overflow-y-auto">
-							{showAlphaHowItWorks === "Pay" && userPreviewItem &&(
+							{showAlphaHowItWorks === "Payment" && userPreviewItem &&(
 								<PayScreen 
 									beamioer={userPreviewItem}
 									preferredToAddress={
@@ -1294,8 +1296,8 @@ function AppShell() {
 												<Check className="w-6 h-6 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
 											</div>
 											<div>
-												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Successful</h3>
-												<p className="text-sm text-slate-600 dark:text-slate-400">Your reward has been added to your account.</p>
+												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">兑换成功</h3>
+												<p className="text-sm text-slate-600 dark:text-slate-400">奖励已添加到您的账户。</p>
 											</div>
 										</div>
 										{redeemResult.tx && (
@@ -1304,9 +1306,7 @@ function AppShell() {
 												target="_blank"
 												rel="noopener noreferrer"
 												className="block mb-4 text-sm text-[#1652f0] underline"
-											>
-												View transaction
-											</a>
+											>{tu('view_transaction')}</a>
 										)}
 									</>
 								) : (
@@ -1316,15 +1316,13 @@ function AppShell() {
 												<span className="text-xl text-rose-600 dark:text-rose-400">!</span>
 											</div>
 											<div>
-												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeem Failed</h3>
+												<h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">兑换失败</h3>
 												<p className="text-sm text-rose-600 dark:text-rose-400">{redeemResult.error}</p>
 											</div>
 										</div>
 									</>
 								)}
-								<AppButton fullWidth onClick={() => setRedeemResult(null)} className="rounded-xl">
-									Done
-								</AppButton>
+								<AppButton fullWidth onClick={() => setRedeemResult(null)} className="rounded-xl">{tu('done')}</AppButton>
 							</div>
 						</motion.div>
 					</>

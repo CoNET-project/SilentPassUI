@@ -150,17 +150,17 @@ function DashboardTile({
   )
 }
 
-export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWorks: (val:'Pay'|''|'PayRequest'|'Cashcode'|'payme'|'PaymentNfc') => void}) {
+export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWorks: (val:'Payment'|''|'PayRequest'|'Cashcode'|'payme'|'PaymentNFC') => void}) {
   const nav = useNavigate()
 
   const items: DashItem[] = [
     {
       key: "send",
-      title: "Send",
+      title: "发送",
 	  //@ts-ignore
       Icon: ArrowUpRight,
       variant: "blue",
-      onClick: () => setShowAlphaHowItWorks('Pay')
+      onClick: () => setShowAlphaHowItWorks('Payment')
     },
     {
       key: "payme",
@@ -208,7 +208,7 @@ export default function Dashboard({setShowAlphaHowItWorks}: {setShowAlphaHowItWo
 	  //@ts-ignore
       Icon: SmartphoneNfc,
       variant: "blue",
-      onClick: () => setShowAlphaHowItWorks('PaymentNfc')
+      onClick: () => setShowAlphaHowItWorks('PaymentNFC')
     }
   ]
 

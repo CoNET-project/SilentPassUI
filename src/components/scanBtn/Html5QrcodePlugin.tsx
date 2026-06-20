@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import jsQR from 'jsqr'
 import { X, Loader2, ImageUp } from 'lucide-react'
+import { tu } from '@/locale/beamioLocale'
 
 interface Props {
   shouldStart: boolean
@@ -265,7 +266,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
               type="button"
               onClick={() => onStop?.()}
               className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="w-5 h-5" strokeWidth={2.5} />
             </button>
@@ -273,16 +274,12 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
               <button
                 type="button"
                 className="flex-1 min-w-0 px-4 py-2 rounded-full text-sm font-semibold bg-white text-slate-800"
-              >
-                Scan
-              </button>
+              >{tu('scan')}</button>
               <button
                 type="button"
                 onClick={handleMyCode}
                 className="flex-1 min-w-0 px-4 py-2 rounded-full text-sm font-semibold text-white/80 hover:text-white transition-colors"
-              >
-                Show to pay
-              </button>
+              >{tu('show_to_pay')}</button>
             </div>
             <div className="w-10" />
           </div>
@@ -356,9 +353,7 @@ const Html5QrcodePlugin = ({ shouldStart, qrbox = 250, onScanSuccess, onStop }: 
               type="button"
               onClick={() => { setPermissionError(null); onStop?.() }}
               className="px-6 py-2 rounded-xl bg-blue-500 text-white font-semibold hover:bg-blue-600"
-            >
-              OK
-            </button>
+            >{tu('ok')}</button>
           </div>
         </div>
       )}

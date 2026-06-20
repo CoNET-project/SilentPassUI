@@ -29,7 +29,7 @@ const getImg = (avatarSeed: string|undefined) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed || '@Beamio').toString()}`
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
-type Mode = 'main' | 'PaymentLink'|'Print'
+type Mode = 'main' | 'PaymentLink'|'打印'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 type BeamioPayMeProps = {
@@ -118,12 +118,12 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 	const handleDoneAmount = () => {
 		const amt = Number(billAmount)
 		if (!amt || amt <= 0) {
-			setAmountError("Please enter a valid amount")
+			setAmountError("请输入有效金额")
 			return
 		}
 		const toAddress = (receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA)) ? merchantAA : myAddress
 		if (!toAddress || !ethers.isAddress(toAddress)) {
-			setAmountError("No receiving address found")
+			setAmountError("未找到收款地址")
 			return
 		}
 		setAmountError("")
@@ -196,7 +196,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   const onMessage = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: qrValue, url: qrValue })
+        await navigator.share({ title: "Beamio 收款", text: qrValue, url: qrValue })
         return
       } catch {
         // ignore
@@ -208,7 +208,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
   const onShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Beamio PayMe", text: qrValue, url: qrValue })
+        await navigator.share({ title: "Beamio 收款", text: qrValue, url: qrValue })
         return
       } catch {
         // ignore
@@ -271,7 +271,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 							const showAA = receivingMode === 'aa' && merchantAA && ethers.isAddress(merchantAA)
 							const displayAddr = showAA ? merchantAA : myAddress
 							const canToggle = !!(merchantAA && ethers.isAddress(merchantAA) && myAddress && ethers.isAddress(myAddress))
-							const label = showAA ? 'Express Pay (Smart Account)' : 'Main Vault (EOA)'
+							const label = showAA ? '快捷支付（智能账户）' : '主金库 (EOA)'
 							const content = (
 								<>
 									<span className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase mr-2 self-center">
@@ -374,16 +374,16 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								<div className="mt-2 sm:mt-6 rounded-2xl bg-white dark:bg-slate-800/80 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600 overflow-hidden">
 									<div className="px-3 sm:px-4 py-2 sm:py-2.5 space-y-1 sm:space-y-1.5">
 										<div className="flex justify-between items-center">
-											<span className="text-slate-500 dark:text-slate-400 text-sm">Requesting</span>
+											<span className="text-slate-500 dark:text-slate-400 text-sm">请求中</span>
 											<span className="font-semibold text-slate-900 dark:text-slate-100">{requestingDisplay}</span>
 										</div>
 										<div className="flex justify-between items-center">
-											<span className="text-slate-500 dark:text-slate-400 text-sm">Fee (0.8%)</span>
+											<span className="text-slate-500 dark:text-slate-400 text-sm">手续费 (0.8%)</span>
 											<span className="text-slate-500 dark:text-slate-400">- {formatAmount(fee, 'USDC')} USDC</span>
 										</div>
 										<div className="border-t border-slate-200 dark:border-slate-600 pt-2">
 											<div className="flex justify-between items-start">
-												<span className="font-semibold text-green-600 dark:text-green-400 text-sm">Est. Receive</span>
+												<span className="font-semibold text-green-600 dark:text-green-400 text-sm">预计到账</span>
 												<div className="text-right">
 													<span className="font-semibold text-green-600 dark:text-green-400">{formatAmount(estReceive, 'USDC')} USDC</span>
 													{billCurrency !== 'USDC' && currencyData?.USDC != null && currencyData?.[billCurrency] != null && (() => {
@@ -400,9 +400,9 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 										{accountingStatus !== 'idle' && (
 											<div className="border-t border-slate-200 dark:border-slate-600 pt-2">
 												<div className="flex justify-between items-center">
-													<span className="text-slate-500 dark:text-slate-400 text-sm">Recorded</span>
+													<span className="text-slate-500 dark:text-slate-400 text-sm">已记录</span>
 													{accountingStatus === 'loading' && (
-														<span className="text-amber-600 dark:text-amber-400 text-sm animate-pulse">Recording…</span>
+														<span className="text-amber-600 dark:text-amber-400 text-sm animate-pulse">记录中…</span>
 													)}
 													{accountingStatus === 'success' && accountingSyncTx && (
 														<a
@@ -416,7 +416,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 														</a>
 													)}
 													{accountingStatus === 'error' && (
-														<span className="text-slate-400 dark:text-slate-500 text-xs">Failed to record</span>
+														<span className="text-slate-400 dark:text-slate-500 text-xs">记录失败</span>
 													)}
 												</div>
 											</div>
@@ -458,7 +458,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 											value={billForText}
 											onChange={(e) => setBillForText(e.target.value.replace(/[\r\n]/g, ''))}
 											onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
-											placeholder="What's this for?"
+											placeholder="备注（选填）"
 											className="w-full rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-300 dark:focus:ring-sky-600"
 										/>
 										<div className="flex items-center gap-2">
@@ -515,7 +515,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								) : (
 									<Copy className="w-5 h-5 text-slate-600 dark:text-slate-400 shrink-0" />
 								)}
-								<span>Copy</span>
+								<span>复制</span>
 							</button>
 							<button
 								type="button"
@@ -523,7 +523,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 								className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm bg-black dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 active:scale-[0.98] transition"
 							>
 								<Share2 className="w-5 h-5 shrink-0" />
-								<span>Share</span>
+								<span>分享</span>
 							</button>
 						</div>
 						)}
@@ -540,13 +540,13 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		
       </div>
 	  
-	  {showMode === 'Print' && (
+	  {showMode === '打印' && (
 			<ShowPrint
-				title="Your Beamio QR Kit"
-				merchantName={displayName(beamio) || "Demo"}
+				title="您的 Beamio 二维码套件"
+				merchantName={displayName(beamio) || "演示"}
 				handle={`@${beamio?.accountName || "BeamioDemo"}`}
-				payTitle="Beamio PayMe"
-				paySubtitle="USDC · Any amount"
+				payTitle="Beamio 收款"
+				paySubtitle="USDC · 任意金额"
 				payLink={successUrl}
 				qrValue={successUrl}
 				onDone={() => setShowMode('main')}

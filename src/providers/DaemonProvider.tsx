@@ -8,6 +8,7 @@ import { ensureConetAaForEoa } from '@/utils/ensureConetAa'
 import { conetDepinProvider } from '@/utils/constants'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { loadApiExcludedUserCards } from '@/utils/apiExcludedUserCards'
+import { syncBeamioUiLocaleFromProfileLanguage } from '@/locale/i18n'
 
 /**
  * AA “steady poll” path arms **after the next CoNET L1 block** (same metronome as `biz.tsx` overview feeder), not `setTimeout(6000)`.
@@ -533,6 +534,11 @@ export function DaemonProvider({ children }: DaemonProps) {
   useEffect(() => {
     void loadApiExcludedUserCards()
   }, [])
+
+  useEffect(() => {
+    if (!beamio?.language) return
+    void syncBeamioUiLocaleFromProfileLanguage(beamio.language)
+  }, [beamio?.language])
 
   useEffect(() => {
     {

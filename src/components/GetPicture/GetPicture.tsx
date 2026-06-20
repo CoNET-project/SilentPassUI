@@ -208,7 +208,7 @@ export default function GetPicture({
                 flex items-center justify-center
                 active:scale-95
               "
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="h-5 w-5 text-white/80" strokeWidth={2.5} />
             </button>

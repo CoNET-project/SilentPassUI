@@ -4,6 +4,7 @@ import base_ex_dark from '@/components/assets/base-ex-dark.svg'
 import base_ex from '@/components/assets/base-ex.svg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import {AppButton} from '@/components/button/AppButton'
+import { tu } from '@/locale/beamioLocale'
 
 type Prof = {
 	amount: string
@@ -58,15 +59,15 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 								target="_blank"
 								rel="noreferrer"
 								className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-								aria-label="View on BaseScan"
-								title="View on BaseScan"
+								aria-label="在 BaseScan 查看"
+								title="在 BaseScan 查看"
 								>
 								<IpfsImg
 									src={darkModle ? base_ex_dark : base_ex}
 									alt=""
 									className="w-4 h-4"
 								/>
-								<span className="sr-only">View on BaseScan</span>
+								<span className="sr-only">在 BaseScan 查看</span>
 								</a>
 							</div> */}
 						</div>
@@ -100,15 +101,15 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							target="_blank"
 							rel="noreferrer"
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-							aria-label="View on BaseScan"
-							title="View on BaseScan"
+							aria-label="在 BaseScan 查看"
+							title="在 BaseScan 查看"
 							>
 							<IpfsImg
 								src={darkModle ? base_ex_dark : base_ex}
 								alt=""
 								className="w-4 h-4"
 							/>
-							<span className="sr-only">View on BaseScan</span>
+							<span className="sr-only">在 BaseScan 查看</span>
 							</a>
 						</div>
 						</div>
@@ -128,15 +129,15 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							target="_blank"
 							rel="noreferrer"
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-							aria-label="View on BaseScan"
-							title="View on BaseScan"
+							aria-label="在 BaseScan 查看"
+							title="在 BaseScan 查看"
 							>
 							<IpfsImg
 								src={darkModle ? base_ex_dark : base_ex}
 								alt=""
 								className="w-4 h-4"
 							/>
-							<span className="sr-only">View on BaseScan</span>
+							<span className="sr-only">在 BaseScan 查看</span>
 							</a>
 						</div>
 
@@ -146,13 +147,13 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 				{/* Transaction details */}
 				<section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
 					<div className="flex items-center justify-between text-sm">
-					<span className="font-medium text-slate-800">Transaction</span>
+					<span className="font-medium text-slate-800">交易</span>
 					<span className="text-[11px] text-slate-500">Completed on Base</span>
 					</div>
 					<div className="flex items-center justify-between text-xs text-slate-500">
   
 					{/* 左侧标签 */}
-					<span>Tx hash</span>
+					<span>交易哈希</span>
 
 					{/* 右侧：哈希 + 按钮同行 */}
 					<div className="flex items-center gap-1">
@@ -163,15 +164,15 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 						target="_blank"
 						rel="noreferrer"
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-						aria-label="View on BaseScan"
-						title="View on BaseScan"
+						aria-label="在 BaseScan 查看"
+						title="在 BaseScan 查看"
 						>
 						<IpfsImg
 							src={darkModle ? base_ex_dark : base_ex}
 							alt=""
 							className="w-4 h-4"
 						/>
-						<span className="sr-only">View on BaseScan</span>
+						<span className="sr-only">在 BaseScan 查看</span>
 						</a>
 					</div>
 
@@ -189,9 +190,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 					onClick={() => {
 						viewClose()
 					}}
-				>
-					Done
-				</AppButton>
+				>{tu('done')}</AppButton>
 				
 				
 			</div>

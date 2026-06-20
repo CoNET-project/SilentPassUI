@@ -71,6 +71,7 @@ import {
   preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys';
 import { catalogProductionHasVideoBackgroundMedia } from '@/utils/catalogProductionVideoOg';
+import { tu } from '@/locale/beamioLocale'
 import {
   buildBusinessCatalogEditorPreviewRow,
   BusinessCatalogListItemPreviewCard,
@@ -686,7 +687,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     type="button"
                     onClick={onCloseCatalog}
                     className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#abadaf]/30 bg-white text-[#747779] ${bizFocusRingClass}`}
-                    aria-label="Back"
+                    aria-label="返回"
                   >
                     <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
                   </button>
@@ -1114,9 +1115,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                               }))
                                             }
                                             className={`rounded-lg px-2 py-1 text-[10px] font-bold text-[#595c5e] disabled:opacity-40 ${bizFocusRingClass}`}
-                                          >
-                                            Next
-                                          </button>
+                                          >{tu('next')}</button>
                                         </div>
                                       ) : null}
                                     </>
@@ -1192,7 +1191,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           onClick={onCloseEditor}
                           disabled={productionBackgroundUploadLocked}
                           className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[#747779] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
-                          aria-label="Back"
+                          aria-label="返回"
                         >
                           <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
                         </button>
@@ -1205,7 +1204,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           disabled={publishing || iconUploading || productionBackgroundBlocksCatalogSubmit}
                           className={`text-xs font-bold uppercase tracking-wider text-[#ea580c] disabled:opacity-50 ${bizFocusRingClass}`}
                         >
-                          {publishing ? 'Saving…' : 'Save'}
+                          {publishing ? 'Saving…' : '保存'}
                         </button>
                       </div>
                     </header>

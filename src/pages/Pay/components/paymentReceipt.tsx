@@ -405,7 +405,7 @@ export default function PaymentReceipt({
 						}}
 						className="h-10 w-10 rounded-2xl bg-white ring-1 ring-black/5 flex items-center justify-center text-slate-700 active:scale-[0.98] transition"
 						aria-label="Copy receipt id"
-						title={copied === "receipt" ? "Copied" : "Copy"}
+						title={copied === "receipt" ? "已复制" : "复制"}
 					>
 						<Copy className="h-5 w-5" />
 					</button>
@@ -418,11 +418,11 @@ export default function PaymentReceipt({
 
           {/* transaction */}
           
-            <div className="text-[16px] font-extrabold text-slate-900 mb-2">Transaction</div>
+            <div className="text-[16px] font-extrabold text-slate-900 mb-2">交易</div>
 
             <div className="rounded-[14px] border border-slate-200/70 bg-white overflow-hidden">
               <div className="px-4 py-3 flex items-center justify-between gap-3">
-                <div className="text-[14px] font-semibold text-slate-700">Tx hash</div>
+                <div className="text-[14px] font-semibold text-slate-700">交易哈希</div>
 
                 <div className="flex items-center gap-2">
                   <div className="text-[14px] font-extrabold text-slate-900 tabular-nums">{txHashShort || "—"}</div>
@@ -438,7 +438,7 @@ export default function PaymentReceipt({
                     }}
                     className="h-9 w-9 rounded-full hover:bg-black/5 active:scale-[0.98] transition flex items-center justify-center"
                     aria-label="Copy tx hash"
-                    title={copied === "hash" ? "Copied" : "Copy"}
+                    title={copied === "hash" ? "已复制" : "复制"}
                   >
                     <Copy className="h-4 w-4 text-slate-500" />
                   </button>
@@ -468,8 +468,8 @@ export default function PaymentReceipt({
 
         {/* footer actions */}
         <div className="mt-3 flex items-center gap-3">
-          <ActionBtn icon={<Share2 className="h-5 w-5" />} label="Share" onClick={() => onShare?.(data)} />
-          <ActionBtn icon={<Download className="h-5 w-5" />} label="Save" onClick={() => onPdf?.(data)} />
+          <ActionBtn icon={<Share2 className="h-5 w-5" />} label="分享" onClick={() => onShare?.(data)} />
+          <ActionBtn icon={<Download className="h-5 w-5" />} label="保存" onClick={() => onPdf?.(data)} />
         </div>
 
         <div className="mt-4 pb-1 text-center text-[13px] text-slate-400">

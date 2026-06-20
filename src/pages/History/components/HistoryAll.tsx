@@ -8,6 +8,7 @@ import { fiatPrefix, formatAmount, formatTimev2, calcFeeFromReceived, calcFeeFro
 import AccountBeo from "../AccountBea"
 import { TransactionsItemDetail } from "@/pages/History/TransactionsItemDetail"
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
+import { tu } from '@/locale/beamioLocale'
 import {
   Search,
   X,
@@ -569,9 +570,7 @@ export default function HistoryAll() {
       {/* ✅ 顶部：标题 + iOS 搜索（sticky） */}
       <div className="sticky top-0 z-20 px-5 pb-3 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl">
         <div className="pt-1">
-          <div className="text-[18px] font-semibold text-slate-900 dark:text-slate-100">
-            History
-          </div>
+          <div className="text-[18px] font-semibold text-slate-900 dark:text-slate-100">{tu('history')}</div>
         </div>
 
         <div className="mt-3">
@@ -593,7 +592,7 @@ export default function HistoryAll() {
                 ref={inputRef}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search all history"
+                placeholder="搜索全部历史"
                 className="
                   flex-1 bg-transparent outline-none
                   text-[14px] text-slate-900 dark:text-slate-100
@@ -628,16 +627,14 @@ export default function HistoryAll() {
                   inputRef.current?.blur()
                 }}
                 className="text-[14px] font-semibold text-[#2F78FF] active:opacity-70"
-              >
-                Cancel
-              </button>
+              >{tu('cancel')}</button>
             )}
           </div>
 
           <div className="mt-3 flex items-center gap-2">
             {/* {(["all", "pay", "request", "cashcode"] as const).map(k => {
               const active = modeTab === k
-              const label = k === "all" ? "All" : k === "pay" ? "Send" : k === "request" ? "Request" : "Cashcode"
+              const label = k === "all" ? "全部" : k === "pay" ? "发送" : k === "request" ? "请求" : "Cashcode"
               return (
                 <button
                   key={k}
@@ -697,9 +694,7 @@ export default function HistoryAll() {
 				</div>
 			))
 			) : (
-			<div className="px-5 py-6 text-[12px] text-slate-500 dark:text-slate-400">
-				No results
-			</div>
+			<div className="px-5 py-6 text-[12px] text-slate-500 dark:text-slate-400">{tu('no_results')}</div>
 			)}
 
 			<div className="h-[32px] pb-[env(safe-area-inset-bottom)] pointer-events-none" />

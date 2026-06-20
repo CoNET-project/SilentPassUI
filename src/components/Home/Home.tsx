@@ -38,6 +38,7 @@ import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import BankingBridge from '@/pages/History/components/BankingBridge'
 import FuelView from './FuelView'
+import { tu } from '@/locale/beamioLocale'
 
 
 
@@ -67,7 +68,7 @@ const Home = ({}) => {
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData
 	} = useDaemonContext()
 	const navigate = useNavigate()
-	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Pay'>('')
+	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'Payment'>('')
 	
 	const [avatarName, setAvatarName] = useState('')
 	const [processing, setProcessing] = useState(false)
@@ -79,7 +80,7 @@ const Home = ({}) => {
 	const [recipient, setRecipient] = useState('')
 	const [claimLoading, setClaimLoading] = useState(false)
 	const [currency, setCurrency] = useState<ICurrency>('USD')
-	const [language, setLanguage] = useState<"en">("en")
+	const [language, setLanguage] = useState<ILanguage>('en')
 	const [userPreviewItem, setUserPreviewItem] = useState<searchResult|null>()
 	const [openSearch, setOpenSearch]= useState(false)
 	const [reflash, setReflash] = useState(false)
@@ -90,7 +91,7 @@ const Home = ({}) => {
 
 	const [activeItems, setActiveItems] = useState<TransferHistork[]>([])
 
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Payment'|'TransactionsItemDetail'|
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
@@ -453,9 +454,7 @@ const Home = ({}) => {
 								].join(" ")}
 							/>
 						</button>
-						<span className="text-[15px] font-medium tracking-wide">
-							USDC on Base
-						</span>
+						<span className="text-[15px] font-medium tracking-wide">{tu('usdc_on_base')}</span>
 					</div>
 				</div>
 
@@ -552,7 +551,7 @@ const Home = ({}) => {
 									"
 								>
 									<PlusCircle className="h-4 w-4 text-white/90" />
-									<span>Add funds</span>
+									<span>充值</span>
 								</button>
 
 								<button
@@ -567,7 +566,7 @@ const Home = ({}) => {
 									"
 								>
 									<ArrowDownCircle className="h-4 w-4 text-white/90" />
-									<span>Cash out</span>
+									<span>提现</span>
 								</button>
 							</div>
 						</div>
@@ -639,20 +638,16 @@ const Home = ({}) => {
 				<button
 					className="flex-1 h-9 rounded-full bg-white text-sm font-semibold text-blue-600 shadow-md"
 					onClick={() => {
-						setShowAlphaHowItWorks('Pay')
+						setShowAlphaHowItWorks('Payment')
 					}}
-				>
-					Send
-				</button>
+				>{tu('send')}</button>
 				<button
 					className="flex-1 h-9 rounded-full border border-blue-600 text-sm font-semibold text-blue-600 bg-white/10 shadow-md"
 					onClick={() => {
 						setPayTag('request')
 						navigate('/Pay')
 					}}
-				>
-					Request
-				</button>
+				>{tu('request')}</button>
 			</div>	
 		)
 	}
@@ -726,7 +721,7 @@ const Home = ({}) => {
 				<button
 					type="button"
 							className={styles.headerBtn}
-							aria-label="Toggle theme"
+							aria-label="切换主题"
 							onClick={() => setDarkModle(!darkModle)}
 				>
 					<span className={styles.headerBtnIcon}>
@@ -809,7 +804,7 @@ const Home = ({}) => {
 								<button
 									type="button"
 									onClick={() => {
-										setSettingsOpen('Pay')
+										setSettingsOpen('Payment')
 										setShowFooter(false)
 									}}
 									className="bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 p-4 rounded-[28px] shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform flex flex-col justify-between h-32 group text-white"
@@ -818,7 +813,7 @@ const Home = ({}) => {
 										<ArrowUpRight className="w-5 h-5 text-white" />
 									</div>
 									<div className="text-left">
-										<span className="block font-bold text-white">Send</span>
+										<span className="block font-bold text-white">发送</span>
 										<span className="text-xs text-white/80">0 Gas USDC</span>
 									</div>
 								</button>
@@ -831,7 +826,7 @@ const Home = ({}) => {
 										<div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center">
 											<ArrowDownLeft className="w-5 h-5 text-green-600" />
 										</div>
-										<span className="font-bold text-gray-900 text-sm">Receive</span>
+										<span className="font-bold text-gray-900 text-sm">收款</span>
 									</button>
 									<button
 										type="button"
@@ -841,15 +836,15 @@ const Home = ({}) => {
 										<div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
 											<Plus className="w-5 h-5 text-gray-600" />
 										</div>
-										<span className="font-bold text-gray-900 text-sm">Add Cash</span>
+										<span className="font-bold text-gray-900 text-sm">充值</span>
 									</button>
 								</div>
 							</div>
 
 							{show200OK && (
 								<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">
-									<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">Beamio Alpha Reward</p>
-									<h4 className="font-bold text-gray-900">You've claimed 0.1 USDC</h4>
+									<p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-400 mb-1">Beamio Alpha 奖励</p>
+									<h4 className="font-bold text-gray-900">您已领取 0.1 USDC</h4>
 									<p className="mt-1 text-[11px] text-gray-500 leading-snug">
 										Thank you for testing Beamio on Base. Your Beamio wallet has been funded with{" "}
 										<span className="font-semibold text-gray-900">0.1 USDC</span> so you can try your first gasless payment.
@@ -858,7 +853,7 @@ const Home = ({}) => {
 							)}
 
 							{/* Recent Activity - 与 Total Valuation、Send/Receive 同层级，左右边距统一 px-5；bare 无外层圆角/边框/边距，内部控件与上方对齐 */}
-							<ActiveHistoryPannelNew title="Recent Activity" compact compactLimit={5} bare />
+							<ActiveHistoryPannelNew title="最近动态" compact compactLimit={5} bare />
 						</div>
 
 						<div className="h-[128px] pb-[env(safe-area-inset-bottom)] pointer-events-none" />
@@ -897,7 +892,7 @@ const Home = ({}) => {
 										type="button"
 										onClick={() => setShowPayMeSheet(false)}
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-										aria-label="Close"
+										aria-label="关闭"
 									>
 										<X className="w-5 h-5" />
 									</button>
@@ -952,7 +947,7 @@ const Home = ({}) => {
 											setShowFooter(true)
 										}}
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-										aria-label="Close"
+										aria-label="关闭"
 									>
 										<X className="w-5 h-5" />
 									</button>
@@ -1022,7 +1017,7 @@ const Home = ({}) => {
 							showAlphaHowItWorks === 'BeamioAlphaHowItWorks' ? 'How Beamio Alpha works'
 							: showAlphaHowItWorks === 'BeamioLearnHowItWorksCard' ? 'How Beamio works'
 							: showAlphaHowItWorks === 'BeamioTestBalance' ? 'About this 0.2 USDC'
-							: showAlphaHowItWorks === 'Pay' ? 'Pay'
+							: showAlphaHowItWorks === 'Payment' ? 'Payment'
 							: ''
 						}
 						onClose={() => {
@@ -1056,7 +1051,7 @@ const Home = ({}) => {
 							{showAlphaHowItWorks === 'BeamioTestBalance' && <BeamioTestBalanceDetailsCard />}
 							
 							
-							{showAlphaHowItWorks === 'Pay' && <PayScreen 
+							{showAlphaHowItWorks === 'Payment' && <PayScreen 
 								beamioer={userPreviewItem||undefined}
 
 								close={path => {
@@ -1069,7 +1064,7 @@ const Home = ({}) => {
 								item={userPreviewItem} 
 								close={item => {
 									setShowAlphaHowItWorks('')
-									setSettingsOpen('Pay')
+									setSettingsOpen('Payment')
 									setShowFooter(false)
 							}} />}
 
@@ -1190,7 +1185,7 @@ const Home = ({}) => {
 								setSettingsOpen('')
 							}} />}
 
-							{ settingsOpen === 'Pay' && (
+							{ settingsOpen === 'Payment' && (
 								<PayScreen 
 									beamioer={userPreviewItem || undefined}
 									close={() => {

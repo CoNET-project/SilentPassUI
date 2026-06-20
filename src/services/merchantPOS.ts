@@ -153,7 +153,7 @@ export async function registerPOSApi(payload: RegisterPOSPayload): Promise<{ suc
 		if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
 		return { success: true, txHash: data.txHash }
 	} catch (e) {
-		return { success: false, error: (e as Error)?.message ?? 'Request failed' }
+		return { success: false, error: (e as Error)?.message ?? '请求失败' }
 	}
 }
 
@@ -171,6 +171,6 @@ export async function removePOSApi(payload: RemovePOSPayload): Promise<{ success
 		if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
 		return { success: true, txHash: data.txHash }
 	} catch (e) {
-		return { success: false, error: (e as Error)?.message ?? 'Request failed' }
+		return { success: false, error: (e as Error)?.message ?? '请求失败' }
 	}
 }

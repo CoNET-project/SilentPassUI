@@ -187,7 +187,7 @@ export default function ShowCard({ card, address, usdcAmount, cancel }: Props) {
 						: "bg-slate-100 border-slate-200"
 				].join(" ")}
 				style={{ top: NAV_TOP }}
-				aria-label="Cancel"
+				aria-label="取消"
 			>
 				<X className={[
 					"w-5 h-5 mx-auto translate-y-[2px]",

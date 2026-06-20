@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { IpfsImg } from '@/components/IpfsImg';
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
 import type { IssuedNftClaimWalletApiRow } from '@/services/BeamioCard';
+import { tu } from '@/locale/beamioLocale'
 
 const bizFocusRingClass =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
@@ -159,7 +160,7 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
             <table className="min-w-full text-left text-[11px]">
               <thead className={`${headerBg} text-[9px] font-bold uppercase tracking-wider text-[#595c5e]`}>
                 <tr>
-                  <th className="px-2.5 py-2 sm:px-3">Claimed</th>
+                  <th className="px-2.5 py-2 sm:px-3">已领取</th>
                   <th className="px-2.5 py-2 sm:px-3">Member</th>
                   <th className="px-2.5 py-2 sm:px-3">Burned</th>
                 </tr>
@@ -205,9 +206,7 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
                 disabled={page >= pageCount || view.loading}
                 onClick={() => onPageChange(Math.min(pageCount, page + 1))}
                 className={`inline-flex items-center gap-1 rounded-full border bg-white px-2.5 py-1 text-[10px] font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${borderClass} ${bizFocusRingClass} ${focusRing}`}
-              >
-                Next
-                <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              >{tu('next')}<ChevronRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
               </button>
             </div>
           ) : null}

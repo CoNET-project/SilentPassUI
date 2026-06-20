@@ -16,6 +16,7 @@ import { baseEndpoint, CCSA_Card_Address, USDCContract_BASE, BeamioCardFactorySC
 import { AuthorizationSign, checkRequestStatus, searchUsername, fetchNfcCardStatus, payByNfcUid, nfcTopup } from '@/services/beamio'
 import { useNfcRead } from '@/hooks/useNfcRead'
 import { formatAmount, fiatPrefix } from '@/services/currency'
+import { tu } from '@/locale/beamioLocale'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const shortAddr = (addr: string) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
@@ -52,7 +53,7 @@ const TenKeyInput = ({
 	onChange, 
 	maxLength = 10,
 	allowDecimal = false,
-	label = "ENTER CHARGE (CAD)",
+	label = "输入收款金额 (CAD)",
 	currency = "$",
 	onScanUser,
 	onShowQR,
@@ -133,7 +134,7 @@ const TenKeyInput = ({
 							className="h-14 rounded-xl bg-[#1562f0] text-white shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
 						>
 							<Camera size={20} />
-							<span className="text-[10px] font-bold uppercase tracking-wider">SCAN USER</span>
+							<span className="text-[10px] font-bold uppercase tracking-wider">扫描用户</span>
 						</button>
 					)}
 					{onPaymentWithNfc && (
@@ -155,7 +156,7 @@ const TenKeyInput = ({
 							className="h-14 rounded-xl bg-amber-500 text-white shadow-lg flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all"
 						>
 							<SmartphoneNfc size={20} />
-							<span className="text-[10px] font-bold uppercase tracking-wider">NFC Topup</span>
+							<span className="text-[10px] font-bold uppercase tracking-wider">NFC 充值</span>
 						</button>
 					)}
 					{onShowQR && (
@@ -180,12 +181,12 @@ type RoutingStep = { id: string; label: string; detail: string; status: StepStat
 
 // 4 steps shown in design; sendTx/waitTx shown only when loading or error (hidden when passed)
 const ROUTING_STEPS: Omit<RoutingStep, 'status'>[] = [
-	{ id: 'detectingUser', label: 'Detecting User', detail: '' },
-	{ id: 'membership', label: 'Checking Membership', detail: '' },
-	{ id: 'analyzingAssets', label: 'Analyzing Assets', detail: '' },
-	{ id: 'optimizingRoute', label: 'Optimizing Route', detail: '' },
-	{ id: 'sendTx', label: 'Sending transaction', detail: '' },
-	{ id: 'waitTx', label: 'Waiting for transaction', detail: '' },
+	{ id: 'detectingUser', label: '识别用户', detail: '' },
+	{ id: 'membership', label: '检查会员', detail: '' },
+	{ id: 'analyzingAssets', label: '分析资产', detail: '' },
+	{ id: 'optimizingRoute', label: '优化路径', detail: '' },
+	{ id: 'sendTx', label: '发送交易', detail: '' },
+	{ id: 'waitTx', label: '等待交易确认', detail: '' },
 ]
 const VISIBLE_STEP_IDS = ['detectingUser', 'membership', 'analyzingAssets', 'optimizingRoute']
 
@@ -249,9 +250,7 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 pt-[6rem]">
-			<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 text-center pt-8 pb-6">
-				Smart Routing Analysis
-			</h2>
+			<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 text-center pt-8 pb-6">{tu('smart_routing_analysis')}</h2>
 			<div className="flex flex-col gap-4 px-6 min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
 				<AnimatePresence initial={false}>
 					{displayOrder.map((step, index) => (
@@ -291,9 +290,7 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 									onClick={onRetry}
 									className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95 transition-all flex items-center gap-1.5"
 								>
-									<RefreshCw className="w-4 h-4" strokeWidth={2.5} />
-									Try again
-								</button>
+									<RefreshCw className="w-4 h-4" strokeWidth={2.5} />{tu('try_again')}</button>
 							)}
 						</motion.div>
 					))}
@@ -312,9 +309,7 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 								target="_blank"
 								rel="noopener noreferrer"
 								className="text-blue-600 dark:text-blue-400 hover:underline"
-							>
-								View on BaseScan
-							</a>
+							>{tu('view_on_basescan')}</a>
 						</p>
 					)}
 					<button
@@ -322,7 +317,7 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 						onClick={onAbandon}
 						className="w-full h-12 rounded-xl bg-slate-800 dark:bg-slate-700 text-white font-semibold active:scale-[0.98] transition-transform"
 					>
-						{hasError ? 'OK' : 'Done'}
+						{hasError ? '确定' : '完成'}
 					</button>
 				</div>
 			)}
@@ -421,25 +416,23 @@ function ConfirmDeductionView({
 	const hasUSDC = Number(fromBal) > 0
 	const payerName = data.payerDisplayName ?? (data.payload?.account
 		? `${data.payload.account.slice(0, 6)}…${data.payload.account.slice(-4)}`
-		: 'Payer')
+		: '付款方')
 	const isBillPay = !!data.isBillPay
 	const payeeAddr = data.billPayeeAA ?? data.payload?.to ?? ''
-	const payeeName = data.payeeDisplayName ?? (payeeAddr ? `${payeeAddr.slice(0, 6)}…${payeeAddr.slice(-4)}` : 'Merchant')
+	const payeeName = data.payeeDisplayName ?? (payeeAddr ? `${payeeAddr.slice(0, 6)}…${payeeAddr.slice(-4)}` : '商户')
 	// Beamio 标准格式：fullName = firstName + lastName（首行），无则 fallback accountName / 地址
 	const payeeFullName = [data.payeeFirstName, data.payeeLastName].filter(Boolean).join(' ').trim() || data.payeeAccountName || payeeName
 	// 支付来源：无 AA 时用 EOA；EOA 受益方时 useAaToEoa/useAaPlusEoa 决定；否则为 Express Pay
 	const isPayingFromAA = data.billPayerEoaOnly ? false : (data.billPayeeIsEOA ? (!!data.useAaToEoa || !!data.useAaPlusEoa) : true)
 	const payingFromAddr = data.payload?.account ?? ''
-	const payingFromLabel = data.useAaPlusEoa ? 'Smart Routing (AA + EOA)' : (isPayingFromAA ? 'Express Pay' : 'Main Vault')
-	const payingFromSubLabel = data.useAaPlusEoa ? 'Combined transfer' : (isPayingFromAA ? 'Smart Account' : 'EOA')
+	const payingFromLabel = data.useAaPlusEoa ? '智能路由 (AA + EOA)' : (isPayingFromAA ? '快捷支付' : '主金库')
+	const payingFromSubLabel = data.useAaPlusEoa ? '组合转账' : (isPayingFromAA ? '智能账户' : 'EOA')
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16">
 			{/* 标题：Pay bill 时显示 */}
 			{isBillPay && (
-				<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 text-center mb-4">
-					Pay bill
-				</h1>
+				<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 text-center mb-4">{tu('pay_bill')}</h1>
 			)}
 			{/* Bill 时显示请求方商家信息（Beamio 标准：头像、firstName+lastName、@beamioTag），否则显示 Payer (扣款者 / QR holder) 信息 */}
 			<div className="rounded-xl bg-slate-100 dark:bg-slate-800 p-4 flex items-center gap-4 mb-6">
@@ -452,16 +445,12 @@ function ConfirmDeductionView({
 						)}
 					</div>
 				) : (
-					<div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
-						Payer
-					</div>
+					<div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">{tu('payer')}</div>
 				)}
 				<div className="min-w-0 flex-1">
 					{isBillPay ? (
 						<>
-							<p className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">
-								Pay to
-							</p>
+							<p className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">{tu('pay_to')}</p>
 							{(payeeFullName || payeeName) ? (
 								<p className="font-bold text-slate-900 dark:text-slate-100 text-base truncate mt-0.5">
 									{payeeFullName || payeeName}
@@ -528,9 +517,7 @@ function ConfirmDeductionView({
 						)}
 					</div>
 					<div className="min-w-0 flex-1">
-						<p className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">
-							Paying from
-						</p>
+						<p className="text-[11px] font-medium tracking-wider text-slate-500 dark:text-slate-400 uppercase">{tu('paying_from')}</p>
 						<p className="font-bold text-slate-900 dark:text-slate-100 text-base mt-0.5">
 							{payingFromLabel}
 						</p>
@@ -543,14 +530,14 @@ function ConfirmDeductionView({
 
 			{/* Bill Amount：真实 totalRequested（与 POST/链上 container 一致） */}
 			<div className="flex justify-between items-center mb-2 leading-[1.375rem]">
-				<span className="text-slate-500 dark:text-slate-400 text-sm">Bill Amount</span>
+				<span className="text-slate-500 dark:text-slate-400 text-sm">账单金额</span>
 				<span className="font-bold text-slate-900 dark:text-slate-100">{sym}{formatAmount(totalReq, reqCur)}</span>
 			</div>
 
 			{/* Member Discount (10%)：真实 totalRequested − amount（与 POST/链上一致） */}
 			{data.hasDiscount && discountVal != null && (
 				<div className="flex justify-between items-center mb-4 leading-[1.375rem]">
-					<span className="text-slate-500 dark:text-slate-400 text-sm">Member Discount (10%)</span>
+					<span className="text-slate-500 dark:text-slate-400 text-sm">会员折扣 (10%)</span>
 					<span className="font-bold text-blue-600 dark:text-blue-400">-{sym}{formatAmount(discountVal, reqCur)}</span>
 				</div>
 			)}
@@ -562,7 +549,7 @@ function ConfirmDeductionView({
 						<div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">
 							C
 						</div>
-						<span className="text-emerald-700 dark:text-emerald-400 font-medium text-sm">$CCSA Balance</span>
+						<span className="text-emerald-700 dark:text-emerald-400 font-medium text-sm">$CCSA 余额</span>
 					</div>
 					<span className="font-bold text-emerald-700 dark:text-emerald-400 text-sm flex-shrink-0">-{sym}{formatAmount(fromCCSA, reqCur)}</span>
 				</div>
@@ -575,7 +562,7 @@ function ConfirmDeductionView({
 						<div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">
 							$
 						</div>
-						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">{data.billPayeeIsEOA ? 'USDC' : 'USDC Top-up'}</span>
+						<span className="text-blue-700 dark:text-blue-400 font-medium text-sm">{data.billPayeeIsEOA ? 'USDC' : 'USDC 充值'}</span>
 					</div>
 					<span className="font-bold text-blue-700 dark:text-blue-400 text-sm flex-shrink-0">-{sym}{formatAmount(fromBal, reqCur)}</span>
 				</div>
@@ -583,7 +570,7 @@ function ConfirmDeductionView({
 
 			{/* Total Charge - prominent */}
 			<div className="flex justify-between items-baseline mt-2 mb-6 leading-[1.375rem]">
-				<span className="text-slate-500 dark:text-slate-400 text-sm">Total Charge</span>
+				<span className="text-slate-500 dark:text-slate-400 text-sm">应付总额</span>
 				<span className="text-4xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">{sym}{formatAmount(amount, reqCur)}</span>
 			</div>
 
@@ -603,9 +590,7 @@ function ConfirmDeductionView({
 					onClick={onCancel}
 					disabled={submitting}
 					className="text-slate-500 dark:text-slate-400 text-sm font-normal hover:underline disabled:opacity-50"
-				>
-					Cancel
-				</button>
+				>{tu('cancel')}</button>
 			</div>
 		</div>
 	)
@@ -660,9 +645,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 	
 	return (
 		<div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-slate-900 px-6 pt-16 pb-6">
-			<h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 text-center mb-1">
-				Payment Successful
-			</h1>
+			<h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 text-center mb-1">{tu('payment_successful')}</h1>
 			<p className="text-lg font-bold text-slate-800 dark:text-slate-200 text-center">
 				{data.recipientName ? `@${data.recipientName}` : 'Payment'}
 			</p>
@@ -675,7 +658,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 			{/* 多笔转账时展示两个 hash */}
 			{data.txHashes && data.txHashes.length >= 2 && (
 				<div className="mb-6 space-y-3">
-					<p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Transaction IDs</p>
+					<p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">交易 ID</p>
 					{data.txHashes.map((h, i) => (
 						<div key={h} className="flex justify-between items-center text-sm">
 							<span className="text-slate-500 dark:text-slate-400">{(i === 0 ? 'AA→EOA' : 'EOA→EOA')}</span>
@@ -693,7 +676,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 									{h.slice(0, 6)}…{h.slice(-4)}
 									<Copy className="w-3.5 h-3.5 flex-shrink-0" />
 								</button>
-								<a href={`${BASE_EXPLORER_TX}${h}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600" title="View on BaseScan">
+								<a href={`${BASE_EXPLORER_TX}${h}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600" title="在 BaseScan 查看">
 									<ExternalLink className="w-4 h-4" />
 								</a>
 							</div>
@@ -703,22 +686,20 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 			)}
 
 			<div className="flex justify-between items-center mb-4 leading-[1.5rem]">
-				<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid</span>
+				<span className="font-bold text-slate-700 dark:text-slate-300">已付总额</span>
 				<span className="font-bold text-slate-900 dark:text-slate-100">{totalPaidFormatted}</span>
 			</div>
 
 			{needsUSDCCharge && (
 				<div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-4 mb-3">
 					<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-semibold text-sm mb-3">
-						<RefreshCw className="w-4 h-4" />
-						PAYMENT DETAILS
-					</div>
+						<RefreshCw className="w-4 h-4" />{tu('payment_details')}</div>
 					<div className="flex justify-between text-sm mb-1">
-						<span className="text-slate-600 dark:text-slate-400">Exchange Rate</span>
+						<span className="text-slate-600 dark:text-slate-400">汇率</span>
 						<span className="text-slate-800 dark:text-slate-200">1 {reqCur} ≈ {rate} USDC</span>
 					</div>
 					<div className="flex justify-between items-center mt-2">
-						<span className="font-bold text-slate-700 dark:text-slate-300">Total Paid in USDC</span>
+						<span className="font-bold text-slate-700 dark:text-slate-300">USDC 实付</span>
 						<span className="font-bold text-blue-600 dark:text-blue-400">{usdcFormatted} USDC</span>
 					</div>
 				</div>
@@ -727,11 +708,9 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 			{data.paidWithCCSACAD != null && Number(data.paidWithCCSACAD) > 0 && (
 				<div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-4 mb-4">
 					<div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold text-sm mb-3">
-						<Zap className="w-4 h-4" />
-						PAYMENT SOURCE
-					</div>
+						<Zap className="w-4 h-4" />{tu('payment_source')}</div>
 					<div className="flex justify-between items-center">
-						<span className="font-bold text-emerald-700 dark:text-emerald-600">Paid with $CCSA</span>
+						<span className="font-bold text-emerald-700 dark:text-emerald-600">使用 $CCSA 支付</span>
 						<span className="font-bold text-emerald-700 dark:text-emerald-600">{fiatPrefix('CAD')}{formatAmount(Number(data.paidWithCCSACAD), 'CAD')}</span>
 					</div>
 					<p className="text-xs text-slate-500 dark:text-slate-400 mt-1">1 $CCSA = {fiatPrefix('CAD')}1.00</p>
@@ -739,11 +718,9 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 			)}
 
 			<div className="flex justify-between text-sm mb-1 leading-[1.375rem]">
-				<span className="text-slate-500 dark:text-slate-400">Network</span>
+				<span className="text-slate-500 dark:text-slate-400">网络</span>
 				<span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
-					<span className="w-2 h-2 rounded-full bg-blue-500" />
-					Base Mainnet
-				</span>
+					<span className="w-2 h-2 rounded-full bg-blue-500" />{tu('base_mainnet')}</span>
 			</div>
 			{(!data.txHashes || data.txHashes.length < 2) && (
 			<div className="flex justify-between items-center text-sm mb-6 leading-[1.375rem]">
@@ -763,7 +740,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 							target="_blank"
 							rel="noopener noreferrer"
 							className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-							title="View on BaseScan"
+							title="在 BaseScan 查看"
 						>
 							<ExternalLink className="w-4 h-4" />
 						</a>
@@ -779,9 +756,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 				type="button"
 				onClick={onDone}
 				className="w-full h-14 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-base"
-			>
-				Done & Go to Chat
-			</button>
+			>{tu('done_go_to_chat')}</button>
 		</div>
 	)
 }
@@ -850,7 +825,7 @@ function NfcTopupBottomSheet({
 				setStatus('error')
 			}
 		} catch (e) {
-			setError((e as Error)?.message ?? 'Request failed')
+			setError((e as Error)?.message ?? '请求失败')
 			setStatus('error')
 		}
 	}
@@ -884,7 +859,7 @@ function NfcTopupBottomSheet({
 						<div className="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
 							<SmartphoneNfc className="w-10 h-10 text-amber-600 dark:text-amber-400" strokeWidth={2} />
 						</div>
-						<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">NFC Topup</h2>
+						<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">NFC 充值</h2>
 						<p className="text-2xl font-black text-amber-600 dark:text-amber-400">CA${amount}</p>
 						<p className="text-sm text-slate-500 dark:text-slate-400">Hold NTAG 424 DNA card near phone back, or enter UID manually</p>
 						{!uid ? (
@@ -918,9 +893,7 @@ function NfcTopupBottomSheet({
 										{txHash.slice(0, 10)}…{txHash.slice(-8)}
 									</a>
 								)}
-								<button type="button" onClick={handleClose} className="mt-4 w-full py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
-									Done
-								</button>
+								<button type="button" onClick={handleClose} className="mt-4 w-full py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">{tu('done')}</button>
 							</div>
 						) : (
 							<>
@@ -1151,7 +1124,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			try {
 				const u = effectiveScanData.startsWith('http') ? new URL(effectiveScanData) : new URL(effectiveScanData, 'http://beamio.app')
 				const amountParam = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
-				const currencyParam = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
+				const currencyParam = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
 				const acceptTokensParam = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
 				const toParam = u.searchParams.get('to') ?? u.searchParams.get('payee') ?? ''
 				// 有金额即视为 bill URL：必须带 currency 和 acceptTokens，否则非法
@@ -2069,7 +2042,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			} catch (e) {
 				console.warn('payByNfcUid failed', e)
 				setSubmitting(false)
-				const errMsg = (e as Error)?.message ?? 'Request failed'
+				const errMsg = (e as Error)?.message ?? '请求失败'
 				setStepById('sendTx', 'error', errMsg)
 				setVoucherPayError(errMsg)
 				return
@@ -2099,7 +2072,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				const response = await fetch(requestEndpoint, { method: 'GET' })
 				if (response.status !== 402) {
 					setSubmitting(false)
-					setVoucherPayError('RPC Error!')
+					setVoucherPayError('RPC 错误！')
 					return
 				}
 				const { accepts } = await response.json()
@@ -2139,7 +2112,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				setConfirmDeduction(null)
 			} catch (e) {
 				setSubmitting(false)
-				setVoucherPayError((e as Error)?.message ?? 'Request failed')
+				setVoucherPayError((e as Error)?.message ?? '请求失败')
 				return
 			}
 			setSubmitting(false)
@@ -2156,7 +2129,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				const chainAA = await getAAAccount(profile)
 				if (!chainAA) {
 					setSubmitting(false)
-					setVoucherPayError('Express Pay not found')
+					setVoucherPayError('未找到快捷支付')
 					return
 				}
 
@@ -2236,7 +2209,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				})
 			} catch (e) {
 				setSubmitting(false)
-				setVoucherPayError((e as Error)?.message ?? 'Request failed')
+				setVoucherPayError((e as Error)?.message ?? '请求失败')
 				return
 			}
 			setSubmitting(false)
@@ -2269,7 +2242,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				const chainAA = await getAAAccount(profile)
 				if (!chainAA && data.useAaToEoa) {
 					setSubmitting(false)
-					setVoucherPayError('Express Pay not found')
+					setVoucherPayError('未找到快捷支付')
 					return
 				}
 				const profileWithAA = chainAA ? { ...profile, aaAccount: chainAA } : profile
@@ -2277,7 +2250,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 				payload = { ...signed, to: ethers.getAddress(data.billPayeeAA), items }
 			} catch (e) {
 				setSubmitting(false)
-				setVoucherPayError((e as Error)?.message ?? 'Sign failed')
+				setVoucherPayError((e as Error)?.message ?? '签名失败')
 				return
 			}
 		} else {
@@ -2386,7 +2359,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 		} catch (e) {
 			console.warn('AAtoEOA POST failed', e)
 			setSubmitting(false)
-			const errMsg = (e as Error)?.message ?? 'Request failed'
+			const errMsg = (e as Error)?.message ?? '请求失败'
 			setStepById('sendTx', 'error', errMsg)
 			setVoucherPayError(errMsg)
 			return
@@ -2428,7 +2401,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 			}
 		} catch (e) {
 			setSubmitting(false)
-			setVoucherPayError((e as Error)?.message ?? 'Sign failed')
+			setVoucherPayError((e as Error)?.message ?? '签名失败')
 		}
 	}
 
@@ -2575,9 +2548,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 						type="button"
 						onClick={() => setEoaTransferMessage(null)}
 						className="mt-3 w-full py-2.5 text-sm text-slate-500 hover:text-slate-700"
-					>
-						Cancel
-					</button>
+					>{tu('cancel')}</button>
 				</div>
 			)
 		}
@@ -2610,7 +2581,7 @@ const TenKeyInputComponentNew = (props: TenKeyInputComponentProps) => {
 					onChange={setValue}
 					maxLength={maxLength}
 					allowDecimal={allowDecimal}
-					label="ENTER CHARGE (CAD)"
+					label="输入收款金额 (CAD)"
 					currency="$"
 					onScanUser={handleScanUser}
 					onShowQR={handleShowQR}

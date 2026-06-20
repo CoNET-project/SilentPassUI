@@ -47,6 +47,7 @@ import { CCSA_Card_Address } from '@/utils/constants'
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import TenKeyInput from '@/pages/Pay/components/TenKeyInput'
+import { tu } from '@/locale/beamioLocale'
 
 type SectionTx = TransferHistork
 
@@ -227,10 +228,10 @@ export function MyWalletDashboard() {
 	const [isDragging, setIsDragging] = useState(false)
 	const [wheelDelta, setWheelDelta] = useState(0)
 	const carouselRef = useRef<HTMLDivElement>(null)
-	const [settingsOpen, setSettingsOpen] = useState<''|'Pay'|'BeamioPayMe'|'BeamioPayMeQR'|'Cashcode'|'BankingBridge'|'RedeemScreen'>('')
+	const [settingsOpen, setSettingsOpen] = useState<''|'Payment'|'BeamioPayMe'|'BeamioPayMeQR'|'Cashcode'|'BankingBridge'|'RedeemScreen'>('')
 	const [openRelayPayload, setOpenRelayPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [payMeSigning, setPayMeSigning] = useState(false)
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Pay'|'TransactionsItemDetail'|
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'BeamioAlphaHowItWorks'|'BeamioLearnHowItWorksCard'|'Payment'|'TransactionsItemDetail'|
 			''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'Search'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 
 	const [itemTx, setItemtx] = useState<TransferHistork>()
@@ -386,7 +387,7 @@ export function MyWalletDashboard() {
 		if (historyPayData) {
 			setPayScreenMode('eoa-pay')
 			setShowFooter(false)
-			setSettingsOpen('Pay')
+			setSettingsOpen('Payment')
 			return
 		}
 		if (redeemCode) {
@@ -777,9 +778,7 @@ export function MyWalletDashboard() {
     >
       {/* Top bar */}
       <div className="px-5 flex items-center justify-between min-h-[2.125rem]">
-        <div className="text-[18px] font-semibold text-slate-900 dark:text-slate-100 leading-none">
-          My Wallet
-        </div>
+        <div className="text-[18px] font-semibold text-slate-900 dark:text-slate-100 leading-none">{tu('my_wallet')}</div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-full text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm ring-1 ring-black/5 dark:ring-white/10 shrink-0">
           <Zap size={14} className="fill-amber-400 text-amber-400" />
           <span>Gas Sponsored</span>
@@ -839,7 +838,7 @@ export function MyWalletDashboard() {
 										reflashProcess()
 									}}
 									disabled={reflash}
-									aria-label="Refresh"
+									aria-label="刷新"
 								>
 									<IpfsImg
 										src={base_icon}
@@ -847,7 +846,7 @@ export function MyWalletDashboard() {
 										className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
 									/>
 								</button>
-								<span className="font-medium">USDC on Base</span>
+								<span className="font-medium">Base 上的 USDC</span>
 							</div>
 						</div>
 
@@ -897,7 +896,7 @@ export function MyWalletDashboard() {
 								<Plus size={32} className="text-purple-300" />
 							</div>
 							<h3 className="text-xl font-bold z-10">Create Express Pay</h3>
-							<p className="text-slate-400 text-sm mt-2 z-10 text-center px-8">Unlock gas-free payments & exclusive vouchers</p>
+							<p className="text-slate-400 text-sm mt-2 z-10 text-center px-8">解锁免 Gas 支付与专属优惠券</p>
 						</button>
 					) : (
 						// 已激活状态
@@ -914,7 +913,7 @@ export function MyWalletDashboard() {
 											reflashProcess()
 										}}
 										disabled={reflash}
-										aria-label="Refresh"
+										aria-label="刷新"
 									>
 										<IpfsImg
 											src={base_icon}
@@ -922,7 +921,7 @@ export function MyWalletDashboard() {
 											className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
 										/>
 									</button>
-									<span className="font-medium">Express Pay</span>
+									<span className="font-medium">快捷支付</span>
 								</div>
 							</div>
 
@@ -963,13 +962,13 @@ export function MyWalletDashboard() {
 					type="button"
 					onClick={() => setActiveSlide(0)}
 					className={`h-2 rounded-full transition-all duration-300 ${activeSlide === 0 ? 'w-8 bg-blue-600' : 'w-2 bg-slate-300'}`}
-					aria-label="USDC on Base"
+					aria-label="Base 上的 USDC"
 				/>
 				<button
 					type="button"
 					onClick={() => setActiveSlide(1)}
 					className={`h-2 rounded-full transition-all duration-300 ${activeSlide === 1 ? 'w-8 bg-purple-600' : 'w-2 bg-slate-300'}`}
-					aria-label="Express Pay"
+					aria-label="快捷支付"
 				/>
 			</div>
 		</div>
@@ -990,16 +989,16 @@ export function MyWalletDashboard() {
 				<div className="px-8 mt-4">
 					<div className="flex items-start justify-between">
 					<MiniAction
-						label="Send"
+						label="发送"
 						icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 						onClick={() => {
 							setPayScreenMode('eoa-pay')
-							setSettingsOpen('Pay')
+							setSettingsOpen('Payment')
 							setShowFooter(false)
 						}}
 					/>
 					<MiniAction
-						label="Request"
+						label="请求"
 						icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 						onClick={() => {
 							setSettingsOpen('BeamioPayMe')
@@ -1053,9 +1052,7 @@ export function MyWalletDashboard() {
 						
 						</>
 						) : (
-						<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">
-							No active items
-						</div>
+						<div className="px-4 py-5 text-[12px] text-slate-500 dark:text-slate-400">{tu('no_active_items')}</div>
 						)}
 					
 					</div>
@@ -1063,16 +1060,12 @@ export function MyWalletDashboard() {
 					{/* History */}
 					<div className="px-5 mt-4">
 					<div className="px-2  flex items-center justify-between">
-						<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-							History
-						</div>
+						<div className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">{tu('history')}</div>
 						<button
 						type="button"
 						onClick={() => navigate("/HistoryAll")}
 						className="text-[12px] font-semibold text-[#2F78FF] active:opacity-70"
-						>
-							View All
-						</button>
+						>{tu('view_all')}</button>
 					</div>
 
 					<div
@@ -1122,11 +1115,11 @@ export function MyWalletDashboard() {
 							onClick={() => {
 								setPayScreenMode('aa-eoa-transfer')
 								setShowFooter(false)
-								setSettingsOpen('Pay')
+								setSettingsOpen('Payment')
 							}}
 						/>
 						<MiniAction
-							label="Pay"
+							label="Payment"
 							icon={payMeSigning ? <Loader className="w-5 h-5 text-slate-800 dark:text-slate-100 animate-spin" strokeWidth={2.4} /> : <ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 							onClick={async () => {
 								if (payMeSigning || !profiles?.[0]?.aaAccount || !profiles[0].privateKeyArmor) return
@@ -1144,7 +1137,7 @@ export function MyWalletDashboard() {
 							}}
 						/>
 						<MiniAction
-							label="Pay bill"
+							label="支付账单"
 							icon={<Banknote className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 							onClick={() => {
 								setScanData('')
@@ -1226,7 +1219,7 @@ export function MyWalletDashboard() {
 								{(!smartAccountCardAssets || 
 									((!smartAccountCardAssets.points || Number(smartAccountCardAssets.points) === 0) && 
 									 (!smartAccountCardAssets.nfts || smartAccountCardAssets.nfts.length === 0))) && (
-									<p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">No vouchers yet. Visit Market to buy.</p>
+									<p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-1 pt-2 border-t border-slate-100 dark:border-slate-800">暂无优惠券，请前往市场购买。</p>
 								)}
 							</div>
 						</div>
@@ -1242,9 +1235,7 @@ export function MyWalletDashboard() {
 								type="button"
 								onClick={() => navigate('/HistoryAll')}
 								className="text-[12px] font-semibold text-violet-600 dark:text-violet-400 active:opacity-70"
-							>
-								View All
-							</button>
+							>{tu('view_all')}</button>
 						</div>
 						<div>
 							<ActiveList
@@ -1336,7 +1327,7 @@ export function MyWalletDashboard() {
 
 						{/* 内容区：内容少就不滚动；内容多才滚动 */}
 						<div className="px-4 pb-4 overflow-y-auto">
-							{settingsOpen === "Pay" && (
+							{settingsOpen === "Payment" && (
 								<PayScreen
 									mode={payScreenMode}
 									beamioer={historyPayData||undefined}

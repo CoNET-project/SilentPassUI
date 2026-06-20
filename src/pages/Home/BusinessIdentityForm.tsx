@@ -21,6 +21,7 @@ import {
 	normalizeBeamioTagInput,
 } from "@/utils/beamioTagRules"
 import type { VerraBusinessProfileDraft } from "@/utils/verraBusinessProfileLocal"
+import { tu } from '@/locale/beamioLocale'
 
 export type BusinessIdentitySuccess = {
 	qrDataUrl: string
@@ -351,7 +352,7 @@ export default function BusinessIdentityForm({
 									tabIndex={-1}
 									className="absolute inset-y-0 right-4 flex items-center rounded-md p-1 text-[#666666]/70 transition-colors hover:text-[#121212] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562F0]/30"
 									onClick={() => setShowPassword((s) => !s)}
-									aria-label={showPassword ? "Hide password" : "Show password"}
+									aria-label={showPassword ? "隐藏密码" : "显示密码"}
 								>
 									{showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
 								</button>
@@ -446,9 +447,7 @@ export default function BusinessIdentityForm({
 							shadow-lg shadow-[#1562F0]/10
 							${canSubmit ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` : "cursor-not-allowed bg-slate-200 text-slate-400 shadow-none"}
 						`}
-					>
-						Continue
-					</AppButton>
+					>{tu('continue')}</AppButton>
 					{trailingAfterSubmit}
 				</div>
 			</form>

@@ -5,6 +5,7 @@ import ScanBtn from '@/components/scanBtn/ScanButton' // 引入 ScanBtn
 import { Scan, AlertCircle } from 'lucide-react' 
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
+import { tu } from '@/locale/beamioLocale'
 type RestoreWithQRScreenProps = {
   onRestore: (temp: encrypt_keys_object) => void | Promise<void>
   /** 从 URL 等途径预填的 recovery code（如 PWA 从 Save to Home Screen 携带） */
@@ -188,9 +189,7 @@ const RestoreWithQRScreen = ({ onRestore, initialRecoveryCode = '' }: RestoreWit
             ${bizBrandOnboardingPrimaryBtnClass}
             ${bizBrandFocusRingClass}
           `}
-        >
-          Restore Wallet
-        </AppButton>
+        >{tu('restore_wallet')}</AppButton>
       </div>
     </form>
   )

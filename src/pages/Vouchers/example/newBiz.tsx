@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { tu } from '@/locale/beamioLocale'
 import {
  LayoutDashboard,
  Receipt,
@@ -176,12 +177,12 @@ type AllianceId = keyof typeof INITIAL_ALLIANCES_DB;
 
 // --- Precise Mock Data ---
 const INITIAL_TRANSACTIONS = [
- { id: 'TX-1049', time: '09:15 AM', type: 'Fiat Withdrawal', subtotal: 2500.00, tip: 0, total: 2500.00, method: 'Wire Transfer', ctreeAmount: 0, usdcAmount: 1850.00, source: 'EOA', beamioTag: 'RBC Bank *8821', status: 'Pending', hash: '0x1c...d4', terminal: 'The Vault', bUnits: 0, tier: null, requiredAlliance: null, wallet: 'EOA' },
+ { id: 'TX-1049', time: '09:15 AM', type: 'Fiat Withdrawal', subtotal: 2500.00, tip: 0, total: 2500.00, method: 'Wire Transfer', ctreeAmount: 0, usdcAmount: 1850.00, source: 'EOA', beamioTag: 'RBC Bank *8821', status: '待处理', hash: '0x1c...d4', terminal: 'The Vault', bUnits: 0, tier: null, requiredAlliance: null, wallet: 'EOA' },
  { id: 'TX-1048', time: '11:05 AM', type: 'P2P Send', subtotal: 500.00, tip: 0, total: 500.00, method: 'Direct USDC', ctreeAmount: 0, usdcAmount: 370.00, source: 'EOA', beamioTag: '@supplier_bob', status: 'Settled', hash: '0x9a...b2', terminal: 'The Vault', bUnits: 2, tier: null, requiredAlliance: null, wallet: 'EOA' },
- { id: 'TX-1042', time: '14:22 PM', type: 'Charge', subtotal: 85.00, tip: 15.00, total: 100.00, method: 'Mixed', ctreeAmount: 40.00, usdcAmount: 44.40, source: 'APP', beamioTag: '@alice_chen', status: 'Settled', hash: '0x1a...f9', terminal: '@ut_reg1', bUnits: 80, tier: 'Standard', requiredAlliance: 'CashTrees', wallet: 'AA' }, 
+ { id: 'TX-1042', time: '14:22 PM', type: 'Charge', subtotal: 85.00, tip: 15.00, total: 100.00, method: 'Mixed', ctreeAmount: 40.00, usdcAmount: 44.40, source: 'APP', beamioTag: '@alice_chen', status: 'Settled', hash: '0x1a...f9', terminal: '@ut_reg1', bUnits: 80, tier: '标准', requiredAlliance: 'CashTrees', wallet: 'AA' }, 
  { id: 'TX-1043', time: '15:05 PM', type: 'In-Store Top-Up', subtotal: 100.00, tip: 0.00, total: 100.00, method: 'Issued $CTree', ctreeAmount: 100.00, usdcAmount: 0, source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x2b...e4', terminal: '@ut_reg1', bUnits: 2, tier: null, requiredAlliance: 'CashTrees', wallet: 'AA' },
  { id: 'TX-1044', time: '16:10 PM', type: 'Charge', subtotal: 12.50, tip: 2.00, total: 14.50, method: '$CTree (Green Tier)', ctreeAmount: 14.50, usdcAmount: 0, source: 'NFC', beamioTag: null, status: 'Settled', hash: '0x3c...d1', terminal: '@ut_kiosk2', bUnits: 12, tier: 'Green Card', requiredAlliance: 'CashTrees', wallet: 'AA', discount: { percent: 10, amount: 1.39 } },
- { id: 'TX-1045', time: '16:45 PM', type: 'Charge', subtotal: 45.00, tip: 5.00, total: 50.00, method: 'USDC (No Discount)', ctreeAmount: 0, usdcAmount: 37.00, source: 'APP', beamioTag: '@bobby_s', status: 'Settled', hash: '0x4d...c2', terminal: '@ut_reg1', bUnits: 40, tier: 'Standard', requiredAlliance: null, wallet: 'AA' }, 
+ { id: 'TX-1045', time: '16:45 PM', type: 'Charge', subtotal: 45.00, tip: 5.00, total: 50.00, method: 'USDC (No Discount)', ctreeAmount: 0, usdcAmount: 37.00, source: 'APP', beamioTag: '@bobby_s', status: 'Settled', hash: '0x4d...c2', terminal: '@ut_reg1', bUnits: 40, tier: '标准', requiredAlliance: null, wallet: 'AA' }, 
  { id: 'TX-1046', time: '17:30 PM', type: 'Charge', subtotal: 75.00, tip: 10.00, total: 85.00, method: '$CTree (Black Tier)', ctreeAmount: 85.00, usdcAmount: 0, source: 'APP', beamioTag: '@char_w', status: 'Settled', hash: '0x5e...b3', terminal: '@ut_kiosk2', bUnits: 68, tier: 'Black VIP', requiredAlliance: 'CashTrees', wallet: 'AA', discount: { percent: 20, amount: 18.75 } },
  { id: 'TX-1047', time: '18:15 PM', type: 'Charge', subtotal: 120.00, tip: 18.00, total: 138.00, method: '$CCSA VIP', ctreeAmount: 0, usdcAmount: 0, ccsaAmount: 138.00, source: 'NFC', beamioTag: '@steven_liu', status: 'Settled', hash: '0x8f...a1', terminal: '@ut_reg1', bUnits: 110, tier: 'CCSA Member', requiredAlliance: 'CCSA', wallet: 'AA' }
 ];
@@ -195,7 +196,7 @@ const INITIAL_TERMINALS = [
 
 const MOCK_CONTACTS = [
   { id: 'c1', tag: '@cashtrees_support', name: 'CashTrees Network', type: 'Alliance', lastMessage: 'Your KYB application is approved.', time: '10:42 AM', unread: 0, avatarBg: 'bg-[#4854e8]', avatarText: 'CT' },
-  { id: 'c2', tag: '@alice_chen', name: 'Alice Chen', type: 'Customer', lastMessage: 'Thanks for the great service today!', time: 'Yesterday', unread: 2, avatarBg: 'bg-emerald-500', avatarText: 'AC' },
+  { id: 'c2', tag: '@alice_chen', name: 'Alice Chen', type: 'Customer', lastMessage: 'Thanks for the great service today!', time: '昨天', unread: 2, avatarBg: 'bg-emerald-500', avatarText: 'AC' },
   { id: 'c3', tag: '@senpho_wholesale', name: 'Sen Pho Supply', type: 'Supplier', lastMessage: 'Invoice #882 paid via $PHO.', time: 'Tuesday', unread: 0, avatarBg: 'bg-rose-500', avatarText: 'SP' }
 ];
 
@@ -216,7 +217,7 @@ export default function MerchantOS() {
  // ==========================================
  // GLOBAL TIME FILTER STATE
  // ==========================================
- const [timeFilter, setTimeFilter] = useState('Today');
+ const [timeFilter, setTimeFilter] = useState('今天');
 
  // ==========================================
  // CORE ONBOARDING & ALLIANCE STATE
@@ -280,10 +281,10 @@ export default function MerchantOS() {
 
  // Transactions State
  const [transactions, setTransactions] = useState<LedgerTx[]>(INITIAL_TRANSACTIONS);
- const [activeLedger, setActiveLedger] = useState('All'); 
+ const [activeLedger, setActiveLedger] = useState('全部'); 
  const [searchTerm, setSearchTerm] = useState('');
- const [filterType, setFilterType] = useState('All');
- const [filterTerminal, setFilterTerminal] = useState('All');
+ const [filterType, setFilterType] = useState('全部');
+ const [filterTerminal, setFilterTerminal] = useState('全部');
  
  // Chat State
  const [activeContact, setActiveContact] = useState('c1');
@@ -372,7 +373,7 @@ export default function MerchantOS() {
        name: newTerminalName,
        eoa: foundTerminalEoa,
        status: 'Active',
-       lastActive: 'Just now',
+       lastActive: '刚刚',
        quota: parseFloat(newTerminalQuota) || 0,
        issued: 0 
      }]);
@@ -482,7 +483,7 @@ export default function MerchantOS() {
        usdcAmount: usdcPayoutValue, 
        source: 'AA', 
        beamioTag: payoutMethod === 'USDC' ? 'The Vault (EOA)' : 'Alliance Treasury', 
-       status: payoutMethod === 'USDC' ? 'Settled' : 'Pending', 
+       status: payoutMethod === 'USDC' ? 'Settled' : '待处理', 
        hash: '0x' + Math.random().toString(16).slice(2, 10), 
        terminal: 'Smart Contract', 
        bUnits: 2, 
@@ -724,7 +725,7 @@ export default function MerchantOS() {
               <div className="flex items-center justify-between">
                 <span className="text-[12px] font-semibold text-slate-500 flex items-center gap-1.5"><Cpu size={14} className={isAaUnlocked ? "text-[#1562f0]" : "text-slate-400"}/> Smart AA</span>
                 <span className={`text-[12px] font-mono font-medium px-2 py-1 rounded-[8px] shadow-sm border ${isAaUnlocked ? 'bg-white text-slate-700 border-slate-100' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
-                  {isAaUnlocked ? '0x4D...11F2' : 'Locked'}
+                  {isAaUnlocked ? '0x4D...11F2' : '已锁定'}
                 </span>
               </div>
               <div className="h-[1px] w-full bg-slate-200/50"></div>
@@ -760,7 +761,7 @@ export default function MerchantOS() {
            className={`w-full flex items-center ${(isDesktopSidebarCollapsed && window.innerWidth >= 1024) ? 'justify-center px-0' : 'justify-center gap-2 px-4'} py-3.5 rounded-[16px] text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors font-semibold text-[15px]`}
          >
            <LogOut size={20} className="shrink-0" />
-           {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && <span className="whitespace-nowrap">Lock Wallet</span>}
+           {(!isDesktopSidebarCollapsed || window.innerWidth < 1024) && <span className="whitespace-nowrap">锁定钱包</span>}
          </button>
        </div>
      </aside>
@@ -792,7 +793,7 @@ export default function MerchantOS() {
                className="bg-transparent text-[14px] font-medium text-slate-700 focus:outline-none cursor-pointer appearance-none pl-1 pr-6"
                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em 1em' }}
              >
-               <option value="Today">Today, {dateString}</option>
+               <option value="今天">Today, {dateString}</option>
                <option value="This Week">This Week</option>
                <option value="This Month">This Month</option>
                <option value="This Quarter">This Quarter</option>
@@ -959,7 +960,7 @@ export default function MerchantOS() {
                      </div>
                      <div className="flex items-center gap-1.5 bg-orange-500/10 px-2.5 py-1 rounded-full border border-orange-500/20">
                        <div className={`w-1.5 h-1.5 rounded-full ${isAaUnlocked ? 'bg-orange-500 animate-pulse' : 'bg-slate-500'}`}></div>
-                       <span className={`text-[11px] font-bold ${isAaUnlocked ? 'text-orange-500' : 'text-slate-500'} tracking-wider uppercase`}>{isAaUnlocked ? 'Active' : 'Locked'}</span>
+                       <span className={`text-[11px] font-bold ${isAaUnlocked ? 'text-orange-500' : 'text-slate-500'} tracking-wider uppercase`}>{isAaUnlocked ? 'Active' : '已锁定'}</span>
                      </div>
                    </div>
                    <p className="text-[14px] font-medium text-slate-400 mb-1">Protocol Fuel Reserve</p>
@@ -1076,13 +1077,13 @@ export default function MerchantOS() {
             const filteredTransactions = transactions.filter(tx => {
                if (!isAaUnlocked && tx.wallet === 'AA') return false; 
                if (tx.requiredAlliance && !joinedAlliances.includes(tx.requiredAlliance as AllianceId)) return false;
-               if (activeLedger !== 'All' && tx.wallet !== activeLedger) return false;
+               if (activeLedger !== '全部' && tx.wallet !== activeLedger) return false;
 
                const matchSearch = tx.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                    tx.hash.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                    (tx.beamioTag && tx.beamioTag.toLowerCase().includes(searchTerm.toLowerCase()));
-               const matchType = filterType === 'All' || tx.type === filterType;
-               const matchTerminal = filterTerminal === 'All' || tx.terminal === filterTerminal;
+               const matchType = filterType === '全部' || tx.type === filterType;
+               const matchTerminal = filterTerminal === '全部' || tx.terminal === filterTerminal;
                return matchSearch && matchType && matchTerminal;
             });
 
@@ -1096,8 +1097,8 @@ export default function MerchantOS() {
               
               <div className="flex bg-white/60 backdrop-blur-xl p-1.5 rounded-[20px] w-max mb-2 sm:mb-4 border border-slate-200/50 shadow-sm">
                 <button 
-                  onClick={() => setActiveLedger('All')} 
-                  className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${activeLedger === 'All' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}
+                  onClick={() => setActiveLedger('全部')} 
+                  className={`px-5 py-2.5 rounded-[14px] text-[14px] font-semibold transition-all ${activeLedger === '全部' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.06)]' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   All Ledgers
                 </button>
@@ -1136,7 +1137,7 @@ export default function MerchantOS() {
                     onChange={(e) => setFilterTerminal(e.target.value)}
                     className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 cursor-pointer appearance-none shrink-0"
                   >
-                    <option value="All">All Terminals</option>
+                    <option value="全部">All Terminals</option>
                     {terminals.map(t => (
                       <option key={t.tag} value={t.tag}>{t.name} ({t.tag})</option>
                     ))}
@@ -1148,7 +1149,7 @@ export default function MerchantOS() {
                     onChange={(e) => setFilterType(e.target.value)}
                     className="bg-white/80 backdrop-blur-xl border border-slate-200/80 px-4 py-3.5 sm:py-3 rounded-[20px] sm:rounded-2xl text-[14px] font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-4 focus:ring-[#1562f0]/10 cursor-pointer appearance-none shrink-0"
                   >
-                    <option value="All">All Actions</option>
+                    <option value="全部">All Actions</option>
                     <option value="Charge">Charge</option>
                     <option value="In-Store Top-Up">Top-Up</option>
                     <option value="P2P Send">P2P Send</option>
@@ -1165,7 +1166,7 @@ export default function MerchantOS() {
                  <div>
                    <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
                       <Activity size={14} className="text-[#1562f0]" />
-                      {filterTerminal === 'All' ? `Network Summary (${timeFilter})` : `${filterTerminal} Summary (${timeFilter})`}
+                      {filterTerminal === '全部' ? `Network Summary (${timeFilter})` : `${filterTerminal} Summary (${timeFilter})`}
                    </h3>
                    <div className="flex items-baseline gap-2">
                       <span className="text-2xl sm:text-[28px] font-light text-slate-900 tracking-tight">${summaryTotalCAD.toFixed(2)}</span>
@@ -1174,7 +1175,7 @@ export default function MerchantOS() {
                  </div>
                  <div className="flex flex-wrap gap-2 sm:gap-4 w-full sm:w-auto">
                     <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
-                       <span className="text-[11px] text-slate-400 font-semibold mb-0.5">Transactions</span>
+                       <span className="text-[11px] text-slate-400 font-semibold mb-0.5">交易</span>
                        <span className="text-[15px] font-bold text-slate-800">{summaryTxCount}</span>
                     </div>
                     <div className="bg-white rounded-[14px] px-4 py-2.5 border border-slate-200/60 flex flex-col flex-1 sm:flex-none">
@@ -1322,7 +1323,7 @@ export default function MerchantOS() {
                                    )}
                                    {(tx.type.includes('Settlement') || tx.type.includes('Remittance')) && (
                                      <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-700 whitespace-nowrap">
-                                       <Landmark size={15} className={tx.status === 'Pending' ? 'text-amber-500' : 'text-emerald-500'} /> 
+                                       <Landmark size={15} className={tx.status === '待处理' ? 'text-amber-500' : 'text-emerald-500'} /> 
                                        {tx.method}
                                      </div>
                                    )}
@@ -1332,7 +1333,7 @@ export default function MerchantOS() {
                                <td className="px-6 py-5 align-middle">
                                  <div className="flex flex-col items-start gap-2">
                                    <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                                     {tx.status === 'Pending' ? (
+                                     {tx.status === '待处理' ? (
                                         <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
                                      ) : (
                                         <CheckCircle2 size={12} className={tx.wallet === 'EOA' ? "text-blue-500" : "text-emerald-500"} />
@@ -1354,19 +1355,19 @@ export default function MerchantOS() {
 
                                <td className="px-8 py-5 align-middle text-right">
                                  <div className={`font-semibold text-[18px] tracking-tight whitespace-nowrap ${
-                                    tx.type.includes('Top-Up') || tx.type === 'Receive' || tx.type === 'Fiat Settlement' || tx.type === 'L2 Settlement'
+                                    tx.type.includes('Top-Up') || tx.type === '收款' || tx.type === 'Fiat Settlement' || tx.type === 'L2 Settlement'
                                       ? 'text-emerald-600' 
-                                      : tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
+                                      : tx.status === '待处理' ? 'text-amber-500' : 'text-slate-900'
                                  }`}>
                                    {tx.discount && (
                                      <span className="text-[14px] text-slate-400 line-through mr-2 font-medium opacity-60">
                                        ${(txTotalCAD + tx.discount.amount).toFixed(2)}
                                      </span>
                                    )}
-                                   {tx.type.includes('Top-Up') || tx.type.includes('Settlement') || tx.type === 'Receive' ? '+' : ''}${txTotalCAD.toFixed(2)}
+                                   {tx.type.includes('Top-Up') || tx.type.includes('Settlement') || tx.type === '收款' ? '+' : ''}${txTotalCAD.toFixed(2)}
                                  </div>
-                                 <div className={`text-[12px] font-medium mt-1 whitespace-nowrap ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
-                                   {tx.status === 'Pending' ? 'Pending Settlement' : tx.tip > 0 ? `Incl. $${(tx.tip / ORACLE_CAD_USDC).toFixed(2)} Tip` : tx.wallet === 'EOA' ? 'Treasury TX' : 'No Tip'}
+                                 <div className={`text-[12px] font-medium mt-1 whitespace-nowrap ${tx.status === '待处理' ? 'text-amber-500' : 'text-slate-400'}`}>
+                                   {tx.status === '待处理' ? 'Pending Settlement' : tx.tip > 0 ? `Incl. $${(tx.tip / ORACLE_CAD_USDC).toFixed(2)} Tip` : tx.wallet === 'EOA' ? 'Treasury TX' : 'No Tip'}
                                  </div>
                                </td>
 
@@ -1499,7 +1500,7 @@ export default function MerchantOS() {
                               <Fuel size={20} className="text-orange-500" />
                            </div>
                            <div>
-                              <p className="text-[12px] font-medium text-slate-400 mb-0.5">Protocol Fuel</p>
+                              <p className="text-[12px] font-medium text-slate-400 mb-0.5">协议燃料</p>
                               <p className="text-[18px] font-mono font-semibold text-white tracking-tight">{aaBUnits.toLocaleString()} B-Units</p>
                            </div>
                         </div>
@@ -1634,7 +1635,7 @@ export default function MerchantOS() {
          {activeTab === 'Market' && (
            <div className="max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-300">
              <div className="mb-6">
-               <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">Market</h3>
+               <h3 className="text-[26px] font-semibold text-slate-900 tracking-tight">市场</h3>
                <p className="text-[15px] font-medium text-slate-500 mt-1">Acquire physical infrastructure and protocol fuel for your node.</p>
              </div>
              
@@ -1994,7 +1995,7 @@ export default function MerchantOS() {
              {/* Contacts Sidebar */}
              <div className="w-full sm:w-[340px] flex flex-col bg-white/80 backdrop-blur-xl rounded-[28px] sm:rounded-[32px] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] shrink-0 overflow-hidden">
                <div className="p-6 border-b border-slate-100/80 bg-white/50">
-                 <h3 className="text-[20px] font-bold text-slate-900 tracking-tight mb-4">Messages</h3>
+                 <h3 className="text-[20px] font-bold text-slate-900 tracking-tight mb-4">消息</h3>
                  <div className="relative">
                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                    <input 
@@ -2222,7 +2223,7 @@ export default function MerchantOS() {
                       </div>
                       <input
                         type="text"
-                        placeholder="What's this for?"
+                        placeholder="备注（选填）"
                         value={sendMemo}
                         onChange={(e) => setSendMemo(e.target.value)}
                         className="w-full pl-14 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-[16px] focus:outline-none font-medium text-[14px] text-white placeholder:text-slate-500 focus:border-[#1562f0] transition-colors"
@@ -2239,9 +2240,7 @@ export default function MerchantOS() {
                           ? 'bg-white/5 text-slate-500 cursor-not-allowed border border-white/5'
                           : 'bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98]'
                       }`}
-                   >
-                      Continue
-                   </button>
+                   >{tu('continue')}</button>
                  </div>
                </>
             )}
@@ -2294,9 +2293,7 @@ export default function MerchantOS() {
                    <button 
                       onClick={handleConfirmSend}
                       className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 shadow-[0_8px_20px_rgba(21,98,240,0.25)] active:scale-[0.98] transition-all"
-                   >
-                      Confirm & Sign
-                   </button>
+                   >{tu('confirm_sign')}</button>
                  </div>
                </>
             )}
@@ -2308,21 +2305,17 @@ export default function MerchantOS() {
                     <Check size={48} className="text-white" strokeWidth={2.5} />
                  </div>
                  
-                 <h3 className="text-[20px] font-semibold text-slate-300 mb-3">Successfully sent</h3>
+                 <h3 className="text-[20px] font-semibold text-slate-300 mb-3">发送成功</h3>
                  <div className="text-[40px] font-bold text-white mb-4 leading-none">
                     {parseFloat(sendAmount).toFixed(4)} USDC
                  </div>
-                 <p className="text-[14px] font-medium text-slate-500 mb-12 text-center max-w-xs">
-                    It may take a few seconds to appear on-chain.
-                 </p>
+                 <p className="text-[14px] font-medium text-slate-500 mb-12 text-center max-w-xs">{tu('it_may_take_a_few_seconds_to_appear_on_chain')}</p>
 
                  <div className="w-full space-y-3 mt-auto">
                     <button 
                       onClick={handleCloseSendModal}
                       className="w-full py-4.5 rounded-[20px] font-bold text-[16px] bg-[#1562f0] text-white hover:bg-blue-600 active:scale-[0.98] transition-all shadow-[0_8px_20px_rgba(21,98,240,0.25)]"
-                    >
-                      Done
-                    </button>
+                    >{tu('done')}</button>
                     <button 
                       className="w-full py-4.5 rounded-[20px] font-bold text-[15px] bg-white/5 text-white hover:bg-white/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-white/5"
                     >
@@ -2355,7 +2348,7 @@ export default function MerchantOS() {
               <p className="text-[14px] font-semibold text-slate-400 mb-5 relative z-10">{merchantTag || '@urbantea_van'}</p>
 
               <div className="flex items-center gap-2 relative z-10">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Main Vault (EOA)</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">主金库 (EOA)</span>
                 <div className="flex items-center gap-1.5 bg-[#1562f0]/10 text-[#1562f0] px-2.5 py-1.5 rounded border border-[#1562f0]/20 text-[12px] font-mono font-medium">
                   <Wallet size={12} /> 0x8B49...A9C3
                 </div>
@@ -2806,9 +2799,7 @@ export default function MerchantOS() {
                     payoutMethod === 'USDC' ? `USDC remittance has been deducted from The Vault.` : `Please complete your fiat wire transfer within 24 hours.`
                   )}
                 </p>
-                <button onClick={() => setIsPayoutModalOpen(false)} className="w-full bg-white text-slate-900 py-4.5 rounded-[20px] font-bold text-[16px] hover:bg-slate-100 transition-all active:scale-[0.98]">
-                  Done
-                </button>
+                <button onClick={() => setIsPayoutModalOpen(false)} className="w-full bg-white text-slate-900 py-4.5 rounded-[20px] font-bold text-[16px] hover:bg-slate-100 transition-all active:scale-[0.98]">{tu('done')}</button>
               </div>
             )}
          </div>
@@ -2852,7 +2843,7 @@ export default function MerchantOS() {
                     {selectedProduct === 'fuel' ? <Database size={20} /> : (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') ? <Zap size={20} /> : <Cpu size={20} />}
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' ? 'Volume' : 'Security'}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' ? 'Volume' : '安全'}</p>
                     <p className="text-[16px] font-bold text-white leading-tight">
                       {selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : selectedProduct === 'custom_fuel' ? `${(Number(customFuelAmount) || 0) * 100} B-Units` : 'ATECC608 Vault'}
                     </p>

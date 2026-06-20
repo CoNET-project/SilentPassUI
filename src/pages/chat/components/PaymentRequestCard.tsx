@@ -1,6 +1,7 @@
 import React from "react"
 import { MoreHorizontal, DollarSign } from "lucide-react"
 import { fiatPrefix, formatAmount } from "@/services/currency"
+import { tu } from '@/locale/beamioLocale'
 
 type PaymentRequestCardProps = {
 	amount: number
@@ -25,7 +26,7 @@ function formatTimeLabel(ts: number): string {
 	const d = new Date(ts)
 	const now = Date.now()
 	const diff = now - ts
-	if (diff < 60 * 1000) return "Just now"
+	if (diff < 60 * 1000) return "刚刚"
 	if (diff < 60 * 60 * 1000) return `${Math.floor(diff / 60000)}m ago`
 	if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / 3600000)}h ago`
 	return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
@@ -114,7 +115,7 @@ export function PaymentRequestCard({
 								}}
 								className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 active:scale-[0.98]"
 							>
-								{isMe ? 'Cancel' : 'Decline'}
+								{isMe ? '取消' : 'Decline'}
 							</button>
 						)}
 						{onPay && (
@@ -125,18 +126,14 @@ export function PaymentRequestCard({
 									onPay()
 								}}
 								className="flex-1 py-2.5 rounded-xl bg-[#1652f0] text-white text-sm font-semibold hover:bg-[#1346d4] active:scale-[0.98]"
-							>
-								Pay
-							</button>
+							>{tu('pay')}</button>
 						)}
 					</div>
 				)}
 
 				{/* Footer: SECURED BY BEAMIO */}
 				<div className="mt-4 flex items-center justify-between">
-					<span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-						Secured by Beamio
-					</span>
+					<span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">{tu('secured_by_beamio')}</span>
 				</div>
 			</div>
 		</div>

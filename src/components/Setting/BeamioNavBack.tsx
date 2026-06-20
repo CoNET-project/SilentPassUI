@@ -26,7 +26,7 @@ export default function BeamioNavBack({ title, onClose, onMore, showMore=false }
 				active:scale-[0.96]
 				touch-manipulation
 				"
-				aria-label="Back"
+				aria-label="返回"
 			>
 				<span
 				aria-hidden

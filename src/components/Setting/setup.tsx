@@ -81,7 +81,7 @@ export default function BeamioSettingsScreen({
 								</div>
 								<div className="flex flex-col items-end text-right text-[10px] text-slate-400 leading-tight">
 									<span>Version 0.3.7 · MVP</span>
-									<span>Early access · in testing</span>
+									<span>早期体验 · 测试中</span>
 								</div>
 							</section>
 
@@ -139,7 +139,7 @@ export default function BeamioSettingsScreen({
 										<CreditCard className="h-4 w-4" />
 										</span>
 										<div className="flex flex-col items-start">
-											<span className="text-sm font-medium">Payment methods</span>
+											<span className="text-sm font-medium">支付方式</span>
 											<span className="text-xs text-slate-500">
 												Connect Coinbase, bank or cards
 											</span>
@@ -265,7 +265,7 @@ export default function BeamioSettingsScreen({
 									<Bell className="h-4 w-4" />
 									</span>
 									<div className="flex flex-col items-start">
-									<span className="text-sm font-medium">Notifications</span>
+									<span className="text-sm font-medium">通知</span>
 									<span className="text-xs text-slate-500">
 										Payment alerts, security alerts
 									</span>
@@ -312,7 +312,7 @@ export default function BeamioSettingsScreen({
 								<HelpCircle className="h-4 w-4" />
 								</span>
 								<div className="flex flex-col items-start">
-								<span className="text-sm font-medium">Get help</span>
+								<span className="text-sm font-medium">获取帮助</span>
 								<span className="text-xs text-slate-500">
 									Help center, contact support, report an issue
 								</span>

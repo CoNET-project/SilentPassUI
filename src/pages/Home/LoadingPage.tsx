@@ -50,6 +50,7 @@ import {
 } from '@/utils/beamioWorkspaceLock'
 import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions'
+import { tu } from '@/locale/beamioLocale'
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 
@@ -483,7 +484,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									type="button"
 									onClick={() => setOnboardingCoverMobilePhase('entry')}
 									className={`-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#1562f0] transition-opacity hover:opacity-80 active:scale-95 ${bizBrandFocusRingClass}`}
-									aria-label="Back"
+									aria-label="返回"
 								>
 									<ArrowLeft className="h-6 w-6" strokeWidth={2.25} aria-hidden />
 								</button>
@@ -731,9 +732,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 														})
 														onboardingCoverContinue(true)
 													}}
-												>
-													Continue
-													<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+												>{tu('continue')}<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 												</button>
 											</div>
 										</section>
@@ -909,9 +908,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									${bizBrandFocusRingClass}
 								`}
 								onClick={() => onboardingCoverContinue(false)}
-							>
-								Continue
-								<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+							>{tu('continue')}<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 							</button>
 						</div>
 					</div>
@@ -919,7 +916,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			</main>
 
 			<footer className="mt-auto hidden flex-col items-center justify-between gap-4 border-t border-[#abadaf]/10 bg-[#eef1f3] px-5 py-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex md:flex-row md:px-10">
-				<div className="text-center tracking-[0.2em] md:text-left">Securely hosted by Beamio Infrastructure © 2026</div>
+				<div className="text-center tracking-[0.2em] md:text-left">由 Beamio 基础设施安全托管 © 2026</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
 					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
 						Privacy Policy
@@ -987,7 +984,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 					{isStandalone && (
 						<div className="mb-6 rounded-xl border border-amber-200/80 bg-amber-50 p-4">
 							<p className="text-[13px] font-medium leading-snug text-amber-900">
-								Opened from home screen? Wallet data from Safari doesn&apos;t transfer. Use <strong>Restore Wallet</strong> below.
+								Opened from home screen? Wallet data from Safari doesn&apos;t transfer. Use <strong>恢复钱包</strong> below.
 							</p>
 						</div>
 					)}
@@ -1033,7 +1030,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			<footer className="mx-auto mt-auto flex w-full max-w-screen-xl flex-col items-center justify-between gap-4 border-t border-transparent px-5 py-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[#666666]/50 md:flex-row lg:px-8">
 				<div className="flex items-center gap-2 text-center md:text-left">
 					<Cloud className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-					<span>Securely hosted by Beamio Infrastructure © 2026</span>
+					<span>由 Beamio 基础设施安全托管 © 2026</span>
 				</div>
 				<div className="flex flex-wrap justify-center gap-8 md:gap-8">
 					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">

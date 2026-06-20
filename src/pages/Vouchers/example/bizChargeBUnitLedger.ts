@@ -24,7 +24,7 @@ export type ChargeBUnitLedgerEntry = {
 
 /** Mirrors `BizTxTableFilterCtx` in biz.tsx (avoid circular imports). */
 export type ChargeLedgerFilterCtx = {
-  activeLedger: 'All' | 'AA' | 'EOA'
+  activeLedger: '全部' | 'AA' | 'EOA'
   txSearchTerm: string
   txFilterType: string
   txFilterTerminal: string
@@ -57,7 +57,7 @@ export function chargeLedgerEntryMatchesFilters(e: ChargeBUnitLedgerEntry, ctx: 
   if (ctx.activeLedger === 'AA' && !ctx.hasAaAccount) return false
   const isVaultTx = e.terminal.toLowerCase().includes('vault') || e.terminal === 'The Vault'
   const matchLedger =
-    ctx.activeLedger === 'All' || (ctx.activeLedger === 'EOA' && isVaultTx) || (ctx.activeLedger === 'AA' && !isVaultTx)
+    ctx.activeLedger === '全部' || (ctx.activeLedger === 'EOA' && isVaultTx) || (ctx.activeLedger === 'AA' && !isVaultTx)
   const q = ctx.txSearchTerm.toLowerCase()
   const topUpShortLabel: string = ''
   const tipRawId = e.tipIndexerTxIdLower
@@ -70,9 +70,9 @@ export function chargeLedgerEntryMatchesFilters(e: ChargeBUnitLedgerEntry, ctx: 
     (topUpShortLabel && topUpShortLabel.includes(q)) ||
     e.hash.toLowerCase().includes(q) ||
     (e.beamioTag && e.beamioTag.toLowerCase().includes(q))
-  const matchType = ctx.txFilterType === 'All' || ctx.txFilterType === 'Charge'
+  const matchType = ctx.txFilterType === '全部' || ctx.txFilterType === 'Charge'
   const matchTerminal =
-    ctx.txFilterTerminal === 'All' ||
+    ctx.txFilterTerminal === '全部' ||
     e.terminal === ctx.txFilterTerminal ||
     (ctx.txFilterTerminal === 'The Vault' && e.terminal.toLowerCase().includes('vault'))
   return Boolean(matchLedger && matchSearch && matchType && matchTerminal)

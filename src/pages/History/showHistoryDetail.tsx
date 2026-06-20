@@ -170,7 +170,7 @@ export const RedeemOrLinkCard = ({
 			// 2 秒后恢复
 			setTimeout(() => setCopied(false), 2000)
 			} catch (e) {
-			console.error("Copy failed", e)
+			console.error("复制失败", e)
 			}
 		}
 
@@ -222,7 +222,7 @@ export const RedeemOrLinkCard = ({
 						hover:bg-white/30 dark:hover:bg-slate-900/45
 						transition
 						"
-					aria-label="Close"
+					aria-label="关闭"
 				>
 					<X className="w-4 h-4" />
 				</button>

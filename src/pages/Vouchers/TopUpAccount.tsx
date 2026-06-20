@@ -16,6 +16,7 @@ import CCSACardVisual from "./CardVisual"
 import { ethers } from "ethers"
 import { createMessage, readKey, enums, encrypt } from "openpgp"
 import { getRandomNodes, initMessage, createMembershipActivatedCard, sendMessage } from "@/services/chat"
+import { tu } from '@/locale/beamioLocale'
 
 
 
@@ -133,9 +134,7 @@ export default function TopUpAccount({
 					setSuccessData(null)
 					onClose?.(assets)
 				}}
-			>
-				Done
-			</button>
+			>{tu('done')}</button>
 		</div>
 	)
   }
@@ -301,7 +300,7 @@ export default function TopUpAccount({
                 style={{ color: "rgba(22,82,240,0.6)" }}
               >
                 @
-                {myAssets.cardOwner.username && myAssets.cardOwner.username !== "Unknow"
+                {myAssets.cardOwner.username && myAssets.cardOwner.username !== "未知"
                   ? myAssets.cardOwner.username
                   : myAssets.cardOwner.address
                     ? `${myAssets.cardOwner.address.slice(0, 6)}…${myAssets.cardOwner.address.slice(-4)}`
@@ -448,7 +447,7 @@ export default function TopUpAccount({
                                   aria-label="Refresh rate"
                                 >
                                   <RefreshCw className="h-4 w-4" strokeWidth={2.2} />
-                                  <span>Exchange Rate</span>
+                                  <span>汇率</span>
                                 </button>
                                 <span className="text-[13px] font-medium text-[#1D5BFF] tabular-nums">
                                   1 {currencyCode} ≈ {exchangeRate} USDC

@@ -16,7 +16,7 @@ const CopyButton = ({ value, className = "" }: CopyButtonProps) => {
 
       setTimeout(() => setCopied(false), 3000)
     } catch (err) {
-      console.error("Copy failed", err)
+      console.error("复制失败", err)
     }
   }
 
@@ -34,7 +34,7 @@ const CopyButton = ({ value, className = "" }: CopyButtonProps) => {
       {copied ? (
         <Check className="w-3.5 h-3.5 text-emerald-500" />
       ) : (
-        "Copy"
+        "复制"
       )}
     </button>
   )

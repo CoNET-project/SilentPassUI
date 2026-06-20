@@ -9,6 +9,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import base_ex_dark from '@/components/assets/base-ex-dark.svg'
 import {ethers} from 'ethers'
 import styles from './send.module.scss'
+import { tu } from '@/locale/beamioLocale'
 
 type ShowSignInfoProps = {
 	originUrl: string                             
@@ -154,7 +155,7 @@ export function ConformSignInfo({
 
 				{/* 左侧：Pay to */}
 				<div className="font-semibold">
-					{messageData?.payToTitle || 'Pay to'}
+					{messageData?.payToTitle || '付款给'}
 				</div>
 
 				{/* 右侧：地址 + icon */}
@@ -168,15 +169,15 @@ export function ConformSignInfo({
 						target="_blank"
 						rel="noreferrer"
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
-						aria-label="View on BaseScan"
-						title="View on BaseScan"
+						aria-label="在 BaseScan 查看"
+						title="在 BaseScan 查看"
 					>
 						<IpfsImg
 							src={darkModle ? base_ex_dark : base_ex}
 							alt=""
 							className="w-4 h-4"
 						/>
-						<span className="sr-only">View on BaseScan</span>
+						<span className="sr-only">在 BaseScan 查看</span>
 					</a>
 				</div>
 
@@ -337,9 +338,7 @@ export function ConformSignInfo({
 						transition
 						hover:bg-slate-100 dark:hover:bg-white/10
 					`}
-				>
-					Cancel
-				</button>
+				>{tu('cancel')}</button>
 			)}
 
 			{/* Confirm */}
@@ -371,7 +370,7 @@ export function ConformSignInfo({
 						<span>Processing…</span>
 					</span>
 				) : (
-					'Confirm'
+					'确认'
 				)}
 			</button>
 		</div>

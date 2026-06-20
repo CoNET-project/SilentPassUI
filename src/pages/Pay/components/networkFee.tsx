@@ -36,7 +36,7 @@ export default function NetworkFeeGas({
 	const cells = [
 		Credits && { label: "Credits used", value: "1 STX" },
 		{ label: "Sponsor", value: sponsorName },
-		{ label: "Network", value: networkName },
+		{ label: "网络", value: networkName },
 		{ label: "Settlement", value: settlementText },
 		{ label: "Execution", value: executionText },
 	].filter(Boolean) as { label: string; value: string }[]

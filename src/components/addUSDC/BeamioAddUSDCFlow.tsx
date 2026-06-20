@@ -58,7 +58,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 	const title = useMemo(() => {
 		if (screen === "hub") return "Add USDC";
 		if (screen === "coinbase") return "Finish via Coinbase";
-		if (screen === "coinbase_error") return "Something went wrong";
+		if (screen === "coinbase_error") return "出了点问题";
 		if (screen === "transfer") return "Transfer to Beamio";
 		if (screen === "receive") return "Receive USDC";
 		if (screen === "profile_qr") return "Profile QR";
@@ -138,7 +138,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 		return (
 			<div className="px-4 pt-4 pb-4">
 				{!myAddress && (
-					<div className="flex items-center justify-center py-12 text-sm text-slate-500">Loading...</div>
+					<div className="flex items-center justify-center py-12 text-sm text-slate-500">加载中…</div>
 				)}
 				{myAddress && loading && (
 					<div className="flex items-center justify-center py-12">
@@ -151,7 +151,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 							You’ll complete checkout with Coinbase. Verification may be required.
 						</div>
 						<div className="mt-4 grid grid-cols-2 gap-3">
-							<ButtonSecondary onClick={() => onCancel?.()}>Cancel</ButtonSecondary>
+							<ButtonSecondary onClick={() => onCancel?.()}>取消</ButtonSecondary>
 							<ButtonPrimary onClick={openUrl}>Open Coinbase</ButtonPrimary>
 						</div>
 						<div className="mt-4 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">
@@ -166,8 +166,8 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 							<div className="text-sm">Coinbase couldn’t complete this step. Try again, or use another method.</div>
 						</div>
 						<div className="mt-4 grid grid-cols-2 gap-3">
-							<ButtonSecondary onClick={() => onCancel?.()}>Back</ButtonSecondary>
-							<ButtonPrimary onClick={() => { hasAutoStarted.current = false; clickNext() }}>Try again</ButtonPrimary>
+							<ButtonSecondary onClick={() => onCancel?.()}>返回</ButtonSecondary>
+							<ButtonPrimary onClick={() => { hasAutoStarted.current = false; clickNext() }}>重试</ButtonPrimary>
 						</div>
 					</Card>
 				)}
@@ -207,9 +207,9 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 				  	loading={loading}
 				   onClick={() => {
 						clickNext()
-				   }} label="Add funds" sub="via Coinbase" 
+				   }} label="Top-up" sub="via Coinbase" 
 				   />
-                  <SecondaryPill onClick={() => setScreen("receive")} label="Receive" sub="from someone" />
+                  <SecondaryPill onClick={() => setScreen("receive")} label="收款" sub="from someone" />
                 </div>
               </div>
             </div>
@@ -257,7 +257,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 					</div>
 
 					<div className="mt-4 grid grid-cols-2 gap-3">
-						<ButtonSecondary onClick={() => setScreen("hub")}>Cancel</ButtonSecondary>
+						<ButtonSecondary onClick={() => setScreen("hub")}>取消</ButtonSecondary>
 						<ButtonPrimary onClick={() => {
 							openUrl()
 						}}>Open Coinbase</ButtonPrimary>
@@ -299,7 +299,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 
               <div className="mt-4 space-y-2">
                 <MiniCopy label="Copy @BeamioTag" value={username} onCopy={() => copyText(username)} />
-                <MiniCopy label="Copy address" value={shortAddress} onCopy={() => copyText(address)} />
+                <MiniCopy label="复制地址" value={shortAddress} onCopy={() => copyText(address)} />
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3">
@@ -323,7 +323,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
 
               <div className="mt-4 space-y-2">
                 <InfoLine label="Asset" value="USDC" />
-                <InfoLine label="Network" value="Base" />
+                <InfoLine label="网络" value="Base" />
                 <div className="rounded-2xl bg-slate-50 p-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-xs text-slate-500">Address</div>
@@ -345,8 +345,8 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <ButtonSecondary onClick={() => setScreen("hub")}>Done</ButtonSecondary>
-                <ButtonPrimary onClick={() => copyText(address)}>Copy address</ButtonPrimary>
+                <ButtonSecondary onClick={() => setScreen("hub")}>完成</ButtonSecondary>
+                <ButtonPrimary onClick={() => copyText(address)}>复制地址</ButtonPrimary>
               </div>
             </Card>
           </div>
@@ -365,8 +365,8 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <ButtonSecondary onClick={() => setScreen("hub")}>Done</ButtonSecondary>
-                <ButtonPrimary onClick={() => setScreen("profile_qr")}>Show QR</ButtonPrimary>
+                <ButtonSecondary onClick={() => setScreen("hub")}>完成</ButtonSecondary>
+                <ButtonPrimary onClick={() => setScreen("profile_qr")}>显示二维码</ButtonPrimary>
               </div>
             </Card>
           </div>
@@ -419,7 +419,7 @@ export default function BeamioAddUSDCFlow({ autoStartCoinbase, embedInSheet, onC
         </div>
 
         <div className="mt-4">
-          <ButtonPrimary onClick={() => setScreen("hub")}>Done</ButtonPrimary>
+          <ButtonPrimary onClick={() => setScreen("hub")}>完成</ButtonPrimary>
         </div>
       </div>
     </Card>

@@ -77,16 +77,16 @@ export default function BankingBridge({
       {/* Cards */}
       <div className="mt-4 space-y-3">
         <RowCard
-          title="Add Cash"
-          subtitle="Buy USDC via Coinbase"
+          title="Top-up"
+          subtitle="通过 Coinbase 购买 USDC"
           icon={<CreditCard className="w-6 h-6 text-[#2F6BFF]" strokeWidth={2.2} />}
           iconBgClass="bg-[#DCEBFF]"
           onClick={onAddCash}
         />
 
         <RowCard
-          title="Cash Out"
-          subtitle="Send to Bank Account"
+          title="提现"
+          subtitle="转至银行账户"
           icon={<Building2 className="w-6 h-6 text-slate-500" strokeWidth={2.2} />}
           iconBgClass="bg-slate-200/70"
           onClick={onCashOut}

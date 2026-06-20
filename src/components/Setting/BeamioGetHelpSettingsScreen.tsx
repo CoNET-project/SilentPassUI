@@ -1,5 +1,6 @@
 import { X, HelpCircle, Info, Mail, MessageSquare, Bug, ExternalLink } from "lucide-react";
 import {AppButton} from '@/components/button/AppButton'
+import { tu } from '@/locale/beamioLocale'
 
 type prof = {
 	colse: () => void
@@ -21,7 +22,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
               <HelpCircle className="h-4 w-4 text-slate-700" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-900">Get help</h1>
+              <h1 className="text-lg font-semibold text-slate-900">获取帮助</h1>
               <p className="text-xs text-slate-500 mt-0.5">
                 Find answers to common questions or reach the Beamio team if something doesn&apos;t look right.
               </p>
@@ -140,9 +141,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
 				onClick={() => colse()}
 				
 				fullWidth
-			>
-				Done
-			</AppButton>
+			>{tu('done')}</AppButton>
         </footer>
       </aside>
     </div>

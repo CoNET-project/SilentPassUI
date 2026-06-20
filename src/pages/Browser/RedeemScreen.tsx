@@ -366,7 +366,7 @@ const RedeemScreen = ({close}: Prof) => {
 											group-hover:opacity-90
 											group-active:opacity-80
 										"
-										alt="Gift Envelope"
+										alt="礼品信封"
 									/>
 								</button>
 							)}

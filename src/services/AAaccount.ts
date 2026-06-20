@@ -354,7 +354,7 @@ export async function AAtoEOA(
 	})
 	const data = await res.json().catch(() => ({})) as AAtoEOAResponse
 	if (!res.ok) {
-		return { success: false, error: data?.error || res.statusText || 'AAtoEOA request failed' }
+		return { success: false, error: data?.error || res.statusText || 'AA 转 EOA 请求失败' }
 	}
 	return data
 }

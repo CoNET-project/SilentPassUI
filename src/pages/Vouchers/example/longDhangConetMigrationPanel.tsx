@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { AlertTriangle, Check, Copy, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
 import { ethers } from 'ethers'
 import { CONET_CARD_FACTORY } from '@/config/chainAddresses'
+import { tu } from '@/locale/beamioLocale'
 import {
 	LONGDHANG_OLD_BASE_CARD,
 	LONGDHANG_OLD_CARD_OWNER,
@@ -258,9 +259,7 @@ export function LongDhangConetMigrationPanel({
 						{busy === 'preview' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
 						Preview snapshot
 					</button>
-					<button type="button" onClick={() => void handlePreview(true)} disabled={busy !== null} className={secondary}>
-						Refresh
-					</button>
+					<button type="button" onClick={() => void handlePreview(true)} disabled={busy !== null} className={secondary}>{tu('refresh')}</button>
 				</div>
 			</div>
 

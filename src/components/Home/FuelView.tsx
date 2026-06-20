@@ -5,10 +5,10 @@ const REFUEL_GAS_COST = 2
 
 const generateExtendedLogs = () => {
   const baseLogs = [
-    { id: "LOG-892A", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "Feb 21, 14:22", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x8f2a...4b1c", network: "Base Mainnet" },
-    { id: "LOG-891B", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "2h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x1c9d...9e2f", network: "Base Mainnet" },
-    { id: "LOG-890C", title: "Manual Refuel Gain", subtitle: "Swap $5.00 USDC", amount: 498, time: "5h ago", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x4a1b...2c3d", network: "Base Mainnet" },
-    { id: "LOG-889D", title: "Reward Backfill", subtitle: "CashTree Card Claim #102", amount: 100, time: "Yesterday", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" }
+    { id: "LOG-892A", title: "Service Fee (0.8%)", subtitle: "Payment Request #892", amount: -80, time: "Feb 21, 14:22", type: "fee", status: "Completed", linkedUsdc: "100.00 USDC", txHash: "0x8f2a...4b1c", network: "Base 主网" },
+    { id: "LOG-891B", title: "Network Gas", subtitle: "P2P Send to @Simon", amount: -2, time: "2h ago", type: "gas", status: "Completed", linkedUsdc: "1.00 USDC", txHash: "0x1c9d...9e2f", network: "Base 主网" },
+    { id: "LOG-890C", title: "Manual Refuel Gain", subtitle: "Swap $5.00 USDC", amount: 498, time: "5h ago", type: "refuel", status: "Completed", linkedUsdc: "-5.00 USDC", txHash: "0x4a1b...2c3d", network: "Base 主网" },
+    { id: "LOG-889D", title: "Reward Backfill", subtitle: "CashTree Card Claim #102", amount: 100, time: "昨天", type: "reward", status: "Completed", linkedUsdc: "N/A", txHash: "0x9e8f...1a2b", network: "CoNET L1" }
   ]
   const extraLogs = Array.from({ length: 10 }).map((_, i) => ({
     id: `LOG-EXT-${i}`,
@@ -20,7 +20,7 @@ const generateExtendedLogs = () => {
     status: "Completed",
     linkedUsdc: "N/A",
     txHash: "0x" + Math.random().toString(16).substr(2, 8) + "...",
-    network: "Base Mainnet"
+    network: "Base 主网"
   }))
   return [...baseLogs, ...extraLogs]
 }
@@ -61,12 +61,12 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose }) => {
         title: "Manual Refuel Gain",
         subtitle: `Swap $${refuelAmount.toFixed(2)} USDC`,
         amount: (refuelAmount * 100) - REFUEL_GAS_COST,
-        time: "Just now",
+        time: "刚刚",
         type: "refuel",
         status: "Completed",
         linkedUsdc: `-${refuelAmount.toFixed(2)} USDC`,
         txHash: "0x" + Math.random().toString(16).substr(2, 8),
-        network: "Base Mainnet"
+        network: "Base 主网"
       }, ...prev])
       setIsRefueling(false)
     }, 1200)
@@ -128,7 +128,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose }) => {
 
           <div className="space-y-3">
             <div className="flex justify-between text-[13px] font-bold">
-              <span className="text-slate-500 dark:text-slate-400">Fuel Yield (1:100)</span>
+              <span className="text-slate-500 dark:text-slate-400">燃料收益 (1:100)</span>
               <span className="text-green-600 font-black">+{refuelAmount * 100} B-Units</span>
             </div>
             <div className="flex justify-between text-[13px] font-bold">
@@ -171,7 +171,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose }) => {
                   onClick={() => setLedgerFilter(f)}
                   className={`px-3 py-1.5 rounded-full text-[11px] font-bold capitalize whitespace-nowrap transition-colors ${ledgerFilter === f ? 'bg-slate-800 dark:bg-slate-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
                 >
-                  {f === 'all' ? 'All' : f === 'fee' ? 'Service Fees' : f === 'gas' ? 'Network Gas' : f === 'refuel' ? 'Refuels' : 'Rewards'}
+                  {f === 'all' ? '全部' : f === 'fee' ? 'Service Fees' : f === 'gas' ? 'Network Gas' : f === 'refuel' ? 'Refuels' : 'Rewards'}
                 </button>
               ))}
             </div>

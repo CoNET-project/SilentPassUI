@@ -15,7 +15,7 @@ type Props = {
 export default function IOSBounceCloseButton({
 	onClick,
 	className = "",
-	ariaLabel = "Close"
+	ariaLabel = "关闭"
 }: Props) {
   return (
     <>

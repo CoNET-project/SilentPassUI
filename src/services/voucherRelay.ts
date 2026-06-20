@@ -35,6 +35,6 @@ export async function submitVoucherPayRelay(
 		}
 		return { ok: true }
 	} catch (e: any) {
-		return { ok: false, error: e?.message ?? 'Network error' }
+		return { ok: false, error: e?.message ?? '网络错误' }
 	}
 }

@@ -69,7 +69,7 @@ export default function OnrampOfframpGuide() {
           </li>
           <li>
             Confirm the asset is{' '}
-            <span className="font-semibold">USDC on Base</span>.
+            <span className="font-semibold">Base 上的 USDC</span>.
           </li>
           <li>
             Enter the amount of USDC you want to withdraw and select your payout

@@ -12,6 +12,7 @@ import CurrencyPicker from "@/components/input/SelectCurrent"
 import usdcIcon from "@/components/assets/usdc.png"
 import baseIcon from "@/components/assets/base-logo.png"
 import { IPFS_GET_FRAGMENT, uploadImageFileToIpfsWithRetry } from "@/utils/ipfsCardImageUpload"
+import { mapServerError } from '@/locale/mapServerError'
 
 const CURRENCY_META: Record<CreateBeamioCardParams["currency"], { flag: string; sym: string }> = {
 	USD: { flag: "🇺🇸", sym: "$" },
@@ -145,11 +146,11 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			})
 			if (res.success && res.cardAddress) {
 				setResult({ cardAddress: res.cardAddress, hash: res.hash })
-				Toast.show({ content: "Card created successfully", icon: "success" })
+				Toast.show({ content: "卡创建成功", icon: "success" })
 				onCreated?.()
 			} else {
-				setError(res.error ?? "Create failed")
-				Toast.show({ content: res.error ?? "Create failed", icon: "fail" })
+				setError(res.error ?? "创建失败")
+				Toast.show({ content: mapServerError(res.error, 'createFailed'), icon: "fail" })
 			}
 		} catch (e: any) {
 			const msg = e?.message ?? String(e)
@@ -197,14 +198,14 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			if (hash) {
 				const url = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`
 				updateTier(tierIndex, "image", url)
-				Toast.show({ content: "Tier image uploaded", icon: "success" })
+				Toast.show({ content: "等级图片已上传", icon: "success" })
 			} else {
 				setError("Tier image upload failed")
-				Toast.show({ content: "Upload failed", icon: "fail" })
+				Toast.show({ content: "上传失败", icon: "fail" })
 			}
 		} catch (err: any) {
-			setError(err?.message ?? "Upload failed")
-			Toast.show({ content: err?.message ?? "Upload failed", icon: "fail" })
+			setError(err?.message ?? "上传失败")
+			Toast.show({ content: err?.message ?? "上传失败", icon: "fail" })
 		}
 	}
 
@@ -224,14 +225,14 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 			const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(profile, dataUrl))
 			if (hash) {
 				setMetaImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`)
-				Toast.show({ content: "Image uploaded", icon: "success" })
+				Toast.show({ content: "图片已上传", icon: "success" })
 			} else {
-				setError("Upload failed")
-				Toast.show({ content: "Upload failed", icon: "fail" })
+				setError("上传失败")
+				Toast.show({ content: "上传失败", icon: "fail" })
 			}
 		} catch (err: any) {
-			setError(err?.message ?? "Upload failed")
-			Toast.show({ content: err?.message ?? "Upload failed", icon: "fail" })
+			setError(err?.message ?? "上传失败")
+			Toast.show({ content: err?.message ?? "上传失败", icon: "fail" })
 		} finally {
 			setUploadingImage(false)
 			input.value = ""

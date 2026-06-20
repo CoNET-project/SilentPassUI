@@ -7,6 +7,7 @@ import { X } from 'lucide-react'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import base_ex from '@/components/assets/base-ex.svg'
 import IOSBounceCloseButton from '@/components/button/CloseButton'
+import { tu } from '@/locale/beamioLocale'
 type RedeemOrLinkCardProps = {
 	valueUSDCAmount: string                  // 金额（用于 Redeem 侧显示）
 	valueCurrencyAmount: string
@@ -109,7 +110,7 @@ const SuccessShow = ({
 						</div>
 						{lockMode === "FIAT_LOCKED" ? (
 							<div className="text-right">
-								<div className="text-xs text-slate-400">Security</div>
+								<div className="text-xs text-slate-400">安全</div>
 								<div className="mt-1 text-sm font-semibold text-slate-600 tabular-nums">
 									<div className="mt-1 text-sm font-semibold tabular-nums">
 									{security ? (
@@ -267,12 +268,10 @@ const SuccessShow = ({
 					>
 					<IpfsImg
 						src={base_ex}
-						alt="Base Explorer"
+						alt="Base 浏览器"
 						className="w-4 h-4 object-contain"
 					/>
-					<span>
-						View transaction
-					</span>
+					<span>{tu('view_transaction')}</span>
 				</button>
 				
 			</div>

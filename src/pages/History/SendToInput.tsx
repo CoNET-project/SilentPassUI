@@ -187,7 +187,7 @@ const [loading, setLoading] = useState(false)
 				))}
 			</div>
 			) : (
-			'Confirm'
+			'确认'
 			)}
 		</button>
       

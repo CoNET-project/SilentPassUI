@@ -7,6 +7,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen } from "@/services/AAaccount"
 import type { OpenContainerRelayPayload } from "@/services/AAaccount"
 import { BIZ_PUBLIC_LOGO512 } from "@/pages/Home/brandUi"
+import { tu } from '@/locale/beamioLocale'
 
 const QR_SIZE = 320
 const QR_LOGO_SIZE = 64
@@ -74,7 +75,7 @@ export default function QrOperationPage() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setMerchantError(err?.message ?? "Sign failed")
+          setMerchantError(err?.message ?? "签名失败")
           console.error("Pay Code sign failed", err)
         }
       })
@@ -111,7 +112,7 @@ export default function QrOperationPage() {
   const onShare = (urlOrValue: string) => {
     if (navigator.share) {
       navigator.share({
-        title: "Beamio PayMe",
+        title: "Beamio 收款",
         text: urlOrValue,
         url: urlOrValue.startsWith("http") ? urlOrValue : undefined,
       }).catch(() => {})
@@ -136,7 +137,7 @@ export default function QrOperationPage() {
               type="button"
               onClick={handleClose}
               className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="w-5 h-5" strokeWidth={2.5} />
             </button>
@@ -147,18 +148,14 @@ export default function QrOperationPage() {
                 className={`flex-1 min-w-0 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
                   tab === "scan" ? "bg-white text-slate-800" : "text-white/80"
                 }`}
-              >
-                Scan
-              </button>
+              >{tu('scan')}</button>
               <button
                 type="button"
                 onClick={() => setTab("mycode")}
                 className={`flex-1 min-w-0 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
                   tab === "mycode" ? "bg-white text-slate-800" : "text-white/80"
                 }`}
-              >
-                Show to pay
-              </button>
+              >{tu('show_to_pay')}</button>
             </div>
             <div className="w-10" />
           </div>
@@ -191,7 +188,7 @@ export default function QrOperationPage() {
               <div className="relative w-full max-w-[280px] aspect-square">
                 {/* Placeholder: Html5QrcodePlugin or external scanRef.start() opens camera */}
                 <div className="relative w-full h-full rounded-2xl bg-black/50 flex flex-col items-center justify-center border-2 border-white/20">
-                  <p className="text-white/70 text-sm text-center px-6">Tap Scan to open camera and start scanning</p>
+                  <p className="text-white/70 text-sm text-center px-6">点击扫描打开相机开始扫码</p>
                   {/* Corner frames */}
                   <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute left-4 top-4 w-12 h-12 border-l-4 border-t-4 border-white/60 rounded-tl-lg" />
@@ -208,7 +205,7 @@ export default function QrOperationPage() {
               {merchantSigning ? (
                 <div className="flex flex-col items-center justify-center flex-1 min-h-[400px] w-full">
                   <Loader2 className="w-10 h-10 text-blue-400 animate-spin" strokeWidth={2} />
-                  <p className="mt-3 text-sm text-white/70">Generating Pay Code...</p>
+                  <p className="mt-3 text-sm text-white/70">正在生成付款码...</p>
                 </div>
               ) : merchantError ? (
                 <div className="flex flex-col items-center justify-center flex-1 min-h-[400px] w-full">
@@ -217,16 +214,14 @@ export default function QrOperationPage() {
                     type="button"
                     onClick={() => { setMerchantError(null); setMerchantPayload(null) }}
                     className="mt-4 px-4 py-2 rounded-lg bg-white/20 text-white text-sm"
-                  >
-                    Retry
-                  </button>
+                  >{tu('retry')}</button>
                 </div>
               ) : merchantPayload ? (
                 <div className="flex flex-col items-center w-full">
                   <div className="flex items-center justify-center w-full mb-3">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-400" />
-                      <span className="text-xs font-semibold text-white/90">Express Pay (Smart Account)</span>
+                      <span className="text-xs font-semibold text-white/90">快捷支付（智能账户）</span>
                     </div>
                   </div>
                   <div className="relative">
@@ -246,7 +241,7 @@ export default function QrOperationPage() {
                     />
                     {merchantExpireSec <= 0 && (
                       <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-sm">
-                        <span className="text-lg font-bold text-slate-700">Expired</span>
+                        <span className="text-lg font-bold text-slate-700">已过期</span>
                       </div>
                     )}
                   </div>
@@ -257,7 +252,7 @@ export default function QrOperationPage() {
                     type="button"
                     onClick={() => onCopyAddress(profiles?.[0]?.aaAccount ?? "")}
                     className="mt-2 flex items-center justify-center gap-1 px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-900/70 active:scale-[0.98] transition cursor-pointer w-fit mx-auto"
-                    aria-label="Copy address"
+                    aria-label="复制地址"
                   >
                     <CreditCard className="w-4 h-4 shrink-0" strokeWidth={2.2} />
                     <span>{shortAddress(profiles?.[0]?.aaAccount ?? "")}</span>
@@ -282,7 +277,7 @@ export default function QrOperationPage() {
                       ) : (
                         <Copy className="w-5 h-5 text-slate-600 dark:text-slate-400 shrink-0" />
                       )}
-                      <span>Copy</span>
+                      <span>复制</span>
                     </button>
                     <button
                       type="button"
@@ -291,13 +286,13 @@ export default function QrOperationPage() {
                       className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl font-semibold text-sm bg-black dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 active:scale-[0.98] transition disabled:opacity-50 disabled:pointer-events-none"
                     >
                       <Share2 className="w-5 h-5 shrink-0" />
-                      <span>Share</span>
+                      <span>分享</span>
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center flex-1 min-h-[400px] text-center">
-                  <p className="text-white/60 text-sm">Activate AA wallet to use Pay Code</p>
+                  <p className="text-white/60 text-sm">激活 AA 钱包以使用付款码</p>
                 </div>
               )}
             </div>

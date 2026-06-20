@@ -114,7 +114,7 @@ export default function RestoreAccessPage({
 							type="button"
 							onClick={onBack}
 							className="text-[#0051d1] transition-transform active:scale-95"
-							aria-label="Back"
+							aria-label="返回"
 						>
 							<ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
 						</button>

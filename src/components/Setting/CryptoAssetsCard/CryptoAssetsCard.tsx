@@ -35,12 +35,12 @@ const CryptoAssetsCard: React.FC<CryptoAssetsCardProps> = ({
     try {
       await navigator.clipboard.writeText(address)
       Toast.show({
-        content: 'Address copied',
+        content: '地址已复制',
         duration: 1200,
       })
     } catch (err) {
       Toast.show({
-        content: 'Copy failed',
+        content: '复制失败',
         duration: 1200,
       })
     }

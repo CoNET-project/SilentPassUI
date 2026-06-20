@@ -88,7 +88,7 @@ const formatDay=(timestamp: number): string => {
     	date.getMonth() === now.getMonth() &&
     	date.getDate() === now.getDate()
 
-  	if (isToday) return 'Today'
+  	if (isToday) return '今天'
 
   	const y = date.getFullYear()
 	const m = String(date.getMonth() + 1).padStart(2, '0')

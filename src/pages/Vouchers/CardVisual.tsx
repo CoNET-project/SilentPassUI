@@ -188,7 +188,7 @@ export default function CCSACardVisual({
 								"active:scale-[0.99] transition"
 							)}
 							style={{ backgroundColor: ICON_BG }}
-							aria-label="Show QR"
+							aria-label="显示二维码"
 						>
 							<QrCode className="h-4 w-4 sm:h-5 sm:w-5 text-white" strokeWidth={2.2} />
 						</button>
@@ -219,7 +219,7 @@ export default function CCSACardVisual({
 										"active:scale-[0.99] transition"
 									)}
 									style={{ backgroundColor: ICON_BG }}
-									aria-label="Show QR"
+									aria-label="显示二维码"
 								>
 									<QrCode className="h-4 w-4 sm:h-5 sm:w-5 text-white" strokeWidth={2.2} />
 								</button>
@@ -232,7 +232,7 @@ export default function CCSACardVisual({
 				<div className="mt-auto pb-0.5 sm:pb-1 min-h-0">
 					{(balance > 0 && memberNo) ? (
 						<>
-							<div className="text-[11px] sm:text-[13px] font-semibold tracking-[0.15em] uppercase" style={{ color: LABEL_GREY }}>Balance</div>
+							<div className="text-[11px] sm:text-[13px] font-semibold tracking-[0.15em] uppercase" style={{ color: LABEL_GREY }}>余额</div>
 							<CCSABalanceRow balance={balance} prefix="$" />
 							<div className="mt-3 sm:mt-5 flex items-end justify-between gap-2 min-w-0">
 								<div>

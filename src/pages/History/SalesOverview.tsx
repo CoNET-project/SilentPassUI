@@ -161,7 +161,7 @@ export default function SalesOverview() {
 					type="button"
 					onClick={() => navigate('/History')}
 					className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8eefc] text-[#1562f0] shadow-sm ring-1 ring-[#1562f0]/15 transition active:scale-[0.97] dark:bg-slate-800 dark:text-blue-400 dark:ring-white/10"
-					aria-label="Back"
+					aria-label="返回"
 				>
 					<ArrowLeft className="h-5 w-5" strokeWidth={2.2} />
 				</button>

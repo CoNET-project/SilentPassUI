@@ -1,6 +1,6 @@
 /**
  * Semi-permanent local ledger of TX_TIP / legacy tip rows for Overview "Tips Collected".
- * Amounts follow indexer `Transaction`: `finalRequestAmountFiat6` / `finalRequestAmountUSDC6` + `TransactionMeta.currencyFiat`.
+ * Amounts follow indexer `交易`: `finalRequestAmountFiat6` / `finalRequestAmountUSDC6` + `TransactionMeta.currencyFiat`.
  * Storage key avoids `eoa:${addr}:` so EOA switch cleanup does not wipe ledgers.
  */
 

@@ -6,8 +6,8 @@ type ShowPrintProps = {
 	title?: string
 	merchantName: string
 	handle: string // "@BeamioDemo"
-	payTitle?: string // "Beamio PayMe"
-	paySubtitle?: string // "USDC · Any amount"
+	payTitle?: string // "Beamio 收款"
+	paySubtitle?: string // "USDC · 任意金额"
 	payLink: string
 	qrValue: string
 	onDone: () => void
@@ -17,11 +17,11 @@ type ShowPrintProps = {
 
 export function ShowPrint(props: ShowPrintProps) {
   const {
-    title = "Your Beamio QR Kit",
+    title = "您的 Beamio 二维码套件",
     merchantName,
     handle,
-    payTitle = "Beamio PayMe",
-    paySubtitle = "USDC · Any amount",
+    payTitle = "Beamio 收款",
+    paySubtitle = "USDC · 任意金额",
     payLink,
     qrValue,
     onDone,
@@ -47,7 +47,7 @@ export function ShowPrint(props: ShowPrintProps) {
 				type="button"
 				onClick={onBack}
 				className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center active:scale-[0.98] transition"
-				aria-label="Back"
+				aria-label="返回"
 			>
 				<ArrowLeft className="w-5 h-5 text-slate-700" />
 			</button>
@@ -108,7 +108,7 @@ export function ShowPrint(props: ShowPrintProps) {
               <div className="mt-5 rounded-[26px] bg-white ring-1 ring-black/10 shadow-sm p-5">
                 <div className="text-center">
                   <div className="text-[42px] font-black text-slate-900">
-                    {merchantName || "Demo"}
+                    {merchantName || "演示"}
                   </div>
                   <div className="mt-1 text-[22px] font-semibold text-slate-400">
                     {handle}

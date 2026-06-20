@@ -273,7 +273,7 @@ const Browser = ({}) => {
 												onClick={handlePaste}
 												className="px-2.5 py-1.5 rounded-full text-[11px] md:text-xs font-medium border border-slate-200 text-slate-700 hover:bg-slate-50"
 											>
-												{value ? 'Delete' : 'Paste'} 
+												{value ? '删除' : 'Paste'} 
 											</button>
 											<button
 												type="button"

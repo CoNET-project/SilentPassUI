@@ -158,7 +158,7 @@ export const checkBUnitClaimEligibility = async (address: string): Promise<{ can
 			deadline: data.deadline != null ? Number(data.deadline) : undefined,
 		}
 	} catch (e) {
-		return { canClaim: false, error: (e as Error)?.message ?? 'Request failed' }
+		return { canClaim: false, error: (e as Error)?.message ?? '请求失败' }
 	}
 }
 
@@ -247,7 +247,7 @@ export const checkRequestStatus = async (
 		const { expired, fulfilled } = await res.json()
 		return { expired: !!expired, fulfilled: !!fulfilled }
 	} catch (e) {
-		return { expired: false, fulfilled: false, error: (e as Error)?.message ?? 'Request failed' }
+		return { expired: false, fulfilled: false, error: (e as Error)?.message ?? '请求失败' }
 	}
 }
 
@@ -2214,7 +2214,7 @@ export const pushAccountRecoverBusinessDraft = async (
 		const ok = await RegenerateUser(beamioAccount, [{ hash: nameHash, encrypto: nextEnc }], privateKey)
 		return ok ? { ok: true } : { ok: false, error: 'Server rejected recover update' }
 	} catch (e: any) {
-		return { ok: false, error: e?.shortMessage || e?.message || 'Unknown error' }
+		return { ok: false, error: e?.shortMessage || e?.message || '未知错误' }
 	}
 }
 

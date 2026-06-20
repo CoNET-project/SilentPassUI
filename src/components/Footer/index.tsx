@@ -279,7 +279,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				key: '/chat' as const,
 				iconGrey: <ChatGreyIcon className={ICON_CLASS} />,
 				iconBlue: <ChatBlueIcon className={ICON_CLASS} />,
-				title: '', //'Chat',
+				title: '', //'聊天',
 				badge: getBadge('/chat'),
 			},
 			{

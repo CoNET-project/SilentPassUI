@@ -38,7 +38,7 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden 
         Modal.show({
           content: "Camera permission denied or unavailable",
           closeOnAction: true,
-          actions: [{ key: "confirm", text: "Confirm" }]
+          actions: [{ key: "confirm", text: "确认" }]
         })
         setLoading(false)
         return
@@ -57,7 +57,7 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden 
         Modal.show({
           content: "Camera permission denied or unavailable",
           closeOnAction: true,
-          actions: [{ key: "confirm", text: "Confirm" }]
+          actions: [{ key: "confirm", text: "确认" }]
         })
         setLoading(false)
       }

@@ -16,6 +16,7 @@ import TipInput from '../components/TipInput'
 import ShowTotal from '../components/ShowTotal'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import NetworkFeeGas from '../components/networkFee'
+import { tu } from '@/locale/beamioLocale'
 
 const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
@@ -29,7 +30,7 @@ const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/s
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const showPaylinkSite = 'https://beamio.app'
 
-const defaultTextTemp = `Sent with Beamio - no gas fees.`
+const defaultTextTemp = `通过 Beamio 发送，免 Gas 费。`
 
 // 0.8% fee, min 0.02, max 2 USDC
 
@@ -90,7 +91,7 @@ const displayName = (item: searchResult) => {
 
 					{/* 成功文字 */}
 					<div className="font-semibold text-slate-600 dark:text-slate-300 mb-2 mt-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode Created' : 'Successfully sent' } 
+						{/cashcode/i.test(messageData?.sginTatle) ? 'Cashcode 已创建' : '发送成功' } 
 					</div>
 
 					{/* 金额 */}
@@ -100,7 +101,7 @@ const displayName = (item: searchResult) => {
 
 					{/* 提示 */}
 					<div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-						{/cashcode/i.test(messageData?.sginTatle) ? 'Share this Beamio Cashcode as a link, QR, or redeem code.' : 'This may take a few seconds to appear for the receiver.' } 
+						{/cashcode/i.test(messageData?.sginTatle) ? '可将此 Beamio Cashcode 以链接、二维码或兑换码分享。' : 'This may take a few seconds to appear for the receiver.' } 
 					</div>
 
 				
@@ -117,9 +118,7 @@ const displayName = (item: searchResult) => {
 							onClick={() => {
 								close()
 							}}
-						>
-							Done
-						</button>
+						>{tu('done')}</button>
 
 						{/* 查看交易按钮 */}
 						<button
@@ -136,12 +135,10 @@ const displayName = (item: searchResult) => {
 							>
 							<IpfsImg
 								src={base_ex}
-								alt="Base Explorer"
+								alt="Base 浏览器"
 								className="w-4 h-4 object-contain"
 							/>
-							<span>
-								View transaction
-							</span>
+							<span>{tu('view_transaction')}</span>
 						</button>
 					</div>
 				</div>
@@ -356,14 +353,14 @@ export default function PayMeLink ({close, code, address}: Props) {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setSendError((body as { error?: string })?.error ?? 'RPC Error!')
+				return setSendError((body as { error?: string })?.error ?? 'RPC 错误！')
 			}
 			setSuccessUrl(data.showUrl)
 			return setSuccessHash(body.USDC_tx)
 
 		} catch (ex) {
 			setProcessing (false)
-			return setSendError('RPC Error!')
+			return setSendError('RPC 错误！')
 			
 		}
 
@@ -463,7 +460,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 
 			if (response.status !== 402) {
 				setProcessing(false)
-				setSendError("RPC Error!")
+				setSendError("RPC 错误！")
 				return
 			}
 
@@ -483,7 +480,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 			senMessage(MessageData)
 		} catch (ex) {
 			setProcessing(false)
-			setSendError("RPC Error!")
+			setSendError("RPC 错误！")
 		}
 	}
 
@@ -508,7 +505,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 								<div>
 									<div className="text-lg font-semibold">
 										{
-											message ? 'Confirm' : requestUSDCAmount ? 'Payment' : 'PayMe'
+											message ? '确认' : requestUSDCAmount ? 'Payment' : 'PayMe'
 										}
 								
 									</div>
@@ -620,7 +617,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 
 											readOnly={!!message||!!requestUSDCAmount}
 											
-											placeholder="What's this for?"
+											placeholder="备注（选填）"
 											onChange={(e) => {
 												setNote(e.target.value)
 											}}
@@ -689,9 +686,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 													onClick={() => {
 														senMessage(null)
 													}}
-												>
-													Cancel
-												</AppButton>
+												>{tu('cancel')}</AppButton>
 											}
 											<AppButton
 												fullWidth
@@ -704,10 +699,7 @@ export default function PayMeLink ({close, code, address}: Props) {
 												}}
 												loading={processing}
 												errorText={sendError}
-											>
-
-												Continue
-											</AppButton>
+											>{tu('continue')}</AppButton>
 											
 										</div>
 										<div

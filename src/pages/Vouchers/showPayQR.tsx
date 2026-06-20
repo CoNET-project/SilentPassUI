@@ -197,7 +197,7 @@ export default function ShowPayQR({
 								"
 								/>
 
-								{/* QR 白底板：强制放到上层；过期时加模糊层 + 中央 "Expired" */}
+								{/* QR 白底板：强制放到上层；过期时加模糊层 + 中央 "已过期" */}
 								<div className="relative z-10 flex justify-center">
 									<div
 										className={cx(
@@ -259,7 +259,7 @@ export default function ShowPayQR({
 									<span className="text-[15px] font-semibold text-slate-700">
 										{secondsLeft > 0
 											? `Valid for ${formatCountdown(secondsLeft)}`
-											: "Expired"}
+											: "已过期"}
 									</span>
 								</div>
 							</div>
@@ -288,7 +288,7 @@ export default function ShowPayQR({
 										: "",
 								].join(" ")}
 								aria-label="Copy payment link"
-								title={copied ? "Copied" : "Copy"}
+								title={copied ? "已复制" : "复制"}
 							>
 								<span className="relative w-5 h-5 leading-none">
 									<span
@@ -324,13 +324,13 @@ export default function ShowPayQR({
 								<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
 									<Printer className="h-7 w-7 text-slate-600" />
 								</div>
-								<div className="mt-3 text-[18px] font-semibold text-slate-600">Print</div>
+								<div className="mt-3 text-[18px] font-semibold text-slate-600">打印</div>
 							</button>
 							<button type="button" onClick={onShare} className="group flex flex-col items-center">
 								<div className="w-[42px] h-[42px] rounded-full bg-white shadow-sm ring-1 ring-black/10 flex items-center justify-center group-active:scale-[0.98] transition">
 									<Share2 className="h-7 w-7 text-slate-600" />
 								</div>
-								<div className="mt-3 text-[18px] font-semibold text-slate-600">Share</div>
+								<div className="mt-3 text-[18px] font-semibold text-slate-600">分享</div>
 							</button>
 						</div>
 						)}

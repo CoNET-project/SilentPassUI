@@ -9,8 +9,9 @@ import RedeemSuccessScreen from '@/pages/Browser/RedeemSuccessScreen'
 import { useNavigate } from "react-router-dom"
 import {ethers} from 'ethers'
 import { beamioCoreConet } from "@/utils/constants"
+import { tu } from '@/locale/beamioLocale'
 // Beamio Receive screen: show wallet address & QR to receive USDC on Base
-// This is a standalone "Receive" UI, separate from the Payments (Send / Request / Check) screen.
+// This is a standalone "收款" UI, separate from the Payments (Send / Request / Check) screen.
 
 type prof = {
 	colse: () => void
@@ -173,9 +174,7 @@ export default function BeamioReceiveScreen() {
 										text-slate-900 dark:text-slate-50
 										md:text-base
 									"
-								>
-									Receive
-								</h1>
+								>{tu('receive')}</h1>
 							</div>
 
 							<div className="flex flex-col items-end">
@@ -185,9 +184,7 @@ export default function BeamioReceiveScreen() {
 										text-slate-400 dark:text-slate-500
 										md:text-[11px]
 									"
-								>
-									USDC on Base
-								</span>
+								>{tu('usdc_on_base')}</span>
 								<span
 									className="
 										text-[11px] font-medium
@@ -313,7 +310,7 @@ export default function BeamioReceiveScreen() {
 								text-center leading-relaxed
 								"
 							>
-								Only send <span className="font-medium">USDC on Base</span> to this address.
+								Only send <span className="font-medium">Base 上的 USDC</span> to this address.
 								Sending any other assets may result in loss of funds.
 							</p>
 						</div>
@@ -362,7 +359,7 @@ export default function BeamioReceiveScreen() {
 										text-right
 										"
 									>
-										{redeemCode ? 'Delete' : 'Paste'}
+										{redeemCode ? '删除' : 'Paste'}
 									</button>
 									</div>
 								{/* Security code input (optional) */}

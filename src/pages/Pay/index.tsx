@@ -31,7 +31,7 @@ const Pay = ({}) => {
 	const spSendRef=useRef()
 	const solSendRef=useRef()
 	const usdtSendRef=useRef()
-	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Pay'|''|'PayRequest'|'Cashcode'|'payme'|'PaymentNfc'>('')
+	const [showAlphaHowItWorks, setShowAlphaHowItWorks] = useState<'Payment'|''|'PayRequest'|'Cashcode'|'payme'|'PaymentNFC'>('')
 	const { darkModle, setDarkModle, setProfiles, power, setPower, setSendToMemo, setPaymentLink, setSecureCode, setRedeemCode, setPaymentLinkCode,
 		setPayMePayment
 	} = useDaemonContext()
@@ -162,7 +162,7 @@ const Pay = ({}) => {
 								return setShowAlphaHowItWorks('Cashcode')
 							}
 							case 'pay': {
-								return setShowAlphaHowItWorks('Pay')
+								return setShowAlphaHowItWorks('Payment')
 							}
 							case 'payme-qr': {
 								return setShowAlphaHowItWorks('payme')
@@ -190,7 +190,7 @@ const Pay = ({}) => {
 					setOpenSearch(false)
 					if (item && typeof item !== 'string') {
 						setUserPreviewItem(item)
-						setShowAlphaHowItWorks('Pay')
+						setShowAlphaHowItWorks('Payment')
 					}
 				} }/>
 			</div>
@@ -210,10 +210,10 @@ const Pay = ({}) => {
 					{/* 顶部 Header */}
 					<BeamioNavBack
 						title={
-							showAlphaHowItWorks === 'Pay' ? '':
-							showAlphaHowItWorks === 'PayRequest' ? 'Request' : 
+							showAlphaHowItWorks === 'Payment' ? '':
+							showAlphaHowItWorks === 'PayRequest' ? '请求' : 
 							showAlphaHowItWorks === 'Cashcode' ? 'Cashcode' : 
-							showAlphaHowItWorks === 'PaymentNfc' ? 'Payment with NFC' : 'Pay Me'
+							showAlphaHowItWorks === 'PaymentNFC' ? 'PaymentNFC' : '收款'
 						}
 						onClose={() => {
 							setShowAlphaHowItWorks('')
@@ -226,7 +226,7 @@ const Pay = ({}) => {
 						{/* 内容区域 */}
 						<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 							{
-								showAlphaHowItWorks === 'Pay' && <PayScreen close={() => {
+								showAlphaHowItWorks === 'Payment' && <PayScreen close={() => {
 									setShowAlphaHowItWorks('')
 								}}/>
 							}
@@ -237,7 +237,7 @@ const Pay = ({}) => {
 								showAlphaHowItWorks === 'Cashcode' && <Cashcode close={( )=> setShowAlphaHowItWorks('')} />
 							}
 							{
-								showAlphaHowItWorks === 'PaymentNfc' && <PaymentWithNfc onClose={() => setShowAlphaHowItWorks('')} />
+								showAlphaHowItWorks === 'PaymentNFC' && <PaymentWithNfc onClose={() => setShowAlphaHowItWorks('')} />
 							}
 							
 						</div>

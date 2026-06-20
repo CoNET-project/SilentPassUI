@@ -64,7 +64,7 @@ const Home = () => {
 					style={{ top: 'max(1rem, env(safe-area-inset-top))', opacity: capsuleOpacity, pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
 				>
 					<div className="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
-						<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Chat</h1>
+						<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">聊天</h1>
 					</div>
 				</div>
 

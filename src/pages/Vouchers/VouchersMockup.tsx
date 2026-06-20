@@ -241,7 +241,7 @@ function ChatDetailView({ chat, onBack, onTriggerPayment }: { chat: Chat, onBack
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 pb-24 no-scrollbar">
-         <div className="text-center text-xs text-gray-400 mb-6 mt-2">Today</div>
+         <div className="text-center text-xs text-gray-400 mb-6 mt-2">今天</div>
          {chat.messages.map(msg => (
            <MessageBubble key={msg.id} msg={msg} />
          ))}
@@ -255,13 +255,13 @@ function ChatDetailView({ chat, onBack, onTriggerPayment }: { chat: Chat, onBack
                  <div className="w-12 h-12 bg-blue-50 text-[#0052FF] rounded-full flex items-center justify-center border border-blue-100 shadow-sm group-active:scale-95 transition-all">
                    <DollarSign size={20} strokeWidth={2.5}/>
                  </div>
-                 <span className="text-[10px] font-medium text-gray-600">Send</span>
+                 <span className="text-[10px] font-medium text-gray-600">发送</span>
               </button>
               <button className="flex flex-col items-center gap-1 group">
                  <div className="w-12 h-12 bg-gray-50 text-gray-600 rounded-full flex items-center justify-center border border-gray-100 shadow-sm group-active:scale-95 transition-all">
                    <ArrowDownLeft size={20} strokeWidth={2.5}/>
                  </div>
-                 <span className="text-[10px] font-medium text-gray-600">Request</span>
+                 <span className="text-[10px] font-medium text-gray-600">请求</span>
               </button>
            </div>
          )}
@@ -374,7 +374,7 @@ function PaymentSimulationModal({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <button type="button" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onClose()} aria-label="Close" />
+      <button type="button" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onClose()} aria-label="关闭" />
       <div className="relative z-10 w-full max-w-sm rounded-[32px] bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* --- STEP 1: INPUT --- */}
@@ -417,7 +417,7 @@ function PaymentSimulationModal({
               </div>
             </div>
 
-            <button type="button" onClick={onNext} className="w-full bg-[#0052FF] hover:bg-blue-600 text-white font-extrabold py-4 rounded-2xl shadow-lg shadow-blue-200 active:scale-95 transition-all">Next</button>
+            <button type="button" onClick={onNext} className="w-full bg-[#0052FF] hover:bg-blue-600 text-white font-extrabold py-4 rounded-2xl shadow-lg shadow-blue-200 active:scale-95 transition-all">下一步</button>
           </div>
         )}
 
@@ -431,7 +431,7 @@ function PaymentSimulationModal({
             </div>
 
             <div className="text-center mb-6">
-              <div className="text-[12px] text-gray-500">Bill Amount</div>
+              <div className="text-[12px] text-gray-500">账单金额</div>
               <div className="text-3xl font-extrabold text-gray-900">${bill.toFixed(2)}</div>
             </div>
 
@@ -627,7 +627,7 @@ export function VouchersMockup() {
                           const newChats = [...chats]
                           const chatIndex = newChats.findIndex(c => c.id === activeMerchant.chatId)
                           if (chatIndex >= 0) {
-                             newChats[chatIndex].messages.push({id: Date.now(), type: 'payment', amount: `-${totalPaid.toFixed(2)}`, status: 'completed', sender: 'me', time: 'Just now'})
+                             newChats[chatIndex].messages.push({id: Date.now(), type: 'payment', amount: `-${totalPaid.toFixed(2)}`, status: 'completed', sender: 'me', time: '刚刚'})
                              newChats.unshift(newChats.splice(chatIndex, 1)[0])
                              setChats(newChats)
                           }
@@ -649,7 +649,7 @@ export function VouchersMockup() {
         <div className="h-3" />
         <div className="px-5 mt-2">
           <div className="inline-flex items-center gap-2 bg-white/90 backdrop-blur-md border border-gray-200/60 rounded-full px-3 py-1 shadow-sm">
-            <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Balance</span>
+            <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">余额</span>
             <span className="text-[11px] font-extrabold text-gray-900">{balance.toFixed(2)} USDC</span>
           </div>
         </div>
@@ -803,19 +803,19 @@ export function VouchersMockup() {
                  
                  if (chatIndex >= 0) {
                    // Payment Sent Msg
-                   newChats[chatIndex].messages.push({ id: Date.now(), type: 'payment', amount: `-${totalPaid.toFixed(2)}`, status: 'completed', sender: 'me', time: 'Just now' })
+                   newChats[chatIndex].messages.push({ id: Date.now(), type: 'payment', amount: `-${totalPaid.toFixed(2)}`, status: 'completed', sender: 'me', time: '刚刚' })
                    
                    // Reward Msgs
                    if (activeMerchant.type === 'cashback') {
-                      newChats[chatIndex].messages.push({ id: Date.now() + 1, type: 'reward', amount: `+${rewardValue.toFixed(2)}`, status: 'reward', note: '20% Cashback', sender: 'me', time: 'Just now' })
+                      newChats[chatIndex].messages.push({ id: Date.now() + 1, type: 'reward', amount: `+${rewardValue.toFixed(2)}`, status: 'reward', note: '20% Cashback', sender: 'me', time: '刚刚' })
                    } else if (activeMerchant.type === 'luck') {
-                      newChats[chatIndex].messages.push({ id: Date.now() + 1, type: 'text', content: '🎉 JACKPOT! You won a FREE DRINK! $5.00 credited.', sender: 'them', time: 'Just now' })
+                      newChats[chatIndex].messages.push({ id: Date.now() + 1, type: 'text', content: '🎉 JACKPOT! You won a FREE DRINK! $5.00 credited.', sender: 'them', time: '刚刚' })
                    } else if (activeMerchant.type === 'loyalty') {
-                      newChats[chatIndex].messages.push({ id: Date.now() + 1, type: 'text', content: 'You earned a stamp! You have unlocked a $5 Reward!', sender: 'them', time: 'Just now' })
+                      newChats[chatIndex].messages.push({ id: Date.now() + 1, type: 'text', content: 'You earned a stamp! You have unlocked a $5 Reward!', sender: 'them', time: '刚刚' })
                    }
 
                    newChats[chatIndex].lastMessage = `You sent $${totalPaid.toFixed(2)}`
-                   newChats[chatIndex].time = 'Just now'
+                   newChats[chatIndex].time = '刚刚'
                    newChats.unshift(newChats.splice(chatIndex, 1)[0])
                    setChats(newChats)
                  }

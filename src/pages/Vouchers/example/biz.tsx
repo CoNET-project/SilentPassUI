@@ -426,6 +426,7 @@ import {
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
+import { tu } from '@/locale/beamioLocale'
 import {
   CardConfiguratorMobileChrome,
   CardConfiguratorMobileFixedFooterPortal,
@@ -798,7 +799,7 @@ type TxDisplayRowCore = {
   topupActualPaymentFiat?: number
   topupBonusFiat?: number
   /**
-   * Full indexer `Transaction` (readme-shaped JSON from `indexerPageTupleToTransactionJson`).
+   * Full indexer `交易` (readme-shaped JSON from `indexerPageTupleToTransactionJson`).
    * `route` is [] when not returned by paged facet ABI. Shown inside modal with the rest of this row.
    */
   raw: Record<string, unknown>
@@ -1000,8 +1001,8 @@ function coerceBizTopupMemberRowsFromTrustedCache(rows: BizTopupMemberTableRow[]
 
 const INITIAL_BIZ_LOYALTY_MEMBERS: BizLoyaltyMemberRow[] = [
   { id: 'blm001', tag: '@alice_chen', address: '0x1A4…9F21', tier: 'Green Card', balance: 50.0, ltv: 850.0, lastActive: '2 hrs ago', store: 'Main Store', status: 'Active' },
-  { id: 'blm002', tag: '@senpho_wholesale', address: '0x3C8…E4A1', tier: 'Black VIP', balance: 45.0, ltv: 3200.0, lastActive: 'Yesterday', store: 'Franchise North', status: 'Active' },
-  { id: 'blm003', tag: '@cashtrees_support', address: '0x9E2…1B7C', tier: 'Standard', balance: 12.5, ltv: 45.0, lastActive: '3 days ago', store: 'Main Store', status: 'Active' },
+  { id: 'blm002', tag: '@senpho_wholesale', address: '0x3C8…E4A1', tier: 'Black VIP', balance: 45.0, ltv: 3200.0, lastActive: '昨天', store: 'Franchise North', status: 'Active' },
+  { id: 'blm003', tag: '@cashtrees_support', address: '0x9E2…1B7C', tier: '标准', balance: 12.5, ltv: 45.0, lastActive: '3 days ago', store: 'Main Store', status: 'Active' },
 ]
 
 const ISSUE_CARD_MIN_BUINTS = 200
@@ -2411,7 +2412,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
             onClick={() => void runSaveToChainAndReleaseGate()}
             className={`w-full rounded-full bg-[#1562f0] py-4 text-center text-sm font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
           >
-            {pushBusy ? 'Saving to secure storage…' : 'Continue'}
+            {pushBusy ? 'Saving to secure storage…' : '继续'}
           </button>
         </div>
       </div>
@@ -2772,7 +2773,7 @@ function WalletsTreasuryShell(props: {
               type="button"
               onClick={onOracleRefresh}
               className={`rounded-full p-1 text-[#424655] transition-colors hover:text-[#0054d8] ${bizFocusRingClass}`}
-              aria-label="Refresh exchange rate"
+              aria-label="刷新汇率"
             >
               <RefreshCw className="size-3.5" strokeWidth={2} aria-hidden />
             </button>
@@ -2836,7 +2837,7 @@ function WalletsTreasuryShell(props: {
               </span>
             )}
             {aaCopiedFlash ? (
-              <span className="text-[11px] font-bold text-emerald-500">Copied</span>
+              <span className="text-[11px] font-bold text-emerald-500">已复制</span>
             ) : null}
           </div>
         </section>
@@ -2892,14 +2893,12 @@ function WalletsTreasuryShell(props: {
 
         <section className="mt-1 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-manrope text-2xl font-semibold tracking-tight text-[#141b2b]">Recent Activity</h3>
+            <h3 className="font-manrope text-2xl font-semibold tracking-tight text-[#141b2b]">最近动态</h3>
             <button
               type="button"
               onClick={onViewAllHistory}
               className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-[#0054d8] transition-colors hover:bg-[#dbe1ff] ${bizFocusRingClass}`}
-            >
-              View All
-            </button>
+            >{tu('view_all')}</button>
           </div>
           {recentWalletActivity.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-[#c3c6d8] bg-white px-6 py-10 text-center shadow-[0_4px_24px_-4px_rgba(0,0,0,0.03)]">
@@ -2985,7 +2984,7 @@ function WalletsTreasuryShell(props: {
               <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#d9dde0] sm:hidden" />
               <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1 flex flex-col justify-center">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">Receive</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">收款</p>
                   <h2 id="wallet-receive-qr-title" className="mt-1 font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
                     USDC Payment Link
                   </h2>
@@ -2994,14 +2993,14 @@ function WalletsTreasuryShell(props: {
                   </p>
                   <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#abadaf]/25 bg-[#eef1f3] px-3 py-1.5">
                     <UsdcBaseCompositeIcon size={18} badgeSize={11} />
-                    <span className="text-[11px] font-bold text-[#2c2f31]">USDC on Base</span>
+                    <span className="text-[11px] font-bold text-[#2c2f31]">Base 上的 USDC</span>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setReceiveQrOpen(false)}
                   className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#515c70] transition-colors hover:bg-[#e5e9eb] ${bizFocusRingClass}`}
-                  aria-label="Close"
+                  aria-label="关闭"
                 >
                   <X className="size-5" strokeWidth={2} aria-hidden />
                 </button>
@@ -3077,7 +3076,7 @@ function WalletsTreasuryShell(props: {
                     disabled={!receivePaymentUrl || receivePrecheckStatus !== 'payable'}
                     className={`inline-flex items-center justify-center rounded-full border border-[#abadaf]/30 bg-white px-3 py-1.5 text-[11px] font-bold text-[#0051d1] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
                   >
-                    {aaCopiedFlash ? 'Copied' : 'Copy URL'}
+                    {aaCopiedFlash ? '已复制' : 'Copy URL'}
                   </button>
                 </div>
               </div>
@@ -3105,7 +3104,7 @@ function WalletsTreasuryShell(props: {
               disabled={cashOutLoading}
               onClick={() => setCashOutModalOpen(false)}
               className={`absolute right-6 top-6 flex h-10 w-10 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] disabled:opacity-50 ${bizFocusRingClass}`}
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="size-5" strokeWidth={2} aria-hidden />
             </button>
@@ -3179,9 +3178,7 @@ function WalletsTreasuryShell(props: {
                   disabled={cashOutLoading}
                   onClick={() => setCashOutModalOpen(false)}
                   className={`h-14 rounded-full text-sm font-semibold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:opacity-50 ${bizFocusRingClass}`}
-                >
-                  Cancel
-                </button>
+                >{tu('cancel')}</button>
               </div>
             </div>
             <div className="bg-[#eef1f3]/80 px-8 py-4 text-center">
@@ -3253,27 +3250,21 @@ function WalletsNoAaOnloadingShell(props: {
                   onClick={onReceive}
                   className={`flex items-center gap-2 rounded-full bg-[#0051d1] px-6 py-3 text-xs font-bold text-[#f1f2ff] shadow-lg shadow-[#0051d1]/10 transition-transform active:scale-95 ${bizFocusRingClass}`}
                 >
-                  <ArrowDownToLine className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-                  Receive
-                </button>
+                  <ArrowDownToLine className="size-4 shrink-0" strokeWidth={2} aria-hidden />{tu('receive')}</button>
                 <button
                   type="button"
                   disabled
                   className="flex cursor-not-allowed items-center gap-2 rounded-full bg-white px-6 py-3 text-xs font-bold text-[#595c5e] opacity-60 shadow-sm ring-1 ring-[#e5e9eb]"
                   aria-disabled
                 >
-                  <ArrowUpFromLine className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-                  Send
-                </button>
+                  <ArrowUpFromLine className="size-4 shrink-0" strokeWidth={2} aria-hidden />{tu('send')}</button>
                 <button
                   type="button"
                   disabled
                   className="flex cursor-not-allowed items-center gap-2 rounded-full bg-white px-6 py-3 text-xs font-bold text-[#595c5e] opacity-60 shadow-sm ring-1 ring-[#e5e9eb]"
                   aria-disabled
                 >
-                  <Landmark className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-                  Cash Out
-                </button>
+                  <Landmark className="size-4 shrink-0" strokeWidth={2} aria-hidden />{tu('cash_out_2')}</button>
               </div>
               <div className="pointer-events-none absolute -bottom-16 -right-16 h-48 w-48 rounded-full bg-[#0051d1]/5 blur-3xl" aria-hidden />
             </div>
@@ -3462,7 +3453,7 @@ function WalletSendUsdcSheet(props: {
         setResults(Array.isArray((res as { results?: searchResult[] } | null)?.results) ? (res as { results: searchResult[] }).results : []);
       } catch {
         setResults([]);
-        setSendError('Search failed. Try again.');
+        setSendError('搜索失败，请重试。');
       } finally {
         setSearchLoading(false);
       }
@@ -3638,9 +3629,7 @@ function WalletSendUsdcSheet(props: {
               <h2 id="wallet-send-usdc-title" className="mt-1 font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
                 Send USDC
               </h2>
-              <p className="mt-2 text-xs font-medium leading-relaxed text-[#595c5e]">
-                Search by Beamio tag or paste a Base address. Gas is sponsored for direct EOA sends.
-              </p>
+              <p className="mt-2 text-xs font-medium leading-relaxed text-[#595c5e]">{tu('search_by_beamio_tag_or_paste_a_base_address_gas_is_sponsored_for_direct')}</p>
               <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#abadaf]/25 bg-[#eef1f3] px-3 py-1.5">
                 <UsdcBaseCompositeIcon size={18} badgeSize={11} />
                 <span className="text-[11px] font-bold text-[#2c2f31]">From Main Vault (EOA)</span>
@@ -3651,7 +3640,7 @@ function WalletSendUsdcSheet(props: {
               disabled={processing}
               onClick={() => onClose()}
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#515c70] transition-colors hover:bg-[#e5e9eb] disabled:opacity-50 ${bizFocusRingClass}`}
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="size-5" strokeWidth={2} aria-hidden />
             </button>
@@ -3662,7 +3651,7 @@ function WalletSendUsdcSheet(props: {
           {successTx ? (
             <div className="rounded-2xl border border-[#abadaf]/20 bg-white px-5 py-8 text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#0051d1] text-2xl text-white">✓</div>
-              <p className="mt-4 text-sm font-semibold text-[#515c70]">Successfully sent</p>
+              <p className="mt-4 text-sm font-semibold text-[#515c70]">发送成功</p>
               <p className="mt-1 font-mono text-lg font-bold text-[#0051d1]">
                 {formatAmount(Number(sendAmount), 'USDC')} USDC
               </p>
@@ -3671,17 +3660,13 @@ function WalletSendUsdcSheet(props: {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`mt-4 inline-flex items-center gap-2 text-xs font-bold text-[#0051d1] underline-offset-2 hover:underline ${bizFocusRingClass}`}
-              >
-                View on BaseScan
-                <ExternalLink className="size-3.5" aria-hidden />
+              >{tu('view_on_basescan')}<ExternalLink className="size-3.5" aria-hidden />
               </a>
               <button
                 type="button"
                 onClick={onClose}
                 className={`mt-6 w-full rounded-full bg-[#0051d1] py-3 text-sm font-bold text-white ${bizFocusRingClass}`}
-              >
-                Done
-              </button>
+              >{tu('done')}</button>
             </div>
           ) : (
             <>
@@ -3720,7 +3705,7 @@ function WalletSendUsdcSheet(props: {
                     autoComplete="off"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search Beamio tags or paste address…"
+                    placeholder="搜索 Beamio 标签或粘贴地址…"
                     disabled={processing}
                     className="w-full rounded-lg border-none bg-[#eef1f3] py-4 pl-12 pr-4 text-sm text-[#2c2f31] outline-none placeholder:text-[#747779] focus:ring-2 focus:ring-[#0051d1]/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                     inputMode="search"
@@ -3803,7 +3788,7 @@ function WalletSendUsdcSheet(props: {
                   value={note}
                   onChange={(e) => setNote(e.target.value.replace(/[\r\n]/g, ''))}
                   disabled={processing}
-                  placeholder={"What's this for?"}
+                  placeholder={"备注（选填）"}
                   autoComplete="off"
                   className="w-full rounded-lg border border-[#abadaf]/25 bg-[#ffffff] px-4 py-3 text-sm text-[#2c2f31] outline-none focus:ring-2 focus:ring-[#0051d1]/20"
                 />
@@ -3814,7 +3799,7 @@ function WalletSendUsdcSheet(props: {
               ) : null}
 
               <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-[#ffffff] px-4 py-3 text-[11px] leading-relaxed text-[#747779]">
-                Recipients with a Beamio Smart Account open <span className="font-semibold text-[#8d3a8b]">Smart Routing</span> to complete payment (same as Pay). EOA recipients get a direct USDC transfer after you sign the USDC authorization.
+                Recipients with a Beamio Smart Account open <span className="font-semibold text-[#8d3a8b]">智能路由</span> to complete payment (same as Pay). EOA recipients get a direct USDC transfer after you sign the USDC authorization.
               </div>
 
               <button
@@ -4026,7 +4011,7 @@ function MessagesDayZeroShell(props: {
                   type="search"
                   value={inboxSearch}
                   onChange={(e) => onInboxSearchChange(e.target.value)}
-                  placeholder="Search chats..."
+                  placeholder="搜索聊天…"
                   autoComplete="off"
                   className={`w-full rounded-full border-0 bg-white py-3 pl-12 pr-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#747779] focus:ring-2 focus:ring-[#0051d1]/20 ${bizFocusRingClass}`}
                 />
@@ -4085,7 +4070,7 @@ function MessagesDayZeroShell(props: {
                 <button
                   type="button"
                   className="flex h-10 w-10 items-center justify-center rounded-full text-[#747779] transition-colors hover:bg-[#eef1f3]"
-                  aria-label="Security"
+                  aria-label="安全"
                 >
                   <Shield className="size-5" strokeWidth={2} aria-hidden />
                 </button>
@@ -4164,7 +4149,7 @@ function MessagesDayZeroShell(props: {
                 <input
                   type="text"
                   readOnly
-                  placeholder="Type a secure message…"
+                  placeholder="输入安全消息…"
                   className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-[#2c2f31] placeholder:text-[#747779] focus:ring-0"
                 />
                 <button
@@ -4284,7 +4269,7 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
             type="button"
             onClick={onClose}
             className={`flex size-10 items-center justify-center rounded-full text-[#9a9d9f] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
-            aria-label="Close"
+            aria-label="关闭"
           >
             <X className="size-5" strokeWidth={2} aria-hidden />
           </button>
@@ -4530,13 +4515,13 @@ const PERIOD_MONTH = 3
 const PERIOD_QUARTER = 4
 const PERIOD_YEAR = 5
 
-type OverviewTimeFilter = 'Today' | 'This Week' | 'This Month' | 'This Quarter' | 'This Year'
+type OverviewTimeFilter = '今天' | 'This Week' | 'This Month' | 'This Quarter' | 'This Year'
 
-const OVERVIEW_TIME_FILTERS: readonly OverviewTimeFilter[] = ['Today', 'This Week', 'This Month', 'This Quarter', 'This Year'] as const
+const OVERVIEW_TIME_FILTERS: readonly OverviewTimeFilter[] = ['今天', 'This Week', 'This Month', 'This Quarter', 'This Year'] as const
 
 /** Mobile Transactions time pills (design mock; no Quarter). */
 const MOBILE_TRANSACTIONS_TIME_PILLS: readonly OverviewTimeFilter[] = [
-  'Today',
+  '今天',
   'This Week',
   'This Month',
   'This Year',
@@ -4552,7 +4537,7 @@ function overviewTimeFilterToPeriodType(tf: string): number {
       return PERIOD_QUARTER
     case 'This Year':
       return PERIOD_YEAR
-    case 'Today':
+    case '今天':
     default:
       return PERIOD_DAY
   }
@@ -4574,10 +4559,10 @@ function getLocalCalendarDayStartUnixSec(reference: Date): number {
 
 /**
  * Inclusive period start (unix seconds) for Overview time filter.
- * `Today` = client local midnight (matches gross sales). Other ranges = UTC-aligned like indexer `StatsFacet` / `PERIOD_*`.
+ * `今天` = client local midnight (matches gross sales). Other ranges = UTC-aligned like indexer `StatsFacet` / `PERIOD_*`.
  */
 function overviewPeriodStartUnixSec(timeFilter: OverviewTimeFilter, anchorSec: number): number {
-  if (timeFilter === 'Today') {
+  if (timeFilter === '今天') {
     return getLocalCalendarDayStartUnixSec(new Date(anchorSec * 1000))
   }
   if (timeFilter === 'This Week') {
@@ -4606,7 +4591,7 @@ type BizNetworkSummaryRow = {
   txCount: number
   usdc: number
   vouchers: number
-  /** Present when `timeFilter === 'Today'`: must match `formatLocalYmd(new Date())` for trusted cache */
+  /** Present when `timeFilter === '今天'`: must match `formatLocalYmd(new Date())` for trusted cache */
   localDayKey?: string
 }
 
@@ -4620,7 +4605,7 @@ function overviewPeriodConsumptionCaption(tf: string): string {
       return "This Quarter's Consumption"
     case 'This Year':
       return "This Year's Consumption"
-    case 'Today':
+    case '今天':
     default:
       return "Today's Consumption"
   }
@@ -5064,7 +5049,7 @@ async function callGetGlobalStatsFullParsed(
 }
 
 /**
- * Overview "Today": sum `getAdminStatsFull(..., PERIOD_HOUR, anchor in hour h)` for each UTC hour index
+ * Overview "今天": sum `getAdminStatsFull(..., PERIOD_HOUR, anchor in hour h)` for each UTC hour index
  * overlapping the client-local calendar day [local midnight, now]. Each hourly call already aggregates
  * the admin subtree on the staff program BeamioUserCard (same as `getAdminStatsFull` period stats).
  */
@@ -5113,7 +5098,7 @@ async function aggregateAdminNetworkSummaryLocalTodayFromHourlyBuckets(
 }
 
 /**
- * Overview "Today" (global / full card): sum `getGlobalStatsFull(..., PERIOD_HOUR, ...)` over local-calendar-day hours.
+ * Overview "今天" (global / full card): sum `getGlobalStatsFull(..., PERIOD_HOUR, ...)` over local-calendar-day hours.
  */
 async function aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
   cardAddress: string,
@@ -5607,7 +5592,7 @@ const indexerTxIdBodyPrefix6 = (indexerTxId: string | undefined): string => {
 
 /** Same predicates as Transactions tab `filteredTx` (ledger / search / type / terminal). */
 type BizTxTableFilterCtx = {
-  activeLedger: 'All' | 'AA' | 'EOA'
+  activeLedger: '全部' | 'AA' | 'EOA'
   txSearchTerm: string
   txFilterType: string
   txFilterTerminal: string
@@ -5675,7 +5660,7 @@ function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFi
   const topUpOnEoa =
     ctx.activeLedger === 'EOA' && topUpRowVisibleOnMerchantEoaLedger(tx, merchantLo)
   const matchLedger =
-    ctx.activeLedger === 'All' ||
+    ctx.activeLedger === '全部' ||
     (ctx.activeLedger === 'EOA' && (isVaultTx || topUpOnEoa)) ||
     (ctx.activeLedger === 'AA' && !isVaultTx)
   const q = ctx.txSearchTerm.toLowerCase()
@@ -5692,12 +5677,12 @@ function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFi
     (topUpShortLabel && topUpShortLabel.includes(q)) ||
     tx.hash.toLowerCase().includes(q) ||
     (tx.beamioTag && tx.beamioTag.toLowerCase().includes(q))
-  const matchType = ctx.txFilterType === 'All' || tx.type === ctx.txFilterType
+  const matchType = ctx.txFilterType === '全部' || tx.type === ctx.txFilterType
   /** App / android NFC top-ups often have no `displayJson.terminal` → row.terminal is "—"; must not vanish when a Staff POS is selected. */
   const terminalTrim = (tx.terminal ?? '').trim()
   const topUpTerminalUnbound = tx.type === 'In-Store Top-Up' && (terminalTrim === '' || terminalTrim === '—')
   const matchTerminal =
-    ctx.txFilterTerminal === 'All' ||
+    ctx.txFilterTerminal === '全部' ||
     tx.terminal === ctx.txFilterTerminal ||
     (ctx.txFilterTerminal === 'The Vault' && Boolean(tx.terminal?.toLowerCase().includes('vault'))) ||
     (topUpTerminalUnbound && ctx.txFilterTerminal !== 'The Vault')
@@ -5905,7 +5890,7 @@ function tipTxDisplayRowToLedgerAmounts(tx: Pick<TxDisplayRow, 'raw' | 'usdcAmou
 }
 
 /**
- * Map indexer paged tuple → readme `Transaction`-shaped JSON (CoNETIndexTaskdiamond readme).
+ * Map indexer paged tuple → readme `交易`-shaped JSON (CoNETIndexTaskdiamond readme).
  * `route` is not part of TX_PAGE_TUPLE; emitted as [].
  */
 function indexerPageTupleToTransactionJson(tx: {
@@ -8189,7 +8174,7 @@ const AddressCapsule = ({
       type="button"
       onClick={handleCopy}
       className={`inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full font-mono text-[11px] font-semibold border transition-colors ${className}`}
-      title="Copy address"
+      title="复制地址"
     >
       {leadingIcon ? <span className="shrink-0">{leadingIcon}</span> : null}
       <span className="truncate">{short}</span>
@@ -8300,7 +8285,7 @@ function smartReceiptLedgerAmountPreviewColumn(
           <span className="text-[11px] text-slate-400 font-medium mt-0.5">≈ ${reqFiat.toFixed(2)} CAD</span>
           {tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
             <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold text-[#FF9500]">
-              <span>Incl</span>
+              <span>含</span>
               <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
                 <Gift size={10} strokeWidth={2.5} />
               </span>
@@ -8627,7 +8612,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
                   className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-colors cursor-pointer"
                   title="View transaction on BaseScan"
                 >
-                  {tx.status === 'Pending' ? (
+                  {tx.status === '待处理' ? (
                     <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
                   ) : (
                     <CheckCircle2
@@ -8641,7 +8626,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
                 </a>
               ) : (
                 <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                  {tx.status === 'Pending' ? (
+                  {tx.status === '待处理' ? (
                     <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
                   ) : (
                     <CheckCircle2
@@ -8679,7 +8664,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
           const strikeCad = chargeMetaRequestAmountApproxCad(tx) + tipCadCol;
           const mainCad = chargeTxDisplayRowApproxCad(tx, cadOracle);
           const showStrike = strikeCad > mainCad + 0.0005;
-          const mainCls = tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900';
+          const mainCls = tx.status === '待处理' ? 'text-amber-500' : 'text-slate-900';
           return (
             <div className="flex flex-col items-end gap-1">
               <div className="flex items-baseline justify-end gap-2 flex-wrap">
@@ -8693,9 +8678,9 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
                 </span>
               </div>
               <div
-                className={`text-[12px] font-medium whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}
+                className={`text-[12px] font-medium whitespace-nowrap tabular-nums ${tx.status === '待处理' ? 'text-amber-500' : 'text-slate-400'}`}
               >
-                {tx.status === 'Pending'
+                {tx.status === '待处理'
                   ? 'Pending Settlement'
                   : tipCadCol > 0
                     ? `Incl. $${tipCadCol.toFixed(2)} Tip`
@@ -8711,7 +8696,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
                   ? 'text-emerald-600'
                   : tx.type === 'Tip'
                     ? 'text-rose-600'
-                    : tx.status === 'Pending'
+                    : tx.status === '待处理'
                       ? 'text-amber-500'
                       : 'text-slate-900'
               }`}
@@ -8720,7 +8705,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
             </div>
             {(() => {
               const sub =
-                tx.status === 'Pending'
+                tx.status === '待处理'
                   ? 'Pending Settlement'
                   : tx.tip > 0
                     ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip`
@@ -8732,7 +8717,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
               if (sub == null) return null;
               return (
                 <div
-                  className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}
+                  className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === '待处理' ? 'text-amber-500' : 'text-slate-400'}`}
                 >
                   {sub}
                 </div>
@@ -9303,36 +9288,36 @@ function buildProgramsCouponRedeemShareUrl(
 }
 
 function programsCouponShareExpiryUsesUrgentVariant(expiresLabel: string): boolean {
-  return expiresLabel === 'EXPIRED' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel);
+  return expiresLabel === '已过期' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel);
 }
 
 function programsCouponShareShouldShowExpiryPill(expiresLabel: string): boolean {
   const normalized = expiresLabel.trim().toUpperCase();
   if (!normalized) return false;
-  return normalized !== 'VALID NOW' && normalized !== 'NO EXPIRY';
+  return normalized !== '现可领取' && normalized !== '无到期';
 }
 
 function formatProgramsCouponShareExpiryLabel(coupon: CardIssuanceCouponRow): string {
-  if (coupon.couponDateRestriction !== 'range' || !coupon.couponValidToYmd.trim()) return 'VALID NOW';
+  if (coupon.couponDateRestriction !== 'range' || !coupon.couponValidToYmd.trim()) return '现可领取';
   const ymd = parseCouponYmd(coupon.couponValidToYmd);
-  if (!ymd) return 'VALID NOW';
+  if (!ymd) return '现可领取';
   const parts = ymd.split('-').map((p) => Number.parseInt(p, 10));
-  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return 'VALID NOW';
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return '现可领取';
   const endSec = Math.floor(new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59).getTime() / 1000);
-  if (!Number.isFinite(endSec) || endSec <= 0) return 'VALID NOW';
+  if (!Number.isFinite(endSec) || endSec <= 0) return '现可领取';
   const now = Math.floor(Date.now() / 1000);
-  if (endSec <= now) return 'EXPIRED';
+  if (endSec <= now) return '已过期';
   const delta = endSec - now;
-  if (delta >= 86_400) return `EXPIRES IN ${Math.ceil(delta / 86_400)}D`;
-  if (delta >= 3_600) return `EXPIRES IN ${Math.ceil(delta / 3_600)}H`;
-  return `EXPIRES IN ${Math.max(1, Math.ceil(delta / 60))}M`;
+  if (delta >= 86_400) return `${Math.ceil(delta / 86_400)} 天后过期`;
+  if (delta >= 3_600) return `${Math.ceil(delta / 3_600)} 小时后过期`;
+  return `${Math.max(1, Math.ceil(delta / 60))} 分钟后过期`;
 }
 
 function buildProgramsCouponShareHeadline(
   merchantName: string,
   shareKind: 'open_claim' | 'redeem'
 ): string {
-  const verb = shareKind === 'redeem' ? 'Redeem' : 'Claim';
+  const verb = shareKind === 'redeem' ? '兑换' : '领取';
   const name = merchantName.trim() || 'Beamio';
   const trimmed = name.length > 28 ? `${name.slice(0, 27).trim()}…` : name;
   return `${verb} a ${trimmed} Coupon`;
@@ -12564,12 +12549,12 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    let expiryLabel: string;
    if (cardIssuanceCouponDateRestriction !== 'range') {
      expiryVariant = 'none';
-     expiryLabel = 'NO EXPIRY';
+     expiryLabel = '无到期';
    } else {
      const ymd = cardIssuanceCouponValidToYmd.trim();
      if (!ymd) {
        expiryVariant = 'incomplete';
-       expiryLabel = 'SET END DATE';
+       expiryLabel = '请设置结束日期';
      } else {
        const parts = ymd.split('-').map((x) => Number.parseInt(x, 10));
        const y = parts[0];
@@ -12577,20 +12562,20 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
        const d = parts[2];
        if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
          expiryVariant = 'incomplete';
-         expiryLabel = 'SET END DATE';
+         expiryLabel = '请设置结束日期';
        } else {
          const end = new Date(y, m - 1, d, 23, 59, 59, 999);
          const ms = end.getTime() - Date.now();
          const hours = ms / 3600000;
          if (ms <= 0) {
            expiryVariant = 'expired';
-           expiryLabel = 'EXPIRED';
+           expiryLabel = '已过期';
          } else if (hours <= 48) {
            expiryVariant = 'hours';
-           expiryLabel = `EXPIRES IN ${Math.max(1, Math.ceil(hours))}H`;
+           expiryLabel = `${Math.max(1, Math.ceil(hours))} 小时后过期`;
          } else {
            expiryVariant = 'days';
-           expiryLabel = `EXPIRES IN ${Math.max(1, Math.ceil(hours / 24))}D`;
+           expiryLabel = `${Math.max(1, Math.ceil(hours / 24))} 天后过期`;
          }
        }
      }
@@ -13017,7 +13002,7 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
   if (cardIssuancePrimaryBonusRule) {
     return formatBonusRuleDisplayString(cardIssuancePrimaryBonusRule, cardIssuanceDisplayMoneyPrefix);
   }
-  return 'Member Benefits';
+  return '会员权益';
 }, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuancePrimaryBonusRule]);
 
 useEffect(() => {
@@ -17066,15 +17051,15 @@ useEffect(() => {
    };
  }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress, profiles?.[0]?.privateKeyArmor, cardIssuanceOnChainRefreshNonce]);
 
- const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('Today');
- /** Ledger scope toggle removed from Transactions UI; table always uses combined ledger (was `All`). */
- const activeLedger = 'All' as const;
+ const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('今天');
+ /** Ledger scope toggle removed from Transactions UI; table always uses combined ledger (was `全部`). */
+ const activeLedger = '全部' as const;
  const [txSearchTerm, setTxSearchTerm] = useState('');
- const [txFilterTerminal, setTxFilterTerminal] = useState('All');
- const [txFilterType] = useState('All');
+ const [txFilterTerminal, setTxFilterTerminal] = useState('全部');
+ const [txFilterType] = useState('全部');
  /** Mobile Transactions ledger: kind + period pills (independent of desktop search/terminal filters). */
  const [mobileTransactionsKind, setMobileTransactionsKind] = useState<'all' | 'topup' | 'charge'>('all');
- const [mobileTransactionsPeriod, setMobileTransactionsPeriod] = useState<OverviewTimeFilter>('Today');
+ const [mobileTransactionsPeriod, setMobileTransactionsPeriod] = useState<OverviewTimeFilter>('今天');
  const [buintRedeemCodeInput, setBuintRedeemCodeInput] = useState('');
  const [buintRedeemPrecheck, setBuintRedeemPrecheck] = useState<Awaited<ReturnType<typeof queryBusinessStartKetRedeemOnChain>> | null>(null);
  const [buintRedeemPrecheckLoading, setBuintRedeemPrecheckLoading] = useState(false);
@@ -17236,7 +17221,7 @@ const activeCardsTrustedCacheKey =
     : '';
  const overviewPeriodType = useMemo(() => overviewTimeFilterToPeriodType(timeFilter), [timeFilter]);
 const overviewNetworkSummaryCacheKey =
-  timeFilter === 'Today'
+  timeFilter === '今天'
     ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:ptoday-local`
     : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
 const overviewNetworkSummaryLifetimeCacheKey =
@@ -17506,7 +17491,7 @@ useEffect(() => {
   const cachedTodayRaw = loadTrustedCache<BizNetworkSummaryRow>(overviewNetworkSummaryCacheKey);
   const todayYmdForCache = formatLocalYmd(new Date());
   const cachedToday =
-    timeFilter === 'Today' &&
+    timeFilter === '今天' &&
     cachedTodayRaw &&
     cachedTodayRaw.localDayKey !== todayYmdForCache
       ? null
@@ -17525,7 +17510,7 @@ useEffect(() => {
   }
 
   void fetchWithCache(overviewNetworkSummaryCacheKey, async () => {
-    if (timeFilter === 'Today') {
+    if (timeFilter === '今天') {
       const [periodLocalToday, parsedLifetime] = await Promise.all([
         aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(programAddr, baseRpcProviderDirect),
         callGetGlobalStatsFullParsed(programAddr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n),
@@ -17618,7 +17603,7 @@ useEffect(() => {
      txFilterTerminal,
      hasAaAccount: Boolean(profiles?.[0]?.aaAccount?.trim()),
    }
-   if (timeFilter === 'Today') {
+   if (timeFilter === '今天') {
      return sumChargeLedgerBUnitsForLocalCalendarDay(chargeBUnitLedgerRef.current, ctx, overviewLocalCalendarDayKey)
    }
    const startSec = overviewPeriodStartUnixSec(timeFilter, endSec)
@@ -17648,7 +17633,7 @@ useEffect(() => {
    const merged = indexerTransactions
    const include = (entry: TipsCollectedLedgerEntry) => tipsLedgerEntryMatchesTableFilters(entry, ctx, merged)
    const map = tipsCollectedLedgerRef.current
-   if (timeFilter === 'Today') {
+   if (timeFilter === '今天') {
      return {
        cadTotal: sumTipsCollectedLedgerValuesForLocalCalendarDay(
          map,
@@ -18756,7 +18741,7 @@ useEffect(() => {
      const res = await searchRemoteAndIngest(searchKey);
      setMessagesNewResults((res as { results?: searchResult[] } | null | undefined)?.results ?? []);
    } catch {
-     setMessagesNewError('Search failed. Try again.');
+     setMessagesNewError('搜索失败，请重试。');
      setMessagesNewResults([]);
    } finally {
      setMessagesNewLoading(false);
@@ -19366,8 +19351,8 @@ const txQueryRootAddress = useMemo(() => {
    const ctx: BizTxTableFilterCtx = {
      activeLedger,
      txSearchTerm: '',
-     txFilterType: 'All',
-     txFilterTerminal: 'All',
+     txFilterType: '全部',
+     txFilterTerminal: '全部',
      hasAaAccount: Boolean(profiles?.[0]?.aaAccount?.trim()),
      merchantAdminLower:
        effectiveAdminAddress && ethers.isAddress(effectiveAdminAddress)
@@ -19468,10 +19453,10 @@ const txQueryRootAddress = useMemo(() => {
  /** Dashboard (Overview): activity row counts for selected `timeFilter`, ignoring Transactions table search/filters. */
  const overviewDashboardActivityFilterCtx = useMemo(
    (): BizTxTableFilterCtx => ({
-     activeLedger: 'All',
+     activeLedger: '全部',
      txSearchTerm: '',
-     txFilterType: 'All',
-     txFilterTerminal: 'All',
+     txFilterType: '全部',
+     txFilterTerminal: '全部',
      hasAaAccount: Boolean(profiles?.[0]?.aaAccount?.trim()),
      merchantAdminLower:
        effectiveAdminAddress && ethers.isAddress(effectiveAdminAddress)
@@ -21197,7 +21182,7 @@ useEffect(() => {
    // Load trusted cache for immediate display
    const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
   const networkSummaryCacheKey =
-    timeFilter === 'Today'
+    timeFilter === '今天'
       ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:ptoday-local`
       : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
   const networkSummaryLifetimeCacheKey =
@@ -21232,7 +21217,7 @@ useEffect(() => {
    const cachedNetworkSummaryRaw = loadTrustedCache<BizNetworkSummaryRow>(networkSummaryCacheKey);
    const todayYmdForCache = formatLocalYmd(new Date());
    const cachedNetworkSummary =
-     timeFilter === 'Today' &&
+     timeFilter === '今天' &&
      cachedNetworkSummaryRaw &&
      cachedNetworkSummaryRaw.localDayKey !== todayYmdForCache
        ? null
@@ -21373,13 +21358,13 @@ useEffect(() => {
          }
        }
 
-       // 1. Daily Dashboard network summary: card-level `getGlobalStatsFull` (all admins). "Today" = local day via summed PERIOD_HOUR buckets.
+       // 1. Daily Dashboard network summary: card-level `getGlobalStatsFull` (all admins). "今天" = local day via summed PERIOD_HOUR buckets.
       if (
         programAddr &&
         !feederCancelledRef.current
       ) {
          try {
-           if (timeFilter === 'Today') {
+           if (timeFilter === '今天') {
              const [periodLocalToday, parsedLifetime] = await Promise.all([
                aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
                  programAddr,
@@ -22335,7 +22320,7 @@ useEffect(() => {
 
 /** Today's Activity top-up amount: local-calendar-day hourly rollup, with current hour refreshed every 6s. */
 useEffect(() => {
-  if (timeFilter !== 'Today') return;
+  if (timeFilter !== '今天') return;
   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
     todayTopupHourlyRollupRef.current = null;
     setTodayTopupHourlyRollup(null);
@@ -23241,7 +23226,7 @@ useEffect(() => {
        id: `blm${Math.floor(1000 + Math.random() * 9000)}`,
        tag: issueTarget.startsWith('@') ? issueTarget : `@${issueTarget}`,
        address: `0x${Math.random().toString(16).slice(2, 6)}…${Math.random().toString(16).slice(2, 6)}`,
-       tier: isPrepaid ? 'Standard' : issueValue,
+       tier: isPrepaid ? '标准' : issueValue,
        balance: isPrepaid ? parseFloat(issueValue) || 0 : 0,
        ltv: 0,
        lastActive: 'Just joined',
@@ -23293,7 +23278,7 @@ useEffect(() => {
 
 // --- Financial Data: Overview network summary uses `getGlobalStatsFull` on the staff/program BeamioUserCard (full card).
 // Do not gate these global values on `effectiveAdminAddress`: the active session may resolve to AA first, while the card activity still exists on-chain.
-// "Today" = local calendar day via summed PERIOD_HOUR global buckets; other ranges = global period slice. Tips / tx list may still be admin-scoped. ---
+// "今天" = local calendar day via summed PERIOD_HOUR global buckets; other ranges = global period slice. Tips / tx list may still be admin-scoped. ---
  const adminToday = adminNetworkSummaryToday;
 const totalSales = adminToday ? adminToday.cadVol : 0;
  /** Tips Collected (CAD Base): sum of CAD-equivalent from `finalRequestAmountFiat6` + `currencyFiat` (and USDC6→CAD when fiat leg is zero). */
@@ -23548,9 +23533,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  setTimeout(() => { setPayoutStep(1); }, 300);
                }}
                className="w-full bg-black text-white py-4 rounded-[16px] font-semibold text-[17px] active:scale-[0.98] transition-all shadow-md"
-             >
-               Done
-             </button>
+             >{tu('done')}</button>
            ) : null}
          </div>
        </div>
@@ -23564,7 +23547,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
      const rawTag = (beamio?.accountName ?? (beamio as { username?: string } | null)?.username ?? '')
        .trim()
        .replace(/^@+/, '');
-     return rawTag ? `@${rawTag}` : 'Merchant';
+     return rawTag ? `@${rawTag}` : '商户';
    })();
 
    const linkNewTerminal = () => {
@@ -23591,12 +23574,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              type="button"
              onClick={() => setIsMobileMenuOpen(true)}
              className="flex size-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-[#2c2f31]/10"
-             aria-label="Open menu"
+             aria-label="打开菜单"
            >
              <Menu className="size-5" strokeWidth={2} aria-hidden />
            </button>
            <div className="min-w-0 flex-1 px-3">
-             <span className="text-sm font-medium text-[#595c5e]/60">Search terminals...</span>
+             <span className="text-sm font-medium text-[#595c5e]/60">搜索终端…</span>
            </div>
            <div className="flex items-center gap-3">
              <div className="hidden flex-col items-end sm:flex">
@@ -23633,10 +23616,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            ) : (
              <>
                <header className="mb-5 sm:mb-6">
-                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#0051d1] sm:mb-2 sm:text-[11px]">
-                   Management
-                 </span>
-                 <h2 className="mb-2 text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:mb-3 sm:text-3xl md:text-4xl">Mobile Terminals</h2>
+                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#0051d1] sm:mb-2 sm:text-[11px]">{tu('management')}</span>
+                 <h2 className="mb-2 text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:mb-3 sm:text-3xl md:text-4xl">移动终端</h2>
                  <p className="max-w-md text-sm leading-relaxed text-[#595c5e] sm:text-base">
                    Manage your software-POS fleet and secure @BeamioTag identifiers for seamless face-to-face
                    payments.
@@ -23734,9 +23715,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    }
                                  }}
                                  className="flex-1 rounded-lg bg-[#0051d1] py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#0047b8] disabled:cursor-not-allowed disabled:opacity-50 sm:py-3 sm:text-sm"
-                               >
-                                 Approve
-                               </button>
+                               >{tu('approve')}</button>
                                <button
                                  type="button"
                                  onClick={() => {
@@ -23870,7 +23849,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                              : k === 'bankCard'
                                                ? 'Bank card'
                                                : k === 'usdc'
-                                                 ? 'USDC on Base'
+                                                 ? 'Base 上的 USDC'
                                                 : k === 'cadd'
                                                   ? 'CADD on Base'
                                                  : 'Airdrop (bonus)';
@@ -23929,9 +23908,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                          void openTerminalOnboardingForEdit(term);
                                        }}
                                      >
-                                       <Pencil className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                                       Edit
-                                     </button>
+                                       <Pencil className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />{tu('edit')}</button>
                                      <button
                                        type="button"
                                        role="menuitem"
@@ -24518,7 +24495,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              type="button"
              onClick={() => setIsMobileMenuOpen(false)}
              className="shrink-0 rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 lg:hidden"
-             aria-label="Close menu"
+             aria-label="关闭菜单"
            >
              <X size={20} />
            </button>
@@ -24528,25 +24505,25 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-visible pb-2">
          <NavSectionLabel first collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
-           Overview
+           {tu('overview')}
          </NavSectionLabel>
-         <NavItem icon={LayoutDashboard} label="Dashboard" isActive={navChromeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={LayoutDashboard} label={tu('dashboard')} isActive={navChromeTab === 'Overview'} onClick={() => handleTabChange('Overview')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
-           Assets
+           {tu('assets')}
          </NavSectionLabel>
-         <NavItem icon={Award} label="Programs" isActive={navChromeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={Briefcase} label="Business" isActive={activeTab === 'Business'} onClick={() => handleTabChange('Business')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={ShoppingBag} label="Market" isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Award} label={tu('programs')} isActive={navChromeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Briefcase} label={tu('business')} isActive={activeTab === 'Business'} onClick={() => handleTabChange('Business')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={ShoppingBag} label={tu('market')} isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          {isValidatorDepositRedeemAdminFetched && isValidatorDepositRedeemAdmin ? (
-           <NavItem icon={Shield} label="Validator Management" isActive={activeTab === 'Validator Management'} onClick={() => handleTabChange('Validator Management')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+           <NavItem icon={Shield} label={tu('validator_management')} isActive={activeTab === 'Validator Management'} onClick={() => handleTabChange('Validator Management')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          ) : null}
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
-           Operations
+           {tu('operations')}
          </NavSectionLabel>
          {!hideTransactionsPanel && (
            <NavItem
              icon={Receipt}
-             label="Transactions"
+             label={tu('transactions')}
              isActive={activeTab === 'Transactions' && transactionsSidebarAccent === 'transactions'}
              onClick={() => handleTabChange('Transactions', { transactionsSidebar: 'transactions' })}
              collapsed={isSidebarCollapsed && !isMobileMenuOpen}
@@ -24554,29 +24531,29 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          )}
          <NavItem
            icon={Users}
-           label="Members"
+           label={tu('members')}
            isActive={activeTab === 'MembersLoyalty'}
            onClick={() => handleTabChange('MembersLoyalty')}
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
          />
-         <NavItem icon={MessageSquare} label="Messages" isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={MessageSquare} label={tu('messages')} isActive={activeTab === 'Messages'} onClick={() => handleTabChange('Messages')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
-           Financials
+           {tu('financials')}
          </NavSectionLabel>
          <NavItem
            icon={Wallet}
-           label="Wallets"
-           activeLabel="Wallet (Active)"
+           label={tu('wallets')}
+           activeLabel={tu('wallet_active')}
            isActive={activeTab === 'Wallets'}
            onClick={() => handleTabChange('Wallets')}
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
          />
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
-           System
+           {tu('system')}
          </NavSectionLabel>
          <NavItem
            icon={MonitorSmartphone}
-           label="Terminals"
+           label={tu('terminals')}
           isActive={activeTab === 'Staff'}
            onClick={() => {
              setIsMobileMenuOpen(false);
@@ -24588,7 +24565,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            }}
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
          />
-         <NavItem icon={Settings} label="Settings" isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Settings} label={tu('settings')} isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
        </nav>
 
        <div className="mt-auto px-3 pb-4 pt-2">
@@ -24599,10 +24576,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              window.location.href = '/';
            }}
            className={`mx-2 flex w-[calc(100%-1rem)] items-center rounded-full py-2.5 text-sm font-bold text-red-600 transition-all bg-red-50 hover:bg-red-100 ${(isSidebarCollapsed && !isMobileMenuOpen) ? 'justify-center px-0' : 'gap-2.5 px-4'}`}
-           title="Lock Wallet"
+           title={tu('lock_wallet')}
          >
            <LogOut size={18} className="shrink-0" aria-hidden />
-           {!(isSidebarCollapsed && !isMobileMenuOpen) && <span className="whitespace-nowrap">Lock Wallet</span>}
+           {!(isSidebarCollapsed && !isMobileMenuOpen) && <span className="whitespace-nowrap">{tu('lock_wallet')}</span>}
          </button>
        </div>
      </aside>
@@ -24627,7 +24604,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="shrink-0 rounded-full p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                aria-label="Open menu"
+                aria-label="打开菜单"
               >
                 <Menu size={22} />
               </button>
@@ -24644,8 +24621,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       e.preventDefault();
                       openMobileGlobalSearch();
                     }}
-                    placeholder="Search transactions or members"
-                    aria-label="Search transactions or members"
+                    placeholder="搜索交易或会员"
+                    aria-label="搜索交易或会员"
                     className="min-w-0 flex-1 cursor-pointer border-0 bg-transparent pl-3 pr-0 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:ring-0"
                   />
                 </div>
@@ -24654,7 +24631,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 type="button"
                 onClick={() => handleTabChange('Settings')}
                 className={`flex max-w-[42%] shrink-0 items-center gap-2 rounded-full bg-slate-50/90 pl-3 pr-1.5 py-1.5 text-left transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
-                aria-label="Open settings"
+                aria-label="打开设置"
               >
                 <span className="truncate text-xs font-bold text-slate-600">@{mobileHeaderBeamioTag}</span>
                 <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-slate-200/60 bg-white">
@@ -24678,7 +24655,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             type="button"
             onClick={() => setIsMobileMenuOpen(true)}
             className="shrink-0 rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 lg:hidden"
-            aria-label="Open menu"
+            aria-label="打开菜单"
           >
             <Menu size={22} />
           </button>
@@ -24705,19 +24682,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               : navChromeTab === 'Overview'
                ? 'Beamio Merchant'
                   : navChromeTab === 'Card Issuance Setup'
-                  ? 'Programs'
+                  ? tu('programs')
                 : activeTab === 'Business'
-                  ? 'Business'
+                  ? tu('business')
                 : activeTab === 'Validator Management'
-                  ? 'Validator Management'
+                  ? tu('validator_management')
                 : activeTab === 'Wallets'
-                  ? 'Wallet'
+                  ? tu('wallets')
                   : activeTab === 'MembersLoyalty'
-                    ? 'Members'
+                    ? tu('members')
                     : activeTab === 'Transactions'
-                      ? 'Transactions'
+                      ? tu('transactions')
                       : activeTab === 'Settings'
-                        ? 'Configuration'
+                        ? tu('settings')
                         : activeTab}
           </h2>
         </div>
@@ -24740,7 +24717,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                className={`cursor-pointer appearance-none rounded-md bg-transparent pl-1 pr-6 text-[14px] font-medium text-slate-700 ${bizFocusRingClass}`}
                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em 1em' }}
              >
-               <option value="Today">Today, {dateString}</option>
+               <option value="今天">Today, {dateString}</option>
                <option value="This Week">This Week</option>
                <option value="This Month">This Month</option>
                <option value="This Quarter">This Quarter</option>
@@ -24780,7 +24757,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  type="button"
                  onClick={() => handleTabChange('Transactions', { transactionsSidebar: 'transactions' })}
                  className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
-                 title="Search transactions"
+                 title="搜索交易"
                >
                  <Search size={20} strokeWidth={2} aria-hidden />
                </button>
@@ -24807,7 +24784,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    }, 280);
                  }}
                  className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
-                 title="Search members"
+                 title="搜索会员"
                >
                  <Search size={20} strokeWidth={2} aria-hidden />
                </button>
@@ -24834,7 +24811,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    }, 280);
                  }}
                  className="hidden lg:flex rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
-                 title="Search transactions"
+                 title="搜索交易"
                >
                  <Search size={20} strokeWidth={2} aria-hidden />
                </button>
@@ -24908,7 +24885,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   {fixedCardMetadata?.image ? (
                     <IpfsImg
                       src={fixedCardMetadata.image}
-                      alt={fixedCardMetadata?.name || 'Merchant card'}
+                      alt={fixedCardMetadata?.name || '商户卡'}
                       className="absolute inset-0 w-full h-full object-cover opacity-35 mix-blend-screen"
                     />
                   ) : null}
@@ -24923,7 +24900,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           {fixedCardMetadata?.image ? (
                             <IpfsImg
                               src={fixedCardMetadata.image}
-                              alt={fixedCardMetadata?.name || 'Merchant card'}
+                              alt={fixedCardMetadata?.name || '商户卡'}
                               className="w-full h-full object-cover"
                             />
                           ) : (
@@ -25131,12 +25108,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <CreditCard className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">充值</p>
                               <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityTopupDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 C${overviewActivityTopupDisplayTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {overviewActivityTopupDisplayTotal <= 0 ? 'No activity' : 'Today'}
+                                {overviewActivityTopupDisplayTotal <= 0 ? 'No activity' : '今天'}
                               </p>
                             </div>
                           </div>
@@ -25150,7 +25127,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {overviewActivityChargeDisplayTotal <= 0 ? 'No activity' : 'Today'}
+                                {overviewActivityChargeDisplayTotal <= 0 ? 'No activity' : '今天'}
                               </p>
                             </div>
                           </div>
@@ -25159,12 +25136,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <Heart className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">小费</p>
                               <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityTipsLedgerCadTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 C${overviewActivityTipsLedgerCadTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {overviewActivityTipsLedgerCadTotal <= 0 ? 'No activity' : 'Today'}
+                                {overviewActivityTipsLedgerCadTotal <= 0 ? 'No activity' : '今天'}
                               </p>
                             </div>
                           </div>
@@ -25299,10 +25276,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         const v = e.target.value
                         if ((OVERVIEW_TIME_FILTERS as readonly string[]).includes(v)) setTimeFilter(v as OverviewTimeFilter)
                       }}
-                      aria-label="Dashboard time range"
+                      aria-label="仪表盘时间范围"
                       className={`absolute inset-0 cursor-pointer opacity-0 ${bizFocusRingClass}`}
                     >
-                      <option value="Today">Today, {dateString}</option>
+                      <option value="今天">Today, {dateString}</option>
                       <option value="This Week">This Week</option>
                       <option value="This Month">This Month</option>
                       <option value="This Quarter">This Quarter</option>
@@ -25363,7 +25340,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <PlusCircle className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Top-ups</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">充值</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${overviewActivityTopupDisplayTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
@@ -25389,7 +25366,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <Heart className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Tips</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">小费</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${overviewActivityTipsLedgerCadTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
@@ -25402,7 +25379,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 {renderDashboardPendingTerminalAuthorizationSection('')}
 
                 {terminals.length > 0 ? (
-                  <section className="mt-4" aria-label="Active terminals summary">
+                  <section className="mt-4" aria-label="活跃终端摘要">
                     <button
                       type="button"
                       onClick={() => handleTabChange('Staff')}
@@ -25412,7 +25389,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <MonitorSmartphone className="size-5 sm:size-6" strokeWidth={2} aria-hidden />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Terminals</p>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">终端</p>
                         <p className="mt-0.5 font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-lg">Active Terminals</p>
                         <p className="mt-0.5 text-xs font-medium text-[#595c5e] sm:text-sm">
                           {terminals.length === 1
@@ -25594,7 +25571,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <PlusCircle className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Top-ups</p>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">充值</p>
                     <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">{`C$${overviewActivityTopupDisplayTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
                       {overviewActivityTopupDisplayCount.toLocaleString()} transactions
@@ -25620,7 +25597,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <Heart className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Tips</p>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">小费</p>
                     <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">{`C$${overviewActivityTipsLedgerCadTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
                       {overviewActivityTipsLedgerCount.toLocaleString()} micro-tips
@@ -25888,8 +25865,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              !indexerTransactionsLoading &&
              indexerTransactions.length === 0 &&
              !txSearchTerm.trim() &&
-             txFilterTerminal === 'All' &&
-             txFilterType === 'All';
+             txFilterTerminal === '全部' &&
+             txFilterType === '全部';
 
            return (
            <>
@@ -25900,7 +25877,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <input
                     id="transactions-ledger-search"
                     type="search"
-                    placeholder="Search transactions..."
+                    placeholder="搜索交易…"
                     value={txSearchTerm}
                     onChange={(e) => setTxSearchTerm(e.target.value)}
                     autoComplete="off"
@@ -25909,7 +25886,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 </div>
                 <div className="flex w-full items-center gap-3 overflow-x-auto pb-1 scrollbar-hide lg:w-auto lg:pb-0">
                   <select value={txFilterTerminal} onChange={(e) => setTxFilterTerminal(e.target.value)} className={`cursor-pointer shrink-0 appearance-none rounded-full border-0 bg-[#eef1f3] px-4 py-3 text-[14px] font-semibold text-[#2c2f31] ${bizFocusRingClass} focus:ring-2 focus:ring-[#0051d1]/20`}>
-                    <option value="All">All Terminals</option>
+                    <option value="全部">All Terminals</option>
                     {terminals.map((t) => (
                       <option key={t.tag} value={t.tag}>{t.name} ({t.tag})</option>
                     ))}
@@ -25931,8 +25908,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 ) : null}
                 <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {([
-                    { id: 'all' as const, label: 'All' },
-                    { id: 'topup' as const, label: 'Top-ups' },
+                    { id: 'all' as const, label: '全部' },
+                    { id: 'topup' as const, label: 'Top-up' },
                     { id: 'charge' as const, label: 'Charges' },
                   ]).map(({ id, label }) => (
                     <button
@@ -26110,7 +26087,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   </span>
                                   {isTopup && tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
                                     <span className="mt-0.5 inline-flex items-center justify-end gap-1 text-[11px] font-bold leading-snug text-[#FF9500]">
-                                      <span>Incl</span>
+                                      <span>含</span>
                                       <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
                                         <Gift size={9} strokeWidth={2.5} />
                                       </span>
@@ -26176,11 +26153,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <div className="space-y-2">
                                 <Search size={32} className="mx-auto text-slate-300" />
                                 <p className="text-[15px] font-medium">
-                                  {txSearchTerm || txFilterTerminal !== 'All' || txFilterType !== 'All'
+                                  {txSearchTerm || txFilterTerminal !== '全部' || txFilterType !== '全部'
                                     ? 'No transactions found for the current filters.'
                                     : 'No transactions yet.'}
                                 </p>
-                                {!txSearchTerm && txFilterTerminal === 'All' && txFilterType === 'All' && (
+                                {!txSearchTerm && txFilterTerminal === '全部' && txFilterType === '全部' && (
                                   <p className="mx-auto max-w-md text-[12px] text-slate-400">
                                     Transactions will appear here when you process Charges at your terminal. Ensure the POS sends payee as your
                                     AA address.
@@ -26197,10 +26174,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         const rowKey = String(tx.indexerTxId || tx.id || `idx-${idx}`);
                         const slideIn = txSlideInKeys.includes(rowKey);
                         const ledgerCardStatus =
-                          tx.status === 'Pending'
-                            ? { label: 'Pending', cls: 'bg-amber-50 text-amber-700' as const }
+                          tx.status === '待处理'
+                            ? { label: '待处理', cls: 'bg-amber-50 text-amber-700' as const }
                             : tx.type.includes('Top-Up')
-                              ? { label: 'Confirmed', cls: 'bg-emerald-50 text-emerald-600' as const }
+                              ? { label: '已确认', cls: 'bg-emerald-50 text-emerald-600' as const }
                               : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const }
                         let ledgerTypeTitle: string = txDisplayRowLedgerTypeTitle(tx.type)
                         if (tx.type === 'Charge') {
@@ -26414,7 +26391,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     return inferMemberDirectoryUserTypeFromBeamioTag(subtitleTag) === 'app' && subtitleTag
                                   })() && (
                                      <div className="hidden lg:group-hover:flex items-center gap-1 pt-0.5">
-                                       <button type="button" className="rounded-md bg-[#1562f0]/20 p-1.5 text-blue-900 hover:bg-[#1562f0] hover:text-white transition-colors" title="Send Message">
+                                       <button type="button" className="rounded-md bg-[#1562f0]/20 p-1.5 text-blue-900 hover:bg-[#1562f0] hover:text-white transition-colors" title="发送消息">
                                          <MessageSquare size={14} />
                                        </button>
                                        <button type="button" className="rounded-md bg-[#1562f0]/20 p-1.5 text-blue-900 hover:bg-[#1562f0] hover:text-white transition-colors" title="Send Smart Receipt">
@@ -26539,7 +26516,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                          </span>
                                          {tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
                                            <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold text-[#FF9500]">
-                                             <span>Incl</span>
+                                             <span>含</span>
                                              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
                                                <Gift size={10} strokeWidth={2.5} />
                                              </span>
@@ -26623,7 +26600,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-colors cursor-pointer"
                                    title="View transaction on BaseScan"
                                  >
-                                   {tx.status === 'Pending' ? (
+                                   {tx.status === '待处理' ? (
                                      <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
                                    ) : (
                                      <CheckCircle2 size={12} className={isVaultTerminal ? 'text-blue-500 shrink-0' : 'text-emerald-500 shrink-0'} />
@@ -26634,7 +26611,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  </a>
                                ) : (
                                  <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                                   {tx.status === 'Pending' ? (
+                                   {tx.status === '待处理' ? (
                                      <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
                                    ) : (
                                      <CheckCircle2 size={12} className={isVaultTerminal ? 'text-blue-500 shrink-0' : 'text-emerald-500 shrink-0'} />
@@ -26671,7 +26648,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                const mainCad = chargeTxDisplayRowApproxCad(tx, cadOracle)
                                const showStrike = strikeCad > mainCad + 0.0005
                                const mainCls =
-                                 tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
+                                 tx.status === '待处理' ? 'text-amber-500' : 'text-slate-900'
                                return (
                                  <div className="flex flex-col items-end gap-1">
                                    <div className="flex items-baseline justify-end gap-2 flex-wrap">
@@ -26684,8 +26661,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                        ${mainCad.toFixed(2)}
                                      </span>
                                    </div>
-                                   <div className={`text-[12px] font-medium whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}>
-                                     {tx.status === 'Pending'
+                                   <div className={`text-[12px] font-medium whitespace-nowrap tabular-nums ${tx.status === '待处理' ? 'text-amber-500' : 'text-slate-400'}`}>
+                                     {tx.status === '待处理'
                                        ? 'Pending Settlement'
                                        : tipCadCol > 0
                                          ? `Incl. $${tipCadCol.toFixed(2)} Tip`
@@ -26698,13 +26675,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  <div className={`font-semibold text-[18px] tracking-tight whitespace-nowrap tabular-nums ${
                                    tx.type.includes('Top-Up') ? 'text-emerald-600' :
                                    tx.type === 'Tip' ? 'text-rose-600' :
-                                   tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-900'
+                                   tx.status === '待处理' ? 'text-amber-500' : 'text-slate-900'
                                  }`}>
                                    {tx.type.includes('Top-Up') ? '+' : ''}${txTotalCAD.toFixed(2)}
                                  </div>
                                  {tx.type.includes('Top-Up') && tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
                                    <div className="mt-1 inline-flex items-center justify-end gap-1 text-[12px] font-bold text-[#FF9500] whitespace-nowrap tabular-nums">
-                                     <span>Incl</span>
+                                     <span>含</span>
                                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#FF9500]/15 text-[#FF9500]">
                                        <Gift size={10} strokeWidth={2.5} />
                                      </span>
@@ -26713,7 +26690,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  ) : null}
                                  {(() => {
                                    const sub =
-                                     tx.status === 'Pending'
+                                     tx.status === '待处理'
                                        ? 'Pending Settlement'
                                        : tx.tip > 0
                                          ? `Incl. $${(tx.tip / cadOracle).toFixed(2)} Tip`
@@ -26725,7 +26702,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    if (sub == null) return null
                                    return (
                                      <div
-                                       className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === 'Pending' ? 'text-amber-500' : 'text-slate-400'}`}
+                                       className={`text-[12px] font-medium mt-1 whitespace-nowrap tabular-nums ${tx.status === '待处理' ? 'text-amber-500' : 'text-slate-400'}`}
                                      >
                                        {sub}
                                      </div>
@@ -26818,7 +26795,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              const routeLines = smartReceiptRouteLines(tx);
              const totalCad = calculateTxNetValueCAD(tx);
              const tipCad = mergedChargeTipCad(tx);
-             const statusIsPending = tx.status === 'Pending';
+             const statusIsPending = tx.status === '待处理';
              const isVaultTerminalSr =
                tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
              let ledgerTypeTitleSr: string = txDisplayRowLedgerTypeTitle(tx.type);
@@ -26832,16 +26809,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                }
              }
              const ledgerCardStatusSr =
-               tx.status === 'Pending'
-                 ? { label: 'Pending', cls: 'bg-amber-50 text-amber-700' as const }
+               tx.status === '待处理'
+                 ? { label: '待处理', cls: 'bg-amber-50 text-amber-700' as const }
                  : tx.type === 'Claim Coupons'
-                   ? { label: 'Claimed', cls: 'bg-fuchsia-50 text-fuchsia-600' as const }
+                   ? { label: '已领取', cls: 'bg-fuchsia-50 text-fuchsia-600' as const }
                    : tx.type === 'Claim Catalogs'
-                     ? { label: 'Claimed', cls: 'bg-violet-50 text-violet-600' as const }
+                     ? { label: '已领取', cls: 'bg-violet-50 text-violet-600' as const }
                      : tx.type === 'In-Store Redeem'
                        ? { label: 'Redeemed', cls: 'bg-amber-50 text-amber-700' as const }
                        : tx.type.includes('Top-Up')
-                     ? { label: 'Confirmed', cls: 'bg-emerald-50 text-emerald-600' as const }
+                     ? { label: '已确认', cls: 'bg-emerald-50 text-emerald-600' as const }
                      : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const };
 
              const breakdownBlock = (() => {
@@ -26995,7 +26972,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        type="button"
                        onClick={() => setSmartReceiptTx(null)}
                        className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] shadow-sm transition-colors hover:bg-[#dfe3e6]"
-                       aria-label="Close"
+                       aria-label="关闭"
                      >
                        <X size={22} strokeWidth={2} />
                      </button>
@@ -27072,9 +27049,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          rel="noopener noreferrer"
                          className="mb-6 flex items-center justify-center gap-2 rounded-full border border-[#abadaf]/40 py-3 text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3]"
                        >
-                         <ExternalLink size={16} aria-hidden />
-                         View on BaseScan
-                       </a>
+                         <ExternalLink size={16} aria-hidden />{tu('view_on_basescan')}</a>
                      ) : null}
 
                      <div className="space-y-3">
@@ -27291,7 +27266,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-[#0051d1]/10">
                        <Rocket className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
                      </div>
-                     <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">Standard</h3>
+                     <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">标准</h3>
                      <p className="mb-6 text-sm text-[#595c5e]">Ideal for growing businesses.</p>
                      <div className="mb-6">
                        <span className="text-3xl font-extrabold text-[#0051d1]">C$50</span>
@@ -27430,7 +27405,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      onClick={() => void submitMerchantKitBuintRedeem()}
                      className="rounded-full bg-[#2c2f31] px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
                    >
-                     {merchantKitBuintRedeemBusy ? '…' : 'Redeem'}
+                     {merchantKitBuintRedeemBusy ? '…' : '兑换'}
                    </button>
                  </div>
                  {merchantKitRedeemFeedback ? (
@@ -27642,7 +27617,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                      <div className="flex items-start justify-between pt-2">
                        <div>
-                         <h4 className="font-sans text-2xl font-extrabold text-[#0051d1]">Standard</h4>
+                         <h4 className="font-sans text-2xl font-extrabold text-[#0051d1]">标准</h4>
                          <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~1,925 orders</p>
                        </div>
                        <div className="text-right">
@@ -27884,7 +27859,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                <main className="mx-auto max-w-2xl space-y-6">
                  <section className="mt-2 space-y-1">
-                   <h1 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">Members</h1>
+                   <h1 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">会员</h1>
                    <div className="flex items-center gap-2">
                      <span className="size-2 shrink-0 animate-pulse rounded-full bg-[#0051d1]" aria-hidden />
                      <p className="text-sm font-semibold uppercase tracking-wide text-[#515c70]/70">
@@ -28108,7 +28083,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </p>
                      </div>
                      {memberRegistryLoading ? (
-                       <span className="text-xs font-semibold text-[#0051d1]">Loading…</span>
+                       <span className="text-xs font-semibold text-[#0051d1]">加载中…</span>
                      ) : (
                        <span className="text-xs font-bold text-[#2c2f31]">{memberRegistryTotal.toLocaleString()} total</span>
                      )}
@@ -28120,7 +28095,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <th className="py-2.5 pr-3">Member EOA</th>
                            <th className="py-2.5 pr-3">Member AA</th>
                            <th className="py-2.5 pr-3">Channel</th>
-                           <th className="py-2.5 pr-3">Top-ups</th>
+                           <th className="py-2.5 pr-3">充值</th>
                            <th className="py-2.5 pr-3">First top-up</th>
                            <th className="py-2.5">Last activity</th>
                          </tr>
@@ -28207,9 +28182,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          }
                          onClick={() => setMemberRegistryPage((p) => p + 1)}
                          className={`inline-flex items-center gap-1 rounded-full border border-[#abadaf]/25 bg-white px-4 py-2 text-xs font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
-                       >
-                         Next
-                         <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
+                       >{tu('next')}<ChevronRight className="size-4" strokeWidth={2} aria-hidden />
                        </button>
                      </div>
                    ) : null}
@@ -28392,9 +28365,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  }}
                  className="flex items-center justify-center gap-2 rounded-full bg-[#1562f0] px-8 py-4 font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:opacity-90 active:scale-95 sm:ml-auto"
                >
-                 <MessageSquarePlus className="size-5 shrink-0" strokeWidth={2.2} aria-hidden />
-                 New Message
-               </button>
+                 <MessageSquarePlus className="size-5 shrink-0" strokeWidth={2.2} aria-hidden />{tu('new_message')}</button>
              </header>
 
              <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
@@ -28414,7 +28385,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    {(
                      [
                        { id: 'all' as const, label: 'All Chats' },
-                       { id: 'members' as const, label: 'Members' },
+                       { id: 'members' as const, label: '会员' },
                        { id: 'partners' as const, label: 'Partners' },
                        { id: 'support' as const, label: 'Support' },
                      ] as const
@@ -28487,7 +28458,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <ul className="max-h-[420px] space-y-2 overflow-y-auto pr-1 scrollbar-hide">
                          {messagesNewResults.map((r) => {
                            const un = (r.username || '').trim();
-                           const show = un && un !== 'Unknow' ? `@${un}` : r.address ? `${r.address.slice(0, 6)}…${r.address.slice(-4)}` : '—';
+                           const show = un && un !== '未知' ? `@${un}` : r.address ? `${r.address.slice(0, 6)}…${r.address.slice(-4)}` : '—';
                            return (
                              <li key={r.address}>
                                <button
@@ -28527,9 +28498,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          setMessagesNewError(null);
                        }}
                        className="mt-auto text-sm font-semibold text-slate-500 hover:text-slate-800"
-                     >
-                       Cancel
-                     </button>
+                     >{tu('cancel')}</button>
                    </div>
                  ) : messagesChatData ? (
                    <Chat
@@ -29766,9 +29735,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
                              aria-label="Edit brand identity"
-                           >
-                             Edit
-                               </button>
+                           >{tu('edit')}</button>
                          </div>
                          <div className="flex items-center gap-4">
                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a1a1a] ring-1 ring-black/5">
@@ -29819,9 +29786,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
                              aria-label="Edit membership tiers"
-                           >
-                             Edit
-                           </button>
+                           >{tu('edit')}</button>
                          </div>
                          <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
                            {tiersByLoyaltyRule[cardIssuanceTierRule].map((row) => {
@@ -29883,9 +29848,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
                              aria-label="Edit reward engine"
-                           >
-                             Edit
-                           </button>
+                           >{tu('edit')}</button>
                          </div>
                          {cardIssuanceBonusRulesPayload.length > 0 ? (
                            <div className="space-y-2">
@@ -29958,9 +29921,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
                              aria-label="Edit operational limits"
-                           >
-                             Edit
-                           </button>
+                           >{tu('edit')}</button>
                          </div>
                          <div className="flex items-stretch gap-0">
                            <div className="min-w-0 flex-1 pr-4">
@@ -31223,9 +31184,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <p
                                  className="text-[8px] font-black uppercase tracking-widest"
                                  style={{ color: cardIssuancePreviewPassHeroTheme.secondary }}
-                               >
-                                 Balance
-                               </p>
+                               >{tu('balance')}</p>
                                <p className="text-xl font-black tracking-tight">
                                  {Number(1248.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                </p>
@@ -31993,9 +31952,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  aria-label="View contract on Basescan (opens in new tab)"
                                  className={`inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 ${bizFocusRingClass}`}
                                >
-                                 <span className="h-1 w-1 shrink-0 rounded-full bg-blue-500" aria-hidden />
-                                 Base Mainnet
-                                 <ExternalLink className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
+                                 <span className="h-1 w-1 shrink-0 rounded-full bg-blue-500" aria-hidden />{tu('base_mainnet')}<ExternalLink className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
                                </a>
                              </div>
                            </div>
@@ -32647,9 +32604,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                             }))
                                           }
                                           className={`inline-flex items-center gap-1 rounded-full border border-[#1562f0]/15 bg-white px-2.5 py-1 text-[10px] font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
-                                        >
-                                          Next
-                                          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                                        >{tu('next')}<ChevronRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                                         </button>
                                       </div>
                                     ) : null}
@@ -32986,7 +32941,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               setCardIssuanceEditingCouponId(null);
                             }}
                             className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#abadaf]/30 bg-white text-[#747779] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
-                            aria-label="Close"
+                            aria-label="关闭"
                           >
                             <X className="h-5 w-5" strokeWidth={2} aria-hidden />
                           </button>
@@ -34048,7 +34003,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="grid grid-cols-2 gap-4 rounded-lg bg-[#eef1f3] p-4">
                  <div className="flex flex-col gap-2 rounded-2xl bg-white p-4">
                    <BarChart3 className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   <span className="text-xs font-bold text-slate-900">Operations</span>
+                   <span className="text-xs font-bold text-slate-900">运营</span>
                    <span className="text-[10px] font-medium text-[#595c5e]">Active Monitoring</span>
                  </div>
                  <div className="flex flex-col gap-2 rounded-2xl bg-white p-4">
@@ -34090,7 +34045,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      type="button"
                      onClick={() => setSettingsBusinessProfileOverlayOpen(false)}
                      className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                     aria-label="Close"
+                     aria-label="关闭"
                    >
                      <X className="size-5" strokeWidth={2} aria-hidden />
                    </button>
@@ -34729,7 +34684,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              type="button"
              onClick={closeAddTerminalModal}
              className="flex h-9 w-9 items-center justify-center rounded-full text-[#2c2f31] transition-colors hover:bg-[#0051d1]/10 active:scale-95"
-             aria-label="Back"
+             aria-label="返回"
            >
              <ArrowLeft className="h-5 w-5" strokeWidth={2} />
            </button>
@@ -35207,7 +35162,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                type="button"
                onClick={() => !deleteMerchantCardLoading && (setDeleteMerchantCardConfirmOpen(false), setDeleteMerchantCardError(null))}
                className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black disabled:opacity-50"
-               aria-label="Close"
+               aria-label="关闭"
              >
                <X size={20} />
              </button>
@@ -35234,9 +35189,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                onClick={() => !deleteMerchantCardLoading && (setDeleteMerchantCardConfirmOpen(false), setDeleteMerchantCardError(null))}
                disabled={deleteMerchantCardLoading}
                className="flex-1 rounded-2xl border border-slate-200 py-3.5 text-[15px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
-             >
-               Cancel
-             </button>
+             >{tu('cancel')}</button>
              <button
                type="button"
                onClick={() => void handleConfirmDeleteMerchantCard()}
@@ -35249,7 +35202,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    Deleting…
                  </>
                ) : (
-                 'Continue'
+                 '继续'
                )}
              </button>
            </div>
@@ -35286,9 +35239,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                onClick={() => !removeTerminalLoading && (setDeleteTerminalToRemove(null), setRemoveTerminalError(null))}
                disabled={removeTerminalLoading}
                className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
-             >
-               Cancel
-             </button>
+             >{tu('cancel')}</button>
              <button
                onClick={async () => {
                  if (!deleteTerminalToRemove || !merchant) return;
@@ -35461,7 +35412,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      type="button"
                      onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
                      className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black"
-                     aria-label="Close"
+                     aria-label="关闭"
                    >
                      <X size={20} aria-hidden />
                    </button>
@@ -35488,9 +35439,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      type="button"
                      onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
                      className="flex-1 rounded-2xl border border-slate-200 py-3.5 text-[15px] font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-                   >
-                     Cancel
-                   </button>
+                   >{tu('cancel')}</button>
                    <button
                      type="button"
                      onClick={() => {
@@ -35566,9 +35515,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                }
                disabled={settlementClearLoading}
                className="flex-1 rounded-2xl border border-slate-200 py-3.5 text-[15px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
-             >
-               Cancel
-             </button>
+             >{tu('cancel')}</button>
              <button
                type="button"
                onClick={async () => {
@@ -35637,11 +35584,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              >
                {settlementClearLoading ? (
                  <>
-                   <Loader2 className={`h-5 w-5 animate-spin ${bizUiPrimaryLoader}`} />
-                   Recording…
-                 </>
+                   <Loader2 className={`h-5 w-5 animate-spin ${bizUiPrimaryLoader}`} />{tu('recording')}</>
                ) : (
-                 'Confirm'
+                 '确认'
                )}
              </button>
            </div>
@@ -35740,9 +35685,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                }
                disabled={resetTerminalLimitLoading}
                className="flex-1 py-3.5 rounded-2xl text-[15px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
-             >
-               Cancel
-             </button>
+             >{tu('cancel')}</button>
              <button
                type="button"
                onClick={async () => {
@@ -36134,7 +36077,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                type="button"
                onClick={() => setIsBUnitsExplainerOpen(false)}
                className="group rounded-full p-2 text-[#595c5e] transition-colors hover:bg-[#eef1f3] active:scale-95"
-               aria-label="Close"
+               aria-label="关闭"
              >
                <X className="size-6 transition-transform group-active:scale-90" strokeWidth={2} />
              </button>
@@ -36313,7 +36256,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                onClick={closeMerchantKitCheckout}
                disabled={merchantKitStripeUi === 'creating' || merchantKitStripeUi === 'polling'}
                className="flex h-10 w-10 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-slate-100 active:scale-95 disabled:opacity-40"
-               aria-label="Back"
+               aria-label="返回"
              >
                <ArrowLeft size={22} strokeWidth={2} aria-hidden />
              </button>
@@ -36579,9 +36522,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              setMerchantKitStripeMessage(null);
                            }}
                            className="w-full text-center text-sm font-semibold text-[#595c5e] hover:text-[#2c2f31]"
-                         >
-                           Try again
-                         </button>
+                         >{tu('try_again')}</button>
                        ) : null}
                      </div>
                    )}
@@ -36606,7 +36547,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 type="button"
                 onClick={closeMarketProductModal}
                 className="absolute top-6 left-6 z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/70 backdrop-blur-md transition-colors hover:text-white"
-                aria-label="Close"
+                aria-label="关闭"
               >
                 <X size={22} strokeWidth={2} className="shrink-0" />
               </button>
@@ -36711,7 +36652,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     {selectedProduct === 'fuel' ? <Database size={20} /> : selectedProduct === 'starter' || selectedProduct === 'custom_fuel' ? <Zap size={20} /> : selectedProduct === 'standard_kit' || selectedProduct === 'custom_kit' ? <Zap size={20} /> : <Cpu size={20} />}
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' || selectedProduct === 'custom_fuel' ? 'Volume' : selectedProduct === 'standard_kit' || selectedProduct === 'custom_kit' ? 'B-Units' : 'Security'}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' || selectedProduct === 'custom_fuel' ? 'Volume' : selectedProduct === 'standard_kit' || selectedProduct === 'custom_kit' ? 'B-Units' : '安全'}</p>
                     <p className="text-[16px] font-bold text-white leading-tight">
                       {selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : selectedProduct === 'custom_fuel' ? `${(Number(customFuelAmount) || 0) * 100} B-Units` : selectedProduct === 'standard_kit' ? '2,000 B-Units' : selectedProduct === 'custom_kit' ? '5,000 B-Units' : 'ATECC608 Vault'}
                     </p>
@@ -36855,9 +36796,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           setMerchantKitStripeMessage(null);
                         }}
                         className="text-[13px] font-semibold text-slate-400 hover:text-white text-center"
-                      >
-                        Try again
-                      </button>
+                      >{tu('try_again')}</button>
                     ) : null}
                   </div>
                 )}
@@ -37098,9 +37037,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              type="button"
                              onClick={() => setIsCreatingTier(false)}
                              className="flex-1 rounded-lg py-2.5 text-[13px] font-bold text-slate-400 transition-colors hover:bg-white/10"
-                           >
-                             Cancel
-                           </button>
+                           >{tu('cancel')}</button>
                            <button
                              type="button"
                              onClick={handleCreateLoyaltyTier}
@@ -37134,9 +37071,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        ? 'cursor-not-allowed border border-white/5 bg-white/5 text-slate-500'
                        : 'bg-[#1562f0] text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] hover:bg-blue-600 active:scale-[0.98]'
                    }`}
-                 >
-                   Continue
-                 </button>
+                 >{tu('continue')}</button>
                  {(protocolFuelReserveBalance ?? 0) < ISSUE_CARD_MIN_BUINTS && (
                    <p className="mt-3 text-center text-[12px] font-bold text-rose-500">
                      Insufficient Protocol Fuel. Requires {ISSUE_CARD_MIN_BUINTS} B-Units.
@@ -37227,9 +37162,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  type="button"
                  onClick={closeIssueCardModal}
                  className="mt-auto w-full rounded-[20px] bg-[#1562f0] py-4.5 text-[16px] font-bold text-white shadow-[0_8px_20px_rgba(21,98,240,0.25)] transition-all hover:bg-blue-600 active:scale-[0.98]"
-               >
-                 Done
-               </button>
+               >{tu('done')}</button>
              </div>
            )}
          </div>
@@ -37271,7 +37204,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               type="button"
               onClick={closeCardIssuanceCouponShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
@@ -37301,7 +37234,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ) : (
                     <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                   )}
-                  {cardIssuanceCouponShareUrlCopied ? 'Copied' : 'Copy URL'}
+                  {cardIssuanceCouponShareUrlCopied ? '已复制' : 'Copy URL'}
                 </button>
                 <a
                   href={cardIssuanceCouponShareUrl}
@@ -37380,7 +37313,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               type="button"
               onClick={closeCardIssuanceCouponRedeemShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
@@ -37451,7 +37384,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ) : (
                     <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                   )}
-                  {cardIssuanceCouponRedeemShareUrlCopied ? 'Copied' : 'Copy URL'}
+                  {cardIssuanceCouponRedeemShareUrlCopied ? '已复制' : 'Copy URL'}
                 </button>
                 <a
                   href={cardIssuanceCouponRedeemShareUrl}
@@ -37650,7 +37583,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               type="button"
               onClick={closeCardIssuanceProductionRedeemShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
@@ -37732,7 +37665,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       ) : (
                         <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                       )}
-                      {cardIssuanceProductionRedeemShareUrlCopied ? 'Copied' : 'Copy URL'}
+                      {cardIssuanceProductionRedeemShareUrlCopied ? '已复制' : 'Copy URL'}
                     </button>
                     <a
                       href={cardIssuanceProductionRedeemShareUrl}
@@ -37817,7 +37750,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               type="button"
               onClick={closeCardIssuanceProductionShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="Close"
+              aria-label="关闭"
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
@@ -37858,7 +37791,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       ) : (
                         <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                       )}
-                      {cardIssuanceProductionShareUrlCopied ? 'Copied' : 'Copy URL'}
+                      {cardIssuanceProductionShareUrlCopied ? '已复制' : 'Copy URL'}
                     </button>
                     <a
                       href={cardIssuanceProductionShareUrl}
@@ -37916,7 +37849,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              setRawTxJsonModal(null);
              setRawTxJsonCopied(false);
            }}
-           aria-label="Close"
+           aria-label="关闭"
          />
          <div
            className="relative bg-white rounded-[20px] shadow-xl border border-slate-200 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden"
@@ -37961,7 +37894,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    setRawTxJsonCopied(false);
                  }}
                  className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                 aria-label="Close"
+                 aria-label="关闭"
                >
                  <X size={20} />
                </button>

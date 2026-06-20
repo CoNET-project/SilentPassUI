@@ -133,7 +133,7 @@ export function PlusActionMenu({ open, onClose, anchorRef, items = DEFAULT_ITEMS
         <>
           <motion.button
             type="button"
-            aria-label="Close menu"
+            aria-label="关闭菜单"
             className="fixed inset-0 z-[9998] bg-black/0"
             onClick={onClose}
             initial={{ opacity: 0 }}

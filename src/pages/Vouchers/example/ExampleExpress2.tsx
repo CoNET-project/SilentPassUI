@@ -53,6 +53,7 @@ import {
   Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { tu } from '@/locale/beamioLocale'
 
 // --- Types ---
 type MarketItem = {
@@ -233,12 +234,12 @@ const INITIAL_TRANSACTIONS = [
   {
     id: '3',
     title: 'Top-up from Main',
-    subtitle: 'Internal Transfer',
+    subtitle: '内部转账',
     amount: '+ 150.00',
     amountVal: 150,
     currency: 'USDC',
     walletType: 'AA',
-    date: 'Yesterday',
+    date: '昨天',
     icon: <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><ArrowRightLeft size={18}/></div>,
     status: 'completed',
     isOutgoing: false,
@@ -531,7 +532,7 @@ export default function BeamioApp() {
             isVoucherDeposit: false,
             currency: 'USDC',
             walletType: 'AA',
-            date: 'Just now',
+            date: '刚刚',
             icon: selectedCard.icon,
             status: 'completed',
             isOutgoing: true,
@@ -594,7 +595,7 @@ export default function BeamioApp() {
             isVoucherDeposit: true, // Flag for green styling in card history
             currency: 'USDC',
             walletType: 'AA',
-            date: 'Just now',
+            date: '刚刚',
             icon: item.icon,
             isOutgoing: true, 
           },
@@ -624,7 +625,7 @@ export default function BeamioApp() {
             isVoucherDeposit: item.type !== 'Ticket',
             currency: 'USDC',
             walletType: 'AA',
-            date: 'Just now',
+            date: '刚刚',
             icon: item.icon,
             isOutgoing: true,
           },
@@ -680,7 +681,7 @@ export default function BeamioApp() {
       setTransactions([
         {
           id: Date.now().toString(),
-          title: 'Merchant Payment',
+          title: '商户支付',
           subtitle: '@CityGolfClub',
           amount: '-' + usdcDeducted.toFixed(2),
           amountVal: -usdcDeducted,
@@ -688,7 +689,7 @@ export default function BeamioApp() {
           currency: 'USDC',
           secondaryAmount: hasMembership ? `- CA$ ${voucherDeducted.toFixed(2)} Voucher` : undefined,
           walletType: 'AA',
-          date: 'Just now',
+          date: '刚刚',
           icon: <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white"><Store size={18}/></div>,
           status: 'completed',
           isOutgoing: true,
@@ -715,12 +716,12 @@ export default function BeamioApp() {
       {
         id: Date.now().toString(),
         title: 'Transfer to Main',
-        subtitle: 'Internal Transfer',
+        subtitle: '内部转账',
         amount: '-' + amount.toFixed(2),
         amountVal: -amount,
         currency: 'USDC',
         walletType: 'AA',
-        date: 'Just now',
+        date: '刚刚',
         icon: <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><ArrowRightLeft size={18}/></div>,
         status: 'completed',
         isOutgoing: true,
@@ -757,9 +758,7 @@ export default function BeamioApp() {
             <span 
               onClick={() => setViewAllCategory({ id: category, title })}
               className="text-xs text-blue-600 font-bold cursor-pointer hover:underline"
-            >
-              View All
-            </span>
+            >{tu('view_all')}</span>
           )}
         </div>
         
@@ -786,7 +785,7 @@ export default function BeamioApp() {
   const WalletView = () => (
     <div className="flex-1 overflow-y-auto pb-24 pt-12 px-0">
       <div className="px-6 pb-4 flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-slate-900">My Wallet</h1>
+        <h1 className="text-3xl font-bold text-slate-900">我的钱包</h1>
         <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-xs">EOA</div>
       </div>
 
@@ -801,7 +800,7 @@ export default function BeamioApp() {
                     <div className="w-2.5 h-[2px] bg-blue-600 rounded-full"></div>
                  </div>
               </div>
-              <span className="text-lg font-medium tracking-wide">Express Pay</span>
+              <span className="text-lg font-medium tracking-wide">快捷支付</span>
             </div>
             {/* Updated Badge to match EOA (Sparkles) */}
             <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">
@@ -823,7 +822,7 @@ export default function BeamioApp() {
       <div className="px-6 mb-8 flex gap-4 justify-center">
         {/* Updated Transfer Action */}
         <IconButton icon={<ArrowRightLeft size={24} className="text-purple-600" />} label="Transfer" onClick={() => setShowWithdraw(true)} />
-        <IconButton icon={<ScanLine size={24} className="text-white" />} label="Pay" highlight onClick={() => { setPayStep('scan'); setShowPay(true); }} />
+        <IconButton icon={<ScanLine size={24} className="text-white" />} label="Payment" highlight onClick={() => { setPayStep('scan'); setShowPay(true); }} />
         {/* 'Voucher' button here links to Market tab visually or structurally */}
         <IconButton icon={<Ticket size={24} className="text-purple-600" />} label="Vouchers" onClick={() => setActiveTab('market')} />
       </div>
@@ -864,7 +863,7 @@ export default function BeamioApp() {
           ))}
           
           {inventory.length === 0 && (
-            <div className="p-4 text-center text-slate-400 text-sm">No vouchers yet. Visit Market to buy.</div>
+            <div className="p-4 text-center text-slate-400 text-sm">暂无优惠券，请前往市场购买。</div>
           )}
         </div>
       </div>
@@ -878,9 +877,7 @@ export default function BeamioApp() {
               type="button"
               onClick={() => navigate('/HistoryAll')}
               className="text-[12px] font-semibold text-violet-600 active:opacity-70"
-            >
-              View All
-            </button>
+            >{tu('view_all')}</button>
           </div>
           <div>
             <ActiveList
@@ -905,7 +902,7 @@ export default function BeamioApp() {
   const MarketView = () => (
     <div className="flex-1 overflow-y-auto pb-24 pt-12 px-0 bg-[#F2F2F7]">
       <div className="px-6 pb-4 flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-slate-900">Market</h1>
+        <h1 className="text-3xl font-bold text-slate-900">市场</h1>
         <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-600">
           <Search size={20} />
         </div>
@@ -913,10 +910,10 @@ export default function BeamioApp() {
 
       {/* Filter Tabs */}
       <div className="px-6 mb-6 overflow-x-auto no-scrollbar flex gap-2">
-         {['All', 'Memberships', 'Events', 'Dining', 'Retail', 'Services'].map(cat => (
+         {['全部', 'Memberships', 'Events', 'Dining', 'Retail', 'Services'].map(cat => (
            <button 
              key={cat}
-             onClick={() => setViewAllCategory(cat === 'All' ? null : { id: cat.toLowerCase(), title: cat })}
+             onClick={() => setViewAllCategory(cat === '全部' ? null : { id: cat.toLowerCase(), title: cat })}
              className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
                false // Simple mock filter, real filter logic would be here
                ? 'bg-slate-900 text-white' 
@@ -956,7 +953,7 @@ export default function BeamioApp() {
                     </div>
                 ) : (
                     <div className="z-10">
-                       <div className="text-white/80 text-xs uppercase tracking-wide">Balance</div>
+                       <div className="text-white/80 text-xs uppercase tracking-wide">余额</div>
                        <div className="text-2xl font-bold">
                          {item.fiatCurrency} {(item.currentBalance !== undefined ? item.currentBalance : item.fiatPrice).toFixed(2)}
                        </div>
@@ -1031,7 +1028,7 @@ export default function BeamioApp() {
                    {/* Logic to show Balance if owned, Price if not owned */}
                    {inventory.some(i => i.id === selectedCard.id) ? (
                        <>
-                        <div className="text-white/80 text-xs uppercase tracking-wide">Balance</div>
+                        <div className="text-white/80 text-xs uppercase tracking-wide">余额</div>
                         <div className="text-3xl font-bold">{selectedCard.fiatCurrency} {(selectedCard.currentBalance !== undefined ? selectedCard.currentBalance : selectedCard.fiatPrice).toFixed(2)}</div>
                          {/* Add Restriction Text */}
                          <div className="text-white/60 text-[10px] font-medium mt-1 flex items-center gap-1">
@@ -1261,7 +1258,7 @@ export default function BeamioApp() {
                 
                 {/* Payment Method Selector */}
                 <div>
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Payment Method</h4>
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">支付方式</h4>
                   <div className="space-y-3">
                     {/* Beamio Wallet */}
                     <div 
@@ -1291,7 +1288,7 @@ export default function BeamioApp() {
                 {/* Exchange Rate Info - Only show for Beamio Wallet (USDC) */}
                 {paymentMethod === 'beamio' && (
                   <div className="bg-slate-50 rounded-xl p-4 text-xs space-y-2">
-                      <div className="flex justify-between"><span className="text-slate-500">Exchange Rate</span><span className="font-mono text-slate-700">1 CAD ≈ {EXCHANGE_RATE.toFixed(4)} USDC</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">汇率</span><span className="font-mono text-slate-700">1 CAD ≈ {EXCHANGE_RATE.toFixed(4)} USDC</span></div>
                       <div className="flex justify-between font-bold text-sm"><span className="text-slate-900">You Pay</span><span className="text-blue-600">{(selectedAmount * EXCHANGE_RATE).toFixed(4)} USDC</span></div>
                       <div className="text-[10px] text-slate-400 text-right">Via Coinbase Oracle</div>
                   </div>
@@ -1320,18 +1317,18 @@ export default function BeamioApp() {
                 ) : (
                    <div className="z-10"><div className="text-white/80 text-xs uppercase tracking-wide">Current Balance</div><div className="text-3xl font-bold">{showBuy.fiatCurrency} {selectedAmount.toFixed(2)}</div></div>
                 )}
-                <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-3xl" /></div><h2 className="text-2xl font-bold text-slate-900 mb-2">{inventory.some(i => i.id === showBuy.id) ? 'Top-up Successful!' : 'Added to My Cards'}</h2><button onClick={() => { setShowBuy(null); setBuyStep('confirm'); setSelectedCard(null); /* Close all */ }} className="w-full py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg shadow-xl active:scale-[0.98]">Done</button></motion.div>}
+                <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-3xl" /></div><h2 className="text-2xl font-bold text-slate-900 mb-2">{inventory.some(i => i.id === showBuy.id) ? 'Top-up Successful!' : 'Added to My Cards'}</h2><button onClick={() => { setShowBuy(null); setBuyStep('confirm'); setSelectedCard(null); /* Close all */ }} className="w-full py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg shadow-xl active:scale-[0.98]">完成</button></motion.div>}
           </div>
         )}
       </Modal>
 
       {/* WITHDRAW & PAY MODALS - (Kept same logic) */}
-      <Modal isOpen={showWithdraw} onClose={() => setShowWithdraw(false)} title="Transfer to Main Wallet"><div className="flex flex-col gap-6"><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between"><div className="text-left"><div className="text-xs font-bold text-slate-400 uppercase">From</div><div className="font-bold">Express Pay</div></div><ArrowRight size={20} className="text-slate-300" /><div className="text-right"><div className="text-xs font-bold text-slate-400 uppercase">To</div><div className="font-bold">Main Wallet</div></div></div><div><label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Amount (USDC)</label><div className="flex items-center bg-white rounded-xl px-4 py-4 border border-slate-200 focus-within:ring-2 ring-blue-500/20 shadow-inner"><span className="text-xl font-bold text-slate-400 mr-2">$</span><input type="number" min="0" value={inputAmount} onChange={(e) => setInputAmount(e.target.value)} onKeyDown={handleAmountKeyDown} className="bg-transparent text-2xl font-bold text-slate-900 w-full outline-none" placeholder="0.00" /></div><div className="flex justify-between mt-2 text-xs"><span className="text-slate-400">Available: {balanceAA.toFixed(2)} USDC</span><span className="text-green-600 font-bold">0 Fee • 0 Gas</span></div></div><button onClick={handleWithdrawToMain} className="w-full py-4 rounded-2xl bg-slate-900 text-white font-bold text-lg shadow-xl active:scale-[0.98] transition-all">Confirm Withdrawal</button></div></Modal>
-      <Modal isOpen={showPay} onClose={() => setShowPay(false)} title="Express Pay">
+      <Modal isOpen={showWithdraw} onClose={() => setShowWithdraw(false)} title="Transfer to Main Wallet"><div className="flex flex-col gap-6"><div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between"><div className="text-left"><div className="text-xs font-bold text-slate-400 uppercase">From</div><div className="font-bold">快捷支付</div></div><ArrowRight size={20} className="text-slate-300" /><div className="text-right"><div className="text-xs font-bold text-slate-400 uppercase">To</div><div className="font-bold">主钱包</div></div></div><div><label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Amount (USDC)</label><div className="flex items-center bg-white rounded-xl px-4 py-4 border border-slate-200 focus-within:ring-2 ring-blue-500/20 shadow-inner"><span className="text-xl font-bold text-slate-400 mr-2">$</span><input type="number" min="0" value={inputAmount} onChange={(e) => setInputAmount(e.target.value)} onKeyDown={handleAmountKeyDown} className="bg-transparent text-2xl font-bold text-slate-900 w-full outline-none" placeholder="0.00" /></div><div className="flex justify-between mt-2 text-xs"><span className="text-slate-400">Available: {balanceAA.toFixed(2)} USDC</span><span className="text-green-600 font-bold">0 Fee • 0 Gas</span></div></div><button onClick={handleWithdrawToMain} className="w-full py-4 rounded-2xl bg-slate-900 text-white font-bold text-lg shadow-xl active:scale-[0.98] transition-all">Confirm Withdrawal</button></div></Modal>
+      <Modal isOpen={showPay} onClose={() => setShowPay(false)} title="快捷支付">
         {payStep === 'scan' && (<div className="flex flex-col items-center"><div className="w-64 h-64 bg-slate-900 rounded-3xl relative overflow-hidden flex items-center justify-center mb-6"><div className="absolute inset-0 border-2 border-white/20 m-4 rounded-2xl"></div><motion.div animate={{ top: ['10%', '90%', '10%'] }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }} className="absolute left-4 right-4 h-0.5 bg-green-400 shadow-[0_0_20px_rgba(74,222,128,0.8)]" /><span className="text-white/50 text-sm">Scanning Merchant QR...</span></div><button onClick={() => setPayStep('confirm')} className="bg-slate-200 text-slate-700 px-6 py-2 rounded-full font-bold text-sm">Simulate Scan (Bill: $120)</button></div>)}
-        {payStep === 'confirm' && (<div className="flex flex-col gap-6"><div className="text-center"><div className="text-slate-500 text-sm uppercase tracking-widest font-bold mb-2">Merchant Request</div><div className="text-4xl font-bold text-slate-900">CA$ 120.00</div><div className="text-slate-400 text-sm mt-1">@CityGolfClub</div></div><div className="bg-slate-50 border border-slate-200 rounded-2xl p-4"><div className="flex items-center gap-2 mb-4"><Sparkles size={16} className="text-purple-600" /><span className="text-xs font-bold text-purple-600 uppercase tracking-wide">Smart Routing Active</span></div>{inventory.some(i => i.name === 'CCSA Membership' && (i.currentBalance ?? 0) > 0) ? (<div className="flex justify-between items-center mb-3 opacity-100"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold">V</div><span className="text-sm font-medium text-slate-700">CCSA Membership</span></div><span className="text-sm font-bold text-green-600">- CA$ 100.00</span></div>) : null}<div className="flex justify-between items-center"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">$</div><span className="text-sm font-medium text-slate-700">USDC Balance</span></div><span className="text-sm font-bold text-slate-900">- CA$ {inventory.some(i => i.name === 'CCSA Membership' && (i.currentBalance ?? 0) > 0) ? '20.00' : '120.00'}</span></div><div className="text-right text-[10px] text-slate-400 mt-1">(≈ {((inventory.some(i => i.name === 'CCSA Membership' && (i.currentBalance ?? 0) > 0) ? 20 : 120) * EXCHANGE_RATE).toFixed(2)} USDC)</div></div><button onClick={handleSmartPay} className="w-full py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg shadow-xl active:scale-[0.98]">Pay Now</button></div>)}
+        {payStep === 'confirm' && (<div className="flex flex-col gap-6"><div className="text-center"><div className="text-slate-500 text-sm uppercase tracking-widest font-bold mb-2">Merchant Request</div><div className="text-4xl font-bold text-slate-900">CA$ 120.00</div><div className="text-slate-400 text-sm mt-1">@CityGolfClub</div></div><div className="bg-slate-50 border border-slate-200 rounded-2xl p-4"><div className="flex items-center gap-2 mb-4"><Sparkles size={16} className="text-purple-600" /><span className="text-xs font-bold text-purple-600 uppercase tracking-wide">Smart Routing Active</span></div>{inventory.some(i => i.name === 'CCSA Membership' && (i.currentBalance ?? 0) > 0) ? (<div className="flex justify-between items-center mb-3 opacity-100"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold">V</div><span className="text-sm font-medium text-slate-700">CCSA Membership</span></div><span className="text-sm font-bold text-green-600">- CA$ 100.00</span></div>) : null}<div className="flex justify-between items-center"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">$</div><span className="text-sm font-medium text-slate-700">USDC 余额</span></div><span className="text-sm font-bold text-slate-900">- CA$ {inventory.some(i => i.name === 'CCSA Membership' && (i.currentBalance ?? 0) > 0) ? '20.00' : '120.00'}</span></div><div className="text-right text-[10px] text-slate-400 mt-1">(≈ {((inventory.some(i => i.name === 'CCSA Membership' && (i.currentBalance ?? 0) > 0) ? 20 : 120) * EXCHANGE_RATE).toFixed(2)} USDC)</div></div><button onClick={handleSmartPay} className="w-full py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg shadow-xl active:scale-[0.98]">Pay Now</button></div>)}
         {payStep === 'processing' && <ProcessingView />}
-        {payStep === 'success' && <div className="flex flex-col items-center justify-center py-8 text-center"><div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4"><CheckCircle2 size={40} /></div><h3 className="font-bold text-2xl text-slate-900">Paid Successfully!</h3><p className="text-slate-500 text-sm mt-2 max-w-[200px]">You saved CA$ 100.00 using your CCSA Membership.</p><button onClick={() => setShowPay(false)} className="mt-8 bg-slate-900 text-white px-8 py-3 rounded-xl font-bold">Done</button></div>}
+        {payStep === 'success' && <div className="flex flex-col items-center justify-center py-8 text-center"><div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4"><CheckCircle2 size={40} /></div><h3 className="font-bold text-2xl text-slate-900">Paid Successfully!</h3><p className="text-slate-500 text-sm mt-2 max-w-[200px]">You saved CA$ 100.00 using your CCSA Membership.</p><button onClick={() => setShowPay(false)} className="mt-8 bg-slate-900 text-white px-8 py-3 rounded-xl font-bold">完成</button></div>}
       </Modal>
     </div>
   );

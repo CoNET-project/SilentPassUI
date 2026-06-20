@@ -3,11 +3,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import './locale/i18n';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'
 import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider'
 import { IpfsImageLibraryProvider } from './providers/IpfsImageLibraryProvider'
+import { BeamioLocaleRoot } from './locale/BeamioLocaleRoot'
 import { HashRouter as Router } from 'react-router-dom'
 
 const root = ReactDOM.createRoot(
@@ -17,13 +19,15 @@ const root = ReactDOM.createRoot(
 root.render(
 	<React.StrictMode>
 		<Router>
-			<DaemonProvider>
-				<BeamioTagDatabaseProvider>
-					<IpfsImageLibraryProvider>
-						<App />
-					</IpfsImageLibraryProvider>
-				</BeamioTagDatabaseProvider>
-			</DaemonProvider>
+			<BeamioLocaleRoot>
+				<DaemonProvider>
+					<BeamioTagDatabaseProvider>
+						<IpfsImageLibraryProvider>
+							<App />
+						</IpfsImageLibraryProvider>
+					</BeamioTagDatabaseProvider>
+				</DaemonProvider>
+			</BeamioLocaleRoot>
 		</Router>
 	</React.StrictMode>
 )

@@ -26,6 +26,7 @@ import {
   ArrowRightLeft
 } from 'lucide-react';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
+import { tu } from '@/locale/beamioLocale'
 
 // --- Design Tokens ---
 const BEAMIO_BLUE = '#1562f0';
@@ -60,7 +61,7 @@ const TRANSACTIONS: TxItem[] = [
     type: 'request_create',
     title: 'Store Payment QR', 
     handle: 'QR Generated',
-    timestamp: 'Just now',
+    timestamp: '刚刚',
     amountFiat: 0, 
     currencyFiat: 'USD',
     amountUSDC: 0,
@@ -89,7 +90,7 @@ const TRANSACTIONS: TxItem[] = [
     isMixed: true, // 开启智能路由可视化
     route: [
       // 完美对应您的需求：Voucher -> AA USDC -> EOA USDC
-      { asset: '$COFFEE', amount: 10.00, type: 'Voucher', symbol: 'pts', source: 'Express Pay' },
+      { asset: '$COFFEE', amount: 10.00, type: 'Voucher', symbol: 'pts', source: '快捷支付' },
       { asset: 'USDC', amount: 15.00, type: 'Cash', symbol: '$', source: 'Express Pay (AA)' },
       { asset: 'USDC', amount: 25.00, type: 'Cash', symbol: '$', source: 'Main Wallet (EOA)' }
     ],
@@ -121,7 +122,7 @@ const TRANSACTIONS: TxItem[] = [
   {
     id: 'tx_008', 
     type: 'request_fulfilled',
-    title: 'Payment Received',
+    title: '已收款',
     handle: 'Paid by @bob_builder', 
     timestamp: 'Today, 2:15 PM',
     amountFiat: 50.00, 
@@ -132,7 +133,7 @@ const TRANSACTIONS: TxItem[] = [
     accountType: 'AA', 
     isMixed: false,
     route: [
-       { asset: 'USDC', amount: 50.00, type: 'Cash', symbol: '$', source: 'Express Pay' }
+       { asset: 'USDC', amount: 50.00, type: 'Cash', symbol: '$', source: '快捷支付' }
     ],
     fees: { gas: 0, service: 0, bUnits: 0, gasBUnits: 0 }, 
     hashes: { base: '0x2f4...d5e6', conet: '0x9a8...b7c6' },
@@ -152,8 +153,8 @@ const TRANSACTIONS: TxItem[] = [
     accountType: 'AA', 
     isMixed: true, 
     route: [
-      { asset: '$CCSA', amount: 3.25, type: 'Voucher', symbol: 'pts', source: 'Express Pay' },
-      { asset: 'USDC', amount: 9.25, type: 'Cash', symbol: '$', source: 'Main Wallet' }
+      { asset: '$CCSA', amount: 3.25, type: 'Voucher', symbol: 'pts', source: '快捷支付' },
+      { asset: 'USDC', amount: 9.25, type: 'Cash', symbol: '$', source: '主钱包' }
     ],
     fees: { gas: 0, service: 0, bUnits: 0, gasBUnits: 2 }, 
     hashes: { base: '0x8f2...a9b1', conet: '0x1d4...e3f9' },
@@ -173,7 +174,7 @@ const TRANSACTIONS: TxItem[] = [
     accountType: 'EOA', 
     isMixed: false,
     route: [
-      { asset: 'USDC', amount: 36.50, type: 'Cash', symbol: '$', source: 'Main Wallet' }
+      { asset: 'USDC', amount: 36.50, type: 'Cash', symbol: '$', source: '主钱包' }
     ],
     fees: { gas: 0, service: 0, bUnits: 0, gasBUnits: 2 }, 
     hashes: { base: '0x5d6...e7f8', conet: '0x1v2...w3x4' }
@@ -182,7 +183,7 @@ const TRANSACTIONS: TxItem[] = [
     id: 'tx_010', 
     type: 'internal_transfer',
     title: 'Withdraw to Main Wallet',
-    handle: 'Internal Transfer',
+    handle: '内部转账',
     timestamp: 'Today, 9:30 AM',
     amountFiat: 20.00,
     currencyFiat: 'USD',
@@ -211,7 +212,7 @@ const TRANSACTIONS: TxItem[] = [
     accountType: 'EOA', 
     isMixed: false,
     route: [
-      { asset: 'USDC', amount: 50.00, type: 'Cash', symbol: '$', source: 'Main Wallet' }
+      { asset: 'USDC', amount: 50.00, type: 'Cash', symbol: '$', source: '主钱包' }
     ],
     fees: { gas: 0, service: 0, bUnits: 0, gasBUnits: 0 },
     hashes: { base: '0x7a2...b8c3', conet: '0x9e1...f2a4' }
@@ -219,8 +220,8 @@ const TRANSACTIONS: TxItem[] = [
   {
     id: 'tx_003', 
     type: 'fund_express_pay',
-    title: 'Add to Express Pay',
-    handle: 'Internal Transfer',
+    title: '充值至快捷支付',
+    handle: '内部转账',
     timestamp: 'Yesterday, 2:00 PM',
     amountFiat: -100.00,
     currencyFiat: 'USD',
@@ -238,13 +239,13 @@ const TRANSACTIONS: TxItem[] = [
   {
     id: 'tx_009', 
     type: 'request_expired',
-    title: 'Request Expired',
-    handle: 'Link Invalidated',
+    title: '请求已过期',
+    handle: '链接已失效',
     timestamp: 'Yesterday, 9:00 AM',
     amountFiat: 0,
     currencyFiat: 'USD',
     amountUSDC: 0,
-    status: 'Expired', 
+    status: '已过期', 
     category: 'Tools',
     accountType: 'AA', 
     isMixed: false,
@@ -256,13 +257,13 @@ const TRANSACTIONS: TxItem[] = [
   }
 ];
 
-export default function BeamioTransactions({ initialTab = 'All' }) {
+export default function BeamioTransactions({ initialTab = '全部' }) {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedTx, setSelectedTx] = useState<TxItem | null>(null);
   const [showJson, setShowJson] = useState(false);
 
   const filteredTransactions = TRANSACTIONS.filter(tx => {
-    if (activeTab === 'All') return true;
+    if (activeTab === '全部') return true;
     if (activeTab === 'Cash') return tx.accountType === 'EOA';
     if (activeTab === 'Vouchers') return tx.accountType === 'AA';
     return true;
@@ -298,7 +299,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
         <div className="pt-16 pb-2 px-5 flex justify-between items-center bg-[#F2F2F7]/80 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/50">
           <button className="flex items-center gap-1 text-[#1562f0] active:opacity-50 transition-opacity">
             <ChevronLeft size={26} strokeWidth={2.5} />
-            <span className="text-[17px] font-medium tracking-tight">Wallet</span>
+            <span className="text-[17px] font-medium tracking-tight">钱包</span>
           </button>
           <div className="flex gap-3">
              <button className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-900 active:scale-95 transition-transform">
@@ -309,13 +310,13 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
 
         {/* Large Title */}
         <div className="px-5 pt-2 pb-4 bg-[#F2F2F7]">
-           <h1 className="text-[34px] font-bold text-black tracking-tight leading-tight">Transactions</h1>
+           <h1 className="text-[34px] font-bold text-black tracking-tight leading-tight">交易</h1>
         </div>
 
         {/* Floating Segmented Control */}
         <div className="px-5 mb-6 z-30 relative">
           <div className="flex bg-white/90 backdrop-blur-xl p-1.5 rounded-full shadow-[0_8px_25px_rgba(0,0,0,0.06)] border border-white/50 w-full relative">
-            {['All', 'Cash', 'Vouchers'].map((tab) => (
+            {['全部', 'Cash', 'Vouchers'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -335,7 +336,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                {activeTab === 'Cash' && <Wallet size={12} className="text-[#1562f0]" />}
                {activeTab === 'Vouchers' && <Ticket size={12} className="text-[#1562f0]" />}
                <span className="text-[11px] font-medium text-gray-500">
-                 {activeTab === 'Cash' ? 'Main Wallet (USDC)' : activeTab === 'Vouchers' ? 'Express Pay (Assets)' : 'All Accounts'}
+                 {activeTab === 'Cash' ? '主钱包 (USDC)' : activeTab === 'Vouchers' ? '快捷支付（资产）' : '全部账户'}
                </span>
              </div>
           </div>
@@ -390,9 +391,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                       </div>
                     )}
                     {tx.type === 'request_fulfilled' && (
-                       <span className="text-[10px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1.5 py-0.5 rounded-md">
-                        Request
-                      </span>
+                       <span className="text-[10px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1.5 py-0.5 rounded-md">{tu('request')}</span>
                     )}
                     {tx.fees && tx.fees.bUnits > 0 && tx.type === 'request_expired' && (
                        <div className="flex items-center gap-0.5 bg-gray-100 px-1.5 py-0.5 rounded-md">
@@ -415,9 +414,9 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                   tx.type === 'request_expired' ? 'text-gray-400' : 'text-black'
                 }`}>
                    {tx.type === 'request_create' ? (
-                     <span className="text-[#FF9500]">Pending</span>
+                     <span className="text-[#FF9500]">待处理</span>
                    ) : tx.type === 'request_expired' ? (
-                     'Expired'
+                     '已过期'
                    ) : formatCurrency(tx.amountFiat, tx.currencyFiat)}
                 </div>
                 
@@ -436,7 +435,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
           ))}
           
           <div className="pt-6 pb-2 text-center">
-            <span className="text-[12px] font-medium text-gray-400">Encrypted on CoNET L1</span>
+            <span className="text-[12px] font-medium text-gray-400">加密于 CoNET L1</span>
           </div>
         </div>
 
@@ -509,11 +508,11 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                 {/* Status Chip */}
                 <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold mt-4 ${
                    selectedTx.status === 'Waiting' ? 'bg-[#FF9500]/10 text-[#FF9500]' :
-                   selectedTx.status === 'Expired' ? 'bg-gray-100 text-gray-500' :
+                   selectedTx.status === '已过期' ? 'bg-gray-100 text-gray-500' :
                    'bg-[#34C759]/10 text-[#34C759]'
                 }`}>
                    {selectedTx.status === 'Waiting' ? <Clock size={14} /> : 
-                    selectedTx.status === 'Expired' ? <Ban size={14} /> :
+                    selectedTx.status === '已过期' ? <Ban size={14} /> :
                     <CheckCircle2 size={14} />} 
                    {selectedTx.status}
                 </div>
@@ -524,7 +523,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                 {selectedTx.type === 'request_create' ? (
                    <>
                       <div className="bg-[#FF9500]/5 rounded-[20px] p-5 text-center border border-[#FF9500]/20">
-                          <p className="text-[15px] text-[#FF9500] font-medium mb-4">Code is active. Waiting for payment.</p>
+                          <p className="text-[15px] text-[#FF9500] font-medium mb-4">收款码有效，等待付款。</p>
                           <button className="w-full py-3.5 bg-white text-[#FF9500] border border-[#FF9500]/30 rounded-[14px] font-bold text-[15px] flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform">
                             <Share2 size={18} /> Share Again
                           </button>
@@ -562,9 +561,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                     <h3 className="text-[15px] font-bold text-black flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-[#FF9500]/20 flex items-center justify-center">
                         <Zap size={14} className="text-[#FF9500] fill-[#FF9500]" />
-                      </div>
-                      Smart Routing
-                    </h3>
+                      </div>{tu('smart_routing')}</h3>
                     <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-md tracking-wide">AUTO</span>
                   </div>
                   
@@ -590,7 +587,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                       </div>
                     ))}
                     <div className="border-t border-dashed border-gray-200 mt-4 pt-4 flex justify-between items-center">
-                       <span className="text-[13px] font-medium text-gray-400 pl-9">Total Paid</span>
+                       <span className="text-[13px] font-medium text-gray-400 pl-9">已付总额</span>
                        <span className="text-[16px] font-bold text-black">
                          {Math.abs(selectedTx.amountUSDC).toFixed(2)} USDC
                        </span>
@@ -604,9 +601,9 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                  <div className="flex justify-between items-center text-[14px]">
                     <span className="text-gray-500 font-medium">
                       {selectedTx.type === 'request_create' ? 'Service' : 
-                       selectedTx.category === 'Internal' ? 'Transaction Type' :
-                       selectedTx.type === 'transfer_in' || selectedTx.type === 'request_fulfilled' ? 'Received From' : 
-                       'Paid To'}
+                       selectedTx.category === 'Internal' ? '交易类型' :
+                       selectedTx.type === 'transfer_in' || selectedTx.type === 'request_fulfilled' ? '收款自' : 
+                       '付款至'}
                     </span>
                     <span className="font-semibold text-black flex items-center gap-1.5">
                       {selectedTx.title} 
@@ -617,7 +614,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                  {/* 跨币种交易时，展示预言机汇率 */}
                  {selectedTx.currencyFiat !== 'USD' && selectedTx.amountUSDC !== 0 && selectedTx.amountFiat !== 0 && (
                     <div className="flex justify-between items-center text-[14px]">
-                       <span className="text-gray-500 font-medium">Exchange Rate</span>
+                       <span className="text-gray-500 font-medium">汇率</span>
                        <span className="font-semibold text-black">
                          1 USDC ≈ {Math.abs(selectedTx.amountFiat / selectedTx.amountUSDC).toFixed(2)} {selectedTx.currencyFiat}
                        </span>
@@ -658,7 +655,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
               {/* Proofs */}
               <div className="space-y-3 mb-8">
                  <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 pl-2">
-                   {selectedTx.hashes.base ? 'Settlement Proof' : 'Creation Proof'}
+                   {selectedTx.hashes.base ? '结算凭证' : '创建凭证'}
                  </h4>
                  
                  {/* 核心架构更新：动态渲染单笔或多笔 Base L2 Hash */}
@@ -678,7 +675,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                     <div className="flex items-center justify-between p-3.5 bg-white border border-gray-200 rounded-[16px] shadow-sm active:bg-gray-50 transition-colors cursor-pointer">
                         <div className="flex items-center gap-2.5">
                           <div className="w-2.5 h-2.5 bg-[#1562f0] rounded-full shadow-[0_0_8px_rgba(21,98,240,0.5)]"></div>
-                          <span className="text-[13px] font-semibold text-gray-700">Base L2 (Value)</span>
+                          <span className="text-[13px] font-semibold text-gray-700">Base L2（价值）</span>
                         </div>
                         <div className="flex items-center gap-2 text-[12px] font-mono text-[#1562f0]">
                           {selectedTx.hashes.base.substring(0, 10)}... <Copy size={12} />
@@ -688,9 +685,9 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
                     <div className="flex items-center justify-between p-3.5 bg-gray-50 border border-gray-200 rounded-[16px] border-dashed opacity-70">
                         <div className="flex items-center gap-2.5">
                           <div className="w-2.5 h-2.5 bg-gray-400 rounded-full"></div>
-                          <span className="text-[13px] font-semibold text-gray-500">Base L2 (Pending)</span>
+                          <span className="text-[13px] font-semibold text-gray-500">Base L2（待处理）</span>
                         </div>
-                        <span className="text-[11px] font-medium text-gray-400">Awaiting Payment</span>
+                        <span className="text-[11px] font-medium text-gray-400">等待付款</span>
                     </div>
                  )}
                  
@@ -710,7 +707,7 @@ export default function BeamioTransactions({ initialTab = 'All' }) {
               {/* JSON Toggle */}
               <div>
                  <button onClick={() => setShowJson(!showJson)} className="w-full py-3 border border-gray-200 text-gray-500 rounded-[16px] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50 transition-colors">
-                   <Code size={16} /> {showJson ? 'Hide Raw Data' : 'View Smart Receipt'}
+                   <Code size={16} /> {showJson ? '隐藏原始数据' : '查看智能收据'}
                  </button>
                  {showJson && (
                    <VscodeJsonBlock className="mt-4" data={selectedTx} />

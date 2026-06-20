@@ -19,6 +19,8 @@ import baseIcon from '@/components/assets/base-logo.png'
 
 import {postBeamio, storeSystemData} from '@/services/beamio'
 import { useDaemonContext} from '@/providers/DaemonProvider'
+import { setBeamioUiLocale, normalizeBeamioUiLocale, type BeamioUiLocale } from '@/locale/i18n'
+import { tu } from '@/locale/beamioLocale'
 type prof = {
 	colse: () => void
 }
@@ -71,7 +73,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	const { currencyData, setBeamio, beamio, refreshOracle} = useDaemonContext()
 	const [exchangeSource, setExchangeSource] = useState<"coinbase">("coinbase")
 	const [stablecoin, setStablecoin] = useState<"usdc_base">("usdc_base")
-	const [language, setLanguage] = useState<"en">("en")
+	const [language, setLanguage] = useState<BeamioUiLocale>('zh-CN')
 	const [refreshing, setRefreshing] = useState(false);
 	const [currency, setCurrency] = useState<ICurrency>('USD')
 	const [fx, setFx] = useState<number>(fxRateUSDCToCurrency("USD"))
@@ -96,6 +98,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		
 		await storeSystemData()
 		setBeamio({...bo})
+		await setBeamioUiLocale(normalizeBeamioUiLocale(language))
 		setLoading(false)
 		colse()
 	}
@@ -103,7 +106,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	const getAccountData = () => {
 		if (!beamio) return
 		setCurrency(beamio.currency)
-		setLanguage(beamio.language)
+		setLanguage(normalizeBeamioUiLocale(beamio.language))
 		setTax(beamio.tax||'0')
 	}
 
@@ -204,7 +207,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 			</div>
 
 			<div className="text-sm text-blue-900">
-				Payments settle in <span className="font-semibold">USDC</span> on Base.
+				{tu('payments_settle_in')} <span className="font-semibold">USDC</span> {tu('on_base')}
 			</div>
 			</div>
 		</div>
@@ -215,40 +218,45 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         {/* Region removed */}
 
         <DropdownRow
-			label="Language"
+			label={tu('language')}
 			value={language}
-			onChange={(v) => setLanguage(v as any)}
-			options={[{ value: "en", label: "English" }]}
+			onChange={(v) => {
+				const next = normalizeBeamioUiLocale(v)
+				setLanguage(next)
+				void setBeamioUiLocale(next)
+			}}
+			options={[
+				{ value: 'en', label: tu('english') },
+				{ value: 'zh-CN', label: tu('simplified_chinese') },
+			]}
         />
 
         <DropdownRow
-			label="Currency"
+			label={tu('currency')}
 			value={currency}
 			onChange={(v) => setCurrency(v as ICurrency)}
 			options={[
-				 { value: 'USD', label: 'USD · US Dollar' },
-				{ value: 'CAD', label: 'CAD · Canadian Dollar' },
-				{ value: 'EUR', label: 'EUR · Euro' },
-				{ value: 'JPY', label: 'JPY · Japanese Yen' },
-				{ value: 'CNY', label: 'CNY · Chinese Yuan' },
-				{ value: 'HKD', label: 'HKD · Hong Kong Dollar' },
-				{ value: 'SGD', label: 'SGD · Singapore Dollar' },
-				{ value: 'TWD', label: 'TWD · New Taiwan Dollar' }
-				
-
+				 { value: 'USD', label: tu('usd_us_dollar') },
+				{ value: 'CAD', label: tu('cad_canadian_dollar') },
+				{ value: 'EUR', label: tu('eur_euro') },
+				{ value: 'JPY', label: tu('jpy_japanese_yen') },
+				{ value: 'CNY', label: tu('cny_chinese_yuan') },
+				{ value: 'HKD', label: tu('hkd_hong_kong_dollar') },
+				{ value: 'SGD', label: tu('sgd_singapore_dollar') },
+				{ value: 'TWD', label: tu('twd_new_taiwan_dollar') }
 			]}
 		/>
 
         {/* Exchange rate with icon button */}
         <div>
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-zinc-900">Exchange rate</div>
+            <div className="text-sm font-semibold text-zinc-900">{tu('exchange_rate')}</div>
 
             <AppButton
               variant='secondary'
               onClick={manualRefreshFx}
 			  loading={loading}
-              aria-label="Refresh exchange rate"
+              aria-label={tu('refresh_exchange_rate')}
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             </AppButton>
@@ -260,7 +268,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
               onChange={(e) => setExchangeSource(e.target.value as any)}
               className="w-full h-12 rounded-2xl border border-zinc-200 bg-white px-4 pr-10 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-blue-200 appearance-none"
             >
-              <option value="coinbase">Coinbase oracle</option>
+              <option value="coinbase">{tu('coinbase_oracle')}</option>
             </select>
             <ChevronDown className="h-4 w-4 text-zinc-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -272,17 +280,15 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         </div>
 
         <DropdownRow
-          label="Default stablecoin"
+          label={tu('default_stablecoin')}
           value={stablecoin}
           onChange={(v) => setStablecoin(v as any)}
-          options={[{ value: "usdc_base", label: "USDC on Base" }]}
+          options={[{ value: "usdc_base", label: tu('usdc_on_base') }]}
         />
 
 		{/* Tax % input */}
 			<div className="space-y-2">
-			<label className="block text-sm font-medium text-slate-800">
-				Tax %
-			</label>
+			<label className="block text-sm font-medium text-slate-800">{tu('tax')}</label>
 
 			<input
 				value={tax}
@@ -317,9 +323,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         <AppButton
           className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700"
           onClick={handleSaveAvatar}
-        >
-          Done
-        </AppButton>
+        >{tu('done')}</AppButton>
       </div>
 	  <div className="h-20" />
     </div>

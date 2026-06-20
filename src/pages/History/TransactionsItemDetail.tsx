@@ -102,7 +102,7 @@ const unknowAcc = (address: string):searchResult => {
 		last_name: '',
 		follow_count: '',
 		follower_count: '',
-		username: 'Unknow',
+		username: '未知',
 		image: ''
 	}
 	return ret
@@ -592,7 +592,7 @@ export function TransactionsItemDetail({
 								{/* 左侧：头像 + 信息 */}
 								<div className="flex items-center gap-3 min-w-0">
 									<div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold">
-									{fromBeamio?.username !== "Unknow" ? (
+									{fromBeamio?.username !== "未知" ? (
 										<IpfsImg
 										src={userImg}
 										className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-200"
@@ -708,7 +708,7 @@ export function TransactionsItemDetail({
 											group-hover:opacity-90
 											group-active:opacity-80
 										"
-										alt="Gift Envelope"
+										alt="礼品信封"
 									/>
 								</button>
 							)}
@@ -831,7 +831,7 @@ export function TransactionsItemDetail({
 							{
 								tx.type !== "pending" ? (
 									<div className="px-5 py-3 flex items-center justify-between gap-3">
-										<div className="text-[14px] text-slate-500">Tx hash</div>
+										<div className="text-[14px] text-slate-500">交易哈希</div>
 
 										<div className="flex items-center gap-2">
 											<div className="text-[14px]  text-slate-900 tabular-nums">{txHashShort || "—"}</div>
@@ -851,7 +851,7 @@ export function TransactionsItemDetail({
 														${copied ? "bg-emerald-500" : "bg-black/20"}   /* ⬅️ 同样改为黑色透明度 */
 													`}
 													aria-label="Copy tx hash"
-													title={copied  ? "Copied" : "Copy"}
+													title={copied  ? "已复制" : "复制"}
 												>
 													{copied ? (
 														<Check className="w-3.5 h-3.5 text-white" strokeWidth={2} />
@@ -940,7 +940,7 @@ export function TransactionsItemDetail({
 												: "shadow-[0_12px_20px_rgba(132,120,255,0.22),0_5px_12px_rgba(0,0,0,0.08)]"
 											].join(" ")}
 												aria-label="Copy tx hash"
-												title={copied ? "Copied" : "Copy"}
+												title={copied ? "已复制" : "复制"}
 											>
 											
 

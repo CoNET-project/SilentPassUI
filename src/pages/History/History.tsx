@@ -161,12 +161,12 @@ const History = ({}) => {
 			console.log(secondResponse.ok)
 			setProcessing (false)
 			if (!secondResponse.ok) {
-				return setProcessError((body as { error?: string })?.error ?? 'RPC Error!')
+				return setProcessError((body as { error?: string })?.error ?? 'RPC 错误！')
 			}
 			return final(body)
 		} catch (ex) {
 			setProcessing (false)
-			return setProcessError('RPC Error!')
+			return setProcessError('RPC 错误！')
 			
 		}
 
@@ -195,7 +195,7 @@ const History = ({}) => {
 				<button
 					type="button"
 							className={styles.headerBtn}
-							aria-label="Toggle theme"
+							aria-label="切换主题"
 							onClick={() => setDarkModle(!darkModle)}
 				>
 					<span className={styles.headerBtnIcon}>

@@ -68,7 +68,7 @@ export default function FXDetail({
   onClose,
   fiatCurrency,
   usdcToFiatRate,
-  source = "Coinbase oracle",
+  source = "Coinbase 预言机",
   quotedAt = new Date(),
   title = "FX details",
   subtitle = "Exchange rate information for this payment.",
@@ -105,7 +105,7 @@ export default function FXDetail({
           {/* backdrop */}
           <motion.button
 			type="button"
-			aria-label="Close"
+			aria-label="关闭"
 			onClick={onClose}
 			className="absolute inset-0 bg-black/60"
 			initial={{ opacity: 0 }}

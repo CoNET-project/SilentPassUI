@@ -11,7 +11,7 @@ export const WORKSPACE_CREATING_STEP_DURATION_MS = 2000
 export const WORKSPACE_CREATING_LEAD_MS = 300
 
 export const WORKSPACE_CREATING_STEPS = [
-	{ id: 0, title: "Generating Secure ID", desc: "Creating cryptographic keys", icon: KeyRound },
+	{ id: 0, title: "正在生成安全 ID", desc: "正在创建加密密钥", icon: KeyRound },
 	{ id: 1, title: "Finalizing Workspace", desc: "Preparing your business lite workspace", icon: RefreshCw },
 ] as const
 

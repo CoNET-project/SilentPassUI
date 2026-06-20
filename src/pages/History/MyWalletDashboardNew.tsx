@@ -89,6 +89,7 @@ import AddAdminBottomSheet from './AddAdminBottomSheet'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import { useNfcRead } from '@/hooks/useNfcRead'
+import { tu } from '@/locale/beamioLocale'
 
 /** NFC 读取余额底部滑出页：仅当用户按下「读取 NFC 卡」时走 NFC 流程，其余时刻忽略 */
 function NfcCheckBalanceBottomSheet({
@@ -126,7 +127,7 @@ function NfcCheckBalanceBottomSheet({
 				setStatus('error')
 			}
 		} catch (e) {
-			setError((e as Error)?.message ?? 'Request failed')
+			setError((e as Error)?.message ?? '请求失败')
 			setStatus('error')
 		}
 	}, [])
@@ -185,7 +186,7 @@ function NfcCheckBalanceBottomSheet({
 						) : status === 'success' && assets ? (
 							<div className="w-full space-y-4">
 								<div className="relative w-full max-w-[340px] mx-auto rounded-2xl overflow-hidden shadow-lg aspect-[1.58/1]">
-									<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+									<IpfsImg src={ccsabackphoto} alt="CCSA 卡" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
 									<div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
 									<div className="absolute inset-0 p-5 flex flex-col justify-end text-white">
 										<div className="flex justify-between items-start mb-1">
@@ -196,7 +197,7 @@ function NfcCheckBalanceBottomSheet({
 														{(assets.cardCurrency as any) ?? 'CAD'}
 													</span>
 												</h2>
-												<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-0.5">Balance</p>
+												<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-0.5">余额</p>
 											</div>
 											{assets.nfts?.find((n) => Number(n.tokenId) > 0) && (
 												<div className="text-xs font-mono opacity-80 tracking-widest pt-1 text-right shrink-0">
@@ -212,9 +213,7 @@ function NfcCheckBalanceBottomSheet({
 									<p className="text-xs text-slate-500 dark:text-slate-400 mb-2">UID</p>
 									<p className="font-mono text-sm break-all text-slate-800 dark:text-slate-200">{uid}</p>
 								</div>
-								<button type="button" onClick={handleClose} className="w-full py-3.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">
-									Done
-								</button>
+								<button type="button" onClick={handleClose} className="w-full py-3.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold">{tu('done')}</button>
 							</div>
 						) : (
 							<>
@@ -286,9 +285,7 @@ const RedeemActiveList = ({
 			<div className="flex items-center justify-between px-2 mb-3">
 				<div className="flex items-center gap-2">
 					<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-					<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">
-						Redeem Active List
-					</span>
+					<span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-slate-500 dark:text-slate-400">{tu('redeem_active_list')}</span>
 				</div>
 				<button
 					type="button"
@@ -492,10 +489,8 @@ const ManageCardsOverlay = ({
 	return (
 		<div className="fixed inset-0 z-[100] bg-[#F2F2F7] flex flex-col animate-slide-up">
 			<div className="bg-white/80 backdrop-blur-md px-5 pt-14 pb-4 flex justify-between items-center border-b border-gray-200 sticky top-0 z-10">
-				<h1 className="text-lg font-bold">Manage Passes</h1>
-				<button type="button" onClick={onClose} className="text-[#1562f0] font-bold text-base">
-					Done
-				</button>
+				<h1 className="text-lg font-bold">管理 Pass</h1>
+				<button type="button" onClick={onClose} className="text-[#1562f0] font-bold text-base">{tu('done')}</button>
 			</div>
 			<div className="flex-1 overflow-y-auto p-5">
 				<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">
@@ -575,12 +570,12 @@ const ManageCardsOverlay = ({
 						)
 					})}
 					{activePasses.length === 0 && (
-						<div className="p-6 text-center text-gray-400 text-sm">No active passes</div>
+						<div className="p-6 text-center text-gray-400 text-sm">暂无有效 Pass</div>
 					)}
 				</div>
 				{hiddenPasses.length > 0 && (
 					<>
-						<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">Hidden</p>
+						<p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-3 ml-2">已隐藏</p>
 						<div className="bg-white rounded-[20px] overflow-hidden shadow-sm mb-8">
 							{hiddenPasses.map((pass) => {
 								const Icon = pass.id === 'ccsa' ? Globe : pass.id === BEAMIO_USER_CARD_ASSET_ADDRESS ? Cpu : CreditCard
@@ -601,7 +596,7 @@ const ManageCardsOverlay = ({
 										</div>
 										<div className="flex-1">
 											<h3 className="font-bold text-gray-900 text-sm">{pass.nickname || pass.name}</h3>
-											<p className="text-xs text-gray-500">Archived by you</p>
+											<p className="text-xs text-gray-500">由您归档</p>
 										</div>
 									</div>
 								)
@@ -661,10 +656,10 @@ export default function MyWalletDashboardNew() {
 	const [ccsaReflash, setCcsaReflash] = useState(false)
 	const [addressCopied, setAddressCopied] = useState<'eoa' | 'aa' | 'ccsa' | null>(null)
 	const [copiedCardAddress, setCopiedCardAddress] = useState<string | null>(null)
-	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Pay' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
+	const [eoaPanelOpen, setEoaPanelOpen] = useState<'' | 'Payment' | 'BankingBridge' | 'ShowPayQR' | 'PaymentLink'>('')
 	/** Add Cash 后：父容器内显示 BeamioAddUSDCFlow 的 Coinbase 确认画面（204-221） */
 	const [eoaAddUsdcOpen, setEoaAddUsdcOpen] = useState(false)
-	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Pay' | 'BeamioPayMeQR'>('')
+	const [aaPanelOpen, setAaPanelOpen] = useState<'' | 'Payment' | 'BeamioPayMeQR'>('')
 	const [ccsaCreateCardOpen, setCcsaCreateCardOpen] = useState(false)
 	const [topUpRedeemOpen, setTopUpRedeemOpen] = useState(false)
 	const [topUpRedeemKey, setTopUpRedeemKey] = useState(0)
@@ -765,7 +760,7 @@ export default function MyWalletDashboardNew() {
 		if (historyPayData) {
 			setPendingPayTarget(historyPayData)
 			setHistoryPayData(null)
-			setEoaPanelOpen('Pay')
+			setEoaPanelOpen('Payment')
 			setPayScreenMode('eoa-pay')
 			setShowFooter(false)
 		}
@@ -1455,7 +1450,7 @@ export default function MyWalletDashboardNew() {
 	const cards: Card[] = [
 		{
 			id: 'eoa',
-			name: 'USDC on Base',
+			name: 'Base 上的 USDC',
 			balance: String(usdcbalance ?? 0),
 			balanceFiat: balanceFiat,
 			address: myAddress || '',
@@ -1465,7 +1460,7 @@ export default function MyWalletDashboardNew() {
 		},
 		{
 			id: 'aa',
-			name: 'Express Pay',
+			name: '快捷支付',
 			balance: aaAccountUsdcBalance,
 			balanceFiat: aaBalanceFiat,
 			address: profiles?.[0]?.aaAccount || '',
@@ -1476,7 +1471,7 @@ export default function MyWalletDashboardNew() {
 		},
 		{
 			id: 'ccsa',
-			name: 'CCSA Card',
+			name: 'CCSA 卡',
 			balance: ccsaBalance,
 			balanceFiat: ccsaBalanceFiat,
 			address: profiles?.[0]?.aaAccount || '',
@@ -1607,7 +1602,7 @@ export default function MyWalletDashboardNew() {
 
 	const handleNewNftSubmit = useCallback(async () => {
 		if (!cardAddressForDetails || !newNftTitle.trim()) {
-			setNewNftError('Please enter a title')
+			setNewNftError('请输入标题')
 			return
 		}
 		const maxSupply = parseInt(newNftMaxSupply, 10)
@@ -1853,7 +1848,7 @@ export default function MyWalletDashboardNew() {
 					>
 						{/* Title 胶囊 */}
 						<div className="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
-							<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">Wallet</h1>
+							<h1 className="text-lg font-bold text-black dark:text-slate-100 tracking-tight">钱包</h1>
 						</div>
 						{/* 按钮组胶囊 */}
 						<div className="flex items-center gap-2 px-2 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full shadow-sm border border-gray-200/80 dark:border-slate-600/50">
@@ -1870,11 +1865,11 @@ export default function MyWalletDashboardNew() {
 								type="button"
 								onClick={() => {
 									setPayScreenMode('aa-eoa-transfer')
-									setAaPanelOpen('Pay')
+									setAaPanelOpen('Payment')
 									setShowFooter(false)
 								}}
 								className="w-9 h-9 rounded-full flex items-center justify-center text-[#1562f0] dark:text-blue-400 active:scale-95 transition-transform"
-								title="Transfer between Main Vault and Express Pay"
+								title="主金库与快捷支付互转"
 							>
 								<ArrowLeftRight className="w-5 h-5" strokeWidth={2.4} />
 							</button>
@@ -1934,7 +1929,7 @@ export default function MyWalletDashboardNew() {
 										>
 											<IpfsImg src={base_icon} alt="Base" className={`w-5 h-5 object-contain ${eoaReflash ? 'animate-spin opacity-80' : ''}`} />
 										</button>
-										<span className="font-medium text-lg tracking-wide">USDC on Base</span>
+										<span className="font-medium text-lg tracking-wide">Base 上的 USDC</span>
 									</div>
 									<div className="text-right">
 										<h2 className="text-2xl font-bold tracking-tight leading-none text-white drop-shadow-sm">
@@ -1977,7 +1972,7 @@ export default function MyWalletDashboardNew() {
 											<Plus size={32} className="text-white" />
 										</div>
 										<h3 className="text-xl font-bold z-10">Create Express Pay</h3>
-										<p className="text-white/70 text-sm mt-2 z-10 text-center px-8">Unlock gas-free payments & exclusive vouchers</p>
+										<p className="text-white/70 text-sm mt-2 z-10 text-center px-8">解锁免 Gas 支付与专属优惠券</p>
 									</button>
 								</div>
 							) : (
@@ -1996,7 +1991,7 @@ export default function MyWalletDashboardNew() {
 											<div className="w-8 h-8 rounded-full border-2 border-white/30 flex items-center justify-center">
 												<Zap className="w-4 h-4 fill-current" />
 											</div>
-											<span className="font-medium text-lg tracking-wide">Express Pay</span>
+											<span className="font-medium text-lg tracking-wide">快捷支付</span>
 										</div>
 										<div className="flex items-center justify-end gap-2 text-right">
 											<button
@@ -2176,7 +2171,7 @@ export default function MyWalletDashboardNew() {
 								type="button"
 								onClick={() => setActiveView(null)}
 								className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
-								aria-label="Close"
+								aria-label="关闭"
 							>
 								<ChevronDown className="w-6 h-6" />
 							</button>
@@ -2186,8 +2181,8 @@ export default function MyWalletDashboardNew() {
 										type="button"
 										onClick={() => setShowNewNftForm(true)}
 										className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 text-white transition-colors"
-										aria-label="New NFT"
-										title="New NFT"
+										aria-label="新建 NFT"
+										title="新建 NFT"
 									>
 										<Layers className="w-6 h-6" />
 									</button>
@@ -2228,7 +2223,7 @@ export default function MyWalletDashboardNew() {
 													{selectedCard.currency ?? (selectedCard.id === 'ccsa' ? 'CAD' : 'USDC')}
 												</span>
 											</h2>
-											<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">Balance</p>
+											<p className="text-[10px] font-bold opacity-70 tracking-widest uppercase mt-1">余额</p>
 										</div>
 										{selectedCard.memberNo ? (
 											<div className="text-xs font-mono opacity-80 tracking-widest pt-2 text-right">
@@ -2277,7 +2272,7 @@ export default function MyWalletDashboardNew() {
 											<div>
 												<h3 className="font-bold text-xl leading-none">{selectedCard.name}</h3>
 												<span className="text-[10px] opacity-80 uppercase tracking-wider">
-													{selectedCard.id === 'eoa' ? 'Main Wallet' : selectedCard.id === 'aa' ? 'Express Pay' : (selectedCard.badge ?? 'Membership')}
+													{selectedCard.id === 'eoa' ? '主钱包' : selectedCard.id === 'aa' ? '快捷支付' : (selectedCard.badge ?? 'Membership')}
 												</span>
 											</div>
 										</div>
@@ -2290,16 +2285,16 @@ export default function MyWalletDashboardNew() {
 									{selectedCard.id === 'eoa' ? (
 										<div className="flex items-start justify-between flex-wrap gap-4">
 											<MiniAction
-												label="Send"
+												label="发送"
 												icon={<ArrowUpRight className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setPayScreenMode('eoa-pay')
-													setEoaPanelOpen('Pay')
+													setEoaPanelOpen('Payment')
 													setShowFooter(false)
 												}}
 											/>
 											<MiniAction
-												label="Request"
+												label="请求"
 												icon={<ArrowDownLeft className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setEoaPanelOpen('ShowPayQR')
@@ -2337,12 +2332,12 @@ export default function MyWalletDashboardNew() {
 												onClick={() => {
 													setPayScreenMode('aa-eoa-transfer')
 													setShowFooter(false)
-													setAaPanelOpen('Pay')
+													setAaPanelOpen('Payment')
 												}}
 											/>
 											
 											<MiniAction
-												label="Pay bill"
+												label="支付账单"
 												icon={<ScanLine className="w-5 h-5 text-slate-800 dark:text-slate-100" strokeWidth={2.4} />}
 												onClick={() => {
 													setScanData('')
@@ -2381,7 +2376,7 @@ export default function MyWalletDashboardNew() {
 										/* CCSA Card：express 风格 Pay / Top Up / New NFT / Details 四键网格 */
 										<div className="grid grid-cols-4 gap-3">
 											<ExpressAction
-												label="Pay"
+												label="Payment"
 												iconBgClass="bg-[#1562f0] shadow-blue-600/30"
 												icon={<Scan className="w-5 h-5" />}
 												onClick={() => {
@@ -2411,7 +2406,7 @@ export default function MyWalletDashboardNew() {
 												}}
 											/>
 											<ExpressAction
-												label="New NFT"
+												label="新建 NFT"
 												iconBgClass="bg-indigo-500 shadow-indigo-500/30"
 												icon={<Layers className="w-5 h-5" />}
 												onClick={() => {
@@ -2460,7 +2455,7 @@ export default function MyWalletDashboardNew() {
 													}}
 												/>
 											) : (
-												<div className="py-6 text-center text-gray-400 text-sm">No active items</div>
+												<div className="py-6 text-center text-gray-400 text-sm">暂无有效项目</div>
 											)}
 										</div>
 
@@ -2470,14 +2465,12 @@ export default function MyWalletDashboardNew() {
 										{/* Recent Activity */}
 										<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 											<div className="flex justify-between items-center mb-4">
-												<h3 className="font-bold text-gray-900">Recent Activity</h3>
+												<h3 className="font-bold text-gray-900">最近动态</h3>
 												<button
 													type="button"
 													onClick={() => navigate('/HistoryAll')}
 													className="text-xs font-bold text-[#1562f0]"
-												>
-													View All
-												</button>
+												>{tu('view_all')}</button>
 											</div>
 											{history.length ? (
 												<div className="space-y-4">
@@ -2507,7 +2500,7 @@ export default function MyWalletDashboardNew() {
 													))}
 												</div>
 											) : (
-												<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+												<div className="text-center py-8 text-gray-400 text-sm">暂无最近交易</div>
 											)}
 										</div>
 									</>
@@ -2520,7 +2513,7 @@ export default function MyWalletDashboardNew() {
 													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 														<div className="flex items-center gap-2 mb-4">
 															<Star className="w-4 h-4 text-orange-500 fill-orange-500" />
-															<h3 className="font-bold text-gray-900">Member Benefits</h3>
+															<h3 className="font-bold text-gray-900">会员权益</h3>
 														</div>
 														<div className="space-y-4">
 															<div className="flex items-start gap-3">
@@ -2528,7 +2521,7 @@ export default function MyWalletDashboardNew() {
 																	<Star className="w-4 h-4 text-[#1562f0]" />
 																</div>
 																<div>
-																	<h4 className="text-sm font-bold text-gray-900">Alliance Discount</h4>
+																	<h4 className="text-sm font-bold text-gray-900">联盟折扣</h4>
 																	<p className="text-xs text-gray-500 leading-relaxed">10% off at participating restaurants.</p>
 																</div>
 															</div>
@@ -2537,8 +2530,8 @@ export default function MyWalletDashboardNew() {
 																	<Zap className="w-4 h-4 text-[#1562f0]" />
 																</div>
 																<div>
-																	<h4 className="text-sm font-bold text-gray-900">Gas-Free</h4>
-																	<p className="text-xs text-gray-500 leading-relaxed">Zero transaction fees on Beamio network.</p>
+																	<h4 className="text-sm font-bold text-gray-900">免 Gas</h4>
+																	<p className="text-xs text-gray-500 leading-relaxed">Beamio 网络零交易手续费。</p>
 																</div>
 															</div>
 														</div>
@@ -2547,33 +2540,33 @@ export default function MyWalletDashboardNew() {
 													{/* Recent Activity */}
 													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 														<div className="flex justify-between items-center mb-4">
-															<h3 className="font-bold text-gray-900">Recent Activity</h3>
-															<span className="text-xs font-bold text-[#1562f0]">View All</span>
+															<h3 className="font-bold text-gray-900">最近动态</h3>
+															<span className="text-xs font-bold text-[#1562f0]">查看全部</span>
 														</div>
-														<div className="text-center py-8 text-gray-400 text-sm">No recent transactions</div>
+														<div className="text-center py-8 text-gray-400 text-sm">暂无最近交易</div>
 													</div>
 
 													{/* Card Information - VoucherDetailModal 风格（仅 CCSA） */}
 													<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 														<div className="flex items-center gap-2 mb-4">
 															<Info className="w-4 h-4 text-gray-400" />
-															<h3 className="font-bold text-gray-900">Card Information</h3>
+															<h3 className="font-bold text-gray-900">卡信息</h3>
 														</div>
 														<div className="space-y-3">
 															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Issuer</span>
+																<span className="text-gray-500">发行方</span>
 																<span className="font-medium text-gray-900">Canada Chinese Restaurant Alliance</span>
 															</div>
 															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Network</span>
-																<span className="font-medium text-gray-900">Base Mainnet</span>
+																<span className="text-gray-500">网络</span>
+																<span className="font-medium text-gray-900">Base 主网</span>
 															</div>
 															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Standard</span>
+																<span className="text-gray-500">标准</span>
 																<span className="font-medium text-gray-900">ERC-1155</span>
 															</div>
 															<div className="flex justify-between text-xs">
-																<span className="text-gray-500">Contract</span>
+																<span className="text-gray-500">合约</span>
 																<span className="font-mono text-gray-500">
 																	{CCSA_Card_Address ? `${CCSA_Card_Address.slice(0, 6)}...${CCSA_Card_Address.slice(-4)}` : '—'}
 																</span>
@@ -2582,7 +2575,7 @@ export default function MyWalletDashboardNew() {
 																<span className="text-gray-500 flex items-center gap-1">
 																	<ShieldCheck className="w-3 h-3 text-green-500" /> Audit Status
 																</span>
-																<span className="font-bold text-green-600">Verified</span>
+																<span className="font-bold text-green-600">已验证</span>
 															</div>
 														</div>
 													</div>
@@ -2592,15 +2585,15 @@ export default function MyWalletDashboardNew() {
 												<div className="bg-white rounded-[24px] p-5 shadow-sm mb-4">
 													<div className="flex items-center gap-2 mb-4">
 														<Info className="w-4 h-4 text-gray-400" />
-														<h3 className="font-bold text-gray-900">Card Information</h3>
+														<h3 className="font-bold text-gray-900">卡信息</h3>
 													</div>
 													<div className="space-y-3">
 														<div className="flex justify-between text-xs">
-															<span className="text-gray-500">Network</span>
-															<span className="font-medium text-gray-900">Base Mainnet</span>
+															<span className="text-gray-500">网络</span>
+															<span className="font-medium text-gray-900">Base 主网</span>
 														</div>
 														<div className="flex justify-between text-xs">
-															<span className="text-gray-500">Contract</span>
+															<span className="text-gray-500">合约</span>
 															<span className="font-mono text-gray-500" title={BEAMIO_USER_CARD_ASSET_ADDRESS}>
 																{BEAMIO_USER_CARD_ASSET_ADDRESS.slice(0, 10)}...{BEAMIO_USER_CARD_ASSET_ADDRESS.slice(-8)}
 															</span>
@@ -2642,9 +2635,7 @@ export default function MyWalletDashboardNew() {
 																setTopUpRedeemOpen(true)
 															}}
 															className="text-[12px] font-semibold text-[#1D5BFF] active:opacity-70 px-3 py-1.5 rounded-lg bg-blue-50"
-														>
-															Top Up
-														</button>
+														>{tu('top_up')}</button>
 													)}
 												</div>
 												{userCards.length > 0 ? (
@@ -2669,7 +2660,7 @@ export default function MyWalletDashboardNew() {
 																			copyCardAddress(card.cardAddress)
 																		}}
 																		className="shrink-0 p-1 rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-700/50 transition-colors active:scale-95"
-																		aria-label="Copy address"
+																		aria-label="复制地址"
 																	>
 																		<AnimatePresence mode="wait">
 																			{copiedCardAddress === card.cardAddress ? (
@@ -2748,12 +2739,12 @@ export default function MyWalletDashboardNew() {
 							</div>
 							<div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
 								<div className="flex items-center justify-between mb-4">
-									<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">New NFT</h2>
+									<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">新建 NFT</h2>
 									<button
 										type="button"
 										onClick={() => !newNftSubmitting && setShowNewNftForm(false)}
 										className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
-										aria-label="Close"
+										aria-label="关闭"
 									>
 										<X className="w-5 h-5" />
 									</button>
@@ -2769,7 +2760,7 @@ export default function MyWalletDashboardNew() {
 								)}
 								<div className="space-y-4">
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title (event name)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">标题（活动名称）</label>
 										<input
 											type="text"
 											value={newNftTitle}
@@ -2779,7 +2770,7 @@ export default function MyWalletDashboardNew() {
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Description (EIP-1155)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">描述 (EIP-1155)</label>
 										<textarea
 											value={newNftDescription}
 											onChange={(e) => setNewNftDescription(e.target.value)}
@@ -2790,7 +2781,7 @@ export default function MyWalletDashboardNew() {
 									</div>
 									<div className="grid grid-cols-2 gap-3">
 										<div>
-											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Valid from (optional)</label>
+											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">有效期起（选填）</label>
 											<input
 												type="datetime-local"
 												value={newNftValidAfter}
@@ -2799,7 +2790,7 @@ export default function MyWalletDashboardNew() {
 											/>
 										</div>
 										<div>
-											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Valid until (optional)</label>
+											<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">有效期止（选填）</label>
 											<input
 												type="datetime-local"
 												value={newNftValidBefore}
@@ -2809,7 +2800,7 @@ export default function MyWalletDashboardNew() {
 										</div>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Max supply</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">最大供应量</label>
 										<input
 											type="number"
 											min={1}
@@ -2820,7 +2811,7 @@ export default function MyWalletDashboardNew() {
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Price (card currency, 0 = free)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">价格（卡币种，0 = 免费）</label>
 										<input
 											type="number"
 											min={0}
@@ -2832,7 +2823,7 @@ export default function MyWalletDashboardNew() {
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Image (EIP-1155)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">图片 (EIP-1155)</label>
 										<div className="flex items-center gap-2 flex-wrap">
 											<input
 												ref={newNftImageInputRef}
@@ -2852,7 +2843,7 @@ export default function MyWalletDashboardNew() {
 											</button>
 											{newNftImageUrl ? (
 												<>
-													<a href={newNftImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1562f0] truncate max-w-[140px]" title={newNftImageUrl}>Link</a>
+													<a href={newNftImageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1562f0] truncate max-w-[140px]" title={newNftImageUrl}>链接</a>
 													<button type="button" onClick={() => setNewNftImageUrl('')} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400" aria-label="Remove image">
 														<Trash2 className="w-4 h-4" />
 													</button>
@@ -2866,7 +2857,7 @@ export default function MyWalletDashboardNew() {
 										)}
 									</div>
 									<div>
-										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Background color (optional, e.g. #6366f1)</label>
+										<label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">背景色（选填，如 #6366f1）</label>
 										<div className="flex items-center gap-2">
 											<input
 												type="color"
@@ -2914,7 +2905,7 @@ export default function MyWalletDashboardNew() {
 							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
 						</div>
 						<div className="px-4 pb-4 overflow-y-auto">
-							{eoaPanelOpen === 'Pay' && (
+							{eoaPanelOpen === 'Payment' && (
 								<PayScreen
 									mode="eoa-pay"
 									beamioer={pendingPayTarget ?? undefined}
@@ -2979,7 +2970,7 @@ export default function MyWalletDashboardNew() {
 							<div className="h-1 w-10 rounded-full bg-slate-300/70 dark:bg-white/15" />
 						</div>
 						<div className="px-4 pb-4 overflow-y-auto">
-							{aaPanelOpen === 'Pay' && (
+							{aaPanelOpen === 'Payment' && (
 								<PayScreen
 									mode={payScreenMode}
 									close={() => closeAaPanel()}
@@ -3109,8 +3100,8 @@ export default function MyWalletDashboardNew() {
 									<div className="w-16 h-16 rounded-full bg-[#1652f0] flex items-center justify-center mb-6">
 										<Loader className="w-8 h-8 text-white animate-spin" strokeWidth={2.5} />
 									</div>
-									<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Minting to AA...</p>
-									<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Executing Logic Hook</p>
+									<p className="text-lg font-bold text-slate-900 dark:text-slate-100">正在铸造至 AA...</p>
+									<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">正在执行 Logic Hook</p>
 								</div>
 							) : redeemSuccessTx ? (
 								/* Success: Redeemed Successfully */
@@ -3119,7 +3110,7 @@ export default function MyWalletDashboardNew() {
 										<div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center shrink-0">
 											<Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
 										</div>
-										<p className="text-lg font-bold text-slate-900 dark:text-slate-100">Redeemed Successfully</p>
+										<p className="text-lg font-bold text-slate-900 dark:text-slate-100">兑换成功</p>
 									</div>
 
 									{/* 卡面 - CCSA 或通用 BeamioUserCard（UserCard 使用 metadata 的 image、background） */}
@@ -3128,7 +3119,7 @@ export default function MyWalletDashboardNew() {
 											<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
 												{isCcsaCard(redeemCardNumberInput) ? (
 													<>
-														<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+														<IpfsImg src={ccsabackphoto} alt="CCSA 卡" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 														<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 													</>
 												) : (
@@ -3188,15 +3179,15 @@ export default function MyWalletDashboardNew() {
 									<div className="rounded-2xl bg-slate-100 dark:bg-slate-800/50 p-4 space-y-3">
 										<div className="flex items-center justify-between">
 											<span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">New Transaction</span>
-											<span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-xs font-semibold">Confirmed</span>
+											<span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-xs font-semibold">已确认</span>
 										</div>
 										<div className="rounded-xl bg-white dark:bg-slate-800 p-4 flex items-center gap-4">
 											<div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center shrink-0">
 												<ArrowDownLeft className="w-5 h-5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
 											</div>
 											<div className="flex-1 min-w-0">
-												<p className="font-semibold text-slate-900 dark:text-slate-100">Stored Value Added</p>
-												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Just now</p>
+												<p className="font-semibold text-slate-900 dark:text-slate-100">储值已到账</p>
+												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">刚刚</p>
 											</div>
 											<div className="text-right shrink-0">
 												<p className="text-base font-bold text-emerald-600 dark:text-emerald-400">+ {redeemDetails ? (() => {
@@ -3245,15 +3236,13 @@ export default function MyWalletDashboardNew() {
 											}
 										}}
 										className="w-full py-4 rounded-2xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-base uppercase tracking-wide"
-									>
-										Done
-									</button>
+									>{tu('done')}</button>
 								</div>
 							) : (
 								<>
 							{/* Header */}
-							<h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-0.5 text-center">Redeem Asset</h3>
-							<p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">Mint to Express Pay (Smart Account)</p>
+							<h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-0.5 text-center">兑换资产</h3>
+							<p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">铸造至快捷支付（智能账户）</p>
 
 							{/* Asset Card - CCSA 风格（基础设施卡）或通用 BeamioUserCard 风格（使用 metadata image/background）；加载失败时显示错误提示 */}
 							{(redeemDetailsLoading || redeemDetails || (redeemCodeInput.trim() && !redeemDetailsLoading && !redeemDetails)) && (
@@ -3266,7 +3255,7 @@ export default function MyWalletDashboardNew() {
 										<div className="relative w-full aspect-[1.58/1] rounded-[24px] overflow-hidden shadow-2xl">
 											{isCcsaCard(redeemCardNumberInput) ? (
 												<>
-													<IpfsImg src={ccsabackphoto} alt="CCSA Card" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+													<IpfsImg src={ccsabackphoto} alt="CCSA 卡" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
 													<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.18)_0%,rgba(0,0,0,0.02)_38%,rgba(0,0,0,0.18)_100%)]" />
 												</>
 											) : (
@@ -3370,7 +3359,7 @@ export default function MyWalletDashboardNew() {
 
 							{/* Card address (optional) - 折叠或小字 */}
 							<details className="mb-4">
-								<summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">Card address (optional)</summary>
+								<summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">卡地址（选填）</summary>
 								<input
 									id="redeem-card-number"
 									type="text"
@@ -3416,7 +3405,7 @@ export default function MyWalletDashboardNew() {
 										if (result.success && result.tx) {
 											setRedeemSuccessTx(result.tx)
 										} else {
-											let err = result.error ?? 'Redeem failed'
+											let err = result.error ?? '兑换失败'
 											if (result.status === 404) err = 'API endpoint not found (404). The cardRedeem API may not be deployed yet.'
 											else if (result.status && result.status >= 400) err = `Redeem failed: ${err}${result.status ? ` [HTTP ${result.status}]` : ''}`
 											setRedeemError(err)
@@ -3436,9 +3425,7 @@ export default function MyWalletDashboardNew() {
 												setRedeemDetails(null)
 											}}
 											className="flex-1 py-3.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-										>
-											Cancel
-										</button>
+										>{tu('cancel')}</button>
 										<button
 											type="submit"
 											disabled={redeemLoading || !redeemCodeInput.trim()}

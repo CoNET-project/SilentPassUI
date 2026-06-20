@@ -6,6 +6,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { postToIPFS } from "@/services/beamio"
 import { X, Check, Plus } from "lucide-react"
 import { prepareImageFileForIpfsUpload } from "@/utils/ipfsCardImageUpload"
+import { tu } from '@/locale/beamioLocale'
 
 const IPFS_GET_FRAGMENT = "https://ipfs.conet.network/api/getFragment?hash="
 
@@ -203,8 +204,8 @@ async function maybeDownscaleToBlob(file: File) {
 }
 
 export default function DiceBearCardFullscreenEditor({
-	initialTitle = "Your dynamic text goes here",
-	initialDetail = "Write some detail…",
+	initialTitle = "在此输入动态文字",
+	initialDetail = "填写详情…",
 	initialBgIndex = 0,
 	onClose,
 	currencyText,
@@ -659,9 +660,7 @@ export default function DiceBearCardFullscreenEditor({
 
       {uploadingIPFS && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30">
-          <p className="text-sm text-white drop-shadow flex items-center gap-1">
-            Uploading image to IPFS, please wait
-            <span className="inline-flex w-4">
+          <p className="text-sm text-white drop-shadow flex items-center gap-1">{tu('uploading_image_to_ipfs_please_wait')}<span className="inline-flex w-4">
               <span className="animate-dot">.</span>
               <span className="animate-dot delay-200">.</span>
               <span className="animate-dot delay-400">.</span>
@@ -697,7 +696,7 @@ export default function DiceBearCardFullscreenEditor({
           mt-16
         "
         style={{ top: NAV_TOP }}
-        aria-label="Cancel"
+        aria-label="取消"
       >
         <X className="w-5 h-5 mx-auto text-white/40 translate-y-[2px]" />
       </button>
@@ -718,7 +717,7 @@ export default function DiceBearCardFullscreenEditor({
           mt-16
         "
         style={{ top: NAV_TOP }}
-        aria-label="OK"
+        aria-label="确定"
       >
         <Check className="w-5 h-5 mx-auto text-white/40 translate-y-[2px]" />
       </button>
@@ -759,7 +758,7 @@ export default function DiceBearCardFullscreenEditor({
                 TITLE_CLASS
               ].join(" ")}
               style={{ whiteSpace: "pre-wrap" }}
-              placeholder="Your dynamic text goes here"
+              placeholder="在此输入动态文字"
             />
           ) : (
             <button
@@ -798,7 +797,7 @@ export default function DiceBearCardFullscreenEditor({
                   DETAIL_CLASS
                 ].join(" ")}
                 style={{ whiteSpace: "pre-wrap" }}
-                placeholder="Write some detail…"
+                placeholder="填写详情…"
               />
             ) : (
               <button

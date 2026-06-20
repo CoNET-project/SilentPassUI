@@ -6,6 +6,7 @@ import {ethers} from 'ethers'
 import {redeemCodeHash} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import RedeemSuccessScreen from './RedeemSuccessScreen'
+import { tu } from '@/locale/beamioLocale'
 
 
 type IGtCheckMemooo = {
@@ -331,9 +332,7 @@ const RedeemScreen = ({close}: Prof) => {
 									onClick={() => {
 										close()
 									}}
-									>
-									Cancel
-									</AppButton>
+									>{tu('cancel')}</AppButton>
 								</div>
 								)}
 

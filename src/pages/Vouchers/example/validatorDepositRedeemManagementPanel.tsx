@@ -12,6 +12,7 @@ import {
 	signValidatorDepositRedeemCreate,
 	validatorDepositRedeemCodeHash,
 } from '@/services/BeamioCard'
+import { tu } from '@/locale/beamioLocale'
 import {
 	appendStoredValidatorRedeemCode,
 	loadStoredValidatorRedeemCodes,
@@ -268,7 +269,7 @@ export function ValidatorDepositRedeemManagementPanel({
 							<Shield className="h-5 w-5" strokeWidth={2} aria-hidden />
 						</div>
 						<div>
-							<h3 className="text-lg font-extrabold tracking-tight text-[#2c2f31]">Validator Management</h3>
+							<h3 className="text-lg font-extrabold tracking-tight text-[#2c2f31]">验证者管理</h3>
 							<p className="text-xs font-medium text-slate-500">
 								Redeem admin · {shortAddr(adminEoa)} · contract {shortAddr(CONET_VALIDATOR_DEPOSIT_REDEEM)}
 							</p>
@@ -438,7 +439,7 @@ function StoredRedeemRow({
 				? 'Active'
 				: chain?.valid
 					? 'Inactive'
-					: 'Unknown'
+					: '未知'
 
 	return (
 		<li className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -498,9 +499,7 @@ function StoredRedeemRow({
 						disabled={busy}
 						className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
 					>
-						<XCircle className="h-3.5 w-3.5" />
-						Cancel
-					</button>
+						<XCircle className="h-3.5 w-3.5" />{tu('cancel')}</button>
 				) : null}
 			</div>
 			{row.cancelTxHash ? (

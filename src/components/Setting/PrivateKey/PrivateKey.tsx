@@ -148,7 +148,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                     active:scale-95
                     transition
                   "
-                  aria-label={pwVisible ? 'Hide password' : 'Show password'}
+                  aria-label={pwVisible ? '隐藏密码' : '显示密码'}
                 >
                   {pwVisible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
@@ -279,7 +279,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                   )
                 }
               >
-                {copied ? 'Copied' : 'Copy to Clipboard'}
+                {copied ? '已复制' : 'Copy to Clipboard'}
               </AppButton>
             </div>
           </>

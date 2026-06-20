@@ -1104,7 +1104,7 @@ export async function fetchIssuedNftClaimWallets(
 			items: Array.isArray(json.items) ? json.items : [],
 		}
 	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : 'Network error'
+		const message = err instanceof Error ? err.message : '网络错误'
 		return { ok: false, error: message }
 	}
 }

@@ -46,7 +46,7 @@ const unknowAcc = (address: string):searchResult => {
 		last_name: '',
 		follow_count: '',
 		follower_count: '',
-		username: 'Unknow',
+		username: '未知',
 		image: ''
 	}
 	return ret
@@ -131,7 +131,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 			)
 		}
 		// 如果 fromBeamio 已加载且不是 Unknow，显示头像
-		if (fromBeamio && fromBeamio.username !== 'Unknow') {
+		if (fromBeamio && fromBeamio.username !== '未知') {
 			const imgSrc = fromBeamio.image || getImg(fromBeamio.username)
 			return (
 				<IpfsImg
@@ -191,7 +191,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 						{isCashcodePending ? "You Cashcode is Active" : (fromBeamio ? displayName(fromBeamio) : "")}
 					</span>
 					{
-						fromBeamio?.username !=='Unknow' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
+						fromBeamio?.username !=='未知' ? <span className="block text-[10px] text-slate-500 truncate leading-tight">
 							@{fromBeamio?.username}
 						</span> : (
 							<span className="block text-[10px] text-slate-500 truncate leading-tight">
@@ -254,7 +254,7 @@ const SenderBmo = ({address, note, dateData, tx, localMode, isCashcodePending, a
 						<IpfsImg
 							src={giftEnvelope}
 							className="w-5 block pointer-events-none"
-							alt="Gift Envelope"
+							alt="礼品信封"
 						/>
 						</span>
 					</div>

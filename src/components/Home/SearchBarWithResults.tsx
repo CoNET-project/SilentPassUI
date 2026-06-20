@@ -10,6 +10,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {ethers} from 'ethers'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import NavigateLeftButton from '@/components/navigate'
+import { tu } from '@/locale/beamioLocale'
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
@@ -49,7 +50,7 @@ const isPaymentUrl = (raw: string): boolean => {
 		if (!raw || typeof raw !== 'string') return false
 		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.app')
 		const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
-		const currency = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
+		const currency = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
 		const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
 		if (!amount || Number(amount) <= 0) return false
 		if (!currency || !acceptTokens) return false
@@ -774,9 +775,7 @@ const SearchInputWithDropdown =
 									})}
 
 								{!loading && results.length === 0 && (
-									<div className="px-3 py-2.5 text-[12px] text-slate-400">
-										No results
-									</div>
+									<div className="px-3 py-2.5 text-[12px] text-slate-400">{tu('no_results')}</div>
 								)}
 							</div>
 						</div>

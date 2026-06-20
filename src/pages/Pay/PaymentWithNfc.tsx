@@ -34,7 +34,7 @@ export default function PaymentWithNfc({ onClose }: Props) {
 
 	return (
 		<div className="flex flex-col min-h-full bg-white dark:bg-slate-900">
-			<BeamioNavBack title="Payment with NFC" onClose={onClose} onMore={() => {}} />
+			<BeamioNavBack title="PaymentNFC" onClose={onClose} onMore={() => {}} />
 			<div className="flex-1 px-6 py-8 overflow-auto">
 				<div className="flex flex-col items-center gap-6">
 					<div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">

@@ -23,7 +23,7 @@ const unknowAcc = (address: string): searchResult => ({
   last_name: "",
   follow_count: "",
   follower_count: "",
-  username: "Unknow",
+  username: "未知",
   image: ""
 })
 
@@ -115,8 +115,8 @@ function usePeerProfile(address: string) {
     findUser()
   }, [findUser])
 
-  const name = peer.username !== "Unknow" ? displayName(peer) : fmtAddr(peer.address)
-  const avatar = peer.username !== "Unknow" ? (img || getImg(peer.username)) : ""
+  const name = peer.username !== "未知" ? displayName(peer) : fmtAddr(peer.address)
+  const avatar = peer.username !== "未知" ? (img || getImg(peer.username)) : ""
 
   return { peer, name, avatar }
 }

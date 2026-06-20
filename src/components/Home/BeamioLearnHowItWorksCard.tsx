@@ -34,7 +34,7 @@ export default function BeamioLearnHowItWorksCard() {
         <section className="text-[11px] text-slate-700 space-y-2 mb-4">
           <p className="font-semibold text-slate-900">Your Beamio wallet</p>
           <p>
-            Beamio creates a wallet on your device for <span className="font-medium">USDC on Base</span>. You can use it to send and receive small payments with <span className="font-medium">no gas fees</span>. This wallet is self-custodial – funds go directly to you.
+            Beamio creates a wallet on your device for <span className="font-medium">Base 上的 USDC</span>. You can use it to send and receive small payments with <span className="font-medium">no gas fees</span>. This wallet is self-custodial – funds go directly to you.
           </p>
         </section>
 
@@ -43,7 +43,7 @@ export default function BeamioLearnHowItWorksCard() {
           <p className="font-semibold text-slate-900">Receive USDC</p>
           <ul className="list-disc list-inside space-y-1">
             <li>
-              Open <span className="font-medium">Receive</span> to show your QR code and Beamio address.
+              Open <span className="font-medium">收款</span> to show your QR code and Beamio address.
             </li>
             <li>
               Share the QR or address from another wallet to send USDC into this wallet.

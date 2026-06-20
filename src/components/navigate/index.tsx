@@ -39,7 +39,7 @@ const NavigateLeftButton = () => {
 				active:scale-95
 				transition
 			"
-			aria-label="Back"
+			aria-label="返回"
 			>
 			<ChevronLeft className="w-5 h-5 stroke-[2.5]" />
 			</button>

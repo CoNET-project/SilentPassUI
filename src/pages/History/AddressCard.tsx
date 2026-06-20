@@ -44,7 +44,7 @@ export default function AddressCard({ address }: { address: string }) {
           ) : (
             <Copy className="w-3 h-3" />
           )}
-          {copied ? "Copied" : "Copy"}
+          {copied ? "已复制" : "复制"}
         </button>
       </div>
 

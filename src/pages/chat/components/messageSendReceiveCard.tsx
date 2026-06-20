@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 
 type MessageSendReceiveCardProps = {
 	variant: "sent" | "received" | "cashcode" | "membershipActivated"
-	status?: "Completed" | "Pending" | "Failed" | string
+	status?: "Completed" | "待处理" | "Failed" | string
 	amount: number
 	title: string
 	timeLabel?: string

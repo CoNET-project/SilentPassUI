@@ -17,6 +17,7 @@ import {
 
 import FeeInfo from '@/pages/Pay/PaymentLink/FeeInfo'
 import {fiatPrefix, formatTimeDetail} from '@/services/currency'
+import { tu } from '@/locale/beamioLocale'
 
 
 // 0.8% fee, min 0.02, max 2 USDC
@@ -174,9 +175,7 @@ function FeeInline({
 						
 						<div className="flex items-start justify-between">
 							{/* 左侧 */}
-							<span className="text-slate-500 leading-snug">
-								Receive
-							</span>
+							<span className="text-slate-500 leading-snug">{tu('receive')}</span>
 
 							{/* 右侧：两行，右对齐 */}
 							<div className="flex flex-col items-end leading-snug">

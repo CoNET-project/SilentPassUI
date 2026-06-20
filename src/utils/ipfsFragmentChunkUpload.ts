@@ -108,7 +108,7 @@ function wrapNetworkError(err: unknown): Error {
       'Background upload failed: network error reaching ipfs.conet.network. Check your connection and try again.'
     );
   }
-  return err instanceof Error ? err : new Error(msg || 'Upload failed');
+  return err instanceof Error ? err : new Error(msg || '上传失败');
 }
 
 /**

@@ -197,7 +197,7 @@ const CheckInputSection = forwardRef<CheckInputSectionHandle, CheckInputSectionP
 
         {/* 实际到账 */}
         <div className="flex items-baseline justify-between">
-          <span className="text-sm text-current/70">Receive</span>
+          <span className="text-sm text-current/70">收款</span>
           <span className="text-[20px] font-semibold text-current">
             {formatMoney(net)} {currency}
           </span>

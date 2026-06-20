@@ -27,7 +27,7 @@ export function BeamioBetaAccess({
             transition
             flex items-center justify-center
           "
-          aria-label="Close"
+          aria-label="关闭"
         >
           <X className="h-5 w-5 text-slate-600" strokeWidth={2.5} />
         </button>

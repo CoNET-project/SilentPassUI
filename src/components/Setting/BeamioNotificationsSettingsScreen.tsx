@@ -1,6 +1,7 @@
 import { X, Bell, Info, Mail, Smartphone } from "lucide-react";
 
 import {AppButton} from '@/components/button/AppButton'
+import { tu } from '@/locale/beamioLocale'
 
 type prof = {
 	colse: () => void
@@ -20,7 +21,7 @@ export default function BeamioNotificationsSettingsScreen({colse}:prof) {
               <Bell className="h-4 w-4 text-slate-700" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-900">Notifications</h1>
+              <h1 className="text-lg font-semibold text-slate-900">通知</h1>
               <p className="text-xs text-slate-500 mt-0.5">
                 Choose which alerts you want from Beamio. This screen is UI-only in the early access version.
               </p>
@@ -124,9 +125,7 @@ export default function BeamioNotificationsSettingsScreen({colse}:prof) {
 						onClick={() => colse()}
 						
 						fullWidth
-					>
-						Done
-					</AppButton>
+					>{tu('done')}</AppButton>
         </footer>
       </aside>
     </div>

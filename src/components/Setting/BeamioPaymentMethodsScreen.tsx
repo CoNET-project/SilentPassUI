@@ -1,5 +1,6 @@
 import { X, CreditCard, ArrowUpRight, ArrowDownRight, ExternalLink, Info } from "lucide-react";
 import {AppButton} from '@/components/button/AppButton'
+import { tu } from '@/locale/beamioLocale'
 
 type prof = {
 	colse: () => void
@@ -20,7 +21,7 @@ export default function BeamioPaymentMethodsScreen({colse}:prof) {
               <CreditCard className="h-4 w-4 text-slate-700" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-900">Payment methods</h1>
+              <h1 className="text-lg font-semibold text-slate-900">支付方式</h1>
               <p className="text-xs text-slate-500 mt-0.5">
                 Beamio connects to Coinbase for on-ramp and off-ramp. This screen is UI-only in the MVP.
               </p>
@@ -123,9 +124,7 @@ export default function BeamioPaymentMethodsScreen({colse}:prof) {
 						onClick={() => colse()}
 						
 						fullWidth
-					>
-						Done
-					</AppButton>
+					>{tu('done')}</AppButton>
         </footer>
       </aside>
     </div>

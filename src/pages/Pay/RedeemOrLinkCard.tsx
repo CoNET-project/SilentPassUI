@@ -108,7 +108,7 @@ export const RedeemOrLinkCard = ({
 						hover:bg-white/30 dark:hover:bg-slate-900/45
 						transition
 						"
-					aria-label="Close"
+					aria-label="关闭"
 				>
 					<X className="w-4 h-4" />
 				</button>

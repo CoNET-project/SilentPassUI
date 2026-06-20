@@ -198,7 +198,7 @@ const RestoreEntryScreen = ({
 							onClose()
 						}}
 						className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#595c5e] transition hover:bg-black/5 ${bizBrandFocusRingClass}`}
-						aria-label="Back"
+						aria-label="返回"
 					>
 						<ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
 					</button>
@@ -313,7 +313,7 @@ const RestoreEntryScreen = ({
 												setPeekPin((p) => !p)
 											}
 										}}
-										aria-label={peekPin ? 'Hide password' : 'Show password'}
+										aria-label={peekPin ? '隐藏密码' : '显示密码'}
 									>
 										{peekPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
 									</button>
@@ -343,7 +343,7 @@ const RestoreEntryScreen = ({
 										${bizBrandFocusRingClass}
 									`}
 								>
-									{loadingTag ? 'Signing in…' : 'Login & Restore Account'}
+									{loadingTag ? '登录中…' : 'Login & Restore Account'}
 									<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 								</button>
 							</div>

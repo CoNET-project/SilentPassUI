@@ -1,6 +1,6 @@
 import { wipeSessionSecrets } from '@/utils/beamioSessionSecrets'
 
-/** User chose "Lock Wallet": block protected routes until password unlock (localStorage so all tabs respect lock). */
+/** User chose "锁定钱包": block protected routes until password unlock (localStorage so all tabs respect lock). */
 const WORKSPACE_SCREEN_LOCK_KEY = 'beamio_workspace_screen_lock_v1'
 
 /** Set after successful biz gateway password login this browser tab session only. */

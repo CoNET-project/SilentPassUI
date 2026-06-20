@@ -16,6 +16,7 @@ import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { BEAMIO_TAG_ALLOWED_RE, BEAMIO_TAG_RULE_HINT, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 import RestoreAccessPage from '@/pages/Home/RestoreAccessPage'
 import { markWorkspaceSessionUnlocked } from '@/utils/beamioWorkspaceLock'
+import { tu } from '@/locale/beamioLocale'
 import {
 	hydrateProfilesWithSessionSecrets,
 	ingestSessionPrivateKeyFromProfiles,
@@ -196,7 +197,7 @@ const BizHome = () => {
 			const result = await restoreWithUserPin(username, password, false)
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
-				setLoginError('Invalid Beamio Tag or Recovery Password, please try again')
+				setLoginError(tu('invalid_beamio_tag_or_recovery_password_please_try_again'))
 				return
 			}
 			await assembleEncryptKeysObject(
@@ -216,7 +217,7 @@ const BizHome = () => {
 				setIsLoading(false)
 			}, 400)
 		} catch {
-			setLoginError('Login failed, please try again later')
+			setLoginError(tu('login_failed_please_try_again_later'))
 		} finally {
 			if (!willTransitionToHome) {
 				setIsLoading(false)
@@ -304,16 +305,12 @@ const BizHome = () => {
 						</div>
 
 						<div className="space-y-6">
-							<h1 className="px-4 text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">
-								Preparing your business workspace…
-							</h1>
+							<h1 className="px-4 text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">{tu('preparing_your_business_workspace')}</h1>
 							<p className="px-6 text-lg font-medium leading-relaxed text-[#595c5e]">
 								We&apos;re verifying your business access and getting Beamio Business OS ready.
 							</p>
 							<div className="pt-8">
-								<span className="biz-signing-pulse-soft inline-block rounded-full bg-[#eef1f3] px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#515c70]">
-									This usually takes a few seconds.
-								</span>
+								<span className="biz-signing-pulse-soft inline-block rounded-full bg-[#eef1f3] px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#515c70]">{tu('this_usually_takes_a_few_seconds')}</span>
 							</div>
 						</div>
 					</main>
@@ -324,7 +321,7 @@ const BizHome = () => {
 					>
 						<div className="flex max-w-lg flex-col items-center gap-4">
 							<div className="flex items-center gap-2">
-								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>Beamio Identity</span>
+								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>Beamio 身份</span>
 							</div>
 							<div className="flex items-start gap-3 sm:items-center">
 								<div className="relative mt-1 flex h-2 w-2 shrink-0 sm:mt-0">
@@ -364,7 +361,7 @@ const BizHome = () => {
 				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-6 py-4">
 					<div className="flex items-center gap-2">
 						<Fingerprint className="h-5 w-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
-						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>BEAMIO GATEWAY</span>
+						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>BEAMIO 网关</span>
 					</div>
 					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#dfe3e6]">
 						<Briefcase className="h-4 w-4 text-[#595c5e]" strokeWidth={2} aria-hidden />
@@ -374,22 +371,16 @@ const BizHome = () => {
 
 			<main className="mx-auto flex w-full max-w-md flex-grow flex-col px-6 pb-24 pt-12">
 				<section className="mb-12">
-					<h1 className={`${headlineFont} mb-3 text-2xl font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-3xl`}>
-						Access your business workspace
-					</h1>
-					<p className="text-base leading-relaxed text-[#595c5e]">
-						Use your BeamioTag and password to continue to Beamio Business OS.
-					</p>
+					<h1 className={`${headlineFont} mb-3 text-2xl font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-3xl`}>{tu('access_your_business_workspace')}</h1>
+					<p className="text-base leading-relaxed text-[#595c5e]">{tu('use_your_beamiotag_and_password_to_continue_to_beamio_business_os')}</p>
 				</section>
 
 				<div className="mb-12 h-1 w-24 shrink-0 rounded-full bg-[#0051d1] opacity-20" aria-hidden />
 
 				<section className="rounded-xl bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
 					<div className="mb-8">
-						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>Continue with your business identity</h2>
-						<p className="text-sm leading-snug text-[#595c5e]">
-							Enter the business identity you just created to access your Beamio workspace.
-						</p>
+						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>使用商户身份继续</h2>
+						<p className="text-sm leading-snug text-[#595c5e]">{tu('enter_the_business_identity_you_just_created_to_access_your_beamio_works')}</p>
 					</div>
 
 					<form onSubmit={handleLogin} className="space-y-6">
@@ -416,9 +407,7 @@ const BizHome = () => {
 							/>
 							<div className="mt-2 flex items-start gap-2 px-1">
 								<Info className="mt-0.5 h-4 w-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-								<p className="text-[11px] leading-normal text-[#595c5e]">
-									Your BeamioTag is your business identity on Beamio.
-								</p>
+								<p className="text-[11px] leading-normal text-[#595c5e]">{tu('your_beamiotag_is_your_business_identity_on_beamio')}</p>
 							</div>
 						</div>
 
@@ -426,9 +415,7 @@ const BizHome = () => {
 							<label
 								htmlFor="biz-gateway-password"
 								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]`}
-							>
-								ACCESS PASSWORD
-							</label>
+							>{tu('access_password')}</label>
 							<div className="relative">
 								<input
 									id="biz-gateway-password"
@@ -447,7 +434,7 @@ const BizHome = () => {
 									tabIndex={-1}
 									className="absolute right-4 top-1/2 -translate-y-1/2 text-[#595c5e] transition-colors hover:text-[#0051d1]"
 									onClick={() => setShowPassword((s) => !s)}
-									aria-label={showPassword ? 'Hide password' : 'Show password'}
+									aria-label={showPassword ? '隐藏密码' : '显示密码'}
 								>
 									{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
 								</button>
@@ -468,13 +455,9 @@ const BizHome = () => {
 							>
 								{isLoading ? (
 									<>
-										<span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-										Signing in…
-									</>
+										<span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />{tu('signing_in')}</>
 								) : (
-									<>
-										Continue to Beamio Business OS
-										<ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
+									<>{tu('continue_to_beamio_business_os')}<ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
 									</>
 								)}
 							</button>
@@ -486,9 +469,7 @@ const BizHome = () => {
 								onClick={() => setShowRestoreAccess(true)}
 								className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]"
 							>
-								<Briefcase className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
-								Already have a workspace? Restore Account
-							</button>
+								<Briefcase className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />{tu('already_have_a_workspace_restore_account')}</button>
 						</div>
 					</form>
 				</section>
@@ -498,13 +479,9 @@ const BizHome = () => {
 						href="mailto:support@beamio.app?subject=Beamio%20Business%20workspace"
 						className={`${headlineFont} mx-auto inline-flex items-center justify-center gap-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]`}
 					>
-						<HelpCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-						Need help accessing your workspace?
-					</a>
+						<HelpCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />{tu('need_help_accessing_your_workspace')}</a>
 					<div className="mt-4 flex flex-col items-center gap-2 border-t border-[#abadaf]/20 pt-4">
-						<p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#747779]">
-							Securely hosted by Beamio Infrastructure © 2026
-						</p>
+						<p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#747779]">{tu('securely_hosted_by_beamio_infrastructure_2026')}</p>
 						<span className="text-[10px] font-medium text-[#abadaf]">v{APP_VERSION}</span>
 					</div>
 				</footer>

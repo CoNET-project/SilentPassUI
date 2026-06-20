@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { bizBrandFocusRingClass } from "@/pages/Home/brandUi"
 import { ONBOARDING_REGIONS_BY_COUNTRY } from "@/pages/Home/onboardingRegions"
+import { tu } from '@/locale/beamioLocale'
 
 const HEADLINE_FONT = { fontFamily: "Manrope, ui-sans-serif, system-ui, sans-serif" } as const
 
@@ -280,16 +281,14 @@ export function OnboardingBusinessDetailsScreen({
 								if (!canContinue) return
 								onContinue()
 							}}
-						>
-							Continue
-							<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+						>{tu('continue')}<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 						</button>
 					</div>
 				</section>
 			</main>
 
 			<footer className="mt-auto flex flex-col items-center justify-between gap-6 border-t border-[#abadaf]/10 bg-[#eef1f3] px-8 py-8 pb-24 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex-row md:px-16 md:pb-8">
-				<div className="text-center tracking-[0.2em] md:text-left">Securely hosted by Beamio Infrastructure © 2026</div>
+				<div className="text-center tracking-[0.2em] md:text-left">由 Beamio 基础设施安全托管 © 2026</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
 					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
 						Privacy Policy

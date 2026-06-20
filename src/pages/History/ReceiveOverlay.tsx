@@ -3,6 +3,7 @@ import { QRCodeCanvas } from "qrcode.react"
 import bIcon from '@/components/assets/32x32.svg'
 import styles from './send.module.scss'
 import { Toast } from 'antd-mobile'
+import { tu } from '@/locale/beamioLocale'
 
 type ReceiveOverlayProps = {
 	onClose: () => void,
@@ -22,12 +23,12 @@ export default function ReceiveOverlay({ onClose, address }: ReceiveOverlayProps
 		try {
 		await navigator.clipboard.writeText(address)
 			Toast.show({
-				content: 'Address copied',
+				content: '地址已复制',
 				duration: 1200,
 			})
 			} catch (err) {
 			Toast.show({
-				content: 'Copy failed',
+				content: '复制失败',
 				duration: 1200,
 			})
 		}
@@ -105,9 +106,7 @@ export default function ReceiveOverlay({ onClose, address }: ReceiveOverlayProps
 					px-3 py-1.5 rounded-full 
 					bg-gradient-to-r from-sky-500 to-blue-500
 					text-xs font-medium text-white
-				">
-				Copy
-				</button>
+				">{tu('copy')}</button>
 			</div>
 
 			<div className="mt-2 text-[11px] leading-relaxed

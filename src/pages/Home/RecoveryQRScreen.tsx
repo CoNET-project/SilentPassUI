@@ -3,9 +3,10 @@ import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
 import { Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw, ImageDown, ArrowRight } from 'lucide-react'
 import { BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
+import { tu } from '@/locale/beamioLocale'
 
 export const ACTIVATING_STEPS = [
-  { id: 0, title: 'Generating Secure ID', desc: 'Creating cryptographic keys', icon: KeyRound },
+  { id: 0, title: '正在生成安全 ID', desc: '正在创建加密密钥', icon: KeyRound },
   { id: 1, title: 'Deploying Smart Vault', desc: 'Establishing storage on Base', icon: Lock },
   { id: 2, title: 'Minting Membership', desc: 'Adding card to your wallet', icon: Wifi },
   { id: 3, title: 'Verifying on Base L2', desc: 'Confirming on blockchain', icon: RefreshCw },
@@ -275,7 +276,7 @@ const RecoveryQRScreen = ({
                 {copied ? (
                   <>
                     <Check className="h-5 w-5 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
-                    <span className="text-emerald-700">Copied</span>
+                    <span className="text-emerald-700">已复制</span>
                   </>
                 ) : (
                   <>
@@ -327,9 +328,7 @@ const RecoveryQRScreen = ({
                   ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass} shadow-[0_8px_20px_rgba(21,98,240,0.2)] hover:opacity-90`
                   : 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
               }`}
-            >
-              Continue
-              <ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
+            >{tu('continue')}<ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
             </AppButton>
           </div>
         ) : null}

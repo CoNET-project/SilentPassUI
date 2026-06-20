@@ -14,6 +14,7 @@ import {
     type UserCardInfo,
 } from '@/services/BeamioCard'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
+import { tu } from '@/locale/beamioLocale'
 
 const BASE_EXPLORER = 'https://basescan.org/tx/'
 
@@ -142,9 +143,7 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
                         type="button"
                         onClick={onClose}
                         className="w-full max-w-[320px] h-12 rounded-xl bg-[#1D5BFF] text-white font-bold text-[15px] active:scale-[0.99]"
-                    >
-                        Done
-                    </button>
+                    >{tu('done')}</button>
                 </div>
             </div>
         )

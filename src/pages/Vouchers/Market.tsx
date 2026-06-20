@@ -1,4 +1,5 @@
 import { IpfsImg } from '@/components/IpfsImg';
+import { useObjectImgSrc } from '@/components/card/useObjectImgSrc';
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import {
   ChevronRight,
@@ -147,6 +148,29 @@ const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
 	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: longdhangStoreCardBg,
 }
 
+/** Square logo — bundled for cards whose program icon is only on IPFS (e.g. LongDhang migration). */
+const DISCOVER_CARD_LOGO_OVERRIDES: Record<string, string> = {
+	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: longdhangStoreCardBg,
+}
+
+function resolveDiscoverFeaturedLogoImage(
+	cardAddress: string,
+	opts: {
+		programIconUrl?: string | null
+		logoUrl?: string | null
+		dbImage?: string | null
+	},
+): string | null {
+	const override = DISCOVER_CARD_LOGO_OVERRIDES[resolveDiscoverCardPanelKey(cardAddress)]?.trim()
+	if (override) return override
+	return (
+		opts.programIconUrl?.trim() ||
+		opts.logoUrl?.trim() ||
+		opts.dbImage?.trim() ||
+		null
+	)
+}
+
 function resolveDiscoverFeaturedHeroImage(
 	cardAddress: string,
 	opts: {
@@ -184,6 +208,42 @@ function DiscoverFeaturedBrandHeroImage({
 		return <img src={trimmed} alt={alt} className={className} draggable={false} />
 	}
 	return <IpfsImg src={trimmed} alt={alt} className={className} draggable={false} />
+}
+
+/** Featured Brands list logo — bundled assets sync; IPFS shows letter until blob ready or on failure. */
+function DiscoverFeaturedBrandLogoImage({
+	src,
+	fallbackLetter,
+	className,
+}: {
+	src: string
+	fallbackLetter: string
+	className?: string
+}) {
+	const trimmed = src.trim()
+	const displaySrc = useObjectImgSrc(trimmed)
+	const [broken, setBroken] = useState(false)
+
+	const letter = (
+		<span className="text-[20px] font-semibold text-[#94afff] leading-none">
+			{fallbackLetter.charAt(0).toUpperCase()}
+		</span>
+	)
+
+	if (!trimmed || broken) return letter
+
+	const effective = isIpfsFragmentImageUrl(trimmed) ? displaySrc : trimmed
+	if (!effective) return letter
+
+	return (
+		<img
+			src={effective}
+			alt=""
+			className={className}
+			draggable={false}
+			onError={() => setBroken(true)}
+		/>
+	)
 }
 
 /** All-filter list: pinned to top first (in array order). */
@@ -3073,7 +3133,11 @@ export default function Market() {
 						: card.topTierName ?? card.topTierMinDisplay ?? tu('member_benefits'),
 				rating: Math.max(4.6, Math.min(5, 4.7 + (card.holderCount % 4) * 0.1)).toFixed(1),
 				image: hero,
-				logo: card.programIconUrl ?? card.logoUrl ?? (dbImage || null),
+				logo: resolveDiscoverFeaturedLogoImage(card.cardAddress, {
+					programIconUrl: card.programIconUrl,
+					logoUrl: card.logoUrl,
+					dbImage,
+				}),
 				currency: card.currency,
 				primaryRechargeBonus: primaryBonus,
 				rechargeBonusSidePill,
@@ -3187,13 +3251,10 @@ export default function Market() {
 							<div className="absolute -bottom-8 left-6">
 								<div className="w-16 h-16 rounded-2xl bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] flex items-center justify-center border border-slate-100">
 									{item.logo ? (
-										<IpfsImg
+										<DiscoverFeaturedBrandLogoImage
 											src={item.logo}
-											alt=""
+											fallbackLetter={item.title}
 											className="w-11 h-11 rounded-xl object-cover"
-											onError={(e) => {
-												e.currentTarget.style.display = "none"
-											}}
 										/>
 									) : (
 										<span className="text-[20px] font-semibold text-[#94afff] leading-none">

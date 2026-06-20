@@ -200,6 +200,8 @@ async function parseFragmentResponseToBlob(res: Response): Promise<{ blob: Blob;
   return null
 }
 
+const BEAMIO_FRAGMENT_PROXY_BASE = 'https://beamio.app/api/fragment?hash='
+
 /** Network fetch only; does not read or write local library. */
 export async function fetchIpfsFragmentFromNetwork(
   hash: string,
@@ -207,20 +209,28 @@ export async function fetchIpfsFragmentFromNetwork(
   const norm = normalizeFragmentHash(hash)
   if (!norm) return null
 
-  const url = ipfsFragmentUrlFromHash(norm)
-  const res = await fetch(url, { cache: 'force-cache' }).catch(() => null)
-  if (!res) return null
+  const candidateUrls = [
+    ipfsFragmentUrlFromHash(norm),
+    `${BEAMIO_FRAGMENT_PROXY_BASE}${encodeURIComponent(norm)}`,
+  ]
 
-  const parsed = await parseFragmentResponseToBlob(res).catch(() => null)
-  if (!parsed) return null
+  for (const url of candidateUrls) {
+    const res = await fetch(url, { cache: 'force-cache' }).catch(() => null)
+    if (!res?.ok) continue
 
-  return {
-    hash: norm,
-    blob: parsed.blob,
-    mime: parsed.mime,
-    savedAt: Date.now(),
-    byteLength: parsed.blob.size,
+    const parsed = await parseFragmentResponseToBlob(res).catch(() => null)
+    if (!parsed) continue
+
+    return {
+      hash: norm,
+      blob: parsed.blob,
+      mime: parsed.mime,
+      savedAt: Date.now(),
+      byteLength: parsed.blob.size,
+    }
   }
+
+  return null
 }
 
 /**

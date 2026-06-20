@@ -120,6 +120,19 @@ const TRENDING_CACHE_KEY = `beamio:trending:latestCards:v${TRENDING_CACHE_VERSIO
 /** /api/latestCards 实测可能 504 / 60s+ 挂起，给出明确超时；超时按 untrusted 处理，不清空已显示的 trusted rows */
 const TRENDING_FETCH_TIMEOUT_MS = 12_000
 
+/** LongDhang CoNET program card (post Base→CoNET migration). Discover detail panels keyed here. */
+const LONGDHANG_DISCOVER_CARD_ADDRESS = '0xc06055AEEd896F832e602a5876D2Dbe1CB365A8A'
+/** Blacklisted Base legacy card — panel / hero lookups alias to {@link LONGDHANG_DISCOVER_CARD_ADDRESS}. */
+const LONGDHANG_LEGACY_BASE_CARD_ADDRESS = '0x30d80cD71Fd1FFD346737b387dA11C7412363EFF'
+
+function resolveDiscoverCardPanelKey(cardAddress: string): string {
+	const lc = cardAddress.trim().toLowerCase()
+	if (lc === LONGDHANG_LEGACY_BASE_CARD_ADDRESS.toLowerCase()) {
+		return LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()
+	}
+	return lc
+}
+
 /** When `merchantImage` is absent in metadata, Discover row hero uses alternating stock photos. */
 const DISCOVER_FEATURE_FALLBACK_IMAGES = [
 	"https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=80",
@@ -131,7 +144,7 @@ const DISCOVER_FEATURE_FALLBACK_IMAGES = [
  * Takes precedence over on-chain `merchantImage` / metadata background to avoid load-time flicker.
  */
 const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
-	"0x30d80cd71fd1ffd346737b387da11c7412363eff": longdhangStoreCardBg,
+	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: longdhangStoreCardBg,
 }
 
 function resolveDiscoverFeaturedHeroImage(
@@ -143,7 +156,7 @@ function resolveDiscoverFeaturedHeroImage(
 		fallbackIndex: number
 	},
 ): string {
-	const override = DISCOVER_CARD_HERO_OVERRIDES[cardAddress.toLowerCase()]?.trim()
+	const override = DISCOVER_CARD_HERO_OVERRIDES[resolveDiscoverCardPanelKey(cardAddress)]?.trim()
 	if (override) return override
 	return (
 		opts.programBackgroundImage?.trim() ||
@@ -175,13 +188,13 @@ function DiscoverFeaturedBrandHeroImage({
 
 /** All-filter list: pinned to top first (in array order). */
 const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
-	"0x30d80cd71fd1ffd346737b387da11c7412363eff",
+	LONGDHANG_DISCOVER_CARD_ADDRESS,
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4",
 ] as const
 
 /** Fallback recharge bonus when metadata has not synced yet (address lowercased). */
 const DISCOVER_RECHARGE_BONUS_FALLBACKS: Record<string, DiscoverRechargeBonusRule> = {
-	"0x30d80cd71fd1ffd346737b387da11c7412363eff": {
+	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
 		paymentAmount: 100,
 		bonusValue: 10,
 		bonusProportional: true,
@@ -194,7 +207,7 @@ function resolveDiscoverPrimaryRechargeBonus(
 ): DiscoverRechargeBonusRule | null {
 	const fromMeta = pickPrimaryDiscoverRechargeBonusRule(parseDiscoverRechargeBonusRules(meta))
 	if (fromMeta) return fromMeta
-	return DISCOVER_RECHARGE_BONUS_FALLBACKS[cardAddress.toLowerCase()] ?? null
+	return DISCOVER_RECHARGE_BONUS_FALLBACKS[resolveDiscoverCardPanelKey(cardAddress)] ?? null
 }
 
 const DISCOVER_RECHARGE_BONUS_HERO_CHIP_CLASS =
@@ -220,7 +233,7 @@ function discoverFeaturedRechargeBonusSidePill(item: Pick<DiscoverFeaturedCard, 
 
 /** Featured Brands subtitle override by card address (lowercased). */
 const DISCOVER_CARD_SUBTITLE_OVERRIDES: Record<string, string> = {
-	"0x30d80cd71fd1ffd346737b387da11c7412363eff": "Shanghai Cuisine",
+	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: "Shanghai Cuisine",
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4": "Health and Beauty",
 }
 
@@ -262,7 +275,7 @@ function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolea
 
 /** Per-card About / hours / contact / location for Discover detail (when metadata lacks these fields). */
 const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> = {
-	"0x30d80cd71fd1ffd346737b387da11c7412363eff": {
+	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
 		welcomeTitle: "Welcome to LongDhang Inner Circle",
 		welcomeText:
 			"Unlock seamless dining and exclusive digital privileges. Top up your LongDhang Pass to enjoy instant bonus rewards.",
@@ -296,7 +309,7 @@ type DiscoverMerchantPromoRewardTier = {
 
 /** Curated VIP reward tier promo cards (Discover detail). Key: card address lowercased. */
 const DISCOVER_MERCHANT_PROMO_REWARD_TIERS: Record<string, DiscoverMerchantPromoRewardTier> = {
-	"0x30d80cd71fd1ffd346737b387da11c7412363eff": {
+	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
 		badge: "VIP Privilege",
 		title: "10% Bonus on Every Top-Up!",
 		description:
@@ -1898,7 +1911,7 @@ function DiscoverMerchantDetailFullScreen({
 	const ccy = (item.currency || "CAD").toUpperCase()
 	const merchantInfoPanel =
 		item.cardAddress != null
-			? DISCOVER_MERCHANT_INFO_PANELS[item.cardAddress.toLowerCase()]
+			? DISCOVER_MERCHANT_INFO_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
 			: undefined
 	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
 	const displayCurrency = (merchantAssets?.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
@@ -1914,7 +1927,7 @@ function DiscoverMerchantDetailFullScreen({
 		merchantAssets.nfts.some((n) => !n.isExpired && Number(n.tokenId) > 0)
 	const promoRewardTier =
 		item.cardAddress != null
-			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[item.cardAddress.toLowerCase()]
+			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[resolveDiscoverCardPanelKey(item.cardAddress)]
 			: undefined
 	const metadataTierCount = merchantOfferTiers?.length ?? 0
 	const rewardTierDisplayCount =
@@ -1926,7 +1939,7 @@ function DiscoverMerchantDetailFullScreen({
 		promoRewardTier != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
 	const wellnessPointsPanel =
 		item.cardAddress != null
-			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[item.cardAddress.toLowerCase()]
+			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
 			: undefined
 	const wellnessPointsValue = merchantAssetsLoading
 		? null
@@ -3034,7 +3047,7 @@ export default function Market() {
 				fallbackIndex: idx,
 			})
 			const subtitleOverride =
-				DISCOVER_CARD_SUBTITLE_OVERRIDES[card.cardAddress.toLowerCase()]
+				DISCOVER_CARD_SUBTITLE_OVERRIDES[resolveDiscoverCardPanelKey(card.cardAddress)]
 			const primaryBonus =
 				card.primaryRechargeBonus ??
 				resolveDiscoverPrimaryRechargeBonus(card.cardAddress, null)

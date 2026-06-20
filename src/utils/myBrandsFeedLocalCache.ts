@@ -6,6 +6,8 @@
 import { ethers } from 'ethers'
 import type { UserCardInfo } from '@/services/BeamioCard'
 import type { CardMetadataFromUri } from '@/services/BeamioCard'
+import { filterDisplayUserCards } from '@/services/BeamioCard'
+import { filterExcludedCardDetailKeys } from '@/utils/apiExcludedUserCards'
 
 export type MyBrandsOwnedCouponSnapshot = {
 	id: string
@@ -93,20 +95,22 @@ export function loadMyBrandsFeedLocalCache(
 		if (typeof p?.eoa !== 'string' || p.eoa.toLowerCase() !== eoaLower) return null
 		if (typeof p.details !== 'object' || p.details === null) return null
 		if (p.v === 1) {
-			const cards = Array.isArray(p.cards) ? (p.cards as UserCardInfo[]) : []
+			const cards = filterDisplayUserCards(Array.isArray(p.cards) ? (p.cards as UserCardInfo[]) : [])
 			return {
 				cards,
 				ownerCards: cards,
 				holderUnionCards: [],
-				details: p.details as MyBrandsFeedDetailsSnapshot,
+				details: filterExcludedCardDetailKeys(p.details as MyBrandsFeedDetailsSnapshot),
 			}
 		}
 		if (!Array.isArray(p.ownerCards) || !Array.isArray(p.holderUnionCards)) return null
+		const ownerCards = filterDisplayUserCards(p.ownerCards as UserCardInfo[])
+		const holderUnionCards = filterDisplayUserCards(p.holderUnionCards as UserCardInfo[])
 		return {
-			cards: mergeUniqueCards(p.ownerCards as UserCardInfo[], p.holderUnionCards as UserCardInfo[]),
-			ownerCards: p.ownerCards as UserCardInfo[],
-			holderUnionCards: p.holderUnionCards as UserCardInfo[],
-			details: p.details as MyBrandsFeedDetailsSnapshot,
+			cards: mergeUniqueCards(ownerCards, holderUnionCards),
+			ownerCards,
+			holderUnionCards,
+			details: filterExcludedCardDetailKeys(p.details as MyBrandsFeedDetailsSnapshot),
 		}
 	} catch {
 		return null
@@ -121,13 +125,16 @@ export function saveMyBrandsFeedLocalCache(
 ): void {
 	if (typeof window === 'undefined' || !eoaLower || !ethers.isAddress(eoaLower)) return
 	try {
+		const safeOwner = filterDisplayUserCards(ownerCards)
+		const safeHolder = filterDisplayUserCards(holderUnionCards)
+		const safeDetails = filterExcludedCardDetailKeys(details)
 		const payload: StoredPayload = {
 			v: 2,
 			eoa: eoaLower,
 			savedAt: Date.now(),
-			ownerCards,
-			holderUnionCards,
-			details,
+			ownerCards: safeOwner,
+			holderUnionCards: safeHolder,
+			details: safeDetails,
 		}
 		const raw = JSON.stringify(payload)
 		if (raw.length > MAX_STORE_CHARS) return

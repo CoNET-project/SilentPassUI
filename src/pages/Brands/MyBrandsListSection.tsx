@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { CreditCard, ExternalLink } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { isCardExcludedFromDisplay } from '@/services/BeamioCard'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
 import baseIcon from '@/components/assets/base-logo.png'
@@ -734,7 +735,10 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 		navigate('/myWallet')
 	}
 
-	const sorted = useMemo(() => sortMyBrandCardsForList(myBrandCards), [myBrandCards])
+	const sorted = useMemo(
+		() => sortMyBrandCardsForList(myBrandCards.filter((c) => !isCardExcludedFromDisplay(c.cardAddress))),
+		[myBrandCards]
+	)
 
 	return (
 		<>

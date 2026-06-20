@@ -37,8 +37,10 @@ export type Icard = { cardAddress: string, userSignature: string, nonce: string,
 	const validBefore = now + BigInt(60)   
  */
 /** 业务 API 返回的卡列表上做防御性二次过滤（exclude 表来自 GET /api/excludedUserCards）。 */
-const filterUserCardsFromApiLists = (cards: UserCardInfo[]): UserCardInfo[] =>
+export const filterDisplayUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
 	cards.filter((c) => !isApiExcludedUserCard(c.cardAddress))
+
+const filterUserCardsFromApiLists = filterDisplayUserCards
 
 /** @deprecated 使用 `isApiExcludedUserCard`；保留旧导出名。 */
 export const isCardExcludedFromDisplay = (cardAddress: string): boolean =>
@@ -1743,6 +1745,7 @@ export async function fetchMyBrandsWalletAssetsSnapshot(
 		for (const row of json.cards) {
 			const rawAddr = String(row.cardAddress ?? '').trim()
 			if (!rawAddr || !ethers.isAddress(rawAddr)) continue
+			if (isApiExcludedUserCard(rawAddr)) continue
 			const addr = ethers.getAddress(rawAddr)
 			const key = addr.toLowerCase()
 			assetsByCardKey[key] = myCardAssetsFromWalletAssetsRow(row, addr, aaAddress)
@@ -2987,6 +2990,7 @@ export const getMyAssets = async (
 	cardAddress: string,
 	opts?: GetMyAssetsOptions
 ): Promise<MyCardAssets | null> => {
+	if (isApiExcludedUserCard(cardAddress)) return null
 	const key = getMyAssetsCacheKey(profile, cardAddress)
 	if (!opts?.bypassCache) {
 		const cached = getMyAssetsCache.get(key)
@@ -3093,13 +3097,16 @@ export const getMyAssets = async (
 
 /** 聚合查询用户程序卡资产（废弃全局 CCSA 已 exclude）。 */
 export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAssets | null> => {
+	await loadApiExcludedUserCards()
 	const key = `aggregated-${profile.keyID ?? ''}`
 	const cached = getMyAssetsCache.get(key)
 	if (cached && Date.now() - cached.timestamp < GET_MY_ASSETS_CACHE_TTL_MS) {
 		return cached.result
 	}
+	const cardAddrs = ASSET_CARD_ADDRESSES.filter((addr) => !isApiExcludedUserCard(addr))
+	if (cardAddrs.length === 0) return null
 	const results = await Promise.all(
-		ASSET_CARD_ADDRESSES.map((addr) => getMyAssets(profile, addr))
+		cardAddrs.map((addr) => getMyAssets(profile, addr))
 	)
 	const valid = results.filter((r): r is MyCardAssets => r != null)
 	if (valid.length === 0) return null

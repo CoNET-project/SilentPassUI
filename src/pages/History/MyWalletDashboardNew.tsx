@@ -70,7 +70,8 @@ import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
-import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromApi, getCardMetadataFrom1155Json, getNftMetadataFromApi, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, signExecuteForOwner, encodeCreateIssuedNft, postCardCreateIssuedNft, getTierIndexForRedeemAmount, isCardExcludedFromDisplay, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch, type CardTierMetadata, type NftTierMetadata, type CardMetadataFromUri } from '@/services/BeamioCard'
+import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromApi, getCardMetadataFrom1155Json, getNftMetadataFromApi, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, signExecuteForOwner, encodeCreateIssuedNft, postCardCreateIssuedNft, getTierIndexForRedeemAmount, isCardExcludedFromDisplay, filterDisplayUserCards, loadApiExcludedUserCards, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch, type CardTierMetadata, type NftTierMetadata, type CardMetadataFromUri } from '@/services/BeamioCard'
+import { filterExcludedCardDetailKeys } from '@/utils/apiExcludedUserCards'
 import { postToIPFS } from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
@@ -171,9 +172,12 @@ const readHistoryUserCardsCache = (profile: profile): UserCardInfo[] => {
 	if (!key || key === '|') return []
 	const root = CoNET_Data as any
 	const fromStore = root?.historyUserCards?.[key]
-	if (Array.isArray(fromStore)) return fromStore as UserCardInfo[]
-	const fallback = profile?.issuedCards
-	return Array.isArray(fallback) ? (fallback as UserCardInfo[]) : []
+	const raw = Array.isArray(fromStore)
+		? (fromStore as UserCardInfo[])
+		: Array.isArray(profile?.issuedCards)
+			? (profile.issuedCards as UserCardInfo[])
+			: []
+	return filterDisplayUserCards(raw)
 }
 
 const writeHistoryUserCardsCache = (profile: profile, cards: UserCardInfo[]) => {
@@ -184,9 +188,9 @@ const writeHistoryUserCardsCache = (profile: profile, cards: UserCardInfo[]) => 
 	if (!temp.historyUserCards || typeof temp.historyUserCards !== 'object') {
 		temp.historyUserCards = {}
 	}
-	temp.historyUserCards[key] = cards
+	temp.historyUserCards[key] = filterDisplayUserCards(cards)
 	if (temp?.profiles?.[0]) {
-		temp.profiles[0] = { ...temp.profiles[0], issuedCards: cards }
+		temp.profiles[0] = { ...temp.profiles[0], issuedCards: filterDisplayUserCards(cards) }
 	}
 	setCoNET_Data(temp)
 	storeSystemData()
@@ -1416,6 +1420,7 @@ export default function MyWalletDashboardNew() {
 
 	// 1. 拉取 api/latestCards 作为需展示的卡一览（替代固定 CCSA/infra/CashTrees 列表）
 	useEffect(() => {
+		void loadApiExcludedUserCards()
 		fetch(`${beamioApi}/api/latestCards?limit=100`)
 			.then((r) => (r.ok ? r.json() : { items: [] }))
 			.then((data: { items?: Array<{ cardAddress?: string }> }) => {
@@ -1425,6 +1430,7 @@ export default function MyWalletDashboardNew() {
 						return raw && ethers.isAddress(raw) ? { cardAddress: ethers.getAddress(raw) } : null
 					})
 					.filter((x): x is { cardAddress: string } => x != null)
+					.filter((x) => !isCardExcludedFromDisplay(x.cardAddress))
 				setLatestCardsItems(items)
 			})
 			.catch(() => setLatestCardsItems([]))
@@ -1435,12 +1441,18 @@ export default function MyWalletDashboardNew() {
 		if (!profiles?.[0]) return
 		const profile = profiles[0]
 		const addrs = new Set<string>([
-			CCSA_Card_Address.toLowerCase(),
-			CASH_TREES_CARD_ADDRESS.toLowerCase(),
-			BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase(),
 			...latestCardsItems.map((i) => i.cardAddress.toLowerCase()),
 		])
-		const toFetch = Array.from(addrs).filter((a) => a && ethers.isAddress(a))
+		if (!isCardExcludedFromDisplay(CCSA_Card_Address)) {
+			addrs.add(CCSA_Card_Address.toLowerCase())
+		}
+		if (!isCardExcludedFromDisplay(CASH_TREES_CARD_ADDRESS)) {
+			addrs.add(CASH_TREES_CARD_ADDRESS.toLowerCase())
+		}
+		if (!isCardExcludedFromDisplay(BEAMIO_USER_CARD_ASSET_ADDRESS)) {
+			addrs.add(BEAMIO_USER_CARD_ASSET_ADDRESS.toLowerCase())
+		}
+		const toFetch = Array.from(addrs).filter((a) => a && ethers.isAddress(a) && !isCardExcludedFromDisplay(a))
 		if (toFetch.length === 0) return
 		const id = setTimeout(() => {
 			Promise.all(
@@ -1474,9 +1486,10 @@ export default function MyWalletDashboardNew() {
 			).then((results) => {
 				const next: Record<string, { assets: { points: string; nfts: Array<{ tokenId: string; tier?: string }> } | null; metadata: { name?: string; image?: string; tiers?: CardTierMetadata[]; cardOwner?: string } | null; cardOwner?: string | null; nftMetadata?: NftTierMetadata | null; cardCurrency?: ICurrency }> = {}
 				results.forEach(({ addr, detail }) => {
+					if (isCardExcludedFromDisplay(addr)) return
 					next[addr] = detail
 				})
-				setAssetCardDetails(next)
+				setAssetCardDetails((prev) => filterExcludedCardDetailKeys({ ...prev, ...next }))
 			})
 			.catch(() => setAssetCardDetails({}))
 		}, 150)

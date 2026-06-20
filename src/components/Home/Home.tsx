@@ -47,6 +47,7 @@ import {
 	getMyAssets,
 	getMyAssetsAggregated,
 	getBUnitBalanceOnConet,
+	isCardExcludedFromDisplay,
 	postNfcLinkApp,
 	postNfcLinkAppClaimWithKey,
 	postListLinkedNfcCards,
@@ -418,7 +419,7 @@ const Home = (_props: HomeProps) => {
 	}, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
 
 	const myBrandCardsPreview = useMemo(
-		() => sortMyBrandCardsForList(myBrandCards).slice(0, 5),
+		() => sortMyBrandCardsForList(myBrandCards.filter((c) => !isCardExcludedFromDisplay(c.cardAddress))).slice(0, 5),
 		[myBrandCards]
 	)
 
@@ -1651,7 +1652,8 @@ const Home = (_props: HomeProps) => {
 		const d = currencyData as Record<string, number>
 		const cadPerUsdc = (Number(d.CAD) || 1.35) * (Number(d.USDC) || 1)
 		let pointsCad = 0
-		for (const entry of Object.values(myBrandCardDetails)) {
+		for (const [cardKey, entry] of Object.entries(myBrandCardDetails)) {
+			if (isCardExcludedFromDisplay(cardKey)) continue
 			const assets = entry?.assets
 			if (!assets) continue
 			const pts = Number(assets.points ?? 0)
@@ -1674,6 +1676,7 @@ const Home = (_props: HomeProps) => {
 	const merchantGiftCardOptions = useMemo((): MerchantGiftCardOption[] => {
 		const out: MerchantGiftCardOption[] = []
 		for (const uc of myBrandCards) {
+			if (isCardExcludedFromDisplay(uc.cardAddress)) continue
 			const addrKey = uc.cardAddress.toLowerCase()
 			const detail = myBrandCardDetails[addrKey]
 			const pts = Number(detail?.assets?.points ?? 0)

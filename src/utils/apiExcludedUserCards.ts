@@ -57,3 +57,19 @@ export function isApiExcludedUserCard(raw: unknown): boolean {
 	if (!lower || !cachedExcluded) return false
 	return cachedExcluded.has(lower)
 }
+
+/** 从按 cardAddress key 索引的 map 中移除 blacklist 卡（My Brands details / Wallet 资产表）。 */
+export function filterExcludedCardDetailKeys<T extends Record<string, unknown>>(details: T): T {
+	if (!cachedExcluded || cachedExcluded.size === 0) return details
+	const next = {} as T
+	for (const [k, v] of Object.entries(details)) {
+		const lower = normalizeUserCardAddressLower(k) ?? k.toLowerCase()
+		if (cachedExcluded.has(lower)) continue
+		;(next as Record<string, unknown>)[k] = v
+	}
+	return next
+}
+
+export function filterExcludedCardAddresses(addresses: string[]): string[] {
+	return addresses.filter((a) => !isApiExcludedUserCard(a))
+}

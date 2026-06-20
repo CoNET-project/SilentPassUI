@@ -11,6 +11,7 @@ import {
 	fetchOwnedCouponsFromRecentSeriesForUser,
 	fetchOwnedCouponsFromWalletAssetsForCards,
 	isCardExcludedFromDisplay,
+	filterDisplayUserCards,
 	loadApiExcludedUserCards,
 	getMyAssets,
 	getCardBasicMetadataStaleWhileRevalidate,
@@ -37,6 +38,7 @@ import {
   saveMyBrandsFeedLocalCache,
   type MyBrandsOwnedCouponSnapshot,
 } from '@/utils/myBrandsFeedLocalCache'
+import { filterExcludedCardDetailKeys } from '@/utils/apiExcludedUserCards'
 import {
 	loadRecentActivityLocalCache,
 	saveRecentActivityLocalCache,
@@ -258,7 +260,8 @@ function computeHomeTotalPowerCad(
 	const aaU = Math.max(0, Number(aaUsdcStr) || 0)
 	const cadFromUsdc = (eoaU + aaU) * cadPerUsdc
 	let pointsCad = 0
-	for (const entry of Object.values(cardDetails)) {
+	for (const [cardKey, entry] of Object.entries(cardDetails)) {
+		if (isCardExcludedFromDisplay(cardKey)) continue
 		const assets = entry?.assets
 		if (!assets) continue
 		const pts = Number(assets.points ?? 0)
@@ -769,11 +772,13 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
     const hit = loadMyBrandsFeedLocalCache(eoaLower)
     if (hit) {
-      myBrandHolderUnionCardsRef.current = hit.holderUnionCards
-      setMyBrandCards(hit.cards)
-      setMyBrandCardDetails(hit.details)
-      for (const c of hit.cards) {
-        const row = hit.details[c.cardAddress.toLowerCase()]
+      const cards = filterDisplayUserCards(hit.cards)
+      const details = filterExcludedCardDetailKeys(hit.details)
+      myBrandHolderUnionCardsRef.current = filterDisplayUserCards(hit.holderUnionCards)
+      setMyBrandCards(cards)
+      setMyBrandCardDetails(details)
+      for (const c of cards) {
+        const row = details[c.cardAddress.toLowerCase()]
         if (row?.meta) rememberCardBasicMetadataTrusted(c.cardAddress, row.meta)
       }
     } else {
@@ -890,6 +895,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       }
       if (couponSummaries) {
         for (const [key, summary] of couponSummaries) {
+          if (isCardExcludedFromDisplay(key)) continue
           if (seenCards.has(key)) continue
           seenCards.add(key)
           cards.push(couponFallbackCardInfo(key, summary))
@@ -901,6 +907,7 @@ export function DaemonProvider({ children }: DaemonProps) {
          */
         for (const c of myBrandCardsRef.current) {
           const key = c.cardAddress.toLowerCase()
+          if (isCardExcludedFromDisplay(key)) continue
           if (seenCards.has(key)) continue
           const prevCoupon = myBrandCardDetailsRef.current[key]?.claimableCoupons
           if (!prevCoupon || prevCoupon.count <= 0) continue
@@ -910,6 +917,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       }
       if (catalogSummaries) {
         for (const [key, summary] of catalogSummaries) {
+          if (isCardExcludedFromDisplay(key)) continue
           if (seenCards.has(key)) continue
           seenCards.add(key)
           cards.push(catalogFallbackCardInfo(key, summary))
@@ -917,6 +925,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       } else {
         for (const c of myBrandCardsRef.current) {
           const key = c.cardAddress.toLowerCase()
+          if (isCardExcludedFromDisplay(key)) continue
           if (seenCards.has(key)) continue
           const prevCatalog = myBrandCardDetailsRef.current[key]?.ownedCatalogs
           if (!prevCatalog || prevCatalog.count <= 0) continue
@@ -924,10 +933,12 @@ export function DaemonProvider({ children }: DaemonProps) {
           cards.push(c)
         }
       }
+      const displayCards = filterDisplayUserCards(cards)
+      myBrandHolderUnionCardsRef.current = filterDisplayUserCards(holderUnionCards)
       const prevCards = myBrandCardsRef.current
-      const prevDetails = myBrandCardDetailsRef.current
-      if (cards.length === 0) {
-        if (prevCards.length > 0 || Object.keys(prevDetails).length > 0) {
+      const prevDetails = filterExcludedCardDetailKeys(myBrandCardDetailsRef.current)
+      if (displayCards.length === 0) {
+        if (cards.length === 0 && (prevCards.length > 0 || Object.keys(prevDetails).length > 0)) {
           /**
            * My Brands 依赖窗口扫描 / 多源合并；周期刷新中的空结果不能作为负向删除依据。
            * 必须在 setMyBrandCards 前返回，否则 /home 会每 6s 显示/消失。
@@ -937,16 +948,19 @@ export function DaemonProvider({ children }: DaemonProps) {
         if (Object.keys(prevDetails).length > 0) {
           setMyBrandCardDetails({})
         }
+        if (filterDisplayUserCards(prevCards).length > 0) {
+          setMyBrandCards([])
+        }
         if (eoaSave && ethers.isAddress(eoaSave)) {
           saveMyBrandsFeedLocalCache(eoaSave, [], [], {})
         }
         return {}
       }
-      const nextSig = myBrandCardListSignature(cards)
-      if (myBrandCardListSignature(prevCards) !== nextSig) {
-        setMyBrandCards(cards)
+      const nextSig = myBrandCardListSignature(displayCards)
+      if (myBrandCardListSignature(filterDisplayUserCards(prevCards)) !== nextSig) {
+        setMyBrandCards(displayCards)
       }
-      const allowed = new Set(cards.map((c) => c.cardAddress.toLowerCase()))
+      const allowed = new Set(displayCards.map((c) => c.cardAddress.toLowerCase()))
       const next: MyBrandCardFeedDetailsMap = {}
       for (const k of allowed) {
         if (prevDetails[k]) next[k] = prevDetails[k]!
@@ -998,7 +1012,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
       const claimableByCardKey = new Map<string, ClaimableCouponSummary | null>()
       const ownedCatalogByCardKey = new Map<string, OwnedCatalogSummary | null>()
-      for (const uc of cards) {
+      for (const uc of displayCards) {
         const key = uc.cardAddress.toLowerCase()
         claimableByCardKey.set(key, await resolveCouponsForCardKey(key, uc.cardAddress, prevDetails[key]))
         ownedCatalogByCardKey.set(
@@ -1008,7 +1022,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       }
 
       await Promise.all(
-        cards.map(async (uc) => {
+        displayCards.map(async (uc) => {
           const key = uc.cardAddress.toLowerCase()
           const prevRow = prevDetails[key]
           const claimableCoupons = claimableByCardKey.get(key) ?? null
@@ -1151,7 +1165,19 @@ export function DaemonProvider({ children }: DaemonProps) {
 	}, [currencyData])
 
 	useEffect(() => {
-		void loadApiExcludedUserCards()
+		void loadApiExcludedUserCards().then(() => {
+			setMyBrandCards((prev) => filterDisplayUserCards(prev))
+			setMyBrandCardDetails((prev) => filterExcludedCardDetailKeys(prev))
+			myBrandHolderUnionCardsRef.current = filterDisplayUserCards(myBrandHolderUnionCardsRef.current)
+			setHomeTotalPowerCad(
+				computeHomeTotalPowerCad(
+					lastEoaUsdcForPowerRef.current,
+					lastAaUsdcForPowerRef.current,
+					filterExcludedCardDetailKeys(myBrandCardDetailsRef.current),
+					currencyDataRef.current
+				)
+			)
+		})
 	}, [])
 
   const noAaRecentActivityInFlight = useRef(false)

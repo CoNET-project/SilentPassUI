@@ -102,6 +102,7 @@ import {
   waitForLongDhangServerMigrationVerify,
   syncLongDhangMigrationCompletedFromStoredCard,
   getLongDhangMigrationCompleted,
+  LONGDHANG_OLD_BASE_CARD,
   repairLongDhangMigrationTerminals,
   listLongDhangMigratedTerminalEoa,
   verifyLongDhangMigration,
@@ -130,7 +131,7 @@ import {
   CONET_BUNIT_AIRDROP_ADDRESS,
   CONET_CARD_FACTORY,
 } from '@/config/chainAddresses';
-import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain';
+import { CONET_MAINNET_CHAIN_ID, providerForBeamioUserCard } from '@/utils/beamioUserCardChain';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { ensureConetAaForEoa } from '@/utils/ensureConetAa';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
@@ -251,7 +252,7 @@ import {
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
-import { LongDhangConetMigrationPanel } from './longDhangConetMigrationPanel';
+import { LongDhangConetMigrationPanel, LongDhangTerminalRepairPanel } from './longDhangConetMigrationPanel';
 import { LongDhangConetMigrationFullScreen } from './longDhangConetMigrationFullScreen';
 import { ValidatorDepositRedeemManagementPanel } from './validatorDepositRedeemManagementPanel';
 import {
@@ -948,7 +949,7 @@ function membersBizViewerResolvedForCache(
 }
 
 function membersLoyaltyDirectoryBundleCacheKey(eoaLower: string, viewerNormLower: string): string {
-  return `eoa:${eoaLower}:biz:members-loyalty-directory:v1:${viewerNormLower}`
+  return `eoa:${eoaLower}:biz:members-loyalty-directory:v2:longdhang-fallback:${viewerNormLower}`
 }
 
 function dashboardMembersDirectoryHintCacheKey(eoaLower: string, cardBucket: string): string {
@@ -7940,6 +7941,105 @@ async function fetchAllBeamioCardMemberDirectoryHttp(
     offset += pageLimit;
   }
   return { members: acc, total };
+}
+
+function resolveLongDhangMigratedConetCardForOwner(ownerEoa: string | null | undefined): string | null {
+  if (!ownerEoa || !ethers.isAddress(ownerEoa)) return null;
+  const owner = ethers.getAddress(ownerEoa);
+  const completed = getLongDhangMigrationCompleted(owner);
+  if (completed?.newCardAddress && ethers.isAddress(completed.newCardAddress)) {
+    return ethers.getAddress(completed.newCardAddress);
+  }
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(longDhangMigrationNewCardStorageKey(owner))?.trim();
+    if (stored && ethers.isAddress(stored)) return ethers.getAddress(stored);
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** LongDhang Base→CoNET migration only mints balances on-chain; member directory stats stay on the old Base card. */
+async function shouldUseLongDhangLegacyMemberDirectory(
+  programCardAddress: string,
+  ownerEoa: string | null | undefined,
+): Promise<boolean> {
+  if (!ownerEoa || !ethers.isAddress(ownerEoa)) return false;
+  const program = ethers.getAddress(programCardAddress);
+  if (program.toLowerCase() === LONGDHANG_OLD_BASE_CARD.toLowerCase()) return false;
+  if (!isLongDhangMigrationOwnerAmong(ownerEoa)) return false;
+
+  const migrated = resolveLongDhangMigratedConetCardForOwner(ownerEoa);
+  if (migrated && migrated.toLowerCase() === program.toLowerCase()) return true;
+
+  try {
+    const { chainId } = await providerForBeamioUserCard(program);
+    if (chainId !== CONET_MAINNET_CHAIN_ID) return false;
+    const cardOwner = await getCardOwner(program);
+    return ethers.getAddress(cardOwner).toLowerCase() === ethers.getAddress(ownerEoa).toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+async function fetchAllBeamioCardMemberDirectoryForOwnerProgram(
+  programCardAddress: string,
+  ownerEoa: string | null | undefined,
+): Promise<{ members: BeamioCardMemberDirectoryPageResponse['members']; total: number }> {
+  const primary = await fetchAllBeamioCardMemberDirectoryHttp(programCardAddress);
+  if (primary.members.length > 0 || primary.total > 0) return primary;
+  if (!(await shouldUseLongDhangLegacyMemberDirectory(programCardAddress, ownerEoa))) return primary;
+  try {
+    const legacy = await fetchAllBeamioCardMemberDirectoryHttp(LONGDHANG_OLD_BASE_CARD);
+    if (legacy.members.length > 0 || legacy.total > 0) return legacy;
+  } catch {
+    /* keep empty primary */
+  }
+  return primary;
+}
+
+async function fetchBeamioCardMemberDirectoryPageForOwnerProgram(
+  programCardAddress: string,
+  limit: number,
+  offset: number,
+  ownerEoa: string | null | undefined,
+): Promise<BeamioCardMemberDirectoryPageResponse> {
+  const page = await fetchBeamioCardMemberDirectoryPageHttp(programCardAddress, limit, offset);
+  const primaryTotal = Number(page.total) || 0;
+  const primaryMembers = page.members ?? [];
+  if (primaryTotal > 0 || primaryMembers.length > 0) return page;
+  if (!(await shouldUseLongDhangLegacyMemberDirectory(programCardAddress, ownerEoa))) return page;
+  try {
+    return await fetchBeamioCardMemberDirectoryPageHttp(LONGDHANG_OLD_BASE_CARD, limit, offset);
+  } catch {
+    return page;
+  }
+}
+
+async function resolveMemberToken0BalanceAccount(
+  memberEoa: string,
+  directoryAa: string | undefined,
+  cardBalanceChainId: number,
+  cardBalanceProvider: ethers.Provider,
+): Promise<string> {
+  if (cardBalanceChainId === CONET_MAINNET_CHAIN_ID) {
+    try {
+      const resolved = await resolveBeamioAaForEoaWithFallback(cardBalanceProvider, memberEoa);
+      if (resolved && ethers.isAddress(resolved)) return ethers.getAddress(resolved);
+    } catch {
+      /* fall through */
+    }
+    return ethers.getAddress(memberEoa);
+  }
+  if (
+    directoryAa &&
+    ethers.isAddress(directoryAa) &&
+    directoryAa.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+  ) {
+    return ethers.getAddress(directoryAa);
+  }
+  return ethers.getAddress(memberEoa);
 }
 
 function mapDirectoryApiMembersToBizTopupRows(
@@ -17154,8 +17254,14 @@ useEffect(() => {
    !longDhangMigrationDismissed &&
    !longDhangMigrationCompleted &&
    Boolean(currentEoa && ethers.isAddress(currentEoa));
- const longDhangMigrationLastResultRef = useRef<LongDhangMigrationAutoResult | null>(null);
- const longDhangTerminalRepairStartedRef = useRef(false);
+const longDhangMigrationLastResultRef = useRef<LongDhangMigrationAutoResult | null>(null);
+const longDhangTerminalRepairStartedRef = useRef(false);
+const [longDhangTerminalVerify, setLongDhangTerminalVerify] = useState<{
+  termTotal: number;
+  termMatches: number;
+} | null>(null);
+const [longDhangTerminalRepairBusy, setLongDhangTerminalRepairBusy] = useState(false);
+const [longDhangTerminalRepairError, setLongDhangTerminalRepairError] = useState<string | null>(null);
  const syncLongDhangMigrationCompleted = useCallback(
    (result?: LongDhangMigrationAutoResult) => {
      if (!currentEoa || !ethers.isAddress(currentEoa)) return;
@@ -17424,7 +17530,7 @@ const overviewNetworkSummaryCacheKey =
     : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
 const overviewNetworkSummaryLifetimeCacheKey =
   `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:lifetime`;
- const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${staffProgramCardCacheBucket}`;
+ const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${staffProgramCardCacheBucket}:v3-conet-provider`;
  /** Per-terminal `getAdminStatsFull` / limit snapshot — local-first for Active Devices KPIs (feeder merges + persists). */
  const staffTerminalChainStatsCacheKey = `eoa:${currentEoa}:staff-terminal-chain-stats:${staffProgramCardCacheBucket}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
@@ -18136,7 +18242,10 @@ useEffect(() => {
       const hintCount = await fetchWithCache(
         hintKey,
         async () => {
-          const { members } = await fetchAllBeamioCardMemberDirectoryHttp(hintCard);
+          const ownerEoa =
+            membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner) ??
+            (currentEoa && ethers.isAddress(currentEoa) ? ethers.getAddress(currentEoa) : null);
+          const { members } = await fetchAllBeamioCardMemberDirectoryForOwnerProgram(hintCard, ownerEoa);
           return countRecentActiveMembersFromDirectoryServerOnly(members);
         },
         60_000,
@@ -18155,7 +18264,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [currentEoa, staffProgramBeamioCardAddress, membersOwnedPrograms, membersLoyaltyTopupRows.length]);
+}, [currentEoa, staffProgramBeamioCardAddress, membersOwnedPrograms, membersLoyaltyTopupRows.length, profiles, myAddress, fixedCardMetadata?.cardOwner]);
 const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Record<string, MemberDirectoryUserType>>({});
  /** Per-card rollup sums from `mode=card` (total / repeat top-up event counts on server) */
  const [membersLoyaltyServerRollup, setMembersLoyaltyServerRollup] = useState<{
@@ -18195,7 +18304,14 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    let cancelled = false;
    setMemberRegistryLoading(true);
    const offset = (memberRegistryPage - 1) * MEMBER_REGISTRY_PAGE_SIZE;
-   void fetchBeamioCardMemberDirectoryPageHttp(card, MEMBER_REGISTRY_PAGE_SIZE, offset)
+   const ownerEoa =
+     membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner) ?? null;
+   void fetchBeamioCardMemberDirectoryPageForOwnerProgram(
+     card,
+     MEMBER_REGISTRY_PAGE_SIZE,
+     offset,
+     ownerEoa,
+   )
      .then((r) => {
        if (cancelled) return;
        setMemberRegistryRows(Array.isArray(r.members) ? r.members : []);
@@ -18213,7 +18329,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    return () => {
      cancelled = true;
    };
- }, [activeTab, membersLoyaltyProgramKey, memberRegistryPage]);
+ }, [activeTab, membersLoyaltyProgramKey, memberRegistryPage, profiles, myAddress, fixedCardMetadata?.cardOwner]);
  useEffect(() => {
    if (!membersDirectoryDetailRow) return;
    const onKey = (e: KeyboardEvent) => {
@@ -20221,7 +20337,7 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
 
     if (isOwner && cardOwner && ethers.isAddress(cardOwner)) {
       const rows = await buildStaffTerminalRowsForCardOwnerFromAdminList(
-        baseEndpoint,
+        staffProgramProvider,
         staffProgramBeamioCardAddress,
         cardOwner,
         cached
@@ -20337,68 +20453,181 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   }
 }, [profiles, myAddress, linkedTerminalsCacheKey, staffProgramBeamioCardAddress]);
 
- useEffect(() => {
-   if (!longDhangMigrationCompleted || !isLongDhangMigrationOwner) return;
-   if (!currentEoa || !ethers.isAddress(currentEoa)) return;
-   const pk = profiles?.[0]?.privateKeyArmor?.trim();
-   if (!pk) return;
-   const completed = getLongDhangMigrationCompleted(currentEoa);
-   if (!completed?.newCardAddress || !ethers.isAddress(completed.newCardAddress)) return;
+const longDhangMigratedNewCardAddress = useMemo((): string | null => {
+  if (!currentEoa || !ethers.isAddress(currentEoa)) return null;
+  const completed = getLongDhangMigrationCompleted(currentEoa);
+  if (completed?.newCardAddress && ethers.isAddress(completed.newCardAddress)) {
+    return ethers.getAddress(completed.newCardAddress);
+  }
+  try {
+    const stored = localStorage.getItem(longDhangMigrationNewCardStorageKey(currentEoa))?.trim();
+    if (stored && ethers.isAddress(stored)) return ethers.getAddress(stored);
+  } catch {
+    /* ignore */
+  }
+  return null;
+}, [currentEoa, longDhangMigrationCompleted]);
 
-   const clearPendingForTerminalEoaList = (eoas: string[]) => {
-     if (eoas.length === 0 || posPermissionPartitionAddressesList.length === 0) return;
-     for (const posEoa of eoas) {
-       removePosTerminalPermissionPendingByChildEoaFromPartitions(posPermissionPartitionAddressesList, posEoa);
-     }
-     try {
-       window.dispatchEvent(new CustomEvent(POS_TERMINAL_PERMISSION_PENDING_EVENT));
-     } catch {
-       /* ignore */
-     }
-   };
+const runLongDhangTerminalRepair = useCallback(async () => {
+  const pk = getSessionPrivateKeyArmor()?.trim() || profiles?.[0]?.privateKeyArmor?.trim();
+  if (!pk || !currentEoa || !ethers.isAddress(currentEoa)) {
+    setLongDhangTerminalRepairError('Unlock with @BeamioTag and access password to register terminals.');
+    return;
+  }
+  const completed = getLongDhangMigrationCompleted(currentEoa);
+  const newCard =
+    completed?.newCardAddress && ethers.isAddress(completed.newCardAddress)
+      ? ethers.getAddress(completed.newCardAddress)
+      : longDhangMigratedNewCardAddress;
+  if (!newCard) {
+    setLongDhangTerminalRepairError('CoNET program card address not found. Complete card migration first.');
+    return;
+  }
 
-   const lastResult = longDhangMigrationLastResultRef.current;
-   if (lastResult?.success) {
-     clearPendingForTerminalEoaList(listLongDhangMigratedTerminalEoa(lastResult));
-     longDhangMigrationLastResultRef.current = null;
-   }
+  setLongDhangTerminalRepairBusy(true);
+  setLongDhangTerminalRepairError(null);
+  setLongDhangMigrationPhase('migrate-admins');
+  setLongDhangMigrationPhaseDetail('Registering POS terminals under merchant owner admin…');
 
-   if (longDhangTerminalRepairStartedRef.current) return;
-   let cancelled = false;
-   void (async () => {
-     const verify = await verifyLongDhangMigration(completed.newCardAddress);
-     if (cancelled) return;
-     const termTotal = verify.terminals?.total ?? 0;
-     const termMatches = verify.terminals?.matches ?? 0;
-     if (termTotal > 0 && termMatches >= termTotal) {
-       void fetchTerminals({ silent: true });
-       return;
-     }
-     longDhangTerminalRepairStartedRef.current = true;
-     const repaired = await repairLongDhangMigrationTerminals({
-       privateKeyArmor: pk,
-       ownerEoa: currentEoa,
-       newCardAddress: completed.newCardAddress,
-       snapshotHash: completed.snapshotHash || verify.snapshotHash || '',
-     });
-     if (cancelled) return;
-     const rows = repaired.admins?.rows ?? [];
-     clearPendingForTerminalEoaList(
-       rows.filter((r) => r.status === 'registered' || r.status === 'skipped').map((r) => r.posEoa),
-     );
-     void fetchTerminals({ silent: true });
-   })();
-   return () => {
-     cancelled = true;
-   };
- }, [
-   longDhangMigrationCompleted,
-   isLongDhangMigrationOwner,
-   currentEoa,
-   profiles?.[0]?.privateKeyArmor,
-   posPermissionPartitionAddressesList,
-   fetchTerminals,
- ]);
+  try {
+    const verifyBefore = await verifyLongDhangMigration(newCard);
+    const termTotalBefore = verifyBefore.terminals?.total ?? 0;
+    const termMatchesBefore = verifyBefore.terminals?.matches ?? 0;
+    if (termTotalBefore > 0 && termMatchesBefore >= termTotalBefore) {
+      setLongDhangTerminalVerify({ termTotal: termTotalBefore, termMatches: termMatchesBefore });
+      void fetchTerminals();
+      return;
+    }
+
+    const repaired = await repairLongDhangMigrationTerminals({
+      privateKeyArmor: pk,
+      ownerEoa: currentEoa,
+      newCardAddress: newCard,
+      snapshotHash: completed?.snapshotHash || verifyBefore.snapshotHash || '',
+    });
+
+    const rows = repaired.admins?.rows ?? [];
+    if (posPermissionPartitionAddressesList.length > 0) {
+      for (const posEoa of rows
+        .filter((r) => r.status === 'registered' || r.status === 'skipped')
+        .map((r) => r.posEoa)) {
+        removePosTerminalPermissionPendingByChildEoaFromPartitions(posPermissionPartitionAddressesList, posEoa);
+      }
+      try {
+        window.dispatchEvent(new CustomEvent(POS_TERMINAL_PERMISSION_PENDING_EVENT));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const verifyAfter = await verifyLongDhangMigration(newCard);
+    setLongDhangTerminalVerify({
+      termTotal: verifyAfter.terminals?.total ?? termTotalBefore,
+      termMatches: verifyAfter.terminals?.matches ?? 0,
+    });
+
+    if (!repaired.success) {
+      setLongDhangTerminalRepairError(repaired.error ?? 'One or more terminals failed to register.');
+    }
+
+    invalidateFetchCache(`card:${staffProgramCardCacheBucket}`);
+    void fetchTerminals();
+  } catch (e: unknown) {
+    setLongDhangTerminalRepairError(e instanceof Error ? e.message : String(e));
+  } finally {
+    setLongDhangTerminalRepairBusy(false);
+    longDhangTerminalRepairStartedRef.current = false;
+    setLongDhangMigrationPhase(null);
+    setLongDhangMigrationPhaseDetail(null);
+  }
+}, [
+  currentEoa,
+  longDhangMigratedNewCardAddress,
+  profiles?.[0]?.privateKeyArmor,
+  posPermissionPartitionAddressesList,
+  fetchTerminals,
+  staffProgramCardCacheBucket,
+]);
+
+useEffect(() => {
+  if (!longDhangMigrationCompleted || !isLongDhangMigrationOwner) {
+    setLongDhangTerminalVerify(null);
+    return;
+  }
+  if (!longDhangMigratedNewCardAddress) return;
+  let cancelled = false;
+  void verifyLongDhangMigration(longDhangMigratedNewCardAddress).then((verified) => {
+    if (cancelled) return;
+    setLongDhangTerminalVerify({
+      termTotal: verified.terminals?.total ?? 0,
+      termMatches: verified.terminals?.matches ?? 0,
+    });
+  });
+  return () => {
+    cancelled = true;
+  };
+}, [
+  longDhangMigrationCompleted,
+  isLongDhangMigrationOwner,
+  longDhangMigratedNewCardAddress,
+  longDhangTerminalRepairBusy,
+  terminals.length,
+]);
+
+useEffect(() => {
+  const lastResult = longDhangMigrationLastResultRef.current;
+  if (!lastResult?.success) return;
+  const eoas = listLongDhangMigratedTerminalEoa(lastResult);
+  if (eoas.length === 0 || posPermissionPartitionAddressesList.length === 0) return;
+  for (const posEoa of eoas) {
+    removePosTerminalPermissionPendingByChildEoaFromPartitions(posPermissionPartitionAddressesList, posEoa);
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(POS_TERMINAL_PERMISSION_PENDING_EVENT));
+  } catch {
+    /* ignore */
+  }
+  longDhangMigrationLastResultRef.current = null;
+}, [longDhangMigrationCompleted, posPermissionPartitionAddressesList]);
+
+useEffect(() => {
+  const onStaffSurface = activeTab === 'Staff' || isTerminalsMarketRoute;
+  if (!onStaffSurface || !longDhangMigrationCompleted || !isLongDhangMigrationOwner) return;
+  if (!longDhangTerminalVerify) return;
+  const { termTotal, termMatches } = longDhangTerminalVerify;
+  if (termTotal <= 0 || termMatches >= termTotal) return;
+  if (longDhangTerminalRepairBusy || longDhangTerminalRepairStartedRef.current) return;
+  const pk = getSessionPrivateKeyArmor()?.trim() || profiles?.[0]?.privateKeyArmor?.trim();
+  if (!pk) return;
+  longDhangTerminalRepairStartedRef.current = true;
+  void runLongDhangTerminalRepair();
+}, [
+  activeTab,
+  isTerminalsMarketRoute,
+  longDhangMigrationCompleted,
+  isLongDhangMigrationOwner,
+  longDhangTerminalVerify,
+  longDhangTerminalRepairBusy,
+  profiles?.[0]?.privateKeyArmor,
+  runLongDhangTerminalRepair,
+]);
+
+const renderLongDhangTerminalRepairPanel = () => {
+  if (!isLongDhangMigrationOwner || !longDhangMigrationCompleted || !longDhangTerminalVerify) return null;
+  return (
+    <LongDhangTerminalRepairPanel
+      currentEoa={currentEoa}
+      privateKeyArmor={getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor}
+      authorizedOwnerEoa={longDhangAuthorizedOwnerEoa}
+      newCardAddress={longDhangMigratedNewCardAddress}
+      termTotal={longDhangTerminalVerify.termTotal}
+      termMatches={longDhangTerminalVerify.termMatches}
+      busy={longDhangTerminalRepairBusy}
+      error={longDhangTerminalRepairError}
+      onRepair={() => void runLongDhangTerminalRepair()}
+    />
+  );
+};
 
  /** Map Staff terminal row (EOA id) to on-chain subordinate address (AA or EOA) for adminParent / clear counter. */
  const resolveTerminalChainSubordinate = useCallback(
@@ -21185,10 +21414,10 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
            sumTopupEvents += Number(rollup.totalTopupCount) || 0;
            sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
            sumMemberActivations += (Number(rollup.nfcActivationCount) || 0) + (Number(rollup.appActivationCount) || 0);
-           const cacheKeyMembers = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:directoryAll:v1:${cardLower}`;
+           const cacheKeyMembers = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:directoryAll:v2:longdhang:${cardLower}`;
           const { members, total } = await fetchWithCache(
             cacheKeyMembers,
-            () => fetchAllBeamioCardMemberDirectoryHttp(addr),
+            () => fetchAllBeamioCardMemberDirectoryForOwnerProgram(addr, account),
             MEMBERS_DIRECTORY_MEM_CACHE_TTL_MS,
             true
            );
@@ -21218,10 +21447,19 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                  : undefined;
             const eoaLower = eoaM.toLowerCase();
             const aaLower = aa?.toLowerCase();
-            const balanceAccount = aa ?? eoaM;
-            const scopedKey = `${cardLower}:${balanceAccount.toLowerCase()}`;
+            const balanceAccount = await resolveMemberToken0BalanceAccount(
+              eoaM,
+              aa,
+              cardBalanceChainId,
+              cardBalanceProvider,
+            );
+            const balanceAccountLower = balanceAccount.toLowerCase();
+            const scopedKey = `${cardLower}:${balanceAccountLower}`;
             aliasToScopedKey.set(eoaLower, scopedKey);
             if (aaLower) aliasToScopedKey.set(aaLower, scopedKey);
+            if (balanceAccountLower !== eoaLower && balanceAccountLower !== (aaLower ?? '')) {
+              aliasToScopedKey.set(balanceAccountLower, scopedKey);
+            }
              let lastTs = 0;
              try {
                const t = Date.parse(m.lastTopupAt);
@@ -21276,7 +21514,10 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                programName,
               currency: typeof uc.currency === 'string' ? uc.currency : undefined,
                memberAddress: eoaM,
-               aaAddress: aa,
+               aaAddress:
+                 balanceAccountLower !== eoaLower
+                   ? balanceAccount
+                   : aa,
                topupCount: Number(m.topupCount) || 0,
                totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
                firstSeenTs: firstTs,
@@ -21610,7 +21851,12 @@ useEffect(() => {
            const hintCount = await fetchWithCache(
              hintKey,
              async () => {
-               const { members } = await fetchAllBeamioCardMemberDirectoryHttp(activeCardsHintProgramAddr);
+               const ownerEoa =
+                 accountRaw && ethers.isAddress(accountRaw) ? ethers.getAddress(accountRaw) : null;
+               const { members } = await fetchAllBeamioCardMemberDirectoryForOwnerProgram(
+                 activeCardsHintProgramAddr,
+                 ownerEoa,
+               );
                return countRecentActiveMembersFromDirectoryServerOnly(members);
              },
              60_000
@@ -23382,7 +23628,14 @@ useEffect(() => {
           directRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
           directMemberActivations += (Number(rollup.nfcActivationCount) || 0) + (Number(rollup.appActivationCount) || 0);
         }
-        const { members } = await fetchAllBeamioCardMemberDirectoryHttp(program.cardAddress);
+        const { members } = await fetchAllBeamioCardMemberDirectoryForOwnerProgram(
+          program.cardAddress,
+          myAddress && ethers.isAddress(myAddress)
+            ? ethers.getAddress(myAddress)
+            : feederEoa && ethers.isAddress(feederEoa)
+              ? ethers.getAddress(feederEoa)
+              : null,
+        );
         if (cancelled) return;
         const rows = mapDirectoryApiMembersToBizTopupRows(
           program.cardAddress,
@@ -23391,12 +23644,12 @@ useEffect(() => {
           members,
         );
         for (const row of rows) {
-          const balanceAccount =
-            row.aaAddress && ethers.isAddress(row.aaAddress)
-              ? ethers.getAddress(row.aaAddress)
-              : row.memberAddress && ethers.isAddress(row.memberAddress)
-                ? ethers.getAddress(row.memberAddress)
-                : '';
+          const balanceAccount = await resolveMemberToken0BalanceAccount(
+            row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress) : '',
+            row.aaAddress,
+            cardBalanceChainId,
+            cardBalanceProvider,
+          );
           if (!balanceAccount) continue;
           const cacheKeyBalance = memberHolderToken0BalanceCacheKey(
             walletStoragePartitionLower || 'unknown',
@@ -23407,6 +23660,9 @@ useEffect(() => {
           row.currentCardToken0Balance = await fetchWithCache(cacheKeyBalance, () =>
             fetchBeamioUserCardToken0BalanceDisplay(program.cardAddress, balanceAccount, cardBalanceProvider)
           , FETCH_TTL_MS, true).catch(() => null as number | null);
+          if (row.aaAddress !== balanceAccount && balanceAccount.toLowerCase() !== row.memberAddress.toLowerCase()) {
+            row.aaAddress = balanceAccount;
+          }
           if (cancelled) return;
         }
         merged.push(...rows);
@@ -23922,6 +24178,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    payments.
                  </p>
                </header>
+
+               {renderLongDhangTerminalRepairPanel()}
 
                <section className="mb-6 sm:mb-8">
                  <button
@@ -28876,6 +29134,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  setActiveTab('Market');
                }}
              />
+             {renderLongDhangTerminalRepairPanel()}
              {renderDashboardPendingTerminalAuthorizationSection('')}
              {showStaffSmartTerminalLockedPanel && (
                <div className="flex min-h-[260px] flex-col items-center justify-center py-6 md:min-h-[280px] md:py-8">

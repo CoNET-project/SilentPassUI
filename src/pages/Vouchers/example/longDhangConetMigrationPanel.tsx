@@ -171,3 +171,85 @@ export function LongDhangConetMigrationPanel({
 		</section>
 	)
 }
+
+export type LongDhangTerminalRepairPanelProps = {
+	currentEoa?: string | null
+	privateKeyArmor?: string | null
+	authorizedOwnerEoa?: string[] | null
+	newCardAddress?: string | null
+	termTotal: number
+	termMatches: number
+	busy: boolean
+	error?: string | null
+	onRepair: () => void
+}
+
+/** Shown after card/member migration when POS sub-admins from the Base snapshot are not yet on the CoNET card. */
+export function LongDhangTerminalRepairPanel({
+	currentEoa,
+	privateKeyArmor,
+	authorizedOwnerEoa,
+	newCardAddress,
+	termTotal,
+	termMatches,
+	busy,
+	error,
+	onRepair,
+}: LongDhangTerminalRepairPanelProps) {
+	const isOwner = useMemo(
+		() => isLongDhangMigrationOwnerAmong(currentEoa, authorizedOwnerEoa),
+		[currentEoa, authorizedOwnerEoa],
+	)
+	const walletReady = Boolean(privateKeyArmor?.trim())
+	const remaining = Math.max(0, termTotal - termMatches)
+
+	if (!isOwner || termTotal <= 0 || remaining <= 0) return null
+
+	const primary =
+		'inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-3 text-sm font-extrabold text-white transition hover:bg-[#0f4ec4] disabled:cursor-not-allowed disabled:opacity-60'
+
+	return (
+		<section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm sm:mb-5 sm:p-5">
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-800">
+					<Sparkles className="h-3.5 w-3.5" />
+					Terminal migration
+				</span>
+				<span className="text-xs font-bold text-amber-900">
+					{termMatches}/{termTotal} POS terminals on CoNET
+				</span>
+			</div>
+			<h3 className="mt-2 font-manrope text-lg font-extrabold tracking-tight text-slate-950">
+				Finish migrating POS terminals
+			</h3>
+			<p className="mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-600">
+				Member balances were moved to{' '}
+				<span className="font-mono text-xs">{shortAddr(newCardAddress ?? undefined)}</span>. Register the{' '}
+				{remaining} remaining terminal{remaining === 1 ? '' : 's'} from the frozen Base snapshot as sub-admins on
+				your CoNET program card.
+			</p>
+			{busy ? (
+				<p className="mt-3 flex items-center gap-2 rounded-xl border border-[#1562f0]/20 bg-[#1562f0]/5 px-3 py-2 text-sm font-semibold text-[#0f4ec4]">
+					<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+					Registering terminals on-chain — keep this page open (may take several minutes).
+				</p>
+			) : null}
+			{!walletReady && !busy ? (
+				<p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+					Unlock with @BeamioTag and access password to register terminals.
+				</p>
+			) : null}
+			<div className="mt-4">
+				<button type="button" className={primary} disabled={!walletReady || busy} onClick={onRepair}>
+					{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+					{busy ? 'Registering terminals…' : `Register ${remaining} terminal${remaining === 1 ? '' : 's'}`}
+				</button>
+			</div>
+			{error ? (
+				<p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+					{error}
+				</p>
+			) : null}
+		</section>
+	)
+}

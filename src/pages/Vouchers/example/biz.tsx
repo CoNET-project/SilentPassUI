@@ -88,6 +88,9 @@ import {
   queryBusinessStartKetBalanceOfOnChain,
   postBusinessStartKetRedeemRedeem,
   queryValidatorDepositRedeemAdminOnChain,
+  isLongDhangMigrationOwnerEoa,
+  isLongDhangMigrationDismissed,
+  setLongDhangMigrationDismissed,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
@@ -233,6 +236,7 @@ import {
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
 import { LongDhangConetMigrationPanel } from './longDhangConetMigrationPanel';
+import { LongDhangConetMigrationFullScreen } from './longDhangConetMigrationFullScreen';
 import { ValidatorDepositRedeemManagementPanel } from './validatorDepositRedeemManagementPanel';
 import {
   ProgramsIssuedItemClaimWalletsSection,
@@ -17066,6 +17070,20 @@ useEffect(() => {
  const [buintRedeemSubmitLoading, setBuintRedeemSubmitLoading] = useState(false);
  const [buintRedeemUiError, setBuintRedeemUiError] = useState('');
  const currentEoa = (profiles?.[0]?.keyID ?? myAddress ?? '').toLowerCase();
+ const isLongDhangMigrationOwner = useMemo(
+   () => isLongDhangMigrationOwnerEoa(currentEoa),
+   [currentEoa],
+ );
+ const [longDhangMigrationDismissed, setLongDhangMigrationDismissedState] = useState(false);
+ useEffect(() => {
+   if (!currentEoa || !ethers.isAddress(currentEoa)) {
+     setLongDhangMigrationDismissedState(false);
+     return;
+   }
+   setLongDhangMigrationDismissedState(isLongDhangMigrationDismissed(currentEoa));
+ }, [currentEoa]);
+ const showLongDhangMigrationFullScreen =
+   isLongDhangMigrationOwner && !longDhangMigrationDismissed && Boolean(currentEoa && ethers.isAddress(currentEoa));
  const [isValidatorDepositRedeemAdmin, setIsValidatorDepositRedeemAdmin] = useState(false);
  const [isValidatorDepositRedeemAdminFetched, setIsValidatorDepositRedeemAdminFetched] = useState(false);
  useEffect(() => {
@@ -22513,10 +22531,13 @@ useEffect(() => {
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** First-time merchant shell: no self-issued BeamioUserCard and no BusinessStartKet Ket #0 on CoNET. While issuer/Ket reads are in flight, keep legacy `!hasAaAccount` to avoid dashboard flash. */
  const showBizFirstMembershipOnboarding = useMemo(() => {
+   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed) return false;
    const bothFetched = profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
    if (bothFetched) return !profileOwnsIssuedBeamioCard && !ownsBusinessStartKetToken0;
    return !hasAaAccount;
  }, [
+   isLongDhangMigrationOwner,
+   longDhangMigrationDismissed,
    profileOwnsIssuedBeamioCardFetched,
    ownsBusinessStartKetToken0Fetched,
    profileOwnsIssuedBeamioCard,
@@ -22595,8 +22616,9 @@ const programsMobileTopNavVisible =
  useLayoutEffect(() => {
    if (activeTab !== 'Overview') return;
    if (!ketNoCardProgramsEligible) return;
+   if (isLongDhangMigrationOwner && !longDhangMigrationDismissed) return;
    setActiveTab('Card Issuance Setup');
- }, [activeTab, ketNoCardProgramsEligible]);
+ }, [activeTab, ketNoCardProgramsEligible, isLongDhangMigrationOwner, longDhangMigrationDismissed]);
 
  /** Local draft complete AND on-chain recover acknowledged (restore / create / Continue push). */
  const verraLiteGateReleased = useMemo(() => {
@@ -37912,6 +37934,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
  if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) {
    return <Navigate to="/" replace state={{ from: location.pathname }} />;
+ }
+
+ if (showLongDhangMigrationFullScreen && currentEoa && ethers.isAddress(currentEoa)) {
+   return (
+     <LongDhangConetMigrationFullScreen
+       currentEoa={currentEoa}
+       privateKeyArmor={profiles?.[0]?.privateKeyArmor}
+       onDismiss={() => {
+         setLongDhangMigrationDismissed(currentEoa, true);
+         setLongDhangMigrationDismissedState(true);
+       }}
+     />
+   );
  }
 
  return renderDashboard();

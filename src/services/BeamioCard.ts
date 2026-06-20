@@ -532,6 +532,41 @@ export const LONGDHANG_OLD_BASE_CARD = '0x30d80cD71Fd1FFD346737b387dA11C7412363E
 export const LONGDHANG_OLD_CARD_OWNER = '0xA2d21FBd33F7D754D8d7A53fe2B4e5C39A008a1F'
 export const LONGDHANG_MIGRATION_VERSION = 'longdhang-conet-migration-v1'
 
+export function isLongDhangMigrationOwnerEoa(rawEoa?: string | null): boolean {
+	try {
+		if (!rawEoa?.trim()) return false
+		return ethers.getAddress(rawEoa) === ethers.getAddress(LONGDHANG_OLD_CARD_OWNER)
+	} catch {
+		return false
+	}
+}
+
+const LONGDHANG_MIGRATION_DISMISS_LS_PREFIX = 'beamio:longdhang-migration-dismissed:v1:'
+
+export function longDhangMigrationDismissStorageKey(eoa: string): string {
+	return `${LONGDHANG_MIGRATION_DISMISS_LS_PREFIX}${ethers.getAddress(eoa).toLowerCase()}`
+}
+
+export function isLongDhangMigrationDismissed(eoa: string): boolean {
+	if (typeof window === 'undefined') return false
+	try {
+		return localStorage.getItem(longDhangMigrationDismissStorageKey(eoa)) === '1'
+	} catch {
+		return false
+	}
+}
+
+export function setLongDhangMigrationDismissed(eoa: string, dismissed: boolean): void {
+	if (typeof window === 'undefined') return
+	try {
+		const key = longDhangMigrationDismissStorageKey(eoa)
+		if (dismissed) localStorage.setItem(key, '1')
+		else localStorage.removeItem(key)
+	} catch {
+		// ignore quota / private mode
+	}
+}
+
 export type LongDhangMigrationSnapshotHolder = {
 	eoa: string
 	oldBaseAA: string

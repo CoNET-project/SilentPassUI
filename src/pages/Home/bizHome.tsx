@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Shield, ArrowRight, Eye, EyeOff, Network, Briefcase, Info, HelpCircle, Fingerprint } from 'lucide-react'
 import { APP_VERSION } from '@/version'
@@ -20,7 +20,9 @@ import { tu } from '@/locale/beamioLocale'
 import {
 	hydrateProfilesWithSessionSecrets,
 	ingestSessionPrivateKeyFromProfiles,
+	hasSessionPrivateKeyArmor,
 } from '@/utils/beamioSessionSecrets'
+import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -71,7 +73,7 @@ const assembleEncryptKeysObject = async (
 	if (!userInfo?.accountName?.trim()) return
 
 	const bo: beamio = userInfo
-	bo.initialLoading = true
+	bo.initialLoading = false
 	temp.beamio = bo
 
 	// Trusted RPC：与本地缓存比对，不一致则更新（含链上无 AA 时清除无 bytecode 的错误缓存）
@@ -174,6 +176,7 @@ const BizHome = () => {
 	const [showRestoreAccess, setShowRestoreAccess] = useState(false)
 
 	const {
+		profiles,
 		setProfiles,
 		setAllNodes,
 		setGossip,
@@ -182,6 +185,13 @@ const BizHome = () => {
 		setCharts,
 		setMyAddress,
 	} = useDaemonContext()
+
+	useEffect(() => {
+		if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) return
+		const p0 = profiles?.[0]
+		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
+		setIsLoggedIn(true)
+	}, [profiles])
 
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault()

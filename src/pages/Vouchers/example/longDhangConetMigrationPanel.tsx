@@ -5,7 +5,7 @@ import { CONET_CARD_FACTORY } from '@/config/chainAddresses'
 import { tu } from '@/locale/beamioLocale'
 import {
 	LONGDHANG_OLD_BASE_CARD,
-	LONGDHANG_OLD_CARD_OWNER,
+	isLongDhangMigrationOwnerEoa,
 	type LongDhangMigrationRunResult,
 	type LongDhangMigrationSnapshot,
 	createLongDhangMigrationCard,
@@ -70,13 +70,7 @@ export function LongDhangConetMigrationPanel({
 	privateKeyArmor,
 	className = '',
 }: LongDhangConetMigrationPanelProps) {
-	const isOwner = useMemo(() => {
-		try {
-			return !!currentEoa && ethers.getAddress(currentEoa) === ethers.getAddress(LONGDHANG_OLD_CARD_OWNER)
-		} catch {
-			return false
-		}
-	}, [currentEoa])
+	const isOwner = useMemo(() => isLongDhangMigrationOwnerEoa(currentEoa), [currentEoa])
 	const [snapshot, setSnapshot] = useState<LongDhangMigrationSnapshot | null>(null)
 	const [newCardAddress, setNewCardAddress] = useState('')
 	const [migrationAdmin, setMigrationAdmin] = useState('')

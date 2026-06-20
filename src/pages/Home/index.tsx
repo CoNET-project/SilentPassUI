@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ethers } from 'ethers'
 import Home from './bizHome';
 import BeamioOnboardingModal from './LoadingPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -6,26 +7,43 @@ import { checkStorage, isStandalone } from '@/services/beamio'
 import SplashScreen from "@/components/SplashScreen"
 import { isWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
 
+function ensureFlatProfiles(p: unknown): profile[] {
+	if (!p || !Array.isArray(p)) return []
+	if (p.length === 0) return []
+	const first = (p as unknown[])[0]
+	if (Array.isArray(first)) return (p as profile[][]).flat()
+	return p as profile[]
+}
+
+function profileHasExistingWallet(data: encrypt_keys_object | null): boolean {
+	const flat = ensureFlatProfiles(data?.profiles)
+	const keyId = flat[0]?.keyID?.trim()
+	return Boolean(keyId && ethers.isAddress(keyId))
+}
+
 const HomePage = ({}) => {
 	const { isInitialLoading, setIsInitialLoading, setBeamio, setProfiles, beamio } = useDaemonContext()
 	const [showBeamioOnboardingModal, setShowBeamioOnboardingModal] = useState(false)
 	const [splashVisible, setSplashVisible] = useState(true)
 	const [showInstallSheet, setShowInstallSheet] = useState(false)
 	const init = async () => {
-		if (isWorkspaceScreenLocked()) {
+		try {
+			if (isWorkspaceScreenLocked()) {
+				setShowBeamioOnboardingModal(false)
+				return
+			}
+			const CoNETData: encrypt_keys_object | null = await checkStorage(false)
+			// Existing merchant wallet on disk → biz gateway login (not create-wallet onboarding).
+			if (profileHasExistingWallet(CoNETData) || (CoNETData && CoNETData?.beamio?.initialLoading)) {
+				setShowBeamioOnboardingModal(false)
+				return
+			}
+
+			setIsInitialLoading(true)
+			setShowBeamioOnboardingModal(true)
+		} finally {
 			setSplashVisible(false)
-			setShowBeamioOnboardingModal(false)
-			return
 		}
-		const CoNETData: encrypt_keys_object | null = await checkStorage(false)
-		if (CoNETData && CoNETData?.beamio?.initialLoading) {
-			setSplashVisible(false)
-			return
-		}
-		
-		setIsInitialLoading(true)
-		setShowBeamioOnboardingModal(true)
-		setSplashVisible(false) // Hide splash so BeamioOnboardingModal (Create/Restore) is visible
 	}
 
 	useEffect(() => {

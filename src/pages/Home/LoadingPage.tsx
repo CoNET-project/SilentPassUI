@@ -242,6 +242,12 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			
 		const userInfo = await loadUserInfo()
 		if (!userInfo) return
+
+		if (!hasSessionPrivateKeyArmor()) {
+			onInitComplete?.()
+			setShowBizLogin(true)
+			return
+		}
 		
 		const bo: beamio = userInfo
 
@@ -250,7 +256,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			setCharts((prev: string[]) => [...prev, message])
 		})
 		
-		bo.initialLoading = true
+		bo.initialLoading = false
 		
 		
 		setDarkModle(bo.darkTheme)

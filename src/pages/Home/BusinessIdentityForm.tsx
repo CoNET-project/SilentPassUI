@@ -3,7 +3,7 @@ import { AppButton } from "@/components/button/AppButton"
 import { ethers } from "ethers"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
 import { ensureConetAaForEoa } from "@/utils/ensureConetAa"
-import { Eye, EyeOff, AlertTriangle, Check, ArrowRight, ShieldCheck } from "lucide-react"
+import { Eye, EyeOff, AlertTriangle, Check, ArrowRight, ShieldCheck, Loader2 } from "lucide-react"
 import {
 	bizBrandFocusRingClass,
 	bizBrandInvalidFieldRingClass,
@@ -17,11 +17,10 @@ import WorkspaceCreatingOverlay, {
 } from "@/pages/Home/WorkspaceCreatingOverlay"
 import {
 	BEAMIO_TAG_ALLOWED_RE,
-	BEAMIO_TAG_RULE_HINT,
 	normalizeBeamioTagInput,
 } from "@/utils/beamioTagRules"
 import type { VerraBusinessProfileDraft } from "@/utils/verraBusinessProfileLocal"
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
 
 export type BusinessIdentitySuccess = {
 	qrDataUrl: string
@@ -37,6 +36,9 @@ function passwordRuleChecks(password: string) {
 	const numbers = /[0-9]/.test(password)
 	return { len8, mixed, numbers }
 }
+
+/** Align with SilentPassUI onboarding BeamioTag: wait 3s after typing stops. */
+const TAG_AVAILABILITY_DEBOUNCE_MS = 3000
 
 export type BusinessIdentityFormProps = {
 	onSuccess: (v: BusinessIdentitySuccess) => void
@@ -61,6 +63,7 @@ export default function BusinessIdentityForm({
 	trailingAfterSubmit,
 	onWorkspaceCreatingChange,
 }: BusinessIdentityFormProps) {
+	const { tu } = useTu()
 	const [beamioName, setBeamioName] = useState("")
 	const [password, setPassword] = useState("")
 	const [confirmPassword, setConfirmPassword] = useState("")
@@ -70,69 +73,122 @@ export default function BusinessIdentityForm({
 	const [submitError, setSubmitError] = useState("")
 
 	const lastCheckedRef = useRef("")
+	const tagCheckSeqRef = useRef(0)
+	const tagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const beamioNameRef = useRef("")
+	const tagStatusRef = useRef<"idle" | "checking" | "valid" | "invalid">("idle")
 	const handleInputRef = useRef<HTMLInputElement>(null)
 	const passwordInputRef = useRef<HTMLInputElement>(null)
 	const confirmInputRef = useRef<HTMLInputElement>(null)
 	const [tagStatus, setTagStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
 	const [tagError, setTagError] = useState("")
 
+	const setTagStatusSynced = (next: "idle" | "checking" | "valid" | "invalid") => {
+		tagStatusRef.current = next
+		setTagStatus(next)
+	}
+
+	const isHandleConfirmedAvailable = (v: string) =>
+		v.length >= 3 && v === lastCheckedRef.current
+
+	const settleTagStatusAfterStaleCheck = () => {
+		const current = normalizeBeamioTagInput(beamioNameRef.current)
+		if (isHandleConfirmedAvailable(current)) {
+			setTagStatusSynced("valid")
+			setTagError("")
+			return
+		}
+		if (tagStatusRef.current === "checking") {
+			setTagStatusSynced("idle")
+		}
+	}
+
 	const localValidateTag = (raw: string) => {
 		const trimmed = normalizeBeamioTagInput(raw)
-		if (!trimmed) return { ok: false, v: "", msg: "Please enter a business handle" }
+		if (!trimmed) return { ok: false, v: "", msg: tu('onb_identity_enter_handle') }
 		if (!BEAMIO_TAG_ALLOWED_RE.test(trimmed)) {
-			return { ok: false, v: trimmed, msg: BEAMIO_TAG_RULE_HINT }
+			return { ok: false, v: trimmed, msg: tu('onb_identity_tag_rule_hint') }
 		}
 		return { ok: true, v: trimmed, msg: "" }
 	}
 
 	const validateAndCheckTag = async () => {
-		if (tagStatus === "checking") return false
-
 		const { ok, v, msg } = localValidateTag(beamioName)
 		setTagError("")
 
 		if (!ok) {
 			if (v.length > 0) {
-				setTagStatus("invalid")
+				setTagStatusSynced("invalid")
 				setTagError(msg)
 			} else {
-				setTagStatus("idle")
+				setTagStatusSynced("idle")
 			}
 			return false
 		}
 
-		if (v === lastCheckedRef.current && tagStatus === "valid") return true
-		lastCheckedRef.current = v
+		if (isHandleConfirmedAvailable(v)) {
+			if (tagStatusRef.current !== "valid") {
+				setTagStatusSynced("valid")
+			}
+			return true
+		}
 
-		setTagStatus("checking")
+		if (tagStatusRef.current === "checking") {
+			return false
+		}
+
+		const seq = ++tagCheckSeqRef.current
+		setTagStatusSynced("checking")
 		try {
 			const available = await checkBeamioAccountAPI(v)
-			if (!available) {
-				setTagStatus("invalid")
-				setTagError(`@${v} is already taken`)
+			if (seq !== tagCheckSeqRef.current) return false
+			if (normalizeBeamioTagInput(beamioNameRef.current) !== v) {
+				settleTagStatusAfterStaleCheck()
 				return false
 			}
-			setTagStatus("valid")
+			if (!available) {
+				setTagStatusSynced("invalid")
+				setTagError(tu('onb_identity_tag_taken', { tag: v }))
+				return false
+			}
+			lastCheckedRef.current = v
+			setTagStatusSynced("valid")
 			setTagError("")
 			return true
 		} catch {
-			setTagStatus("invalid")
-			setTagError("Network error. Try again.")
+			if (seq !== tagCheckSeqRef.current) return false
+			if (normalizeBeamioTagInput(beamioNameRef.current) !== v) {
+				settleTagStatusAfterStaleCheck()
+				return false
+			}
+			setTagStatusSynced("invalid")
+			setTagError(tu('onb_identity_network_error'))
 			return false
 		}
 	}
 
-	useEffect(() => {
-		const trimmed = normalizeBeamioTagInput(beamioName)
+	const scheduleTagAvailabilityCheck = (raw?: string) => {
+		if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current)
+		const trimmed = normalizeBeamioTagInput(raw ?? beamioName)
 		if (trimmed.length <= 2) return
-		if (trimmed === lastCheckedRef.current && tagStatus === "valid") return
+		const { ok } = localValidateTag(trimmed)
+		if (!ok) return
+		if (isHandleConfirmedAvailable(trimmed)) return
+		tagDebounceRef.current = setTimeout(() => {
+			tagDebounceRef.current = null
+			void validateAndCheckTag()
+		}, TAG_AVAILABILITY_DEBOUNCE_MS)
+	}
 
-		const t = setTimeout(() => {
-			validateAndCheckTag()
-		}, 3000)
-		return () => clearTimeout(t)
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [beamioName, tagStatus])
+	useEffect(() => {
+		beamioNameRef.current = beamioName
+	}, [beamioName])
+
+	useEffect(() => {
+		return () => {
+			if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current)
+		}
+	}, [])
 
 	const { len8, mixed, numbers } = passwordRuleChecks(password)
 	const tagOk = tagStatus === "valid"
@@ -175,12 +231,13 @@ export default function BusinessIdentityForm({
 		let kks: Awaited<ReturnType<typeof createRecover>> = null
 		try {
 			kks = await createRecover(trimmedTag, password, recoveryDraft)
-		} finally {
-			setLoading(false)
+		} catch {
+			kks = null
 		}
 
 		if (!kks) {
-			setSubmitError("Could not create your workspace. Check your connection and try again.")
+			setLoading(false)
+			setSubmitError(tu('onb_identity_create_failed'))
 			return
 		}
 
@@ -203,6 +260,7 @@ export default function BusinessIdentityForm({
 			temp: kks.temp,
 			beamioTag: trimmedTag,
 		})
+		// 成功：保持 loading/workspaceCreating 遮罩直至父级切到 Recovery（避免 Identity 表单闪回）
 	}
 
 	const trimmedDisplay = normalizeBeamioTagInput(beamioName)
@@ -233,6 +291,8 @@ export default function BusinessIdentityForm({
 	}
 
 	if (loading) {
+		// 父级 LoadingPage 持有全屏遮罩时，避免子级卸载遮罩导致 Identity 闪屏
+		if (onWorkspaceCreatingChange) return null
 		return <WorkspaceCreatingOverlay creatingStep={creatingStep} />
 	}
 
@@ -242,15 +302,15 @@ export default function BusinessIdentityForm({
 				<div className="mb-10">
 					<div className="mb-6 flex flex-wrap items-center justify-between gap-2">
 						<span className="rounded-full bg-[#1562F0]/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562F0]">
-							Step 1 of 2
+							{tu('onb_identity_step_badge')}
 						</span>
-						<span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#666666]/70">Business Identity</span>
+						<span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#666666]/70">{tu('onb_identity_step_label')}</span>
 					</div>
 					<h2 className="biz-identity-headline mb-4 text-3xl font-extrabold tracking-tight text-[#121212]">
-						Create your business identity
+						{tu('onb_identity_title')}
 					</h2>
 					<p className="leading-relaxed text-[#666666]">
-						Choose your Beamio handle and set the password that protects your business workspace.
+						{tu('onb_identity_sub')}
 					</p>
 				</div>
 			)}
@@ -264,7 +324,7 @@ export default function BusinessIdentityForm({
 			>
 				<div className="space-y-3">
 					<label className="text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70" htmlFor="biz-identity-handle">
-						Business Handle
+						{tu('onb_identity_handle_label')}
 					</label>
 					<div className="relative">
 						<span
@@ -276,7 +336,7 @@ export default function BusinessIdentityForm({
 						<input
 							ref={handleInputRef}
 							id="biz-identity-handle"
-							readOnly={loading || isCheckingTag}
+							readOnly={loading}
 							autoCapitalize="none"
 							autoCorrect="off"
 							autoComplete="username"
@@ -284,39 +344,90 @@ export default function BusinessIdentityForm({
 							inputMode="text"
 							onKeyDown={onHandleKeyDown}
 							className={`
-								w-full rounded-xl border border-[#E5E7EB] bg-white py-4 pl-10 pr-5 text-lg font-medium transition-all
+								w-full rounded-xl border border-[#E5E7EB] bg-white py-4 pl-10 pr-12 text-lg font-medium
 								text-[#121212] placeholder:text-[#666666]/40
 								focus:border-[#1562F0] focus:outline-none focus:ring-2 focus:ring-[#1562F0]/10
 								${tagStatus === "invalid" ? bizBrandInvalidFieldRingClass : ""}
 								${tagStatus !== "invalid" ? bizBrandFocusRingClass : ""}
-								disabled:opacity-70
+								read-only:opacity-100
 							`}
 							value={beamioName}
-							placeholder="yourbusiness"
+							placeholder={tu('onb_identity_handle_ph')}
 							onChange={(e) => {
-								if (isCheckingTag) return
 								const next = normalizeBeamioTagInput(e.currentTarget.value)
 								setBeamioName(next)
-								setTagStatus("idle")
+								beamioNameRef.current = next
+								if (tagDebounceRef.current) {
+									clearTimeout(tagDebounceRef.current)
+									tagDebounceRef.current = null
+								}
+								const local = localValidateTag(next)
+								if (!local.ok) {
+									tagCheckSeqRef.current += 1
+									if (local.v.length > 0) {
+										setTagStatusSynced("invalid")
+										setTagError(local.msg)
+									} else {
+										setTagStatusSynced("idle")
+										setTagError("")
+									}
+									return
+								}
 								setTagError("")
+								if (isHandleConfirmedAvailable(local.v)) return
+								if (tagStatusRef.current === "checking") {
+									tagCheckSeqRef.current += 1
+									setTagStatusSynced("idle")
+								} else if (
+									local.v !== lastCheckedRef.current &&
+									(tagStatusRef.current === "valid" || tagStatusRef.current === "invalid")
+								) {
+									setTagStatusSynced("idle")
+								}
+								scheduleTagAvailabilityCheck(local.v)
 							}}
 							onBlur={() => {
 								const t = normalizeBeamioTagInput(beamioName)
-								if (t.length >= 3) void validateAndCheckTag()
+								if (t.length < 3 || isHandleConfirmedAvailable(t)) return
+								if (tagDebounceRef.current) {
+									clearTimeout(tagDebounceRef.current)
+									tagDebounceRef.current = null
+								}
+								void validateAndCheckTag()
 							}}
 						/>
+						<div className="pointer-events-none absolute inset-y-0 right-4 flex w-5 items-center justify-center">
+							<Loader2
+								className={`absolute h-5 w-5 text-[#1562F0] ${isCheckingTag ? "animate-spin opacity-100" : "opacity-0"}`}
+								strokeWidth={2.25}
+								aria-hidden
+							/>
+							<div
+								className={`absolute flex items-center justify-center rounded-full bg-emerald-500 p-0.5 ${
+									tagOk && trimmedDisplay && !isCheckingTag ? "opacity-100" : "opacity-0"
+								}`}
+							>
+								<Check className="h-4 w-4 text-white" strokeWidth={3} aria-hidden />
+							</div>
+						</div>
 					</div>
-					{tagStatus === "invalid" && tagError ? (
-						<div className="flex items-center gap-1.5 text-[11px] text-orange-600 font-medium pl-1">
-							<AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden />
-							{tagError}
-						</div>
-					) : tagStatus === "valid" && trimmedDisplay ? (
-						<div className="flex items-center gap-1.5 pl-1 text-[11px] font-medium text-[#1562F0]">
-							<Check className="w-[14px] h-[14px] shrink-0" strokeWidth={2.5} aria-hidden />
-							@{trimmedDisplay} is available
-						</div>
-					) : null}
+					<div className="min-h-[1.375rem] pl-1" aria-live="polite">
+						{tagStatus === "invalid" && tagError ? (
+							<div className="flex items-center gap-1.5 text-[11px] font-medium text-orange-600">
+								<AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+								<span>{tagError}</span>
+							</div>
+						) : tagStatus === "valid" && trimmedDisplay ? (
+							<div className="flex items-center gap-1.5 text-[11px] font-medium text-[#1562F0]">
+								<Check className="h-[14px] w-[14px] shrink-0" strokeWidth={2.5} aria-hidden />
+								<span>{tu('onb_identity_tag_available', { tag: trimmedDisplay })}</span>
+							</div>
+						) : tagStatus === "checking" ? (
+							<p className="text-[11px] font-medium text-[#666666]/80">{tu('onb_identity_tag_checking')}</p>
+						) : (
+							<p className="text-[11px] font-medium text-[#666666]/70">{tu('onb_identity_handle_permanent_hint')}</p>
+						)}
+					</div>
 				</div>
 
 				<div className="space-y-4">
@@ -326,7 +437,7 @@ export default function BusinessIdentityForm({
 								className="block px-4 text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70"
 								htmlFor="biz-identity-password"
 							>
-								Account Password
+								{tu('onb_identity_password_label')}
 							</label>
 							<div className="relative">
 								<input
@@ -352,7 +463,7 @@ export default function BusinessIdentityForm({
 									tabIndex={-1}
 									className="absolute inset-y-0 right-4 flex items-center rounded-md p-1 text-[#666666]/70 transition-colors hover:text-[#121212] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562F0]/30"
 									onClick={() => setShowPassword((s) => !s)}
-									aria-label={showPassword ? "隐藏密码" : "显示密码"}
+									aria-label={showPassword ? tu('hide_password') : tu('show_password')}
 								>
 									{showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
 								</button>
@@ -363,7 +474,7 @@ export default function BusinessIdentityForm({
 								className="block px-4 text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70"
 								htmlFor="biz-identity-confirm-password"
 							>
-								Confirm Password
+								{tu('onb_identity_confirm_password_label')}
 							</label>
 							<input
 								ref={confirmInputRef}
@@ -388,27 +499,27 @@ export default function BusinessIdentityForm({
 							{confirmMismatch ? (
 								<div className="flex items-center gap-2 px-4 pt-0.5 text-orange-600">
 									<AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-									<span className="text-[13px] font-semibold leading-snug">Passwords do not match</span>
+									<span className="text-[13px] font-semibold leading-snug">{tu('onb_identity_passwords_mismatch')}</span>
 								</div>
 							) : null}
 						</div>
 					</div>
 
-					<ul className="space-y-2.5 px-2 pt-1" aria-label="Password requirements">
+					<ul className="space-y-2.5 px-2 pt-1" aria-label={tu('onb_identity_pw_req_aria')}>
 						{(
 							[
-								{ ok: len8, label: "At least 8 characters" },
-								{ ok: mixed, label: "Upper and lowercase letters" },
-								{ ok: numbers, label: "At least one number" },
+								{ ok: len8, key: "onb_identity_pw_len8" },
+								{ ok: mixed, key: "onb_identity_pw_mixed" },
+								{ ok: numbers, key: "onb_identity_pw_numbers" },
 							] as const
-						).map(({ ok, label }) => (
-							<li key={label} className="flex items-center gap-2.5">
+						).map(({ ok, key }) => (
+							<li key={key} className="flex items-center gap-2.5">
 								{ok ? (
 									<Check className="h-4 w-4 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
 								) : (
 									<span className="h-4 w-4 shrink-0 rounded-full border-2 border-[#c3c6d8]" aria-hidden />
 								)}
-								<span className={`text-[13px] font-medium ${ok ? "text-[#121212]" : "text-[#666666]"}`}>{label}</span>
+								<span className={`text-[13px] font-medium ${ok ? "text-[#121212]" : "text-[#666666]"}`}>{tu(key)}</span>
 							</li>
 						))}
 					</ul>
@@ -422,10 +533,10 @@ export default function BusinessIdentityForm({
 					/>
 					<div className="min-w-0 space-y-1">
 						<p className="text-[11px] font-bold uppercase tracking-wider text-[#121212]">
-							Protected by local encryption
+							{tu('onb_identity_encryption_title')}
 						</p>
 						<p className="text-[13px] leading-relaxed text-[#666666]">
-							Your business credentials stay encrypted on this device and under your control.
+							{tu('onb_identity_encryption_body')}
 						</p>
 					</div>
 				</div>

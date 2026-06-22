@@ -53,6 +53,7 @@ import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
+import { CONET_RPC_URL } from '@/config/chainAddresses'
 
 global.Buffer = require("buffer").Buffer
 
@@ -60,7 +61,7 @@ const beamioConetContract = {
   address: "0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd",
   network: "CONET DePIN",
   abi: beamioConetCoreABI,
-  provider: new ethers.JsonRpcProvider("https://rpc1.conet.network"),
+  provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 }
 
 type message = {

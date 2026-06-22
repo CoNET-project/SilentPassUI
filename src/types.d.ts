@@ -201,6 +201,7 @@ type paymentCard = {
 		language: ILanguage
 		currency: ICurrency
 		tax: string
+		localeConfigured?: boolean
 	}
 
 	type searchkeywork = {
@@ -547,6 +548,8 @@ type Argon2idHash = {
 		pgpPublicKeyID?: string
 		pgpPublicKeyArmor?: string
 		tax?: string
+		/** True when chain registry lastName includes locale/currency JSON setup block. */
+		localeCurrencyConfigured?: boolean
 		
   }
 

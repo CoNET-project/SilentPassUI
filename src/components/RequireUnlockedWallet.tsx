@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { checkStorage } from '@/services/beamio'
+import { checkStorage, bootstrapProfileLocaleCurrencyIfUnset } from '@/services/beamio'
 import { initChat } from '@/services/chat'
 import { setCoNET_Data } from '@/utils/globals'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -75,9 +75,16 @@ export default function RequireUnlockedWallet() {
 				return
 			}
 			const bo = (data as { beamio?: beamio })?.beamio
+			const pk = getSessionPrivateKeyArmor()?.trim()
 			if (bo && typeof bo === 'object') {
-				setBeamio(bo)
-				if (typeof bo.darkTheme === 'boolean') setDarkModle(bo.darkTheme)
+				let nextBo = bo
+				if (pk) {
+					nextBo = await bootstrapProfileLocaleCurrencyIfUnset(bo, pk)
+					const updated = { ...(merged as encrypt_keys_object), beamio: nextBo }
+					setCoNET_Data(updated)
+				}
+				setBeamio(nextBo)
+				if (typeof nextBo.darkTheme === 'boolean') setDarkModle(nextBo.darkTheme)
 			}
 			setGate('ok')
 			void initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {

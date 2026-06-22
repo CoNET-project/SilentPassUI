@@ -10,8 +10,9 @@ import {
 	UserRound,
 } from "lucide-react"
 import { bizBrandFocusRingClass } from "@/pages/Home/brandUi"
+import { BizOnboardingLocalePicker } from "@/pages/Home/BizOnboardingLocalePicker"
 import { ONBOARDING_REGIONS_BY_COUNTRY } from "@/pages/Home/onboardingRegions"
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
 
 const HEADLINE_FONT = { fontFamily: "Manrope, ui-sans-serif, system-ui, sans-serif" } as const
 
@@ -54,6 +55,7 @@ export function OnboardingBusinessDetailsScreen({
 	setDetailProvince,
 	onContinue,
 }: OnboardingBusinessDetailsScreenProps): React.ReactElement {
+	const { tu } = useTu()
 	const canContinue = detailBusinessName.trim().length > 0 && detailCategory.trim().length > 0
 
 	return (
@@ -65,25 +67,23 @@ export function OnboardingBusinessDetailsScreen({
 				pr-[env(safe-area-inset-right)]
 			"
 		>
-			<header
-				className="fixed top-0 left-0 right-0 z-50 flex w-full items-center justify-end border-b border-[#abadaf]/10 bg-[#f5f7f9]/70 px-6 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl"
-				style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
-			>
-				<nav className="flex items-center gap-4 text-[10px] font-bold tracking-tight" style={HEADLINE_FONT}>
-					<span className="text-[#abadaf]">Select Type</span>
-					<span className="text-[#1562f0] border-b-2 border-[#1562f0] pb-0.5">Details</span>
-					<span className="text-[#abadaf]">Identity</span>
-				</nav>
-			</header>
-
 			{appVersion && (
-				<div
-					className="fixed right-4 z-[60] text-[11px] font-medium text-[#abadaf] md:right-6"
-					style={{ top: "calc(env(safe-area-inset-top) + 4.25rem)" }}
-				>
+				<div className="pointer-events-none fixed left-4 z-[5] text-[11px] font-medium text-[#abadaf] md:left-6 top-[calc(env(safe-area-inset-top)+0.5rem)]">
 					v{appVersion}
 				</div>
 			)}
+
+			<header
+				className="fixed top-0 left-0 right-0 z-50 flex w-full items-center justify-between gap-3 overflow-visible border-b border-[#abadaf]/10 bg-[#f5f7f9]/70 px-6 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl"
+				style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
+			>
+				<nav className="flex min-w-0 flex-1 items-center gap-4 text-[10px] font-bold tracking-tight" style={HEADLINE_FONT}>
+					<span className="text-[#abadaf]">{tu('onb_step_select_type')}</span>
+					<span className="text-[#1562f0] border-b-2 border-[#1562f0] pb-0.5">{tu('onb_step_details')}</span>
+					<span className="text-[#abadaf]">{tu('onb_step_identity')}</span>
+				</nav>
+				<BizOnboardingLocalePicker />
+			</header>
 
 			<main className="min-h-0 flex-1 pt-[calc(4rem+env(safe-area-inset-top))] pb-28 md:pb-10">
 				<section className="overflow-hidden bg-[#f5f7f9] px-6 pb-12 pt-8">
@@ -92,10 +92,12 @@ export function OnboardingBusinessDetailsScreen({
 							className="mb-4 text-[2.5rem] font-extrabold leading-[1.1] tracking-tight text-[#2c2f31]"
 							style={HEADLINE_FONT}
 						>
-							Set up your business for <span className="text-[#1562f0]">live</span> commerce.
+							{tu('onb_lite_form_hero_prefix')}
+							<span className="text-[#1562f0]">{tu('onb_lite_form_hero_accent')}</span>
+							{tu('onb_lite_form_hero_suffix')}
 						</h1>
 						<p className="mb-10 max-w-[85%] text-lg leading-relaxed text-[#595c5e]">
-							Create a dedicated workspace for global cards, payments, and smart-contract utility.
+							{tu('onb_lite_form_sub')}
 						</p>
 						<div className="grid grid-cols-2 gap-4">
 							<div className="translate-y-1 rounded-2xl bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)] sm:translate-y-4">
@@ -103,18 +105,18 @@ export function OnboardingBusinessDetailsScreen({
 									<LayoutGrid className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
 								</div>
 								<h3 className="mb-1 text-sm font-bold" style={HEADLINE_FONT}>
-									Business Control
+									{tu('onb_business_control_title')}
 								</h3>
-								<p className="text-[11px] leading-tight text-[#595c5e]">Centralized dashboard for all operational workflows.</p>
+								<p className="text-[11px] leading-tight text-[#595c5e]">{tu('onb_business_control_desc')}</p>
 							</div>
 							<div className="-translate-y-0.5 rounded-2xl bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)] sm:-translate-y-2">
 								<div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#f797ef]/20">
 									<Hexagon className="h-5 w-5 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
 								</div>
 								<h3 className="mb-1 text-sm font-bold" style={HEADLINE_FONT}>
-									Brand Identity
+									{tu('onb_brand_identity_title')}
 								</h3>
-								<p className="text-[11px] leading-tight text-[#595c5e]">Smart-contract loyalty and membership tiers.</p>
+								<p className="text-[11px] leading-tight text-[#595c5e]">{tu('onb_brand_identity_desc')}</p>
 							</div>
 						</div>
 					</div>
@@ -124,22 +126,22 @@ export function OnboardingBusinessDetailsScreen({
 					<div className="mx-auto w-full max-w-md">
 						<div className="mb-10">
 							<h2 className="mb-2 text-2xl font-bold tracking-tight text-[#2c2f31]" style={HEADLINE_FONT}>
-								Tell us about your business
+								{tu('onb_tell_business_title')}
 							</h2>
-							<p className="text-sm text-[#595c5e]">Essential for market discovery and regulatory compliance.</p>
+							<p className="text-sm text-[#595c5e]">{tu('onb_tell_business_sub')}</p>
 						</div>
 
 						<div className="space-y-8">
 							<div className="space-y-2">
 								<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-detail-name">
-									Business Name
+									{tu('onb_business_name')}
 								</label>
 								<input
 									id="onb-detail-name"
 									type="text"
 									value={detailBusinessName}
 									onChange={(e) => setDetailBusinessName(e.target.value)}
-									placeholder="e.g., Main Street Roasters"
+									placeholder={tu('onb_business_name_ph')}
 									autoComplete="organization"
 									className={`
 										w-full rounded-2xl border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf]
@@ -151,7 +153,7 @@ export function OnboardingBusinessDetailsScreen({
 
 							<div className="space-y-2">
 								<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-detail-category">
-									Business Category
+									{tu('onb_business_category')}
 								</label>
 								<div className="relative">
 									<select
@@ -164,15 +166,15 @@ export function OnboardingBusinessDetailsScreen({
 											${bizBrandFocusRingClass}
 										`}
 									>
-										<option value="">Select category</option>
-										<option value="food-beverage">Food &amp; Beverage</option>
-										<option value="grocery-convenience">Grocery &amp; Convenience</option>
-										<option value="retail-shopping">Retail &amp; Shopping</option>
-										<option value="education-training">Education &amp; Training</option>
-										<option value="health-beauty">Health &amp; Beauty</option>
-										<option value="fitness-wellness">Fitness &amp; Wellness</option>
-										<option value="entertainment-leisure">Entertainment &amp; Leisure</option>
-										<option value="local-services">Local Services</option>
+										<option value="">{tu('onb_select_category')}</option>
+										<option value="food-beverage">{tu('onb_cat_food_beverage')}</option>
+										<option value="grocery-convenience">{tu('onb_cat_grocery')}</option>
+										<option value="retail-shopping">{tu('onb_cat_retail')}</option>
+										<option value="education-training">{tu('onb_cat_education')}</option>
+										<option value="health-beauty">{tu('onb_cat_health_beauty')}</option>
+										<option value="fitness-wellness">{tu('onb_cat_fitness')}</option>
+										<option value="entertainment-leisure">{tu('onb_cat_entertainment')}</option>
+										<option value="local-services">{tu('onb_cat_local_services')}</option>
 									</select>
 									<OnboardingDetailsSelectChevron />
 								</div>
@@ -180,7 +182,7 @@ export function OnboardingBusinessDetailsScreen({
 
 							<div className="space-y-2">
 								<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-detail-country">
-									Country
+									{tu('onb_country')}
 								</label>
 								<div className="relative">
 									<select
@@ -196,12 +198,12 @@ export function OnboardingBusinessDetailsScreen({
 											${bizBrandFocusRingClass}
 										`}
 									>
-										<option value="">Select country</option>
-										<option value="CA">Canada</option>
-										<option value="US">United States</option>
-										<option value="GB">United Kingdom</option>
-										<option value="AU">Australia</option>
-										<option value="DE">Germany</option>
+										<option value="">{tu('onb_select_country')}</option>
+										<option value="CA">{tu('onb_country_ca')}</option>
+										<option value="US">{tu('onb_country_us')}</option>
+										<option value="GB">{tu('onb_country_gb')}</option>
+										<option value="AU">{tu('onb_country_au')}</option>
+										<option value="DE">{tu('onb_country_de')}</option>
 									</select>
 									<OnboardingDetailsSelectChevron />
 								</div>
@@ -210,14 +212,14 @@ export function OnboardingBusinessDetailsScreen({
 							<div className="grid grid-cols-2 gap-4">
 								<div className="space-y-2">
 									<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-detail-city">
-										City
+										{tu('onb_city')}
 									</label>
 									<input
 										id="onb-detail-city"
 										type="text"
 										value={detailCity}
 										onChange={(e) => setDetailCity(e.target.value)}
-										placeholder="e.g., Vancouver"
+										placeholder={tu('onb_city_ph')}
 										autoComplete="address-level2"
 										className={`
 											w-full rounded-2xl border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf]
@@ -228,7 +230,7 @@ export function OnboardingBusinessDetailsScreen({
 								</div>
 								<div className="space-y-2">
 									<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-detail-province">
-										Province
+										{tu('onb_province')}
 									</label>
 									<div className="relative">
 										<select
@@ -244,7 +246,7 @@ export function OnboardingBusinessDetailsScreen({
 											`}
 										>
 											<option value="">
-												{detailCountry ? "Select" : "Select country first"}
+												{detailCountry ? tu('onb_select') : tu('onb_select_country_first')}
 											</option>
 											{(detailCountry ? ONBOARDING_REGIONS_BY_COUNTRY[detailCountry] ?? [] : []).map(({ value, label }) => (
 												<option key={value} value={value}>
@@ -261,9 +263,9 @@ export function OnboardingBusinessDetailsScreen({
 						<div className="mt-12 flex items-start gap-4 rounded-2xl bg-[#1562f0]/5 p-6">
 							<ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
 							<div>
-								<p className="mb-1 text-xs font-semibold text-[#1562f0]">Encrypted Infrastructure</p>
+								<p className="mb-1 text-xs font-semibold text-[#1562f0]">{tu('onb_encrypted_title')}</p>
 								<p className="text-[11px] leading-relaxed text-[#595c5e]">
-									Your data is stored using AES-256 encryption. We never share your commercial details with third-party brokers.
+									{tu('onb_encrypted_body')}
 								</p>
 							</div>
 						</div>
@@ -288,16 +290,16 @@ export function OnboardingBusinessDetailsScreen({
 			</main>
 
 			<footer className="mt-auto flex flex-col items-center justify-between gap-6 border-t border-[#abadaf]/10 bg-[#eef1f3] px-8 py-8 pb-24 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex-row md:px-16 md:pb-8">
-				<div className="text-center tracking-[0.2em] md:text-left">由 Beamio 基础设施安全托管 © 2026</div>
+				<div className="text-center tracking-[0.2em] md:text-left">{tu('onb_footer_hosted')}</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
 					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
-						Privacy Policy
+						{tu('onb_privacy_policy')}
 					</a>
 					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
-						Terms of Service
+						{tu('onb_terms_of_service')}
 					</a>
 					<a className="transition-colors hover:text-[#1562f0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
-						Help Center
+						{tu('onb_help_center')}
 					</a>
 				</div>
 			</footer>
@@ -309,19 +311,19 @@ export function OnboardingBusinessDetailsScreen({
 				<div className="flex flex-col items-center justify-center p-3 text-slate-400">
 					<BadgeCheck className="h-6 w-6" strokeWidth={2} aria-hidden />
 					<span className="mt-1 text-[10px] font-bold uppercase tracking-widest" style={HEADLINE_FONT}>
-						Select Type
+						{tu('onb_step_select_type')}
 					</span>
 				</div>
 				<div className="flex flex-col items-center justify-center rounded-full bg-[#1562f0] p-3 text-white">
 					<Info className="h-6 w-6" strokeWidth={2} aria-hidden />
 					<span className="mt-1 text-[10px] font-bold uppercase tracking-widest" style={HEADLINE_FONT}>
-						Details
+						{tu('onb_step_details')}
 					</span>
 				</div>
 				<div className="flex flex-col items-center justify-center p-3 text-slate-400">
 					<UserRound className="h-6 w-6" strokeWidth={2} aria-hidden />
 					<span className="mt-1 text-[10px] font-bold uppercase tracking-widest" style={HEADLINE_FONT}>
-						Identity
+						{tu('onb_step_identity')}
 					</span>
 				</div>
 			</nav>

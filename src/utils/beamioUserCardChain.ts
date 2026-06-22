@@ -1,25 +1,32 @@
 import { ethers } from 'ethers'
-import { BASE_MAINNET_CHAIN_ID, CONET_CARD_FACTORY } from '@/config/chainAddresses'
-import { baseEndpoint, conetDepinProvider } from '@/utils/constants'
+import { CONET_CARD_FACTORY } from '@/config/chainAddresses'
+import { conetDepinProvider } from '@/utils/constants'
 
 export const CONET_MAINNET_CHAIN_ID = 224422
 
-/** Default merchant UserCard factory (CoNET 224422). Override server-side with BEAMIO_MERCHANT_USER_CARD_CHAIN=base. */
+/** Default merchant UserCard factory (CoNET 224422). Biz Merchant OS reads program cards on CoNET L1 only. */
 export const DEFAULT_MERCHANT_CARD_FACTORY = CONET_CARD_FACTORY
 
+/** True when the program card bytecode is deployed on CoNET L1 (224422). */
+export async function isMerchantUserCardOnConet(cardAddress: string): Promise<boolean> {
+	const addr = ethers.getAddress(cardAddress)
+	try {
+		const conetCode = await conetDepinProvider.getCode(addr)
+		return Boolean(conetCode && conetCode !== '0x')
+	} catch {
+		return false
+	}
+}
+
+/** Biz Merchant OS: program cards are read on CoNET L1 only (no Base L2 fallback). */
 export async function providerForBeamioUserCard(
 	cardAddress: string,
 ): Promise<{ provider: ethers.Provider; chainId: number }> {
 	const addr = ethers.getAddress(cardAddress)
-	try {
-		const conetCode = await conetDepinProvider.getCode(addr)
-		if (conetCode && conetCode !== '0x') {
-			return { provider: conetDepinProvider, chainId: CONET_MAINNET_CHAIN_ID }
-		}
-	} catch {
-		/* fall through */
+	if (await isMerchantUserCardOnConet(addr)) {
+		return { provider: conetDepinProvider, chainId: CONET_MAINNET_CHAIN_ID }
 	}
-	return { provider: baseEndpoint, chainId: BASE_MAINNET_CHAIN_ID }
+	return { provider: conetDepinProvider, chainId: CONET_MAINNET_CHAIN_ID }
 }
 
 export async function eip712ChainIdForBeamioUserCard(cardAddress: string): Promise<number> {

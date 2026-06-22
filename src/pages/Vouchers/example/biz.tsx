@@ -102,7 +102,6 @@ import {
   waitForLongDhangServerMigrationVerify,
   syncLongDhangMigrationCompletedFromStoredCard,
   getLongDhangMigrationCompleted,
-  LONGDHANG_OLD_BASE_CARD,
   repairLongDhangMigrationTerminals,
   listLongDhangMigratedTerminalEoa,
   verifyLongDhangMigration,
@@ -123,15 +122,14 @@ import {
   type CardRedeemItem,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
-import { conetDepinProvider, baseEndpoint, baseRpcProviderDirect } from '@/utils/constants';
+import { conetDepinProvider, baseEndpoint } from '@/utils/constants';
 import {
-  BASE_CARD_FACTORY,
   BEAMIO_INDEXER_DIAMOND,
   CONET_BUINT,
   CONET_BUNIT_AIRDROP_ADDRESS,
   CONET_CARD_FACTORY,
 } from '@/config/chainAddresses';
-import { CONET_MAINNET_CHAIN_ID, providerForBeamioUserCard } from '@/utils/beamioUserCardChain';
+import { CONET_MAINNET_CHAIN_ID, providerForBeamioUserCard, isMerchantUserCardOnConet } from '@/utils/beamioUserCardChain';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { ensureConetAaForEoa } from '@/utils/ensureConetAa';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
@@ -949,7 +947,7 @@ function membersBizViewerResolvedForCache(
 }
 
 function membersLoyaltyDirectoryBundleCacheKey(eoaLower: string, viewerNormLower: string): string {
-  return `eoa:${eoaLower}:biz:members-loyalty-directory:v2:longdhang-fallback:${viewerNormLower}`
+  return `eoa:${eoaLower}:biz:members-loyalty-directory:v4:longdhang-balance:${viewerNormLower}`
 }
 
 function dashboardMembersDirectoryHintCacheKey(eoaLower: string, cardBucket: string): string {
@@ -4204,7 +4202,7 @@ function MessagesDayZeroShell(props: {
   );
 }
 
-/** BeamioUserCard read: prefer baseRpcProviderDirect for stats/isAdmin (avoids baseEndpoint proxy decode issues; Issued $CTree path already uses direct). */
+/** BeamioUserCard read: CoNET L1 program cards only (biz Merchant OS; no Base L2 fallback). */
 const BIZ_CACHE_PREFIX = 'beamio:biz-example:'
 /** Fallback when CoNET oracle fetch fails */
 const ORACLE_CAD_USDC_FALLBACK = 0.740
@@ -7607,7 +7605,7 @@ function formatMinUsdc6WithCurrencyLabel(minUsdc6: bigint, currencyType: number)
 
 /**
  * Beamio Merchant（Merchant OS）链上 KPI / metadata / Staff：以 **localStorage trusted cache 本地为主**，6s daemon 后台拉取为辅（`beamio-ai-onchain-fetch.mdc`）。
- * 节拍由 **DaemonProvider** 统一触发：Overview/Staff 为 6s `setTimeout` 链（与 Members 并行），**B-Unit 余额**为 CoNET L1 `block` 节拍（`registerMerchantOsBuintBalanceBackgroundWork`）；**不**依赖当前 Tab；Base 读仍用 `baseRpcProviderDirect`（see `beamio-no-setinterval.mdc`）。
+ * 节拍由 **DaemonProvider** 统一触发：Overview/Staff 为 6s `setTimeout` 链（与 Members 并行），**B-Unit 余额**为 CoNET L1 `block` 节拍（`registerMerchantOsBuintBalanceBackgroundWork`）；**不**依赖当前 Tab；program card 链上读数走 CoNET `providerForBeamioUserCard`（see `beamio-no-setinterval.mdc`）。
  */
 
 /** In-memory fetch cache: default 30s TTL, per-key dedup, global serialization (only one RPC process at a time) */
@@ -7619,7 +7617,7 @@ const MEMBERS_DIRECTORY_MEM_CACHE_TTL_MS = 3_500;
 /** Avoid hanging on owner->cards discovery; fallback to known card sources quickly. */
 const MEMBERS_OWNER_CARDS_FETCH_TIMEOUT_MS = 3_500;
 /** Main Members daemon should not block KPI refresh on slow per-holder balance RPC. */
-const MEMBERS_BALANCE_FETCH_TIMEOUT_MS = 1_800;
+const MEMBERS_BALANCE_FETCH_TIMEOUT_MS = 4_500;
 /** TopAdmin 周期补充：仅用于可能未写入 `assetActionIds[card]` 的 TX_TIP（与 ActionFacet 注释一致）。 */
 const LEDGER_INDEXER_DAY_OFFSETS: readonly number[] = [0, 1, 2, 3, 4];
 /**
@@ -7960,24 +7958,93 @@ function resolveLongDhangMigratedConetCardForOwner(ownerEoa: string | null | und
   return null;
 }
 
-/** LongDhang Base→CoNET migration only mints balances on-chain; member directory stats stay on the old Base card. */
-async function shouldUseLongDhangLegacyMemberDirectory(
-  programCardAddress: string,
-  ownerEoa: string | null | undefined,
-): Promise<boolean> {
-  if (!ownerEoa || !ethers.isAddress(ownerEoa)) return false;
-  const program = ethers.getAddress(programCardAddress);
-  if (program.toLowerCase() === LONGDHANG_OLD_BASE_CARD.toLowerCase()) return false;
-  if (!isLongDhangMigrationOwnerAmong(ownerEoa)) return false;
+function mergeBeamioCardMemberDirectoryMembers(
+  primary: BeamioCardMemberDirectoryPageResponse['members'] | undefined,
+  extra: BeamioCardMemberDirectoryPageResponse['members'] | undefined,
+): BeamioCardMemberDirectoryPageResponse['members'] {
+  const byEoa = new Map<string, BeamioCardMemberDirectoryPageResponse['members'][number]>();
+  const rank = (m: BeamioCardMemberDirectoryPageResponse['members'][number]) => {
+    let lastTs = 0;
+    try {
+      const t = Date.parse(String(m.lastTopupAt ?? ''));
+      if (Number.isFinite(t)) lastTs = t;
+    } catch {
+      /* ignore */
+    }
+    let topup = 0;
+    try {
+      topup = Number(m.topupCount) || 0;
+    } catch {
+      /* ignore */
+    }
+    return { topup, lastTs };
+  };
+  const upsert = (m: BeamioCardMemberDirectoryPageResponse['members'][number]) => {
+    const eoaRaw = m.memberEoa?.trim();
+    if (!eoaRaw || !ethers.isAddress(eoaRaw)) return;
+    const key = ethers.getAddress(eoaRaw).toLowerCase();
+    const prev = byEoa.get(key);
+    if (!prev) {
+      byEoa.set(key, m);
+      return;
+    }
+    const a = rank(prev);
+    const b = rank(m);
+    const pick = b.topup > a.topup || (b.topup === a.topup && b.lastTs >= a.lastTs) ? m : prev;
+    const drop = pick === m ? prev : m;
+    byEoa.set(key, {
+      ...pick,
+      usedNfc: Boolean(pick.usedNfc || drop.usedNfc),
+      usedApp: Boolean(pick.usedApp || drop.usedApp),
+      memberAa:
+        pick.memberAa && ethers.isAddress(pick.memberAa) && pick.memberAa.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+          ? pick.memberAa
+          : drop.memberAa,
+    });
+  };
+  for (const m of primary ?? []) upsert(m);
+  for (const m of extra ?? []) upsert(m);
+  return [...byEoa.values()].sort((a, b) => {
+    const ta = Date.parse(String(a.lastTopupAt ?? '')) || 0;
+    const tb = Date.parse(String(b.lastTopupAt ?? '')) || 0;
+    return tb - ta;
+  });
+}
 
-  const migrated = resolveLongDhangMigratedConetCardForOwner(ownerEoa);
-  if (migrated && migrated.toLowerCase() === program.toLowerCase()) return true;
+/** CoNET migration snapshot holders with on-chain balance but no top-up indexer row. */
+async function fetchLongDhangFrozenHolderDirectoryMembers(): Promise<
+  BeamioCardMemberDirectoryPageResponse['members']
+> {
+  const config = await fetchLongDhangMigrationConfig();
+  if (!config.success || !config.frozenHolders?.length) return [];
+  const ownerLower =
+    config.oldBaseCardOwner && ethers.isAddress(config.oldBaseCardOwner)
+      ? ethers.getAddress(config.oldBaseCardOwner).toLowerCase()
+      : '';
+  return config.frozenHolders
+    .filter((h) => h.eoa && ethers.isAddress(h.eoa) && h.eoa.toLowerCase() !== ownerLower)
+    .map((h) => ({
+      memberEoa: ethers.getAddress(h.eoa),
+      memberAa: ethers.ZeroAddress,
+      tierTokenId: '0',
+      topupCount: 0,
+      topupPointsTotalE6: '0',
+      topupUsdcTotalE6: '0',
+      lastTopupAt: '',
+      lastBaseTxHash: null,
+      usedNfc: false,
+      usedApp: false,
+      firstTopupSource: 'longdhangMigrationSnapshot',
+      firstTopupAt: '',
+    }));
+}
 
+/** CoNET migration snapshot holders with minted balance but no top-up indexer row on the new card. */
+async function shouldSupplementFrozenMigrationMembers(programCardAddress: string): Promise<boolean> {
   try {
-    const { chainId } = await providerForBeamioUserCard(program);
-    if (chainId !== CONET_MAINNET_CHAIN_ID) return false;
-    const cardOwner = await getCardOwner(program);
-    return ethers.getAddress(cardOwner).toLowerCase() === ethers.getAddress(ownerEoa).toLowerCase();
+    const config = await fetchLongDhangMigrationConfig();
+    if (config.frozenSnapshot !== true) return false;
+    return isMerchantUserCardOnConet(programCardAddress);
   } catch {
     return false;
   }
@@ -7985,18 +8052,20 @@ async function shouldUseLongDhangLegacyMemberDirectory(
 
 async function fetchAllBeamioCardMemberDirectoryForOwnerProgram(
   programCardAddress: string,
-  ownerEoa: string | null | undefined,
+  _ownerEoa: string | null | undefined,
 ): Promise<{ members: BeamioCardMemberDirectoryPageResponse['members']; total: number }> {
   const primary = await fetchAllBeamioCardMemberDirectoryHttp(programCardAddress);
-  if (primary.members.length > 0 || primary.total > 0) return primary;
-  if (!(await shouldUseLongDhangLegacyMemberDirectory(programCardAddress, ownerEoa))) return primary;
-  try {
-    const legacy = await fetchAllBeamioCardMemberDirectoryHttp(LONGDHANG_OLD_BASE_CARD);
-    if (legacy.members.length > 0 || legacy.total > 0) return legacy;
-  } catch {
-    /* keep empty primary */
+  if (!(await shouldSupplementFrozenMigrationMembers(programCardAddress))) {
+    return primary;
   }
-  return primary;
+  let merged = [...(primary.members ?? [])];
+  try {
+    const frozen = await fetchLongDhangFrozenHolderDirectoryMembers();
+    merged = mergeBeamioCardMemberDirectoryMembers(merged, frozen);
+  } catch {
+    /* keep CoNET directory */
+  }
+  return { members: merged, total: merged.length };
 }
 
 async function fetchBeamioCardMemberDirectoryPageForOwnerProgram(
@@ -8005,16 +8074,21 @@ async function fetchBeamioCardMemberDirectoryPageForOwnerProgram(
   offset: number,
   ownerEoa: string | null | undefined,
 ): Promise<BeamioCardMemberDirectoryPageResponse> {
-  const page = await fetchBeamioCardMemberDirectoryPageHttp(programCardAddress, limit, offset);
-  const primaryTotal = Number(page.total) || 0;
-  const primaryMembers = page.members ?? [];
-  if (primaryTotal > 0 || primaryMembers.length > 0) return page;
-  if (!(await shouldUseLongDhangLegacyMemberDirectory(programCardAddress, ownerEoa))) return page;
-  try {
-    return await fetchBeamioCardMemberDirectoryPageHttp(LONGDHANG_OLD_BASE_CARD, limit, offset);
-  } catch {
-    return page;
+  if (!(await shouldSupplementFrozenMigrationMembers(programCardAddress))) {
+    return fetchBeamioCardMemberDirectoryPageHttp(programCardAddress, limit, offset);
   }
+  const { members, total } = await fetchAllBeamioCardMemberDirectoryForOwnerProgram(programCardAddress, ownerEoa);
+  const slice = members.slice(offset, offset + limit);
+  const pageNum = limit > 0 ? Math.floor(offset / limit) + 1 : 1;
+  return {
+    mode: 'directory',
+    cardAddress: ethers.getAddress(programCardAddress),
+    total,
+    limit,
+    offset,
+    page: pageNum,
+    members: slice,
+  };
 }
 
 async function resolveMemberToken0BalanceAccount(
@@ -8180,7 +8254,45 @@ function memberHolderToken0BalanceCacheKey(
   chainId: number,
   holderLower: string
 ): string {
-  return `eoa:${partition}:card:${cardLower}:chain:${chainId}:holder:${holderLower}:balance0:v2`;
+  return `eoa:${partition}:card:${cardLower}:chain:${chainId}:holder:${holderLower}:balance0:v3`;
+}
+
+function compareMembersDirectoryRowsByBalanceThenRecency(
+  a: BizTopupMemberTableRow,
+  b: BizTopupMemberTableRow,
+): number {
+  const balA = a.currentCardToken0Balance;
+  const balB = b.currentCardToken0Balance;
+  const hasA = balA != null && Number.isFinite(balA) && balA > 0;
+  const hasB = balB != null && Number.isFinite(balB) && balB > 0;
+  if (hasA !== hasB) return hasB ? 1 : -1;
+  if (hasA && hasB && balA !== balB) return (balB as number) - (balA as number);
+  return (b.lastSeenTs || 0) - (a.lastSeenTs || 0);
+}
+
+async function fetchMemberDirectoryHolderBalanceDisplay(
+  membersFetchPartition: string,
+  cardLower: string,
+  cardBalanceChainId: number,
+  cardAddress: string,
+  balanceAccount: string,
+  cardBalanceProvider: ethers.Provider,
+): Promise<number | null> {
+  const cacheKeyBalance = memberHolderToken0BalanceCacheKey(
+    membersFetchPartition,
+    cardLower,
+    cardBalanceChainId,
+    balanceAccount.toLowerCase(),
+  );
+  return Promise.race<number | null>([
+    fetchWithCache(
+      cacheKeyBalance,
+      () => fetchBeamioUserCardToken0BalanceDisplay(cardAddress, balanceAccount, cardBalanceProvider),
+      FETCH_TTL_MS,
+      true,
+    ),
+    rejectMembersBalanceFetchAfter(MEMBERS_BALANCE_FETCH_TIMEOUT_MS),
+  ]).catch(() => null as number | null);
 }
 
 async function fetchConetBUnitBalanceDisplay(
@@ -10040,36 +10152,42 @@ function makeCardIssuanceBonusRuleRow(
 
 const CARD_ISSUANCE_FACTORY_LATEST_ABI = ['function latestCardOfOwner(address) view returns (address)'] as const;
 
-/** Prefer factory.latestCardOfOwner(AA) then EOA on CoNET then Base; fallback to last entry from merged cardsOfOwner list. */
+/** Prefer factory.latestCardOfOwner on CoNET; ignore deprecated Base L2 program cards. */
 async function pickPrimaryIssuedCardAddressForBiz(
   profile: { aaAccount?: string | null; keyID?: string | null },
   ownedCards: UserCardInfo[],
-  _provider: ethers.Provider
 ): Promise<string | null> {
-  if (!ownedCards.length) return null;
-  const setAddrs = new Set(ownedCards.map((c) => c.cardAddress.toLowerCase()));
-  const factoryQueries = [
-    { factory: CONET_CARD_FACTORY, provider: conetDepinProvider },
-    { factory: BASE_CARD_FACTORY, provider: baseRpcProviderDirect },
-  ];
-  const aa = profile?.aaAccount?.trim();
   const eoa = profile?.keyID?.trim();
-  for (const { factory, provider } of factoryQueries) {
+  if (eoa && ethers.isAddress(eoa)) {
+    const migrated = resolveLongDhangMigratedConetCardForOwner(eoa);
+    if (migrated && (await isMerchantUserCardOnConet(migrated))) return migrated;
+  }
+  if (!ownedCards.length) return null;
+  const conetCards: UserCardInfo[] = [];
+  for (const c of ownedCards) {
+    if (await isMerchantUserCardOnConet(c.cardAddress)) conetCards.push(c);
+  }
+  if (!conetCards.length) return null;
+  const setAddrs = new Set(conetCards.map((c) => c.cardAddress.toLowerCase()));
+  const factoryContract = new ethers.Contract(CONET_CARD_FACTORY, CARD_ISSUANCE_FACTORY_LATEST_ABI, conetDepinProvider);
+  const aa = profile?.aaAccount?.trim();
+  for (const owner of [aa, eoa]) {
+    if (!owner || !ethers.isAddress(owner)) continue;
     try {
-      const factoryContract = new ethers.Contract(factory, CARD_ISSUANCE_FACTORY_LATEST_ABI, provider);
-      for (const owner of [aa, eoa]) {
-        if (!owner || !ethers.isAddress(owner)) continue;
-        const lc = await factoryContract.latestCardOfOwner(ethers.getAddress(owner));
-        if (lc && lc !== ethers.ZeroAddress) {
-          const a = ethers.getAddress(lc);
-          if (setAddrs.has(a.toLowerCase())) return a;
-        }
+      const lc = await factoryContract.latestCardOfOwner(ethers.getAddress(owner));
+      if (lc && lc !== ethers.ZeroAddress) {
+        const a = ethers.getAddress(lc);
+        if (setAddrs.has(a.toLowerCase())) return a;
       }
     } catch {
-      /* try other factory */
+      /* try other owner */
     }
   }
-  return ownedCards[ownedCards.length - 1]?.cardAddress ?? null;
+  return conetCards[conetCards.length - 1]?.cardAddress ?? null;
+}
+
+async function bizProgramCardReadProvider(cardAddress: string): Promise<ethers.Provider> {
+  return (await providerForBeamioUserCard(cardAddress)).provider;
 }
 
 /** On-chain `BeamioUserCard.upgradeType()` (fixed at deploy). Labels align with Card Issuance Setup form. */
@@ -16741,7 +16859,7 @@ useEffect(() => {
          setCardIssuanceExistingCard(null);
          return;
        }
-       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards, baseRpcProviderDirect);
+       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (cancelled) return;
        if (!primary) {
          setCardIssuanceExistingCard(null);
@@ -17117,7 +17235,7 @@ useEffect(() => {
          return;
        }
        /** Still pick primary when `trusted === false` (RPC/API degraded but profile or cache returned cards); otherwise Overview `staffProgram` stays null and Total Members hint never runs. */
-       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards, baseRpcProviderDirect);
+       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (cancelled) return;
        setMerchantOwnCardAddress(primary ? ethers.getAddress(primary) : null);
      } catch {
@@ -17814,10 +17932,11 @@ useEffect(() => {
   }
 
   void fetchWithCache(overviewNetworkSummaryCacheKey, async () => {
+    const cardProv = await bizProgramCardReadProvider(programAddr);
     if (timeFilter === '今天') {
       const [periodLocalToday, parsedLifetime] = await Promise.all([
-        aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(programAddr, baseRpcProviderDirect),
-        callGetGlobalStatsFullParsed(programAddr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n),
+        aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(programAddr, cardProv),
+        callGetGlobalStatsFullParsed(programAddr, PERIOD_DAY, cardProv, 0n, 0n),
       ]);
       if (!periodLocalToday || !parsedLifetime) throw new Error('overview summary unavailable');
       const lifetimeSummary = {
@@ -17829,7 +17948,7 @@ useEffect(() => {
       return { periodSummary: periodLocalToday, lifetimeSummary };
     }
 
-    const parsed = await callGetGlobalStatsFullParsed(programAddr, overviewPeriodType, baseRpcProviderDirect);
+    const parsed = await callGetGlobalStatsFullParsed(programAddr, overviewPeriodType, cardProv);
     if (!parsed) throw new Error('overview summary unavailable');
     return {
       periodSummary: {
@@ -17879,9 +17998,10 @@ useEffect(() => {
     return () => { cancelled = true; };
   }
 
-  void fetchWithCache(retainedCapitalTrustedCacheKey, async () =>
-    fetchCustomerHeldPointsToken0Display(programAddr, baseRpcProviderDirect)
-  ).then((retained) => {
+  void fetchWithCache(retainedCapitalTrustedCacheKey, async () => {
+    const cardProv = await bizProgramCardReadProvider(programAddr);
+    return fetchCustomerHeldPointsToken0Display(programAddr, cardProv);
+  }).then((retained) => {
     if (cancelled || !Number.isFinite(retained)) return;
     setRetainedCapitalDisplay(retained);
     saveTrustedCache(retainedCapitalTrustedCacheKey, retained);
@@ -18649,9 +18769,10 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      });
 
    const routingOnchainTiersKey = `card:${staffProgramCardCacheBucket}:onchain-tiers`
-   void fetchWithCache(routingOnchainTiersKey, () =>
-     fetchBeamioUserCardTiersAndCurrencyFromChain(staffProgramBeamioCardAddress, baseRpcProviderDirect)
-   )
+   void fetchWithCache(routingOnchainTiersKey, async () => {
+     const cardProv = await bizProgramCardReadProvider(staffProgramBeamioCardAddress);
+     return fetchBeamioUserCardTiersAndCurrencyFromChain(staffProgramBeamioCardAddress, cardProv);
+   })
      .then(({ tiers: rows, currencyType }) => {
        if (!cancelled) {
          setRoutingModalChainTiers(rows);
@@ -18703,7 +18824,8 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    void (async () => {
      try {
        const cardAddress = staffProgramBeamioCardAddress;
-       const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+       const cardProv = await bizProgramCardReadProvider(cardAddress);
+       const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, cardProv);
        const cardOwner = ((await card.owner()) as string)?.trim();
        if (myGen !== routingHydrateAsyncGenRef.current) return;
        const userEOA = (profiles?.[0]?.keyID ?? myAddress)?.trim();
@@ -19541,7 +19663,7 @@ useEffect(() => {
    if (p0) {
      const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
      if (trusted && cards.length > 0) {
-       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards, baseRpcProviderDirect);
+       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (primary) return ethers.getAddress(primary);
      }
    }
@@ -20713,7 +20835,8 @@ const renderLongDhangTerminalRepairPanel = () => {
    setRoutingRulesDeployLoading(true);
    try {
      const cardAddress = staffProgramBeamioCardAddress;
-     const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const cardProv = await bizProgramCardReadProvider(cardAddress);
+     const card = new ethers.Contract(cardAddress, USER_CARD_ADMIN_READ_ABI, cardProv);
      const cardOwner = (await card.owner()) as string;
      const userAA = profiles?.[0]?.aaAccount?.trim();
      const isOwner =
@@ -20749,7 +20872,7 @@ const renderLongDhangTerminalRepairPanel = () => {
      for (let idx = 0; idx < (subordinates ?? []).length; idx++) {
        const subAddr = (subordinates ?? [])[idx];
        if (!subAddr || !ethers.isAddress(subAddr)) continue;
-       const terminalEOA = await resolveSubordinateAdminEoa(subAddr, baseRpcProviderDirect);
+       const terminalEOA = await resolveSubordinateAdminEoa(subAddr, cardProv);
        if (terminalEOA.toLowerCase() === ethers.getAddress(userEOA).toLowerCase()) continue;
 
        const existingMeta = (metadatas ?? [])[idx];
@@ -20867,10 +20990,11 @@ const renderLongDhangTerminalRepairPanel = () => {
    let cancelled = false;
    const key = `aa:beamioUserCard:balanceOf0:${ethers.getAddress(aaAddr).toLowerCase()}:${staffProgramCardCacheBucket}`;
    void fetchWithCache(key, async () => {
+     const cardProv = await bizProgramCardReadProvider(staffProgramBeamioCardAddress);
      const card = new ethers.Contract(
        staffProgramBeamioCardAddress,
        BEAMIO_USER_CARD_ERC1155_BALANCE_ABI,
-       baseRpcProviderDirect
+       cardProv
      );
      const raw = await card.balanceOf(ethers.getAddress(aaAddr), 0n);
      return amountE6ToDisplayNumber(BigInt(raw.toString()));
@@ -21082,7 +21206,8 @@ const renderLongDhangTerminalRepairPanel = () => {
   setChainResolvedStatsAdminAddress(cachedWinner);
    const fetchKey = `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:is-admin:v2`;
    void fetchWithCache(fetchKey, async () => {
-     const card = new ethers.Contract(programCardAddr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+     const cardProv = await bizProgramCardReadProvider(programCardAddr);
+     const card = new ethers.Contract(programCardAddr, USER_CARD_ADMIN_READ_ABI, cardProv);
      const addrs = [
        profiles?.[0]?.keyID,
        myAddress,
@@ -21212,7 +21337,9 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
           for (const uc of cards) {
             if (!membersLoyaltyBgActiveRef.current) break;
             const addr = ethers.getAddress(uc.cardAddress);
-            const cRead = new ethers.Contract(addr, USER_CARD_ADMIN_READ_ABI, baseRpcProviderDirect);
+            if (!(await isMerchantUserCardOnConet(addr))) continue;
+            const cardProv = await bizProgramCardReadProvider(addr);
+            const cRead = new ethers.Contract(addr, USER_CARD_ADMIN_READ_ABI, cardProv);
             let ownerAddr = ethers.getAddress(account);
             try {
               const o = (await cRead.owner()) as string;
@@ -21246,7 +21373,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
             }
             let issuedLifetime: number | null = null;
             try {
-              const gs = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+              const gs = await callGetGlobalStatsFullParsed(addr, PERIOD_DAY, cardProv, 0n, 0n);
               if (gs) issuedLifetime = amountE6ToDisplayNumber(gs.cumulativeIssued);
             } catch {
               /* ignore */
@@ -21348,7 +21475,8 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
            const cardLowerG = addrG.toLowerCase();
            const cacheKeyChainMint = `eoa:${membersFetchPartition}:card:${cardLowerG}:global-stats-cumulative-mint`;
            const mintStr = await fetchWithCache(cacheKeyChainMint, async () => {
-             const g = await callGetGlobalStatsFullParsed(addrG, PERIOD_DAY, baseRpcProviderDirect, 0n, 0n);
+             const cardProv = await bizProgramCardReadProvider(addrG);
+             const g = await callGetGlobalStatsFullParsed(addrG, PERIOD_DAY, cardProv, 0n, 0n);
              if (!g) throw new Error('getGlobalStatsFull parse');
              return g.cumulativeMint.toString();
           }, FETCH_TTL_MS, true).catch(() => null as string | null);
@@ -21414,7 +21542,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
            sumTopupEvents += Number(rollup.totalTopupCount) || 0;
            sumRepeatTopupEvents += Number(rollup.totalRepeatTopupCount) || 0;
            sumMemberActivations += (Number(rollup.nfcActivationCount) || 0) + (Number(rollup.appActivationCount) || 0);
-           const cacheKeyMembers = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:directoryAll:v2:longdhang:${cardLower}`;
+           const cacheKeyMembers = `eoa:${membersFetchPartition}:beamio:cardMemberTopups:directoryAll:v5:conet:${cardLower}`;
           const { members, total } = await fetchWithCache(
             cacheKeyMembers,
             () => fetchAllBeamioCardMemberDirectoryForOwnerProgram(addr, account),
@@ -21437,6 +21565,25 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                total,
              });
            }
+           type MemberDirectoryRowDraft = {
+             eoaM: string;
+             aa?: string;
+             eoaLower: string;
+             aaLower?: string;
+             balanceAccount: string;
+             balanceAccountLower: string;
+             scopedKey: string;
+             lastTs: number;
+             firstTs: number;
+             dirM: (typeof members)[number] & {
+               usedNfc?: boolean;
+               usedApp?: boolean;
+               firstTopupSource?: string | null;
+               firstTopupAt?: string;
+             };
+             currentBalance: number | null;
+           };
+           const rowDrafts: MemberDirectoryRowDraft[] = [];
            for (const m of members) {
              const eoaM = m.memberEoa && ethers.isAddress(m.memberEoa) ? ethers.getAddress(m.memberEoa) : '';
              if (!eoaM) continue;
@@ -21445,21 +21592,21 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
                  ? ethers.getAddress(aaRaw)
                  : undefined;
-            const eoaLower = eoaM.toLowerCase();
-            const aaLower = aa?.toLowerCase();
-            const balanceAccount = await resolveMemberToken0BalanceAccount(
-              eoaM,
-              aa,
-              cardBalanceChainId,
-              cardBalanceProvider,
-            );
-            const balanceAccountLower = balanceAccount.toLowerCase();
-            const scopedKey = `${cardLower}:${balanceAccountLower}`;
-            aliasToScopedKey.set(eoaLower, scopedKey);
-            if (aaLower) aliasToScopedKey.set(aaLower, scopedKey);
-            if (balanceAccountLower !== eoaLower && balanceAccountLower !== (aaLower ?? '')) {
-              aliasToScopedKey.set(balanceAccountLower, scopedKey);
-            }
+             const eoaLower = eoaM.toLowerCase();
+             const aaLower = aa?.toLowerCase();
+             const balanceAccount = await resolveMemberToken0BalanceAccount(
+               eoaM,
+               aa,
+               cardBalanceChainId,
+               cardBalanceProvider,
+             );
+             const balanceAccountLower = balanceAccount.toLowerCase();
+             const scopedKey = `${cardLower}:${balanceAccountLower}`;
+             aliasToScopedKey.set(eoaLower, scopedKey);
+             if (aaLower) aliasToScopedKey.set(aaLower, scopedKey);
+             if (balanceAccountLower !== eoaLower && balanceAccountLower !== (aaLower ?? '')) {
+               aliasToScopedKey.set(balanceAccountLower, scopedKey);
+             }
              let lastTs = 0;
              try {
                const t = Date.parse(m.lastTopupAt);
@@ -21468,73 +21615,86 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                /* ignore */
              }
              let firstTs = 0;
-             const dirM = m as (typeof m) & {
-               usedNfc?: boolean;
-               usedApp?: boolean;
-               firstTopupSource?: string | null;
-               firstTopupAt?: string;
-             };
+             const dirM = m as MemberDirectoryRowDraft['dirM'];
              try {
                const ft = Date.parse(String(dirM.firstTopupAt ?? ''));
                if (Number.isFinite(ft)) firstTs = Math.floor(ft / 1000);
              } catch {
                /* ignore */
              }
-            const cacheKeyBalance = memberHolderToken0BalanceCacheKey(
-              membersFetchPartition,
-              cardLower,
-              cardBalanceChainId,
-              balanceAccount.toLowerCase()
-            );
-            let currentBalance: number | null = trustedBalanceByScopedKey.get(scopedKey) ?? null;
-            /** Dashboard KPI path should stay responsive: skip expensive holder balance RPC unless user is actually on `/Members`. */
-            if (activeTab === 'MembersLoyalty') {
-              const fetchedBalance = await Promise.race<number | null>([
-                fetchWithCache(
-                  cacheKeyBalance,
-                  () => fetchBeamioUserCardToken0BalanceDisplay(addr, balanceAccount, cardBalanceProvider),
-                  FETCH_TTL_MS,
-                  true
-                ),
-                rejectMembersBalanceFetchAfter(MEMBERS_BALANCE_FETCH_TIMEOUT_MS),
-              ]).catch(() => null as number | null);
-              if (fetchedBalance != null && Number.isFinite(fetchedBalance)) {
-                currentBalance = fetchedBalance;
-                trustedBalanceByScopedKey.set(scopedKey, fetchedBalance);
-              }
-            }
-            const hasStoredValue = currentBalance != null && Number.isFinite(currentBalance) && currentBalance > 0;
-            const hasRecentTopup = lastTs > 0 && lastTs >= activeSinceSec;
-            const hasRecentChargeOrTopup = recentActiveSet.has(eoaLower) || (!!aaLower && recentActiveSet.has(aaLower));
-            if (hasStoredValue || hasRecentTopup || hasRecentChargeOrTopup) {
-              activeCardScopedKeys.add(scopedKey);
-            }
+             rowDrafts.push({
+               eoaM,
+               aa,
+               eoaLower,
+               aaLower,
+               balanceAccount,
+               balanceAccountLower,
+               scopedKey,
+               lastTs,
+               firstTs,
+               dirM,
+               currentBalance: trustedBalanceByScopedKey.get(scopedKey) ?? null,
+             });
+           }
+           if (activeTab === 'MembersLoyalty' && rowDrafts.length > 0) {
+             const fetchedBalances = await Promise.all(
+               rowDrafts.map(async (draft) => {
+                 const cached = draft.currentBalance;
+                 if (cached != null && Number.isFinite(cached) && cached > 0) return cached;
+                 const bal = await fetchMemberDirectoryHolderBalanceDisplay(
+                   membersFetchPartition,
+                   cardLower,
+                   cardBalanceChainId,
+                   addr,
+                   draft.balanceAccount,
+                   cardBalanceProvider,
+                 );
+                 if (bal != null && Number.isFinite(bal)) {
+                   trustedBalanceByScopedKey.set(draft.scopedKey, bal);
+                   return bal;
+                 }
+                 return cached;
+               }),
+             );
+             rowDrafts.forEach((draft, idx) => {
+               draft.currentBalance = fetchedBalances[idx] ?? draft.currentBalance;
+             });
+           }
+           for (const draft of rowDrafts) {
+             const currentBalance = draft.currentBalance;
+             const hasStoredValue = currentBalance != null && Number.isFinite(currentBalance) && currentBalance > 0;
+             const hasRecentTopup = draft.lastTs > 0 && draft.lastTs >= activeSinceSec;
+             const hasRecentChargeOrTopup =
+               recentActiveSet.has(draft.eoaLower) || (!!draft.aaLower && recentActiveSet.has(draft.aaLower));
+             if (hasStoredValue || hasRecentTopup || hasRecentChargeOrTopup) {
+               activeCardScopedKeys.add(draft.scopedKey);
+             }
              merged.push({
                cardLower,
                programName,
-              currency: typeof uc.currency === 'string' ? uc.currency : undefined,
-               memberAddress: eoaM,
+               currency: typeof uc.currency === 'string' ? uc.currency : undefined,
+               memberAddress: draft.eoaM,
                aaAddress:
-                 balanceAccountLower !== eoaLower
-                   ? balanceAccount
-                   : aa,
-               topupCount: Number(m.topupCount) || 0,
-               totalTopupFiat6: String(m.topupPointsTotalE6 ?? '0'),
-               firstSeenTs: firstTs,
-               lastSeenTs: lastTs,
+                 draft.balanceAccountLower !== draft.eoaLower
+                   ? draft.balanceAccount
+                   : draft.aa,
+               topupCount: Number(draft.dirM.topupCount) || 0,
+               totalTopupFiat6: String(draft.dirM.topupPointsTotalE6 ?? '0'),
+               firstSeenTs: draft.firstTs,
+               lastSeenTs: draft.lastTs,
                beamioTag: '',
-              currentCardToken0Balance: currentBalance,
-               usedNfcTopup: Boolean(dirM.usedNfc),
-               usedAppTopup: Boolean(dirM.usedApp),
-               firstTopupSource: dirM.firstTopupSource ?? null,
-               firstTopupAtIso: dirM.firstTopupAt ? String(dirM.firstTopupAt) : undefined,
+               currentCardToken0Balance: currentBalance,
+               usedNfcTopup: Boolean(draft.dirM.usedNfc),
+               usedAppTopup: Boolean(draft.dirM.usedApp),
+               firstTopupSource: draft.dirM.firstTopupSource ?? null,
+               firstTopupAtIso: draft.dirM.firstTopupAt ? String(draft.dirM.firstTopupAt) : undefined,
              });
            }
           for (const activeKey of recentActiveSet) {
             activeCardScopedKeys.add(aliasToScopedKey.get(activeKey) ?? `${cardLower}:${activeKey}`);
           }
          }
-         merged.sort((a, b) => b.lastSeenTs - a.lastSeenTs);
+         merged.sort(compareMembersDirectoryRowsByBalanceThenRecency);
         const nextActiveCardsCount = activeCardScopedKeys.size;
          let chainDisplayForBundle: number | null = null;
          if (!membersLoyaltyBgActiveRef.current) return;
@@ -21765,7 +21925,7 @@ useEffect(() => {
     const programCardProvider =
       programAddr && ethers.isAddress(programAddr)
         ? (await providerForBeamioUserCard(programAddr)).provider
-        : baseRpcProviderDirect;
+        : conetDepinProvider;
      const card =
        programAddr && ethers.isAddress(programAddr)
         ? new ethers.Contract(programAddr, USER_CARD_ADMIN_READ_ABI, programCardProvider)
@@ -21882,12 +22042,12 @@ useEffect(() => {
              const [periodLocalToday, parsedLifetime] = await Promise.all([
                aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
                  programAddr,
-                 baseRpcProviderDirect
+                 programCardProvider
                ),
                callGetGlobalStatsFullParsed(
                  programAddr,
                  PERIOD_DAY,
-                 baseRpcProviderDirect,
+                 programCardProvider,
                  0n,
                  0n
                ),
@@ -21915,7 +22075,7 @@ useEffect(() => {
              const parsed = await callGetGlobalStatsFullParsed(
                programAddr,
                overviewPeriodType,
-               baseRpcProviderDirect
+               programCardProvider
              );
              if (parsed && !feederCancelledRef.current) {
                const summary: BizNetworkSummaryRow = {
@@ -22853,11 +23013,14 @@ useEffect(() => {
     if (cancelled) return;
     try {
       const [next, snapshot] = await Promise.all([
-        computeTodayTopupHourlyRollup(
-          staffProgramBeamioCardAddress,
-          baseRpcProviderDirect,
-          todayTopupHourlyRollupRef.current
-        ),
+        (async () => {
+          const cardProv = await bizProgramCardReadProvider(staffProgramBeamioCardAddress);
+          return computeTodayTopupHourlyRollup(
+            staffProgramBeamioCardAddress,
+            cardProv,
+            todayTopupHourlyRollupRef.current
+          );
+        })(),
         topupSnapshotQueryAccount
           ? fetchTodayTopupSnapshotDirect(
               staffProgramBeamioCardAddress,
@@ -22909,7 +23072,10 @@ useEffect(() => {
          try {
            const cacheKey = `payer:${lower}:program:${staffProgramCardCacheBucket}:tier-capsule-v3`;
            const val = await fetchWithCache(cacheKey, async () =>
-             fetchPayerInfraTierCapsuleMeta(ethers.getAddress(lower), baseRpcProviderDirect, programForTiers)
+             (async () => {
+               const cardProv = await bizProgramCardReadProvider(programForTiers);
+               return fetchPayerInfraTierCapsuleMeta(ethers.getAddress(lower), cardProv, programForTiers);
+             })()
            );
            updates[lower] = val as { name: string; backgroundColor?: string } | null;
          } catch {
@@ -23023,6 +23189,18 @@ useEffect(() => {
    if (joinedAlliances.includes(MERCHANT_PROGRAM_ALLIANCE_ID)) return joinedAlliances;
    return [MERCHANT_PROGRAM_ALLIANCE_ID, ...joinedAlliances];
  }, [joinedAlliances, eoaOnFixedCardAdminList]);
+ const merchantEoaForLiteForm = useMemo(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return '';
+   return ethers.getAddress(raw);
+ }, [profiles?.[0]?.keyID, myAddress]);
+ /** Local draft complete AND on-chain recover acknowledged (restore / create / Continue push). */
+ const verraLiteGateReleased = useMemo(() => {
+   if (!merchantEoaForLiteForm) return false;
+   const draft = loadBusinessProfileDraftForEoa(merchantEoaForLiteForm);
+   if (!hasVerraLiteBusinessRequiredFields(draft)) return false;
+   return hasLiteBusinessChainAck(merchantEoaForLiteForm);
+ }, [merchantEoaForLiteForm, liteBusinessFormRevision, liteChainAckRevision]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** First-time merchant shell: no self-issued BeamioUserCard and no BusinessStartKet Ket #0 on CoNET. While issuer/Ket reads are in flight, keep legacy `!hasAaAccount` to avoid dashboard flash. */
@@ -23034,6 +23212,7 @@ useEffect(() => {
    ) {
      return false;
    }
+   if (verraLiteGateReleased) return false;
    const bothFetched = profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
    if (bothFetched) return !profileOwnsIssuedBeamioCard && !ownsBusinessStartKetToken0;
    return !hasAaAccount;
@@ -23046,12 +23225,8 @@ useEffect(() => {
    profileOwnsIssuedBeamioCard,
    ownsBusinessStartKetToken0,
    hasAaAccount,
+   verraLiteGateReleased,
  ]);
- const merchantEoaForLiteForm = useMemo(() => {
-   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
-   if (!raw || !ethers.isAddress(raw)) return '';
-   return ethers.getAddress(raw);
- }, [profiles?.[0]?.keyID, myAddress]);
 
  useLayoutEffect(() => {
    if (!merchantEoaForLiteForm) {
@@ -23134,14 +23309,6 @@ const programsMobileTopNavVisible =
    longDhangMigrationDismissed,
    longDhangMigrationCompleted,
  ]);
-
- /** Local draft complete AND on-chain recover acknowledged (restore / create / Continue push). */
- const verraLiteGateReleased = useMemo(() => {
-   if (!merchantEoaForLiteForm) return false;
-   const draft = loadBusinessProfileDraftForEoa(merchantEoaForLiteForm);
-   if (!hasVerraLiteBusinessRequiredFields(draft)) return false;
-   return hasLiteBusinessChainAck(merchantEoaForLiteForm);
- }, [merchantEoaForLiteForm, liteBusinessFormRevision, liteChainAckRevision]);
 
  const liteChainMigrationTriedRef = useRef(false);
  useEffect(() => {
@@ -23302,7 +23469,7 @@ const walletVaultUsdcBoldLine = useMemo(() => {
  }, [topupMemberTableRowsAll, membersLoyaltySearch, membersLoyaltyProgramKey]);
 
  const membersTopupDirectorySorted = useMemo(() => {
-   return [...membersTopupDirectoryFiltered].sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
+   return [...membersTopupDirectoryFiltered].sort(compareMembersDirectoryRowsByBalanceThenRecency);
  }, [membersTopupDirectoryFiltered]);
 
  /** Mobile Members (`lg:hidden`): all programs + searchable; no program / segment controls on small screens. */
@@ -23320,7 +23487,7 @@ const walletVaultUsdcBoldLine = useMemo(() => {
  }, [topupMemberTableRowsAll, membersLoyaltySearch]);
 
  const membersMobileDirectorySorted = useMemo(() => {
-   return [...membersMobileDirectoryFiltered].sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
+   return [...membersMobileDirectoryFiltered].sort(compareMembersDirectoryRowsByBalanceThenRecency);
  }, [membersMobileDirectoryFiltered]);
 
  const membersMobileDirectorySegmentRows = useMemo(() => {

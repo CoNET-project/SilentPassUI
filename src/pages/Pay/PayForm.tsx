@@ -13,6 +13,7 @@ import {formatAmountReadable, formatWithThousands, estimateGasUSDC, Authorizatio
 import AmountCurrency from '@/components/input/AmountCurrencyV2'
 import {CURRENCY_META, fiatPrefix} from '@/services/currency'
 import { tu } from '@/locale/beamioLocale'
+import { CONET_RPC_URL } from '@/config/chainAddresses'
 
 
 
@@ -36,7 +37,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 	
 }
 function formatAmount(v: number, c: ICurrency) {

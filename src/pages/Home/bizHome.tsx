@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Shield, ArrowRight, Eye, EyeOff, Network, Briefcase, Info, HelpCircle, Fingerprint } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
-import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData } from '@/services/beamio'
+import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData, bootstrapProfileLocaleCurrencyIfUnset } from '@/services/beamio'
 import { setCoNET_Data } from '@/utils/globals'
 import { initChat } from '@/services/chat'
 import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
@@ -14,12 +14,14 @@ import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { BEAMIO_TAG_ALLOWED_RE, BEAMIO_TAG_RULE_HINT, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 import RestoreAccessPage from '@/pages/Home/RestoreAccessPage'
+import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
 import { markWorkspaceSessionUnlocked } from '@/utils/beamioWorkspaceLock'
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
 import {
 	hydrateProfilesWithSessionSecrets,
 	ingestSessionPrivateKeyFromProfiles,
 	hasSessionPrivateKeyArmor,
+	getSessionPrivateKeyArmor,
 } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 
@@ -73,9 +75,15 @@ const assembleEncryptKeysObject = async (
 	const userInfo = await loadUserInfo()
 	if (!userInfo?.accountName?.trim()) return false
 
-	const bo: beamio = userInfo
+	let bo: beamio = userInfo
 	bo.initialLoading = false
 	temp.beamio = bo
+
+	const pk = getSessionPrivateKeyArmor()?.trim() ?? profiles[0]?.privateKeyArmor?.trim()
+	if (pk) {
+		bo = await bootstrapProfileLocaleCurrencyIfUnset(bo, pk)
+		temp.beamio = bo
+	}
 
 	// Trusted RPC：与本地缓存比对，不一致则更新（含链上无 AA 时清除无 bytecode 的错误缓存）
 	try {
@@ -166,6 +174,7 @@ const SIGNING_IN_STYLE = `
 `
 
 const BizHome = () => {
+	const { tu } = useTu()
 	const navigate = useNavigate()
 	const [merchantTag, setMerchantTag] = useState('')
 	const [password, setPassword] = useState('')
@@ -361,9 +370,7 @@ const BizHome = () => {
 						<Fingerprint className="h-5 w-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
 						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>BEAMIO 网关</span>
 					</div>
-					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#dfe3e6]">
-						<Briefcase className="h-4 w-4 text-[#595c5e]" strokeWidth={2} aria-hidden />
-					</div>
+					<BizOnboardingLocalePicker />
 				</div>
 			</header>
 
@@ -377,7 +384,7 @@ const BizHome = () => {
 
 				<section className="rounded-xl bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
 					<div className="mb-8">
-						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>使用商户身份继续</h2>
+						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>{tu('continue_with_your_business_identity')}</h2>
 						<p className="text-sm leading-snug text-[#595c5e]">{tu('enter_the_business_identity_you_just_created_to_access_your_beamio_works')}</p>
 					</div>
 

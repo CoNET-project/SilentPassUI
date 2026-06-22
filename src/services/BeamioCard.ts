@@ -3,7 +3,6 @@ import contracts from "../utils/contracts";
 import { baseEndpoint, baseRpcProviderDirect, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS } from "../utils/constants";
 import { withBaseRpc } from "../utils/baseRpc";
 import {
-	BASE_MAINNET_FACTORIES,
 	BASE_TREASURY,
 	CONET_BUINT_REDEEM_AIRDROP,
 	CONET_BUSINESS_START_KET,
@@ -941,9 +940,17 @@ export async function signLongDhangMigrationAuthorization(args: {
 	return wallet.signMessage(msg)
 }
 
+export type LongDhangFrozenHolderConfigRow = {
+	eoa: string
+	oldBaseAA: string
+	balanceE6: string
+}
+
 export async function fetchLongDhangMigrationConfig(): Promise<{
 	success: boolean
 	version?: string
+	frozenSnapshot?: boolean
+	frozenHolders?: LongDhangFrozenHolderConfigRow[]
 	oldBaseCard?: string
 	oldBaseCardOwner?: string
 	authorizedOwnerEoa?: string[]
@@ -957,9 +964,29 @@ export async function fetchLongDhangMigrationConfig(): Promise<{
 		const authorizedOwnerEoa = Array.isArray(data.authorizedOwnerEoa)
 			? data.authorizedOwnerEoa.filter((a: unknown) => typeof a === 'string' && ethers.isAddress(a)).map((a: string) => ethers.getAddress(a))
 			: undefined
+		const frozenHolders = Array.isArray(data.frozenHolders)
+			? data.frozenHolders
+					.filter(
+						(row: unknown): row is LongDhangFrozenHolderConfigRow =>
+							row != null &&
+							typeof row === 'object' &&
+							typeof (row as LongDhangFrozenHolderConfigRow).eoa === 'string' &&
+							ethers.isAddress((row as LongDhangFrozenHolderConfigRow).eoa)
+					)
+					.map((row: LongDhangFrozenHolderConfigRow) => ({
+						eoa: ethers.getAddress(row.eoa),
+						oldBaseAA:
+							typeof row.oldBaseAA === 'string' && ethers.isAddress(row.oldBaseAA)
+								? ethers.getAddress(row.oldBaseAA)
+								: ethers.ZeroAddress,
+						balanceE6: String(row.balanceE6 ?? '0'),
+					}))
+			: undefined
 		return {
 			success: true,
 			version: typeof data.version === 'string' ? data.version : undefined,
+			frozenSnapshot: data.frozenSnapshot === true,
+			frozenHolders,
 			oldBaseCard: data.oldBaseCard,
 			oldBaseCardOwner: data.oldBaseCardOwner,
 			authorizedOwnerEoa,
@@ -1978,10 +2005,9 @@ const cardAbiSlice = [
 
 const FACTORY_CARDS_OF_OWNER_ABI = ['function cardsOfOwner(address owner) view returns (address[])'] as const
 
-/** CoNET-first: new merchant cards deploy on 224422; legacy cards remain on Base. */
+/** Biz Merchant OS: discover issued program cards on CoNET L1 only (Base L2 legacy cards deprecated). */
 const MERCHANT_CARD_FACTORY_QUERIES: Array<{ factory: string; provider: ethers.Provider }> = [
 	{ factory: CONET_CARD_FACTORY, provider: conetDepinProvider },
-	{ factory: BASE_MAINNET_FACTORIES.CARD_FACTORY, provider: baseEndpoint },
 ]
 
 async function readUserCardInfoFromChain(addr: string): Promise<UserCardInfo | null> {
@@ -2058,19 +2084,16 @@ async function expandFactoryOwnerCandidatesForCardsOfOwner(addresses: string[]):
 	const ownerAbi = ['function owner() view returns (address)'] as const
 	for (const addr of addresses) {
 		const norm = ethers.getAddress(addr)
-		for (const prov of [conetDepinProvider, baseRpcProviderDirect]) {
-			try {
-				const code = await prov.getCode(norm)
-				if (!code || code === '0x' || code.length <= 2) continue
-				const acct = new ethers.Contract(norm, ownerAbi, prov)
-				const own = await acct.owner()
-				if (own && ethers.isAddress(own) && ethers.getAddress(own) !== ethers.ZeroAddress) {
-					out.add(ethers.getAddress(own))
-				}
-				break
-			} catch {
-				/* try other chain */
+		try {
+			const code = await conetDepinProvider.getCode(norm)
+			if (!code || code === '0x' || code.length <= 2) continue
+			const acct = new ethers.Contract(norm, ownerAbi, conetDepinProvider)
+			const own = await acct.owner()
+			if (own && ethers.isAddress(own) && ethers.getAddress(own) !== ethers.ZeroAddress) {
+				out.add(ethers.getAddress(own))
 			}
+		} catch {
+			/* CoNET-only owner expansion */
 		}
 	}
 	return [...out]

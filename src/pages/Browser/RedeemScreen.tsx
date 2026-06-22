@@ -12,6 +12,7 @@ import Securitycode from '@/components/input/Securitycode'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import ShowCard from '@/components/card/ShowCard'
 import {fiatPrefix, formatTimeDetail, statusStyleMap, formatAmount} from '@/services/currency'
+import { CONET_RPC_URL } from '@/config/chainAddresses'
 
 
 
@@ -23,7 +24,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 	
 }
 

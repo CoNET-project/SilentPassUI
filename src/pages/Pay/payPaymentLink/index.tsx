@@ -17,12 +17,13 @@ import ShowTotal from '../components/ShowTotal'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import NetworkFeeGas from '../components/networkFee'
 import { tu } from '@/locale/beamioLocale'
+import { CONET_RPC_URL } from '@/config/chainAddresses'
 
 const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 	
 }
 const CoreContract = new ethers.Contract(beamioConetContract.address, beamioConetContract.abi, beamioConetContract.provider)

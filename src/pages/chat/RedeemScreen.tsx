@@ -7,6 +7,7 @@ import {redeemCodeHash} from '@/services/beamio'
 import {AppButton} from '@/components/button/AppButton'
 import RedeemSuccessScreen from './RedeemSuccessScreen'
 import { tu } from '@/locale/beamioLocale'
+import { CONET_RPC_URL } from '@/config/chainAddresses'
 
 
 type IGtCheckMemooo = {
@@ -28,7 +29,7 @@ const beamioConetContract = {
 	address: '0xCE8e2Cda88FfE2c99bc88D9471A3CBD08F519FEd',
 	network: 'CONET DePIN',
 	abi: beamioConetCoreABI,
-	provider: new ethers.JsonRpcProvider('https://rpc1.conet.network'),
+	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
 	
 }
 

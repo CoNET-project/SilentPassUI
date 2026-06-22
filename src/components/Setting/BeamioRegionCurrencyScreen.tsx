@@ -1,26 +1,22 @@
 import { IpfsImg } from '@/components/IpfsImg';
 
 import {AppButton} from '@/components/button/AppButton'
-import React, { useState, useEffect } from 'react'
-import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
+import React, { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import { CoNET_Data } from '../../utils/globals'
 import {
-  ArrowLeft,
-  Check,
-  Copy,
-  ExternalLink,
-  Globe,
-  Home as HomeIcon,
-  Send,
-  Settings,
-  Wallet, X, Globe2, ChevronDown, Info,
-  RefreshCw, // ✅ add
+  ChevronDown,
+  RefreshCw,
 } from "lucide-react"
 import baseIcon from '@/components/assets/base-logo.png'
 
-import {postBeamio, storeSystemData} from '@/services/beamio'
+import { persistBeamioProfileLocaleCurrency } from '@/services/beamio'
 import { useDaemonContext} from '@/providers/DaemonProvider'
-import { setBeamioUiLocale, normalizeBeamioUiLocale, type BeamioUiLocale } from '@/locale/i18n'
-import { tu } from '@/locale/beamioLocale'
+import { getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
+import {
+	normalizeBeamioUiLocale,
+	type BeamioUiLocale,
+} from '@/utils/beamioProfileLocaleCurrency'
 type prof = {
 	colse: () => void
 }
@@ -70,37 +66,49 @@ function DropdownRow({
 
 
 export default function BeamioRegionCurrencyScreen({colse}:prof) {
+	const { t, i18n } = useTranslation()
 	const { currencyData, setBeamio, beamio, refreshOracle} = useDaemonContext()
 	const [exchangeSource, setExchangeSource] = useState<"coinbase">("coinbase")
 	const [stablecoin, setStablecoin] = useState<"usdc_base">("usdc_base")
-	const [language, setLanguage] = useState<BeamioUiLocale>('zh-CN')
+	const [language, setLanguage] = useState<BeamioUiLocale>(() =>
+		normalizeBeamioUiLocale(beamio?.language ?? i18n.language),
+	)
 	const [refreshing, setRefreshing] = useState(false);
 	const [currency, setCurrency] = useState<ICurrency>('USD')
-	const [fx, setFx] = useState<number>(fxRateUSDCToCurrency("USD"))
 	const [fxUpdatedAt, setFxUpdatedAt] = useState<Date | null>(null)
 	const [loading, setLoading] = useState(false)
 	const [tax, setTax] = useState('0')
+	const savedLocaleRef = useRef(false)
+	const localeOnOpenRef = useRef(normalizeBeamioUiLocale(i18n.language))
+
+	const handleLanguageChange = (v: string) => {
+		const next = normalizeBeamioUiLocale(v)
+		setLanguage(next)
+		if (i18n.language !== next) {
+			void i18n.changeLanguage(next)
+		}
+	}
 
 	const handleSaveAvatar = async () => {
 		if (!CoNET_Data||!beamio ) return
 		setLoading(true)
-		const tmpData = CoNET_Data
-		
-		const profile: profile = tmpData.profiles[0]
-		const bo = beamio
-		bo.currency = currency
-		bo.language = language
-		bo.tax = tax
-		await postBeamio(bo, profile.privateKeyArmor)
-
-		tmpData.beamio = bo
-		setCoNET_Data(tmpData)
-		
-		await storeSystemData()
-		setBeamio({...bo})
-		await setBeamioUiLocale(normalizeBeamioUiLocale(language))
+		const profile: profile = CoNET_Data.profiles[0]
+		const pk = getSessionPrivateKeyArmor()?.trim() ?? profile.privateKeyArmor?.trim()
+		if (!pk) {
+			setLoading(false)
+			return
+		}
+		const next = await persistBeamioProfileLocaleCurrency(beamio, pk, {
+			language,
+			currency,
+			tax,
+		})
+		if (next) {
+			savedLocaleRef.current = true
+			setBeamio({ ...next })
+		}
 		setLoading(false)
-		colse()
+		if (next) colse()
 	}
 
 	const getAccountData = () => {
@@ -111,8 +119,14 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 	}
 
 	useEffect(() => {
+		localeOnOpenRef.current = normalizeBeamioUiLocale(i18n.language)
 		getAccountData()
 		setFxUpdatedAt(new Date())
+		return () => {
+			if (!savedLocaleRef.current) {
+				void i18n.changeLanguage(localeOnOpenRef.current)
+			}
+		}
 	}, [beamio])
 
 	/**
@@ -144,10 +158,6 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 			default:
 				return usdcToUSD
 		}
-	}
-
-	function usdcToCurrency(usdc: number, currency: ICurrency) {
-		return usdc * fxRateUSDCToCurrency(currency)
 	}
 
 	function formatFiat(usdcAmount = 1, currency: ICurrency) {
@@ -207,7 +217,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 			</div>
 
 			<div className="text-sm text-blue-900">
-				{tu('payments_settle_in')} <span className="font-semibold">USDC</span> {tu('on_base')}
+				{t('ui.payments_settle_in')} <span className="font-semibold">USDC</span> {t('ui.on_base')}
 			</div>
 			</div>
 		</div>
@@ -218,45 +228,41 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         {/* Region removed */}
 
         <DropdownRow
-			label={tu('language')}
+			label={t('ui.language')}
 			value={language}
-			onChange={(v) => {
-				const next = normalizeBeamioUiLocale(v)
-				setLanguage(next)
-				void setBeamioUiLocale(next)
-			}}
+			onChange={handleLanguageChange}
 			options={[
-				{ value: 'en', label: tu('english') },
-				{ value: 'zh-CN', label: tu('simplified_chinese') },
+				{ value: 'en', label: t('ui.english') },
+				{ value: 'zh-CN', label: t('ui.simplified_chinese') },
 			]}
         />
 
         <DropdownRow
-			label={tu('currency')}
+			label={t('ui.currency')}
 			value={currency}
 			onChange={(v) => setCurrency(v as ICurrency)}
 			options={[
-				 { value: 'USD', label: tu('usd_us_dollar') },
-				{ value: 'CAD', label: tu('cad_canadian_dollar') },
-				{ value: 'EUR', label: tu('eur_euro') },
-				{ value: 'JPY', label: tu('jpy_japanese_yen') },
-				{ value: 'CNY', label: tu('cny_chinese_yuan') },
-				{ value: 'HKD', label: tu('hkd_hong_kong_dollar') },
-				{ value: 'SGD', label: tu('sgd_singapore_dollar') },
-				{ value: 'TWD', label: tu('twd_new_taiwan_dollar') }
+				 { value: 'USD', label: t('ui.usd_us_dollar') },
+				{ value: 'CAD', label: t('ui.cad_canadian_dollar') },
+				{ value: 'EUR', label: t('ui.eur_euro') },
+				{ value: 'JPY', label: t('ui.jpy_japanese_yen') },
+				{ value: 'CNY', label: t('ui.cny_chinese_yuan') },
+				{ value: 'HKD', label: t('ui.hkd_hong_kong_dollar') },
+				{ value: 'SGD', label: t('ui.sgd_singapore_dollar') },
+				{ value: 'TWD', label: t('ui.twd_new_taiwan_dollar') }
 			]}
 		/>
 
         {/* Exchange rate with icon button */}
         <div>
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-zinc-900">{tu('exchange_rate')}</div>
+            <div className="text-sm font-semibold text-zinc-900">{t('ui.exchange_rate')}</div>
 
             <AppButton
               variant='secondary'
               onClick={manualRefreshFx}
 			  loading={loading}
-              aria-label={tu('refresh_exchange_rate')}
+              aria-label={t('ui.refresh_exchange_rate')}
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             </AppButton>
@@ -268,7 +274,7 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
               onChange={(e) => setExchangeSource(e.target.value as any)}
               className="w-full h-12 rounded-2xl border border-zinc-200 bg-white px-4 pr-10 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-blue-200 appearance-none"
             >
-              <option value="coinbase">{tu('coinbase_oracle')}</option>
+              <option value="coinbase">{t('ui.coinbase_oracle')}</option>
             </select>
             <ChevronDown className="h-4 w-4 text-zinc-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -280,15 +286,15 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         </div>
 
         <DropdownRow
-          label={tu('default_stablecoin')}
+          label={t('ui.default_stablecoin')}
           value={stablecoin}
           onChange={(v) => setStablecoin(v as any)}
-          options={[{ value: "usdc_base", label: tu('usdc_on_base') }]}
+          options={[{ value: "usdc_base", label: t('ui.usdc_on_base') }]}
         />
 
 		{/* Tax % input */}
 			<div className="space-y-2">
-			<label className="block text-sm font-medium text-slate-800">{tu('tax')}</label>
+			<label className="block text-sm font-medium text-slate-800">{t('ui.tax')}</label>
 
 			<input
 				value={tax}
@@ -323,7 +329,8 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
         <AppButton
           className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700"
           onClick={handleSaveAvatar}
-        >{tu('done')}</AppButton>
+          loading={loading}
+        >{t('ui.done')}</AppButton>
       </div>
 	  <div className="h-20" />
     </div>

@@ -3,7 +3,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
-import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowRight, ArrowLeft, AlertTriangle, X, Building2, Cloud, Store, Heart, LayoutDashboard, Briefcase, HelpCircle, History, ChevronDown, LayoutGrid, Hexagon, ShieldCheck } from "lucide-react"
+import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowRight, ArrowLeft, AlertTriangle, X, Building2, Cloud, Store, Heart, LayoutDashboard, Briefcase, History, ChevronDown, LayoutGrid, Hexagon, ShieldCheck } from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, postCardRedeemAdmin, getMyAssets, checkRedeemAdminCodeValid, isCardAdmin } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
 
@@ -17,7 +17,7 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { getUserInfo, storeSystemData, checkStorage, restoreWithRedeem } from "@/services/beamio"
+import { checkStorage, restoreWithRedeem, fetchUserInfoWithRetry, flushStoreSystemData } from "@/services/beamio"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
@@ -48,9 +48,11 @@ import {
 	isWorkspaceScreenLocked,
 	markWorkspaceSessionUnlocked,
 } from '@/utils/beamioWorkspaceLock'
-import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
+import { hasSessionPrivateKeyArmor, ingestSessionPrivateKeyFromProfiles, hydrateProfilesWithSessionSecrets } from '@/utils/beamioSessionSecrets'
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions'
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
+import WorkspaceCreatingOverlay from '@/pages/Home/WorkspaceCreatingOverlay'
+import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 
@@ -71,6 +73,14 @@ function LoadingPageOnboardingDetailsSelectChevron(): React.ReactElement {
 }
 const ISSUED_NFT_START_ID = 100_000_000_000
 
+function ensureFlatProfiles(p: unknown): profile[] {
+	if (!p || !Array.isArray(p)) return []
+	if (p.length === 0) return []
+	const first = (p as unknown[])[0]
+	if (Array.isArray(first)) return (p as profile[][]).flat()
+	return p as profile[]
+}
+
 /** 从 NFT tokenId 推导卡号显示：issued NFT 用序号，tier NFT 用 tokenId */
 function formatMemberNo(tokenId: string | number): string {
 	const n = Number(tokenId)
@@ -89,7 +99,8 @@ type Props = {
 }
 
 export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
-	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, 
+	const { tu } = useTu()
+	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading,
 		setAllNodes, setGossip, gossip,
 		setIsInitialLoading, myAddress, setMyAddress, usdcbalance, setShowFooter, setCharts } = useDaemonContext()
 	const [walletAddr, setWalletAddr] = useState('')
@@ -175,15 +186,21 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	])
 
 
-	const init = async (temp?: encrypt_keys_object, opts?: { dontClose?: boolean }) => {
+	const init = async (
+		temp?: encrypt_keys_object,
+		opts?: { dontClose?: boolean; accountName?: string },
+	) => {
 
-		const isAcc = await checkStorage()
 		if (isWorkspaceScreenLocked()) {
 			onInitComplete?.()
 			if (typeof window !== 'undefined') window.location.href = '/'
 			return
 		}
-		if (!isAcc) {
+
+		const isAcc = await checkStorage()
+		temp = temp || isAcc || undefined
+
+		if (!temp?.profiles?.length) {
 			clearSessionOnboardingBusinessDraft()
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
@@ -202,46 +219,22 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			return
 		}
 
-		temp = temp||isAcc
-	
-		const profiles = temp?.profiles
-		
+		const profiles = ensureFlatProfiles(temp.profiles)
+		ingestSessionPrivateKeyFromProfiles(profiles)
+		setProfiles(hydrateProfilesWithSessionSecrets(profiles))
 
-		
-		if (!temp || !profiles ) {
-			clearSessionOnboardingBusinessDraft()
-			setIsInitialLoading(true)
-			setIsInitialEntry(true)
-			setShowOnboardingCover(true)
-			setShowOnboardingBusinessDetails(false)
-			setCoverBusinessType("solo")
-			setCoverTermsAccepted(false)
-			setOnboardingCoverMobilePhase('entry')
-			setDetailBusinessName("")
-			setDetailCategory(DEFAULT_ONBOARDING_DETAIL_CATEGORY)
-			setDetailCountry(DEFAULT_ONBOARDING_DETAIL_COUNTRY)
-			setDetailCity("")
-			setDetailProvince("")
-			setWorkspaceCreating(false)
-			onInitComplete?.()
-			return
-		}
+		const accountNameHint =
+			opts?.accountName?.trim() ||
+			temp.beamio?.accountName?.trim() ||
+			''
 
-		setProfiles(profiles)
-
-		
-		const loadUserInfo = (): Promise<beamio> => new Promise(async (resolve) => {
-			const userInfo = await getUserInfo(profiles[0].keyID)
-			if (!userInfo) {
-				return setTimeout(async () => {
-					return resolve(await loadUserInfo())
-				}, 1000)
-			}
-			return resolve(userInfo)
+		const userInfo = await fetchUserInfoWithRetry(profiles[0].keyID, {
+			accountNameFallback: accountNameHint,
 		})
-			
-		const userInfo = await loadUserInfo()
-		if (!userInfo) return
+		if (!userInfo) {
+			onInitComplete?.()
+			return
+		}
 
 		if (!hasSessionPrivateKeyArmor()) {
 			onInitComplete?.()
@@ -252,7 +245,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		const bo: beamio = userInfo
 
 		SetLoading(true)
-		initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
+		void initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
 			setCharts((prev: string[]) => [...prev, message])
 		})
 		
@@ -264,7 +257,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 		temp.beamio = bo
 		
 		setCoNET_Data(temp)
-		await storeSystemData()
+		await flushStoreSystemData()
 		try {
 			await ensureConetAaForProfileAndPersist(profiles[0], setProfiles)
 		} catch {
@@ -293,20 +286,20 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 	const coverBusinessTypeChoices = [
 		{
 			id: "solo" as const,
-			title: "Solo Business or Creator",
-			desc: "Perfect for single-location stores, pop-ups, and independent brands.",
+			title: tu('onb_type_solo_title'),
+			desc: tu('onb_type_solo_desc'),
 			Icon: Store,
 		},
 		{
 			id: "chain" as const,
-			title: "Chain or Franchise",
-			desc: "Advanced terminal routing, multi-location analytics, and staff roles.",
+			title: tu('onb_type_chain_title'),
+			desc: tu('onb_type_chain_desc'),
 			Icon: Building2,
 		},
 		{
 			id: "ngo" as const,
-			title: "NGO or Community",
-			desc: "Zero-fee donation routing, member drives, and fund tracking.",
+			title: tu('onb_type_ngo_title'),
+			desc: tu('onb_type_ngo_desc'),
 			Icon: Heart,
 		},
 	] as const
@@ -343,18 +336,19 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			"
 		>
 			<nav
-				className="hidden md:flex fixed top-0 left-0 right-0 z-50 max-w-full items-center justify-end border-b border-[#abadaf]/10 bg-[#f5f7f9]/70 px-4 py-3 backdrop-blur-xl"
+				className="hidden md:flex fixed top-0 left-0 right-0 z-50 max-w-full items-center justify-end gap-5 overflow-visible border-b border-[#abadaf]/10 bg-[#f5f7f9]/70 px-4 py-3 backdrop-blur-xl"
 				style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
 			>
 				<div className="flex items-center gap-4 text-[10px] font-bold tracking-tight" style={headlineFont}>
-					<span className="text-[#1562f0] border-b-2 border-[#1562f0] pb-0.5">Select Type</span>
-					<span className="text-[#abadaf]">Details</span>
-					<span className="text-[#abadaf]">Identity</span>
+					<span className="text-[#1562f0] border-b-2 border-[#1562f0] pb-0.5">{tu('onb_step_select_type')}</span>
+					<span className="text-[#abadaf]">{tu('onb_step_details')}</span>
+					<span className="text-[#abadaf]">{tu('onb_step_identity')}</span>
 				</div>
+				<BizOnboardingLocalePicker />
 			</nav>
 
 			{APP_VERSION && (
-				<div className="fixed right-4 z-[60] text-[11px] font-medium text-[#abadaf] md:right-6 top-[calc(env(safe-area-inset-top)+5.5rem)] md:top-[calc(env(safe-area-inset-top)+4.25rem)]">
+				<div className="pointer-events-none fixed left-4 z-[5] text-[11px] font-medium text-[#abadaf] md:left-6 top-[calc(env(safe-area-inset-top)+0.5rem)]">
 					v{APP_VERSION}
 				</div>
 			)}
@@ -368,10 +362,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 					{onboardingCoverMobilePhase === 'entry' ? (
 						<>
 							<header
-								className="sticky top-0 z-50 flex w-full items-center justify-between bg-[#f5f7f9]/70 px-6 py-6 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl"
+								className="sticky top-0 z-50 flex w-full items-center justify-between gap-3 overflow-visible bg-[#f5f7f9]/70 px-6 py-6 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl"
 								style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))" }}
 							>
-								<div className="flex min-w-0 items-center gap-3">
+								<div className="flex min-w-0 flex-1 items-center gap-3">
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] shadow-lg shadow-[#1562f0]/20">
 										<Briefcase className="h-5 w-5 text-white" strokeWidth={2.25} aria-hidden />
 									</div>
@@ -379,16 +373,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										className="truncate text-xl font-extrabold leading-none tracking-tighter text-[#1562f0]"
 										style={headlineFont}
 									>
-										Beamio Business Lite
+										{tu('onb_beamio_business_lite')}
 									</h1>
 								</div>
-								<a
-									className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-[#eef1f3] active:scale-95 ${bizBrandFocusRingClass}`}
-									href="mailto:support@beamio.app?subject=Beamio%20Business%20help"
-									aria-label="Help"
-								>
-									<HelpCircle className="h-6 w-6 text-[#595c5e]" strokeWidth={2} aria-hidden />
-								</a>
+								<BizOnboardingLocalePicker />
 							</header>
 
 							<div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 pb-10 pt-8">
@@ -397,16 +385,18 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										className="mb-2 block text-[11px] font-bold uppercase tracking-[0.15em] text-[#1562f0]"
 										style={headlineFont}
 									>
-										Enterprise Ready
+										{tu('onb_lite_eyebrow')}
 									</span>
 									<h2
 										className="text-4xl font-extrabold leading-[1.1] tracking-tight text-[#2c2f31]"
 										style={headlineFont}
 									>
-										Launch your digital <span className="text-[#1562f0]">storefront.</span>
+										{tu('onb_lite_hero_prefix')}
+										<span className="text-[#1562f0]">{tu('onb_lite_hero_accent')}</span>
+										{tu('onb_lite_hero_suffix')}
 									</h2>
 									<p className="text-lg font-medium leading-relaxed text-[#595c5e]/80">
-										The most elegant way to manage memberships and merchant assets in one workspace.
+										{tu('onb_lite_hero_sub')}
 									</p>
 								</div>
 
@@ -422,13 +412,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 												<Store className="h-8 w-8 text-white" strokeWidth={2} aria-hidden />
 											</div>
 											<h3 className="mb-2 text-2xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
-												New Business Setup
+												{tu('onb_lite_new_setup_title')}
 											</h3>
 											<p className="mb-6 text-sm font-medium leading-relaxed text-[#595c5e]">
-												Create a new digital workspace and issue your first membership cards.
+												{tu('onb_lite_new_setup_desc')}
 											</p>
 											<div className="flex items-center gap-2 text-sm font-bold tracking-wide text-[#1562f0]">
-												<span>GET STARTED</span>
+												<span>{tu('onb_lite_get_started')}</span>
 												<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
 											</div>
 										</div>
@@ -445,13 +435,13 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											</div>
 											<div className="min-w-0 space-y-1">
 												<h3 className="text-xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
-													Restore Workspace
+													{tu('onb_lite_restore_title')}
 												</h3>
 												<p className="text-xs font-medium leading-relaxed text-[#595c5e]">
-													Access your existing workspace using your @BeamioTag or Recovery QR.
+													{tu('onb_lite_restore_desc')}
 												</p>
 												<div className="mt-4 flex items-center gap-2 text-sm font-bold tracking-wide text-[#1562f0]">
-													<span>RESTORE</span>
+													<span>{tu('onb_lite_restore_cta')}</span>
 													<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
 												</div>
 											</div>
@@ -468,35 +458,36 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										/>
 									</div>
 									<div className="absolute -bottom-6 -right-2 max-w-[200px] rounded-2xl border border-white/20 bg-white/70 p-5 shadow-xl backdrop-blur-xl">
-										<p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Secure by Design</p>
+										<p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">{tu('onb_lite_secure_eyebrow')}</p>
 										<p className="text-[11px] font-medium leading-tight text-[#595c5e]">
-											Encryption keys are stored locally. Only you hold the access.
+											{tu('onb_lite_secure_body')}
 										</p>
 									</div>
 								</div>
 
 								<p className="mx-auto mt-16 max-w-sm text-center text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e]/80">
-									By Beamio © 2026
+									{tu('onb_lite_footer')}
 								</p>
 							</div>
 						</>
 					) : (
 						<>
 							<header
-								className="fixed top-0 left-0 right-0 z-50 flex w-full items-center gap-3 bg-[#f5f7f9]/70 px-6 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl"
+								className="fixed top-0 left-0 right-0 z-50 flex w-full items-center gap-3 overflow-visible bg-[#f5f7f9]/70 px-6 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl"
 								style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
 							>
 								<button
 									type="button"
 									onClick={() => setOnboardingCoverMobilePhase('entry')}
 									className={`-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#1562f0] transition-opacity hover:opacity-80 active:scale-95 ${bizBrandFocusRingClass}`}
-									aria-label="返回"
+									aria-label={tu('onb_back')}
 								>
 									<ArrowLeft className="h-6 w-6" strokeWidth={2.25} aria-hidden />
 								</button>
-								<span className="text-xl font-black tracking-tight text-[#1562f0]" style={headlineFont}>
-									Beamio Business Lite
+								<span className="min-w-0 flex-1 truncate text-xl font-black tracking-tight text-[#1562f0]" style={headlineFont}>
+									{tu('onb_beamio_business_lite')}
 								</span>
+								<BizOnboardingLocalePicker />
 							</header>
 
 							<div className="flex-1 overflow-y-auto overflow-x-hidden pt-[calc(4rem+env(safe-area-inset-top))] pb-28">
@@ -507,10 +498,12 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 													className="mb-4 text-[2.5rem] font-extrabold leading-[1.1] tracking-tight text-[#2c2f31]"
 													style={headlineFont}
 												>
-													Set up your business for <span className="text-[#1562f0]">Lite</span> commerce.
+													{tu('onb_lite_form_hero_prefix')}
+													<span className="text-[#1562f0]">{tu('onb_lite_form_hero_accent')}</span>
+													{tu('onb_lite_form_hero_suffix')}
 												</h1>
 												<p className="mb-10 max-w-[85%] text-lg leading-relaxed text-[#595c5e]">
-													Create a dedicated workspace for global cards, payments, and smart-contract utility.
+													{tu('onb_lite_form_sub')}
 												</p>
 												<div className="grid grid-cols-2 gap-4">
 													<div className="translate-y-4 rounded-lg bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)]">
@@ -518,10 +511,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 															<LayoutGrid className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
 														</div>
 														<h3 className="mb-1 text-sm font-bold text-[#2c2f31]" style={headlineFont}>
-															Business Control
+															{tu('onb_business_control_title')}
 														</h3>
 														<p className="text-[11px] leading-tight text-[#595c5e]">
-															Centralized dashboard for all operational workflows.
+															{tu('onb_business_control_desc')}
 														</p>
 													</div>
 													<div className="-translate-y-2 rounded-lg bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)]">
@@ -529,10 +522,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 															<Hexagon className="h-5 w-5 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
 														</div>
 														<h3 className="mb-1 text-sm font-bold text-[#2c2f31]" style={headlineFont}>
-															Brand Identity
+															{tu('onb_brand_identity_title')}
 														</h3>
 														<p className="text-[11px] leading-tight text-[#595c5e]">
-															Smart-contract loyalty and membership tiers.
+															{tu('onb_brand_identity_desc')}
 														</p>
 													</div>
 												</div>
@@ -543,22 +536,22 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											<div className="mx-auto w-full max-w-md">
 												<div className="mb-10">
 													<h2 className="mb-2 text-2xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
-														Tell us about your business
+														{tu('onb_tell_business_title')}
 													</h2>
-													<p className="text-sm text-[#595c5e]">Essential for market discovery and regulatory compliance.</p>
+													<p className="text-sm text-[#595c5e]">{tu('onb_tell_business_sub')}</p>
 												</div>
 
 												<div className="space-y-8">
 													<div className="space-y-2">
 														<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-name">
-															Business Name
+															{tu('onb_business_name')}
 														</label>
 														<input
 															id="onb-mobile-cover-name"
 															type="text"
 															value={detailBusinessName}
 															onChange={(e) => setDetailBusinessName(e.target.value)}
-															placeholder="e.g., Main Street Roasters"
+															placeholder={tu('onb_business_name_ph')}
 															autoComplete="organization"
 															className={`
 																w-full rounded-lg border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf]
@@ -570,7 +563,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 													<div className="space-y-2">
 														<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-category">
-															Business Category
+															{tu('onb_business_category')}
 														</label>
 														<div className="relative">
 															<select
@@ -583,15 +576,15 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 																	${bizBrandFocusRingClass}
 																`}
 															>
-																<option value="">Select category (e.g., Cafe, Retail, Bakery)</option>
-																<option value="food-beverage">Food &amp; Beverage</option>
-																<option value="grocery-convenience">Grocery &amp; Convenience</option>
-																<option value="retail-shopping">Retail &amp; Shopping</option>
-																<option value="education-training">Education &amp; Training</option>
-																<option value="health-beauty">Health &amp; Beauty</option>
-																<option value="fitness-wellness">Fitness &amp; Wellness</option>
-																<option value="entertainment-leisure">Entertainment &amp; Leisure</option>
-																<option value="local-services">Local Services</option>
+																<option value="">{tu('onb_select_category')}</option>
+																<option value="food-beverage">{tu('onb_cat_food_beverage')}</option>
+																<option value="grocery-convenience">{tu('onb_cat_grocery')}</option>
+																<option value="retail-shopping">{tu('onb_cat_retail')}</option>
+																<option value="education-training">{tu('onb_cat_education')}</option>
+																<option value="health-beauty">{tu('onb_cat_health_beauty')}</option>
+																<option value="fitness-wellness">{tu('onb_cat_fitness')}</option>
+																<option value="entertainment-leisure">{tu('onb_cat_entertainment')}</option>
+																<option value="local-services">{tu('onb_cat_local_services')}</option>
 															</select>
 															<LoadingPageOnboardingDetailsSelectChevron />
 														</div>
@@ -599,7 +592,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 
 													<div className="space-y-2">
 														<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-country">
-															Country
+															{tu('onb_country')}
 														</label>
 														<div className="relative">
 															<select
@@ -615,12 +608,12 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 																	${bizBrandFocusRingClass}
 																`}
 															>
-																<option value="">Select country</option>
-																<option value="CA">Canada</option>
-																<option value="US">United States</option>
-																<option value="GB">United Kingdom</option>
-																<option value="AU">Australia</option>
-																<option value="DE">Germany</option>
+																<option value="">{tu('onb_select_country')}</option>
+																<option value="CA">{tu('onb_country_ca')}</option>
+																<option value="US">{tu('onb_country_us')}</option>
+																<option value="GB">{tu('onb_country_gb')}</option>
+																<option value="AU">{tu('onb_country_au')}</option>
+																<option value="DE">{tu('onb_country_de')}</option>
 															</select>
 															<LoadingPageOnboardingDetailsSelectChevron />
 														</div>
@@ -629,14 +622,14 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 													<div className="grid grid-cols-2 gap-4">
 														<div className="space-y-2">
 															<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-city">
-																City
+																{tu('onb_city')}
 															</label>
 															<input
 																id="onb-mobile-cover-city"
 																type="text"
 																value={detailCity}
 																onChange={(e) => setDetailCity(e.target.value)}
-																placeholder="e.g., Vancouver"
+																placeholder={tu('onb_city_ph')}
 																autoComplete="address-level2"
 																className={`
 																	w-full rounded-lg border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf]
@@ -647,7 +640,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 														</div>
 														<div className="space-y-2">
 															<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-province">
-																Province
+																{tu('onb_province')}
 															</label>
 															<div className="relative">
 																<select
@@ -663,7 +656,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 																	`}
 																>
 																	<option value="">
-																		{detailCountry ? "Select" : "Select country first"}
+																		{detailCountry ? tu('onb_select') : tu('onb_select_country_first')}
 																	</option>
 																	{(detailCountry ? ONBOARDING_REGIONS_BY_COUNTRY[detailCountry] ?? [] : []).map(({ value, label }) => (
 																		<option key={value} value={value}>
@@ -680,9 +673,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 												<div className="mt-12 flex items-start gap-4 rounded-lg bg-[#1562f0]/5 p-6">
 													<ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
 													<div>
-														<p className="mb-1 text-xs font-semibold text-[#1562f0]">Encrypted Infrastructure</p>
+														<p className="mb-1 text-xs font-semibold text-[#1562f0]">{tu('onb_encrypted_title')}</p>
 														<p className="text-[11px] leading-relaxed text-[#595c5e]">
-															Your data is stored using AES-256 encryption. We never share your commercial details with third-party brokers.
+															{tu('onb_encrypted_body')}
 														</p>
 													</div>
 												</div>
@@ -701,16 +694,16 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 															/>
 														</div>
 														<p className="text-[11px] font-semibold uppercase leading-relaxed tracking-wider text-[#595c5e]">
-															I agree to{" "}
+															{tu('onb_terms_prefix')}{" "}
 															<a
 																className="text-[#1562f0] underline-offset-2 hover:underline"
 																href="https://beamio.app/terms"
 																target="_blank"
 																rel="noopener noreferrer"
 															>
-																the Beamio terms of service and smart contract deployment agreement
+																{tu('onb_terms_link')}
 															</a>
-															. I understand this initiates a non-custodial environment.
+															{tu('onb_terms_suffix')}
 														</p>
 													</label>
 												</div>
@@ -754,18 +747,19 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 						<div className="mb-6 flex items-center gap-0 md:mb-8">
 							<IpfsImg src={BIZ_PUBLIC_LOGO512} alt="" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
 							<div className="text-2xl font-black tracking-tighter text-[#1562f0]" style={headlineFont}>
-								Beamio Business
+								{tu('onb_beamio_business')}
 							</div>
 						</div>
 						<h1
 							className="mb-4 text-3xl font-extrabold leading-[1.1] tracking-tight text-[#2c2f31] md:text-4xl lg:text-5xl"
 							style={headlineFont}
 						>
-							Set up your business for <span className="text-[#1562f0]">live commerce.</span>
+							{tu('onb_desktop_hero_prefix')}
+							<span className="text-[#1562f0]">{tu('onb_desktop_hero_accent')}</span>
+							{tu('onb_desktop_hero_suffix')}
 						</h1>
 						<p className="mb-6 text-base leading-relaxed text-[#595c5e] md:mb-8 md:text-lg">
-							Create your Beamio Business workspace to issue membership cards, manage customer balance, and run branded payments in one
-							place.
+							{tu('onb_desktop_hero_sub')}
 						</p>
 						<div className="space-y-4">
 							<div className="rounded-2xl bg-white p-4 shadow-sm transition-transform hover:-translate-y-0.5 md:p-5">
@@ -774,9 +768,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										<LayoutDashboard className="h-6 w-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
 									</div>
 									<div>
-										<h3 className="mb-1 font-bold text-[#2c2f31]">Business Control</h3>
+										<h3 className="mb-1 font-bold text-[#2c2f31]">{tu('onb_business_control_title')}</h3>
 										<p className="text-sm leading-relaxed text-[#595c5e]">
-											Centralized dashboard for all your commerce nodes and liquid assets.
+											{tu('onb_business_control_desc_desktop')}
 										</p>
 									</div>
 								</div>
@@ -787,9 +781,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										<Fingerprint className="h-6 w-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
 									</div>
 									<div>
-										<h3 className="mb-1 font-bold text-[#2c2f31]">Brand Identity</h3>
+										<h3 className="mb-1 font-bold text-[#2c2f31]">{tu('onb_brand_identity_title')}</h3>
 										<p className="text-sm leading-relaxed text-[#595c5e]">
-											Deploy custom smart-contract backed membership tiers and loyalty rails.
+											{tu('onb_brand_identity_desc_desktop')}
 										</p>
 									</div>
 								</div>
@@ -802,8 +796,8 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 					<div className="mx-auto w-full max-w-xl md:mx-0">
 						<div className="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-5 md:mb-8 md:flex-row md:items-center md:p-6">
 							<div>
-								<h3 className="font-bold text-[#2c2f31]">Returning user?</h3>
-								<p className="mt-1 text-sm text-[#595c5e]">Access your existing business nodes.</p>
+								<h3 className="font-bold text-[#2c2f31]">{tu('onb_returning_title')}</h3>
+								<p className="mt-1 text-sm text-[#595c5e]">{tu('onb_returning_sub')}</p>
 							</div>
 							<button
 								type="button"
@@ -814,17 +808,17 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									${bizBrandFocusRingClass}
 								`}
 							>
-								Restore Account
+								{tu('onb_restore_account')}
 								<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
 							</button>
 						</div>
 
 						<header className="mb-6 md:mb-8">
 							<h2 className="mb-2 text-2xl font-bold text-[#2c2f31] md:text-[1.75rem]" style={headlineFont}>
-								Select your business type
+								{tu('onb_select_business_type')}
 							</h2>
 							<p className="leading-relaxed text-[#595c5e]">
-								Choose your organization structure. We&apos;ll tailor your workspace and network settings accordingly.
+								{tu('onb_select_business_type_sub')}
 							</p>
 						</header>
 
@@ -891,16 +885,16 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 									/>
 								</div>
 								<p className="text-[11px] font-semibold uppercase leading-relaxed tracking-wider text-[#595c5e]">
-									I agree to{" "}
+									{tu('onb_terms_prefix')}{" "}
 									<a
 										className="text-[#1562f0] underline-offset-2 hover:underline"
 										href="https://beamio.app/terms"
 										target="_blank"
 										rel="noopener noreferrer"
 									>
-										the Beamio terms of service and smart contract deployment agreement
+										{tu('onb_terms_link')}
 									</a>
-									. I understand this initiates a non-custodial environment.
+									{tu('onb_terms_suffix')}
 								</p>
 							</label>
 
@@ -922,16 +916,16 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			</main>
 
 			<footer className="mt-auto hidden flex-col items-center justify-between gap-4 border-t border-[#abadaf]/10 bg-[#eef1f3] px-5 py-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex md:flex-row md:px-10">
-				<div className="text-center tracking-[0.2em] md:text-left">由 Beamio 基础设施安全托管 © 2026</div>
+				<div className="text-center tracking-[0.2em] md:text-left">{tu('onb_footer_hosted')}</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
 					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
-						Privacy Policy
+						{tu('onb_privacy_policy')}
 					</a>
 					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
-						Terms of Service
+						{tu('onb_terms_of_service')}
 					</a>
 					<a className="transition-colors hover:text-[#1562f0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
-						Help Center
+						{tu('onb_help_center')}
 					</a>
 				</div>
 			</footer>
@@ -959,38 +953,42 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			/>
 
 			{APP_VERSION && (
-				<div className="absolute top-[calc(env(safe-area-inset-top)+0.5rem)] right-6 z-10 text-[11px] text-[#abadaf] font-medium">
+				<div className="pointer-events-none absolute top-[calc(env(safe-area-inset-top)+0.5rem)] left-6 z-[5] text-[11px] font-medium text-[#abadaf] lg:left-8">
 					v{APP_VERSION}
 				</div>
 			)}
 
-			{/* newOnloading.html — 单列顶栏 */}
-			<header className="relative z-10 flex shrink-0 items-center justify-center gap-0 px-5 pt-5 lg:justify-start lg:px-8">
-				<IpfsImg
-					src={BIZ_PUBLIC_LOGO512}
-					alt=""
-					className="h-8 w-8 shrink-0 rounded-lg object-contain"
-				/>
-				<span className="text-xl font-extrabold tracking-tighter text-[#1562F0]" style={headlineFont}>
-					Beamio Business
-				</span>
+			<header className="relative z-30 flex shrink-0 items-center justify-between gap-3 overflow-visible px-5 pt-5 lg:px-8">
+				<div className="flex items-center justify-center gap-0 lg:justify-start">
+					<IpfsImg
+						src={BIZ_PUBLIC_LOGO512}
+						alt=""
+						className="h-8 w-8 shrink-0 rounded-lg object-contain"
+					/>
+					<span className="text-xl font-extrabold tracking-tighter text-[#1562F0]" style={headlineFont}>
+						{tu('onb_beamio_business')}
+					</span>
+				</div>
+				<BizOnboardingLocalePicker />
 			</header>
 
-			<main className="relative z-10 flex min-h-0 flex-1 flex-grow items-center justify-center px-4 py-8">
+			<main className="relative z-0 flex min-h-0 flex-1 flex-grow items-start justify-center px-4 pb-8 pt-6 sm:pt-10">
 				<div className="w-full max-w-md">
 					<div className="mb-6 text-center lg:text-left">
 						<h2 className="mb-3 text-2xl font-extrabold tracking-tight text-[#121212] sm:text-3xl" style={headlineFont}>
-							Create your business identity
+							{tu('onb_identity_title')}
 						</h2>
 						<p className="leading-relaxed text-[#666666]">
-							Choose your Beamio handle and set the password that protects your business workspace.
+							{tu('onb_identity_sub')}
 						</p>
 					</div>
 
 					{isStandalone && (
 						<div className="mb-6 rounded-xl border border-amber-200/80 bg-amber-50 p-4">
 							<p className="text-[13px] font-medium leading-snug text-amber-900">
-								Opened from home screen? Wallet data from Safari doesn&apos;t transfer. Use <strong>恢复钱包</strong> below.
+								{tu('onb_identity_standalone_hint_prefix')}
+								<strong>{tu('restore_wallet')}</strong>
+								{tu('onb_identity_standalone_hint_suffix')}
 							</p>
 						</div>
 					)}
@@ -1021,8 +1019,9 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 								setRedeemActivating(true)
 								setRedeemPostCreateInProgress(true)
 							}
+							setWorkspaceCreating(true)
 							setSettingsOpen('RecoveryQRScreen')
-							// Let Recovery mount + paint under overlay, then remove overlay (avoids identity shell / empty layout flash).
+							// Recovery 挂载并绘制后再撤遮罩，避免 Identity / 空白壳闪一下
 							window.requestAnimationFrame(() => {
 								window.requestAnimationFrame(() => {
 									window.setTimeout(() => setWorkspaceCreating(false), 340)
@@ -1036,20 +1035,21 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			<footer className="mx-auto mt-auto flex w-full max-w-screen-xl flex-col items-center justify-between gap-4 border-t border-transparent px-5 py-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[#666666]/50 md:flex-row lg:px-8">
 				<div className="flex items-center gap-2 text-center md:text-left">
 					<Cloud className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-					<span>由 Beamio 基础设施安全托管 © 2026</span>
+					<span>{tu('onb_footer_hosted')}</span>
 				</div>
 				<div className="flex flex-wrap justify-center gap-8 md:gap-8">
 					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
-						Privacy Policy
+						{tu('onb_privacy_policy')}
 					</a>
 					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
-						Terms of Service
+						{tu('onb_terms_of_service')}
 					</a>
 					<a className="transition-colors hover:text-[#1562F0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
-						Help Center
+						{tu('onb_help_center')}
 					</a>
 				</div>
 			</footer>
+			{workspaceCreating ? <WorkspaceCreatingOverlay /> : null}
 		</div>
 	)
 
@@ -1138,42 +1138,47 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 										setWorkspaceCreating(false)
 										setSettingsOpen('')
 									} : async () => {
-										setWorkspaceCreating(false)
-										await init(temp, { dontClose: true })
-										const profileAfterInit = temp?.profiles?.[0]
-										if (profileAfterInit?.keyID && ethers.isAddress(profileAfterInit.keyID)) {
-											try {
-												await ensureConetAaForProfileAndPersist(profileAfterInit, setProfiles)
-											} catch {
-												/* 不可信失败：不阻断进入 Merchant OS */
+										try {
+											await flushStoreSystemData()
+											await init(temp, { dontClose: true, accountName: beamioTag })
+											const profileAfterInit = temp?.profiles?.[0]
+											if (profileAfterInit?.keyID && ethers.isAddress(profileAfterInit.keyID)) {
+												try {
+													await ensureConetAaForProfileAndPersist(profileAfterInit, setProfiles)
+												} catch {
+													/* 不可信失败：不阻断进入 Merchant OS */
+												}
 											}
-										}
-										// URL 带 redeemAdmin + redeemCode 时：校验 code 有效、EOA 非 admin 后，向 endpoint 完成 redeem admin
-										const redeemAdminParams = parseRedeemAdminFromUrl()
-										if (redeemAdminParams) {
-											const userEOA = temp?.profiles?.[0]?.keyID?.trim()
-											if (userEOA && ethers.isAddress(userEOA)) {
-												const valid = await checkRedeemAdminCodeValid(redeemAdminParams.cardAddress, redeemAdminParams.redeemCode)
-												if (!valid) {
-													console.warn('[RecoveryQRScreen] redeemAdmin code invalid or expired, skip')
-												} else {
-													const alreadyAdmin = await isCardAdmin(redeemAdminParams.cardAddress, userEOA)
-													if (alreadyAdmin) {
-														console.warn('[RecoveryQRScreen] EOA already admin, skip redeem')
+											// URL 带 redeemAdmin + redeemCode 时：校验 code 有效、EOA 非 admin 后，向 endpoint 完成 redeem admin
+											const redeemAdminParams = parseRedeemAdminFromUrl()
+											if (redeemAdminParams) {
+												const userEOA = temp?.profiles?.[0]?.keyID?.trim()
+												if (userEOA && ethers.isAddress(userEOA)) {
+													const valid = await checkRedeemAdminCodeValid(redeemAdminParams.cardAddress, redeemAdminParams.redeemCode)
+													if (!valid) {
+														console.warn('[RecoveryQRScreen] redeemAdmin code invalid or expired, skip')
 													} else {
-														const res = await postCardRedeemAdmin(
-															redeemAdminParams.cardAddress,
-															redeemAdminParams.redeemCode,
-															userEOA
-														)
-														if (!res.success && res.error) {
-															console.warn('[RecoveryQRScreen] redeemAdmin failed:', res.error)
+														const alreadyAdmin = await isCardAdmin(redeemAdminParams.cardAddress, userEOA)
+														if (alreadyAdmin) {
+															console.warn('[RecoveryQRScreen] EOA already admin, skip redeem')
+														} else {
+															const res = await postCardRedeemAdmin(
+																redeemAdminParams.cardAddress,
+																redeemAdminParams.redeemCode,
+																userEOA
+															)
+															if (!res.success && res.error) {
+																console.warn('[RecoveryQRScreen] redeemAdmin failed:', res.error)
+															}
 														}
 													}
 												}
 											}
+											setSettingsOpen('')
+											home()
+										} finally {
+											setWorkspaceCreating(false)
 										}
-										home()
 									}} />
 							}
 							
@@ -1230,6 +1235,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 					</motion.div>
 				)}
 			</AnimatePresence>
+			{workspaceCreating ? <WorkspaceCreatingOverlay /> : null}
 
 		</div>
 	)

@@ -3,13 +3,14 @@ import { AppButton } from '@/components/button/AppButton'
 import { QRCodeCanvas } from 'qrcode.react'
 import { Copy, Check, Loader, KeyRound, Lock, Wifi, RefreshCw, ImageDown, ArrowRight } from 'lucide-react'
 import { BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass, bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
-import { tu } from '@/locale/beamioLocale'
+import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
+import { getCurrentBeamioUiLocale, useTu } from '@/locale/beamioLocale'
 
-export const ACTIVATING_STEPS = [
-  { id: 0, title: '正在生成安全 ID', desc: '正在创建加密密钥', icon: KeyRound },
-  { id: 1, title: 'Deploying Smart Vault', desc: 'Establishing storage on Base', icon: Lock },
-  { id: 2, title: 'Minting Membership', desc: 'Adding card to your wallet', icon: Wifi },
-  { id: 3, title: 'Verifying on Base L2', desc: 'Confirming on blockchain', icon: RefreshCw },
+export const ACTIVATING_STEP_DEFS = [
+  { id: 0, titleKey: 'onb_recovery_activate_step0_title', descKey: 'onb_recovery_activate_step0_desc', icon: KeyRound },
+  { id: 1, titleKey: 'onb_recovery_activate_step1_title', descKey: 'onb_recovery_activate_step1_desc', icon: Lock },
+  { id: 2, titleKey: 'onb_recovery_activate_step2_title', descKey: 'onb_recovery_activate_step2_desc', icon: Wifi },
+  { id: 3, titleKey: 'onb_recovery_activate_step3_title', descKey: 'onb_recovery_activate_step3_desc', icon: RefreshCw },
 ] as const
 const STEP_DURATION_MS = 5000 // 4 steps × 5s ≈ 20s total
 type RecoveryQRScreenProps = {
@@ -56,11 +57,12 @@ const RecoveryQRScreen = ({
   close,
   onBack,
 }: RecoveryQRScreenProps) => {
+  const { tu } = useTu()
+  const uiLocale = getCurrentBeamioUiLocale()
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [isConfirmed, setIsConfirmed] = useState(false)
   const [activatingStep, setActivatingStep] = useState(0)
-  // 新增状态：是否已经执行过备份操作（保存或复制）
   const [hasBackedUp, setHasBackedUp] = useState(false)
 
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -72,10 +74,10 @@ const RecoveryQRScreen = ({
       return
     }
     const advance = () => {
-      setActivatingStep((prev) => Math.min(prev + 1, ACTIVATING_STEPS.length - 1))
+      setActivatingStep((prev) => Math.min(prev + 1, ACTIVATING_STEP_DEFS.length - 1))
     }
     const timers: ReturnType<typeof setTimeout>[] = []
-    for (let i = 1; i < ACTIVATING_STEPS.length; i++) {
+    for (let i = 1; i < ACTIVATING_STEP_DEFS.length; i++) {
       timers.push(setTimeout(advance, i * STEP_DURATION_MS))
     }
     return () => timers.forEach((t) => clearTimeout(t))
@@ -90,8 +92,6 @@ const RecoveryQRScreen = ({
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    
-    // 标记已备份，解锁复选框
     setHasBackedUp(true)
   }
 
@@ -100,7 +100,6 @@ const RecoveryQRScreen = ({
     try {
       await navigator.clipboard.writeText(recoveryCode)
       setCopied(true)
-      // 标记已备份，解锁复选框
       setHasBackedUp(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -108,10 +107,12 @@ const RecoveryQRScreen = ({
     }
   }
 
-  // Redeem flow: 进入时或点击后显示 4 步 Activating loading 动画（总长约 30 秒）
   if (isActivating) {
     return (
-      <div className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto">
+      <div
+        key={uiLocale}
+        className="flex flex-col h-full items-center justify-center p-8 bg-white min-h-0 overflow-y-auto"
+      >
         <div className="relative mb-8">
           <div className="w-20 h-20 bg-[#1562f0] rounded-[28px] flex items-center justify-center shadow-xl shadow-[#1562f0]/40">
             <Loader className="w-9 h-9 text-white animate-spin" strokeWidth={2.5} />
@@ -119,7 +120,7 @@ const RecoveryQRScreen = ({
           <div className="absolute -inset-4 bg-[#1562f0] rounded-[40px] opacity-10 blur-xl animate-pulse" />
         </div>
         <div className="w-full max-w-sm space-y-6">
-          {ACTIVATING_STEPS.map((step, idx) => {
+          {ACTIVATING_STEP_DEFS.map((step, idx) => {
             const isCompleted = idx < activatingStep
             const isActive = idx === activatingStep
             const Icon = step.icon
@@ -154,7 +155,7 @@ const RecoveryQRScreen = ({
                       .filter(Boolean)
                       .join(' ')}
                   >
-                    {step.title}
+                    {tu(step.titleKey)}
                   </p>
                   <p
                     className={[
@@ -166,7 +167,7 @@ const RecoveryQRScreen = ({
                       .filter(Boolean)
                       .join(' ')}
                   >
-                    {step.desc}
+                    {tu(step.descKey)}
                   </p>
                 </div>
               </div>
@@ -182,6 +183,7 @@ const RecoveryQRScreen = ({
 
   return (
     <div
+      key={uiLocale}
       className="flex min-h-0 w-full flex-1 flex-col bg-[#f8fafc] antialiased text-[#0f172a]"
       style={{
         backgroundImage: `radial-gradient(at 50% 0%, rgba(21, 98, 240, 0.05) 0%, transparent 70%)`,
@@ -189,12 +191,13 @@ const RecoveryQRScreen = ({
     >
       {showTopNav ? (
         <nav
-          className="fixed left-0 right-0 top-0 z-[60] flex h-14 min-h-[3.5rem] items-center justify-end border-b border-[#e2e8f0]/30 bg-white/80 px-6 backdrop-blur-md"
+          className="fixed left-0 right-0 top-0 z-[60] flex h-14 min-h-[3.5rem] items-center justify-between gap-3 border-b border-[#e2e8f0]/30 bg-white/80 px-6 backdrop-blur-md"
           style={{ paddingTop: 'env(safe-area-inset-top)' }}
         >
           <span className="rounded-full bg-[#1562F0]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1562F0]">
-            Step 2 of 2
+            {tu('onb_recovery_step_badge')}
           </span>
+          <BizOnboardingLocalePicker />
         </nav>
       ) : null}
 
@@ -204,10 +207,11 @@ const RecoveryQRScreen = ({
         }`}
       >
         {showTopNav ? null : (
-          <div className="mb-6 flex justify-end">
+          <div className="mb-6 flex items-center justify-between gap-3">
             <span className="rounded-full bg-[#1562F0]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1562F0]">
-              Step 2 of 2
+              {tu('onb_recovery_step_badge')}
             </span>
+            <BizOnboardingLocalePicker />
           </div>
         )}
 
@@ -215,17 +219,17 @@ const RecoveryQRScreen = ({
           <h1
             className={`${headlineClass} mb-3 text-[2rem] font-extrabold leading-tight tracking-tight text-[#0f172a]`}
           >
-            Protect your business access.
+            {tu('onb_recovery_title')}
           </h1>
           <p className="text-base leading-relaxed text-[#64748b]">
-            Save your recovery key so you can restore access to your Beamio Business workspace if this device is lost or replaced.
+            {tu('onb_recovery_sub')}
           </p>
         </header>
 
         <section className="mb-8">
           <div className="flex flex-col items-center rounded-xl border border-[#e2e8f0]/50 bg-white p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
             <span className="mb-8 text-[10px] font-bold uppercase tracking-[0.15em] text-[#1562F0]/80">
-              Business recovery key
+              {tu('onb_recovery_key_label')}
             </span>
 
             <div className="mb-8 flex h-44 w-44 items-center justify-center rounded-xl border border-[#f1f5f9] bg-[#f8fafc] p-4">
@@ -266,7 +270,7 @@ const RecoveryQRScreen = ({
                 className={`flex items-center justify-center gap-2 rounded-full border border-[#f1f5f9] bg-white py-3.5 text-sm font-semibold text-[#0f172a] transition-all hover:bg-[#f1f5f9]/30 active:scale-95 ${bizBrandFocusRingClass}`}
               >
                 <ImageDown className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                Save key image
+                {tu('onb_recovery_save_image')}
               </button>
               <button
                 type="button"
@@ -276,12 +280,12 @@ const RecoveryQRScreen = ({
                 {copied ? (
                   <>
                     <Check className="h-5 w-5 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
-                    <span className="text-emerald-700">已复制</span>
+                    <span className="text-emerald-700">{tu('onb_recovery_copied')}</span>
                   </>
                 ) : (
                   <>
                     <Copy className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
-                    Copy recovery key
+                    {tu('onb_recovery_copy_key')}
                   </>
                 )}
               </button>
@@ -304,10 +308,10 @@ const RecoveryQRScreen = ({
             </div>
             <div className="flex min-w-0 flex-col">
               <span className="text-base font-semibold leading-tight text-[#0f172a]">
-                I have safely stored my recovery key
+                {tu('onb_recovery_confirm_label')}
               </span>
               <p className="mt-2 text-sm leading-relaxed text-[#64748b]">
-                Keep this key in a secure place. You&apos;ll need it to restore business access on a new or reset device.
+                {tu('onb_recovery_confirm_body')}
               </p>
             </div>
           </label>
@@ -319,7 +323,11 @@ const RecoveryQRScreen = ({
               fullWidth
               onClick={async () => {
                 setLoading(true)
-                await Promise.resolve(close?.())
+                try {
+                  await Promise.resolve(close?.())
+                } finally {
+                  setLoading(false)
+                }
               }}
               loading={loading && !isRedeemFlow}
               disabled={!isConfirmed}

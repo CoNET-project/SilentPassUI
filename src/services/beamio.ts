@@ -1,6 +1,15 @@
 //			beamio.ts
 
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import { applyBeamioUiLanguageFromProfile, getCurrentBeamioUiLocale } from '@/locale/i18n'
+import {
+	buildBrowserLocaleCurrencyDefaults,
+	buildLocaleCurrencySetupPayload,
+	encodeRegistryLastNameWithLocaleSetup,
+	normalizeBeamioDisplayCurrency,
+	normalizeBeamioUiLocale,
+	parseBeamioAddedSetupFromRegistryLastName,
+} from '@/utils/beamioProfileLocaleCurrency'
 import {
 	hydrateProfilesWithSessionSecrets,
 	ingestSessionPrivateKeyFromProfiles,
@@ -1516,7 +1525,7 @@ const fetchRecoverPayloadByAccountName = async (
 	}
 }
 
-const buildMinimalBeamioFromAccountName = (accountName: string): beamio => ({
+export const buildMinimalBeamioFromAccountName = (accountName: string): beamio => ({
 	accountName,
 	firstName: '',
 	lastName: '',
@@ -1526,7 +1535,7 @@ const buildMinimalBeamioFromAccountName = (accountName: string): beamio => ({
 	isETHFaucet: false,
 	initialLoading: true,
 	createdAt: Date.now(),
-	language: 'en',
+	language: getCurrentBeamioUiLocale(),
 	currency: 'USD',
 	tax: '0',
 })
@@ -1546,14 +1555,8 @@ const parseRegistryAccountToBeamio = (userInfo: {
 	pgpKey?: string
 } | null): beamio | null => {
 	if (!userInfo?.exists || !userInfo.accountName?.trim()) return null
-	const lastNameArray: string = userInfo.lastName || ''
-	const lastNameParts = lastNameArray.split('\r\n')
-	let addedSetup: beamioAddedSetup = { language: 'en', currency: 'USD', tax: '0' }
-	try {
-		addedSetup = JSON.parse(lastNameParts[lastNameParts.length - 1])
-	} catch {
-		// keep defaults
-	}
+	const { displayLastName, setup } = parseBeamioAddedSetupFromRegistryLastName(userInfo.lastName || '')
+	const addedSetup: beamioAddedSetup = setup ?? { language: 'en', currency: 'USD', tax: '0' }
 	return {
 		accountName: userInfo.accountName,
 		image: userInfo.image ?? '',
@@ -1562,11 +1565,12 @@ const parseRegistryAccountToBeamio = (userInfo: {
 		isUSDCFaucet: userInfo.isUSDCFaucet ?? false,
 		isETHFaucet: userInfo.isETHFaucet ?? false,
 		firstName: userInfo.firstName ?? '',
-		lastName: lastNameParts[0] ?? '',
+		lastName: displayLastName,
 		createdAt: Number(userInfo.createdAt),
-		language: addedSetup.language,
-		currency: addedSetup.currency,
+		language: normalizeBeamioUiLocale(addedSetup.language) as ILanguage,
+		currency: normalizeBeamioDisplayCurrency(addedSetup.currency) as ICurrency,
 		tax: addedSetup.tax || '0',
+		localeCurrencyConfigured: setup !== null,
 		pgpPublicKeyID: userInfo.pgpKeyID ?? '',
 		pgpPublicKeyArmor: userInfo.pgpKey ?? '',
 	}
@@ -1817,7 +1821,10 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 	const signMessage = await signWallet.signMessage(signWallet.address)
 
 
-	const lastname = `${beamio.lastName}\r\n${JSON.stringify({language:beamio.language,currency: beamio.currency, tax: beamio.tax})}` 
+	const lastname = encodeRegistryLastNameWithLocaleSetup(
+		beamio.lastName ?? '',
+		buildLocaleCurrencySetupPayload(beamio),
+	)
 	try {
 		const body = {
 			accountName: beamio.accountName,
@@ -1851,6 +1858,55 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 		console.error("newUser error:", err)
 	}
 	return false
+}
+
+export async function persistBeamioProfileLocaleCurrency(
+	beamio: beamio,
+	privateKeyArmor: string,
+	patch?: Partial<Pick<beamio, 'language' | 'currency' | 'tax'>>,
+): Promise<beamio | null> {
+	if (!isValidEthersPrivateKey(privateKeyArmor)) return null
+	const bo: beamio = {
+		...beamio,
+		...patch,
+		language: normalizeBeamioUiLocale(patch?.language ?? beamio.language) as ILanguage,
+		currency: normalizeBeamioDisplayCurrency(patch?.currency ?? beamio.currency) as ICurrency,
+		tax: String(patch?.tax ?? beamio.tax ?? '0'),
+		localeCurrencyConfigured: true,
+	}
+	const ok = await postBeamio(bo, privateKeyArmor)
+	if (!ok) return null
+	if (CoNET_Data) {
+		CoNET_Data.beamio = bo
+		setCoNET_Data(CoNET_Data)
+	}
+	await storeSystemData()
+	await applyBeamioUiLanguageFromProfile(bo.language)
+	return bo
+}
+
+export async function bootstrapProfileLocaleCurrencyIfUnset(
+	beamio: beamio,
+	privateKeyArmor: string,
+): Promise<beamio> {
+	if (beamio.localeCurrencyConfigured) {
+		await applyBeamioUiLanguageFromProfile(beamio.language)
+		return beamio
+	}
+	const defaults = buildBrowserLocaleCurrencyDefaults()
+	const next = await persistBeamioProfileLocaleCurrency(beamio, privateKeyArmor, defaults)
+	if (next) return next
+	const fallback: beamio = {
+		...beamio,
+		...defaults,
+		localeCurrencyConfigured: true,
+	}
+	if (CoNET_Data) {
+		CoNET_Data.beamio = fallback
+		setCoNET_Data(CoNET_Data)
+	}
+	await applyBeamioUiLanguageFromProfile(fallback.language)
+	return fallback
 }
 
 const aesGcmEncryptWithStored = async (
@@ -1926,6 +1982,12 @@ export const createRecover = async (
 		return null
 	}
 
+	ingestSessionPrivateKeyFromProfiles(temp.profiles)
+	if (!temp.beamio) {
+		temp.beamio = buildMinimalBeamioFromAccountName(BeamioName)
+	}
+	await flushStoreSystemData()
+
 	return obj
 }
 
@@ -1963,6 +2025,24 @@ export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 }
 
 export const getUserInfo = async (keyID: string) => getUserInfoFromRegistry(beamioAccountSC, keyID)
+
+/** Bounded registry poll; falls back to minimal profile when accountName is known (fresh onboarding). */
+export const fetchUserInfoWithRetry = async (
+	keyID: string,
+	options?: { maxAttempts?: number; intervalMs?: number; accountNameFallback?: string },
+): Promise<beamio | null> => {
+	const maxAttempts = options?.maxAttempts ?? 25
+	const intervalMs = options?.intervalMs ?? 1000
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
+		const info = await getUserInfo(keyID)
+		if (info) return info
+		if (attempt < maxAttempts - 1) {
+			await new Promise((resolve) => setTimeout(resolve, intervalMs))
+		}
+	}
+	const name = options?.accountNameFallback?.trim()
+	return name ? buildMinimalBeamioFromAccountName(name) : null
+}
 
 export const restoreWithUserPin = async (username: string, pin: string, test = false) => {
 	try {
@@ -2160,7 +2240,10 @@ export const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover
 	const signWallet = new ethers.Wallet(privateKey)
 	const signMessage = await signWallet.signMessage(signWallet.address)
 	const Url = storageNewUser
-	const lastName = `${beamio.lastName}\r\n${JSON.stringify({ language: beamio.language, currency: beamio.currency, tax: beamio.tax ?? '0' })}`
+	const lastName = encodeRegistryLastNameWithLocaleSetup(
+		beamio.lastName ?? '',
+		buildLocaleCurrencySetupPayload({ ...beamio, tax: beamio.tax ?? '0' }),
+	)
 	try {
 		const body = {
 			accountName: beamio.accountName,

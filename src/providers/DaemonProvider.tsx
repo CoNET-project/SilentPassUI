@@ -537,8 +537,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   useEffect(() => {
     if (!beamio?.language) return
+    // Pre-login onboarding: top-right picker is source of truth until profile locale is persisted on-chain.
+    if (!beamio.localeCurrencyConfigured) return
     void syncBeamioUiLocaleFromProfileLanguage(beamio.language)
-  }, [beamio?.language])
+  }, [beamio?.language, beamio?.localeCurrencyConfigured])
 
   useEffect(() => {
     {

@@ -5,6 +5,7 @@
 
 import { ethers } from 'ethers'
 import { beamioApiBase } from '@/services/AAaccount'
+import { CONET_RPC_URL } from '@/config/chainAddresses'
 
 /** CoNET chainId */
 const CONET_CHAIN_ID = 224422
@@ -86,9 +87,6 @@ export function generateRegisterPOSNonce(): string {
 	return ethers.hexlify(ethers.randomBytes(32))
 }
 
-/** CoNET 主网 RPC */
-const CONET_RPC = 'https://rpc1.conet.network'
-
 const MERCHANT_POS_ABI = [
 	'function getMerchantPOSList(address merchant) view returns (address[])',
 	'function getMerchantPOSCount(address merchant) view returns (uint256)',
@@ -99,7 +97,7 @@ const MERCHANT_POS_ABI = [
  */
 export async function getMerchantPOSListFromCoNET(merchant: string): Promise<string[]> {
 	if (!merchant || !ethers.isAddress(merchant)) return []
-	const provider = new ethers.JsonRpcProvider(CONET_RPC)
+	const provider = new ethers.JsonRpcProvider(CONET_RPC_URL)
 	const contract = new ethers.Contract(MERCHANT_POS_MANAGEMENT_ADDRESS, MERCHANT_POS_ABI, provider)
 	const list = await contract.getMerchantPOSList(merchant)
 	return Array.isArray(list) ? list.map((a: string) => ethers.getAddress(a)) : []

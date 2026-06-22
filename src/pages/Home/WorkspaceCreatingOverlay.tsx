@@ -2,6 +2,7 @@ import React from "react"
 import { IpfsImg } from "@/components/IpfsImg"
 import { Briefcase, Check, KeyRound, RefreshCw } from "lucide-react"
 import { BIZ_PUBLIC_LOGO512 } from "@/pages/Home/brandUi"
+import { useTu } from "@/locale/beamioLocale"
 
 /**
  * Full-screen workspace creation UI — layout aligned with SilentPassUI
@@ -11,8 +12,8 @@ export const WORKSPACE_CREATING_STEP_DURATION_MS = 2000
 export const WORKSPACE_CREATING_LEAD_MS = 300
 
 export const WORKSPACE_CREATING_STEPS = [
-	{ id: 0, title: "正在生成安全 ID", desc: "正在创建加密密钥", icon: KeyRound },
-	{ id: 1, title: "Finalizing Workspace", desc: "Preparing your business lite workspace", icon: RefreshCw },
+	{ id: 0, titleKey: "onb_workspace_step0_title", descKey: "onb_workspace_step0_desc", icon: KeyRound },
+	{ id: 1, titleKey: "onb_workspace_step1_title", descKey: "onb_workspace_step1_desc", icon: RefreshCw },
 ] as const
 
 const WORKSPACE_CREATING_STYLE = `
@@ -26,6 +27,7 @@ export type WorkspaceCreatingOverlayProps = {
 }
 
 export default function WorkspaceCreatingOverlay({ creatingStep = 0 }: WorkspaceCreatingOverlayProps) {
+	const { tu } = useTu()
 	const steps = WORKSPACE_CREATING_STEPS
 
 	return (
@@ -81,7 +83,7 @@ export default function WorkspaceCreatingOverlay({ creatingStep = 0 }: Workspace
 					>
 						<IpfsImg
 							src={BIZ_PUBLIC_LOGO512}
-							alt="Beamio Business Lite"
+							alt={tu('onb_beamio_business_lite')}
 							className="h-14 w-14 rounded-[14px] object-contain [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-9 [@media(max-height:640px)]:w-9 [@media(max-height:640px)]:rounded-[10px]"
 							style={{ animation: "biz-workspace-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}
 							draggable={false}
@@ -98,7 +100,7 @@ export default function WorkspaceCreatingOverlay({ creatingStep = 0 }: Workspace
 
 				<div className="w-full space-y-8 [@media(max-height:700px)]:space-y-5 [@media(max-height:640px)]:space-y-3">
 					<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-2xl [@media(max-height:640px)]:text-xl">
-						Creating your business lite workspace...
+						{tu('onb_workspace_creating_title')}
 					</h1>
 					<div className="mx-auto max-w-sm space-y-5 text-left [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
 						{steps.map((s, idx) => {
@@ -148,11 +150,11 @@ export default function WorkspaceCreatingOverlay({ creatingStep = 0 }: Workspace
 												.filter(Boolean)
 												.join(" ")}
 										>
-											{s.title}
+											{tu(s.titleKey)}
 										</p>
-										{s.desc ? (
+										{s.descKey ? (
 											<p className="mt-1 text-xs text-[#424655] [@media(max-height:640px)]:mt-0.5 [@media(max-height:640px)]:text-[11px]">
-												{s.desc}
+												{tu(s.descKey)}
 											</p>
 										) : null}
 									</div>
@@ -166,7 +168,7 @@ export default function WorkspaceCreatingOverlay({ creatingStep = 0 }: Workspace
 			<footer className="shrink-0 px-6 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] pt-3 text-center [@media(max-height:700px)]:pt-2 [@media(max-height:640px)]:pt-1.5">
 				<div className="mx-auto max-w-xs">
 					<p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#424655]/60">
-						Do not close the app during this process
+						{tu('onb_workspace_do_not_close')}
 					</p>
 					<div className="mt-3 flex justify-center space-x-1 [@media(max-height:640px)]:mt-2" aria-hidden>
 						<div className="h-1 w-1 animate-bounce rounded-full bg-[#004bc3]/20" style={{ animationDelay: "0s" }} />
@@ -175,7 +177,7 @@ export default function WorkspaceCreatingOverlay({ creatingStep = 0 }: Workspace
 					</div>
 					<div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#dfe3eb]/80 bg-white/80 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#424655]/70">
 						<Briefcase className="h-3 w-3 text-[#1562f0]/70" strokeWidth={2.25} aria-hidden />
-						Business setup in progress
+						{tu('onb_workspace_setup_in_progress')}
 					</div>
 				</div>
 			</footer>

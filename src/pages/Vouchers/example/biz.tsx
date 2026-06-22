@@ -90,23 +90,6 @@ import {
   queryBusinessStartKetBalanceOfOnChain,
   postBusinessStartKetRedeemRedeem,
   queryValidatorDepositRedeemAdminOnChain,
-  isLongDhangMigrationOwnerAmong,
-  fetchLongDhangMigrationConfig,
-  isLongDhangMigrationDismissed,
-  setLongDhangMigrationDismissed,
-  isLongDhangMigrationCompleted,
-  readLongDhangMigrationInFlight,
-  clearLongDhangMigrationInFlight,
-  longDhangMigrationNewCardStorageKey,
-  runLongDhangMigrationAuto,
-  waitForLongDhangServerMigrationVerify,
-  syncLongDhangMigrationCompletedFromStoredCard,
-  getLongDhangMigrationCompleted,
-  repairLongDhangMigrationTerminals,
-  listLongDhangMigratedTerminalEoa,
-  verifyLongDhangMigration,
-  type LongDhangMigrationAutoResult,
-  type LongDhangMigrationAutoPhase,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
@@ -250,8 +233,6 @@ import {
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
-import { LongDhangConetMigrationPanel, LongDhangTerminalRepairPanel } from './longDhangConetMigrationPanel';
-import { LongDhangConetMigrationFullScreen } from './longDhangConetMigrationFullScreen';
 import { ValidatorDepositRedeemManagementPanel } from './validatorDepositRedeemManagementPanel';
 import {
   ProgramsIssuedItemClaimWalletsSection,
@@ -947,7 +928,7 @@ function membersBizViewerResolvedForCache(
 }
 
 function membersLoyaltyDirectoryBundleCacheKey(eoaLower: string, viewerNormLower: string): string {
-  return `eoa:${eoaLower}:biz:members-loyalty-directory:v4:longdhang-balance:${viewerNormLower}`
+  return `eoa:${eoaLower}:biz:members-loyalty-directory:v4:${viewerNormLower}`
 }
 
 function dashboardMembersDirectoryHintCacheKey(eoaLower: string, cardBucket: string): string {
@@ -7941,154 +7922,20 @@ async function fetchAllBeamioCardMemberDirectoryHttp(
   return { members: acc, total };
 }
 
-function resolveLongDhangMigratedConetCardForOwner(ownerEoa: string | null | undefined): string | null {
-  if (!ownerEoa || !ethers.isAddress(ownerEoa)) return null;
-  const owner = ethers.getAddress(ownerEoa);
-  const completed = getLongDhangMigrationCompleted(owner);
-  if (completed?.newCardAddress && ethers.isAddress(completed.newCardAddress)) {
-    return ethers.getAddress(completed.newCardAddress);
-  }
-  if (typeof window === 'undefined') return null;
-  try {
-    const stored = localStorage.getItem(longDhangMigrationNewCardStorageKey(owner))?.trim();
-    if (stored && ethers.isAddress(stored)) return ethers.getAddress(stored);
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
-function mergeBeamioCardMemberDirectoryMembers(
-  primary: BeamioCardMemberDirectoryPageResponse['members'] | undefined,
-  extra: BeamioCardMemberDirectoryPageResponse['members'] | undefined,
-): BeamioCardMemberDirectoryPageResponse['members'] {
-  const byEoa = new Map<string, BeamioCardMemberDirectoryPageResponse['members'][number]>();
-  const rank = (m: BeamioCardMemberDirectoryPageResponse['members'][number]) => {
-    let lastTs = 0;
-    try {
-      const t = Date.parse(String(m.lastTopupAt ?? ''));
-      if (Number.isFinite(t)) lastTs = t;
-    } catch {
-      /* ignore */
-    }
-    let topup = 0;
-    try {
-      topup = Number(m.topupCount) || 0;
-    } catch {
-      /* ignore */
-    }
-    return { topup, lastTs };
-  };
-  const upsert = (m: BeamioCardMemberDirectoryPageResponse['members'][number]) => {
-    const eoaRaw = m.memberEoa?.trim();
-    if (!eoaRaw || !ethers.isAddress(eoaRaw)) return;
-    const key = ethers.getAddress(eoaRaw).toLowerCase();
-    const prev = byEoa.get(key);
-    if (!prev) {
-      byEoa.set(key, m);
-      return;
-    }
-    const a = rank(prev);
-    const b = rank(m);
-    const pick = b.topup > a.topup || (b.topup === a.topup && b.lastTs >= a.lastTs) ? m : prev;
-    const drop = pick === m ? prev : m;
-    byEoa.set(key, {
-      ...pick,
-      usedNfc: Boolean(pick.usedNfc || drop.usedNfc),
-      usedApp: Boolean(pick.usedApp || drop.usedApp),
-      memberAa:
-        pick.memberAa && ethers.isAddress(pick.memberAa) && pick.memberAa.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
-          ? pick.memberAa
-          : drop.memberAa,
-    });
-  };
-  for (const m of primary ?? []) upsert(m);
-  for (const m of extra ?? []) upsert(m);
-  return [...byEoa.values()].sort((a, b) => {
-    const ta = Date.parse(String(a.lastTopupAt ?? '')) || 0;
-    const tb = Date.parse(String(b.lastTopupAt ?? '')) || 0;
-    return tb - ta;
-  });
-}
-
-/** CoNET migration snapshot holders with on-chain balance but no top-up indexer row. */
-async function fetchLongDhangFrozenHolderDirectoryMembers(): Promise<
-  BeamioCardMemberDirectoryPageResponse['members']
-> {
-  const config = await fetchLongDhangMigrationConfig();
-  if (!config.success || !config.frozenHolders?.length) return [];
-  const ownerLower =
-    config.oldBaseCardOwner && ethers.isAddress(config.oldBaseCardOwner)
-      ? ethers.getAddress(config.oldBaseCardOwner).toLowerCase()
-      : '';
-  return config.frozenHolders
-    .filter((h) => h.eoa && ethers.isAddress(h.eoa) && h.eoa.toLowerCase() !== ownerLower)
-    .map((h) => ({
-      memberEoa: ethers.getAddress(h.eoa),
-      memberAa: ethers.ZeroAddress,
-      tierTokenId: '0',
-      topupCount: 0,
-      topupPointsTotalE6: '0',
-      topupUsdcTotalE6: '0',
-      lastTopupAt: '',
-      lastBaseTxHash: null,
-      usedNfc: false,
-      usedApp: false,
-      firstTopupSource: 'longdhangMigrationSnapshot',
-      firstTopupAt: '',
-    }));
-}
-
-/** CoNET migration snapshot holders with minted balance but no top-up indexer row on the new card. */
-async function shouldSupplementFrozenMigrationMembers(programCardAddress: string): Promise<boolean> {
-  try {
-    const config = await fetchLongDhangMigrationConfig();
-    if (config.frozenSnapshot !== true) return false;
-    return isMerchantUserCardOnConet(programCardAddress);
-  } catch {
-    return false;
-  }
-}
-
 async function fetchAllBeamioCardMemberDirectoryForOwnerProgram(
   programCardAddress: string,
   _ownerEoa: string | null | undefined,
 ): Promise<{ members: BeamioCardMemberDirectoryPageResponse['members']; total: number }> {
-  const primary = await fetchAllBeamioCardMemberDirectoryHttp(programCardAddress);
-  if (!(await shouldSupplementFrozenMigrationMembers(programCardAddress))) {
-    return primary;
-  }
-  let merged = [...(primary.members ?? [])];
-  try {
-    const frozen = await fetchLongDhangFrozenHolderDirectoryMembers();
-    merged = mergeBeamioCardMemberDirectoryMembers(merged, frozen);
-  } catch {
-    /* keep CoNET directory */
-  }
-  return { members: merged, total: merged.length };
+  return fetchAllBeamioCardMemberDirectoryHttp(programCardAddress);
 }
 
 async function fetchBeamioCardMemberDirectoryPageForOwnerProgram(
   programCardAddress: string,
   limit: number,
   offset: number,
-  ownerEoa: string | null | undefined,
+  _ownerEoa: string | null | undefined,
 ): Promise<BeamioCardMemberDirectoryPageResponse> {
-  if (!(await shouldSupplementFrozenMigrationMembers(programCardAddress))) {
-    return fetchBeamioCardMemberDirectoryPageHttp(programCardAddress, limit, offset);
-  }
-  const { members, total } = await fetchAllBeamioCardMemberDirectoryForOwnerProgram(programCardAddress, ownerEoa);
-  const slice = members.slice(offset, offset + limit);
-  const pageNum = limit > 0 ? Math.floor(offset / limit) + 1 : 1;
-  return {
-    mode: 'directory',
-    cardAddress: ethers.getAddress(programCardAddress),
-    total,
-    limit,
-    offset,
-    page: pageNum,
-    members: slice,
-  };
+  return fetchBeamioCardMemberDirectoryPageHttp(programCardAddress, limit, offset);
 }
 
 async function resolveMemberToken0BalanceAccount(
@@ -10157,11 +10004,6 @@ async function pickPrimaryIssuedCardAddressForBiz(
   profile: { aaAccount?: string | null; keyID?: string | null },
   ownedCards: UserCardInfo[],
 ): Promise<string | null> {
-  const eoa = profile?.keyID?.trim();
-  if (eoa && ethers.isAddress(eoa)) {
-    const migrated = resolveLongDhangMigratedConetCardForOwner(eoa);
-    if (migrated && (await isMerchantUserCardOnConet(migrated))) return migrated;
-  }
   if (!ownedCards.length) return null;
   const conetCards: UserCardInfo[] = [];
   for (const c of ownedCards) {
@@ -10171,6 +10013,7 @@ async function pickPrimaryIssuedCardAddressForBiz(
   const setAddrs = new Set(conetCards.map((c) => c.cardAddress.toLowerCase()));
   const factoryContract = new ethers.Contract(CONET_CARD_FACTORY, CARD_ISSUANCE_FACTORY_LATEST_ABI, conetDepinProvider);
   const aa = profile?.aaAccount?.trim();
+  const eoa = profile?.keyID?.trim();
   for (const owner of [aa, eoa]) {
     if (!owner || !ethers.isAddress(owner)) continue;
     try {
@@ -17318,176 +17161,6 @@ useEffect(() => {
    if (!raw || !ethers.isAddress(raw)) return '';
    return ethers.getAddress(raw);
  }, [profiles?.[0]?.keyID, myAddress]);
- const [longDhangAuthorizedOwnerEoa, setLongDhangAuthorizedOwnerEoa] = useState<string[] | null>(null);
- useEffect(() => {
-   let cancelled = false;
-   void fetchLongDhangMigrationConfig().then((cfg) => {
-     if (cancelled) return;
-     if (cfg.success && cfg.authorizedOwnerEoa?.length) {
-       setLongDhangAuthorizedOwnerEoa(cfg.authorizedOwnerEoa);
-       return;
-     }
-     setLongDhangAuthorizedOwnerEoa([]);
-   });
-   return () => {
-     cancelled = true;
-   };
- }, []);
- const isLongDhangMigrationOwner = useMemo(
-   () => isLongDhangMigrationOwnerAmong(currentEoa, longDhangAuthorizedOwnerEoa),
-   [currentEoa, longDhangAuthorizedOwnerEoa],
- );
- const [longDhangMigrationDismissed, setLongDhangMigrationDismissedState] = useState(false);
- const [longDhangMigrationCompleted, setLongDhangMigrationCompletedState] = useState(false);
- const [longDhangMigrationBusy, setLongDhangMigrationBusy] = useState(false);
- const [longDhangMigrationPhase, setLongDhangMigrationPhase] = useState<LongDhangMigrationAutoPhase | null>(null);
- const [longDhangMigrationPhaseDetail, setLongDhangMigrationPhaseDetail] = useState<string | null>(null);
- const [longDhangMigrationResult, setLongDhangMigrationResult] = useState<LongDhangMigrationAutoResult | null>(null);
- const longDhangMigrationResumeRef = useRef(false);
- useEffect(() => {
-   if (!currentEoa || !ethers.isAddress(currentEoa)) {
-     setLongDhangMigrationDismissedState(false);
-     setLongDhangMigrationCompletedState(false);
-     return;
-   }
-   setLongDhangMigrationDismissedState(isLongDhangMigrationDismissed(currentEoa));
-   setLongDhangMigrationCompletedState(isLongDhangMigrationCompleted(currentEoa));
- }, [currentEoa]);
- useEffect(() => {
-   if (!isLongDhangMigrationOwner || !currentEoa || !ethers.isAddress(currentEoa)) return;
-   if (isLongDhangMigrationCompleted(currentEoa)) return;
-   let cancelled = false;
-   void syncLongDhangMigrationCompletedFromStoredCard(currentEoa).then((done) => {
-     if (cancelled || !done) return;
-     setLongDhangMigrationCompletedState(true);
-     setLongDhangMigrationDismissedState(true);
-   });
-   return () => {
-     cancelled = true;
-   };
- }, [isLongDhangMigrationOwner, currentEoa]);
- const showLongDhangMigrationFullScreen =
-   longDhangAuthorizedOwnerEoa != null &&
-   isLongDhangMigrationOwner &&
-   !longDhangMigrationDismissed &&
-   !longDhangMigrationCompleted &&
-   Boolean(currentEoa && ethers.isAddress(currentEoa));
-const longDhangMigrationLastResultRef = useRef<LongDhangMigrationAutoResult | null>(null);
-const longDhangTerminalRepairStartedRef = useRef(false);
-const [longDhangTerminalVerify, setLongDhangTerminalVerify] = useState<{
-  termTotal: number;
-  termMatches: number;
-} | null>(null);
-const [longDhangTerminalRepairBusy, setLongDhangTerminalRepairBusy] = useState(false);
-const [longDhangTerminalRepairError, setLongDhangTerminalRepairError] = useState<string | null>(null);
- const syncLongDhangMigrationCompleted = useCallback(
-   (result?: LongDhangMigrationAutoResult) => {
-     if (!currentEoa || !ethers.isAddress(currentEoa)) return;
-     setLongDhangMigrationCompletedState(isLongDhangMigrationCompleted(currentEoa));
-     setLongDhangMigrationDismissedState(isLongDhangMigrationDismissed(currentEoa));
-     if (result) longDhangMigrationLastResultRef.current = result;
-   },
-   [currentEoa],
- );
- const startLongDhangMigration = useCallback(async () => {
-   const pk = getSessionPrivateKeyArmor()?.trim() || profiles?.[0]?.privateKeyArmor?.trim();
-   if (!pk || !currentEoa || !ethers.isAddress(currentEoa) || longDhangMigrationBusy) return;
-   setLongDhangMigrationBusy(true);
-   setLongDhangMigrationResult(null);
-   setLongDhangMigrationPhase('loading-members');
-   setLongDhangMigrationPhaseDetail(null);
-   try {
-     const out = await runLongDhangMigrationAuto({
-       privateKeyArmor: pk,
-       currentEoa,
-       onPhase: (p, detail) => {
-         setLongDhangMigrationPhase(p);
-         setLongDhangMigrationPhaseDetail(detail ?? null);
-       },
-     });
-     setLongDhangMigrationResult(out);
-     if (out.success) {
-       setLongDhangMigrationPhase('completed');
-       setLongDhangMigrationPhaseDetail(out.newCardAddress);
-       syncLongDhangMigrationCompleted(out);
-     } else {
-       setLongDhangMigrationPhase('failed');
-       if (out.error) setLongDhangMigrationPhaseDetail(out.error);
-     }
-   } catch (e: any) {
-     setLongDhangMigrationPhase('failed');
-     setLongDhangMigrationPhaseDetail(e?.message ?? String(e));
-     setLongDhangMigrationResult({
-       success: false,
-       newCardAddress: ethers.ZeroAddress,
-       snapshotHash: '',
-       phases: [],
-       members: { total: 0, minted: 0, skipped: 0, failed: 0 },
-       admins: { total: 0, registered: 0, skipped: 0, failed: 0 },
-       error: e?.message ?? String(e),
-     });
-   } finally {
-     setLongDhangMigrationBusy(false);
-   }
- }, [profiles?.[0]?.privateKeyArmor, currentEoa, longDhangMigrationBusy, syncLongDhangMigrationCompleted]);
- useEffect(() => {
-   if (!currentEoa || !ethers.isAddress(currentEoa) || longDhangMigrationResumeRef.current || longDhangMigrationBusy) return;
-   const inflight = readLongDhangMigrationInFlight(currentEoa);
-   if (!inflight || inflight.phase === 'completed' || inflight.phase === 'failed') return;
-   let newCard = inflight.newCardAddress?.trim() ?? '';
-   if (!newCard || !ethers.isAddress(newCard)) {
-     try {
-       const stored = localStorage.getItem(longDhangMigrationNewCardStorageKey(currentEoa));
-       if (stored && ethers.isAddress(stored)) newCard = ethers.getAddress(stored);
-     } catch {
-       return;
-     }
-   }
-   if (!newCard || !ethers.isAddress(newCard)) return;
-   longDhangMigrationResumeRef.current = true;
-   setLongDhangMigrationBusy(true);
-   setLongDhangMigrationPhase(inflight.phase);
-   setLongDhangMigrationPhaseDetail(inflight.detail ?? 'Resuming migration status…');
-   let cancelled = false;
-   void (async () => {
-     const recovered = await waitForLongDhangServerMigrationVerify({
-       newCardAddress: newCard,
-       snapshotHash: inflight.snapshotHash ?? '',
-       onPhase: (p, detail) => {
-         if (cancelled) return;
-         setLongDhangMigrationPhase(p);
-         setLongDhangMigrationPhaseDetail(detail ?? null);
-       },
-     });
-     if (cancelled) return;
-     if (recovered?.success) {
-       setLongDhangMigrationResult(recovered);
-       setLongDhangMigrationPhase('completed');
-       setLongDhangMigrationPhaseDetail(recovered.newCardAddress);
-       syncLongDhangMigrationCompleted(recovered);
-     } else {
-       setLongDhangMigrationPhase('failed');
-       setLongDhangMigrationPhaseDetail(
-         'Migration may still be running on the server. Keep this page open or press Start Migration again in a few minutes.'
-       );
-       setLongDhangMigrationResult({
-         success: false,
-         newCardAddress: newCard,
-         snapshotHash: inflight.snapshotHash ?? '',
-         phases: [],
-         members: { total: 0, minted: 0, skipped: 0, failed: 0 },
-         admins: { total: 0, registered: 0, skipped: 0, failed: 0 },
-         error:
-           'Could not confirm migration completion yet. The server may still be processing — check again shortly.',
-       });
-     }
-     clearLongDhangMigrationInFlight();
-     setLongDhangMigrationBusy(false);
-   })();
-   return () => {
-     cancelled = true;
-   };
- }, [currentEoa, longDhangMigrationBusy, syncLongDhangMigrationCompleted]);
  const [isValidatorDepositRedeemAdmin, setIsValidatorDepositRedeemAdmin] = useState(false);
  const [isValidatorDepositRedeemAdminFetched, setIsValidatorDepositRedeemAdminFetched] = useState(false);
  useEffect(() => {
@@ -20575,181 +20248,6 @@ const fetchTerminals = useCallback(async (opts?: { silent?: boolean }) => {
   }
 }, [profiles, myAddress, linkedTerminalsCacheKey, staffProgramBeamioCardAddress]);
 
-const longDhangMigratedNewCardAddress = useMemo((): string | null => {
-  if (!currentEoa || !ethers.isAddress(currentEoa)) return null;
-  const completed = getLongDhangMigrationCompleted(currentEoa);
-  if (completed?.newCardAddress && ethers.isAddress(completed.newCardAddress)) {
-    return ethers.getAddress(completed.newCardAddress);
-  }
-  try {
-    const stored = localStorage.getItem(longDhangMigrationNewCardStorageKey(currentEoa))?.trim();
-    if (stored && ethers.isAddress(stored)) return ethers.getAddress(stored);
-  } catch {
-    /* ignore */
-  }
-  return null;
-}, [currentEoa, longDhangMigrationCompleted]);
-
-const runLongDhangTerminalRepair = useCallback(async () => {
-  const pk = getSessionPrivateKeyArmor()?.trim() || profiles?.[0]?.privateKeyArmor?.trim();
-  if (!pk || !currentEoa || !ethers.isAddress(currentEoa)) {
-    setLongDhangTerminalRepairError('Unlock with @BeamioTag and access password to register terminals.');
-    return;
-  }
-  const completed = getLongDhangMigrationCompleted(currentEoa);
-  const newCard =
-    completed?.newCardAddress && ethers.isAddress(completed.newCardAddress)
-      ? ethers.getAddress(completed.newCardAddress)
-      : longDhangMigratedNewCardAddress;
-  if (!newCard) {
-    setLongDhangTerminalRepairError('CoNET program card address not found. Complete card migration first.');
-    return;
-  }
-
-  setLongDhangTerminalRepairBusy(true);
-  setLongDhangTerminalRepairError(null);
-  setLongDhangMigrationPhase('migrate-admins');
-  setLongDhangMigrationPhaseDetail('Registering POS terminals under merchant owner admin…');
-
-  try {
-    const verifyBefore = await verifyLongDhangMigration(newCard);
-    const termTotalBefore = verifyBefore.terminals?.total ?? 0;
-    const termMatchesBefore = verifyBefore.terminals?.matches ?? 0;
-    if (termTotalBefore > 0 && termMatchesBefore >= termTotalBefore) {
-      setLongDhangTerminalVerify({ termTotal: termTotalBefore, termMatches: termMatchesBefore });
-      void fetchTerminals();
-      return;
-    }
-
-    const repaired = await repairLongDhangMigrationTerminals({
-      privateKeyArmor: pk,
-      ownerEoa: currentEoa,
-      newCardAddress: newCard,
-      snapshotHash: completed?.snapshotHash || verifyBefore.snapshotHash || '',
-    });
-
-    const rows = repaired.admins?.rows ?? [];
-    if (posPermissionPartitionAddressesList.length > 0) {
-      for (const posEoa of rows
-        .filter((r) => r.status === 'registered' || r.status === 'skipped')
-        .map((r) => r.posEoa)) {
-        removePosTerminalPermissionPendingByChildEoaFromPartitions(posPermissionPartitionAddressesList, posEoa);
-      }
-      try {
-        window.dispatchEvent(new CustomEvent(POS_TERMINAL_PERMISSION_PENDING_EVENT));
-      } catch {
-        /* ignore */
-      }
-    }
-
-    const verifyAfter = await verifyLongDhangMigration(newCard);
-    setLongDhangTerminalVerify({
-      termTotal: verifyAfter.terminals?.total ?? termTotalBefore,
-      termMatches: verifyAfter.terminals?.matches ?? 0,
-    });
-
-    if (!repaired.success) {
-      setLongDhangTerminalRepairError(repaired.error ?? 'One or more terminals failed to register.');
-    }
-
-    invalidateFetchCache(`card:${staffProgramCardCacheBucket}`);
-    void fetchTerminals();
-  } catch (e: unknown) {
-    setLongDhangTerminalRepairError(e instanceof Error ? e.message : String(e));
-  } finally {
-    setLongDhangTerminalRepairBusy(false);
-    longDhangTerminalRepairStartedRef.current = false;
-    setLongDhangMigrationPhase(null);
-    setLongDhangMigrationPhaseDetail(null);
-  }
-}, [
-  currentEoa,
-  longDhangMigratedNewCardAddress,
-  profiles?.[0]?.privateKeyArmor,
-  posPermissionPartitionAddressesList,
-  fetchTerminals,
-  staffProgramCardCacheBucket,
-]);
-
-useEffect(() => {
-  if (!longDhangMigrationCompleted || !isLongDhangMigrationOwner) {
-    setLongDhangTerminalVerify(null);
-    return;
-  }
-  if (!longDhangMigratedNewCardAddress) return;
-  let cancelled = false;
-  void verifyLongDhangMigration(longDhangMigratedNewCardAddress).then((verified) => {
-    if (cancelled) return;
-    setLongDhangTerminalVerify({
-      termTotal: verified.terminals?.total ?? 0,
-      termMatches: verified.terminals?.matches ?? 0,
-    });
-  });
-  return () => {
-    cancelled = true;
-  };
-}, [
-  longDhangMigrationCompleted,
-  isLongDhangMigrationOwner,
-  longDhangMigratedNewCardAddress,
-  longDhangTerminalRepairBusy,
-  terminals.length,
-]);
-
-useEffect(() => {
-  const lastResult = longDhangMigrationLastResultRef.current;
-  if (!lastResult?.success) return;
-  const eoas = listLongDhangMigratedTerminalEoa(lastResult);
-  if (eoas.length === 0 || posPermissionPartitionAddressesList.length === 0) return;
-  for (const posEoa of eoas) {
-    removePosTerminalPermissionPendingByChildEoaFromPartitions(posPermissionPartitionAddressesList, posEoa);
-  }
-  try {
-    window.dispatchEvent(new CustomEvent(POS_TERMINAL_PERMISSION_PENDING_EVENT));
-  } catch {
-    /* ignore */
-  }
-  longDhangMigrationLastResultRef.current = null;
-}, [longDhangMigrationCompleted, posPermissionPartitionAddressesList]);
-
-useEffect(() => {
-  const onStaffSurface = activeTab === 'Staff' || isTerminalsMarketRoute;
-  if (!onStaffSurface || !longDhangMigrationCompleted || !isLongDhangMigrationOwner) return;
-  if (!longDhangTerminalVerify) return;
-  const { termTotal, termMatches } = longDhangTerminalVerify;
-  if (termTotal <= 0 || termMatches >= termTotal) return;
-  if (longDhangTerminalRepairBusy || longDhangTerminalRepairStartedRef.current) return;
-  const pk = getSessionPrivateKeyArmor()?.trim() || profiles?.[0]?.privateKeyArmor?.trim();
-  if (!pk) return;
-  longDhangTerminalRepairStartedRef.current = true;
-  void runLongDhangTerminalRepair();
-}, [
-  activeTab,
-  isTerminalsMarketRoute,
-  longDhangMigrationCompleted,
-  isLongDhangMigrationOwner,
-  longDhangTerminalVerify,
-  longDhangTerminalRepairBusy,
-  profiles?.[0]?.privateKeyArmor,
-  runLongDhangTerminalRepair,
-]);
-
-const renderLongDhangTerminalRepairPanel = () => {
-  if (!isLongDhangMigrationOwner || !longDhangMigrationCompleted || !longDhangTerminalVerify) return null;
-  return (
-    <LongDhangTerminalRepairPanel
-      currentEoa={currentEoa}
-      privateKeyArmor={getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor}
-      authorizedOwnerEoa={longDhangAuthorizedOwnerEoa}
-      newCardAddress={longDhangMigratedNewCardAddress}
-      termTotal={longDhangTerminalVerify.termTotal}
-      termMatches={longDhangTerminalVerify.termMatches}
-      busy={longDhangTerminalRepairBusy}
-      error={longDhangTerminalRepairError}
-      onRepair={() => void runLongDhangTerminalRepair()}
-    />
-  );
-};
 
  /** Map Staff terminal row (EOA id) to on-chain subordinate address (AA or EOA) for adminParent / clear counter. */
  const resolveTerminalChainSubordinate = useCallback(
@@ -23205,21 +22703,11 @@ useEffect(() => {
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** First-time merchant shell: no self-issued BeamioUserCard and no BusinessStartKet Ket #0 on CoNET. While issuer/Ket reads are in flight, keep legacy `!hasAaAccount` to avoid dashboard flash. */
  const showBizFirstMembershipOnboarding = useMemo(() => {
-   if (
-     isLongDhangMigrationOwner &&
-     !longDhangMigrationDismissed &&
-     !longDhangMigrationCompleted
-   ) {
-     return false;
-   }
    if (verraLiteGateReleased) return false;
    const bothFetched = profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
    if (bothFetched) return !profileOwnsIssuedBeamioCard && !ownsBusinessStartKetToken0;
    return !hasAaAccount;
  }, [
-   isLongDhangMigrationOwner,
-   longDhangMigrationDismissed,
-   longDhangMigrationCompleted,
    profileOwnsIssuedBeamioCardFetched,
    ownsBusinessStartKetToken0Fetched,
    profileOwnsIssuedBeamioCard,
@@ -23294,20 +22782,10 @@ const programsMobileTopNavVisible =
  useLayoutEffect(() => {
    if (activeTab !== 'Overview') return;
    if (!ketNoCardProgramsEligible) return;
-   if (
-     isLongDhangMigrationOwner &&
-     !longDhangMigrationDismissed &&
-     !longDhangMigrationCompleted
-   ) {
-     return;
-   }
    setActiveTab('Card Issuance Setup');
  }, [
    activeTab,
    ketNoCardProgramsEligible,
-   isLongDhangMigrationOwner,
-   longDhangMigrationDismissed,
-   longDhangMigrationCompleted,
  ]);
 
  const liteChainMigrationTriedRef = useRef(false);
@@ -24346,7 +23824,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </p>
                </header>
 
-               {renderLongDhangTerminalRepairPanel()}
 
                <section className="mb-6 sm:mb-8">
                  <button
@@ -25599,16 +25076,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           <div
             className={`mx-auto w-full animate-in fade-in duration-500 ${!showBizFirstMembershipOnboarding ? 'max-w-[1400px] space-y-3' : 'max-w-[1400px] space-y-4'}`}
           >
-            <LongDhangConetMigrationPanel
-              currentEoa={currentEoa}
-              privateKeyArmor={getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor}
-              authorizedOwnerEoa={longDhangAuthorizedOwnerEoa}
-              busy={longDhangMigrationBusy}
-              phase={longDhangMigrationPhase}
-              phaseDetail={longDhangMigrationPhaseDetail}
-              result={longDhangMigrationResult}
-              onStart={() => void startLongDhangMigration()}
-            />
             {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && staffProgramBeamioCardAddress && showFixedCardMetadata && (
               <div className="flex justify-end">
                 <div className="relative h-[230px] w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_32px_rgba(21,98,240,0.22)] sm:h-[250px] sm:rounded-[28px]">
@@ -29301,7 +28768,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  setActiveTab('Market');
                }}
              />
-             {renderLongDhangTerminalRepairPanel()}
              {renderDashboardPendingTerminalAuthorizationSection('')}
              {showStaffSmartTerminalLockedPanel && (
                <div className="flex min-h-[260px] flex-col items-center justify-center py-6 md:min-h-[280px] md:py-8">
@@ -38694,26 +38160,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
      return <Navigate to="/" replace state={{ from: location.pathname }} />;
    }
    return null;
- }
-
- if (showLongDhangMigrationFullScreen && currentEoa && ethers.isAddress(currentEoa)) {
-   return (
-     <LongDhangConetMigrationFullScreen
-       currentEoa={currentEoa}
-       privateKeyArmor={getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor}
-       authorizedOwnerEoa={longDhangAuthorizedOwnerEoa}
-       migrationBusy={longDhangMigrationBusy}
-       migrationPhase={longDhangMigrationPhase}
-       migrationPhaseDetail={longDhangMigrationPhaseDetail}
-       migrationResult={longDhangMigrationResult}
-       onDismiss={() => {
-         if (longDhangMigrationBusy) return;
-         setLongDhangMigrationDismissed(currentEoa, true);
-         setLongDhangMigrationDismissedState(true);
-       }}
-       onStartMigration={() => void startLongDhangMigration()}
-     />
-   );
  }
 
  return renderDashboard();

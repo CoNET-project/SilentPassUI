@@ -21,12 +21,6 @@ const USER_CARD_ADMIN_READ_ABI = [
 	'function isAdmin(address) view returns (bool)',
 ] as const
 
-export type PosTerminalMigrationRow = {
-	posEoa: string
-	metadata: string
-	mintLimitE6: string
-}
-
 export type RegisterPosUnderOwnerResult = {
 	posEoa: string
 	status: 'registered' | 'skipped' | 'reparented' | 'failed'
@@ -176,51 +170,4 @@ export async function registerPosTerminalUnderOwnerAdmin(args: {
 	} catch (e: unknown) {
 		return { posEoa: posNorm, status: 'failed', reason: e instanceof Error ? e.message : String(e) }
 	}
-}
-
-/** Batch register migration terminals under owner (client-side; owner signs). */
-export async function registerMigrationTerminalsUnderOwnerAdmin(args: {
-	privateKeyArmor: string
-	cardAddress: string
-	ownerEoa: string
-	totalBalanceE6: string
-	terminals: PosTerminalMigrationRow[]
-}): Promise<{
-	total: number
-	registered: number
-	skipped: number
-	reparented: number
-	failed: number
-	rows: RegisterPosUnderOwnerResult[]
-}> {
-	const mintLimitFallback = BigInt(args.totalBalanceE6 || '0')
-	await ensureMerchantOwnerTopLevelAdmin({
-		privateKeyArmor: args.privateKeyArmor,
-		cardAddress: args.cardAddress,
-		ownerEoa: args.ownerEoa,
-		mintLimitPoints6: mintLimitFallback > 0n ? mintLimitFallback : 550_000_000n,
-	})
-	const rows: RegisterPosUnderOwnerResult[] = []
-	let registered = 0
-	let skipped = 0
-	let reparented = 0
-	let failed = 0
-	for (const t of args.terminals) {
-		const oldLimit = BigInt(t.mintLimitE6 || '0')
-		const mintLimit = oldLimit > 0n ? oldLimit : mintLimitFallback
-		const result = await registerPosTerminalUnderOwnerAdmin({
-			privateKeyArmor: args.privateKeyArmor,
-			cardAddress: args.cardAddress,
-			ownerEoa: args.ownerEoa,
-			posEoa: t.posEoa,
-			metadata: t.metadata,
-			mintLimitPoints6: mintLimit,
-		})
-		rows.push(result)
-		if (result.status === 'registered') registered += 1
-		else if (result.status === 'skipped') skipped += 1
-		else if (result.status === 'reparented') reparented += 1
-		else failed += 1
-	}
-	return { total: args.terminals.length, registered, skipped, reparented, failed, rows }
 }

@@ -27,6 +27,7 @@ import {
 	CONET_MAINNET_CHAIN_ID,
 	DEFAULT_MERCHANT_CARD_FACTORY,
 	eip712ChainIdForBeamioUserCard,
+	isMerchantUserCardOnConet,
 	providerForBeamioUserCard,
 } from "@/utils/beamioUserCardChain";
 //		UID 044073D2151990
@@ -1242,6 +1243,53 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 			return { cards: filterExcludedUserCards(cached), trusted: false }
 		}
 	}
+}
+
+const FACTORY_LATEST_CARD_OF_OWNER_ABI = ['function latestCardOfOwner(address) view returns (address)'] as const;
+
+function profileOwnerAddressesForLatestCard(profile: {
+	aaAccount?: string | null
+	keyID?: string | null
+	privateKeyArmor?: string | null
+}): { eoa: string | null; aa: string | null } {
+	const aaRaw = profile?.aaAccount?.trim()
+	const aa = aaRaw && ethers.isAddress(aaRaw) ? ethers.getAddress(aaRaw) : null
+	let eoaRaw = profile?.keyID?.trim()
+	if (!eoaRaw && profile?.privateKeyArmor) {
+		try {
+			eoaRaw = new ethers.Wallet(profile.privateKeyArmor).address
+		} catch {
+			/* ignore */
+		}
+	}
+	const eoa = eoaRaw && ethers.isAddress(eoaRaw) ? ethers.getAddress(eoaRaw) : null
+	return { eoa, aa }
+}
+
+/**
+ * Authoritative current merchant program card for biz Overview / Staff stats.
+ * Uses CoNET factory `latestCardOfOwner` (EOA before AA); does not depend on `cardsOfOwner` list order or profile cache.
+ */
+export async function fetchLatestMerchantProgramCardAddressForProfile(profile: {
+	aaAccount?: string | null
+	keyID?: string | null
+	privateKeyArmor?: string | null
+}): Promise<string | null> {
+	const { eoa, aa } = profileOwnerAddressesForLatestCard(profile)
+	const owners = [eoa, aa].filter((a): a is string => Boolean(a))
+	if (owners.length === 0) return null
+	const factory = new ethers.Contract(CONET_CARD_FACTORY, FACTORY_LATEST_CARD_OF_OWNER_ABI, conetDepinProvider)
+	for (const owner of owners) {
+		try {
+			const latest = (await factory.latestCardOfOwner(owner)) as string
+			if (!latest || latest === ethers.ZeroAddress) continue
+			const normalized = ethers.getAddress(latest)
+			if (await isMerchantUserCardOnConet(normalized)) return normalized
+		} catch {
+			continue
+		}
+	}
+	return null
 }
 
 /** ERC-1155 shareTokenMetadata，写入 0x{owner}.json */

@@ -73,6 +73,7 @@ import {
   getCardMetadataFromUri,
   getNftMetadataFromApi,
   getCardsOfOwnerWithDetailsForProfile,
+  fetchLatestMerchantProgramCardAddressForProfile,
   signBUnitRefuel3009,
   createBeamioCard,
   updateBeamioCardShareMetadata,
@@ -7732,10 +7733,11 @@ function resolveBizProgramCardLowerForTrustedCache(args: {
   lastResolvedStaffProgramCacheKey?: string;
 }): string {
   if (!args.partitionLower) return '';
-  let card = args.cardIssuanceCardAddress?.trim() ?? '';
-  if (!card && args.merchantOwnCardAddress && ethers.isAddress(args.merchantOwnCardAddress)) {
+  let card = '';
+  if (args.merchantOwnCardAddress && ethers.isAddress(args.merchantOwnCardAddress)) {
     card = args.merchantOwnCardAddress;
   }
+  if (!card) card = args.cardIssuanceCardAddress?.trim() ?? '';
   if (!card && args.lastResolvedStaffProgramCacheKey) {
     const last = loadTrustedCache<string>(args.lastResolvedStaffProgramCacheKey);
     if (last && ethers.isAddress(last)) card = last;
@@ -9997,36 +9999,20 @@ function makeCardIssuanceBonusRuleRow(
   };
 }
 
-const CARD_ISSUANCE_FACTORY_LATEST_ABI = ['function latestCardOfOwner(address) view returns (address)'] as const;
-
-/** Prefer factory.latestCardOfOwner on CoNET; ignore deprecated Base L2 program cards. */
+/** Prefer factory.latestCardOfOwner on CoNET (EOA before AA); ignore deprecated Base L2 program cards. */
 async function pickPrimaryIssuedCardAddressForBiz(
-  profile: { aaAccount?: string | null; keyID?: string | null },
+  profile: { aaAccount?: string | null; keyID?: string | null; privateKeyArmor?: string | null },
   ownedCards: UserCardInfo[],
 ): Promise<string | null> {
+  const fromFactory = await fetchLatestMerchantProgramCardAddressForProfile(profile);
+  if (fromFactory) return fromFactory;
   if (!ownedCards.length) return null;
   const conetCards: UserCardInfo[] = [];
   for (const c of ownedCards) {
     if (await isMerchantUserCardOnConet(c.cardAddress)) conetCards.push(c);
   }
   if (!conetCards.length) return null;
-  const setAddrs = new Set(conetCards.map((c) => c.cardAddress.toLowerCase()));
-  const factoryContract = new ethers.Contract(CONET_CARD_FACTORY, CARD_ISSUANCE_FACTORY_LATEST_ABI, conetDepinProvider);
-  const aa = profile?.aaAccount?.trim();
-  const eoa = profile?.keyID?.trim();
-  for (const owner of [aa, eoa]) {
-    if (!owner || !ethers.isAddress(owner)) continue;
-    try {
-      const lc = await factoryContract.latestCardOfOwner(ethers.getAddress(owner));
-      if (lc && lc !== ethers.ZeroAddress) {
-        const a = ethers.getAddress(lc);
-        if (setAddrs.has(a.toLowerCase())) return a;
-      }
-    } catch {
-      /* try other owner */
-    }
-  }
-  return conetCards[conetCards.length - 1]?.cardAddress ?? null;
+  return ethers.getAddress(conetCards[conetCards.length - 1]!.cardAddress);
 }
 
 async function bizProgramCardReadProvider(cardAddress: string): Promise<ethers.Provider> {
@@ -17071,15 +17057,11 @@ useEffect(() => {
      try {
        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
        if (cancelled) return;
-       setProfileOwnsIssuedBeamioCard(cards.length > 0);
-       setProfileOwnsIssuedBeamioCardFetched(true);
-       if (cards.length === 0) {
-         setMerchantOwnCardAddress(null);
-         return;
-       }
        /** Still pick primary when `trusted === false` (RPC/API degraded but profile or cache returned cards); otherwise Overview `staffProgram` stays null and Total Members hint never runs. */
        const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (cancelled) return;
+       setProfileOwnsIssuedBeamioCard(cards.length > 0 || Boolean(primary));
+       setProfileOwnsIssuedBeamioCardFetched(true);
        setMerchantOwnCardAddress(primary ? ethers.getAddress(primary) : null);
      } catch {
        if (!cancelled) {
@@ -20965,6 +20947,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
          }
          let sumChainCumulativeMint = 0n;
          let chainMintOkCount = 0;
+         const chainMintByCardLower = new Map<string, bigint>();
         const activeSinceSec = Math.floor(Date.now() / 1000) - ACTIVE_CARDS_LOOKBACK_DAYS * 24 * 3600;
         const activeCardScopedKeys = new Set<string>();
          for (const uc of ownedCardsForTopupMerge) {
@@ -20980,7 +20963,9 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
           }, FETCH_TTL_MS, true).catch(() => null as string | null);
            if (!membersLoyaltyBgActiveRef.current) break;
            if (mintStr == null) continue;
-           sumChainCumulativeMint += BigInt(mintStr);
+           const mintBn = BigInt(mintStr);
+           chainMintByCardLower.set(cardLowerG, mintBn);
+           sumChainCumulativeMint += mintBn;
            chainMintOkCount += 1;
          }
          const merged: BizTopupMemberTableRow[] = [];
@@ -21193,12 +21178,27 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
           }
          }
          merged.sort(compareMembersDirectoryRowsByBalanceThenRecency);
-        const nextActiveCardsCount = activeCardScopedKeys.size;
+        const dashboardProgramCardLower =
+          staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)
+            ? staffProgramBeamioCardAddress.toLowerCase()
+            : merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)
+              ? merchantOwnCardAddress.toLowerCase()
+              : null;
+        const nextActiveCardsCount = dashboardProgramCardLower
+          ? [...activeCardScopedKeys].filter((k) => k.startsWith(`${dashboardProgramCardLower}:`)).length
+          : activeCardScopedKeys.size;
          let chainDisplayForBundle: number | null = null;
          if (!membersLoyaltyBgActiveRef.current) return;
          if (ownedCardsForTopupMerge.length > 0) {
+           let mintForDashboard = sumChainCumulativeMint;
+           let mintOkForDashboard = chainMintOkCount;
+           if (dashboardProgramCardLower) {
+             const scopedMint = chainMintByCardLower.get(dashboardProgramCardLower);
+             mintForDashboard = scopedMint ?? 0n;
+             mintOkForDashboard = scopedMint != null ? 1 : 0;
+           }
            const chainVolumeDisplay =
-             chainMintOkCount > 0 ? amountE6ToDisplayNumber(sumChainCumulativeMint) : null;
+             mintOkForDashboard > 0 ? amountE6ToDisplayNumber(mintForDashboard) : null;
            setMembersLoyaltyChainCumulativeMintDisplay((prev) => {
              const next = resolveTopupVolumePointsDisplay(chainVolumeDisplay, prev);
              chainDisplayForBundle = next;
@@ -21494,10 +21494,9 @@ useEffect(() => {
        const activeCardsHintProgramAddr =
          programAddr && ethers.isAddress(programAddr)
            ? ethers.getAddress(programAddr)
-           : (() => {
-               const first = membersOwnedProgramsRef.current?.[0]?.cardAddress;
-               return first && ethers.isAddress(first) ? ethers.getAddress(first) : null;
-             })();
+           : merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)
+             ? ethers.getAddress(merchantOwnCardAddress)
+             : null;
        if (
          !feederCancelledRef.current &&
          activeCardsHintProgramAddr &&
@@ -22931,6 +22930,54 @@ const walletVaultUsdcBoldLine = useMemo(() => {
    }
    return [...byKey.values()];
  }, [membersLoyaltyTopupRows, membersMobileDirectTopupRows]);
+
+ /** Overview /home KPIs: scope member metrics to the current staff program card only. */
+ const overviewStaffProgramMemberRows = useMemo((): BizTopupMemberTableRow[] => {
+   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+     return topupMemberTableRowsAll;
+   }
+   const cardLower = staffProgramBeamioCardAddress.toLowerCase();
+   return topupMemberTableRowsAll.filter((row) => row.cardLower === cardLower);
+ }, [topupMemberTableRowsAll, staffProgramBeamioCardAddress]);
+
+ const overviewDashboardActiveCardsRowDerivedCount = useMemo(() => {
+   const since = Math.floor(Date.now() / 1000) - ACTIVE_CARDS_LOOKBACK_DAYS * 24 * 3600;
+   const keys = new Set<string>();
+   for (const r of overviewStaffProgramMemberRows) {
+     const aaRaw = r.aaAddress?.trim();
+     const aa =
+       aaRaw && ethers.isAddress(aaRaw) && aaRaw.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
+         ? ethers.getAddress(aaRaw)
+         : undefined;
+     const eoaM = r.memberAddress && ethers.isAddress(r.memberAddress) ? ethers.getAddress(r.memberAddress) : null;
+     if (!eoaM) continue;
+     const balanceAccount = aa ?? eoaM;
+     const scopedKey = `${r.cardLower}:${balanceAccount.toLowerCase()}`;
+     const bal = r.currentCardToken0Balance;
+     const hasBal = bal != null && Number.isFinite(bal) && bal > 0;
+     const ls = r.lastSeenTs ?? 0;
+     const hasRecent = ls > 0 && ls >= since;
+     if (hasBal || hasRecent) keys.add(scopedKey);
+   }
+   return keys.size;
+ }, [overviewStaffProgramMemberRows]);
+
+ const overviewMembersKpis = useMemo(() => {
+   const directoryHint =
+     overviewStaffProgramMemberRows.length === 0 ? (dashboardActiveCardsDirectoryHint ?? 0) : 0;
+   const count = Math.max(
+     activeCardsCount ?? 0,
+     overviewDashboardActiveCardsRowDerivedCount,
+     directoryHint,
+     overviewStaffProgramMemberRows.length
+   );
+   return { count };
+ }, [
+   activeCardsCount,
+   overviewDashboardActiveCardsRowDerivedCount,
+   dashboardActiveCardsDirectoryHint,
+   overviewStaffProgramMemberRows.length,
+ ]);
 
  const membersTopupDirectoryFiltered = useMemo(() => {
    const q = membersLoyaltySearch.trim().toLowerCase();
@@ -25238,17 +25285,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="space-y-1">
                         <h3
                           className={`text-3xl font-extrabold tracking-tight sm:text-4xl ${
-                            membersTopupKpisAll.count <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
+                            overviewMembersKpis.count <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
                           }`}
                         >
-                          {membersTopupKpisAll.count}
+                          {overviewMembersKpis.count}
                         </h3>
                         <div className="flex items-center gap-2 pt-1.5 sm:pt-2">
                           <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#eef1f3] sm:h-8 sm:w-8">
                             <UserX className="size-3.5 text-slate-300" strokeWidth={2} aria-hidden />
                           </div>
                           <span className="text-[10px] font-bold uppercase text-slate-400">
-                            {membersTopupKpisAll.count <= 0 ? 'No funded or recently active cards' : 'Stored value or 90-day activity'}
+                            {overviewMembersKpis.count <= 0 ? 'No funded or recently active cards' : 'Stored value or 90-day activity'}
                           </span>
                         </div>
                       </div>

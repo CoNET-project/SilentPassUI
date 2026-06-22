@@ -4864,8 +4864,9 @@ function dashboardActivityTypeFromIndexerRow(tx: {
   return 'Charge'
 }
 
-/** localStorage: EOA-scoped inbound tx from HTTPS indexer refresh (beamio-chain-fetch EOA 隔离) */
-const INDEXER_INBOUND_TX_CACHE_KEY = (eoaLower: string) => `indexer:inboundTx:v1:${eoaLower}`
+/** localStorage: EOA + current staff program card scoped inbound tx cache (beamio-chain-fetch EOA 隔离) */
+const INDEXER_INBOUND_TX_CACHE_KEY = (eoaLower: string, cardBucket: string) =>
+  `indexer:inboundTx:v2:${eoaLower}:card:${cardBucket}`
 
 type FixedUserCardMetadata = {
   name?: string
@@ -7111,10 +7112,10 @@ function mergeLocalLedgerBaseForIndexerMerge(
   return [...byId.values()]
 }
 
-function loadInboundTxDisplayCache(eoaLower: string): TxDisplayRow[] {
-  if (typeof window === 'undefined') return []
+function loadInboundTxDisplayCache(eoaLower: string, cardBucket: string): TxDisplayRow[] {
+  if (typeof window === 'undefined' || !eoaLower || !cardBucket) return []
   try {
-    const raw = window.localStorage.getItem(`${BIZ_CACHE_PREFIX}${INDEXER_INBOUND_TX_CACHE_KEY(eoaLower)}`)
+    const raw = window.localStorage.getItem(`${BIZ_CACHE_PREFIX}${INDEXER_INBOUND_TX_CACHE_KEY(eoaLower, cardBucket)}`)
     if (!raw) return []
     const parsed = JSON.parse(raw) as { rows?: TxDisplayRow[] }
     return Array.isArray(parsed?.rows) ? parsed.rows : []
@@ -7123,17 +7124,57 @@ function loadInboundTxDisplayCache(eoaLower: string): TxDisplayRow[] {
   }
 }
 
-function saveInboundTxDisplayCache(eoaLower: string, rows: TxDisplayRow[]) {
-  if (typeof window === 'undefined') return
+function saveInboundTxDisplayCache(eoaLower: string, cardBucket: string, rows: TxDisplayRow[]) {
+  if (typeof window === 'undefined' || !eoaLower || !cardBucket) return
   try {
     const capped = rows.slice(0, 80)
     window.localStorage.setItem(
-      `${BIZ_CACHE_PREFIX}${INDEXER_INBOUND_TX_CACHE_KEY(eoaLower)}`,
+      `${BIZ_CACHE_PREFIX}${INDEXER_INBOUND_TX_CACHE_KEY(eoaLower, cardBucket)}`,
       JSON.stringify({ rows: capped })
     )
   } catch {
     /* quota */
   }
+}
+
+/** Program card address on an indexer ledger row (`ledgerSourceAssetCard` or top-up `displayJson.cardAddress`). */
+function resolveTxDisplayRowProgramCardLower(tx: TxDisplayRow): string | null {
+  const raw = tx.raw as Record<string, unknown>
+  const fromIndexer = typeof raw.ledgerSourceAssetCard === 'string' ? raw.ledgerSourceAssetCard.trim() : ''
+  if (fromIndexer && ethers.isAddress(fromIndexer)) {
+    return ethers.getAddress(fromIndexer).toLowerCase()
+  }
+  try {
+    const dj = raw.displayJson
+    if (typeof dj === 'string' && dj.trim()) {
+      const o = JSON.parse(dj) as { cardAddress?: unknown }
+      const ca = o.cardAddress
+      if (typeof ca === 'string' && ethers.isAddress(ca)) {
+        return ethers.getAddress(ca).toLowerCase()
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+function txDisplayRowMatchesStaffProgramCard(
+  tx: TxDisplayRow,
+  staffProgramCardAddress: string | null | undefined,
+): boolean {
+  if (!staffProgramCardAddress || !ethers.isAddress(staffProgramCardAddress)) return false
+  const cardLo = resolveTxDisplayRowProgramCardLower(tx)
+  if (!cardLo) return false
+  return cardLo === ethers.getAddress(staffProgramCardAddress).toLowerCase()
+}
+
+function filterTxDisplayRowsForStaffProgramCard(
+  rows: TxDisplayRow[],
+  staffProgramCardAddress: string | null | undefined,
+): TxDisplayRow[] {
+  if (!staffProgramCardAddress || !ethers.isAddress(staffProgramCardAddress)) return []
+  return rows.filter((tx) => txDisplayRowMatchesStaffProgramCard(tx, staffProgramCardAddress))
 }
 
 /** Parse indexer / readme JSON uint string (wei e6) → decimal number */
@@ -17788,7 +17829,10 @@ const todayTopupHourlyRollupRef = useRef<TodayTopupHourlyRollup | null>(null);
    }
    const e = currentEoa.toLowerCase()
    chargeBUnitLedgerRef.current = loadChargeBUnitLedgerMap(e)
-   const fromInbound = txRowsToChargeBUnitLedgerEntries(loadInboundTxDisplayCache(e))
+   const inboundCardBucket = staffProgramBeamioCardAddress
+     ? staffProgramBeamioCardAddress.toLowerCase()
+     : staffProgramCardCacheBucket
+   const fromInbound = txRowsToChargeBUnitLedgerEntries(loadInboundTxDisplayCache(e, inboundCardBucket))
    if (fromInbound.length > 0) {
      const changed = mergeChargeBUnitLedgerEntries(chargeBUnitLedgerRef.current, fromInbound)
      trimChargeBUnitLedgerMap(chargeBUnitLedgerRef.current, CHARGE_BUINT_LEDGER_MAX_ENTRIES)
@@ -17797,7 +17841,7 @@ const todayTopupHourlyRollupRef = useRef<TodayTopupHourlyRollup | null>(null);
    setChargeBUnitLedgerEpoch((n) => n + 1)
 
    tipsCollectedLedgerRef.current = loadTipsCollectedLedgerMap(e)
-   const tipsInbound = buildTipsCollectedLedgerEntriesFromMerged(loadInboundTxDisplayCache(e))
+   const tipsInbound = buildTipsCollectedLedgerEntriesFromMerged(loadInboundTxDisplayCache(e, inboundCardBucket))
    const tipsMap = tipsCollectedLedgerRef.current
    const tipsOnlyNew = tipsInbound.filter((row) => !tipsMap.has(row.indexerTxId.toLowerCase()))
    if (tipsOnlyNew.length > 0) {
@@ -17806,7 +17850,7 @@ const todayTopupHourlyRollupRef = useRef<TodayTopupHourlyRollup | null>(null);
      saveTipsCollectedLedgerMapImmediate(e, tipsMap)
    }
    setTipsCollectedLedgerEpoch((n) => n + 1)
- }, [currentEoa])
+ }, [currentEoa, staffProgramBeamioCardAddress, staffProgramCardCacheBucket])
 
  /** Upsert indexer/WSS Charge rows into ledger; debounced persist. */
  useEffect(() => {
@@ -18667,7 +18711,13 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
        // causing isFixedUserCardAdmin to show admin content to non-admin when cache + stale identity align.
        window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${fixedCardAdminsCacheKey}`);
        window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${linkedMerchantAdminsCacheKey}`);
-       window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${INDEXER_INBOUND_TX_CACHE_KEY(oldEoa.toLowerCase())}`);
+       Object.keys(window.localStorage)
+         .filter(
+           (k) =>
+             k.startsWith(`${BIZ_CACHE_PREFIX}indexer:inboundTx:`) &&
+             k.includes(`:${oldEoa.toLowerCase()}:`),
+         )
+         .forEach((k) => window.localStorage.removeItem(k));
      } catch { /* ignore */ }
      setFixedCardAdmins([]);
      setLinkedMerchantAdmins([]);
@@ -19659,6 +19709,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
   let topupTotal = 0
   let sumChargesCad = 0
   for (const tx of indexerTransactions) {
+    if (!txDisplayRowMatchesStaffProgramCard(tx, staffProgramBeamioCardAddress)) continue
     if (!bizTxMatchesTransactionTableFilters(tx, overviewDashboardActivityFilterCtx)) continue
     if (txDisplayRowTimestampSec(tx) <= 0) continue
     if (tx.type === 'In-Store Top-Up') {
@@ -19681,6 +19732,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
   overviewRefreshTrigger,
   oracleCadUsdc,
   programCardBeamioCurrencyType,
+  staffProgramBeamioCardAddress,
 ])
  const overviewActivityChargeDisplayCount = overviewActivityChargeCount
  const overviewActivityTipsLedgerEntries = useMemo(
@@ -21956,24 +22008,36 @@ useEffect(() => {
  */
 useEffect(() => {
   const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
-  if (!eoaKey) {
+  if (!eoaKey || !staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
     setIndexerTransactions([]);
     setTodayTopupSnapshot({ count: 0, total: 0 });
     setIndexerTransactionsLoading(false);
     setIndexerTransactionsRefreshing(false);
     return;
   }
-  const cached = loadInboundTxDisplayCache(eoaKey);
+  const cardBucket = staffProgramCardCacheBucket;
+  const cached = filterTxDisplayRowsForStaffProgramCard(
+    loadInboundTxDisplayCache(eoaKey, cardBucket),
+    staffProgramBeamioCardAddress,
+  );
   if (cached.length > 0) {
     const normalized = mergeBuintServiceFeeRowsIntoMainBusinessRows(
-      normalizeTxDisplayRowsForCardCurrency(cached, programCardBeamioCurrencyType)
+      normalizeTxDisplayRowsForCardCurrency(cached, programCardBeamioCurrencyType),
     );
     setIndexerTransactions(normalized);
     setTodayTopupSnapshot(summarizeTodayTopupsFromRows(normalized));
-    saveInboundTxDisplayCache(eoaKey, normalized);
+    saveInboundTxDisplayCache(eoaKey, cardBucket, normalized);
     setIndexerTransactionsLoading(false);
+  } else {
+    setIndexerTransactions([]);
+    setTodayTopupSnapshot({ count: 0, total: 0 });
   }
-}, [currentEoa, programCardBeamioCurrencyType]);
+}, [
+  currentEoa,
+  programCardBeamioCurrencyType,
+  staffProgramBeamioCardAddress,
+  staffProgramCardCacheBucket,
+]);
 
 // Fetch BeamioIndexerDiamond transactions: local cache first, background fetch second; admin UI shows only this admin's accounting (account-based, excludes subordinates).
 const refreshIndexerTransactions = useCallback(
@@ -22003,7 +22067,13 @@ const refreshIndexerTransactions = useCallback(
 
     const run = async (): Promise<void> => {
       const eoaKey = currentEoa && ethers.isAddress(currentEoa) ? currentEoa.toLowerCase() : '';
-      const cachedLocal = eoaKey ? loadInboundTxDisplayCache(eoaKey) : [];
+      const cardBucket = staffProgramCardCacheBucket;
+      const cachedLocal = eoaKey
+        ? filterTxDisplayRowsForStaffProgramCard(
+            loadInboundTxDisplayCache(eoaKey, cardBucket),
+            staffProgramBeamioCardAddress,
+          )
+        : [];
       const txQueryRoot = txQueryRootAddress && ethers.isAddress(txQueryRootAddress) ? ethers.getAddress(txQueryRootAddress) : '';
       if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
         if (cachedLocal.length === 0) setIndexerTransactions([]);
@@ -22173,7 +22243,7 @@ const refreshIndexerTransactions = useCallback(
           };
           const knownLedgerIndexerIds = new Set<string>();
           if (eoaKey) {
-            for (const r of loadInboundTxDisplayCache(eoaKey)) {
+            for (const r of loadInboundTxDisplayCache(eoaKey, cardBucket)) {
               const lid = String(r.indexerTxId ?? '').trim().toLowerCase();
               if (lid) knownLedgerIndexerIds.add(lid);
             }
@@ -22351,19 +22421,31 @@ const refreshIndexerTransactions = useCallback(
           throw raceErr;
         }
 
-        const mapped = normalizeTxDisplayRowsForCardCurrency(
-          mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
-          programCardBeamioCurrencyType
+        const mapped = filterTxDisplayRowsForStaffProgramCard(
+          normalizeTxDisplayRowsForCardCurrency(
+            mapIndexerFetchedRowsToDisplay(rows, programCardBeamioCurrencyType),
+            programCardBeamioCurrencyType,
+          ),
+          staffProgramBeamioCardAddress,
         );
         const localBase = eoaKey
           ? mergeLocalLedgerBaseForIndexerMerge(
-              loadInboundTxDisplayCache(eoaKey),
-              indexerTransactionsMirrorRef.current,
-              programCardBeamioCurrencyType
+              filterTxDisplayRowsForStaffProgramCard(
+                loadInboundTxDisplayCache(eoaKey, cardBucket),
+                staffProgramBeamioCardAddress,
+              ),
+              filterTxDisplayRowsForStaffProgramCard(
+                indexerTransactionsMirrorRef.current,
+                staffProgramBeamioCardAddress,
+              ),
+              programCardBeamioCurrencyType,
             )
           : [];
         const absorbedTips = mergeInboundLedgerDisplayRows(mapped, localBase);
-        const capped = absorbedTips.slice(0, 80);
+        const capped = filterTxDisplayRowsForStaffProgramCard(
+          absorbedTips.slice(0, 80),
+          staffProgramBeamioCardAddress,
+        );
         const merged = capped.map((r, idx) => ({ ...r, id: `TX-${1000 + capped.length - idx}` }));
         if (eoaKey) {
           const preTip = buildTipsCollectedLedgerEntriesFromPremergeTips(
@@ -22399,7 +22481,7 @@ const refreshIndexerTransactions = useCallback(
         }
         setTodayTopupSnapshot(summarizeTodayTopupsFromRows(merged));
         setLastHttpsIndexerRefreshAt(Date.now());
-        if (eoaKey) saveInboundTxDisplayCache(eoaKey, merged);
+        if (eoaKey) saveInboundTxDisplayCache(eoaKey, cardBucket, merged);
       } catch {
         setIndexerTransactions((p) => (p.length > 0 ? p : []));
       } finally {

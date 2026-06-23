@@ -38089,7 +38089,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ) : (
                     <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                   )}
-                  {cardIssuanceCouponRedeemShareUrlCopied ? '已复制' : 'Copy URL'}
+                  {cardIssuanceCouponRedeemShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                 </button>
                 <a
                   href={cardIssuanceCouponRedeemShareUrl}
@@ -38097,7 +38097,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   rel="noopener noreferrer"
                   className={`inline-flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-3 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/15 ${bizFocusRingClass}`}
                 >
-                  Open link
+                  {tu('programs_share_open_link')}
                   <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
                 </a>
                 <button
@@ -38370,7 +38370,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       ) : (
                         <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                       )}
-                      {cardIssuanceProductionRedeemShareUrlCopied ? '已复制' : 'Copy URL'}
+                      {cardIssuanceProductionRedeemShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                     </button>
                     <a
                       href={cardIssuanceProductionRedeemShareUrl}
@@ -38378,7 +38378,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       rel="noopener noreferrer"
                       className={`inline-flex items-center gap-2 rounded-full border border-[#ea580c]/20 bg-[#ea580c]/10 px-3 py-2 text-xs font-bold text-[#ea580c] transition-colors hover:bg-[#ea580c]/15 ${bizFocusRingClass}`}
                     >
-                      Open link
+                      {tu('programs_share_open_link')}
                       <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
                     </a>
                     <button
@@ -38496,7 +38496,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       ) : (
                         <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                       )}
-                      {cardIssuanceProductionShareUrlCopied ? '已复制' : 'Copy URL'}
+                      {cardIssuanceProductionShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                     </button>
                     <a
                       href={cardIssuanceProductionShareUrl}
@@ -38504,7 +38504,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       rel="noopener noreferrer"
                       className={`inline-flex items-center gap-2 rounded-full border border-[#ea580c]/20 bg-[#ea580c]/10 px-3 py-2 text-xs font-bold text-[#ea580c] transition-colors hover:bg-[#ea580c]/15 ${bizFocusRingClass}`}
                     >
-                      Open link
+                      {tu('programs_share_open_link')}
                       <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
                     </a>
                     <button

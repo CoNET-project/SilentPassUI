@@ -84,6 +84,7 @@ export function BusinessCatalogVideoOgPreviewDetails(props: BusinessCatalogVideo
     ogSharePreviewLayout,
     tileBackgroundColor,
   } = props;
+  const { tu } = useTu();
   const onTileBackground = Boolean(tileBackgroundColor?.trim());
   const showIssuanceLine = catalogBusinessPreviewShowsIssuanceLine(row, ogSharePreviewLayout);
   const presentation = resolveCatalogProductionSharePresentation({ row, publisherBeamioTag });
@@ -145,9 +146,9 @@ export function BusinessCatalogVideoOgPreviewDetails(props: BusinessCatalogVideo
             onTileBackground ? 'text-white/80' : 'text-[#747779]'
           }`}
         >
-          Issuance: {productionIssueTotalDisplayLabel(row)}
+          {tu('programs_preview_issuance')} {productionIssueTotalDisplayLabel(row)}
           {row.issued && row.issueLeft?.trim()
-            ? ` · ${Number.parseInt(row.issueLeft.replace(/,/g, ''), 10).toLocaleString()} left`
+            ? ` · ${Number.parseInt(row.issueLeft.replace(/,/g, ''), 10).toLocaleString()} ${tu('programs_coupon_left').toLowerCase()}`
             : ''}
         </p>
       ) : null}
@@ -157,7 +158,7 @@ export function BusinessCatalogVideoOgPreviewDetails(props: BusinessCatalogVideo
             onTileBackground ? 'text-white/90 drop-shadow-sm' : 'text-[#ea580c]'
           }`}
         >
-          Redeem code
+          {tu('programs_preview_redeem_code')}
         </p>
       ) : null}
     </div>
@@ -603,15 +604,15 @@ export function BusinessCatalogListItemPreviewContent(props: {
         ) : null}
         {showIssuanceLine ? (
           <p className="mt-0.5 text-[10px] font-semibold text-[#747779]">
-            Issuance: {productionIssueTotalDisplayLabel(row)}
+            {tu('programs_preview_issuance')} {productionIssueTotalDisplayLabel(row)}
             {row.issued && row.issueLeft?.trim()
-              ? ` · ${Number.parseInt(row.issueLeft.replace(/,/g, ''), 10).toLocaleString()} left`
+              ? ` · ${Number.parseInt(row.issueLeft.replace(/,/g, ''), 10).toLocaleString()} ${tu('programs_coupon_left').toLowerCase()}`
               : ''}
           </p>
         ) : null}
         {row.requiresRedeemCode ? (
           <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[#ea580c]">
-            Redeem code
+            {tu('programs_preview_redeem_code')}
           </p>
         ) : null}
       </div>

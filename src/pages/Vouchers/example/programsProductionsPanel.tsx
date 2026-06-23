@@ -839,8 +839,8 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                               {packageRows.map((pkg) => {
                                 const pkgPrice = catalogProductionDisplayPrice(pkg);
                                 const sessionsLabel = pkg.packageSessions.trim()
-                                  ? `${pkg.packageSessions.trim()} sessions`
-                                  : 'Package';
+                                  ? tu('programs_catalog_package_sessions', { count: pkg.packageSessions.trim() })
+                                  : tu('programs_catalog_package_default');
                                 return (
                                   <li
                                     key={pkg.id}
@@ -1745,7 +1745,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                       </div>
                                     </div>
                                     <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#747779]">
-                                      Total package price
+                                      {tu('programs_catalog_package_total_price')}
                                     </label>
                                     <div className="flex items-center gap-2 rounded-xl bg-[#f1f5f9] px-3 py-2.5">
                                       <span className="text-sm font-bold text-[#747779]">{moneyPrefix}</span>

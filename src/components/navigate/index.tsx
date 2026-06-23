@@ -1,12 +1,17 @@
 import { ChevronLeft } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { tu } from '@/locale/beamioLocale'
 
 const NavigateLeftButton = () => {
+  const { t } = useTranslation()
   const { navigateLeftButtonArray, setNavigateLeftButtonArray } = useDaemonContext()
 
   const last = navigateLeftButtonArray[navigateLeftButtonArray.length - 1]
   const canBack = navigateLeftButtonArray.length > 0
+  const headerTitle = last?.titleKey
+    ? t(`ui.${last.titleKey}`, { defaultValue: last.title })
+    : (last?.title ?? "")
 
   return (
     <div className="">
@@ -46,7 +51,7 @@ const NavigateLeftButton = () => {
 			</button>
 
           <div className="absolute left-1/2 -translate-x-1/2 text-[20px] font-semibold text-slate-900 dark:text-slate-100">
-            {last?.title ?? ""}
+            {headerTitle}
           </div>
 
           <div className="w-9 h-9" />

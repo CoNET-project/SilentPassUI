@@ -201,6 +201,7 @@ type paymentCard = {
 		language: ILanguage
 		currency: ICurrency
 		tax: string
+		localeConfigured?: boolean
 	}
 
 	type searchkeywork = {
@@ -547,6 +548,8 @@ type Argon2idHash = {
 		pgpPublicKeyID?: string
 		pgpPublicKeyArmor?: string
 		tax?: string
+		/** Parsed from chain: lastName contains locale JSON block */
+		localeCurrencyConfigured?: boolean
 		
   }
 
@@ -638,6 +641,8 @@ type paymentType = 'payme'|'onetime'|'reusable'
 
 type INavigateLeftButtonArray = {
 	title: string
+	/** When set, header title re-renders from `ui.{titleKey}` on locale change. */
+	titleKey?: string
 	action: Array<() => void>
 }
 

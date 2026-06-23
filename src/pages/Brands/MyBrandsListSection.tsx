@@ -726,7 +726,7 @@ export function resolveHeldTierPresentation(detail: unknown): {
 
 export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchantCard?: () => void } = {}) {
 	const navigate = useNavigate()
-	const { myBrandCards, myBrandCardDetails, myBrandsFeedLoading } = useDaemonContext()
+	const { myBrandCards, myBrandCardDetails } = useDaemonContext()
 	const handleAddNewMerchantCard = () => {
 		if (onAddNewMerchantCard) {
 			onAddNewMerchantCard()
@@ -742,26 +742,7 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 
 	return (
 		<>
-			{myBrandsFeedLoading && sorted.length === 0 ? (
-				<div className="flex flex-col rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
-					<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
-						<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
-						<div className="flex-1 space-y-2">
-							<div className="h-3.5 w-28 rounded bg-white/80 dark:bg-slate-700" />
-							<div className="h-3 w-36 rounded bg-white/60 dark:bg-slate-600" />
-						</div>
-						<div className="h-10 w-20 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
-					</div>
-					<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
-						<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
-						<div className="flex-1 space-y-2">
-							<div className="h-3.5 w-32 rounded bg-white/80 dark:bg-slate-700" />
-							<div className="h-3 w-28 rounded bg-white/60 dark:bg-slate-600" />
-						</div>
-						<div className="h-10 w-20 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
-					</div>
-				</div>
-			) : sorted.length === 0 ? (
+			{sorted.length === 0 ? (
 				<div className="rounded-xl border border-slate-200/80 bg-white/80 p-6 text-center dark:border-slate-700 dark:bg-slate-900/60">
 					<p className="text-sm font-medium text-slate-600 dark:text-slate-400">{tu('no_merchant_cards_yet')}</p>
 					<button

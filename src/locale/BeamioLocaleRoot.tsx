@@ -1,8 +1,10 @@
 import React from 'react'
-import { useTranslation } from 'react-i18next'
 
-/** Remount subtree when UI locale changes so `t()` imports re-render. */
+/**
+ * i18n wrapper — do NOT remount the tree on language change.
+ * Remounting resets route/modal state (e.g. profile → Language & Currency slide-over).
+ * Components that need live locale use `useTranslation()`; static `tu()` updates on navigation.
+ */
 export function BeamioLocaleRoot({ children }: { children: React.ReactNode }) {
-	const { i18n } = useTranslation()
-	return <React.Fragment key={i18n.language}>{children}</React.Fragment>
+	return <>{children}</>
 }

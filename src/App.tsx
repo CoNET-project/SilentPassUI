@@ -16,7 +16,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
-import { checkStorage, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic } from "@/services/beamio"
+import { checkStorage, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
@@ -717,7 +717,14 @@ function AppShell() {
 		const userInfo = await loadUserInfo()
 		if (!userInfo) return
 		
-		const bo: beamio = userInfo
+		let bo: beamio = mergeLocalLocaleLanguageOntoChainProfile(userInfo, temp.beamio)
+		const pk = profiles[0]?.privateKeyArmor
+		if (pk) {
+			bo = await bootstrapProfileLocaleCurrencyIfUnset(bo, pk)
+		} else {
+			const { applyBeamioUiLanguageFromProfile } = await import('@/locale/i18n')
+			await applyBeamioUiLanguageFromProfile(bo.language)
+		}
 
 		await initChat(setProfiles,setAllNodes, setGossip, gossipActiveRef.current, message => {
 			setChartsRef.current((prev: string[]) => [...prev, message])

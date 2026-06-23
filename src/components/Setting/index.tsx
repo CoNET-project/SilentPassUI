@@ -617,7 +617,8 @@ export default function BeamioMeMainScreen() {
 									</span>}
 									onClick={() => {
 										setNavigateLeftButtonArray([{
-											title: '语言与货币',
+											titleKey: 'language_currency',
+											title: tu('language_currency'),
 											action: [
 												// () => navigate('/History'),
 												() => setSettingsOpen(''),
@@ -724,7 +725,7 @@ export default function BeamioMeMainScreen() {
 							'pb-[env(safe-area-inset-bottom)]',
 							'pl-[env(safe-area-inset-left)]',
 							'pr-[env(safe-area-inset-right)]',
-							"fixed inset-0 z-40 flex-1 overflow-y-auto",
+							"fixed inset-0 z-40 flex-1 overflow-y-auto bg-white",
 							"transition-transform duration-300 ease-out",
 							(!!settingsOpen) ? "translate-x-0" : "translate-x-full",
 						].join(" ")}

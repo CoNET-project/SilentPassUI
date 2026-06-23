@@ -69,6 +69,7 @@ import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from './MerchantA
 import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { tu } from '@/locale/beamioLocale'
+import { HomeLanguageSelector } from './HomeLanguageSelector'
 
 /** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
 const CASH_TREES_HERO_BACKGROUNDS = [cashTreesHeroBg1, cashTreesHeroBg2, cashTreesHeroBg3] as const
@@ -268,7 +269,7 @@ const Home = (_props: HomeProps) => {
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
-		myBrandCards, myBrandCardDetails, myBrandsFeedLoading, homeTotalPowerCad,
+		myBrandCards, myBrandCardDetails, homeTotalPowerCad,
 		aaAccountUsdcBalance, refreshRecentActivityNoAa,
 	} = useDaemonContext()
 	const navigate = useNavigate()
@@ -1760,12 +1761,14 @@ const Home = (_props: HomeProps) => {
 						</div>
 					</button>
 					<div
-						className="pointer-events-none min-w-0 max-w-[46vw] justify-self-center min-[400px]:max-w-[min(56vw,14rem)]"
+						className="pointer-events-none min-w-0 max-w-[28vw] justify-self-center min-[400px]:max-w-[min(40vw,10rem)]"
 						aria-hidden
 					/>
-					{linkedNfcListLoading && linkedNfcCards.length === 0 ? (
+					<div className="flex min-w-0 items-center justify-self-end gap-1.5">
+						<HomeLanguageSelector capsuleOpacity={capsuleOpacity} />
+						{linkedNfcListLoading && linkedNfcCards.length === 0 ? (
 						<div
-							className="pointer-events-none flex items-center justify-self-end"
+							className="pointer-events-none flex items-center"
 							aria-busy
 							aria-label="Loading linked cards"
 						>
@@ -1781,7 +1784,7 @@ const Home = (_props: HomeProps) => {
 						<button
 							type="button"
 							onClick={openCardManagement}
-							className="relative flex h-10 w-10 items-center justify-center justify-self-end rounded-full transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+							className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
 							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
 							aria-label="Physical keys"
 						>
@@ -1803,7 +1806,7 @@ const Home = (_props: HomeProps) => {
 						<button
 							type="button"
 							onClick={() => startCashTreesPhysicalCardBind()}
-							className="flex items-center justify-self-end"
+							className="flex shrink-0 items-center"
 							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
 							aria-label="Link NFC card"
 						>
@@ -1815,9 +1818,8 @@ const Home = (_props: HomeProps) => {
 								/>
 							</div>
 						</button>
-					) : (
-						<span className="pointer-events-none w-0 shrink-0 justify-self-end" aria-hidden />
-					)}
+					) : null}
+					</div>
 				</div>
 			)}
 
@@ -1969,16 +1971,7 @@ const Home = (_props: HomeProps) => {
 										</button>
 									</div>
 									<div className="flex flex-col gap-2 rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
-										{myBrandsFeedLoading && myBrandCardsPreview.length === 0 ? (
-											<div className="flex animate-pulse items-center gap-4 rounded-lg p-3">
-												<div className="h-12 w-12 shrink-0 rounded-md bg-white/80 dark:bg-slate-700" />
-												<div className="flex-1 space-y-2">
-													<div className="h-3.5 w-28 rounded bg-white/80 dark:bg-slate-700" />
-													<div className="h-3 w-36 rounded bg-white/60 dark:bg-slate-600" />
-												</div>
-												<div className="h-10 w-20 shrink-0 rounded bg-white/60 dark:bg-slate-700" />
-											</div>
-										) : myBrandCardsPreview.length === 0 ? (
+										{myBrandCardsPreview.length === 0 ? (
 											<div className="rounded-lg p-3 text-sm font-medium text-[#424655] dark:text-slate-400">
 												{tu('no_merchant_brands_yet')}
 											</div>

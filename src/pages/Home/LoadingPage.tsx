@@ -63,7 +63,7 @@ import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
 import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 import { tu } from '@/locale/beamioLocale'
-import { setBeamioUiLocale, type BeamioUiLocale } from '@/locale/i18n'
+import { applyBeamioUiLanguageFromProfile, type BeamioUiLocale } from '@/locale/i18n'
 import { useTranslation } from 'react-i18next'
 
 
@@ -243,7 +243,7 @@ function OnboardLocalePicker() {
 	const selectLocale = async (next: BeamioUiLocale) => {
 		setOpen(false)
 		if (next === locale) return
-		await setBeamioUiLocale(next)
+		await applyBeamioUiLanguageFromProfile(next)
 	}
 
 	return (

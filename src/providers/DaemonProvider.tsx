@@ -2,6 +2,7 @@ import React, { createContext, useContext, ReactNode, useState, useEffect, useLa
 import packageData from '../../package.json'
 import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanButton"
 import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS } from "@/services/beamio"
+import { applyBeamioUiLanguageFromProfile } from '@/locale/i18n'
 import { ethers } from 'ethers'
 import {
 	getCardsOfOwnerWithDetailsForProfile,
@@ -55,11 +56,9 @@ import {
 	type OwnedCatalogSummary,
 } from '@/utils/myBrandsOwnedCatalog'
 import { syncNativeFooterChatBadge } from '@/utils/cashTreesNativeAppStateBridge'
+import { CONET_RPC_URL } from '@/config/chainAddresses'
 
 export type { MyBrandCardFeedDetailsMap }
-
-/** CoNET mainnet RPC（与 App CoreContract 一致） */
-const CONET_MAINNET_RPC_HTTP = 'https://rpc1.conet.network'
 
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
@@ -739,7 +738,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   const conetProviderRef = useRef<ethers.JsonRpcProvider | null>(null)
   if (!conetProviderRef.current) {
-    conetProviderRef.current = new ethers.JsonRpcProvider(CONET_MAINNET_RPC_HTTP)
+    conetProviderRef.current = new ethers.JsonRpcProvider(CONET_RPC_URL)
   }
   const conetBlockRef = useRef(0)
 
@@ -799,12 +798,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       return {}
     }
     myBrandsFeedInFlight.current = true
-    /** 本地优先：已有列表或详情时不打「全空白 loading」，仅后台刷新（Stale-while-revalidate） */
-    const hasRenderable =
-      myBrandCardsRef.current.length > 0 || Object.keys(myBrandCardDetailsRef.current).length > 0
-    if (!hasRenderable) {
-      setMyBrandsFeedLoading(true)
-    }
+    /** 空列表不进入 loading；仅有数据时后台刷新也不闪 loading（Stale-while-revalidate） */
     try {
       const { ownerCards, holderCards, trusted, walletAssetsByCardKey, walletResolvedAaAddress } =
         await getCardsOfOwnerWithDetailsForProfile(profile)
@@ -1163,6 +1157,11 @@ export function DaemonProvider({ children }: DaemonProps) {
 	useEffect(() => {
 		currencyDataRef.current = currencyData
 	}, [currencyData])
+
+	useEffect(() => {
+		if (!beamio?.language) return
+		void applyBeamioUiLanguageFromProfile(beamio.language)
+	}, [beamio?.language])
 
 	useEffect(() => {
 		void loadApiExcludedUserCards().then(() => {

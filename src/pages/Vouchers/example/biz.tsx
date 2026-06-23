@@ -639,6 +639,136 @@ function walletSendShortAddr(addr: string): string {
   return addr.length >= 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
 }
 
+type DeviceHandlePeer = {
+  username?: string;
+  accountName?: string;
+  address?: string;
+  image?: string;
+  first_name?: string;
+  last_name?: string;
+  firstName?: string;
+  lastName?: string;
+};
+
+type DeviceHandleResolvedState = {
+  username: string;
+  address: string;
+  image?: string;
+  first_name?: string;
+  last_name?: string;
+  firstName?: string;
+  lastName?: string;
+  accountName?: string;
+  addressOnly?: boolean;
+};
+
+function deviceHandlePeerTagLower(peer: DeviceHandlePeer): string {
+  return (peer.username ?? peer.accountName ?? '').toLowerCase();
+}
+
+function deviceHandlePeerToResolved(
+  match: DeviceHandlePeer,
+  fallbackTag: string,
+  isAddressSearch: boolean,
+): DeviceHandleResolvedState | null {
+  const addr = (match.address ?? '').trim();
+  const hasBeamioTag = Boolean(match.username ?? match.accountName);
+  const tag = match.username ?? match.accountName ?? fallbackTag;
+  if (addr && ethers.isAddress(addr)) {
+    return {
+      username: tag || (isAddressSearch ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : fallbackTag),
+      address: ethers.getAddress(addr),
+      image: match.image,
+      first_name: match.first_name,
+      last_name: match.last_name,
+      firstName: match.firstName,
+      lastName: match.lastName,
+      accountName: match.accountName ?? match.username,
+      addressOnly: !hasBeamioTag,
+    };
+  }
+  if (!hasBeamioTag) return null;
+  return {
+    username: tag,
+    address: addr,
+    image: match.image,
+    first_name: match.first_name,
+    last_name: match.last_name,
+    firstName: match.firstName,
+    lastName: match.lastName,
+    accountName: match.accountName ?? match.username,
+    addressOnly: true,
+  };
+}
+
+function findDeviceHandlePeerMatch(
+  trimmed: string,
+  isAddressSearch: boolean,
+  searchKey: string,
+  results: DeviceHandlePeer[],
+): { match?: DeviceHandlePeer; ambiguous?: DeviceHandlePeer[] } {
+  const norm = trimmed.toLowerCase();
+  if (isAddressSearch) {
+    const match =
+      results.find((r) => (r.address ?? '').toLowerCase() === norm) ?? results[0];
+    if (match && !match.address) match.address = searchKey;
+    return match ? { match } : {};
+  }
+  const exact = results.find((r) => deviceHandlePeerTagLower(r) === norm);
+  if (exact) return { match: exact };
+  const prefix = results.filter((r) => deviceHandlePeerTagLower(r).startsWith(norm));
+  if (prefix.length === 1) return { match: prefix[0] };
+  if (prefix.length > 1) return { ambiguous: prefix };
+  return {};
+}
+
+function localProfileToDeviceHandlePeer(rec: BeamioAddressProfileRecord): DeviceHandlePeer {
+  const addr = rec.addressLower ? ethers.getAddress(rec.addressLower) : '';
+  return {
+    address: addr,
+    username: rec.username,
+    accountName: rec.accountName,
+    first_name: rec.first_name,
+    last_name: rec.last_name,
+    firstName: rec.firstName,
+    lastName: rec.lastName,
+    image: rec.image,
+  };
+}
+
+function mergeDeviceHandleSuggestionPeers(
+  localRecs: BeamioAddressProfileRecord[],
+  remoteRows: DeviceHandlePeer[],
+  query: string,
+  limit = 12,
+): DeviceHandlePeer[] {
+  const q = query.toLowerCase();
+  const seen = new Set<string>();
+  const out: DeviceHandlePeer[] = [];
+  const tagOk = (tag: string) => tag.length >= q.length && tag.includes(q);
+  for (const rec of localRecs) {
+    const tag = plainBeamioTagSeed(rec.accountName ?? rec.username).toLowerCase();
+    if (!tagOk(tag)) continue;
+    const key = rec.addressLower;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(localProfileToDeviceHandlePeer(rec));
+    if (out.length >= limit) return out;
+  }
+  for (const row of remoteRows) {
+    const addr = (row.address ?? '').trim();
+    if (!addr || !ethers.isAddress(addr)) continue;
+    const key = addr.toLowerCase();
+    if (seen.has(key)) continue;
+    const tag = deviceHandlePeerTagLower(row);
+    if (tag && !tagOk(tag)) continue;
+    seen.add(key);
+    out.push(row);
+    if (out.length >= limit) return out;
+  }
+  return out;
+}
+
 async function walletSendRetryRpc<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
   let last: unknown;
   for (let i = 0; i <= retries; i++) {
@@ -10901,6 +11031,7 @@ export default function MerchantOS() {
    profileMapRef: addressProfileByLowerRef,
    ingestSearchResponse,
    searchRemoteAndIngest,
+   searchLocalByTagPrefix,
    ensureProfilesForAddresses,
    toCapsuleItem,
    avatarImgUrl: beamioAvatarImgUrl,
@@ -19186,97 +19317,81 @@ useEffect(() => {
  } | null>(null);
  const [deviceHandleError, setDeviceHandleError] = useState<string | null>(null);
  const [deviceHandleChecking, setDeviceHandleChecking] = useState(false);
+ const [deviceHandleSuggestions, setDeviceHandleSuggestions] = useState<DeviceHandlePeer[]>([]);
+ const [deviceHandleSuggestionsLoading, setDeviceHandleSuggestionsLoading] = useState(false);
  const deviceValidateAbortRef = useRef<boolean>(false);
+ const deviceHandleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
  /** Pending POS 授权：满足自动授权规则时按 Link New Terminal 默认项注册（每 `sendId` 仅尝试一次）。 */
  const autoPendingPosTerminalRegStartedRef = useRef<Set<string>>(new Set());
  /** 自动注册失败后重新展示 Pending 面板，便于手动 Approve。 */
  const [autoPendingPosRegFailedBySendId, setAutoPendingPosRegFailedBySendId] = useState<Record<string, true>>({});
+
+ const selectDeviceHandleSuggestion = useCallback((peer: DeviceHandlePeer) => {
+   const tag = peer.username ?? peer.accountName ?? '';
+   const resolved = deviceHandlePeerToResolved(peer, tag, false);
+   if (!resolved?.address || !ethers.isAddress(resolved.address)) return;
+   setDeviceHandleResolved(resolved);
+   setNewTerminalTag(tag ? `@${plainBeamioTagSeed(tag)}` : resolved.address);
+   setDeviceHandleError(null);
+   setDeviceHandleSuggestions([]);
+   setLinkTerminalError(null);
+ }, []);
 
  const validateDeviceHandle = useCallback(async (raw: string) => {
    const trimmed = raw.trim().replace(/^@/, '');
    if (!trimmed) {
      setDeviceHandleError(null);
      setDeviceHandleResolved(null);
+     setDeviceHandleSuggestions([]);
      return;
    }
    deviceValidateAbortRef.current = false;
    setDeviceHandleChecking(true);
    setDeviceHandleError(null);
    setDeviceHandleResolved(null);
+   setDeviceHandleSuggestions([]);
    try {
      const isAddressSearch = ethers.isAddress(trimmed);
      const searchKey = isAddressSearch ? ethers.getAddress(trimmed) : trimmed;
+     const localRecs = isAddressSearch ? [] : searchLocalByTagPrefix(trimmed, 12);
      const res = await searchRemoteAndIngest(searchKey);
      if (deviceValidateAbortRef.current) return;
-     type DeviceHandlePeer = {
-       username?: string;
-       accountName?: string;
-       address?: string;
-       image?: string;
-       first_name?: string;
-       last_name?: string;
-       firstName?: string;
-       lastName?: string;
-     };
      let results: DeviceHandlePeer[] = [];
      if (res && typeof res === 'object' && Array.isArray((res as { results?: unknown }).results)) {
        results = (res as { results: DeviceHandlePeer[] }).results;
      }
-     const norm = trimmed.toLowerCase();
-     let match: DeviceHandlePeer | undefined;
-     if (isAddressSearch) {
-       match = results.find((r: { address?: string }) => {
-         const a = (r?.address ?? '').toLowerCase();
-         return a === norm;
-       }) ?? results[0];
-       if (match && !match.address) (match as { address?: string }).address = searchKey;
-     } else {
-       match = results.find((r: { username?: string; accountName?: string }) => {
-         const u = (r?.username ?? r?.accountName ?? '').toLowerCase();
-         return u === norm;
-       });
-     }
+     const merged = mergeDeviceHandleSuggestionPeers(localRecs, results, trimmed, 12);
+     const { match, ambiguous } = findDeviceHandlePeerMatch(trimmed, isAddressSearch, searchKey, merged);
      if (match) {
-       const addr = (match as { address?: string }).address;
-       const hasBeamioTag = Boolean(match.username ?? match.accountName);
-       if (addr && ethers.isAddress(addr)) {
-         setDeviceHandleResolved({
-           username: match.username ?? match.accountName ?? (isAddressSearch ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : trimmed),
-           address: addr,
-           image: match.image,
-           first_name: match.first_name,
-           last_name: match.last_name,
-           firstName: match.firstName,
-           lastName: match.lastName,
-           accountName: match.accountName ?? match.username,
-           addressOnly: !hasBeamioTag,
-         });
+       const resolved = deviceHandlePeerToResolved(match, trimmed, isAddressSearch);
+       if (resolved) {
+         setDeviceHandleResolved(resolved);
          setDeviceHandleError(null);
+         setDeviceHandleSuggestions([]);
          return;
        }
-       setDeviceHandleResolved({
-         username: match.username ?? match.accountName ?? trimmed,
-         address: addr ?? '',
-         image: match.image,
-         first_name: match.first_name,
-         last_name: match.last_name,
-         firstName: match.firstName,
-         lastName: match.lastName,
-         accountName: match.accountName ?? match.username,
-         addressOnly: !hasBeamioTag,
-       });
-       setDeviceHandleError(null);
-     } else if (isAddressSearch) {
+     }
+     if (ambiguous && ambiguous.length > 0) {
+       setDeviceHandleSuggestions(ambiguous);
+       setDeviceHandleError('Select a terminal from the list');
+       return;
+     }
+     if (isAddressSearch) {
        setDeviceHandleResolved({
          username: `${searchKey.slice(0, 6)}…${searchKey.slice(-4)}`,
          address: searchKey,
          addressOnly: true,
        });
        setDeviceHandleError(null);
-     } else {
-       setDeviceHandleResolved(null);
-       setDeviceHandleError('Not found');
+       return;
      }
+     if (merged.length > 0) {
+       setDeviceHandleSuggestions(merged);
+       setDeviceHandleError('Select a terminal from the list');
+       return;
+     }
+     setDeviceHandleResolved(null);
+     setDeviceHandleError('Not found');
    } catch {
      if (!deviceValidateAbortRef.current) {
        setDeviceHandleResolved(null);
@@ -19285,7 +19400,50 @@ useEffect(() => {
    } finally {
      if (!deviceValidateAbortRef.current) setDeviceHandleChecking(false);
    }
- }, [searchRemoteAndIngest]);
+ }, [searchRemoteAndIngest, searchLocalByTagPrefix]);
+
+ useEffect(() => {
+   if (terminalOnboardingEditing || deviceHandleResolved?.address) {
+     setDeviceHandleSuggestions([]);
+     setDeviceHandleSuggestionsLoading(false);
+     return;
+   }
+   const q = newTerminalTag.trim().replace(/^@/, '');
+   if (q.length < 2 || ethers.isAddress(q)) {
+     setDeviceHandleSuggestions([]);
+     setDeviceHandleSuggestionsLoading(false);
+     return;
+   }
+   if (deviceHandleSearchTimerRef.current) clearTimeout(deviceHandleSearchTimerRef.current);
+   deviceHandleSearchTimerRef.current = setTimeout(async () => {
+     setDeviceHandleSuggestionsLoading(true);
+     try {
+       const localRecs = searchLocalByTagPrefix(q, 12);
+       const res = await searchRemoteAndIngest(q);
+       let remoteRows: DeviceHandlePeer[] = [];
+       if (res && typeof res === 'object' && Array.isArray((res as { results?: unknown }).results)) {
+         remoteRows = (res as { results: DeviceHandlePeer[] }).results;
+       }
+       setDeviceHandleSuggestions(mergeDeviceHandleSuggestionPeers(localRecs, remoteRows, q, 12));
+     } catch {
+       const localRecs = searchLocalByTagPrefix(q, 12);
+       setDeviceHandleSuggestions(
+         mergeDeviceHandleSuggestionPeers(localRecs, [], q, 12),
+       );
+     } finally {
+       setDeviceHandleSuggestionsLoading(false);
+     }
+   }, 320);
+   return () => {
+     if (deviceHandleSearchTimerRef.current) clearTimeout(deviceHandleSearchTimerRef.current);
+   };
+ }, [
+   newTerminalTag,
+   terminalOnboardingEditing,
+   deviceHandleResolved?.address,
+   searchLocalByTagPrefix,
+   searchRemoteAndIngest,
+ ]);
 
  /** Resolved terminal EOA is a subordinate admin (`adminParent != 0`) on a known card — block registration. */
  const [terminalPosSubordinateBlock, setTerminalPosSubordinateBlock] = useState<string | null>(null);
@@ -35077,6 +35235,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      !terminalOnboardingEditing && e.key === 'Enter' && validateDeviceHandle(newTerminalTag)
                    }
                    placeholder="terminal_id or 0x…"
+                   autoComplete="off"
                    className={`w-full rounded-lg border-0 bg-[#eef1f3] py-3 font-semibold text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 sm:py-3.5 ${newTerminalTag.startsWith('0x') ? 'pl-5 pr-14' : 'pl-12 pr-14'} ${deviceHandleError ? 'ring-2 ring-rose-500/40' : ''} ${terminalOnboardingEditing ? 'cursor-not-allowed opacity-80' : ''} ${bizFocusRingClass}`}
                  />
                  <div className="absolute right-4 top-1/2 flex -translate-y-1/2 items-center gap-1">
@@ -35096,6 +35255,42 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </button>
                    )}
                  </div>
+                 {!terminalOnboardingEditing && !deviceHandleResolved?.address && (deviceHandleSuggestions.length > 0 || deviceHandleSuggestionsLoading) ? (
+                   <ul className="absolute left-0 right-0 top-full z-20 mt-2 max-h-56 overflow-y-auto rounded-lg border border-[#abadaf]/15 bg-white py-1 shadow-lg">
+                     {deviceHandleSuggestionsLoading && deviceHandleSuggestions.length === 0 ? (
+                       <li className="flex items-center gap-2 px-4 py-3 text-xs font-medium text-[#595c5e]">
+                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                         Searching…
+                       </li>
+                     ) : null}
+                     {deviceHandleSuggestions.map((row) => {
+                       const tag = row.username ?? row.accountName ?? '';
+                       return (
+                         <li key={`${row.address}-${tag}`}>
+                           <button
+                             type="button"
+                             onMouseDown={(e) => e.preventDefault()}
+                             onClick={() => selectDeviceHandleSuggestion(row)}
+                             className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[#eef1f3]"
+                           >
+                             <div className="size-10 shrink-0 overflow-hidden rounded-full bg-[#eef1f3]">
+                               {row.image ? (
+                                 <IpfsImg src={row.image} alt="" className="size-full object-cover" />
+                               ) : (
+                                 <IpfsImg src={getImg(tag)} alt="" className="size-full object-cover" />
+                               )}
+                             </div>
+                             <div className="min-w-0 flex-1">
+                               <p className="truncate text-sm font-bold text-[#2c2f31]">{walletSendDisplayName(row as searchResult)}</p>
+                               <p className="truncate text-xs font-medium text-[#0051d1]">@{tag || '—'}</p>
+                             </div>
+                             <span className="shrink-0 font-mono text-[10px] text-[#747779]">{walletSendShortAddr(row.address ?? '')}</span>
+                           </button>
+                         </li>
+                       );
+                     })}
+                   </ul>
+                 ) : null}
                </div>
                {deviceHandleError ? <p className="text-xs font-medium text-rose-600">{deviceHandleError}</p> : null}
                {terminalOnboardingEditing ? (
@@ -35310,7 +35505,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <span className="font-mono font-bold text-emerald-700">@{deviceHandleResolved.username}</span>
                       <span className="text-[10px] text-slate-500 font-mono" title={deviceHandleResolved.address}>{fmtAddr(deviceHandleResolved.address)}</span>
                     </div>
-                    <button type="button" onClick={() => { setDeviceHandleResolved(null); setNewTerminalTag(''); setDeviceHandleError(null); setLinkTerminalError(null); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear"><X size={16} /></button>
+                    <button type="button" onClick={() => { setDeviceHandleResolved(null); setNewTerminalTag(''); setDeviceHandleError(null); setDeviceHandleSuggestions([]); setLinkTerminalError(null); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear"><X size={16} /></button>
                   </div>
                 ) : (
                   <div className="relative">
@@ -35333,6 +35528,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       onFocus={() => { deviceValidateAbortRef.current = true; }}
                       onKeyDown={(e) => e.key === 'Enter' && validateDeviceHandle(newTerminalTag)}
                       placeholder="@handle or 0x..."
+                      autoComplete="off"
                       className={`w-full rounded-2xl border bg-white py-3.5 pr-14 font-mono text-[15px] font-semibold text-slate-900 placeholder:text-slate-400 ${newTerminalTag.startsWith('0x') ? 'pl-4' : 'pl-9'} ${deviceHandleError ? 'border-rose-500 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/25' : `border-slate-200 ${bizFocusRingClass} focus:border-[#1562f0]`}`}
                     />
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -35353,6 +35549,42 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </>
                       )}
                     </div>
+                    {(deviceHandleSuggestions.length > 0 || deviceHandleSuggestionsLoading) ? (
+                      <ul className="absolute left-0 right-0 top-full z-20 mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white py-1 shadow-lg">
+                        {deviceHandleSuggestionsLoading && deviceHandleSuggestions.length === 0 ? (
+                          <li className="flex items-center gap-2 px-4 py-3 text-xs font-medium text-slate-500">
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                            Searching…
+                          </li>
+                        ) : null}
+                        {deviceHandleSuggestions.map((row) => {
+                          const tag = row.username ?? row.accountName ?? '';
+                          return (
+                            <li key={`${row.address}-${tag}`}>
+                              <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => selectDeviceHandleSuggestion(row)}
+                                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                              >
+                                <div className="size-10 shrink-0 overflow-hidden rounded-full bg-slate-100">
+                                  {row.image ? (
+                                    <IpfsImg src={row.image} alt="" className="size-full object-cover" />
+                                  ) : (
+                                    <IpfsImg src={getImg(tag)} alt="" className="size-full object-cover" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-bold text-slate-900">{walletSendDisplayName(row as searchResult)}</p>
+                                  <p className="truncate text-xs font-medium text-[#1562f0]">@{tag || '—'}</p>
+                                </div>
+                                <span className="shrink-0 font-mono text-[10px] text-slate-500">{walletSendShortAddr(row.address ?? '')}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
                   </div>
                 )}
               </div>

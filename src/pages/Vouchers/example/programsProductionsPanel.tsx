@@ -911,7 +911,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                 <div className="border-t border-[#ea580c]/10 bg-white/70 px-3 py-3 sm:px-4 sm:py-3.5">
                                   <div className="mb-2 flex items-center justify-between gap-2">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
-                                      Redeem codes
+                                      {tu('programs_catalog_redeem_codes_title')}
                                     </p>
                                     <div className="flex items-center gap-1.5">
                                       {productionRedeemStatusLoading && redeemRows.length > 0 ? (
@@ -1708,7 +1708,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     <div className="mb-3 grid grid-cols-2 gap-2">
                                       <div>
                                         <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#747779]">
-                                          Sessions
+                                          {tu('programs_catalog_package_sessions_label')}
                                         </label>
                                         <input
                                           type="number"
@@ -1727,7 +1727,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                       </div>
                                       <div>
                                         <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#747779]">
-                                          Bonus (+ free)
+                                          {tu('programs_catalog_package_bonus_label')}
                                         </label>
                                         <input
                                           type="number"

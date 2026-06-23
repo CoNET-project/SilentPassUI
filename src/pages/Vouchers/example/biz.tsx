@@ -32295,10 +32295,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             )}
                             <span>
                               {cardIssuanceCreateLoading
-                                ? 'Saving Tier Changes...'
+                                ? tu('programs_tier_saving')
                                 : cardIssuanceEditingTierId
-                                  ? 'Update Reward Tier'
-                                  : 'Create Reward Tier'}
+                                  ? tu('programs_tier_update')
+                                  : tu('programs_tier_create')}
                             </span>
                           </button>
                           {cardIssuanceEditingTierId && cardIssuanceEditingTierId !== CARD_ISSUANCE_SINGLE_TIER_ID ? (
@@ -32309,7 +32309,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-4 font-manrope text-sm font-bold text-[#b31b25] transition-colors hover:bg-[#fb5151]/12 ${bizFocusRingClass}`}
                             >
                               <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                              Remove Tier
+                              {tu('programs_tier_remove')}
                             </button>
                           ) : null}
                         </div>
@@ -33438,8 +33438,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      }`}
                                    >
                                      {discountPct > 0
-                                       ? `${Math.round(discountPct)}% DISCOUNT`
-                                       : 'Member pricing'}
+                                       ? tu('programs_overview_discount_pct', { pct: String(Math.round(discountPct)) })
+                                       : tu('programs_overview_member_pricing')}
                                    </p>
                                  </div>
                                </div>
@@ -33447,7 +33447,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            })
                          ) : (
                            <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
-                           No tier metadata on this card yet. Press + to define tiers. Changes are submitted immediately when you save.
+                           {tu('programs_tier_empty_hint')}
                            </div>
                          )}
                        </div>
@@ -38002,7 +38002,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         >
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Redeem Code Distribution</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">{tu('programs_share_redeem_title')}</p>
               <h2
                 id="coupon-redeem-share-qr-title"
                 className="mt-1 truncate font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31]"
@@ -38010,7 +38010,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 {cardIssuanceCouponRedeemShareRow.name}
               </h2>
               <p className="mt-1 text-xs font-medium text-[#595c5e]">
-                Share this URL or QR with the recipient. They can open it in the Beamio app to redeem this coupon.
+                {tu('programs_coupon_share_redeem_hint_long')}
               </p>
               <p className="mt-2 font-mono text-[11px] text-[#747779]">{cardIssuanceCouponRedeemShareOpen.code}</p>
             </div>
@@ -38018,7 +38018,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               type="button"
               onClick={closeCardIssuanceCouponRedeemShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="关闭"
+              aria-label={tu('programs_common_close')}
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>

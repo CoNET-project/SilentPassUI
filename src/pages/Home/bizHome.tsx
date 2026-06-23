@@ -328,7 +328,7 @@ const BizHome = () => {
 					>
 						<div className="flex max-w-lg flex-col items-center gap-4">
 							<div className="flex items-center gap-2">
-								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>Beamio 身份</span>
+								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>{tu('beamio_identity')}</span>
 							</div>
 							<div className="flex items-start gap-3 sm:items-center">
 								<div className="relative mt-1 flex h-2 w-2 shrink-0 sm:mt-0">
@@ -368,7 +368,7 @@ const BizHome = () => {
 				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-6 py-4">
 					<div className="flex items-center gap-2">
 						<Fingerprint className="h-5 w-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
-						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>BEAMIO 网关</span>
+						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>{tu('beamio_gateway')}</span>
 					</div>
 					<BizOnboardingLocalePicker />
 				</div>

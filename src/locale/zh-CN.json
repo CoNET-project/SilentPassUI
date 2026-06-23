@@ -555,6 +555,8 @@
     "type_a_secure_message": "输入安全消息…",
     "english": "English",
     "simplified_chinese": "简体中文",
+    "account_hub_language_sub": "Merchant OS 全部界面的显示语言，并同步至您的 Beamio 链上档案。",
+    "language_save_failed": "无法保存语言至链上档案，本次会话已临时切换显示语言。",
     "currency": "币种",
     "refresh_exchange_rate": "刷新汇率",
     "coinbase_oracle_2": "Coinbase 预言机",

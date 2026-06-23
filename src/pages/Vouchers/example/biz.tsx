@@ -36,6 +36,7 @@ import ChatList from '@/pages/chat/components/ChatList';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Settings editorial-only layout; re-wire or delete import if `<BeamioMeMainScreen />` is removed everywhere
 import { CATALOG_VIDEO_OG_BELOW_BANNER_ROW_UNPADDED_CLASSNAME } from '@/utils/catalogProductionVideoOg';
 import BeamioMeMainScreen from '@/components/Setting';
+import { BizAccountHubLanguageCard } from '@/components/Setting/BizAccountHubLanguageCard';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
 import { getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
@@ -767,6 +768,12 @@ function mergeDeviceHandleSuggestionPeers(
     if (out.length >= limit) return out;
   }
   return out;
+}
+
+function linkTerminalDeviceNameFromResolved(resolved: DeviceHandleResolvedState): string | null {
+  if (resolved.addressOnly) return null;
+  const tag = plainBeamioTagSeed(resolved.accountName ?? resolved.username);
+  return tag || null;
 }
 
 async function walletSendRetryRpc<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
@@ -19332,10 +19339,14 @@ useEffect(() => {
    if (!resolved?.address || !ethers.isAddress(resolved.address)) return;
    setDeviceHandleResolved(resolved);
    setNewTerminalTag(tag ? `@${plainBeamioTagSeed(tag)}` : resolved.address);
+   if (!terminalOnboardingEditing) {
+     const deviceName = linkTerminalDeviceNameFromResolved(resolved);
+     if (deviceName) setNewDeviceName(deviceName);
+   }
    setDeviceHandleError(null);
    setDeviceHandleSuggestions([]);
    setLinkTerminalError(null);
- }, []);
+ }, [terminalOnboardingEditing]);
 
  const validateDeviceHandle = useCallback(async (raw: string) => {
    const trimmed = raw.trim().replace(/^@/, '');
@@ -19366,6 +19377,10 @@ useEffect(() => {
        const resolved = deviceHandlePeerToResolved(match, trimmed, isAddressSearch);
        if (resolved) {
          setDeviceHandleResolved(resolved);
+         if (!terminalOnboardingEditing) {
+           const deviceName = linkTerminalDeviceNameFromResolved(resolved);
+           if (deviceName) setNewDeviceName(deviceName);
+         }
          setDeviceHandleError(null);
          setDeviceHandleSuggestions([]);
          return;
@@ -19400,7 +19415,7 @@ useEffect(() => {
    } finally {
      if (!deviceValidateAbortRef.current) setDeviceHandleChecking(false);
    }
- }, [searchRemoteAndIngest, searchLocalByTagPrefix]);
+ }, [searchRemoteAndIngest, searchLocalByTagPrefix, terminalOnboardingEditing]);
 
  useEffect(() => {
    if (terminalOnboardingEditing || deviceHandleResolved?.address) {
@@ -24208,7 +24223,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                        image: undefined,
                                      });
                                      setNewTerminalTag(`@${tagPlain}`);
-                                     setNewDeviceName(`POS ${tagPlain}`);
+                                     setNewDeviceName(tagPlain);
                                      setDeviceHandleError(null);
                                      setLinkTerminalError(null);
                                      setIsAddTerminalOpen(true);
@@ -24794,7 +24809,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       address: addr,
     },
     newTerminalTag: `@${tagPlain}`,
-    newDeviceName: `POS ${tagPlain}`,
+    newDeviceName: tagPlain,
     newTerminalMintLimit: '1000',
     terminalOnboardingReloadUnlimited: true,
     terminalOnboardingTopupMethods: { cash: true, bankCard: true, usdc: false, cadd: false, airdrop: false },
@@ -24880,7 +24895,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          image: undefined,
                        });
                        setNewTerminalTag(`@${tagPlain}`);
-                       setNewDeviceName(`POS ${tagPlain}`);
+                       setNewDeviceName(tagPlain);
                        setDeviceHandleError(null);
                        setLinkTerminalError(null);
                        setIsAddTerminalOpen(true);
@@ -34421,6 +34436,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                  <ChevronRight className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
                </button>
+
+               <BizAccountHubLanguageCard />
 
                <button
                  type="button"

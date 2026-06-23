@@ -555,6 +555,8 @@
     "type_a_secure_message": "Type a secure message…",
     "english": "English",
     "simplified_chinese": "Simplified Chinese",
+    "account_hub_language_sub": "Display language for all Merchant OS screens. Syncs to your Beamio profile.",
+    "language_save_failed": "Could not save language to profile. UI updated for this session only.",
     "currency": "Currency",
     "refresh_exchange_rate": "Refresh exchange rate",
     "coinbase_oracle_2": "Coinbase oracle",

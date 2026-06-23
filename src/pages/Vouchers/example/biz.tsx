@@ -428,7 +428,7 @@ import {
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
-import { tu } from '@/locale/beamioLocale'
+import { tu, useTu } from '@/locale/beamioLocale'
 import {
   CardConfiguratorMobileChrome,
   CardConfiguratorMobileFixedFooterPortal,
@@ -1947,6 +1947,26 @@ const LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS: ReadonlyArray<{ value: string; la
   { value: 'entertainment-leisure', label: 'Entertainment & Leisure' },
   { value: 'local-services', label: 'Local business' },
 ];
+
+const BIZ_CATEGORY_OPTION_I18N: Record<string, string> = {
+  'food-beverage': 'onb_cat_food_beverage',
+  'grocery-convenience': 'onb_cat_grocery',
+  'retail-shopping': 'onb_cat_retail',
+  'education-training': 'onb_cat_education',
+  'health-beauty': 'onb_cat_health_beauty',
+  'fitness-wellness': 'onb_cat_fitness',
+  'entertainment-leisure': 'onb_cat_entertainment',
+  'local-services': 'onb_cat_local_services',
+};
+
+function translateBizCategoryOption(
+  value: string,
+  fallback: string,
+  translate: (key: string) => string,
+): string {
+  const key = BIZ_CATEGORY_OPTION_I18N[value];
+  return key ? translate(key) : fallback;
+}
 
 /**
  * Mobile-only day-0 shell when the merchant profile has no AA yet — matches
@@ -11008,6 +11028,7 @@ function isAutoApprovePendingTerminalMerchantEoa(eoa: string | undefined | null)
 }
 
 export default function MerchantOS() {
+ const { tu } = useTu();
  const navigate = useNavigate();
  const location = useLocation();
  const isTerminalsMarketRoute =
@@ -34407,10 +34428,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
              {/* Settings hub — `newOnloading.html` (main: hero + bento + system architecture + footer) */}
              <section className="relative mb-10 mt-4">
-               <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.05em] text-[#0051d1]">Account Hub</p>
-               <h3 className="font-manrope text-3xl font-extrabold leading-tight tracking-tight text-slate-900">Configuration</h3>
+               <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-[0.05em] text-[#0051d1]">{tu('hub_account_hub')}</p>
+               <h3 className="font-manrope text-3xl font-extrabold leading-tight tracking-tight text-slate-900">{tu('hub_configuration')}</h3>
                <p className="mt-2 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                Welcome to Beamio Business OS. Complete your security protocol to unlock full operational features.
+                {tu('hub_welcome')}
                </p>
              </section>
 
@@ -34427,12 +34448,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                  <div className="min-w-0 flex-1">
                    <div className="flex items-center justify-between gap-2">
-                     <h3 className="font-bold text-slate-900">Business Profile</h3>
+                     <h3 className="font-bold text-slate-900">{tu('hub_business_profile')}</h3>
                      <span className="shrink-0 rounded-full bg-[#e5e9eb] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                       {businessProfileEoaResolved ? 'Ready' : 'Setup'}
+                       {businessProfileEoaResolved ? tu('hub_status_ready') : tu('hub_status_setup')}
                      </span>
                    </div>
-                   <p className="mt-1 text-xs text-[#595c5e]">Manage identity, address, and public info.</p>
+                   <p className="mt-1 text-xs text-[#595c5e]">{tu('hub_business_profile_sub')}</p>
                  </div>
                  <ChevronRight className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
                </button>
@@ -34453,12 +34474,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                  <div className="min-w-0 flex-1">
                    <div className="flex items-center justify-between gap-2">
-                     <h3 className="font-bold text-slate-900">Security &amp; Backup</h3>
+                     <h3 className="font-bold text-slate-900">{tu('hub_security_backup')}</h3>
                      <span className="shrink-0 rounded-full bg-[#b31b25] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                       Critical
+                       {tu('hub_status_critical')}
                      </span>
                    </div>
-                   <p className="mt-1 text-xs text-[#595c5e]">Manage recovery keys and credentials.</p>
+                   <p className="mt-1 text-xs text-[#595c5e]">{tu('hub_security_backup_sub')}</p>
                  </div>
                  <AlertTriangle className="size-5 shrink-0 text-[#b31b25]" strokeWidth={2} aria-hidden />
                </button>
@@ -34473,12 +34494,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                  <div className="min-w-0 flex-1">
                    <div className="flex items-center justify-between gap-2">
-                     <h3 className="font-bold text-slate-900">Team Access</h3>
+                     <h3 className="font-bold text-slate-900">{tu('hub_team_access')}</h3>
                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                       {terminals.length === 0 ? '0 Members' : `${terminals.length} Terminals`}
+                       {terminals.length === 0 ? tu('hub_zero_members') : tu('hub_terminals_count', { count: terminals.length })}
                      </span>
                    </div>
-                   <p className="mt-1 text-xs text-[#595c5e]">Manage staff roles and permissions.</p>
+                   <p className="mt-1 text-xs text-[#595c5e]">{tu('hub_team_access_sub')}</p>
                  </div>
                  <ChevronRight className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
                </button>
@@ -34497,40 +34518,40 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                  <div className="relative z-[1] min-w-0 flex-1">
                    <div className="flex flex-wrap items-center justify-between gap-2">
-                     <h3 className="font-bold text-white">Billing &amp; Quota</h3>
+                     <h3 className="font-bold text-white">{tu('hub_billing_quota')}</h3>
                      <div className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5">
                        <Coins className="size-3.5 shrink-0 text-white" strokeWidth={2} aria-hidden />
                        <span className="text-[10px] font-bold uppercase tracking-wider text-white">
                          {protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
-                           ? `${Number(protocolFuelReserveBalance).toFixed(2)} Bonus Units`
-                           : 'B-Units'}
+                           ? tu('hub_bonus_units', { amount: Number(protocolFuelReserveBalance).toFixed(2) })
+                           : tu('hub_b_units')}
                        </span>
                      </div>
                    </div>
-                   <p className="mt-1 text-xs text-white/80">Manage B-Units and payments.</p>
+                   <p className="mt-1 text-xs text-white/80">{tu('hub_billing_quota_sub')}</p>
                  </div>
                  <ChevronRight className="relative z-[1] size-5 shrink-0 text-white/50" strokeWidth={2} aria-hidden />
                </button>
              </div>
 
              <section className="mt-12">
-               <h4 className="mb-4 px-1 text-[0.65rem] font-bold uppercase tracking-[0.05em] text-slate-400">System Architecture</h4>
+               <h4 className="mb-4 px-1 text-[0.65rem] font-bold uppercase tracking-[0.05em] text-slate-400">{tu('hub_system_architecture')}</h4>
                <div className="grid grid-cols-2 gap-4 rounded-lg bg-[#eef1f3] p-4">
                  <div className="flex flex-col gap-2 rounded-2xl bg-white p-4">
                    <BarChart3 className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   <span className="text-xs font-bold text-slate-900">运营</span>
-                   <span className="text-[10px] font-medium text-[#595c5e]">Active Monitoring</span>
+                   <span className="text-xs font-bold text-slate-900">{tu('hub_operations')}</span>
+                   <span className="text-[10px] font-medium text-[#595c5e]">{tu('hub_active_monitoring')}</span>
                  </div>
                  <div className="flex flex-col gap-2 rounded-2xl bg-white p-4">
                    <Database className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                   <span className="text-xs font-bold text-slate-900">Data Storage</span>
-                   <span className="text-[10px] font-medium text-[#595c5e]">Cloud Sync On</span>
+                   <span className="text-xs font-bold text-slate-900">{tu('hub_data_storage')}</span>
+                   <span className="text-[10px] font-medium text-[#595c5e]">{tu('hub_cloud_sync_on')}</span>
                  </div>
                </div>
              </section>
 
              <footer className="mt-10 py-8 text-center">
-               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 opacity-50">End of Configuration Hub</p>
+               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 opacity-50">{tu('hub_end_of_hub')}</p>
              </footer>
 
              {settingsBusinessProfileOverlayOpen ? (
@@ -34541,7 +34562,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <button
                  type="button"
                  className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
-                 aria-label="Close business profile editor"
+                 aria-label={tu('hub_close_profile_editor')}
                  onClick={() => setSettingsBusinessProfileOverlayOpen(false)}
                />
                <div
@@ -34554,13 +34575,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                >
                  <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
                    <h2 id="biz-settings-profile-overlay-title" className="font-manrope text-lg font-bold tracking-tight text-slate-900">
-                     Business Profile
+                     {tu('hub_business_profile')}
                    </h2>
                    <button
                      type="button"
                      onClick={() => setSettingsBusinessProfileOverlayOpen(false)}
                      className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                     aria-label="关闭"
+                     aria-label={tu('hub_close')}
                    >
                      <X className="size-5" strokeWidth={2} aria-hidden />
                    </button>
@@ -34575,11 +34596,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <section>
                  <div className="mb-6 flex items-center gap-2">
                    <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
-                   <h4 className="font-manrope text-xl font-bold">Brand identity</h4>
+                   <h4 className="font-manrope text-xl font-bold">{tu('hub_brand_identity')}</h4>
                  </div>
                  <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
                    <div>
-                     <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400">Logo upload</label>
+                     <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400">{tu('hub_logo_upload')}</label>
                      <input
                        ref={settingsMerchantLogoFileRef}
                        type="file"
@@ -34602,7 +34623,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
                              )}
                              <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                               {settingsMerchantLogoUploading ? 'Uploading…' : 'Upload image (PNG, JPEG, or SVG)'}
+                               {settingsMerchantLogoUploading ? tu('hub_uploading') : tu('hub_upload_image')}
                              </span>
                            </button>
                          ) : (
@@ -34612,7 +34633,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <div
                                  className="absolute inset-0 flex items-center justify-center bg-black/35"
                                  aria-busy
-                                 aria-label="Uploading"
+                                 aria-label={tu('hub_uploading_aria')}
                                >
                                  <Loader2 className="h-8 w-8 animate-spin text-white" strokeWidth={2} aria-hidden />
                                </div>
@@ -34624,13 +34645,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  onClick={() => settingsMerchantLogoFileRef.current?.click()}
                                  className="rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-bold text-[#0051d1] shadow-sm ring-1 ring-black/5 transition hover:bg-white disabled:opacity-50"
                                >
-                                 Replace
+                                 {tu('hub_replace')}
                                </button>
                                {settingsMerchantLogoIsPersistedCustom ? (
                                  <button
                                    type="button"
                                    disabled={settingsMerchantLogoUploading}
-                                   aria-label="Remove merchant logo"
+                                   aria-label={tu('hub_remove_logo')}
                                    onClick={() => void handleSettingsMerchantLogoRemove()}
                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:opacity-50"
                                  >
@@ -34642,10 +34663,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          )}
                        </div>
                        <div className="min-w-0 flex-1">
-                         <p className="text-sm font-medium text-[#2c2f31]">Square SVG, PNG, or JPG</p>
+                         <p className="text-sm font-medium text-[#2c2f31]">{tu('hub_logo_format')}</p>
                          <p className="mt-1 text-xs text-[#595c5e]">
-                           Same pipeline as Card Configurator merchant logo: resized if needed, posted to IPFS, then saved to your Beamio
-                           profile. Recommended 512×512px.
+                           {tu('hub_logo_pipeline')}
                          </p>
                          {settingsMerchantLogoError ? (
                            <p className="mt-2 text-xs font-medium text-amber-700" role="alert">
@@ -34658,7 +34678,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-store-name">
-                         Store name
+                         {tu('hub_store_name')}
                        </label>
                        <input
                          id="biz-settings-store-name"
@@ -34666,36 +34686,36 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={settingsBusinessStoreNameInputValue}
                          onChange={(e) => patchBizBusinessProfile({ storeName: e.target.value })}
                          disabled={!businessProfileEoaResolved}
-                         placeholder="Your store name"
+                         placeholder={tu('hub_store_name_ph')}
                          autoComplete="organization"
                          className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                        />
                      </div>
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-beamiotag">
-                         BeamioTag
+                         {tu('hub_beamiotag')}
                        </label>
                        <input
                          id="biz-settings-beamiotag"
                          readOnly
                          type="text"
                          value={beamio?.accountName ? `@${beamio.accountName.replace(/^@/, '')}` : ''}
-                         placeholder="@your_handle"
+                         placeholder={tu('hub_beamiotag_ph')}
                          className="w-full cursor-not-allowed rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#595c5e] opacity-90"
                        />
                      </div>
                    </div>
                    <div>
-                     <label className="mb-4 block text-xs font-bold uppercase tracking-widest text-slate-400">Brand color</label>
+                     <label className="mb-4 block text-xs font-bold uppercase tracking-widest text-slate-400">{tu('hub_brand_color')}</label>
                      <div className="flex flex-wrap items-center gap-4">
-                       <button type="button" className="size-10 rounded-full bg-[#1562f0] ring-4 ring-[#1562f0]/20 ring-offset-2" aria-label="Primary blue" />
-                       <button type="button" className="size-8 rounded-full bg-[#8d3a8b] transition-transform hover:scale-110" aria-label="Tertiary purple" />
-                       <button type="button" className="size-8 rounded-full bg-[#1b7e4c] transition-transform hover:scale-110" aria-label="Green" />
-                       <button type="button" className="size-8 rounded-full bg-[#d14400] transition-transform hover:scale-110" aria-label="Orange" />
-                       <button type="button" className="size-8 rounded-full bg-[#2c2f31] transition-transform hover:scale-110" aria-label="Dark" />
+                       <button type="button" className="size-10 rounded-full bg-[#1562f0] ring-4 ring-[#1562f0]/20 ring-offset-2" aria-label={tu('hub_color_primary_blue')} />
+                       <button type="button" className="size-8 rounded-full bg-[#8d3a8b] transition-transform hover:scale-110" aria-label={tu('hub_color_tertiary_purple')} />
+                       <button type="button" className="size-8 rounded-full bg-[#1b7e4c] transition-transform hover:scale-110" aria-label={tu('hub_color_green')} />
+                       <button type="button" className="size-8 rounded-full bg-[#d14400] transition-transform hover:scale-110" aria-label={tu('hub_color_orange')} />
+                       <button type="button" className="size-8 rounded-full bg-[#2c2f31] transition-transform hover:scale-110" aria-label={tu('hub_color_dark')} />
                        <div className="mx-2 hidden h-8 w-px bg-slate-200 sm:block" aria-hidden />
                        <div className="flex items-center gap-2 rounded-full border border-[#abadaf]/20 bg-[#eef1f3] px-3 py-1.5">
-                         <span className="text-[10px] font-bold text-[#595c5e]">HEX</span>
+                         <span className="text-[10px] font-bold text-[#595c5e]">{tu('hub_hex')}</span>
                          <input
                            type="text"
                            value={businessProfileForm.brandHex ?? '#1562F0'}
@@ -34714,18 +34734,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <section>
                  <div className="mb-8 flex items-center gap-2">
                    <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
-                   <h4 className="font-manrope text-xl font-bold">Business biography</h4>
+                   <h4 className="font-manrope text-xl font-bold">{tu('hub_business_biography')}</h4>
                  </div>
                  <div className="rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
                    <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-public-bio">
-                     Public bio
+                     {tu('hub_public_bio')}
                    </label>
                    <textarea
                      id="biz-settings-public-bio"
                      value={businessProfileForm.publicBio ?? ''}
                      onChange={(e) => patchBizBusinessProfile({ publicBio: e.target.value })}
                      disabled={!businessProfileEoaResolved}
-                     placeholder="Share your store’s story with your customers..."
+                     placeholder={tu('hub_public_bio_ph')}
                      rows={5}
                      className={`min-h-[120px] w-full resize-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                    />
@@ -34735,12 +34755,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <section>
                  <div className="mb-8 flex items-center gap-2">
                    <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
-                   <h4 className="font-manrope text-xl font-bold">Business information</h4>
+                   <h4 className="font-manrope text-xl font-bold">{tu('hub_business_information')}</h4>
                  </div>
                  <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
                    <div>
                      <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-legal-name">
-                       Legal business name
+                       {tu('hub_legal_business_name')}
                      </label>
                      <input
                        id="biz-settings-legal-name"
@@ -34748,7 +34768,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        value={businessProfileForm.legalBusinessName ?? ''}
                        onChange={(e) => patchBizBusinessProfile({ legalBusinessName: e.target.value })}
                        disabled={!businessProfileEoaResolved}
-                       placeholder="Legal Name Inc."
+                       placeholder={tu('hub_legal_name_ph')}
                        autoComplete="organization"
                        className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                      />
@@ -34756,7 +34776,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-tax-id">
-                         Tax ID / GST number
+                         {tu('hub_tax_id')}
                        </label>
                        <input
                          id="biz-settings-tax-id"
@@ -34764,14 +34784,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={businessProfileForm.taxId ?? ''}
                          onChange={(e) => patchBizBusinessProfile({ taxId: e.target.value })}
                          disabled={!businessProfileEoaResolved}
-                         placeholder="123456789 RT0001"
+                         placeholder={tu('hub_tax_id_ph')}
                          autoComplete="off"
                          className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                        />
                      </div>
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-website">
-                         Website URL
+                         {tu('hub_website_url')}
                        </label>
                        <input
                          id="biz-settings-website"
@@ -34779,7 +34799,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={businessProfileForm.website ?? ''}
                          onChange={(e) => patchBizBusinessProfile({ website: e.target.value })}
                          disabled={!businessProfileEoaResolved}
-                         placeholder="https://www.yourbrand.ca"
+                         placeholder={tu('hub_website_ph')}
                          autoComplete="url"
                          className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                        />
@@ -34791,12 +34811,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <section>
                  <div className="mb-8 flex items-center gap-2">
                    <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
-                   <h4 className="font-manrope text-xl font-bold">Location details</h4>
+                   <h4 className="font-manrope text-xl font-bold">{tu('hub_location_details')}</h4>
                  </div>
                  <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
                    <div>
                      <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-street">
-                       Street address
+                       {tu('hub_street_address')}
                      </label>
                      <input
                        id="biz-settings-street"
@@ -34804,7 +34824,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        value={businessProfileForm.streetAddress ?? ''}
                        onChange={(e) => patchBizBusinessProfile({ streetAddress: e.target.value })}
                        disabled={!businessProfileEoaResolved}
-                       placeholder="123 Barista Lane"
+                       placeholder={tu('hub_street_ph')}
                        autoComplete="street-address"
                        className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                      />
@@ -34812,7 +34832,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-city">
-                         City
+                         {tu('onb_city')}
                        </label>
                        <input
                          id="biz-settings-city"
@@ -34820,14 +34840,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={businessProfileForm.city ?? ''}
                          onChange={(e) => patchBizBusinessProfile({ city: e.target.value })}
                          disabled={!businessProfileEoaResolved}
-                         placeholder="Toronto"
+                         placeholder={tu('onb_city_ph')}
                          autoComplete="address-level2"
                          className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                      />
                      </div>
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-postal">
-                         Postal code
+                         {tu('hub_postal_code')}
                        </label>
                        <input
                          id="biz-settings-postal"
@@ -34835,7 +34855,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={businessProfileForm.postalCode ?? ''}
                          onChange={(e) => patchBizBusinessProfile({ postalCode: e.target.value })}
                          disabled={!businessProfileEoaResolved}
-                         placeholder="M5V 2L1"
+                         placeholder={tu('hub_postal_ph')}
                          autoComplete="postal-code"
                          className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                        />
@@ -34844,7 +34864,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-province">
-                         Province
+                         {tu('onb_province')}
                        </label>
                        <div className="relative">
                          <select
@@ -34855,7 +34875,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
                          >
                            <option value="">
-                             {businessProfileForm.country ? 'Select province / state' : 'Select country first'}
+                             {businessProfileForm.country ? tu('hub_select_province') : tu('onb_select_country_first')}
                            </option>
                            {businessProfileProvinceOptions.map((opt) => (
                              <option key={opt.value} value={opt.value}>
@@ -34868,7 +34888,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-country">
-                         Country
+                         {tu('onb_country')}
                        </label>
                        <div className="relative">
                          <select
@@ -34881,12 +34901,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            disabled={!businessProfileEoaResolved}
                            className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
                          >
-                           <option value="">Select country</option>
-                           <option value="CA">Canada</option>
-                           <option value="US">United States</option>
-                           <option value="GB">United Kingdom</option>
-                           <option value="AU">Australia</option>
-                           <option value="DE">Germany</option>
+                           <option value="">{tu('onb_select_country')}</option>
+                           <option value="CA">{tu('onb_country_ca')}</option>
+                           <option value="US">{tu('onb_country_us')}</option>
+                           <option value="GB">{tu('onb_country_gb')}</option>
+                           <option value="AU">{tu('onb_country_au')}</option>
+                           <option value="DE">{tu('onb_country_de')}</option>
                          </select>
                          <Globe className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
                        </div>
@@ -34898,12 +34918,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <section>
                  <div className="mb-8 flex items-center gap-2">
                    <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
-                   <h4 className="font-manrope text-xl font-bold">Contact &amp; preferences</h4>
+                   <h4 className="font-manrope text-xl font-bold">{tu('hub_contact_preferences')}</h4>
                  </div>
                  <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
                    <div>
                      <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-support-email-2">
-                       Support email
+                       {tu('hub_support_email')}
                      </label>
                      <input
                        id="biz-settings-support-email-2"
@@ -34911,7 +34931,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        value={businessProfileForm.supportEmail ?? ''}
                        onChange={(e) => patchBizBusinessProfile({ supportEmail: e.target.value })}
                        disabled={!businessProfileEoaResolved}
-                       placeholder="support@yourbrand.ca"
+                       placeholder={tu('hub_support_email_ph')}
                        autoComplete="email"
                        className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                      />
@@ -34919,7 +34939,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-category">
-                         Business category
+                         {tu('onb_business_category')}
                        </label>
                        <div className="relative">
                          <select
@@ -34929,7 +34949,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            disabled={!businessProfileEoaResolved}
                            className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
                          >
-                           <option value="">Select category</option>
+                           <option value="">{tu('onb_select_category')}</option>
                            {(businessProfileForm.category ?? '').trim() &&
                            !LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS.some(
                              (o) => o.value === (businessProfileForm.category ?? '').trim()
@@ -34940,7 +34960,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            ) : null}
                            {LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS.map((o) => (
                              <option key={o.value} value={o.value}>
-                               {o.label}
+                               {translateBizCategoryOption(o.value, o.label, tu)}
                              </option>
                            ))}
                          </select>
@@ -34949,7 +34969,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-timezone">
-                         Timezone
+                         {tu('hub_timezone')}
                        </label>
                        <div className="relative">
                          <select
@@ -34959,9 +34979,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            disabled={!businessProfileEoaResolved}
                            className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
                          >
-                           <option value="ET">(GMT-05:00) Eastern time</option>
-                           <option value="PT">(GMT-08:00) Pacific time</option>
-                           <option value="GMT">(GMT+00:00) London</option>
+                           <option value="ET">{tu('hub_tz_et')}</option>
+                           <option value="PT">{tu('hub_tz_pt')}</option>
+                           <option value="GMT">{tu('hub_tz_gmt')}</option>
                          </select>
                          <CalendarDays className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
                        </div>
@@ -34973,18 +34993,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <section>
                  <div className="mb-8 flex items-center gap-2">
                    <div className="h-6 w-1 rounded-full bg-[#0051d1]" />
-                   <h4 className="font-manrope text-xl font-bold">Internal documentation</h4>
+                   <h4 className="font-manrope text-xl font-bold">{tu('hub_internal_documentation')}</h4>
                  </div>
                  <div className="rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
                    <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-merchant-remarks">
-                     Merchant remarks
+                     {tu('hub_merchant_remarks')}
                    </label>
                    <textarea
                      id="biz-settings-merchant-remarks"
                      value={businessProfileForm.merchantRemarks ?? ''}
                      onChange={(e) => patchBizBusinessProfile({ merchantRemarks: e.target.value })}
                      disabled={!businessProfileEoaResolved}
-                     placeholder="Add internal notes or business reference information here (not visible to customers)"
+                     placeholder={tu('hub_merchant_remarks_ph')}
                      rows={5}
                      className={`min-h-[120px] w-full resize-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
                    />
@@ -34999,7 +35019,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    className="group relative w-full overflow-hidden rounded-full bg-[#0051d1] py-5 font-manrope text-lg font-bold text-white shadow-[0_20px_40px_rgba(21,98,240,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98]"
                  >
                    <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
-                   <span className="relative z-10">Save changes</span>
+                   <span className="relative z-10">{tu('hub_save_changes')}</span>
                  </button>
                  
                </div>
@@ -35035,12 +35055,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         setSettingsSecurityBackupOpen(false);
                       }}
                       className={`${bizFocusRingClass} flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-all hover:bg-slate-100 active:scale-95`}
-                      aria-label={settingsPrivateKeyRevealOpen ? 'Back to Security & Backup' : 'Back to Settings'}
+                      aria-label={settingsPrivateKeyRevealOpen ? tu('hub_back_to_security') : tu('hub_back_to_settings')}
                     >
                       <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
                     </button>
                     <h1 className="font-manrope text-lg font-bold text-[#0051d1]">
-                      {settingsPrivateKeyRevealOpen ? 'Security & Backup' : 'Settings'}
+                      {settingsPrivateKeyRevealOpen ? tu('hub_security_backup') : tu('settings')}
                     </h1>
                   </div>
                 </header>
@@ -35057,15 +35077,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <section className="mb-10">
                     <div className="mb-6">
                       <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[#0051d1]">
-                        Security Infrastructure
+                        {tu('hub_security_infrastructure')}
                       </span>
                       <h2 id="biz-settings-security-backup-title" className="font-manrope mb-4 text-3xl font-extrabold tracking-tight text-[#2c2f31]">
-                        Non-Custodial Shield
+                        {tu('hub_non_custodial_shield')}
                       </h2>
                       <div className="relative overflow-hidden rounded-lg bg-[#eef1f3] p-6">
                         <div className="relative z-10">
                           <p className="text-sm leading-relaxed text-[#595c5e]">
-                            You are in full control of your assets. Business Lite does not store your private keys on our servers. Your security is entirely local and protected by your recovery phrase.
+                            {tu('hub_non_custodial_body')}
                           </p>
                         </div>
                         <div className="absolute -bottom-8 -right-8 h-32 w-32 rounded-full bg-[#0051d1]/5 blur-3xl" aria-hidden />
@@ -35079,15 +35099,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d8e3fb]">
                           <AlertTriangle className="h-6 w-6 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
                         </div>
-                        <h3 className="font-manrope mb-2 text-xl font-bold text-[#2c2f31]">View Recovery Key</h3>
+                        <h3 className="font-manrope mb-2 text-xl font-bold text-[#2c2f31]">{tu('hub_view_recovery_key')}</h3>
                         <p className="mb-6 text-xs leading-relaxed text-[#595c5e]">
-                          Access your 24-word phrase. Essential for account restoration if your device is lost.
+                          {tu('hub_view_recovery_key_sub')}
                         </p>
                         <button
                           type="button"
                           className={`${bizFocusRingClass} mt-auto flex items-center justify-center gap-2 rounded-full bg-[#0051d1] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0047b8]`}
                         >
-                          Reveal Phrase
+                          {tu('hub_reveal_phrase')}
                           <Shield className="h-4 w-4" strokeWidth={2} aria-hidden />
                         </button>
                       </div>
@@ -35098,15 +35118,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d8e3fb]">
                           <QrCode className="h-6 w-6 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
                         </div>
-                        <h3 className="font-manrope mb-2 text-xl font-bold text-[#2c2f31]">Rotate Recovery QR</h3>
+                        <h3 className="font-manrope mb-2 text-xl font-bold text-[#2c2f31]">{tu('hub_rotate_recovery_qr')}</h3>
                         <p className="mb-6 text-xs leading-relaxed text-[#595c5e]">
-                          Update your encrypted backup QR code to maintain current security standards.
+                          {tu('hub_rotate_recovery_qr_sub')}
                         </p>
                         <button
                           type="button"
                           className={`${bizFocusRingClass} mt-auto flex items-center justify-center gap-2 rounded-full bg-[#eef1f3] px-6 py-3 text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#dfe3e6]`}
                         >
-                          Generate New
+                          {tu('hub_generate_new')}
                           <RefreshCw className="h-4 w-4" strokeWidth={2} aria-hidden />
                         </button>
                       </div>
@@ -35117,11 +35137,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div className="max-w-md">
                           <div className="mb-2 flex items-center gap-2 text-sm font-bold tracking-wide text-[#b31b25]">
                             <AlertTriangle className="h-5 w-5 fill-[#b31b25]/10 text-[#b31b25]" strokeWidth={2.25} aria-hidden />
-                            DANGER ZONE
+                            {tu('hub_danger_zone')}
                           </div>
-                          <h3 className="font-manrope mb-2 text-xl font-extrabold text-[#2c2f31]">Master Private Key</h3>
+                          <h3 className="font-manrope mb-2 text-xl font-extrabold text-[#2c2f31]">{tu('hub_master_private_key')}</h3>
                           <p className="text-xs leading-relaxed text-[#595c5e]">
-                            Viewing your raw master key is extremely dangerous. This key provides absolute control over all sub-accounts and funds. Never share this with anyone, including support.
+                            {tu('hub_master_private_key_sub')}
                           </p>
                         </div>
                         <button
@@ -35129,7 +35149,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           onClick={() => setSettingsPrivateKeyRevealOpen(true)}
                           className={`${bizFocusRingClass} w-full rounded-full bg-[#b31b25] px-8 py-4 text-sm font-bold uppercase tracking-widest text-white shadow-lg shadow-[#b31b25]/20 transition-colors hover:bg-[#9f0519] md:w-auto`}
                         >
-                          Export Master Key
+                          {tu('hub_export_master_key')}
                         </button>
                       </div>
                       <div className="mt-6 flex items-center justify-between gap-3 border-t border-[#b31b25]/10 pt-4">
@@ -35141,7 +35161,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
                             />
                           ) : (
-                            <span className="text-xs font-medium text-[#595c5e]">Unavailable</span>
+                            <span className="text-xs font-medium text-[#595c5e]">{tu('hub_unavailable')}</span>
                           )}
                         </div>
                         <div className="flex min-w-0 justify-end">
@@ -35152,7 +35172,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               leadingIcon={<Hexagon className="h-3.5 w-3.5 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />}
                             />
                           ) : (
-                            <span className="text-xs font-medium text-[#595c5e]">Unavailable</span>
+                            <span className="text-xs font-medium text-[#595c5e]">{tu('hub_unavailable')}</span>
                           )}
                         </div>
                       </div>
@@ -35165,9 +35185,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <ShieldCheck className="h-10 w-10 text-white" strokeWidth={2.25} aria-hidden />
                       </div>
                       <div>
-                        <h4 className="font-manrope mb-1 text-lg font-bold">Ownership Verified</h4>
+                        <h4 className="font-manrope mb-1 text-lg font-bold">{tu('hub_ownership_verified')}</h4>
                         <p className="text-sm leading-relaxed text-[#d8e3fb] opacity-90">
-                          Your device holds the unique cryptographic signature for this business wallet. Security level: Enterprise-Grade.
+                          {tu('hub_ownership_verified_sub')}
                         </p>
                       </div>
                     </div>

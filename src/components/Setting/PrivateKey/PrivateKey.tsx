@@ -4,6 +4,7 @@ import { Eye, EyeOff, Copy, Check, AlertTriangle } from 'lucide-react'
 import { AppButton } from '@/components/button/AppButton'
 import { restoreWithUserPin } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { useTu } from '@/locale/beamioLocale'
 
 type Props = {
   privateKey: string // 仍保留：可作为 fallback，但真正展示以解锁后的为准
@@ -16,6 +17,7 @@ function maskKey(s: string) {
 }
 
 export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
+  const { tu } = useTu()
   const { beamio, profiles } = useDaemonContext()
 
   const [step, setStep] = useState<'locked' | 'revealed'>('locked')
@@ -48,11 +50,11 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
   const getPrivatekey = async () => {
     setErrorText('')
     if (!beamio?.accountName) {
-      setErrorText('Account not ready.')
+      setErrorText(tu('hub_pk_account_not_ready'))
       return null
     }
     if (!profiles?.[0]?.privateKeyArmor) {
-      setErrorText('No local key found.')
+      setErrorText(tu('hub_pk_no_local_key'))
       return null
     }
 
@@ -60,7 +62,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
     try {
       const ok = await restoreWithUserPin(beamio.accountName, password)
       if (!ok) {
-        setErrorText('Wrong password. Please try again.')
+        setErrorText(tu('hub_pk_wrong_password'))
         return null
       }
 
@@ -68,7 +70,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
       const ret = profiles[0].privateKeyArmor.replace(/^0x/i, '')
       return ret
     } catch (e: any) {
-      setErrorText(e?.message || 'Failed to verify password.')
+      setErrorText(e?.message || tu('hub_pk_verify_failed'))
       return null
     } finally {
       setLoading(false)
@@ -87,9 +89,9 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
   }
 
   const keyText = useMemo(() => {
-    if (!displayedKey) return 'No private key found.'
+    if (!displayedKey) return tu('hub_pk_no_key_found')
     return keyVisible ? displayedKey : maskKey(displayedKey)
-  }, [displayedKey, keyVisible])
+  }, [displayedKey, keyVisible, tu])
 
   return (
     <div className="w-full bg-transparent">
@@ -99,10 +101,10 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
             {/* Danger Zone */}
             <div>
               <div className="text-[30px] font-extrabold tracking-[-0.02em] text-red-600">
-                Danger Zone
+                {tu('hub_pk_danger_zone')}
               </div>
               <div className="mt-2 text-[16px] text-slate-500 leading-relaxed">
-                Never share your private key. Anyone with this key can steal your funds.
+                {tu('hub_pk_danger_sub')}
               </div>
             </div>
 
@@ -129,7 +131,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                     void revealPrivateKey()
                   }}
                   type={pwVisible ? 'text' : 'password'}
-                  placeholder="Enter Wallet Password"
+                  placeholder={tu('hub_pk_password_ph')}
                   className="
                     w-full bg-transparent outline-none
                     text-[18px] font-semibold text-slate-900
@@ -148,7 +150,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                     active:scale-95
                     transition
                   "
-                  aria-label={pwVisible ? '隐藏密码' : '显示密码'}
+                  aria-label={pwVisible ? tu('hide_password') : tu('show_password')}
                 >
                   {pwVisible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
@@ -174,7 +176,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                   rounded-2xl h-14 text-[18px]
                 `}
               >
-                Reveal Key
+                {tu('hub_pk_reveal_key')}
               </AppButton>
             </div>
 
@@ -189,11 +191,11 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
               </div>
 
               <div className="mt-6 font-manrope text-3xl font-extrabold leading-tight tracking-tight text-slate-900">
-                Handle with Care
+                {tu('hub_pk_handle_care')}
               </div>
 
               <div className="mt-2 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                Beamio cannot undo the exposure of your private key.
+                {tu('hub_pk_handle_sub')}
               </div>
             </div>
 
@@ -219,7 +221,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                     shadow-[0_10px_24px_rgba(239,68,68,0.20)]
                   "
                 >
-                  UNENCRYPTED
+                  {tu('hub_pk_unencrypted')}
                 </div>
 
                 <div className="flex items-start gap-4">
@@ -248,8 +250,8 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                       active:scale-95
                       transition
                     "
-                    aria-label={keyVisible ? 'Hide key' : 'Show key'}
-                    title={keyVisible ? 'Hide' : 'Show'}
+                    aria-label={keyVisible ? tu('hub_pk_hide_key') : tu('hub_pk_show_key')}
+                    title={keyVisible ? tu('hub_pk_hide') : tu('hub_pk_show')}
                   >
                     {keyVisible ? <EyeOff className="h-6 w-6" /> : <Eye className="h-6 w-6" />}
                   </button>
@@ -279,7 +281,7 @@ export default function PrivateKeyReveal({ privateKey, onClose }: Props) {
                   )
                 }
               >
-                {copied ? '已复制' : 'Copy to Clipboard'}
+                {copied ? tu('hub_pk_copied') : tu('hub_pk_copy_clipboard')}
               </AppButton>
             </div>
           </>

@@ -11,11 +11,17 @@ export type BeamioLocalePickerProps = {
 	onSelect: (next: BeamioUiLocale) => void | Promise<void>
 	disabled?: boolean
 	saving?: boolean
+	/** Globe-only circular trigger (collapsed sidebar). */
+	iconOnly?: boolean
+	/** Hide leading Globe on pill trigger (sidebar row supplies its own icon). */
+	showGlobeIcon?: boolean
 	/** Align dropdown to trailing edge (onboarding top-right). */
 	menuAlign?: 'left' | 'right'
 }
 
 const TRIGGER_CLASS = `inline-flex h-10 items-center gap-1.5 rounded-full border border-[#abadaf]/35 bg-white/90 px-3 text-xs font-semibold text-[#595c5e] shadow-sm transition-colors hover:bg-[#eef1f3] active:scale-95 ${bizBrandFocusRingClass}`
+
+const ICON_ONLY_TRIGGER_CLASS = `inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#abadaf]/35 bg-white/90 text-[#595c5e] shadow-sm transition-colors hover:bg-[#eef1f3] active:scale-95 ${bizBrandFocusRingClass}`
 
 /** Business Lite locale dropdown — Globe + short label + chevron (onboarding / Configuration). */
 export function BeamioLocalePicker({
@@ -23,6 +29,8 @@ export function BeamioLocalePicker({
 	onSelect,
 	disabled = false,
 	saving = false,
+	iconOnly = false,
+	showGlobeIcon = true,
 	menuAlign = 'right',
 }: BeamioLocalePickerProps) {
 	const { tu } = useTu()
@@ -62,19 +70,23 @@ export function BeamioLocalePicker({
 				aria-expanded={open}
 				disabled={isDisabled}
 				onClick={() => setOpen((v) => !v)}
-				className={TRIGGER_CLASS}
+				className={iconOnly ? ICON_ONLY_TRIGGER_CLASS : TRIGGER_CLASS}
 			>
 				{saving ? (
 					<Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
-				) : (
+				) : showGlobeIcon || iconOnly ? (
 					<Globe className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-				)}
-				<span>{locale === 'zh-CN' ? '中文' : 'EN'}</span>
-				<ChevronDown
-					className={`h-3.5 w-3.5 shrink-0 text-[#747779] transition-transform ${open ? 'rotate-180' : ''}`}
-					strokeWidth={2.5}
-					aria-hidden
-				/>
+				) : null}
+				{!iconOnly ? (
+					<>
+						<span>{locale === 'zh-CN' ? '中文' : 'EN'}</span>
+						<ChevronDown
+							className={`h-3.5 w-3.5 shrink-0 text-[#747779] transition-transform ${open ? 'rotate-180' : ''}`}
+							strokeWidth={2.5}
+							aria-hidden
+						/>
+					</>
+				) : null}
 			</button>
 			{open ? (
 				<div

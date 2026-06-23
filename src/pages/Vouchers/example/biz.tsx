@@ -37,6 +37,7 @@ import ChatList from '@/pages/chat/components/ChatList';
 import { CATALOG_VIDEO_OG_BELOW_BANNER_ROW_UNPADDED_CLASSNAME } from '@/utils/catalogProductionVideoOg';
 import BeamioMeMainScreen from '@/components/Setting';
 import { BizAccountHubLanguageCard } from '@/components/Setting/BizAccountHubLanguageCard';
+import { BizSidebarLanguageNav } from '@/components/locale/BizSidebarLanguageNav';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
 import { getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
@@ -25098,6 +25099,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
          />
          <NavItem icon={Settings} label={tu('settings')} isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <BizSidebarLanguageNav collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
        </nav>
 
        <div className="mt-auto px-3 pb-4 pt-2">

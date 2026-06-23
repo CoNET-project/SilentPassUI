@@ -19423,6 +19423,20 @@ useEffect(() => {
    myAddress,
  ]);
 
+ /** Link New Terminal: show name / limits / top-up fields only after POS tag or EOA resolves cleanly. */
+ const linkTerminalPosVerified = useMemo(() => {
+   if (terminalOnboardingEditing) return true;
+   const addr = deviceHandleResolved?.address;
+   if (!addr || !ethers.isAddress(addr) || deviceHandleChecking) return false;
+   if (terminalPosSubordinateBlock) return false;
+   return true;
+ }, [
+   terminalOnboardingEditing,
+   deviceHandleResolved,
+   deviceHandleChecking,
+   terminalPosSubordinateBlock,
+ ]);
+
  const merchant = profiles?.[0]?.keyID ?? myAddress;
  const adminCandidateAddresses = [
    profiles?.[0]?.keyID,
@@ -35033,7 +35047,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              <div className="space-y-2.5 sm:space-y-3">
                <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#595c5e] sm:text-xs">
                  <Fingerprint className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                 Soft-POS identity
+                 Terminal Beamio Tag / EOA Address
                </label>
                <div className="relative">
                  {!newTerminalTag.startsWith('0x') && (
@@ -35123,6 +35137,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                ) : null}
              </div>
 
+             {linkTerminalPosVerified ? (
+               <>
              <div className="space-y-2.5 sm:space-y-3">
                <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#595c5e] sm:text-xs">
                  <MonitorSmartphone className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
@@ -35256,6 +35272,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </>
                )}
              </button>
+               </>
+             ) : null}
            </div>
          </main>
        </div>
@@ -35283,6 +35301,70 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 </p>
               </div>
 
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2">Terminal Beamio Tag / EOA Address</label>
+                {deviceHandleResolved && deviceHandleResolved.address ? (
+                  <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                    <IpfsImg src={deviceHandleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${deviceHandleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-emerald-200 object-cover" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono font-bold text-emerald-700">@{deviceHandleResolved.username}</span>
+                      <span className="text-[10px] text-slate-500 font-mono" title={deviceHandleResolved.address}>{fmtAddr(deviceHandleResolved.address)}</span>
+                    </div>
+                    <button type="button" onClick={() => { setDeviceHandleResolved(null); setNewTerminalTag(''); setDeviceHandleError(null); setLinkTerminalError(null); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear"><X size={16} /></button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    {!newTerminalTag.startsWith('0x') && (
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
+                    )}
+                    <input
+                      type="text"
+                      value={newTerminalTag}
+                      onChange={(e) => {
+                        setNewTerminalTag(e.target.value);
+                        setDeviceHandleResolved(null);
+                        setDeviceHandleError(null);
+                        setLinkTerminalError(null);
+                      }}
+                      onBlur={() => {
+                        deviceValidateAbortRef.current = false;
+                        validateDeviceHandle(newTerminalTag);
+                      }}
+                      onFocus={() => { deviceValidateAbortRef.current = true; }}
+                      onKeyDown={(e) => e.key === 'Enter' && validateDeviceHandle(newTerminalTag)}
+                      placeholder="@handle or 0x..."
+                      className={`w-full rounded-2xl border bg-white py-3.5 pr-14 font-mono text-[15px] font-semibold text-slate-900 placeholder:text-slate-400 ${newTerminalTag.startsWith('0x') ? 'pl-4' : 'pl-9'} ${deviceHandleError ? 'border-rose-500 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/25' : `border-slate-200 ${bizFocusRingClass} focus:border-[#1562f0]`}`}
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {deviceHandleChecking ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                      ) : (
+                        <>
+                          {deviceHandleError && <span className="text-rose-500 text-xs font-medium">{deviceHandleError}</span>}
+                          <button
+                            type="button"
+                            onClick={() => validateDeviceHandle(newTerminalTag)}
+                            className="p-2 rounded-lg hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 transition-colors"
+                            title="Search"
+                            aria-label="Search handle"
+                          >
+                            <Search className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {terminalPosSubordinateBlock && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[13px] font-medium text-rose-700">
+                  {terminalPosSubordinateBlock}
+                </div>
+              )}
+
+              {linkTerminalPosVerified ? (
+                <>
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2">Device Name</label>
                 <input
@@ -35375,76 +35457,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 mb-2">Terminal Beamio Tag / EOA Address</label>
-                {deviceHandleResolved && deviceHandleResolved.address ? (
-                  <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
-                    <IpfsImg src={deviceHandleResolved.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${deviceHandleResolved.username}`} alt="" className="w-8 h-8 rounded-full border border-emerald-200 object-cover" />
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-mono font-bold text-emerald-700">@{deviceHandleResolved.username}</span>
-                      <span className="text-[10px] text-slate-500 font-mono" title={deviceHandleResolved.address}>{fmtAddr(deviceHandleResolved.address)}</span>
-                    </div>
-                    <button type="button" onClick={() => { setDeviceHandleResolved(null); setNewTerminalTag(''); setDeviceHandleError(null); }} className="ml-auto p-1 rounded-lg hover:bg-emerald-100 text-emerald-600" aria-label="Clear"><X size={16} /></button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    {!newTerminalTag.startsWith('0x') && (
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
-                    )}
-                    <input
-                      type="text"
-                      value={newTerminalTag}
-                      onChange={(e) => {
-                        setNewTerminalTag(e.target.value);
-                        setDeviceHandleResolved(null);
-                        setDeviceHandleError(null);
-                        setLinkTerminalError(null);
-                      }}
-                      onBlur={() => {
-                        deviceValidateAbortRef.current = false;
-                        validateDeviceHandle(newTerminalTag);
-                      }}
-                      onFocus={() => { deviceValidateAbortRef.current = true; }}
-                      onKeyDown={(e) => e.key === 'Enter' && validateDeviceHandle(newTerminalTag)}
-                      placeholder="@handle or 0x..."
-                      className={`w-full rounded-2xl border bg-white py-3.5 pr-14 font-mono text-[15px] font-semibold text-slate-900 placeholder:text-slate-400 ${newTerminalTag.startsWith('0x') ? 'pl-4' : 'pl-9'} ${deviceHandleError ? 'border-rose-500 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/25' : `border-slate-200 ${bizFocusRingClass} focus:border-[#1562f0]`}`}
-                    />
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                      {deviceHandleChecking ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                      ) : (
-                        <>
-                          {deviceHandleError && <span className="text-rose-500 text-xs font-medium">{deviceHandleError}</span>}
-                          <button
-                            type="button"
-                            onClick={() => validateDeviceHandle(newTerminalTag)}
-                            className="p-2 rounded-lg hover:bg-slate-200/80 text-slate-500 hover:text-slate-700 transition-colors"
-                            title="Search"
-                            aria-label="Search handle"
-                          >
-                            <Search className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {linkTerminalError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[13px] font-medium text-rose-700">
                   {linkTerminalError}
                 </div>
               )}
-              {terminalPosSubordinateBlock && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[13px] font-medium text-rose-700">
-                  {terminalPosSubordinateBlock}
-                </div>
-              )}
+                </>
+              ) : null}
 
             </div>
 
 
+            {linkTerminalPosVerified ? (
             <button
               onClick={() => void handleLinkTerminalRegistration('modal')}
               disabled={
@@ -35465,6 +35489,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <>Registration Device <ArrowRight size={18}/></>
               )}
             </button>
+            ) : null}
          </div>
        </div>
      ) : null}

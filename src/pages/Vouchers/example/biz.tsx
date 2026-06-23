@@ -8430,15 +8430,27 @@ function formatRegistryApiRowChannel(m: { usedNfc: boolean; usedApp: boolean }):
 
 const MEMBER_REGISTRY_PAGE_SIZE = 20;
 
-/** 地址胶囊：短缩地址 + 右侧 copy 图标，点击复制到剪贴板，成功后显示绿色 check */
+const BEAMIO_CONET_BLOCKSCOUT_ADDRESS_BASE = 'https://scan.conet.network/address' as const;
+
+function beamioConetBlockscoutAddressUrl(rawAddress: string): string | null {
+  try {
+    return `${BEAMIO_CONET_BLOCKSCOUT_ADDRESS_BASE}/${ethers.getAddress(rawAddress)}`;
+  } catch {
+    return null;
+  }
+}
+
+/** 地址胶囊：短缩地址 + 右侧 copy 图标；可选 `explorerUrl` 时点击地址在新标签打开浏览器 */
 const AddressCapsule = ({
   address,
   className = '',
   leadingIcon,
+  explorerUrl,
 }: {
   address: string;
   className?: string;
   leadingIcon?: React.ReactNode;
+  explorerUrl?: string | null;
 }) => {
   const [copied, setCopied] = useState(false);
   const short = fmtAddr(address);
@@ -8452,12 +8464,42 @@ const AddressCapsule = ({
       // ignore
     }
   }, [address]);
+  const shellClass = `inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full font-mono text-[11px] font-semibold border transition-colors ${className}`;
+  if (explorerUrl) {
+    return (
+      <div className={shellClass}>
+        {leadingIcon ? <span className="shrink-0">{leadingIcon}</span> : null}
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 truncate hover:underline"
+          aria-label="View contract on CoNET Blockscout (opens in new tab)"
+        >
+          {short}
+        </a>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void handleCopy();
+          }}
+          className="shrink-0 opacity-70 transition-opacity hover:opacity-100"
+          aria-label="Copy address"
+          title="Copy address"
+        >
+          {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+        </button>
+      </div>
+    );
+  }
   return (
     <button
       type="button"
       onClick={handleCopy}
-      className={`inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full font-mono text-[11px] font-semibold border transition-colors ${className}`}
-      title="复制地址"
+      className={shellClass}
+      title="Copy address"
     >
       {leadingIcon ? <span className="shrink-0">{leadingIcon}</span> : null}
       <span className="truncate">{short}</span>
@@ -32509,21 +32551,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              {tu('programs_overview_contract')}
                            </span>
                            <div className="flex min-w-0 items-center sm:col-start-3 sm:row-start-2">
-                             <div className="flex min-w-0 flex-wrap items-center gap-2">
-                               <AddressCapsule
-                                 address={cardIssuanceExistingCard.cardAddress}
-                                 className="bg-[#eef1f3] border-[#abadaf]/30 text-[#2c2f31]"
-                               />
-                               <a
-                                 href={`https://basescan.org/address/${cardIssuanceExistingCard.cardAddress}`}
-                                 target="_blank"
-                                 rel="noopener noreferrer"
-                                 aria-label="View contract on Basescan (opens in new tab)"
-                                 className={`inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-tighter text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 ${bizFocusRingClass}`}
-                               >
-                                 <span className="h-1 w-1 shrink-0 rounded-full bg-blue-500" aria-hidden />{tu('base_mainnet')}<ExternalLink className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
-                               </a>
-                             </div>
+                             <AddressCapsule
+                               address={cardIssuanceExistingCard.cardAddress}
+                               explorerUrl={beamioConetBlockscoutAddressUrl(cardIssuanceExistingCard.cardAddress)}
+                               className="bg-[#eef1f3] border-[#abadaf]/30 text-[#2c2f31]"
+                             />
                            </div>
                          </div>
                          <div>

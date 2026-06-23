@@ -71,7 +71,7 @@ import {
   preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys';
 import { catalogProductionHasVideoBackgroundMedia } from '@/utils/catalogProductionVideoOg';
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale';
 import {
   buildBusinessCatalogEditorPreviewRow,
   BusinessCatalogListItemPreviewCard,
@@ -361,6 +361,7 @@ export type ProgramsProductionsPanelProps = {
 };
 
 export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
+  const { tu } = useTu();
   const {
     catalogOpen,
     sectionKicker = 'Business',
@@ -666,7 +667,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
         <>
           <motion.button
             type="button"
-            aria-label="Close productions catalog"
+            aria-label={tu('programs_catalog_close')}
             className="fixed inset-0 z-[94] bg-[#2c2f31]/35 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -687,14 +688,14 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     type="button"
                     onClick={onCloseCatalog}
                     className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#abadaf]/30 bg-white text-[#747779] ${bizFocusRingClass}`}
-                    aria-label="返回"
+                    aria-label={tu('programs_catalog_back')}
                   >
                     <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
                   </button>
                   <div className="min-w-0 flex-1 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">{sectionKicker}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">{sectionKicker === 'Business' ? tu('programs_business_kicker') : sectionKicker}</p>
                     <h2 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">
-                      Catalogs
+                      {tu('programs_catalog_title')}
                     </h2>
                   </div>
                   <button
@@ -703,7 +704,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     className={`inline-flex h-10 items-center gap-1.5 rounded-full bg-[#ea580c] px-4 text-xs font-bold text-white shadow-sm ${bizFocusRingClass}`}
                   >
                     <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                    Add
+                    {tu('programs_catalog_add')}
                   </button>
                 </div>
               </header>
@@ -712,7 +713,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                 {catalogBaseProductionCount === 0 ? (
                   <div className="rounded-2xl border border-dashed border-[#abadaf]/40 bg-white p-8 text-center">
                     <Package className="mx-auto h-10 w-10 text-[#ea580c]/70" strokeWidth={1.6} aria-hidden />
-                    <p className="mt-3 text-sm font-semibold text-[#2c2f31]">No item in your catalog yet</p>
+                    <p className="mt-3 text-sm font-semibold text-[#2c2f31]">{tu('programs_catalog_empty')}</p>
                 
                     <button
                       type="button"
@@ -720,7 +721,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                       className={`mt-4 inline-flex items-center gap-2 rounded-full bg-[#ea580c] px-5 py-2.5 text-sm font-bold text-white ${bizFocusRingClass}`}
                     >
                       <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                      Add item
+                      {tu('programs_catalog_add_item')}
                     </button>
                   </div>
                 ) : (
@@ -783,11 +784,11 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             {row.issued ? (
                               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-800">
                                 <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
-                                Live
+                                {tu('programs_catalog_live')}
                               </span>
                             ) : (
                               <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800">
-                                Draft
+                                {tu('programs_catalog_draft')}
                               </span>
                             )}
                             </button>
@@ -796,11 +797,11 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             {row.issued ? (
                               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-800">
                                 <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
-                                Live
+                                {tu('programs_catalog_live')}
                               </span>
                             ) : (
                               <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800">
-                                Draft
+                                {tu('programs_catalog_draft')}
                               </span>
                             )}
                               </>
@@ -827,7 +828,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                 }}
                                 className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 ${bizFocusRingClass}`}
                                 aria-label={`Show claim URL and QR for catalog item ${row.name}`}
-                                title="Claim URL and QR"
+                                title={tu('programs_catalog_claim_qr')}
                               >
                                 <QrCode className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                               </button>
@@ -847,7 +848,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                   >
                                     <div className="min-w-0">
                                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#ea580c]">
-                                        Package deal
+                                        {tu('programs_catalog_package_badge')}
                                       </p>
                                       <p className="text-xs font-semibold text-[#595c5e]">
                                         {sessionsLabel}
@@ -866,11 +867,11 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                       ) : null}
                                       {pkg.issued ? (
                                         <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">
-                                          Live
+                                          {tu('programs_catalog_live')}
                                         </span>
                                       ) : (
                                         <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700">
-                                          Draft
+                                          {tu('programs_catalog_draft')}
                                         </span>
                                       )}
                                     </div>
@@ -968,7 +969,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
                                       {canRegisterProductionRedeem
                                         ? `No redeem codes stored on this device yet. Enter a batch count (max ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} per on-chain batch) and press + to register more while issuance remains.`
-                                        : 'No redeem codes stored on this device. Codes are saved locally when this item is published live with redeem registration.'}
+                                        : tu('programs_catalog_redeem_no_codes')}
                                     </p>
                                   ) : (
                                     <>
@@ -976,10 +977,10 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                         <table className="min-w-full text-left text-[11px]">
                                           <thead className="bg-[#fff7ed] text-[9px] font-bold uppercase tracking-wider text-[#595c5e]">
                                             <tr>
-                                              <th className="px-2.5 py-2 sm:px-3">Code</th>
-                                              <th className="px-2.5 py-2 sm:px-3">Generated</th>
-                                              <th className="px-2.5 py-2 sm:px-3">Status</th>
-                                              <th className="px-2.5 py-2 sm:px-3">Redeemed</th>
+                                              <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_code')}</th>
+                                              <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_generated')}</th>
+                                              <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_status')}</th>
+                                              <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_redeemed')}</th>
                                             </tr>
                                           </thead>
                                           <tbody className="divide-y divide-[#ea580c]/8 bg-white">
@@ -993,7 +994,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                                   ? 'redeemed'
                                                   : 'pending');
                                               const statusLabel =
-                                                status === 'pending' ? 'Available' : 'Redeemed';
+                                                status === 'pending' ? tu('programs_table_available') : tu('programs_table_redeemed');
                                               const statusClass =
                                                 status === 'pending'
                                                   ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
@@ -1191,12 +1192,12 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           onClick={onCloseEditor}
                           disabled={productionBackgroundUploadLocked}
                           className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[#747779] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
-                          aria-label="返回"
+                          aria-label={tu('programs_catalog_back')}
                         >
                           <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
                         </button>
                         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#2c2f31]">
-                          {editingId ? 'Edit item' : 'Add item'}
+                          {editingId ? tu('programs_catalog_edit_item') : tu('programs_catalog_add_item')}
                         </p>
                         <button
                           type="button"
@@ -1204,7 +1205,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           disabled={publishing || iconUploading || productionBackgroundBlocksCatalogSubmit}
                           className={`text-xs font-bold uppercase tracking-wider text-[#ea580c] disabled:opacity-50 ${bizFocusRingClass}`}
                         >
-                          {publishing ? 'Saving…' : '保存'}
+                          {publishing ? tu('programs_catalog_saving') : tu('programs_catalog_save')}
                         </button>
                       </div>
                     </header>
@@ -1212,7 +1213,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-28 sm:px-5">
                       <div className="sticky top-0 z-30 -mx-4 mb-4 border-b border-[#abadaf]/15 bg-[#f8fafc]/95 px-4 pb-4 pt-3 backdrop-blur-md supports-[backdrop-filter]:bg-[#f8fafc]/80 sm:-mx-5 sm:px-5">
                         <span className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                          Business Catalogs preview
+                          {tu('programs_catalog_preview_label')}
                         </span>
                         <BusinessCatalogListItemPreviewCard
                           row={catalogEditorPreviewRow}
@@ -1228,20 +1229,22 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
 
                       {editingIssued ? (
                         <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-medium text-sky-900">
-                          This item is live on-chain. Name
-                          {salesManagementCatalog
-                            ? ', claim method, and total issuance'
-                            : catalogPriceOptional
-                              ? ''
-                              : ', price, and total issuance'}{' '}
-                          are locked. You can still update optional background media
-                          {catalogTileBackgroundColorEditorVisible ? ', tile background color' : ''}, and description.
+                          {tu('programs_catalog_item_live_locked', {
+                            salesFields: salesManagementCatalog
+                              ? tu('programs_catalog_item_live_locked_sales')
+                              : catalogPriceOptional
+                                ? ''
+                                : tu('programs_catalog_item_live_locked_price'),
+                            tileColor: catalogTileBackgroundColorEditorVisible
+                              ? tu('programs_catalog_item_live_locked_tile')
+                              : '',
+                          })}
                         </div>
                       ) : null}
 
                       <section className="mb-5">
                         <h3 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                          Global Category
+                          {tu('programs_catalog_global_category')}
                         </h3>
                         <div className="flex flex-wrap gap-2">
                           {CATALOG_GLOBAL_CATEGORY_OPTIONS.map((opt) => {
@@ -1258,7 +1261,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     : 'border-[#e5e9eb] bg-white text-[#747779]'
                                 } ${editingIssued ? 'cursor-not-allowed opacity-60' : ''} ${bizFocusRingClass}`}
                               >
-                                {opt.label}
+                                {catalogGlobalCategoryLabel(opt.id)}
                               </button>
                             );
                           })}
@@ -1268,7 +1271,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                       <section className="mb-5 space-y-4">
                         <div>
                           <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            Background media (optional)
+                            {tu('programs_catalog_background_media')}
                           </label>
                           <input
                             ref={productionImageFileRef}
@@ -1418,7 +1421,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                   className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
                                 >
                                   <Link2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                                  Import from YouTube
+                                  {tu('programs_catalog_import_youtube')}
                                 </label>
                                 <div className="relative">
                                   <input
@@ -1427,7 +1430,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     inputMode="url"
                                     autoComplete="off"
                                     enterKeyHint="go"
-                                    placeholder="https://www.youtube.com/watch?v=…"
+                                    placeholder={tu('programs_catalog_youtube_ph')}
                                     value={youtubeImportUrl}
                                     onChange={(e) => setYoutubeImportUrl(e.target.value)}
                                     onKeyDown={(e) => {
@@ -1442,7 +1445,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     type="button"
                                     disabled={productionBackgroundUploadLocked || !youtubeImportUrlValid}
                                     onClick={runYoutubeProductionVideoImport}
-                                    aria-label="Import from YouTube"
+                                    aria-label={tu('programs_catalog_import_youtube')}
                                     className={`absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
                                   >
                                     {productionBackgroundUploadLocked ? (
@@ -1460,7 +1463,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                         {catalogTileBackgroundColorEditorVisible ? (
                         <div className="space-y-2">
                           <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            Tile background color
+                            {tu('programs_catalog_tile_color')}
                           </label>
                           <div className="flex flex-wrap gap-2">
                             {PRODUCTION_ITEM_COLOR_PRESETS.map((hex) => {
@@ -1503,7 +1506,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                       </section>
 
                       <section className="mb-5">
-                        <label className="mb-1 block text-xs font-semibold text-[#2c2f31]">Name</label>
+                        <label className="mb-1 block text-xs font-semibold text-[#2c2f31]">{tu('programs_catalog_name')}</label>
                         <input
                           type="text"
                           value={name}
@@ -1513,7 +1516,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           autoComplete="off"
                           className="mb-3 w-full rounded-xl border-none bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-[#e5e9eb] disabled:opacity-60"
                         />
-                        <label className="mb-1 block text-xs font-semibold text-[#2c2f31]">Subtitle</label>
+                        <label className="mb-1 block text-xs font-semibold text-[#2c2f31]">{tu('programs_catalog_subtitle')}</label>
                         <input
                           type="text"
                           value={subtitle}
@@ -1638,10 +1641,9 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
 
                       {!catalogPriceOptional ? (
                         <section className="mb-5 space-y-3">
-                          <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Price</h3>
+                          <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_catalog_price')}</h3>
                           <p className="text-[11px] text-[#747779]">
-                            Catalog items must have a price greater than 0. Member claim / redeem codes apply to Coupons
-                            only, not catalog items.
+                            {tu('programs_catalog_price_required')}
                           </p>
                           <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#e5e9eb]">
                             <div className="flex items-center gap-2 rounded-xl bg-[#f1f5f9] px-3 py-2.5">
@@ -1668,7 +1670,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#ea580c]/45 bg-white px-3 py-2.5 text-sm font-semibold text-[#ea580c] transition-colors hover:border-[#ea580c] hover:bg-[#fff7ed] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
                           >
                             <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                            Package deal
+                            {tu('programs_catalog_package_deal')}
                           </button>
                           {packageDeals.length > 0 ? (
                             <ul className="space-y-3">
@@ -1684,11 +1686,11 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                       <div className="flex items-start gap-2">
                                         <Gift className="mt-0.5 h-5 w-5 text-[#ea580c]" strokeWidth={2} aria-hidden />
                                         <div>
-                                          <p className="text-xs font-bold text-[#2c2f31]">Package deal</p>
+                                          <p className="text-xs font-bold text-[#2c2f31]">{tu('programs_catalog_package_deal')}</p>
                                           <p className="text-[11px] text-[#747779]">
                                             {dealLocked
-                                              ? 'Live on-chain — sessions and price are locked.'
-                                              : 'Bundle sessions at one total price'}
+                                              ? tu('programs_catalog_bundle_locked')
+                                              : tu('programs_catalog_bundle_desc')}
                                           </p>
                                         </div>
                                       </div>
@@ -1780,7 +1782,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                         <section className="mb-5 space-y-4">
                           <div>
                             <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                              How members claim
+                              {tu('programs_catalog_how_claim')}
                             </span>
                             <div className="grid grid-cols-2 gap-2">
                               <button
@@ -1796,7 +1798,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
                                 } disabled:cursor-not-allowed disabled:opacity-60`}
                               >
-                                Open claim
+                                {tu('programs_coupon_open_claim')}
                               </button>
                               <button
                                 type="button"
@@ -1811,13 +1813,13 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
                                 } disabled:cursor-not-allowed disabled:opacity-60`}
                               >
-                                Redeem code
+                                {tu('programs_coupon_redeem_code')}
                               </button>
                             </div>
                             <p className="mt-1 text-[11px] text-[#abadaf]">
                               {requiresRedeemCode
                                 ? `Members enter a redeem code to claim. Codes are registered on-chain in batches of up to ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} (contract limit); register more from the catalog list as needed.`
-                                : 'Members can claim without entering a secret redeem code, within your issuance cap.'}
+                                : tu('programs_catalog_open_claim_desc')}
                             </p>
                           </div>
                           <div>
@@ -1825,7 +1827,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                               className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
                               htmlFor="programs-production-sales-issue-total"
                             >
-                              Total issuance
+                              {tu('programs_catalog_total_issuance')}
                             </label>
                             <input
                               ref={issueTotalWheelRef}
@@ -1864,7 +1866,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                       {!salesManagementCatalog && !shareLinkCatalog ? (
                         <section className="mb-5 space-y-3">
                           <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            Total issuance
+                            {tu('programs_catalog_total_issuance')}
                           </h3>
                           <div className="grid grid-cols-2 gap-2">
                             <button
@@ -1991,20 +1993,20 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                         {productionImageUploading
                           ? productionVideoProcessingMessage
                             ? `${productionVideoProcessingMessage}${productionVideoUploadProgress > 0 ? ` (${productionVideoUploadProgress}%)` : ''}`
-                            : 'Converting video…'
+                            : tu('programs_catalog_video_converting_short')
                           : iconUploading
-                            ? 'Uploading…'
+                            ? tu('programs_catalog_uploading')
                             : productionVideoNeedsClipEdit &&
                                 productionVideoDraftPending &&
                                 !productionImage.trim()
                               ? productionVideoTrimConfirmed
-                                ? 'Uploading video…'
-                                : 'Confirm trim with check to continue'
+                                ? tu('programs_catalog_video_uploading')
+                                : tu('programs_catalog_confirm_trim')
                               : publishing
-                                ? 'Saving…'
+                                ? tu('programs_catalog_saving')
                                 : editingId
-                                  ? 'Save changes'
-                                  : 'Add item to catalog'}
+                                  ? tu('programs_catalog_save_changes')
+                                  : tu('programs_catalog_add_to_catalog')}
                       </button>
                     </div>
                   </motion.div>

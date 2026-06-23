@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { useTu } from '@/locale/beamioLocale';
 import { useReliableTapHandler } from '../../../utils/reliableTap';
 
 export type CardConfiguratorMobileChromeProps = {
@@ -49,6 +50,7 @@ export function CardConfiguratorMobileChrome({
   trailingBrandLabel = 'Verra',
   showTopBack = true,
 }: CardConfiguratorMobileChromeProps) {
+  const { tu } = useTu();
   const brand = (trailingBrandLabel ?? 'Verra').trim() || 'Verra';
   const backTap = useReliableTapHandler(onTopBack);
   const primaryTap = useReliableTapHandler(() => {
@@ -69,7 +71,7 @@ export function CardConfiguratorMobileChrome({
                 data-touch-priority="1"
                 {...backTap}
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-transform active:scale-95 active:opacity-80 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
-                aria-label="Go back"
+                aria-label={tu('programs_mobile_go_back')}
               >
                 <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
               </button>
@@ -78,10 +80,10 @@ export function CardConfiguratorMobileChrome({
             )}
             <div className="flex min-w-0 flex-1 flex-col items-center px-2">
               <h1 className="font-manrope text-center text-sm font-bold tracking-tight text-[#2c2f31]">
-                Card Setup
+                {tu('programs_mobile_card_setup')}
               </h1>
               <span className="font-manrope text-[9px] font-semibold uppercase tracking-[0.14em] text-[#0051d1]">
-                Step {step} of {totalSteps}
+                {tu('programs_mobile_step_of', { step, total: totalSteps })}
               </span>
             </div>
             <div
@@ -103,17 +105,17 @@ export function CardConfiguratorMobileChrome({
                 data-touch-priority="1"
                 {...backTap}
                 className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-transform active:scale-95 active:opacity-80 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
-                aria-label="Go back"
+                aria-label={tu('programs_mobile_go_back')}
               >
                 <ArrowLeft className="h-6 w-6" strokeWidth={2} aria-hidden />
               </button>
             ) : null}
             <h1 className="font-manrope min-w-0 truncate text-base font-bold tracking-tight text-[#2c2f31]">
-              Card Setup
+              {tu('programs_mobile_card_setup')}
             </h1>
           </div>
           <div className="shrink-0 font-manrope text-[10px] font-semibold uppercase tracking-widest text-[#595c5e]">
-            Step {step} of {totalSteps}
+            {tu('programs_mobile_step_of', { step, total: totalSteps })}
           </div>
         </header>
       )}

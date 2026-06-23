@@ -1,13 +1,28 @@
 import i18nextLib from 'i18next'
 import { initReactI18next } from 'react-i18next'
-import en from './en.json'
-import zhCN from './zh-CN.json'
 import {
 	detectBrowserBeamioLocale,
 	normalizeBeamioUiLocale,
 	readBeamioUiLanguageBootstrap,
 	type BeamioUiLocale,
 } from '@/utils/beamioProfileLocaleCurrency'
+import en from './en.json'
+import zhCN from './zh-CN.json'
+import programsEn from './programsLocale.en.json'
+import programsZhCN from './programsLocale.zh-CN.json'
+
+function mergeProgramsUiLocale<T extends { ui: Record<string, string> }>(base: T, programs: Record<string, string>): T {
+	return {
+		...base,
+		ui: {
+			...base.ui,
+			...programs,
+		},
+	}
+}
+
+const enMerged = mergeProgramsUiLocale(en as { ui: Record<string, string> }, programsEn)
+const zhCNMerged = mergeProgramsUiLocale(zhCN as { ui: Record<string, string> }, programsZhCN)
 
 export type { BeamioUiLocale }
 
@@ -76,8 +91,8 @@ function emitBeamioUiLocaleChanged(locale: BeamioUiLocale): void {
 
 void i18nextLib.use(initReactI18next).init({
 	resources: {
-		en: { translation: en },
-		'zh-CN': { translation: zhCN },
+		en: { translation: enMerged },
+		'zh-CN': { translation: zhCNMerged },
 	},
 	lng: resolveInitialUiLocale(),
 	fallbackLng: 'en',
@@ -123,8 +138,8 @@ export async function syncBeamioUiLocaleFromProfileLanguage(language: unknown): 
 }
 
 const TRANSLATION_RESOURCES: Record<BeamioUiLocale, unknown> = {
-	en,
-	'zh-CN': zhCN,
+	en: enMerged,
+	'zh-CN': zhCNMerged,
 }
 
 function readTranslationValue(resource: unknown, key: string): string | null {

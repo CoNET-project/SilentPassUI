@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { IpfsImg } from '@/components/IpfsImg';
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider';
 import type { IssuedNftClaimWalletApiRow } from '@/services/BeamioCard';
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale';
 
 const bizFocusRingClass =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
@@ -93,6 +93,7 @@ export type ProgramsIssuedItemClaimWalletsSectionProps = {
 
 export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemClaimWalletsSectionProps) {
   const { theme, mintedCount, view, onPageChange, onRequestLoad } = props;
+  const { tu } = useTu();
   const { ensureProfilesForAddresses } = useBeamioTagDatabase();
   const mintedN = Number.parseInt(String(mintedCount ?? '').replace(/,/g, '').trim(), 10);
   const hasMinted = Number.isFinite(mintedN) && mintedN > 0;
@@ -134,9 +135,9 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
   if (!hasMinted) {
     return (
       <div className={`border-t ${borderClass} bg-white/70 px-3 py-3 sm:px-4 sm:py-3.5`}>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">Claimed wallets</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">{tu('programs_claim_wallets_title')}</p>
         <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#747779]">
-          No claims yet. Wallets appear here after members complete an open claim or redeem this item.
+          {tu('programs_claim_wallets_no_claims_yet')}
         </p>
       </div>
     );
@@ -145,14 +146,14 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
   return (
     <div className={`border-t ${borderClass} bg-white/70 px-3 py-3 sm:px-4 sm:py-3.5`}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">Claimed wallets</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">{tu('programs_claim_wallets_title')}</p>
         {view.loading ? <Loader2 className={`h-3.5 w-3.5 animate-spin ${accentText}`} aria-hidden /> : null}
       </div>
       {view.error && view.items.length === 0 ? (
         <p className="text-[11px] font-medium leading-relaxed text-amber-700">{view.error}</p>
       ) : view.items.length === 0 && !view.loading ? (
         <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
-          No claim wallets found for this item yet.
+          {tu('programs_claim_wallets_not_found')}
         </p>
       ) : (
         <>
@@ -160,9 +161,9 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
             <table className="min-w-full text-left text-[11px]">
               <thead className={`${headerBg} text-[9px] font-bold uppercase tracking-wider text-[#595c5e]`}>
                 <tr>
-                  <th className="px-2.5 py-2 sm:px-3">已领取</th>
-                  <th className="px-2.5 py-2 sm:px-3">Member</th>
-                  <th className="px-2.5 py-2 sm:px-3">Burned</th>
+                  <th className="px-2.5 py-2 sm:px-3">{tu('programs_claim_wallets_claimed_col')}</th>
+                  <th className="px-2.5 py-2 sm:px-3">{tu('programs_claim_wallets_member')}</th>
+                  <th className="px-2.5 py-2 sm:px-3">{tu('programs_claim_wallets_burned')}</th>
                 </tr>
               </thead>
               <tbody className={`divide-y ${borderClass} bg-white`}>
@@ -191,14 +192,18 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
                 className={`inline-flex items-center gap-1 rounded-full border bg-white px-2.5 py-1 text-[10px] font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${borderClass} ${bizFocusRingClass} ${focusRing}`}
               >
                 <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                Previous
+                {tu('programs_table_previous')}
               </button>
               <span className="text-[10px] font-semibold text-[#595c5e]">
-                Page {page} of {pageCount}
+                {tu('programs_table_page_of', { page, total: pageCount })}
                 <span className="text-[#747779]">
                   {' '}
-                  · {(page - 1) * view.pageSize + 1}–{Math.min(page * view.pageSize, view.total)} of{' '}
-                  {view.total.toLocaleString()}
+                  ·{' '}
+                  {tu('programs_table_page_range', {
+                    from: (page - 1) * view.pageSize + 1,
+                    to: Math.min(page * view.pageSize, view.total),
+                    total: view.total.toLocaleString(),
+                  })}
                 </span>
               </span>
               <button
@@ -213,7 +218,7 @@ export function ProgramsIssuedItemClaimWalletsSection(props: ProgramsIssuedItemC
         </>
       )}
       {view.error && view.items.length > 0 ? (
-        <p className="mt-2 text-[10px] font-medium text-amber-700">Refresh failed — showing last loaded wallets.</p>
+        <p className="mt-2 text-[10px] font-medium text-amber-700">{tu('programs_claim_wallets_refresh_failed')}</p>
       ) : null}
     </div>
   );

@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { tu } from '@/locale/beamioLocale';
 
 /** Legacy issued-series kind label (read compat only). */
 export const CARD_ISSUANCE_PRODUCTION_NFT_CATEGORY = 'productions' as const;
@@ -11,6 +12,14 @@ export const CATALOG_GLOBAL_CATEGORY_OPTIONS = [
   { id: 'ShareLink', label: 'Share link' },
   { id: 'SalesManagement', label: 'Sales Management' },
 ] as const;
+
+const CATALOG_GLOBAL_CATEGORY_TU_KEYS: Record<CatalogGlobalCategoryId, string> = {
+  Product: 'programs_cat_product',
+  Service: 'programs_cat_service',
+  Menu: 'programs_cat_menu',
+  ShareLink: 'programs_cat_share_link',
+  SalesManagement: 'programs_cat_sales_mgmt',
+};
 
 export type CatalogGlobalCategoryId = (typeof CATALOG_GLOBAL_CATEGORY_OPTIONS)[number]['id'];
 
@@ -31,7 +40,8 @@ export function normalizeCatalogGlobalCategory(raw: unknown): CatalogGlobalCateg
 }
 
 export function catalogGlobalCategoryLabel(id: CatalogGlobalCategoryId): string {
-  return CATALOG_GLOBAL_CATEGORY_OPTIONS.find((opt) => opt.id === id)?.label ?? id;
+  const key = CATALOG_GLOBAL_CATEGORY_TU_KEYS[id];
+  return key ? tu(key) : id;
 }
 
 /** Sales Management catalog items: no price or package deals; claim method + total issuance like Coupons. */

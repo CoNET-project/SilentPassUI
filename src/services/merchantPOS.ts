@@ -5,13 +5,13 @@
 
 import { ethers } from 'ethers'
 import { beamioApiBase } from '@/services/AAaccount'
-import { CONET_RPC_URL } from '@/config/chainAddresses'
+import { CONET_RPC_URL, MERCHANT_POS_MANAGEMENT_CONET } from '@/config/chainAddresses'
 
 /** CoNET chainId */
 const CONET_CHAIN_ID = 224422
 
-/** MerchantPOSManagement 合约地址（CoNET 主网） */
-export const MERCHANT_POS_MANAGEMENT_ADDRESS = '0x3Eb57035d3237Fce4b1cB273662E875EdfA0D54f'
+/** MerchantPOSManagement 合约地址（CoNET 主网）— 须与 x402sdk Cluster/Master 验签一致 */
+export const MERCHANT_POS_MANAGEMENT_ADDRESS = MERCHANT_POS_MANAGEMENT_CONET
 
 /** EIP-712 domain：与合约 MerchantPOSManagement.eip712Domain() 一致 */
 const EIP712_DOMAIN = {

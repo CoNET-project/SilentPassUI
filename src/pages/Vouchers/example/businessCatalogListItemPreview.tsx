@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { IpfsImg } from '@/components/IpfsImg';
 import { Check, FileText, Sparkles } from 'lucide-react';
+import { useTu } from '@/locale/beamioLocale';
 import { CatalogVideoOgBannerMedia } from '@/components/CatalogVideoOgBannerMedia';
 import { CatalogVideoOgPreviewBannerCaptureOverlay } from '@/components/CatalogVideoOgPreviewBannerCaptureOverlay';
 import { CatalogVideoOgRightThumbnail } from '@/components/CatalogVideoOgRightThumbnail';
@@ -214,6 +215,7 @@ export function BusinessCatalogVideoOgPreviewBlock(
   }
 ) {
   const { bannerCaptureDisabled, catalogBannerPreviewSnapshot, onCaptureBannerSnapshot, ...details } = props;
+  const { tu } = useTu();
   const ogCard = catalogPreviewOgCardSurface(details.tileBackgroundColor);
   const presentation = resolveCatalogProductionSharePresentation({
     row: details.row,
@@ -244,7 +246,11 @@ export function BusinessCatalogVideoOgPreviewBlock(
   const hasSnapshot = Boolean(snapshot?.dataUrl?.trim());
 
   const snapshotLabel =
-    snapshot?.mode === 'width' ? 'Width fit' : snapshot?.mode === 'height' ? 'Height fit' : '';
+    snapshot?.mode === 'width'
+      ? tu('programs_preview_width_fit')
+      : snapshot?.mode === 'height'
+        ? tu('programs_preview_height_fit')
+        : '';
 
   const hasCapturableBannerMedia = catalogProductionHasUploadedBackgroundMedia(details.row);
   const showBannerCaptureControls = Boolean(onCaptureBannerSnapshot) && hasCapturableBannerMedia;
@@ -345,6 +351,7 @@ export function BusinessCatalogImageHeroPreviewBlock(
   }
 ) {
   const { bannerCaptureDisabled, catalogBannerPreviewSnapshot, onCaptureBannerSnapshot, ...details } = props;
+  const { tu } = useTu();
   const imageUrl = details.row.productionImage.trim();
   const ogCard = catalogPreviewOgCardSurface(details.tileBackgroundColor);
   const heroSize = catalogVideoOgPreviewHeroDisplaySize();
@@ -369,7 +376,11 @@ export function BusinessCatalogImageHeroPreviewBlock(
   const snapshot = liveSnapshot;
   const hasSnapshot = Boolean(snapshot?.dataUrl?.trim());
   const snapshotLabel =
-    snapshot?.mode === 'width' ? 'Width fit' : snapshot?.mode === 'height' ? 'Height fit' : '';
+    snapshot?.mode === 'width'
+      ? tu('programs_preview_width_fit')
+      : snapshot?.mode === 'height'
+        ? tu('programs_preview_height_fit')
+        : '';
   const captureSourceAttr = { [CATALOG_VIDEO_OG_BANNER_CAPTURE_SOURCE_ATTR]: '' };
 
   const bannerMedia = (
@@ -504,6 +515,7 @@ export function BusinessCatalogListItemPreviewContent(props: {
   catalogPublisherBeamioTag?: string;
 }) {
   const { row, serviceCategories, moneyPrefix, catalogPublisherBeamioTag } = props;
+  const { tu } = useTu();
   const displayPrice = catalogProductionDisplayPrice(row);
   const backgroundKind = resolveProductionBackgroundMediaKind({
     url: row.productionImage,
@@ -575,7 +587,7 @@ export function BusinessCatalogListItemPreviewContent(props: {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate font-manrope text-base font-bold text-[#2c2f31]">
-          {row.name.trim() || 'Catalog item'}
+          {row.name.trim() || tu('programs_preview_catalog_item')}
         </p>
         {row.subtitle.trim() ? (
           <p className="truncate text-sm text-[#747779]">{row.subtitle}</p>
@@ -657,14 +669,15 @@ export function buildBusinessCatalogEditorPreviewRow(
 }
 
 function BusinessCatalogListItemStatusChip(props: { issued: boolean }) {
+  const { tu } = useTu();
   return props.issued ? (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-800">
       <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
-      Live
+      {tu('programs_catalog_live')}
     </span>
   ) : (
     <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800">
-      Draft
+      {tu('programs_catalog_draft')}
     </span>
   );
 }
@@ -689,6 +702,7 @@ export function BusinessCatalogListItemPreviewCard(props: {
     catalogBannerPreviewSnapshot,
     onCaptureBannerSnapshot,
   } = props;
+  const { tu } = useTu();
   const displayPrice = catalogProductionDisplayPrice(row);
   const itemCategoryLabel = productionItemCategoryLabel(row.itemCategory, serviceCategories);
   const showCatalogPrice = displayPrice != null && !isCatalogPriceOptionalCategory(row.globalCategory);
@@ -712,7 +726,7 @@ export function BusinessCatalogListItemPreviewCard(props: {
   };
 
   return (
-    <div role="region" aria-label="Business Catalogs preview" className="w-full">
+    <div role="region" aria-label={tu('programs_catalog_preview_label')} className="w-full">
       {videoOgPreview || colorOnlyCatalogPreview ? (
         <div className="relative mx-auto w-full max-w-[32rem]">
           <BusinessCatalogVideoOgPreviewBlock
@@ -750,7 +764,7 @@ export function BusinessCatalogListItemPreviewCard(props: {
       )}
       {globalCategoryHint ? (
         <p className="mx-auto mt-2 max-w-[32rem] text-[10px] font-semibold text-[#747779]">
-          Listed under <span className="font-bold text-[#595c5e]">{globalCategoryHint}</span> in Catalogs
+          {tu('programs_preview_listed_under', { category: globalCategoryHint })}
         </p>
       ) : null}
     </div>

@@ -506,6 +506,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
   onStartDesigning: () => void
 }) {
   const { protocolFuelReserveBalance, onStartDesigning } = props
+  const { tu } = useTu()
   const startDesigningTap = useReliableTapHandler(onStartDesigning)
   const bUnitsLine =
     protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
@@ -520,7 +521,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
       />
       <main className="relative px-4 pb-36 pt-4 sm:px-6 md:pt-6">
         <header className="mb-2 flex items-center justify-between border-b border-[#abadaf]/25 pb-4">
-          <h1 className="font-manrope text-xl font-bold tracking-tight text-[#0051d1]">Beamio Business lite</h1>
+          <h1 className="font-manrope text-xl font-bold tracking-tight text-[#0051d1]">{tu('programs_welcome_title')}</h1>
         </header>
         <section className="mb-10 mt-6 flex flex-col items-center text-center">
           <div className="relative mb-8 h-32 w-32">
@@ -530,24 +531,22 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
             </div>
           </div>
           <h2 className="mb-4 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] sm:text-4xl">
-            Your network is ready.
+            {tu('programs_welcome_headline')}
           </h2>
           <p className="max-w-lg px-2 text-base leading-relaxed text-[#595c5e]">
-            Your Business Lite workspace is now fully activated.{bUnitsLine ? (
-              <>
-                {' '}
-                <span className="font-semibold text-[#0051d1]">{bUnitsLine}</span> have been added to your balance.
-              </>
+            {tu('programs_welcome_body_prefix')}
+            {bUnitsLine ? (
+              <> {tu('programs_welcome_body_bunits', { amount: bUnitsLine })}</>
             ) : (
-              <> Your B-Units have been added to your balance. </>
+              <> {tu('programs_welcome_body_generic')}</>
             )}
           </p>
         </section>
         <section className="space-y-6">
           <div className="flex items-center justify-between px-1">
-            <h3 className="font-manrope text-lg font-bold text-[#2c2f31]">The Creation Process</h3>
+            <h3 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_process_title')}</h3>
             <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0047b8]">
-              3 Steps Total
+              {tu('programs_welcome_steps_total')}
             </span>
           </div>
           <div className="grid gap-4">
@@ -556,10 +555,10 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
                 <Palette className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
               </div>
               <div className="flex min-w-0 flex-col text-left">
-                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Step 1</span>
-                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">Brand Identity</h4>
+                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_welcome_step_n', { n: '1' })}</span>
+                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_step1_title')}</h4>
                 <p className="mt-1 text-sm leading-snug text-[#595c5e]">
-                  Set your name, logo, and brand color to define your aesthetic.
+                  {tu('programs_welcome_step1_desc')}
                 </p>
               </div>
             </div>
@@ -568,10 +567,10 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
                 <Medal className="size-6 text-[#515c70]" strokeWidth={2} aria-hidden />
               </div>
               <div className="flex min-w-0 flex-col text-left">
-                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Step 2</span>
-                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">Reward Engine</h4>
+                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_welcome_step_n', { n: '2' })}</span>
+                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_step2_title')}</h4>
                 <p className="mt-1 text-sm leading-snug text-[#595c5e]">
-                  Configure bonuses, loyalty rules, and exclusive membership tiers.
+                  {tu('programs_welcome_step2_desc')}
                 </p>
               </div>
             </div>
@@ -580,10 +579,10 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
                 <Rocket className="size-6 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
               </div>
               <div className="flex min-w-0 flex-col text-left">
-                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Step 3</span>
-                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">Review &amp; Launch</h4>
+                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_welcome_step_n', { n: '3' })}</span>
+                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_step3_title')}</h4>
                 <p className="mt-1 text-sm leading-snug text-[#595c5e]">
-                  Verify your setup and go live to your customer base immediately.
+                  {tu('programs_welcome_step3_desc')}
                 </p>
               </div>
             </div>
@@ -594,7 +593,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
             <Nfc className="size-7" strokeWidth={2} aria-hidden />
           </div>
           <p className="text-xs font-medium leading-snug text-[#595c5e]">
-            Preview your digital card as you design. Our editorial layout adapts to your brand assets.
+            {tu('programs_welcome_nfc_hint')}
           </p>
         </div>
       </main>
@@ -606,7 +605,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
             {...startDesigningTap}
             className={`flex w-full items-center justify-center gap-3 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-[0_20px_40px_rgba(0,81,209,0.2)] transition-transform active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
           >
-            Start Designing
+            {tu('programs_welcome_start_designing')}
             <ArrowRight className="size-5" strokeWidth={2} aria-hidden />
           </button>
         </div>
@@ -9031,9 +9030,13 @@ const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
 /** Default max number of times a program coupon can be issued (metadata). */
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT = 100;
 /** Default coupon name shown in New Coupon editor. */
-const CARD_ISSUANCE_COUPON_NAME_DEFAULT = 'Your offer';
+function cardIssuanceCouponNameDefault(): string {
+  return tu('programs_coupon_default_name');
+}
 /** Default coupon description shown in New Coupon editor. */
-const CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT = 'Add coupon details for members';
+function cardIssuanceCouponDescriptionDefault(): string {
+  return tu('programs_coupon_default_desc');
+}
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX = 9_999_999;
 /** Issued coupon NFT metadata category — distinguishes coupon series from membership / tier NFTs. */
 const CARD_ISSUANCE_COUPON_NFT_CATEGORY = 'Coupon';
@@ -9571,40 +9574,61 @@ function buildProgramsCouponRedeemShareUrl(
   return cacheBustV ? appendAppDownloadShareCacheBust(base, cacheBustV) : base;
 }
 
-function programsCouponShareExpiryUsesUrgentVariant(expiresLabel: string): boolean {
-  return expiresLabel === '已过期' || /\bEXPIRES IN \d+H\b|\bEXPIRES IN \d+M\b/.test(expiresLabel);
+function programsCouponShareExpiryUsesUrgentVariant(expiresLabel: string, coupon: CardIssuanceCouponRow): boolean {
+  if (expiresLabel === tu('programs_coupon_expiry_expired')) return true;
+  if (coupon.couponDateRestriction === 'range' && coupon.couponValidToYmd.trim()) {
+    const ymd = parseCouponYmd(coupon.couponValidToYmd);
+    if (ymd) {
+      const parts = ymd.split('-').map((p) => Number.parseInt(p, 10));
+      if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+        const endSec = Math.floor(new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59).getTime() / 1000);
+        const now = Math.floor(Date.now() / 1000);
+        if (Number.isFinite(endSec) && endSec > now) {
+          const delta = endSec - now;
+          if (delta < 86_400) return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 function programsCouponShareShouldShowExpiryPill(expiresLabel: string): boolean {
   const normalized = expiresLabel.trim().toUpperCase();
+  const validNow = tu('programs_coupon_expiry_valid_now').trim().toUpperCase();
   if (!normalized) return false;
-  return normalized !== '现可领取' && normalized !== '无到期';
+  return normalized !== validNow;
 }
 
 function formatProgramsCouponShareExpiryLabel(coupon: CardIssuanceCouponRow): string {
-  if (coupon.couponDateRestriction !== 'range' || !coupon.couponValidToYmd.trim()) return '现可领取';
+  if (coupon.couponDateRestriction !== 'range' || !coupon.couponValidToYmd.trim()) {
+    return tu('programs_coupon_expiry_valid_now');
+  }
   const ymd = parseCouponYmd(coupon.couponValidToYmd);
-  if (!ymd) return '现可领取';
+  if (!ymd) return tu('programs_coupon_expiry_valid_now');
   const parts = ymd.split('-').map((p) => Number.parseInt(p, 10));
-  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return '现可领取';
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return tu('programs_coupon_expiry_valid_now');
   const endSec = Math.floor(new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59).getTime() / 1000);
-  if (!Number.isFinite(endSec) || endSec <= 0) return '现可领取';
+  if (!Number.isFinite(endSec) || endSec <= 0) return tu('programs_coupon_expiry_valid_now');
   const now = Math.floor(Date.now() / 1000);
-  if (endSec <= now) return '已过期';
+  if (endSec <= now) return tu('programs_coupon_expiry_expired');
   const delta = endSec - now;
-  if (delta >= 86_400) return `${Math.ceil(delta / 86_400)} 天后过期`;
-  if (delta >= 3_600) return `${Math.ceil(delta / 3_600)} 小时后过期`;
-  return `${Math.max(1, Math.ceil(delta / 60))} 分钟后过期`;
+  if (delta >= 86_400) return tu('programs_coupon_expiry_days', { n: Math.ceil(delta / 86_400) });
+  if (delta >= 3_600) return tu('programs_coupon_expiry_hours', { n: Math.ceil(delta / 3_600) });
+  return tu('programs_coupon_expiry_minutes', { n: Math.max(1, Math.ceil(delta / 60)) });
 }
 
 function buildProgramsCouponShareHeadline(
   merchantName: string,
-  shareKind: 'open_claim' | 'redeem'
+  shareKind: 'open_claim' | 'redeem',
+  couponName?: string
 ): string {
-  const verb = shareKind === 'redeem' ? '兑换' : '领取';
-  const name = merchantName.trim() || 'Beamio';
-  const trimmed = name.length > 28 ? `${name.slice(0, 27).trim()}…` : name;
-  return `${verb} a ${trimmed} Coupon`;
+  const name = (couponName?.trim() || tu('programs_coupon_default_name')).trim();
+  const merchant = merchantName.trim() || 'Beamio';
+  const trimmedMerchant = merchant.length > 28 ? `${merchant.slice(0, 27).trim()}…` : merchant;
+  return shareKind === 'redeem'
+    ? tu('programs_coupon_share_headline_redeem', { name, merchant: trimmedMerchant })
+    : tu('programs_coupon_share_headline_claim', { name, merchant: trimmedMerchant });
 }
 
 function ProgramsCouponBannerImage({ src }: { src: string }) {
@@ -9643,16 +9667,17 @@ function ProgramsCouponShareCardPreview({
   shareKind: 'open_claim' | 'redeem';
   punchBgClassName?: string;
 }) {
-  const shareHeadline = buildProgramsCouponShareHeadline(merchantName, shareKind);
-  const title = coupon.name.trim() || 'Beamio Coupon';
-  const subtitle = coupon.description.trim() || 'Open in the Beamio app.';
+  const { tu } = useTu();
+  const shareHeadline = buildProgramsCouponShareHeadline(merchantName, shareKind, coupon.name.trim() || undefined);
+  const title = coupon.name.trim() || tu('programs_coupon_default_title');
+  const subtitle = coupon.description.trim() || tu('programs_coupon_share_default_subtitle');
   const backgroundColorHex = tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#2B2E3A';
   const hasBanner = Boolean(coupon.couponImage.trim());
   const backgroundImage = coupon.couponImage.trim();
   const iconUrl = !hasBanner && cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? coupon.icon.trim() : '';
   const expiresLabel = formatProgramsCouponShareExpiryLabel(coupon);
   const showExpiryPill = programsCouponShareShouldShowExpiryPill(expiresLabel);
-  const expiryUrgent = programsCouponShareExpiryUsesUrgentVariant(expiresLabel);
+  const expiryUrgent = programsCouponShareExpiryUsesUrgentVariant(expiresLabel, coupon);
   const ExpiryIcon = expiryUrgent ? Clock : Calendar;
   const innerExpiryClass = expiryUrgent
     ? 'bg-red-600 text-white shadow-sm shadow-red-900/25'
@@ -9736,7 +9761,7 @@ function ProgramsCouponShareCardPreview({
   ) : null;
 
   return (
-    <div className="relative w-full text-left" role="region" aria-label="Coupon preview">
+    <div className="relative w-full text-left" role="region" aria-label={tu('programs_coupon_preview_aria')}>
       <p className="mb-3 text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg">
         {shareHeadline}
       </p>
@@ -10213,20 +10238,22 @@ async function bizProgramCardReadProvider(cardAddress: string): Promise<ethers.P
 }
 
 /** On-chain `BeamioUserCard.upgradeType()` (fixed at deploy). Labels align with Card Issuance Setup form. */
-const CARD_ISSUANCE_UPGRADE_TYPE_UI: Record<0 | 1 | 2, { title: string; detail: string }> = {
-  0: {
-    title: 'Single Top-up',
-    detail: 'Single top-up or redeem amount reaches the next tier threshold.',
-  },
-  1: {
-    title: 'Current Balance',
-    detail: 'Total balance reaches the next tier threshold.',
-  },
-  2: {
-    title: 'Cumulative Spend',
-    detail: 'When cumulative spending reaches the next tier threshold.',
-  },
-};
+function getCardIssuanceUpgradeTypeUi(): Record<0 | 1 | 2, { title: string; detail: string }> {
+  return {
+    0: {
+      title: tu('programs_upgrade_single_title'),
+      detail: tu('programs_upgrade_single_detail'),
+    },
+    1: {
+      title: tu('programs_upgrade_balance_title'),
+      detail: tu('programs_upgrade_balance_detail'),
+    },
+    2: {
+      title: tu('programs_upgrade_cumulative_title'),
+      detail: tu('programs_upgrade_cumulative_detail'),
+    },
+  };
+}
 
 /** Card Identity — merchant program categories (aligned with market Example horizontal chips) */
 type CardIssuanceCategoryOption = {
@@ -10289,37 +10316,40 @@ function cardIssuanceCategoryIdFromMetadata(raw: unknown): string {
 
 type CardIssuanceTierRule = 'single' | 'cumulative' | 'balance';
 type CardIssuanceTierPreset = 'silver' | 'gold' | 'platinum' | 'custom';
-const CARD_ISSUANCE_TIER_RULE_OPTIONS: Array<{
+
+function getCardIssuanceTierRuleOptions(): Array<{
   key: CardIssuanceTierRule;
   title: string;
   mobileDesc: string;
   desktopDesc: string;
   Icon: LucideIcon;
-}> = [
-  {
-    key: 'single',
-    title: 'Single Top-up',
-    mobileDesc: 'Reward based on a one-time deposit',
-    desktopDesc: 'Permanent upgrades on one-time high value reloads.',
-    Icon: ChevronsUp,
-  },
-  {
-    key: 'cumulative',
-    title: 'Cumulative Spend',
-    mobileDesc: 'Total amount spent since first visit',
-    desktopDesc: 'Upgrade based on total history. Lifetime loyalty rewards.',
-    Icon: Banknote,
-  },
-  {
-    key: 'balance',
-    title: 'Current Balance',
-    mobileDesc: 'Rewards based on active balance',
-    desktopDesc: 'Auto-adjust tiers as users spend and reload funds.',
-    Icon: ArrowDownUp,
-  },
-];
+}> {
+  return [
+    {
+      key: 'single',
+      title: tu('programs_tier_rule_single'),
+      mobileDesc: tu('programs_tier_rule_single_mobile'),
+      desktopDesc: tu('programs_tier_rule_single_desktop'),
+      Icon: ChevronsUp,
+    },
+    {
+      key: 'cumulative',
+      title: tu('programs_tier_rule_cumulative'),
+      mobileDesc: tu('programs_tier_rule_cumulative_mobile'),
+      desktopDesc: tu('programs_tier_rule_cumulative_desktop'),
+      Icon: Banknote,
+    },
+    {
+      key: 'balance',
+      title: tu('programs_tier_rule_balance'),
+      mobileDesc: tu('programs_tier_rule_balance_mobile'),
+      desktopDesc: tu('programs_tier_rule_balance_desktop'),
+      Icon: ArrowDownUp,
+    },
+  ];
+}
 
-const CARD_ISSUANCE_TIER_RULE_KEYS: CardIssuanceTierRule[] = CARD_ISSUANCE_TIER_RULE_OPTIONS.map((o) => o.key);
+const CARD_ISSUANCE_TIER_RULE_KEYS: CardIssuanceTierRule[] = ['single', 'cumulative', 'balance'];
 
 /** Maps on-chain `BeamioUserCard.upgradeType()` (0…2) to Card Configurator loyalty rule keys. */
 function cardIssuanceTierRuleFromUpgradeType(upgradeType: number): CardIssuanceTierRule | null {
@@ -10345,21 +10375,22 @@ function programCardLoyaltyTierRuleTrustedCacheKey(eoaLower: string, programCard
 }
 
 /** Mobile Add/Edit Reward Tier sheet subtitle — reflects the selected Loyalty Rule Type. */
-const CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE: Record<CardIssuanceTierRule, string> = {
-  single:
-    'Single Top-up: set the tier name, one-time minimum reload to qualify, member discount, and tier brand color.',
-  cumulative:
-    'Cumulative Spend: set the tier name, lifetime cumulative spend threshold to qualify, member discount, and tier brand color.',
-  balance:
-    'Current Balance: set the tier name, minimum active balance to qualify, member discount, and tier brand color.',
-};
+function getCardIssuanceRewardTierEditorSubtitle(): Record<CardIssuanceTierRule, string> {
+  return {
+    single: tu('programs_tier_editor_subtitle_single'),
+    cumulative: tu('programs_tier_editor_subtitle_cumulative'),
+    balance: tu('programs_tier_editor_subtitle_balance'),
+  };
+}
 
 /** Tier editor threshold field label — matches Loyalty Rule Type semantics. */
-const CARD_ISSUANCE_TIER_THRESHOLD_LABEL: Record<CardIssuanceTierRule, string> = {
-  single: 'Min. one-time reload (CAD)',
-  cumulative: 'Min. cumulative spend (CAD)',
-  balance: 'Min. balance (CAD)',
-};
+function getCardIssuanceTierThresholdLabel(): Record<CardIssuanceTierRule, string> {
+  return {
+    single: tu('programs_tier_threshold_single'),
+    cumulative: tu('programs_tier_threshold_cumulative'),
+    balance: tu('programs_tier_threshold_balance'),
+  };
+}
 
 type CardIssuanceTierRow = {
   id: string;
@@ -11091,12 +11122,12 @@ useEffect(() => {
   cardIssuanceCouponEditorOpenRef.current = cardIssuanceCouponEditorOpen;
 }, [cardIssuanceCouponEditorOpen]);
 const [cardIssuanceEditingCouponId, setCardIssuanceEditingCouponId] = useState<string | null>(null);
-const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState(CARD_ISSUANCE_COUPON_NAME_DEFAULT);
+const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState(cardIssuanceCouponNameDefault());
 const [cardIssuanceCouponIcon, setCardIssuanceCouponIcon] = useState('');
 const [cardIssuanceCouponImage, setCardIssuanceCouponImage] = useState('');
 const [cardIssuanceCouponBackgroundColor, setCardIssuanceCouponBackgroundColor] = useState('#0051d1');
 const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState(
-  CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT
+  cardIssuanceCouponDescriptionDefault()
 );
 const [cardIssuanceCouponIssueTotal, setCardIssuanceCouponIssueTotal] = useState(
   String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)
@@ -12948,7 +12979,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    const ut = cardIssuanceExistingCard?.upgradeType;
    const fromChain = ut != null && ut >= 0 && ut <= 2 ? cardIssuanceTierRuleFromUpgradeType(ut) : null;
    const effectiveKey = fromCache ?? fromChain ?? cardIssuanceTierRule;
-   return CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === effectiveKey);
+   return getCardIssuanceTierRuleOptions().find((o) => o.key === effectiveKey);
  }, [programsCardLoyaltyTierRuleCacheKey, cardIssuanceExistingCard?.upgradeType, cardIssuanceTierRule]);
 
  const programsOverviewTierRuleKey = useMemo(
@@ -13451,11 +13482,11 @@ const removeCardIssuanceTierFromEditor = useCallback(async () => {
 const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponEditorError('');
   setCardIssuanceEditingCouponId(null);
-  setCardIssuanceCouponName(CARD_ISSUANCE_COUPON_NAME_DEFAULT);
+  setCardIssuanceCouponName(cardIssuanceCouponNameDefault());
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage('');
   setCardIssuanceCouponBackgroundColor('#0051d1');
-  setCardIssuanceCouponDescription(CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT);
+  setCardIssuanceCouponDescription(cardIssuanceCouponDescriptionDefault());
   setCardIssuanceCouponIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceCouponRequiresRedeemCode(false);
   setCardIssuanceCouponDateRestriction('none');
@@ -29344,15 +29375,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        ? protocolFuelReserveBalance
                        : 0
                      ).toFixed(2)}{' '}
-                     bonus B-Units available
+                     {tu('programs_onboarding_bonus_available')}
                    </span>
                  </div>
                  <h1 className="max-w-[22ch] text-[1.875rem] font-bold leading-[1.2] tracking-[-0.02em] text-slate-800 sm:max-w-none md:text-[2.5rem] md:leading-[1.15] lg:text-[2.75rem]">
-                   Set up your first <br className="hidden md:block" /> membership card program
+                   {tu('programs_onboarding_title')}
                  </h1>
                  <p className="max-w-3xl text-base font-normal leading-relaxed text-slate-600 md:text-lg md:leading-relaxed">
-                   Choose your merchant starter kit. It includes everything you need to launch your digital network and physical tap-to-pay
-                   experience.
+                   {tu('programs_onboarding_subtitle')}
                  </p>
                </header>
                <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -29360,35 +29390,35 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <div>
                      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                        <div className="min-w-0 pr-2">
-                         <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">Standard Program</h2>
+                         <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">{tu('programs_kit_standard_title')}</h2>
                          <p className="mt-1.5 text-sm font-normal leading-snug text-slate-600">
-                           Best for quick launch with standard generic NFC cards.
+                           {tu('programs_kit_standard_desc')}
                          </p>
                        </div>
                        <div className="flex shrink-0 flex-col items-start gap-0.5 sm:items-end sm:text-right">
                          <span className="text-2xl font-bold tabular-nums text-slate-900">C$69</span>
-                         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">One-time</span>
+                         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{tu('programs_kit_one_time')}</span>
                        </div>
                      </div>
                      <div className="mb-8 rounded-2xl bg-[#f3f4f6] px-4 py-4">
                        <div className="mb-1.5 flex items-center gap-3">
                          <Coins className="size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                         <span className="text-sm font-bold text-slate-900">2,000 B-Units Included</span>
+                         <span className="text-sm font-bold text-slate-900">{tu('programs_kit_bunits_2000')}</span>
                        </div>
-                       <p className="ml-8 pl-0 text-xs font-normal leading-snug text-slate-600 sm:ml-9">Covers ~1,000 customer payments</p>
+                       <p className="ml-8 pl-0 text-xs font-normal leading-snug text-slate-600 sm:ml-9">{tu('programs_kit_covers_1000')}</p>
                      </div>
                      <ul className="mb-10 space-y-3.5">
                        <li className="flex items-start gap-3">
                          <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                         <span className="text-sm font-normal leading-snug text-slate-700">System Activation</span>
+                         <span className="text-sm font-normal leading-snug text-slate-700">{tu('programs_kit_feat_activation')}</span>
                        </li>
                        <li className="flex items-start gap-3">
                          <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                        <span className="text-sm font-normal leading-snug text-slate-700">10x BEAMIO Generic NFC Cards</span>
+                        <span className="text-sm font-normal leading-snug text-slate-700">{tu('programs_kit_feat_nfc_10')}</span>
                        </li>
                        <li className="flex items-start gap-3">
                          <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                         <span className="text-sm font-normal leading-snug text-slate-700">Order more generic cards anytime (C$1.50/ea)</span>
+                         <span className="text-sm font-normal leading-snug text-slate-700">{tu('programs_kit_feat_order_generic')}</span>
                        </li>
                      </ul>
                    </div>
@@ -29397,7 +29427,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      onClick={() => openMerchantKitCheckout('standard_kit')}
                      className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-[#e5e8eb] active:scale-[0.99] ${bizFocusRingClass}`}
                    >
-                     Activate Standard Kit
+                     {tu('programs_kit_activate_standard')}
                    </button>
                  </div>
                  <div className="relative overflow-hidden rounded-2xl border-2 border-[#0051d1] bg-white shadow-[0_20px_40px_rgba(21,98,240,0.08)]">
@@ -29408,31 +29438,31 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                          <div className="min-w-0 pr-2">
                            <div className="mb-2 inline-block rounded-full bg-[#0051d1] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
-                             Recommended
+                             {tu('programs_kit_recommended')}
                            </div>
-                           <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">Custom Program</h2>
+                           <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">{tu('programs_kit_custom_title')}</h2>
                            <p className="mt-1.5 text-sm font-normal leading-snug text-slate-600">
-                             Best for growing brands needing a fully custom physical and digital presence.
+                             {tu('programs_kit_custom_desc')}
                            </p>
                          </div>
                          <div className="flex shrink-0 flex-col items-start gap-0.5 sm:items-end sm:text-right">
                            <span className="text-2xl font-bold tabular-nums text-[#0051d1]">C$139</span>
-                           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">One-time</span>
+                           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{tu('programs_kit_one_time')}</span>
                          </div>
                        </div>
                        <div className="mb-8 rounded-2xl border border-[#c7d7f5] bg-[#e8f0fe] px-4 py-4">
                          <div className="mb-1.5 flex items-center gap-3">
                            <Coins className="size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                           <span className="text-sm font-bold text-slate-900">5,000 B-Units Included</span>
+                           <span className="text-sm font-bold text-slate-900">{tu('programs_kit_bunits_5000')}</span>
                          </div>
-                         <p className="ml-8 pl-0 text-xs font-normal leading-snug text-slate-600 sm:ml-9">Covers ~2,500 customer payments</p>
+                         <p className="ml-8 pl-0 text-xs font-normal leading-snug text-slate-600 sm:ml-9">{tu('programs_kit_covers_2500')}</p>
                        </div>
                        <ul className="mb-10 space-y-3.5">
                          {[
-                           'System Activation',
-                          '20x BEAMIO Generic NFC Cards',
-                           'Custom Design Service Unlocked',
-                           'Order custom cards from factory (from C$2.50/ea)',
+                           tu('programs_kit_feat_activation'),
+                           tu('programs_kit_feat_nfc_20'),
+                           tu('programs_kit_feat_custom_design'),
+                           tu('programs_kit_feat_order_custom'),
                          ].map((line) => (
                            <li key={line} className="flex items-start gap-3">
                              <BadgeCheck className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
@@ -29446,7 +29476,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        onClick={() => openMerchantKitCheckout('custom_kit')}
                        className={`relative z-10 w-full rounded-full bg-gradient-to-br from-[#0051d1] to-[#7a9dff] py-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,81,209,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] ${bizFocusRingClass}`}
                      >
-                       Activate Custom Kit
+                       {tu('programs_kit_activate_custom')}
                      </button>
                    </div>
                  </div>
@@ -29461,16 +29491,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="flex items-start justify-between">
                        <Nfc className="size-10 shrink-0 text-[#0051d1]" strokeWidth={1.5} aria-hidden />
                        <div className="text-right">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#0051d1]/60">Beamio Business</p>
-                         <p className="text-sm font-bold text-slate-900">Member Platinum</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#0051d1]/60">{tu('programs_kit_card_beamio_business')}</p>
+                         <p className="text-sm font-bold text-slate-900">{tu('programs_kit_card_member_platinum')}</p>
                        </div>
                      </div>
                      <div className="mt-4 flex flex-1 flex-col items-center justify-center">
                        <Nfc className="mb-2 size-16 shrink-0 text-[#0051d1]/30" strokeWidth={1.25} aria-hidden />
-                       <p className="text-lg font-extrabold uppercase tracking-tight text-[#0051d1]/40">@YOURBRAND</p>
+                       <p className="text-lg font-extrabold uppercase tracking-tight text-[#0051d1]/40">{tu('programs_kit_card_your_brand')}</p>
                      </div>
                      <div className="flex items-end justify-between">
-                       <span className="text-xs font-bold uppercase tracking-wider text-slate-900">YOUR LOGO HERE</span>
+                       <span className="text-xs font-bold uppercase tracking-wider text-slate-900">{tu('programs_kit_card_your_logo')}</span>
                        <div className="flex size-10 items-center justify-center rounded-full bg-[#0051d1]/10">
                          <Infinity className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
                        </div>
@@ -29478,23 +29508,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </div>
                  </div>
                  <div className="md:col-span-7">
-                   <h3 className="mb-2 text-2xl font-bold text-slate-900">The Premium Card Experience</h3>
+                   <h3 className="mb-2 text-2xl font-bold text-slate-900">{tu('programs_kit_premium_title')}</h3>
                    <p className="mb-4 text-sm font-bold text-[#0051d1]">
-                     Your digital cards go live instantly. Your physical NFC cards ship within 24 hours.
+                     {tu('programs_kit_premium_sub')}
                    </p>
                    <p className="mb-6 text-sm font-normal leading-relaxed text-slate-600 md:text-base">
-                     Your customers receive a digital-first membership card that integrates seamlessly with their mobile wallet. With the Custom
-                     Program, every pixel reflects your brand&apos;s unique identity.
+                     {tu('programs_kit_premium_body')}
                    </p>
                    <div className="flex flex-wrap items-start gap-4">
                      <div className="flex flex-col">
                        <span className="text-2xl font-black tabular-nums text-[#0051d1]">1.2s</span>
-                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Tap-to-Pay</span>
+                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">{tu('programs_kit_stat_tap')}</span>
                      </div>
                      <div className="mx-2 hidden h-10 w-px shrink-0 self-center bg-slate-300/40 sm:block" aria-hidden />
                      <div className="flex flex-col">
                        <span className="text-2xl font-black tabular-nums text-[#0051d1]">100%</span>
-                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Cloud Sync</span>
+                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">{tu('programs_kit_stat_sync')}</span>
                      </div>
                    </div>
                  </div>
@@ -29503,35 +29532,34 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <div className="max-w-3xl">
                    <h4 className="mb-4 flex items-center gap-2 text-xl font-bold tracking-tight text-slate-800">
                      <HelpCircle className="size-6 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                     How setup works
+                     {tu('programs_kit_how_setup')}
                    </h4>
                    <div className="space-y-5">
                      <div>
-                       <h5 className="mb-2 text-base font-bold text-slate-800">Transaction Consumption &amp; Economics</h5>
+                       <h5 className="mb-2 text-base font-bold text-slate-800">{tu('programs_kit_economics_title')}</h5>
                        <p className="mb-3 text-sm font-normal leading-relaxed text-slate-600">
-                         B-Units power your digital infrastructure. Each transaction, member addition, or balance update consumes exactly 2 B-Units.
-                         A 2% reload fee applies to all system unit purchases.
+                         {tu('programs_kit_economics_body')}
                        </p>
                        <button
                          type="button"
                          onClick={() => setIsBUnitsExplainerOpen(true)}
                          className={`inline-flex items-center gap-2 text-sm font-semibold text-[#0051d1] hover:underline ${bizFocusRingClass} rounded-sm`}
                        >
-                         Learn about B-Units (1 CAD = 70 B-Units, 2% reload fee)
+                         {tu('programs_kit_learn_bunits')}
                          <ChevronRight className="size-4 shrink-0" strokeWidth={2} aria-hidden />
                        </button>
                      </div>
                      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                        <div className="rounded-xl bg-[#e5e9eb] p-5">
-                         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#0051d1]">Refills</p>
+                         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#0051d1]">{tu('programs_kit_refills_title')}</p>
                          <p className="text-sm font-normal leading-snug text-slate-800">
-                           B-Units can be set to auto-refill so your program never goes offline. A standard 2% fee applies to all top-ups.
+                           {tu('programs_kit_refills_body')}
                          </p>
                        </div>
                        <div className="rounded-xl bg-[#e5e9eb] p-5">
-                         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#0051d1]">Consumption</p>
+                         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#0051d1]">{tu('programs_kit_consumption_title')}</p>
                          <p className="text-sm font-normal leading-snug text-slate-800">
-                           Your starter package units are permanent and only consumed as your customers interact with your network.
+                           {tu('programs_kit_consumption_body')}
                          </p>
                        </div>
                      </div>
@@ -29542,7 +29570,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            ) : !profileOwnsIssuedBeamioCardFetched || !ownsBusinessStartKetToken0Fetched ? (
              <div className="mx-auto flex min-h-[min(480px,70dvh)] w-full max-w-[1280px] flex-col items-center justify-center gap-3 bg-[#f5f7f9] px-4 py-20">
                <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
-               <p className="text-sm font-medium text-[#595c5e]">Preparing your program workspace…</p>
+               <p className="text-sm font-medium text-[#595c5e]">{tu('programs_config_preparing')}</p>
              </div>
            ) : showCardIssuanceKetWelcomeCover ? (
              <div className="relative mx-auto min-h-[min(884px,100dvh)] w-full bg-[#f5f7f9] px-3 pb-8 pt-2 sm:px-5">
@@ -29589,17 +29617,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  primaryLabel={
                    cardIssuanceQuickDefaultRewardsFlow && cardIssuanceMobileStep === 1
                      ? cardIssuanceCreateLoading
-                       ? 'Creating…'
-                       : 'Publish & issue card'
+                       ? tu('programs_config_creating')
+                       : tu('programs_config_publish_issue')
                      : cardIssuanceMobileStep === 1
-                       ? 'Next: Set rewards'
+                       ? tu('programs_config_next_rewards')
                        : cardIssuanceMobileStep === 2
-                         ? 'Next: Review program'
+                         ? tu('programs_config_next_review')
                          : cardIssuanceCreateLoading
-                           ? 'Creating…'
+                           ? tu('programs_config_creating')
                            : cardIssuanceExistingCard
-                             ? 'Publish changes'
-                             : 'Publish & issue card'
+                             ? tu('programs_config_publish_changes')
+                             : tu('programs_config_publish_issue')
                  }
                  primaryDisabled={
                    cardIssuanceCreateLoading &&
@@ -29655,10 +29683,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="min-w-0">
                  <h2 className="font-manrope text-2xl font-extrabold tracking-tight text-[#1562f0] sm:text-[1.65rem]">
                    {cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview'
-                     ? 'Programs Management'
-                     : 'Card Configurator'}
+                     ? tu('programs_config_title')
+                     : tu('programs_configurator_title')}
                  </h2>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#747779]">Beamio Studio · Loyalty Engine</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#747779]">{tu('programs_config_studio_kicker')}</p>
                </div>
                {(!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') &&
                cardIssuanceOnchainFetch !== 'loading' ? (
@@ -29669,7 +29697,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        onClick={() => setCardIssuanceActiveProgramView('overview')}
                        className={`rounded-full border border-[#abadaf]/40 bg-white px-5 py-2 text-sm font-bold text-[#2c2f31] shadow-sm transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
                      >
-                       Back to overview
+                       {tu('programs_config_back_overview')}
                      </button>
                    ) : null}
                    <button
@@ -29679,7 +29707,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      }
                      className={`rounded-full px-5 py-2 text-sm font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/5 ${bizFocusRingClass}`}
                    >
-                     Preview
+                     {tu('programs_config_preview')}
                    </button>
                    <button
                      type="button"
@@ -29688,10 +29716,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      className={`rounded-full bg-[#1562f0] px-6 py-2 text-sm font-bold text-[#f1f2ff] shadow-md shadow-[#1562f0]/15 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                    >
                      {cardIssuanceCreateLoading
-                      ? 'Creating…'
+                      ? tu('programs_config_creating')
                       : cardIssuanceExistingCard
-                        ? 'Publish changes'
-                        : 'Publish & issue card'}
+                        ? tu('programs_config_publish_changes')
+                        : tu('programs_config_publish_issue')}
                    </button>
                  </div>
                ) : null}
@@ -30225,7 +30253,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      className="text-[9px] font-bold uppercase leading-tight tracking-widest"
                                      style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                                    >
-                                     Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
+                                     {tu('programs_overview_starting_from_label')} {cardIssuanceDisplayMoneyPrefix}{' '}
                                      {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
                                    </p>
                                    {cardIssuancePrimaryBonusRule ? (
@@ -30306,11 +30334,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                Membership tiers
                              </span>
                              <p className="mt-1 font-manrope text-xs font-bold leading-snug text-[#2c2f31]">
-                               {CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === cardIssuanceTierRule)?.title ??
+                               {getCardIssuanceTierRuleOptions().find((o) => o.key === cardIssuanceTierRule)?.title ??
                                  'Loyalty rule'}
                              </p>
                              <p className="mt-0.5 font-manrope text-[11px] leading-snug text-[#595c5e]">
-                               {CARD_ISSUANCE_TIER_RULE_OPTIONS.find((o) => o.key === cardIssuanceTierRule)?.mobileDesc ??
+                               {getCardIssuanceTierRuleOptions().find((o) => o.key === cardIssuanceTierRule)?.mobileDesc ??
                                  ''}
                              </p>
                            </div>
@@ -31068,7 +31096,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Smart Tier Logic</h3>
                    </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    {CARD_ISSUANCE_TIER_RULE_OPTIONS.map(({ key, title, desktopDesc, Icon }) => {
+                    {getCardIssuanceTierRuleOptions().map(({ key, title, desktopDesc, Icon }) => {
                       const selected = cardIssuanceTierRule === key;
                       return (
                         <label key={key} className="cursor-pointer">
@@ -31146,7 +31174,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             Loyalty Rule Type
                           </label>
                           <div className="space-y-2">
-                            {CARD_ISSUANCE_TIER_RULE_OPTIONS.map(({ key, title, mobileDesc, Icon }) => {
+                            {getCardIssuanceTierRuleOptions().map(({ key, title, mobileDesc, Icon }) => {
                               const selected = cardIssuanceTierRule === key;
                               return (
                                 <label key={key} className="block cursor-pointer">
@@ -32073,7 +32101,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 : 'Add Reward Tier'}
                           </h3>
                           <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                            {CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE[cardIssuanceTierRule]}
+                            {getCardIssuanceRewardTierEditorSubtitle()[cardIssuanceTierRule]}
                           </p>
                         </div>
                         <button
@@ -32110,7 +32138,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
                               htmlFor="card-issuance-tier-threshold"
                             >
-                              {CARD_ISSUANCE_TIER_THRESHOLD_LABEL[cardIssuanceTierRule]}
+                              {getCardIssuanceTierThresholdLabel()[cardIssuanceTierRule]}
                             </label>
                             <div className="relative">
                               <span className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
@@ -32297,10 +32325,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <div className="space-y-4">
                      <header className="min-w-0 space-y-0.5">
                        <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
-                         Live Preview
+                         {tu('programs_overview_live_preview')}
                        </span>
                        <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">
-                         Issued Program Asset
+                         {tu('programs_overview_asset_title')}
                        </h3>
                      </header>
                      <div
@@ -32373,12 +32401,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                        className="mb-1 text-[10px] font-bold uppercase tracking-widest opacity-80"
                                        style={{ color: programsOverviewPassHeroTheme.secondary }}
                                      >
-                                       Up to
+                                       {tu('programs_overview_up_to')}
                                      </p>
                                      <p className="font-manrope text-lg font-black leading-tight tracking-tight sm:text-xl">
                                        {programsOverviewCardMaxDiscountPct > 0
-                                         ? `${Math.round(programsOverviewCardMaxDiscountPct)}% DISCOUNT`
-                                         : 'Member pricing'}
+                                         ? tu('programs_overview_discount_pct', { pct: String(Math.round(programsOverviewCardMaxDiscountPct)) })
+                                         : tu('programs_overview_member_pricing')}
                                      </p>
                                    </div>
                                  ) : null}
@@ -32394,7 +32422,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      className="text-[10px] font-bold uppercase tracking-wider opacity-80"
                                      style={{ color: programsOverviewPassHeroTheme.tertiary }}
                                    >
-                                     Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
+                                     {tu('programs_overview_starting_from_label')} {cardIssuanceDisplayMoneyPrefix}{' '}
                                      {programsOverviewCardMinTopupDisplay}
                                    </p>
                                    {cardIssuancePrimaryBonusRule ? (
@@ -32424,7 +32452,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          aria-hidden
                        />
                        <header className="mb-3 flex items-center justify-between gap-2">
-                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Program Overview</h3>
+                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_overview_title')}</h3>
                          <div className="flex shrink-0 items-center gap-2">
                            <button
                              type="button"
@@ -32435,7 +32463,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              className={`inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-rose-700 transition-colors hover:bg-rose-100 sm:text-[11px] ${bizFocusRingClass}`}
                            >
                              <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-                             Delete card
+                             {tu('programs_overview_delete_card')}
                            </button>
                            <Info className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
                          </div>
@@ -32443,7 +32471,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <div className="space-y-3 sm:space-y-4">
                          <div>
                            <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                             Loyalty rule type
+                             {tu('programs_overview_loyalty_rule_type')}
                            </span>
                            <p className="font-manrope text-sm font-bold leading-snug text-[#2c2f31] sm:text-base">
                              {programsOverviewTierRuleOption?.title ?? '—'}
@@ -32456,7 +32484,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                          <div>
                            <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                             Name
+                             {tu('programs_overview_name')}
                            </span>
                            <p className="font-manrope text-lg font-extrabold leading-snug text-[#2c2f31] sm:text-xl">
                              {programsOverviewProgramFullName}
@@ -32464,21 +32492,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                          <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:grid-rows-2 sm:gap-x-6 sm:gap-y-2">
                            <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-1 sm:row-start-1">
-                             Symbol
+                             {tu('programs_overview_symbol')}
                            </span>
                            <div className="flex min-w-0 items-center sm:col-start-1 sm:row-start-2">
                              <p className="font-manrope font-bold text-[#1562f0]">{programsOverviewSymbolDisplay}</p>
                            </div>
                            <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-2 sm:row-start-1">
-                             Status
+                             {tu('programs_overview_status')}
                            </span>
                            <div className="flex min-w-0 items-center sm:col-start-2 sm:row-start-2">
                              <span className="inline-flex rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] sm:px-3 sm:py-1 sm:text-[10px]">
-                               LIVE
+                               {tu('programs_overview_live_badge')}
                              </span>
                            </div>
                            <span className="min-w-0 text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-3 sm:row-start-1">
-                             Contract Address
+                             {tu('programs_overview_contract')}
                            </span>
                            <div className="flex min-w-0 items-center sm:col-start-3 sm:row-start-2">
                              <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -33427,13 +33455,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </div>
                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                      <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
-                       <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">MIN RELOAD</p>
+                       <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">{tu('programs_min_reload')}</p>
                        <p className="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]">
                          {programsOverviewReloadLimitsDisplay.minLine}
                        </p>
                      </div>
                      <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
-                       <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">MAX RELOAD</p>
+                       <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 sm:text-[10px]">{tu('programs_max_reload')}</p>
                        <p className="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]">
                          {programsOverviewReloadLimitsDisplay.maxLine}
                        </p>
@@ -33469,10 +33497,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                              {cardIssuanceEditingCouponId ? 'Edit Coupon' : 'New Coupon'}
+                              {cardIssuanceEditingCouponId ? tu('programs_coupon_edit') : tu('programs_coupon_new')}
                             </span>
                             <h3 className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
-                              {cardIssuanceEditingCouponId ? 'Edit Coupon' : 'Create Coupon'}
+                              {cardIssuanceEditingCouponId ? tu('programs_coupon_edit') : tu('programs_coupon_create')}
                             </h3>
                           </div>
                           <button
@@ -33482,7 +33510,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               setCardIssuanceEditingCouponId(null);
                             }}
                             className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#abadaf]/30 bg-white text-[#747779] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
-                            aria-label="关闭"
+                            aria-label={tu('programs_common_close')}
                           >
                             <X className="h-5 w-5" strokeWidth={2} aria-hidden />
                           </button>
@@ -33491,9 +33519,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6">
                         <div className="sticky top-0 z-30 -mx-4 mb-4 border-b border-[#abadaf]/15 bg-white/95 px-4 pb-4 pt-3 backdrop-blur-md supports-[backdrop-filter]:bg-white/80 sm:-mx-6 sm:px-6">
                           <span className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            Coupon preview
+                            {tu('programs_coupon_preview')}
                           </span>
-                          <div className="relative w-full" role="region" aria-label="Coupon preview">
+                          <div className="relative w-full" role="region" aria-label={tu('programs_coupon_preview_aria')}>
                             <div className="relative">
                               <div className="pointer-events-none absolute left-0 top-1/2 z-20 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
                               <div className="pointer-events-none absolute right-0 top-1/2 z-20 h-9 w-9 translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-none ring-0 outline-none" aria-hidden />
@@ -33649,7 +33677,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         onChange={(e) =>
                           setCardIssuanceCouponDescription(e.target.value.replace(/\r?\n/g, ' '))
                         }
-                        placeholder={CARD_ISSUANCE_COUPON_DESCRIPTION_DEFAULT}
+                        placeholder={cardIssuanceCouponDescriptionDefault()}
                         autoComplete="off"
                         className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                       />
@@ -34030,7 +34058,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               : 'Add Reward Tier'}
                         </h3>
                         <p className="mt-2 text-sm leading-relaxed text-[#595c5e]">
-                          {CARD_ISSUANCE_REWARD_TIER_EDITOR_SUBTITLE[programsOverviewTierRuleKey]}
+                          {getCardIssuanceRewardTierEditorSubtitle()[programsOverviewTierRuleKey]}
                         </p>
                         <p className="mt-2 text-xs font-medium leading-relaxed text-[#595c5e]/85">
                           Publish below to sync changes with your issued card contract.
@@ -34064,7 +34092,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                           <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]" htmlFor="programs-overview-tier-threshold">
-                            {CARD_ISSUANCE_TIER_THRESHOLD_LABEL[programsOverviewTierRuleKey]}
+                            {getCardIssuanceTierThresholdLabel()[programsOverviewTierRuleKey]}
                           </label>
                           <div className="relative">
                             <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
@@ -35950,7 +35978,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        /* ignore */
                      }
                    }
-                   const merchantNorm = ethers.getAddress(merchant);
+                   const merchantNorm = ethers.getAddress(new ethers.Wallet(pkHex).address);
                    const deadline = Math.floor(Date.now() / 1000) + 60 * 15;
                    const nonce = generateRegisterPOSNonce();
                    const signature = await signRemovePOS(pkHex, merchantNorm, posNorm, deadline, nonce);
@@ -35961,7 +35989,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      nonce,
                      signature,
                    });
-                   if (!result.success) throw new Error(result.error ?? 'Remove failed (POS registry)');
+                   if (!result.success) {
+                     // Base admin already removed; CoNET registry unlink is best-effort (e.g. never registered).
+                     console.warn('[Revoke Terminal] removePOS:', result.error ?? 'unknown');
+                   }
                    setDeleteTerminalToRemove(null);
                    const posLower = posNorm.toLowerCase();
                    const cached = loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? [];
@@ -37866,19 +37897,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         >
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Open Claim Distribution</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">{tu('programs_share_open_claim_title')}</p>
               <h2 id="coupon-share-qr-title" className="mt-1 truncate font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31]">
                 {cardIssuanceCouponShareRow.name}
               </h2>
               <p className="mt-1 text-xs font-medium text-[#595c5e]">
-                Share this URL or QR with members. Anyone who meets eligibility can claim without redeem code.
+                {tu('programs_coupon_share_open_hint_long')}
               </p>
             </div>
             <button
               type="button"
               onClick={closeCardIssuanceCouponShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="关闭"
+              aria-label={tu('programs_common_close')}
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
@@ -37894,7 +37925,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             </div>
             <div className="min-w-0 space-y-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Claim URL</p>
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{tu('programs_share_claim_url')}</p>
                 <p className="break-all font-mono text-[11px] text-slate-700">{cardIssuanceCouponShareUrl}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -37908,7 +37939,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ) : (
                     <Copy className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                   )}
-                  {cardIssuanceCouponShareUrlCopied ? '已复制' : 'Copy URL'}
+                  {cardIssuanceCouponShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                 </button>
                 <a
                   href={cardIssuanceCouponShareUrl}
@@ -37916,7 +37947,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   rel="noopener noreferrer"
                   className={`inline-flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-3 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/15 ${bizFocusRingClass}`}
                 >
-                  Open link
+                  {tu('programs_share_open_link')}
                   <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
                 </a>
                 <button
@@ -38044,7 +38075,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 return null;
               })()}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Redeem URL</p>
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{tu('programs_share_redeem_url')}</p>
                 <p className="break-all font-mono text-[11px] text-slate-700">{cardIssuanceCouponRedeemShareUrl}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -38451,7 +38482,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 </div>
                 <div className="min-w-0 space-y-3">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Claim URL</p>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{tu('programs_share_claim_url')}</p>
                     <p className="break-all font-mono text-[11px] text-slate-700">{cardIssuanceProductionShareUrl}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

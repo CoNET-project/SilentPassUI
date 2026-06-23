@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Shield, ArrowRight, Eye, EyeOff, Network, Briefcase, Info, HelpCircle, Fingerprint } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
-import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData, bootstrapProfileLocaleCurrencyIfUnset } from '@/services/beamio'
+import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from '@/services/beamio'
 import { setCoNET_Data } from '@/utils/globals'
 import { initChat } from '@/services/chat'
 import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
@@ -12,7 +12,7 @@ import { conetDepinProvider } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
-import { BEAMIO_TAG_ALLOWED_RE, BEAMIO_TAG_RULE_HINT, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
+import { BEAMIO_TAG_ALLOWED_RE, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 import RestoreAccessPage from '@/pages/Home/RestoreAccessPage'
 import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
 import { markWorkspaceSessionUnlocked } from '@/utils/beamioWorkspaceLock'
@@ -75,7 +75,7 @@ const assembleEncryptKeysObject = async (
 	const userInfo = await loadUserInfo()
 	if (!userInfo?.accountName?.trim()) return false
 
-	let bo: beamio = userInfo
+	let bo: beamio = mergeLocalLocaleLanguageOntoChainProfile(userInfo, temp.beamio)
 	bo.initialLoading = false
 	temp.beamio = bo
 
@@ -207,7 +207,7 @@ const BizHome = () => {
 		setLoginError('')
 		const username = normalizeBeamioTagInput(merchantTag)
 		if (!username || !BEAMIO_TAG_ALLOWED_RE.test(username)) {
-			setLoginError(BEAMIO_TAG_RULE_HINT)
+			setLoginError(tu('home_beamio_tag_rule_hint'))
 			return
 		}
 		setIsLoading(true)
@@ -249,7 +249,7 @@ const BizHome = () => {
 			const result = await restoreWithRedeem(recoveryCode.trim(), '')
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
-				throw new Error('Invalid recovery QR code')
+				throw new Error(tu('home_restore_err_invalid_qr'))
 			}
 			const ready = await assembleEncryptKeysObject(
 				temp,
@@ -263,12 +263,12 @@ const BizHome = () => {
 				undefined
 			)
 			if (!ready) {
-				throw new Error('Could not prepare workspace after restore')
+				throw new Error(tu('home_restore_err_prepare_failed'))
 			}
 			navigate('/native-pos', { replace: true })
 		} catch (err) {
 			setShowRestoreAccess(true)
-			throw new Error((err as Error)?.message ?? 'Restore failed, please try another recovery QR image.')
+			throw new Error((err as Error)?.message ?? tu('home_restore_err_try_another'))
 		} finally {
 			setIsLoading(false)
 		}
@@ -314,7 +314,7 @@ const BizHome = () => {
 						<div className="space-y-6">
 							<h1 className="px-4 text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">{tu('preparing_your_business_workspace')}</h1>
 							<p className="px-6 text-lg font-medium leading-relaxed text-[#595c5e]">
-								We&apos;re verifying your business access and getting Beamio Business OS ready.
+								{tu('gateway_verifying_access')}
 							</p>
 							<div className="pt-8">
 								<span className="biz-signing-pulse-soft inline-block rounded-full bg-[#eef1f3] px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#515c70]">{tu('this_usually_takes_a_few_seconds')}</span>
@@ -336,7 +336,7 @@ const BizHome = () => {
 									<span className="relative inline-flex h-2 w-2 rounded-full bg-[#0051d1]" />
 								</div>
 								<p className="text-left text-xs font-semibold uppercase leading-snug tracking-wide text-[#595c5e] sm:text-center sm:text-sm">
-									We&apos;re verifying your business access and getting Beamio Business OS ready.
+									{tu('gateway_verifying_access')}
 								</p>
 							</div>
 						</div>
@@ -394,7 +394,7 @@ const BizHome = () => {
 								htmlFor="biz-gateway-beamiotag"
 								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]`}
 							>
-								@BEAMIOTAG
+								{tu('home_beamiotag_label')}
 							</label>
 							<input
 								id="biz-gateway-beamiotag"
@@ -403,7 +403,7 @@ const BizHome = () => {
 								autoCorrect="off"
 								autoComplete="username"
 								inputMode="text"
-								placeholder="e.g. global_ventures"
+								placeholder={tu('gateway_beamiotag_ph')}
 								value={merchantTag}
 								onChange={(e) => setMerchantTag(normalizeBeamioTagInput(e.target.value))}
 								className={`w-full rounded-lg border-none bg-[#eef1f3] px-5 py-4 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
@@ -439,7 +439,7 @@ const BizHome = () => {
 									tabIndex={-1}
 									className="absolute right-4 top-1/2 -translate-y-1/2 text-[#595c5e] transition-colors hover:text-[#0051d1]"
 									onClick={() => setShowPassword((s) => !s)}
-									aria-label={showPassword ? '隐藏密码' : '显示密码'}
+									aria-label={showPassword ? tu('hide_password') : tu('show_password')}
 								>
 									{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
 								</button>

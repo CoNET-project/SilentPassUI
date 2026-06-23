@@ -5,6 +5,7 @@ import zhCN from './zh-CN.json'
 import {
 	detectBrowserBeamioLocale,
 	normalizeBeamioUiLocale,
+	readBeamioUiLanguageBootstrap,
 	type BeamioUiLocale,
 } from '@/utils/beamioProfileLocaleCurrency'
 
@@ -51,7 +52,7 @@ function writeOnboardingUiLocaleSession(locale: BeamioUiLocale): void {
 }
 
 function resolveInitialUiLocale(): BeamioUiLocale {
-	return readOnboardingUiLocaleSession() ?? detectBrowserBeamioLocale()
+	return readBeamioUiLanguageBootstrap() ?? readOnboardingUiLocaleSession() ?? detectBrowserBeamioLocale()
 }
 
 function resolveCurrentTranslationLocale(): BeamioUiLocale {

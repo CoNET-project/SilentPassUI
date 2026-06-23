@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import jsQR from 'jsqr'
 import { AlertTriangle, ArrowLeft, ArrowRight, HelpCircle, Lock, QrCode, ShieldCheck } from 'lucide-react'
+import { useTu } from '@/locale/beamioLocale'
+import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
 
 const headlineFont = "font-['Manrope',ui-sans-serif,system-ui,sans-serif]"
 
@@ -13,6 +15,7 @@ export default function RestoreAccessPage({
 	onBack,
 	onRestoreCode,
 }: RestoreAccessPageProps) {
+	const { tu } = useTu()
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const [recoveryCode, setRecoveryCode] = useState('')
 	const [selectedFileName, setSelectedFileName] = useState('')
@@ -31,19 +34,19 @@ export default function RestoreAccessPage({
 			const image = await new Promise<HTMLImageElement>((resolve, reject) => {
 				const img = new Image()
 				img.onload = () => resolve(img)
-				img.onerror = () => reject(new Error('Unable to read the selected image.'))
+				img.onerror = () => reject(new Error(tu('home_restore_err_read_image')))
 				img.src = objectUrl
 			})
 			const canvas = document.createElement('canvas')
 			canvas.width = image.naturalWidth || image.width
 			canvas.height = image.naturalHeight || image.height
 			const ctx = canvas.getContext('2d')
-			if (!ctx) throw new Error('Unable to process the selected image.')
+			if (!ctx) throw new Error(tu('home_restore_err_process_image'))
 			ctx.drawImage(image, 0, 0)
 			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 			const result = jsQR(imageData.data, imageData.width, imageData.height)
 			const text = result?.data?.trim()
-			if (!text) throw new Error('No recovery QR code was found in that image.')
+			if (!text) throw new Error(tu('home_restore_err_no_qr'))
 			return text
 		} finally {
 			URL.revokeObjectURL(objectUrl)
@@ -58,12 +61,12 @@ export default function RestoreAccessPage({
 		setSelectedFileName(file.name)
 		if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
 			setRecoveryCode('')
-			setError('PDF recovery import is not supported yet. Please choose a PNG or JPG QR image.')
+			setError(tu('home_restore_err_pdf_unsupported'))
 			return
 		}
 		if (!file.type.startsWith('image/')) {
 			setRecoveryCode('')
-			setError('Please choose a PNG or JPG image that contains your recovery QR code.')
+			setError(tu('home_restore_err_image_format'))
 			return
 		}
 		setIsParsingFile(true)
@@ -72,7 +75,7 @@ export default function RestoreAccessPage({
 			setRecoveryCode(nextCode)
 		} catch (err) {
 			setRecoveryCode('')
-			setError((err as Error)?.message ?? 'Unable to read that recovery QR image.')
+			setError((err as Error)?.message ?? tu('home_restore_err_read_qr_image'))
 		} finally {
 			setIsParsingFile(false)
 		}
@@ -81,7 +84,7 @@ export default function RestoreAccessPage({
 	const handleValidateRestore = async () => {
 		if (isParsingFile || isRestoring) return
 		if (!recoveryCode.trim()) {
-			setError('Please select a recovery QR image first.')
+			setError(tu('home_restore_err_select_first'))
 			return
 		}
 		setError('')
@@ -89,7 +92,7 @@ export default function RestoreAccessPage({
 		try {
 			await onRestoreCode(recoveryCode)
 		} catch (err) {
-			setError((err as Error)?.message ?? 'Unable to restore from that recovery code.')
+			setError((err as Error)?.message ?? tu('home_restore_err_restore_failed'))
 		} finally {
 			setIsRestoring(false)
 		}
@@ -114,13 +117,13 @@ export default function RestoreAccessPage({
 							type="button"
 							onClick={onBack}
 							className="text-[#0051d1] transition-transform active:scale-95"
-							aria-label="返回"
+							aria-label={tu('home_restore_back')}
 						>
 							<ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
 						</button>
-						<h1 className="text-lg font-bold tracking-tight text-[#2c2f31]">Recovery</h1>
+						<h1 className="text-lg font-bold tracking-tight text-[#2c2f31]">{tu('home_restore_nav_title')}</h1>
 					</div>
-					<div className="text-xl font-black tracking-tighter text-[#0051d1]">Beamio</div>
+					<BizOnboardingLocalePicker />
 				</div>
 			</header>
 
@@ -128,10 +131,10 @@ export default function RestoreAccessPage({
 				<div className="w-full max-w-lg">
 					<div className="mb-12 text-center">
 						<h2 className={`${headlineFont} mb-4 text-4xl font-extrabold leading-tight tracking-tight text-[#2c2f31] lg:text-5xl`}>
-							Restore Access
+							{tu('home_restore_access_title')}
 						</h2>
 						<p className="mx-auto max-w-sm text-lg leading-relaxed text-[#595c5e]">
-							Use your Recovery QR code to regain access to your workspace without a password.
+							{tu('home_restore_access_sub')}
 						</p>
 					</div>
 
@@ -150,10 +153,10 @@ export default function RestoreAccessPage({
 								<div className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-[#0051d1] animate-pulse" />
 							</div>
 							<p className="mb-2 font-semibold text-[#2c2f31]">
-								Upload or scan your Recovery QR code image
+								{tu('home_restore_upload_title')}
 							</p>
 							<p className="text-xs uppercase tracking-[0.05em] text-[#595c5e]">
-								Supports PNG, JPG or PDF
+								{tu('home_restore_upload_formats')}
 							</p>
 							{selectedFileName ? (
 								<p className="mt-4 max-w-full truncate text-xs font-semibold text-[#0051d1]">
@@ -166,7 +169,7 @@ export default function RestoreAccessPage({
 								disabled={isParsingFile || isRestoring}
 								className="mt-8 rounded-full bg-[#dfe3e6] px-6 py-2.5 text-sm font-medium text-[#2c2f31] transition-all hover:bg-[#d9dde0] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
 							>
-								{isParsingFile ? 'Reading File…' : 'Select File'}
+								{isParsingFile ? tu('home_restore_reading_file') : tu('home_restore_select_file')}
 							</button>
 						</div>
 					</div>
@@ -180,7 +183,9 @@ export default function RestoreAccessPage({
 						>
 							<span className="absolute inset-0 bg-gradient-to-r from-[#0051d1] to-[#7a9dff] opacity-50" />
 							<span className="absolute left-0 top-0 h-px w-full bg-white/20" />
-							<span className="relative z-10">{isRestoring ? 'Restoring…' : 'Validate & Restore'}</span>
+							<span className="relative z-10">
+								{isRestoring ? tu('home_restore_restoring') : tu('home_restore_validate')}
+							</span>
 							<ArrowRight className="relative z-10 h-5 w-5" strokeWidth={2.25} aria-hidden />
 						</button>
 
@@ -196,23 +201,23 @@ export default function RestoreAccessPage({
 							className="inline-flex items-center gap-2 font-medium text-[#0051d1] transition-all hover:underline"
 						>
 							<HelpCircle className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-							Where can I find my Recovery QR code?
+							{tu('home_restore_help_link')}
 						</a>
 					</div>
 
 					<div className="mt-16 grid grid-cols-2 gap-4">
 						<div className="rounded-lg border border-white/40 bg-[#eef1f3]/50 p-6 backdrop-blur-md">
 							<Lock className="mb-3 h-5 w-5 text-[#648eff]" strokeWidth={2} aria-hidden />
-							<h3 className={`${headlineFont} mb-1 text-sm font-bold text-[#2c2f31]`}>Encrypted Recovery</h3>
+							<h3 className={`${headlineFont} mb-1 text-sm font-bold text-[#2c2f31]`}>{tu('home_restore_encrypted_title')}</h3>
 							<p className="text-[11px] leading-normal text-[#595c5e]">
-								Your recovery data is decrypted locally using your device&apos;s secure enclave.
+								{tu('home_restore_encrypted_body')}
 							</p>
 						</div>
 						<div className="rounded-lg border border-white/40 bg-[#eef1f3]/50 p-6 backdrop-blur-md">
 							<ShieldCheck className="mb-3 h-5 w-5 text-[#648eff]" strokeWidth={2} aria-hidden />
-							<h3 className={`${headlineFont} mb-1 text-sm font-bold text-[#2c2f31]`}>Workspace Safety</h3>
+							<h3 className={`${headlineFont} mb-1 text-sm font-bold text-[#2c2f31]`}>{tu('home_restore_safety_title')}</h3>
 							<p className="text-[11px] leading-normal text-[#595c5e]">
-								Restoring access will log out all other active sessions for security.
+								{tu('home_restore_safety_body')}
 							</p>
 						</div>
 					</div>
@@ -221,7 +226,7 @@ export default function RestoreAccessPage({
 
 			<footer className="mt-auto py-8 text-center">
 				<p className="text-[10px] uppercase tracking-widest text-[#595c5e]/60">
-					Powered by Beamio Cryptographic Infrastructure
+					{tu('home_restore_footer')}
 				</p>
 			</footer>
 

@@ -172,3 +172,34 @@ export function encodeRegistryLastNameWithLocaleSetup(
 	const payload = buildLocaleCurrencySetupPayload(setup)
 	return `${displayLastName}\r\n${JSON.stringify(payload)}`
 }
+
+/**
+ * Sync-only mirror for cold-start i18n before async PouchDB load.
+ * Long-term truth remains CoNET_Data.beamio.language + chain profile when localeConfigured.
+ */
+export const BEAMIO_UI_LANGUAGE_BOOTSTRAP_KEY = 'beamio:ui-language-bootstrap'
+
+export function readBeamioUiLanguageBootstrap(): BeamioUiLocale | null {
+	if (typeof window === 'undefined') return null
+	try {
+		const raw = localStorage.getItem(BEAMIO_UI_LANGUAGE_BOOTSTRAP_KEY)
+		if (!raw) return null
+		return normalizeBeamioUiLocale(raw)
+	} catch {
+		return null
+	}
+}
+
+export function writeBeamioUiLanguageBootstrap(language: BeamioUiLocale): void {
+	if (typeof window === 'undefined') return
+	try {
+		localStorage.setItem(BEAMIO_UI_LANGUAGE_BOOTSTRAP_KEY, language)
+	} catch {
+		/* ignore */
+	}
+}
+
+/** i18n module init: bootstrap mirror → browser default (not chain truth). */
+export function resolveColdStartUiLocale(): BeamioUiLocale {
+	return readBeamioUiLanguageBootstrap() ?? detectBrowserBeamioLocale()
+}

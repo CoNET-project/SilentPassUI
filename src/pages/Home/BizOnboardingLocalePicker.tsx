@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Globe } from 'lucide-react'
 import { applyBeamioUiLanguageFromProfile, getCurrentBeamioUiLocale } from '@/locale/i18n'
+import { writeBeamioUiLanguageBootstrap } from '@/utils/beamioProfileLocaleCurrency'
 import type { BeamioUiLocale } from '@/utils/beamioProfileLocaleCurrency'
 import { useTu } from '@/locale/beamioLocale'
 import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
@@ -29,6 +30,7 @@ export function BizOnboardingLocalePicker() {
 	const selectLocale = async (next: BeamioUiLocale) => {
 		setOpen(false)
 		if (next === locale) return
+		writeBeamioUiLanguageBootstrap(next)
 		await applyBeamioUiLanguageFromProfile(next)
 	}
 

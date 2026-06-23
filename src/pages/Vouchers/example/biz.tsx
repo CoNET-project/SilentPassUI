@@ -430,6 +430,15 @@ import { QRCodeCanvas } from 'qrcode.react';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
 import { tu, useTu } from '@/locale/beamioLocale'
 import {
+  overviewActivationCountLabel,
+  overviewPeriodActivityTitle,
+  overviewReloadAvgGapDisplay,
+  overviewReloadBarTooltip,
+  overviewReloadStatusLabel,
+  overviewTerminalsLinkedSummary,
+  overviewTimeFilterLabel,
+} from '@/utils/overviewDashboardI18n'
+import {
   CardConfiguratorMobileChrome,
   CardConfiguratorMobileFixedFooterPortal,
   CARD_CONFIGURATOR_MOBILE_MAIN_PAD,
@@ -4753,21 +4762,6 @@ type BizNetworkSummaryRow = {
   localDayKey?: string
 }
 
-function overviewPeriodConsumptionCaption(tf: string): string {
-  switch (tf) {
-    case 'This Week':
-      return "This Week's Consumption"
-    case 'This Month':
-      return "This Month's Consumption"
-    case 'This Quarter':
-      return "This Quarter's Consumption"
-    case 'This Year':
-      return "This Year's Consumption"
-    case '今天':
-    default:
-      return "Today's Consumption"
-  }
-}
 /** keccak256("merchant_pay:tip_updated") - legacy tip transactions */
 const TX_MERCHANT_PAY_TIP_UPDATED = ethers.keccak256(ethers.toUtf8Bytes('merchant_pay:tip_updated'))
 /** keccak256("TX_TIP") - NFC Container / Charge 独立小费行（与 x402sdk MemberCard 一致） */
@@ -24249,7 +24243,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      setLinkTerminalError(null);
                                      setIsAddTerminalOpen(true);
                                    } catch {
-                                     setLinkTerminalError('Invalid terminal address in permission request.');
+                                     setLinkTerminalError(tu('overview_invalid_terminal_address'));
                                    }
                                  }}
                                  className="flex-1 rounded-lg bg-[#0051d1] py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#0047b8] disabled:cursor-not-allowed disabled:opacity-50 sm:py-3 sm:text-sm"
@@ -24866,11 +24860,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
        <div className="mb-2 flex flex-wrap items-center gap-2">
          <UserPlus className="size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden />
          <h2 className="font-sans text-lg font-extrabold tracking-tight text-[#2c2f31]">
-           Pending terminal authorization
+           {tu('overview_pending_terminal_auth')}
          </h2>
        </div>
        <p className="mb-4 text-sm font-medium text-[#515c70]">
-         A POS device sent a workspace permission request. Register it below to link this SoftPOS terminal to your card.
+         {tu('overview_pending_terminal_desc')}
        </p>
        <ul className="flex flex-col gap-3">
          {staffPendingPosPermissionsForUi.map((row) => {
@@ -24883,7 +24877,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="min-w-0 flex-1 space-y-2">
                  <div className="flex flex-wrap items-center gap-2">
                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
-                     Awaiting approval
+                     {tu('overview_awaiting_approval')}
                    </span>
                    <span className="font-mono text-sm font-bold text-[#2c2f31]">@{tagPlain}</span>
                  </div>
@@ -24893,7 +24887,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  />
                  {row.parentBeamioTag ? (
                    <p className="text-[11px] font-medium text-[#abadaf]">
-                     Parent workspace tag: @{row.parentBeamioTag.replace(/^@/, '')}
+                     {tu('overview_parent_workspace_tag', { tag: row.parentBeamioTag.replace(/^@/, '') })}
                    </p>
                  ) : null}
                </div>
@@ -24904,7 +24898,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    title={
                      showStaffTerminalsManagement
                        ? undefined
-                       : 'Unlock Smart Terminal management to register this device.'
+                       : tu('overview_unlock_staff_to_register')
                    }
                    onClick={() => {
                      if (!showStaffTerminalsManagement) return;
@@ -24921,12 +24915,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        setLinkTerminalError(null);
                        setIsAddTerminalOpen(true);
                      } catch {
-                       setLinkTerminalError('Invalid terminal address in permission request.');
+                       setLinkTerminalError(tu('overview_invalid_terminal_address'));
                      }
                    }}
                    className="rounded-xl bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1254d1] disabled:cursor-not-allowed disabled:opacity-50"
                  >
-                   Approve &amp; register
+                   {tu('overview_approve_register')}
                  </button>
                  <button
                    type="button"
@@ -24940,7 +24934,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    }}
                    className="rounded-xl border border-[#abadaf]/40 bg-white px-4 py-2.5 text-sm font-semibold text-[#515c70] transition-colors hover:bg-[#f5f7f9]"
                  >
-                   Dismiss
+                   {tu('overview_dismiss')}
                  </button>
                </div>
              </li>
@@ -24981,7 +24975,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div
                  className="flex cursor-pointer items-center gap-4 rounded-xl p-1 -m-1 transition-colors hover:bg-slate-200/40 lg:rounded-lg"
                  onClick={() => window.innerWidth >= 1024 && setIsSidebarCollapsed(!isSidebarCollapsed)}
-                 title="Toggle Sidebar"
+                 title={tu('overview_toggle_sidebar')}
                  role="presentation"
                >
                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0051d1]/10 ring-4 ring-[#0051d1]/5">
@@ -24993,7 +24987,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                             <div className="min-w-0 flex flex-col justify-center">
                    <h2 className="truncate text-lg font-extrabold leading-tight tracking-tight text-[#0051d1]">
-                     Business OS
+                     {tu('overview_business_os')}
                    </h2>
                    {sidebarOnboardBusinessName ? (
                      <div className="mt-0.5 flex min-w-0 items-center gap-1">
@@ -25024,7 +25018,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                type="button"
                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 transition-colors hover:bg-blue-200"
                onClick={() => window.innerWidth >= 1024 && setIsSidebarCollapsed(false)}
-               title="Expand sidebar"
+               title={tu('overview_expand_sidebar')}
              >
                <Store size={22} strokeWidth={2} aria-hidden />
              </button>
@@ -25033,7 +25027,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              type="button"
              onClick={() => setIsMobileMenuOpen(false)}
              className="shrink-0 rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 lg:hidden"
-             aria-label="关闭菜单"
+             aria-label={tu('close_menu')}
            >
              <X size={20} />
            </button>
@@ -25142,7 +25136,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="shrink-0 rounded-full p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                aria-label="打开菜单"
+                aria-label={tu('open_menu')}
               >
                 <Menu size={22} />
               </button>
@@ -25159,8 +25153,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       e.preventDefault();
                       openMobileGlobalSearch();
                     }}
-                    placeholder="搜索交易或会员"
-                    aria-label="搜索交易或会员"
+                    placeholder={tu('search_transactions_or_members')}
+                    aria-label={tu('search_transactions_or_members')}
                     className="min-w-0 flex-1 cursor-pointer border-0 bg-transparent pl-3 pr-0 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:ring-0"
                   />
                 </div>
@@ -25169,7 +25163,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 type="button"
                 onClick={() => handleTabChange('Settings')}
                 className={`flex max-w-[42%] shrink-0 items-center gap-2 rounded-full bg-slate-50/90 pl-3 pr-1.5 py-1.5 text-left transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
-                aria-label="打开设置"
+                aria-label={tu('open_settings')}
               >
                 <span className="truncate text-xs font-bold text-slate-600">@{mobileHeaderBeamioTag}</span>
                 <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-slate-200/60 bg-white">
@@ -25216,9 +25210,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             }`}
           >
             {navChromeTab === 'Overview' && showBizFirstMembershipOnboarding
-             ? 'Business OS'
+             ? tu('overview_business_os')
               : navChromeTab === 'Overview'
-               ? 'Beamio Merchant'
+               ? tu('overview_beamio_merchant')
                   : navChromeTab === 'Card Issuance Setup'
                   ? tu('programs')
                 : activeTab === 'Business'
@@ -25241,7 +25235,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            {/* ORACLE LIVE FEED SIMULATOR */}
            <div className="hidden lg:flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
              <RefreshCw size={12} className={`${bizUiPrimaryLoader} animate-[spin_4s_linear_infinite]`} />
-             <span className="text-[11px] font-bold text-slate-500 tracking-wider">ORACLE: 1 CAD ≈ {(oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK).toFixed(2)} USDC</span>
+             <span className="text-[11px] font-bold text-slate-500 tracking-wider">{tu('overview_oracle_live', { rate: (oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK).toFixed(2) })}</span>
            </div>
            {/* GLOBAL TIME FILTER SELECTION */}
            <div className="hidden sm:flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-slate-200/60 rounded-xl px-2 py-1.5 shadow-sm">
@@ -25255,17 +25249,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                className={`cursor-pointer appearance-none rounded-md bg-transparent pl-1 pr-6 text-[14px] font-medium text-slate-700 ${bizFocusRingClass}`}
                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em 1em' }}
              >
-               <option value="今天">Today, {dateString}</option>
-               <option value="This Week">This Week</option>
-               <option value="This Month">This Month</option>
-               <option value="This Quarter">This Quarter</option>
-               <option value="This Year">This Year</option>
+               {OVERVIEW_TIME_FILTERS.map((tf) => (
+                 <option key={tf} value={tf}>
+                   {overviewTimeFilterLabel(tf, tu, tf === '今天' ? dateString : undefined)}
+                 </option>
+               ))}
              </select>
            </div>
            {activeTab === 'Market' && (
              <div className="hidden items-center gap-2 rounded-full bg-[#eef1f3] px-3 py-1.5 md:flex">
                <span className="size-2 animate-pulse rounded-full bg-[#0051d1]" aria-hidden />
-               <span className="text-[10px] font-bold uppercase tracking-tighter text-[#595c5e]">Network Live</span>
+               <span className="text-[10px] font-bold uppercase tracking-tighter text-[#595c5e]">{tu('overview_network_live')}</span>
              </div>
            )}
            {activeTab === 'Wallets' && (
@@ -25370,7 +25364,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                onClick={handleOverviewRefresh}
                disabled={overviewRefreshing}
                className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-               title="Refresh panel data"
+               title={tu('overview_refresh_panel')}
              >
                <RefreshCw size={20} className={overviewRefreshing ? `animate-spin ${bizUiPrimaryLoader}` : ''} />
              </button>
@@ -25406,7 +25400,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         {activeTab === 'Overview' && profileAwaitingIssuanceGate ? (
           <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 py-16">
             <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
-            <p className="text-sm font-medium text-[#595c5e]">Loading your workspace…</p>
+            <p className="text-sm font-medium text-[#595c5e]">{tu('overview_loading_workspace')}</p>
           </div>
         ) : null}
         {activeTab === 'Overview' && !profileAwaitingIssuanceGate && !ketNoCardProgramsEligible && (
@@ -25443,7 +25437,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                         <div className="min-w-0">
                           <span className="inline-flex rounded-lg border border-[#1562f0]/45 bg-[#1562f0]/35 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-100">
-                            Linked Merchant Card
+                            {tu('overview_linked_merchant_card')}
                           </span>
                           <div className="mt-1.5 sm:mt-2">
                             <AddressCapsule address={staffProgramBeamioCardAddress!} className="bg-white/10 border-white/15 text-white/80 hover:bg-white/15" />
@@ -25451,17 +25445,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                       </div>
                       <div className="shrink-0 rounded-xl border border-white/10 bg-white/8 px-2.5 py-1.5 text-right backdrop-blur-md sm:rounded-2xl sm:px-3 sm:py-2">
-                        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 sm:text-[10px]">Status</p>
-                        <p className="mt-0.5 text-xs font-semibold text-sky-200 sm:mt-1 sm:text-[13px]">Franchise Merchant</p>
+                        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 sm:text-[10px]">{tu('overview_status')}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-sky-200 sm:mt-1 sm:text-[13px]">{tu('overview_franchise_merchant')}</p>
                       </div>
                     </div>
 
                     <div className="max-w-md">
                       <p className="text-[1.35rem] font-extrabold leading-tight tracking-tight text-white sm:text-[28px]">
-                        {fixedCardMetadata?.name || 'Merchant Card'}
+                        {fixedCardMetadata?.name || tu('merchant_card')}
                       </p>
                       <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-white/65 sm:mt-3 sm:text-[13px]">
-                        {fixedCardMetadata?.description || 'Metadata loaded from the linked Beamio merchant card.'}
+                        {fixedCardMetadata?.description || tu('overview_merchant_card_desc_fallback')}
                       </p>
                     </div>
 
@@ -25495,7 +25489,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   {redeemAdminInProgress && (
                     <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm backdrop-blur-sm sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-[13px]">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#1562f0]/30 border-t-[#1562f0]" />
-                      Redeeming admin access...
+                      {tu('overview_redeeming_admin')}
                     </div>
                   )}
 
@@ -25506,23 +25500,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <div className="min-w-0 flex-1">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
                         <span className="rounded bg-[#1562f0]/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
-                          WORKSPACE READY
+                          {tu('overview_workspace_ready')}
                         </span>
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
-                        <span className="text-[11px] font-bold uppercase tracking-tight text-slate-500">Program not active yet</span>
+                        <span className="text-[11px] font-bold uppercase tracking-tight text-slate-500">{tu('overview_program_not_active')}</span>
                       </div>
                       <h2 className="mb-2 text-xl font-extrabold leading-tight tracking-tight text-[#2c2f31] md:text-2xl">
-                        Set up your first membership card program
+                        {tu('overview_setup_first_program_title')}
                       </h2>
                       <p className="max-w-3xl text-xs leading-relaxed text-[#595c5e]/80 md:text-sm">
-                        You have{' '}
-                        <span className="font-bold text-[#1562f0]">
-                          {protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
-                            ? Number(protocolFuelReserveBalance).toFixed(2)
-                            : '0.00'}
-                        </span>{' '}
-                        bonus B-Units to get started. Create your first program to begin issuing membership cards and serving customers with stored
-                        value in Beamio Business OS.
+                        {tu('overview_setup_first_program_body', {
+                          amount:
+                            protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
+                              ? Number(protocolFuelReserveBalance).toFixed(2)
+                              : '0.00',
+                        })}
                       </p>
                     </div>
                     <div className="flex w-full shrink-0 flex-col items-stretch gap-3 sm:flex-row md:w-auto">
@@ -25531,7 +25523,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         onClick={() => handleTabChange('Card Issuance Setup')}
                         className={`flex-1 rounded-xl bg-[#1562f0] px-6 py-3 text-xs font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass}`}
                       >
-                        Set Up First Program
+                        {tu('overview_setup_first_program_cta')}
                       </button>
                       <button
                         type="button"
@@ -25540,7 +25532,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         }}
                         className={`flex-1 rounded-xl border border-[#abadaf]/30 bg-white px-6 py-3 text-xs font-extrabold text-[#2c2f31] transition-all hover:bg-[#eef1f3] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass}`}
                       >
-                        View B-Units
+                        {tu('overview_view_b_units')}
                       </button>
                     </div>
                   </section>
@@ -25549,8 +25541,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                     <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#1562f0]/20 bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                       <div className="mb-3 flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Capital Retained</span>
-                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tu('overview_total_capital_retained')}</span>
+                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">{tu('overview_day_zero')}</span>
                       </div>
                       <div className="space-y-1">
                         <h3
@@ -25562,15 +25554,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </h3>
                         <p className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400">
                           {overviewYearHasTopupOrCharge
-                            ? 'This year (top-ups - charges)'
-                            : 'Awaiting transactions'}
+                            ? tu('overview_year_topups_charges')
+                            : tu('overview_awaiting_transactions')}
                         </p>
                       </div>
                     </div>
                     <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff]/20 bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                       <div className="mb-3 flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Active Cards</span>
-                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Day 0)</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tu('overview_active_cards')}</span>
+                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">{tu('overview_day_zero')}</span>
                       </div>
                       <div className="space-y-1">
                         <h3
@@ -25585,20 +25577,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             <UserX className="size-3.5 text-slate-300" strokeWidth={2} aria-hidden />
                           </div>
                           <span className="text-[10px] font-bold uppercase text-slate-400">
-                            {overviewMembersKpis.count <= 0 ? 'No funded or recently active cards' : 'Stored value or 90-day activity'}
+                            {overviewMembersKpis.count <= 0 ? tu('overview_no_funded_cards') : tu('overview_stored_value_activity')}
                           </span>
                         </div>
                       </div>
                     </div>
                     <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb]/20 bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                       <div className="mb-3 flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Quota</span>
-                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tu('overview_system_quota')}</span>
+                        <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">{tu('overview_current_badge')}</span>
                       </div>
                       <div className="space-y-1">
                         <h3 className="text-3xl font-extrabold tracking-tight text-[#2c2f31] sm:text-4xl">
                           {Number(protocolFuelReserve).toFixed(2)}{' '}
-                          <span className="text-base font-bold text-slate-400 sm:text-lg">B-Units</span>
+                          <span className="text-base font-bold text-slate-400 sm:text-lg">{tu('overview_b_units_label')}</span>
                         </h3>
                         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3] sm:mt-4">
                           <div
@@ -25608,7 +25600,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             }}
                           />
                         </div>
-                        <p className="pt-1 text-[10px] font-bold uppercase text-slate-400">Initial grant available</p>
+                        <p className="pt-1 text-[10px] font-bold uppercase text-slate-400">{tu('overview_initial_grant')}</p>
                       </div>
                     </div>
                   </section>
@@ -25619,12 +25611,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="flex items-center gap-2.5 sm:gap-3">
                         <div className="h-7 w-1.5 rounded-full bg-[#1562f0]/20 sm:h-8 sm:w-2" aria-hidden />
                         <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-                          <h2 className="text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">{`Today's Activity`}</h2>
+                          <h2 className="text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">{tu('overview_todays_activity')}</h2>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 rounded-full border border-[#1562f0]/10 bg-white/50 px-3 py-1">
                         <span className="h-2 w-2 animate-pulse rounded-full bg-slate-300" aria-hidden />
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Listening for activity</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('overview_listening_activity')}</span>
                       </div>
                     </div>
                     {(() => {
@@ -25642,12 +25634,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <CreditCard className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">充值</p>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('top_ups')}</p>
                               <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityTopupDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 C${overviewActivityTopupDisplayTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {overviewActivityTopupDisplayTotal <= 0 ? 'No activity' : '今天'}
+                                {overviewActivityTopupDisplayTotal <= 0 ? tu('overview_no_activity') : tu('overview_today_badge')}
                               </p>
                             </div>
                           </div>
@@ -25656,12 +25648,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <Landmark className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('overview_charges')}</p>
                               <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityChargeDisplayTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {overviewActivityChargeDisplayTotal <= 0 ? 'No activity' : '今天'}
+                                {overviewActivityChargeDisplayTotal <= 0 ? tu('overview_no_activity') : tu('overview_today_badge')}
                               </p>
                             </div>
                           </div>
@@ -25670,12 +25662,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <Heart className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">小费</p>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('tips')}</p>
                               <h3 className={`text-lg font-extrabold sm:text-xl ${overviewActivityTipsLedgerCadTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'}`}>
                                 C${overviewActivityTipsLedgerCadTotal.toFixed(2)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                                {overviewActivityTipsLedgerCadTotal <= 0 ? 'No activity' : '今天'}
+                                {overviewActivityTipsLedgerCadTotal <= 0 ? tu('overview_no_activity') : tu('overview_today_badge')}
                               </p>
                             </div>
                           </div>
@@ -25684,19 +25676,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <Nfc className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                             </div>
                             <div>
-                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
+                              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('overview_member_activations')}</p>
                               <h3
                                 className={`text-lg font-extrabold sm:text-xl ${
                                   overviewMemberActivationTotal <= 0 ? 'text-[#2c2f31]/40' : 'text-[#2c2f31]'
                                 }`}
                               >
-                                {overviewMemberActivationTotal.toLocaleString()}{' '}
-                                {overviewMemberActivationTotal === 1 ? 'activation' : 'activations'}
+                                {overviewActivationCountLabel(overviewMemberActivationTotal, tu)}
                               </h3>
                               <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
                                 {overviewMemberActivationTotal <= 0
-                                  ? 'No activity'
-                                  : `${overviewMemberActivationsFromApi.nfc.toLocaleString()} NFC • ${overviewMemberActivationsFromApi.app.toLocaleString()} app · All-time`}
+                                  ? tu('overview_no_activity')
+                                  : tu('overview_activations_breakdown', {
+                                      nfc: overviewMemberActivationsFromApi.nfc.toLocaleString(),
+                                      app: overviewMemberActivationsFromApi.app.toLocaleString(),
+                                    })}
                               </p>
                             </div>
                           </div>
@@ -25709,9 +25703,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <section className="hidden gap-5 lg:grid lg:grid-cols-2">
                     <div className="flex min-h-[280px] flex-col justify-between rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                       <div>
-                        <h3 className="mb-1.5 text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Reload Velocity</h3>
+                        <h3 className="mb-1.5 text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">{tu('overview_reload_velocity')}</h3>
                         <p className="mb-4 max-w-xs text-xs text-slate-500 sm:mb-6 sm:text-sm">
-                          Tracking the momentum of recurring top-ups over the last 24 hours (ledger, same reporting scope as Overview).
+                          {tu('overview_reload_velocity_desc')}
                         </p>
                       </div>
                       {overviewReloadVelocity24h.hasData ? (
@@ -25731,7 +25725,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                         opacity: 0.35 + (hPct / 100) * 0.55,
                                       }
                                 }
-                                title={`${overviewReloadVelocity24h.barCounts[bi]} top-up(s) · 3h slot ${bi + 1}/${RELOAD_VELOCITY_BAR_SLOTS} (last 24h)`}
+                                title={overviewReloadBarTooltip(
+                                  tu,
+                                  overviewReloadVelocity24h.barCounts[bi],
+                                  bi + 1,
+                                  RELOAD_VELOCITY_BAR_SLOTS,
+                                )}
                               />
                             )
                           })}
@@ -25741,48 +25740,48 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef1f3]">
                             <BarChart3 className="size-8 text-slate-300" strokeWidth={1.5} aria-hidden />
                           </div>
-                          <p className="text-sm font-bold text-[#595c5e]">Data will appear after your first top-up</p>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">No ledger top-ups (24h)</p>
+                          <p className="text-sm font-bold text-[#595c5e]">{tu('overview_reload_after_first_topup')}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{tu('overview_no_ledger_topups_24h')}</p>
                         </div>
                       )}
                       <div
                         className={`mt-4 flex items-center justify-between border-t border-slate-100 pt-4 ${overviewReloadVelocity24h.hasData ? '' : 'opacity-40'}`}
                       >
                         <div className="text-center">
-                          <p className="text-[10px] font-bold uppercase text-slate-400">Avg. gap</p>
-                          <p className="text-lg font-bold">{overviewReloadVelocity24h.avgGapLabel}</p>
+                          <p className="text-[10px] font-bold uppercase text-slate-400">{tu('overview_avg_gap')}</p>
+                          <p className="text-lg font-bold">{overviewReloadAvgGapDisplay(overviewReloadVelocity24h.avgGapLabel, tu)}</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-[10px] font-bold uppercase text-slate-400">Peak window</p>
+                          <p className="text-[10px] font-bold uppercase text-slate-400">{tu('overview_peak_window')}</p>
                           <p className="text-lg font-bold leading-tight">{overviewReloadVelocity24h.peakHourLabel}</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
+                          <p className="text-[10px] font-bold uppercase text-slate-400">{tu('overview_status_label')}</p>
                           <p
                             className={`text-sm font-bold uppercase tracking-tighter ${
                               overviewReloadVelocity24h.statusLabel === 'Quiet' ? 'text-slate-400' : 'text-[#1562f0]'
                             }`}
                           >
-                            {overviewReloadVelocity24h.statusLabel}
+                            {overviewReloadStatusLabel(overviewReloadVelocity24h.statusLabel, tu)}
                           </p>
                         </div>
                       </div>
                     </div>
                     <div className="min-h-[280px] rounded-lg border border-[#abadaf]/10 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                      <h3 className="mb-1.5 text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Gift Pack Conversions</h3>
-                      <p className="mb-5 text-xs text-slate-500 sm:mb-8 sm:text-sm">Journey from initial discovery to successful redemption.</p>
+                      <h3 className="mb-1.5 text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">{tu('overview_gift_pack_conversions')}</h3>
+                      <p className="mb-5 text-xs text-slate-500 sm:mb-8 sm:text-sm">{tu('overview_gift_journey_desc')}</p>
                       <div className="flex flex-col items-center justify-center space-y-4 py-8 text-center">
                         <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef1f3]">
                           <Filter className="size-8 text-slate-300" strokeWidth={1.5} aria-hidden />
                         </div>
-                        <p className="text-sm font-bold text-[#595c5e]">Data will appear after your first transaction</p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Conversion funnel inactive</p>
+                        <p className="text-sm font-bold text-[#595c5e]">{tu('overview_gift_after_first_tx')}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{tu('overview_conversion_funnel_inactive')}</p>
                       </div>
                       <div className="mt-6 flex items-center gap-3 rounded-xl border border-dashed border-[#abadaf]/50 bg-[#eef1f3]/50 p-3 sm:mt-8 sm:gap-4 sm:p-4">
                         <Info className="size-5 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
                         <div>
-                          <p className="text-xs font-bold text-slate-400">0% Efficiency Recorded</p>
-                          <p className="text-[10px] font-medium text-slate-400">Activate your first program to begin tracking</p>
+                          <p className="text-xs font-bold text-slate-400">{tu('overview_efficiency_zero')}</p>
+                          <p className="text-[10px] font-medium text-slate-400">{tu('overview_activate_program_track')}</p>
                         </div>
                       </div>
                     </div>
@@ -25802,7 +25801,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <div className="rounded-2xl bg-[#f5f7f9] px-3 pb-4 pt-2 sm:px-4">
                 <section className="mb-3 flex justify-start">
                   <div className="relative inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#abadaf]/15 bg-white px-4 py-2 shadow-sm active:scale-[0.98] sm:px-5 sm:py-3">
-                    <span className="font-manrope text-xs font-bold tracking-tight text-[#2c2f31] sm:text-sm">{timeFilter}</span>
+                    <span className="font-manrope text-xs font-bold tracking-tight text-[#2c2f31] sm:text-sm">{overviewTimeFilterLabel(timeFilter, tu, timeFilter === '今天' ? dateString : undefined)}</span>
                     <ChevronDown className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                     <select
                       value={timeFilter}
@@ -25810,14 +25809,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         const v = e.target.value
                         if ((OVERVIEW_TIME_FILTERS as readonly string[]).includes(v)) setTimeFilter(v as OverviewTimeFilter)
                       }}
-                      aria-label="仪表盘时间范围"
+                      aria-label={tu('dashboard_time_range')}
                       className={`absolute inset-0 cursor-pointer opacity-0 ${bizFocusRingClass}`}
                     >
-                      <option value="今天">Today, {dateString}</option>
-                      <option value="This Week">This Week</option>
-                      <option value="This Month">This Month</option>
-                      <option value="This Quarter">This Quarter</option>
-                      <option value="This Year">This Year</option>
+                      {OVERVIEW_TIME_FILTERS.map((tf) => (
+                        <option key={tf} value={tf}>
+                          {overviewTimeFilterLabel(tf, tu, tf === '今天' ? dateString : undefined)}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </section>

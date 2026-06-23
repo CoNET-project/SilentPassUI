@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Globe, Loader2 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import { persistBeamioProfileLocaleCurrency } from '@/services/beamio'
+import { persistBeamioProfileLocaleCurrency, persistBeamioLanguageLocally } from '@/services/beamio'
 import { getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { applyBeamioUiLanguageFromProfile, getCurrentBeamioUiLocale } from '@/locale/i18n'
 import { useTu } from '@/locale/beamioLocale'
@@ -30,10 +30,17 @@ export function BizAccountHubLanguageCard() {
 				}
 				setError(tu('language_save_failed'))
 			}
-			await applyBeamioUiLanguageFromProfile(next)
+			const localBo = await persistBeamioLanguageLocally(beamio, next)
+			if (localBo) {
+				setBeamio({ ...localBo })
+				return
+			}
+			if (!beamio) {
+				await applyBeamioUiLanguageFromProfile(next)
+			}
 		} catch {
 			setError(tu('language_save_failed'))
-			await applyBeamioUiLanguageFromProfile(next)
+			await persistBeamioLanguageLocally(beamio, next)
 		} finally {
 			setSaving(false)
 		}

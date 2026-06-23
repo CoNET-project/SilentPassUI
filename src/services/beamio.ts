@@ -9,6 +9,9 @@ import {
 	normalizeBeamioDisplayCurrency,
 	normalizeBeamioUiLocale,
 	parseBeamioAddedSetupFromRegistryLastName,
+	readBeamioUiLanguageBootstrap,
+	writeBeamioUiLanguageBootstrap,
+	type BeamioUiLocale,
 } from '@/utils/beamioProfileLocaleCurrency'
 import {
 	hydrateProfilesWithSessionSecrets,
@@ -1194,6 +1197,11 @@ export const checkStorage = async (checkcacheStorage = true) => {
       profiles: hydrateProfilesWithSessionSecrets(stripped.profiles),
     }
     setCoNET_Data(hydrated)
+    const storedLang = hydrated?.beamio?.language
+    if (storedLang) {
+      writeBeamioUiLanguageBootstrap(normalizeBeamioUiLocale(storedLang))
+      await applyBeamioUiLanguageFromProfile(storedLang)
+    }
     if (hadLegacySecrets) {
       void flushStoreSystemData()
     }
@@ -1880,9 +1888,40 @@ export async function persistBeamioProfileLocaleCurrency(
 		CoNET_Data.beamio = bo
 		setCoNET_Data(CoNET_Data)
 	}
+	writeBeamioUiLanguageBootstrap(bo.language as BeamioUiLocale)
 	await storeSystemData()
 	await applyBeamioUiLanguageFromProfile(bo.language)
 	return bo
+}
+
+/** Local CoNET_Data + bootstrap mirror when chain save unavailable or wallet locked. */
+export async function persistBeamioLanguageLocally(
+	beamio: beamio | null | undefined,
+	language: unknown,
+): Promise<beamio | null> {
+	const nextLang = normalizeBeamioUiLocale(language) as ILanguage
+	writeBeamioUiLanguageBootstrap(nextLang)
+	await applyBeamioUiLanguageFromProfile(nextLang)
+	if (!CoNET_Data && !beamio) return null
+	const base = beamio ?? CoNET_Data?.beamio
+	if (!base?.accountName?.trim()) return null
+	const bo: beamio = { ...base, language: nextLang }
+	if (CoNET_Data) {
+		CoNET_Data.beamio = bo
+		setCoNET_Data(CoNET_Data)
+	}
+	await flushStoreSystemData()
+	return bo
+}
+
+export function mergeLocalLocaleLanguageOntoChainProfile(
+	chainBeamio: beamio,
+	localBeamio?: beamio | null,
+): beamio {
+	if (chainBeamio.localeCurrencyConfigured) return chainBeamio
+	const localLang = localBeamio?.language ?? readBeamioUiLanguageBootstrap()
+	if (!localLang) return chainBeamio
+	return { ...chainBeamio, language: normalizeBeamioUiLocale(localLang) as ILanguage }
 }
 
 export async function bootstrapProfileLocaleCurrencyIfUnset(
@@ -1890,10 +1929,17 @@ export async function bootstrapProfileLocaleCurrencyIfUnset(
 	privateKeyArmor: string,
 ): Promise<beamio> {
 	if (beamio.localeCurrencyConfigured) {
+		writeBeamioUiLanguageBootstrap(normalizeBeamioUiLocale(beamio.language))
 		await applyBeamioUiLanguageFromProfile(beamio.language)
 		return beamio
 	}
-	const defaults = buildBrowserLocaleCurrencyDefaults()
+	const localLang = CoNET_Data?.beamio?.language ?? readBeamioUiLanguageBootstrap()
+	const defaults = localLang
+		? {
+				...buildBrowserLocaleCurrencyDefaults(),
+				language: normalizeBeamioUiLocale(localLang),
+			}
+		: buildBrowserLocaleCurrencyDefaults()
 	const next = await persistBeamioProfileLocaleCurrency(beamio, privateKeyArmor, defaults)
 	if (next) return next
 	const fallback: beamio = {
@@ -1905,6 +1951,8 @@ export async function bootstrapProfileLocaleCurrencyIfUnset(
 		CoNET_Data.beamio = fallback
 		setCoNET_Data(CoNET_Data)
 	}
+	writeBeamioUiLanguageBootstrap(normalizeBeamioUiLocale(fallback.language))
+	await flushStoreSystemData()
 	await applyBeamioUiLanguageFromProfile(fallback.language)
 	return fallback
 }

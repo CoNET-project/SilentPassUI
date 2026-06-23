@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Globe, Loader2 } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { persistBeamioProfileLocaleCurrency, persistBeamioLanguageLocally } from '@/services/beamio'
 import { getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
@@ -7,6 +7,7 @@ import { applyBeamioUiLanguageFromProfile, getCurrentBeamioUiLocale } from '@/lo
 import { useTu } from '@/locale/beamioLocale'
 import type { BeamioUiLocale } from '@/utils/beamioProfileLocaleCurrency'
 import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
+import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
 
 /** Account Hub — global display language (persists to chain profile when wallet is unlocked). */
 export function BizAccountHubLanguageCard() {
@@ -60,36 +61,13 @@ export function BizAccountHubLanguageCard() {
 					{error ? <p className="mt-2 text-xs font-medium text-rose-600">{error}</p> : null}
 				</div>
 			</div>
-			<div
-				className="flex shrink-0 items-center gap-2 self-end sm:self-center"
-				role="group"
-				aria-label={tu('language')}
-			>
-				{saving ? <Loader2 className="size-4 animate-spin text-[#0051d1]" aria-hidden /> : null}
-				<div className="flex rounded-full bg-[#eef1f3] p-1">
-					<button
-						type="button"
-						disabled={saving}
-						aria-pressed={locale === 'en'}
-						onClick={() => void selectLocale('en')}
-						className={`min-w-[3.25rem] rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-60 ${
-							locale === 'en' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:text-[#2c2f31]'
-						}`}
-					>
-						{tu('english')}
-					</button>
-					<button
-						type="button"
-						disabled={saving}
-						aria-pressed={locale === 'zh-CN'}
-						onClick={() => void selectLocale('zh-CN')}
-						className={`min-w-[3.25rem] rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-60 ${
-							locale === 'zh-CN' ? 'bg-white text-[#0051d1] shadow-sm' : 'text-[#595c5e] hover:text-[#2c2f31]'
-						}`}
-					>
-						{tu('simplified_chinese')}
-					</button>
-				</div>
+			<div className="flex shrink-0 self-end sm:self-center">
+				<BeamioLocalePicker
+					locale={locale}
+					onSelect={selectLocale}
+					saving={saving}
+					menuAlign="right"
+				/>
 			</div>
 		</div>
 	)

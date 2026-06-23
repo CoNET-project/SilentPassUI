@@ -6,7 +6,6 @@ import {onWalletEvent} from '@/services/beamio'
 import {
 	Zap,
 	ChevronRight,
-	ChevronDown,
 	Fingerprint,
 	Gift,
 	Check,
@@ -65,6 +64,7 @@ import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
 import { tu } from '@/locale/beamioLocale'
 import { applyBeamioUiLanguageFromProfile, type BeamioUiLocale } from '@/locale/i18n'
 import { useTranslation } from 'react-i18next'
+import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
@@ -217,84 +217,19 @@ type InitialEntrySplashProps = {
 	onRestoreWallet: () => void
 }
 
-/** Top-left language picker on onboarding hero (EN / 简体中文). */
 function OnboardLocalePicker() {
 	const { i18n } = useTranslation()
-	const [open, setOpen] = useState(false)
-	const rootRef = useRef<HTMLDivElement | null>(null)
 	const locale = (i18n.language === 'en' ? 'en' : 'zh-CN') as BeamioUiLocale
 
-	useEffect(() => {
-		if (!open) return
-		const onPointerDown = (e: MouseEvent | TouchEvent) => {
-			const el = rootRef.current
-			if (el && e.target instanceof Node && !el.contains(e.target)) {
-				setOpen(false)
-			}
-		}
-		document.addEventListener('mousedown', onPointerDown)
-		document.addEventListener('touchstart', onPointerDown)
-		return () => {
-			document.removeEventListener('mousedown', onPointerDown)
-			document.removeEventListener('touchstart', onPointerDown)
-		}
-	}, [open])
-
-	const selectLocale = async (next: BeamioUiLocale) => {
-		setOpen(false)
-		if (next === locale) return
-		await applyBeamioUiLanguageFromProfile(next)
-	}
-
 	return (
-		<div ref={rootRef} className="relative">
-			<button
-				type="button"
-				aria-label={tu('language')}
-				aria-haspopup="listbox"
-				aria-expanded={open}
-				onClick={() => setOpen((v) => !v)}
-				className="inline-flex h-9 items-center gap-1.5 rounded-full border border-white/30 bg-white/15 px-3 text-xs font-semibold text-white shadow-sm backdrop-blur-md transition-colors hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-			>
-				<Globe className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2} aria-hidden />
-				<span>{locale === 'zh-CN' ? '中文' : 'EN'}</span>
-				<ChevronDown
-					className={`h-3.5 w-3.5 shrink-0 opacity-80 transition-transform ${open ? 'rotate-180' : ''}`}
-					strokeWidth={2.5}
-					aria-hidden
-				/>
-			</button>
-			{open ? (
-				<div
-					role="listbox"
-					aria-label={tu('language')}
-					className="absolute left-0 mt-2 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/20 bg-[#0e4cbb]/95 py-1 shadow-lg backdrop-blur-md"
-				>
-					<button
-						type="button"
-						role="option"
-						aria-selected={locale === 'en'}
-						onClick={() => void selectLocale('en')}
-						className={`flex w-full items-center px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-white/10 ${
-							locale === 'en' ? 'text-[#fef9c3]' : 'text-white/90'
-						}`}
-					>
-						English
-					</button>
-					<button
-						type="button"
-						role="option"
-						aria-selected={locale === 'zh-CN'}
-						onClick={() => void selectLocale('zh-CN')}
-						className={`flex w-full items-center px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-white/10 ${
-							locale === 'zh-CN' ? 'text-[#fef9c3]' : 'text-white/90'
-						}`}
-					>
-						简体中文
-					</button>
-				</div>
-			) : null}
-		</div>
+		<BeamioLocalePicker
+			variant="hero"
+			menuAlign="left"
+			locale={locale}
+			onSelect={async (next) => {
+				await applyBeamioUiLanguageFromProfile(next)
+			}}
+		/>
 	)
 }
 

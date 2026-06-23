@@ -41,7 +41,7 @@ import { buildRedeemVoucherHistoryPath } from '@/pages/Home/redeemVoucherPath'
 
 import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
-import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
+import { baseEndpoint, conetDepinProvider, USDCContract_BASE } from '@/utils/constants'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import {
 	getMyAssets,
@@ -66,7 +66,7 @@ import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import FuelView from './FuelView'
 import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from './MerchantAssetGiftSheet'
-import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet, type OpenContainerRelayPayload } from '@/services/AAaccount'
+import { encodeOpenContainerRelayQrPayload, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { tu } from '@/locale/beamioLocale'
 import { HomeLanguageSelector } from './HomeLanguageSelector'
@@ -1578,7 +1578,7 @@ const Home = (_props: HomeProps) => {
 		return () => window.removeEventListener('resize', onResize)
 	}, [showPayReceiveSheet, payReceiveQrMode])
 
-	/** Pay tab：生成 / 每分钟刷新 Open Relay QR（setTimeout 链，与 MyWalletDashboardNew handleAaRelayQR 一致） */
+	/** Pay tab：打开时签署一次 Open Relay QR（5 分钟有效，不自动重签） */
 	useEffect(() => {
 		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay') {
 			setPayRelaySecondsLeft(0)
@@ -1592,13 +1592,10 @@ const Home = (_props: HomeProps) => {
 			return
 		}
 		let cancelled = false
-		let refreshTimer: number | undefined
 
-		const signOnce = async (isInitial: boolean) => {
-			if (isInitial) {
-				setPayRelayQRLoading(true)
-				setPayRelayQRPayload(null)
-			}
+		void (async () => {
+			setPayRelayQRLoading(true)
+			setPayRelayQRPayload(null)
 			try {
 				const aaAccount = await ensureConetAaForProfileAndPersist(profile, setProfiles)
 				if (!aaAccount) throw new Error('CoNET Smart Account is not available')
@@ -1610,32 +1607,67 @@ const Home = (_props: HomeProps) => {
 				if (!cancelled) setPayRelayQRPayload(payload)
 			} catch (e) {
 				console.error('[Home] signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet failed:', e)
-				if (isInitial && !cancelled) setPayRelayQRPayload(null)
+				if (!cancelled) setPayRelayQRPayload(null)
 			} finally {
-				if (isInitial && !cancelled) setPayRelayQRLoading(false)
+				if (!cancelled) setPayRelayQRLoading(false)
 			}
-		}
-
-		const scheduleNextRefresh = () => {
-			if (cancelled) return
-			refreshTimer = window.setTimeout(async () => {
-				await signOnce(false)
-				scheduleNextRefresh()
-			}, 60_000) as unknown as number
-		}
-
-		void (async () => {
-			await signOnce(true)
-			if (!cancelled) scheduleNextRefresh()
 		})()
 
 		return () => {
 			cancelled = true
-			if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
 			setPayRelayQRPayload(null)
 			setPayRelayQRLoading(false)
 		}
 	}, [showPayReceiveSheet, payReceiveQrMode, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.aaAccount, setProfiles])
+
+	/** Scan to Pay：轮询 CoNET AA openRelayedNonce；商户 relay 消耗本 QR 签名 nonce 后自动关闭 */
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay' || !payRelayQRPayload) return
+
+		const aaAccount = payRelayQRPayload.account
+		if (!aaAccount || !ethers.isAddress(aaAccount) || !payRelayQRPayload.nonce) return
+
+		let signedNonce: bigint
+		try {
+			signedNonce = BigInt(payRelayQRPayload.nonce)
+		} catch {
+			return
+		}
+
+		let cancelled = false
+		let timer: ReturnType<typeof setTimeout> | undefined
+		const POLL_MS = 4000
+
+		const poll = async () => {
+			if (cancelled) return
+			try {
+				const storedNonce = await readContainerNonceFromAAStorage(
+					conetDepinProvider,
+					aaAccount,
+					'openRelayed'
+				)
+				if (cancelled) return
+				if (storedNonce > signedNonce) {
+					closePayReceiveSheet()
+					return
+				}
+			} catch (e) {
+				console.warn('[Home] Scan to Pay openRelay nonce poll failed:', e)
+			}
+			if (!cancelled) {
+				timer = setTimeout(() => {
+					void poll()
+				}, POLL_MS)
+			}
+		}
+
+		void poll()
+
+		return () => {
+			cancelled = true
+			if (timer !== undefined) clearTimeout(timer)
+		}
+	}, [showPayReceiveSheet, payReceiveQrMode, payRelayQRPayload, closePayReceiveSheet])
 
 	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；改为单层 flex 链并写死 flex-basis */
 	const homeScrollUsesSingleFlexChain = false

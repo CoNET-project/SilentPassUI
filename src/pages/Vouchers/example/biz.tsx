@@ -12894,12 +12894,12 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    let expiryLabel: string;
    if (cardIssuanceCouponDateRestriction !== 'range') {
      expiryVariant = 'none';
-     expiryLabel = '无到期';
+     expiryLabel = tu('programs_coupon_expiry_no_expiry');
    } else {
      const ymd = cardIssuanceCouponValidToYmd.trim();
      if (!ymd) {
        expiryVariant = 'incomplete';
-       expiryLabel = '请设置结束日期';
+       expiryLabel = tu('programs_coupon_expiry_set_end_date');
      } else {
        const parts = ymd.split('-').map((x) => Number.parseInt(x, 10));
        const y = parts[0];
@@ -12907,20 +12907,20 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
        const d = parts[2];
        if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
          expiryVariant = 'incomplete';
-         expiryLabel = '请设置结束日期';
+         expiryLabel = tu('programs_coupon_expiry_set_end_date');
        } else {
          const end = new Date(y, m - 1, d, 23, 59, 59, 999);
          const ms = end.getTime() - Date.now();
          const hours = ms / 3600000;
          if (ms <= 0) {
            expiryVariant = 'expired';
-           expiryLabel = '已过期';
+           expiryLabel = tu('programs_coupon_expiry_expired');
          } else if (hours <= 48) {
            expiryVariant = 'hours';
-           expiryLabel = `${Math.max(1, Math.ceil(hours))} 小时后过期`;
+           expiryLabel = tu('programs_coupon_expiry_hours', { n: Math.max(1, Math.ceil(hours)) });
          } else {
            expiryVariant = 'days';
-           expiryLabel = `${Math.max(1, Math.ceil(hours / 24))} 天后过期`;
+           expiryLabel = tu('programs_coupon_expiry_days', { n: Math.max(1, Math.ceil(hours / 24)) });
          }
        }
      }
@@ -13347,7 +13347,7 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
   if (cardIssuancePrimaryBonusRule) {
     return formatBonusRuleDisplayString(cardIssuancePrimaryBonusRule, cardIssuanceDisplayMoneyPrefix);
   }
-  return '会员权益';
+  return tu('member_benefits');
 }, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuancePrimaryBonusRule]);
 
 useEffect(() => {
@@ -29778,15 +29778,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              >
                {cardIssuanceOnchainFetch === 'loading' ? (
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
-                   Checking the User Card factory for cards owned by your wallet…
+                   {tu('programs_config_checking_factory')}
                  </p>
                ) : !cardIssuanceExistingCard ? (
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
-                   Define the parameters and rewards logic for your new merchant card program.
+                   {tu('programs_config_define_new_desc')}
                  </p>
                ) : cardIssuanceActiveProgramView === 'overview' ? null : (
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
-                   Edit brand, tiers, and publishing options for your issued card.
+                   {tu('programs_config_edit_existing_desc')}
                  </p>
                )}
              </div>
@@ -29794,7 +29794,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              {cardIssuanceOnchainFetch === 'loading' ? (
                <div className="flex flex-col items-center justify-center gap-3 rounded-lg bg-white py-16 shadow-sm">
                  <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
-                 <p className="text-sm font-medium text-[#595c5e]">Loading your issued card from the factory…</p>
+                 <p className="text-sm font-medium text-[#595c5e]">{tu('programs_config_loading_card')}</p>
                </div>
              ) : (
              <>
@@ -29820,11 +29820,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      }`}
                    >
                      <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-[#0051d1]">
-                       Discover · Featured Brands preview
+                       {tu('programs_config_discover_preview')}
                      </p>
                      <div
                        className="pointer-events-none mx-auto w-full max-w-md select-none"
-                       aria-label="Preview of how this program appears on consumer Discover"
+                       aria-label={tu('programs_config_discover_preview_aria')}
                      >
                        <div className="w-full text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden">
                          <div className="relative">
@@ -29867,7 +29867,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                {cardConfiguratorDiscoverPreviewTitle}
                              </h4>
                              <p className="shrink-0 pt-1 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-[#2f5fcf]">
-                               Your Assets
+                               {tu('programs_config_your_assets')}
                              </p>
                            </div>
                            <p className="mb-4 line-clamp-2 text-[15px] leading-tight text-[#4b5361] dark:text-slate-300">
@@ -29886,13 +29886,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 1 ? (
                      <header className="mb-8 space-y-2 border-b border-[#abadaf]/20 pb-6">
                        <span className="block text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                         Visual Identity
+                         {tu('programs_config_visual_identity')}
                        </span>
                        <h2 className="font-manrope text-3xl font-black leading-tight text-[#2c2f31]">
-                         Define your brand
+                         {tu('programs_config_define_brand_title')}
                        </h2>
                        <p className="max-w-md text-sm font-medium leading-relaxed text-[#595c5e]">
-                         Customize how your store card appears to customers in their digital wallets.
+                         {tu('programs_config_brand_wallet_hint')}
                        </p>
                      </header>
                    ) : null}
@@ -29900,7 +29900,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
                        <Palette className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
                      </div>
-                     <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Brand &amp; Content</h3>
+                     <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">{tu('programs_config_brand_content')}</h3>
                    </div>
                    <div className="grid grid-cols-2 gap-5">
                      <div className="col-span-2 space-y-2 md:col-span-1">
@@ -29908,14 +29908,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          htmlFor="card-issuance-program-name"
                          className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]"
                        >
-                         Card Unit Name
+                         {tu('programs_config_unit_name')}
                        </label>
                        <input
                          id="card-issuance-program-name"
                          type="text"
                          value={cardIssuanceProgramName}
                         onChange={(e) => setCardIssuanceProgramName(e.target.value)}
-                         placeholder="e.g. beamio Rewards"
+                         placeholder={tu('programs_config_unit_name_ph')}
                          className={`w-full rounded-md border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                        />
                      </div>
@@ -29932,7 +29932,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          type="text"
                          value={cardIssuanceCurrencySymbol}
                         onChange={(e) => setCardIssuanceCurrencySymbol(normalizeCardIssuanceCurrencySymbolInput(e.target.value))}
-                         placeholder="Auto-filled from unit name"
+                         placeholder={tu('programs_config_symbol_ph')}
                          maxLength={CARD_ISSUANCE_SHORT_NAME_MAX_LEN}
                          spellCheck={false}
                          autoComplete="off"
@@ -29945,10 +29945,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            htmlFor="card-issuance-store-display-name"
                            className="block text-[10px] font-black uppercase tracking-widest text-[#747779]"
                          >
-                           Store display name
+                           {tu('programs_config_store_display_name')}
                          </label>
                          <span className="shrink-0 text-[10px] font-medium text-[#747779]">
-                           Max {CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX} chars
+                           {tu('programs_config_store_display_max', { max: String(CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX) })}
                          </span>
                        </div>
                        <input
@@ -29960,22 +29960,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              e.target.value.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
                            )
                          }
-                         placeholder="Main Street Coffee"
+                         placeholder={tu('programs_config_store_display_name_ph')}
                          maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
                          autoComplete="off"
                          className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                        />
                        <p className="ml-1 text-[11px] font-medium italic leading-relaxed text-[#595c5e]">
-                         This name appears on the digital card in the consumer app.
+                         {tu('programs_config_store_display_hint')}
                        </p>
                      </div>
                      <div className="col-span-2 space-y-2">
                        <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                         Settlement currency
+                         {tu('programs_config_settlement_currency')}
                        </span>
                        <div
                          className="w-full rounded-md bg-[#eef1f3] px-5 py-4 text-[15px] font-semibold text-[#2c2f31]"
-                         aria-label="Program currency"
+                         aria-label={tu('programs_config_program_currency_aria')}
                        >
                          {CARD_ISSUANCE_BEAMIO_CURRENCY}
                        </div>
@@ -29986,7 +29986,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            htmlFor="card-issuance-description"
                            className="block text-[10px] font-black uppercase tracking-widest text-[#747779]"
                          >
-                           Program Description ({CARD_ISSUANCE_CONFIGURATION_MAX_CHARS} chars max)
+                           {tu('programs_config_program_description_label', { max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS) })}
                          </label>
                        </div>
                        <textarea
@@ -29995,20 +29995,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          onChange={(e) =>
                            setCardIssuanceDescription(e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS))
                          }
-                         placeholder="Join our exclusive coffee club and earn points on every purchase…"
+                         placeholder={tu('programs_config_program_description_ph')}
                          rows={3}
                          maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
                          spellCheck={true}
                          className={`min-h-[96px] w-full resize-none rounded-md border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                        />
                        <p className="ml-1 text-[11px] font-medium text-[#747779]">
-                         {cardIssuanceDescription.length}/{CARD_ISSUANCE_CONFIGURATION_MAX_CHARS} characters
+                         {tu('programs_config_chars_count', { current: String(cardIssuanceDescription.length), max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS) })}
                        </p>
                      </div>
                      <div className="col-span-2 grid grid-cols-1 gap-8 md:grid-cols-2 md:items-center">
                        <div className="min-w-0 space-y-2">
                          <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                           Merchant Logo
+                           {tu('programs_config_merchant_logo')}
                          </span>
                          <input
                            ref={cardIssuanceIconFileRef}
@@ -30030,7 +30030,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
                              )}
                              <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                               {cardIssuanceShareImageUploading ? 'Uploading…' : 'Upload image (PNG or JPEG)'}
+                               {cardIssuanceShareImageUploading ? tu('programs_config_uploading') : tu('programs_config_upload_image')}
                              </span>
                            </button>
                          ) : null}
@@ -30044,7 +30044,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             {cardIssuanceShareImageUrl ? (
                               <button
                                 type="button"
-                                aria-label="Remove merchant logo"
+                                aria-label={tu('programs_config_remove_merchant_logo')}
                                 onClick={() => {
                                   setCardIssuanceShareImageUrl('');
                                   if (cardIssuanceIconFileRef.current) cardIssuanceIconFileRef.current.value = '';
@@ -30059,11 +30059,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                        <div className="min-w-0 space-y-2">
                          <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                           Program category
+                           {tu('programs_config_program_category')}
                          </span>
                          <div
                            role="radiogroup"
-                           aria-label="Program category"
+                           aria-label={tu('programs_config_program_category_aria')}
                            className="flex overflow-x-auto gap-3 py-1 pl-1 -mx-1 px-1 scrollbar-hide"
                          >
                            {cardIssuanceProgramCategoryOptionsOrdered.map((opt) => {
@@ -30090,7 +30090,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    <Icon className="h-7 w-7" strokeWidth={2} aria-hidden />
                                  </div>
                                  <span className="max-w-[5rem] text-center text-[11px] font-bold leading-tight tracking-tight text-slate-600">
-                                   {opt.label}
+                                   {translateBizCategoryOption(opt.id, opt.label, tu)}
                                  </span>
                                </button>
                              );
@@ -30099,11 +30099,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                        <div className="col-span-full space-y-2 border-t border-[#abadaf]/15 pt-6">
                          <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                           Merchant image
+                           {tu('programs_overview_merchant_image')}
                          </span>
                          <p className="ml-1 text-[11px] font-medium leading-relaxed text-[#595c5e]">
                            Optional banner or storefront photo. Resized if needed, uploaded to IPFS, then saved on
-                           publish under program metadata key merchantImage (alongside the square Merchant Logo in
+                           publish under program metadata key merchantImage (alongside the square {tu('programs_config_merchant_logo')} in
                            image).
                          </p>
                          <input
@@ -30126,7 +30126,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
                              )}
                              <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                               {cardIssuanceMerchantImageUploading ? 'Uploading…' : 'Upload image (PNG or JPEG)'}
+                               {cardIssuanceMerchantImageUploading ? tu('programs_config_uploading') : tu('programs_config_upload_image')}
                              </span>
                            </button>
                          ) : null}
@@ -30139,7 +30139,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              />
                              <button
                                type="button"
-                               aria-label="Remove merchant image"
+                               aria-label={tu('programs_config_remove_merchant_image')}
                                disabled={cardIssuanceMerchantImageUploading}
                                onClick={() => void removeIssuedProgramMerchantImage()}
                                className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -30152,12 +30152,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        {!cardIssuanceExistingCard ? (
                          <div className="col-span-full mt-4 w-full min-w-0 space-y-2 border-t border-[#abadaf]/15 pt-4">
                            <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                             Rewards setup
+                             {tu('programs_config_rewards_setup')}
                            </span>
                            <div
                             className="grid grid-cols-1 gap-2 sm:grid-cols-3"
                              role="radiogroup"
-                             aria-label="Rewards setup"
+                             aria-label={tu('programs_config_rewards_setup')}
                            >
                              <button
                                type="button"
@@ -30173,7 +30173,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
                                }`}
                              >
-                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">Default</span>
+                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">{tu('programs_config_rewards_default')}</span>
                              </button>
                              <button
                                type="button"
@@ -30186,7 +30186,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
                                }`}
                              >
-                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">Custom</span>
+                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">{tu('programs_config_rewards_custom')}</span>
                                <span className="mt-1 block text-[11px] font-medium leading-snug text-[#595c5e]">
                                  Set operational limits, loyalty rule, and tiers in the next steps
                                </span>
@@ -30220,7 +30220,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div
                        className={`sticky z-40 mx-auto w-full max-w-lg bg-transparent px-3 pb-4 sm:px-4 sm:pb-5 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
-                       <section aria-label="Card preview">
+                       <section aria-label={tu('programs_config_card_preview_aria')}>
                          <div className="px-1 pb-1 sm:px-2 sm:pb-2">
                            <div className="relative mx-auto w-full max-w-[440px] group/preview-review">
                              <div
@@ -30279,7 +30279,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      <p className="font-manrope text-base font-black">
                                        {cardIssuancePreviewMaxDiscountPct > 0
                                          ? `${Math.round(cardIssuancePreviewMaxDiscountPct)}% DISCOUNT`
-                                         : 'Member pricing'}
+                                         : tu('programs_config_member_pricing')}
                                      </p>
                                    </div>
                                  ) : null}
@@ -30345,7 +30345,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                });
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                             aria-label="Edit brand identity"
+                             aria-label={tu('programs_config_edit_brand_aria')}
                            >{tu('edit')}</button>
                          </div>
                          <div className="flex items-center gap-4">
@@ -30377,7 +30377,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </span>
                              <p className="mt-1 font-manrope text-xs font-bold leading-snug text-[#2c2f31]">
                                {getCardIssuanceTierRuleOptions().find((o) => o.key === cardIssuanceTierRule)?.title ??
-                                 'Loyalty rule'}
+                                 tu('programs_config_loyalty_rule')}
                              </p>
                              <p className="mt-0.5 font-manrope text-[11px] leading-snug text-[#595c5e]">
                                {getCardIssuanceTierRuleOptions().find((o) => o.key === cardIssuanceTierRule)?.mobileDesc ??
@@ -30396,7 +30396,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                });
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                             aria-label="Edit membership tiers"
+                             aria-label={tu('programs_config_edit_tiers_aria')}
                            >{tu('edit')}</button>
                          </div>
                          <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
@@ -30440,7 +30440,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                Reward Engine
                              </span>
                              <p className="mt-1 font-manrope text-xs font-bold leading-snug text-[#2c2f31]">
-                               Recharge Bonuses
+                               {tu('programs_config_recharge_bonuses')}
                              </p>
                              <p className="mt-0.5 font-manrope text-[11px] leading-snug text-[#595c5e]">
                                Customize how your customers earn bonuses and climb membership tiers.
@@ -30458,7 +30458,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                });
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                             aria-label="Edit reward engine"
+                             aria-label={tu('programs_config_edit_rewards_aria')}
                            >{tu('edit')}</button>
                          </div>
                          {cardIssuanceBonusRulesPayload.length > 0 ? (
@@ -30531,7 +30531,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                });
                              }}
                              className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                             aria-label="Edit operational limits"
+                             aria-label={tu('programs_config_edit_limits_aria')}
                            >{tu('edit')}</button>
                          </div>
                          <div className="flex items-stretch gap-0">
@@ -30660,7 +30660,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    <p className="font-manrope text-base font-black">
                                      {cardIssuancePreviewMaxDiscountPct > 0
                                        ? `${Math.round(cardIssuancePreviewMaxDiscountPct)}% DISCOUNT`
-                                       : 'Member pricing'}
+                                       : tu('programs_config_member_pricing')}
                                    </p>
                                  </div>
                                ) : null}
@@ -30711,7 +30711,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0051d1]/10">
                              <Gauge className="h-4 w-4 text-[#0051d1]" strokeWidth={2} aria-hidden />
                            </div>
-                           <h3 className="font-manrope text-lg font-bold text-[#2c2f31]">Reload Limits</h3>
+                           <h3 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_config_reload_limits')}</h3>
                          </div>
                          <div className="space-y-4">
                            <div className="space-y-1.5">
@@ -30847,7 +30847,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0051d1]/10">
                                <Gift className="h-4 w-4 text-[#0051d1]" strokeWidth={2} aria-hidden />
                              </div>
-                             <h3 className="font-manrope text-lg font-bold text-[#2c2f31]">Recharge Bonuses</h3>
+                             <h3 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_config_recharge_bonuses')}</h3>
                            </div>
                          </div>
                         <div
@@ -30967,7 +30967,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                           type="button"
                                           onClick={() => removeCardIssuanceBonusRule(sourceRow.id)}
                                           className={`absolute right-3 top-3 z-[2] flex h-8 w-8 translate-x-4 -translate-y-4 items-center justify-center rounded-full border border-white/60 bg-white/30 text-[#595c5e] shadow-sm transition-colors hover:bg-white hover:text-[#b31b25] ${bizFocusRingClass}`}
-                                          aria-label="Remove bonus rule"
+                                          aria-label={tu('programs_config_remove_bonus_aria')}
                                         >
                                           <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
                                         </button>
@@ -31001,7 +31001,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
                        <Wallet className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
                      </div>
-                     <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Recharge Parameters</h3>
+                     <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">{tu('programs_config_recharge_parameters')}</h3>
                    </div>
                    
                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -31135,7 +31135,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
                        <BarChart3 className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
                      </div>
-                     <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Smart Tier Logic</h3>
+                     <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">{tu('programs_config_smart_tier_logic')}</h3>
                    </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     {getCardIssuanceTierRuleOptions().map(({ key, title, desktopDesc, Icon }) => {
@@ -31204,7 +31204,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <Layers className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
                        </div>
                        <div>
-                         <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">Tier Configuration</h3>
+                         <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">{tu('programs_config_tier_configuration')}</h3>
                          
                        </div>
                      </div>
@@ -31424,12 +31424,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <th
                              className="px-1 pb-2 text-center text-[10px] font-black uppercase tracking-widest text-[#747779]"
                              scope="col"
-                             title="Which tier drives the preview card gradient"
+                             title={tu('programs_config_tier_preview_driver')}
                            >
-                             Preview
+                             {tu('programs_config_preview')}
                            </th>
                            <th className="px-6 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                             Tier Name
+                             {tu('programs_tier_name_label')}
                            </th>
                            <th className="px-1.5 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">
                              Min
@@ -31437,10 +31437,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <th className="px-1.5 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">
                              % OFF
                            </th>
-                           <th className="px-1.5 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">Color</th>
+                           <th className="px-1.5 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">{tu('programs_config_tier_color')}</th>
                            <th
                              className="px-4 pb-2 text-right text-[10px] font-black uppercase tracking-widest text-[#747779]"
-                             aria-label="Actions"
+                             aria-label={tu('programs_config_tier_actions_aria')}
                            />
                          </tr>
                        </thead>
@@ -31600,8 +31600,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    )
                                  }
                                  className="inline-flex rounded-lg p-0.5 text-[#747779] transition-colors hover:text-[#b31b25] disabled:pointer-events-none disabled:opacity-35"
-                                 title="Remove tier"
-                                 aria-label={`Remove tier ${row.name}`}
+                                 title={tu('programs_config_remove_tier')}
+                                 aria-label={`{tu('programs_config_remove_tier')} ${row.name}`}
                                >
                                  <Trash2 className="h-[18px] w-[18px] sm:h-5 sm:w-5" strokeWidth={2} />
                                </button>
@@ -31631,7 +31631,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                          )
                                        )
                                      }
-                                     placeholder="Optional. Shown in tier metadata for wallets and explorers."
+                                     placeholder={tu('programs_config_tier_desc_ph')}
                                      rows={3}
                                      maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
                                      spellCheck={true}
@@ -31650,7 +31650,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                          )
                                        }
                                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                                       aria-label="Close tier description editor"
+                                       aria-label={tu('programs_config_close_tier_desc_aria')}
                                      >
                                        <Trash2 className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
                                      </button>
@@ -31684,7 +31684,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                >
                  <div className="space-y-5 min-[1440px]:sticky min-[1440px]:top-24">
                    <div className="mb-4 flex items-center justify-between px-1">
-                     <h4 className="text-xs font-black uppercase tracking-[0.2em] text-[#747779]">Realtime Preview</h4>
+                     <h4 className="text-xs font-black uppercase tracking-[0.2em] text-[#747779]">{tu('programs_config_realtime_preview')}</h4>
                      <div className="flex rounded-full bg-[#dfe3e6] p-1">
                        <button
                          type="button"
@@ -31725,8 +31725,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          {/** shrink-0: prevent flex from squashing blocks when the phone frame is short (narrow → aspect ratio height); avoids Program Detail visually covering the card */}
                          <div className="flex shrink-0 items-start justify-between gap-3">
                            <div className="min-w-0">
-                             <p className="text-[10px] font-black uppercase tracking-widest text-[#747779]">Hello, member</p>
-                             <h5 className="text-xl font-black tracking-tight text-[#2c2f31]">Your Rewards</h5>
+                             <p className="text-[10px] font-black uppercase tracking-widest text-[#747779]">{tu('programs_config_hello_member')}</p>
+                             <h5 className="text-xl font-black tracking-tight text-[#2c2f31]">{tu('programs_config_your_rewards')}</h5>
                            </div>
                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#e5e9eb]">
                              <IpfsImg
@@ -31833,16 +31833,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
 
                          <div className="mt-8 shrink-0 space-y-2">
-                           <h6 className="text-[10px] font-black uppercase tracking-widest text-[#747779]">Program Detail</h6>
+                           <h6 className="text-[10px] font-black uppercase tracking-widest text-[#747779]">{tu('programs_config_program_detail')}</h6>
                            <p className="text-sm font-medium leading-relaxed text-[#2c2f31]">
                              {cardIssuanceDescription.trim() ||
-                               'Join our program and earn points on every purchase. Unlock premium tiers for higher discounts.'}
+                               tu('programs_config_default_program_desc')}
                            </p>
                          </div>
 
                         {cardIssuanceBonusRulesPayload.length > 0 ? (
                           <div className="mt-6 shrink-0 space-y-3">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">Bonus Rules</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">{tu('programs_config_bonus_rules')}</p>
                             <div className="space-y-3">
                               {cardIssuanceBonusRulesPayload.map((rule, idx) => {
                                 const total = Number((rule.paymentAmount + rule.bonusValue).toFixed(2));
@@ -31889,7 +31889,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         ) : null}
 
                          <div className="mt-8 shrink-0 space-y-4">
-                           <h6 className="text-[10px] font-black uppercase tracking-widest text-[#747779]">Your Tier Benefits</h6>
+                           <h6 className="text-[10px] font-black uppercase tracking-widest text-[#747779]">{tu('programs_config_tier_benefits')}</h6>
                            <div className="space-y-2">
                              {cardIssuanceTiers.slice(0, 3).map((t, idx) => {
                                const disc = parseFloat(t.discountPercent) || 0;
@@ -32027,14 +32027,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </div>
                          </div>
                        </div>
-                       <p className="mt-4 text-center text-xs font-medium text-[#747779]">Physical tap-to-pay card preview (approximate).</p>
+                       <p className="mt-4 text-center text-xs font-medium text-[#747779]">{tu('programs_config_nfc_preview_hint')}</p>
                      </div>
                    )}
 
                    <div className="flex items-start gap-4 rounded-lg border border-[#1562f0]/10 bg-[#1562f0]/5 p-6">
                      <Lightbulb className="h-6 w-6 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
                      <div className="space-y-1">
-                       <p className="text-xs font-bold text-[#2c2f31]">Designer tip</p>
+                       <p className="text-xs font-bold text-[#2c2f31]">{tu('programs_config_designer_tip')}</p>
                        <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
                          Tier threshold changes stay in sync with loyalty progress in the mobile experience. Publish when you are ready to issue
                          on-chain metadata.
@@ -32050,7 +32050,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                    {cardIssuanceCreateResult ? (
                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 space-y-2">
-                       <p>Card created successfully.</p>
+                       <p>{tu('programs_config_card_created_success')}</p>
                        <p className="font-mono text-xs break-all text-emerald-950/90">{cardIssuanceCreateResult.cardAddress}</p>
                        {cardIssuanceCreateResult.hash ? (
                          <a
@@ -32095,7 +32095,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      ) : (
                        <Rocket className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2} aria-hidden />
                      )}
-                     {cardIssuanceCreateLoading ? 'Creating…' : 'Publish & Issue Card'}
+                     {cardIssuanceCreateLoading ? tu('programs_config_creating') : tu('programs_config_publish_issue_card')}
                    </button>
                    <p
                      className={`text-center text-xs text-slate-500 font-medium px-4 ${
@@ -32111,7 +32111,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <>
                     <motion.button
                       type="button"
-                      aria-label="Close tier editor"
+                      aria-label={tu('programs_config_close_tier_editor_aria')}
                       className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
@@ -32130,17 +32130,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div>
                           <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
                             {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
-                              ? 'Edit Base Tier'
+                              ? tu('programs_config_edit_base_tier')
                               : cardIssuanceEditingTierId
-                                ? 'Edit Tier'
+                                ? tu('programs_config_edit_tier')
                                 : 'New Tier'}
                           </span>
                           <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
                             {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
-                              ? 'Edit Base Tier'
+                              ? tu('programs_config_edit_base_tier')
                               : cardIssuanceEditingTierId
-                                ? 'Edit Reward Tier'
-                                : 'Add Reward Tier'}
+                                ? tu('programs_config_edit_reward_tier')
+                                : tu('programs_config_add_reward_tier')}
                           </h3>
                           <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
                             {getCardIssuanceRewardTierEditorSubtitle()[cardIssuanceTierRule]}
@@ -32161,7 +32161,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
                             htmlFor="card-issuance-tier-name"
                           >
-                            Tier Name
+                            {tu('programs_tier_name_label')}
                           </label>
                           <input
                             id="card-issuance-tier-name"
@@ -32169,7 +32169,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             autoComplete="off"
                             value={cardIssuanceTierEditorName}
                             onChange={(e) => setCardIssuanceTierEditorName(e.target.value.slice(0, 32))}
-                            placeholder="e.g., Gold, Platinum"
+                            placeholder={tu('programs_config_tier_name_ph')}
                             className={`w-full rounded-2xl border-none bg-[#eef1f3] px-6 py-4 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                           />
                         </div>
@@ -32269,7 +32269,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               type="button"
                               onClick={() => setCardIssuanceTierEditorBackgroundColor('#0051d1')}
                               className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dfe3e6] text-[#595c5e] ring-4 ring-transparent ring-offset-2 transition-all hover:scale-110 active:scale-90"
-                              aria-label="Reset tier color"
+                              aria-label={tu('programs_config_reset_tier_color_aria')}
                             >
                               <Palette className="h-4 w-4" strokeWidth={2} aria-hidden />
                             </button>
@@ -32280,7 +32280,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               value={tierBackgroundColorForPayload(cardIssuanceTierEditorBackgroundColor) ?? '#0051d1'}
                               onChange={(e) => setCardIssuanceTierEditorBackgroundColor(e.target.value)}
                               className="h-11 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
-                              aria-label="Choose custom tier color"
+                              aria-label={tu('programs_config_choose_tier_color_aria')}
                             />
                             <input
                               type="text"
@@ -32304,7 +32304,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
                                 )
                               }
-                              placeholder="Optional. Shown in tier metadata for wallets and explorers."
+                              placeholder={tu('programs_config_tier_desc_ph')}
                               rows={3}
                               maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
                               spellCheck={true}
@@ -32376,7 +32376,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div
                        className={`sticky z-40 w-full bg-transparent px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
-                       <section aria-label="Issued program card preview">
+                       <section aria-label={tu('programs_config_issued_preview_aria')}>
                          <div className="relative mx-auto w-full max-w-[380px] group/prev sm:max-w-[400px]">
                            <div
                              className="absolute -inset-1 rounded-xl bg-primary/20 blur-2xl transition duration-500 group-hover/prev:bg-primary/30"
@@ -32560,12 +32560,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                          <div>
                            <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                             Description
+                             {tu('programs_overview_description')}
                            </span>
                            <p className="text-xs leading-relaxed text-[#595c5e] sm:text-sm">
                              {cardIssuanceDescription.trim()
                                ? cardIssuanceDescription.trim()
-                               : 'No program description yet. Open Card Configurator to add copy for wallets and your team.'}
+                               : tu('programs_overview_no_description_team')}
                            </p>
                          </div>
                        </div>
@@ -32577,7 +32577,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         aria-hidden
                       />
                       <header className="mb-2 flex items-center justify-between gap-2">
-                        <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Merchant image</h3>
+                        <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_overview_merchant_image')}</h3>
                         <ImagePlus className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
                       </header>
                       <input
@@ -32597,7 +32597,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                       <div
                         className="w-full min-w-0 overflow-hidden rounded-[30px] border border-[#e8ecf0] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]"
-                        aria-label="Discover Featured Brands style preview"
+                        aria-label={tu('programs_overview_discover_preview_aria')}
                       >
                         <div className="relative">
                           <IpfsImg
@@ -32609,7 +32609,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <div className="absolute right-3 top-3 flex items-center gap-1.5">
                               <button
                                 type="button"
-                                aria-label="Replace merchant banner"
+                                aria-label={tu('programs_overview_replace_banner')}
                                 disabled={cardIssuanceMerchantImageUploading}
                                 onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
                                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
@@ -32623,7 +32623,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
                                 <button
                                   type="button"
-                                  aria-label="Remove merchant banner"
+                                  aria-label={tu('programs_overview_remove_banner')}
                                   disabled={cardIssuanceMerchantImageUploading}
                                   onClick={() => void removeIssuedProgramMerchantImage()}
                                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
@@ -32648,7 +32648,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               )}
                               <button
                                 type="button"
-                                aria-label="Replace merchant icon"
+                                aria-label={tu('programs_overview_replace_icon')}
                                 disabled={cardIssuanceShareImageUploading}
                                 onClick={() => cardIssuanceMerchantIconIssuedPanelFileRef.current?.click()}
                                 className="absolute -top-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
@@ -32662,7 +32662,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               {programsOverviewShareImage ? (
                                 <button
                                   type="button"
-                                  aria-label="Remove merchant icon"
+                                  aria-label={tu('programs_overview_remove_icon')}
                                   disabled={cardIssuanceShareImageUploading}
                                   onClick={() => void removeIssuedProgramMerchantIcon()}
                                   className="absolute -bottom-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
@@ -32679,7 +32679,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               {programsOverviewDisplayName}
                             </h4>
                             <p className="whitespace-nowrap pt-1 text-[10px] font-semibold uppercase tracking-wide text-[#2f5fcf]">
-                              Your Assets
+                              {tu('programs_config_your_assets')}
                             </p>
                           </div>
                           <p className="mb-4 line-clamp-2 text-[15px] font-medium leading-tight text-[#4b5361]">
@@ -32696,7 +32696,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                       {!cardIssuanceEffectiveMerchantImage.trim() ? (
                         <p className="mt-3 text-[11px] font-medium leading-relaxed text-[#747779]">
-                          Hero image above is a stock placeholder until you upload your own wide banner.
+                          {tu('programs_overview_merchant_placeholder_hint')}
                         </p>
                       ) : null}
                     </div>
@@ -32709,10 +32709,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <header className="mb-3 flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
-                            Token #2
+                            {tu('programs_overview_token_label')}
                           </span>
                           <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">
-                            Point system
+                            {tu('programs_overview_point_system')}
                           </h3>
                         </div>
                         <button
@@ -32847,16 +32847,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         aria-hidden
                       />
                       <header className="mb-3 flex items-center justify-between gap-2">
-                        <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Coupons</h3>
+                        <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_overview_coupons')}</h3>
                         <div className="flex items-center gap-2">
                           <span className="rounded-full border border-[#1562f0]/15 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0]">
-                            {cardIssuanceCoupons.length.toLocaleString()} total
+                            {tu('programs_overview_coupons_total', { count: cardIssuanceCoupons.length.toLocaleString() })}
                           </span>
                           <button
                             type="button"
                             onClick={openCardIssuanceCouponCreate}
                             className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm transition-colors hover:bg-[#0d4ec4] ${bizFocusRingClass}`}
-                            aria-label="Add coupon"
+                            aria-label={tu('programs_coupon_add_aria')}
                           >
                             <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
                           </button>
@@ -32865,7 +32865,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="space-y-2.5 sm:space-y-3">
                         {cardIssuanceCoupons.length === 0 ? (
                           <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-[#f8fafc] p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
-                            No coupons yet. Press + to add a coupon for this program.
+                            {tu('programs_overview_no_coupons')}
                           </div>
                         ) : (
                           cardIssuanceCoupons.map((coupon) => {
@@ -32925,10 +32925,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   <p className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{coupon.name}</p>
                                 </div>
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
-                                  {coupon.requiresRedeemCode ? 'Redeem code' : 'Open claim'}
+                                  {coupon.requiresRedeemCode ? tu('programs_coupon_redeem_code') : tu('programs_coupon_open_claim')}
                                 </p>
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
-                                  Total issuance/Left:{' '}
+                                  {tu('programs_coupon_total_issuance_left')}{' '}
                                   {(() => {
                                     const n = Number.parseInt(coupon.issueTotal.replace(/,/g, '').trim(), 10);
                                     const totalText = Number.isFinite(n) ? n.toLocaleString() : coupon.issueTotal;
@@ -32944,7 +32944,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 </p>
                                 {coupon.couponDateRestriction === 'range' && coupon.couponValidFromYmd && coupon.couponValidToYmd ? (
                                   <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
-                                    Valid: {coupon.couponValidFromYmd} – {coupon.couponValidToYmd}
+                                    {tu('programs_coupon_valid')} {coupon.couponValidFromYmd} – {coupon.couponValidToYmd}
                                   </p>
                                 ) : null}
                                 {coupon.description.trim() ? (
@@ -32990,7 +32990,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     onClick={() => openCardIssuanceCouponShare(coupon.id)}
                                     className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
                                     aria-label={`Show claim URL and QR for coupon ${coupon.name}`}
-                                    title="Claim URL and QR"
+                                    title={tu('programs_coupon_show_claim_qr')}
                                   >
                                     <QrCode className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                                   </button>
@@ -33005,7 +33005,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 </button>
                                 {coupon.issued ? (
                                   <span
-                                    title="Issued coupons cannot be deleted."
+                                    title={tu('programs_coupon_issued_locked_delete')}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400"
                                   >
                                     <Lock className="h-4 w-4" strokeWidth={2} aria-hidden />
@@ -33026,7 +33026,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 <div className="border-t border-[#1562f0]/10 bg-white/70 px-3 py-3 sm:px-4 sm:py-3.5">
                                   <div className="mb-2 flex items-center justify-between gap-2">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-[#595c5e]">
-                                      Redeem codes
+                                      {tu('programs_catalog_redeem_codes_title')}
                                     </p>
                                     <div className="flex items-center gap-1.5">
                                       {cardIssuanceCouponRedeemStatusLoading && redeemRows.length > 0 ? (
@@ -33061,7 +33061,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                             disabled={couponRedeemRegistering}
                                             className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:opacity-60 ${bizFocusRingClass}`}
                                             aria-label={`Register redeem codes for ${coupon.name}`}
-                                            title="Register redeem codes (batch)"
+                                            title={tu('programs_catalog_register_codes')}
                                           >
                                             {couponRedeemRegistering ? (
                                               <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.4} aria-hidden />
@@ -33085,10 +33085,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                       <table className="min-w-full text-left text-[11px]">
                                         <thead className="bg-[#f0f4fb] text-[9px] font-bold uppercase tracking-wider text-[#595c5e]">
                                           <tr>
-                                            <th className="px-2.5 py-2 sm:px-3">Code</th>
-                                            <th className="px-2.5 py-2 sm:px-3">Generated</th>
-                                            <th className="px-2.5 py-2 sm:px-3">Status</th>
-                                            <th className="px-2.5 py-2 sm:px-3">Redeemed</th>
+                                            <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_code')}</th>
+                                            <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_generated')}</th>
+                                            <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_status')}</th>
+                                            <th className="px-2.5 py-2 sm:px-3">{tu('programs_table_redeemed')}</th>
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-[#1562f0]/8 bg-white">
@@ -33101,7 +33101,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                                   CARD_ISSUANCE_COUPON_REDEEM_CHAIN_CONFIRM_GRACE_MS)
                                                 ? 'redeemed'
                                                 : 'pending');
-                                            const statusLabel = status === 'pending' ? 'Available' : 'Redeemed';
+                                            const statusLabel = status === 'pending' ? tu('programs_table_available') : tu('programs_table_redeemed');
                                             const statusClass =
                                               status === 'pending'
                                                 ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
@@ -33136,7 +33136,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                                       }}
                                                       className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
                                                       aria-label={`Copy redeem code ${row.code}`}
-                                                      title="Copy code"
+                                                      title={tu('programs_table_copy_code')}
                                                     >
                                                       {cardIssuanceCouponRedeemCopiedHash === row.hash ? (
                                                         <Check className="h-3 w-3 text-emerald-500" strokeWidth={2.5} aria-hidden />
@@ -33181,10 +33181,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                           className={`inline-flex items-center gap-1 rounded-full border border-[#1562f0]/15 bg-white px-2.5 py-1 text-[10px] font-bold text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
                                         >
                                           <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                                          Previous
+                                          {tu('programs_table_previous')}
                                         </button>
                                         <span className="text-[10px] font-semibold text-[#595c5e]">
-                                          Page {redeemPage} of {redeemPageCount}
+                                          {tu('programs_table_page_of', { page: String(redeemPage), total: String(redeemPageCount) })}
                                           <span className="text-[#747779]">
                                             {' '}
                                             · {(redeemPage - 1) * CARD_ISSUANCE_COUPON_REDEEM_PAGE_SIZE + 1}–
@@ -33245,7 +33245,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                      <div className="rounded-xl bg-[#eef1f3] p-4 sm:rounded-2xl sm:p-5">
                        <header className="mb-3 flex items-center justify-between gap-2">
-                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">Loyalty Logic</h3>
+                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_loyalty_logic')}</h3>
                          <Database className="h-4 w-4 shrink-0 text-slate-400 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
                        </header>
                        <div className="space-y-2 sm:space-y-3">
@@ -33256,7 +33256,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                              <div className="min-w-0">
                                <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                 {programsOverviewTierRuleOption?.title ?? 'Loyalty rule'}
+                                 {programsOverviewTierRuleOption?.title ?? tu('programs_config_loyalty_rule')}
                                </p>
                                <p className="text-[10px] text-[#595c5e]">
                                  {programsOverviewTierRuleOption?.mobileDesc ??
@@ -33300,7 +33300,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      </div>
                                      <div className="min-w-0">
                                        <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                         Recharge Bonus{showIndexSuffix ? ` ${idx + 1}` : ''}
+                                         {tu('programs_recharge_bonus_label')}{showIndexSuffix ? ` ${idx + 1}` : ''}
                                        </p>
                                        <p className="text-[10px] text-[#595c5e]">{displayDesc}</p>
                                      </div>
@@ -33363,8 +33363,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  />
                                </div>
                                <div className="min-w-0">
-                                 <p className="font-manrope text-sm font-bold text-[#2c2f31]">Recharge Bonus</p>
-                                 <p className="text-[10px] text-[#595c5e]">No recharge bonus configured</p>
+                                 <p className="font-manrope text-sm font-bold text-[#2c2f31]">{tu('programs_recharge_bonus_label')}</p>
+                                 <p className="text-[10px] text-[#595c5e]">{tu('programs_bonus_none_configured')}</p>
                                </div>
                              </div>
                              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -33372,7 +33372,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  type="button"
                                  onClick={() => openCardIssuanceBonusRuleCreate()}
                                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                                 aria-label="Add recharge bonus"
+                                 aria-label={tu('programs_bonus_add_aria')}
                                >
                                  <Pencil
                                    className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
@@ -33393,7 +33393,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <div className="flex flex-col gap-4 rounded-xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-4 sm:rounded-2xl sm:gap-5 sm:p-5 lg:p-6">
                      <div>
                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
-                         <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Tiers &amp; rules</h3>
+                         <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">{tu('programs_tiers_rules')}</h3>
                         <div className="flex items-center gap-2">
                           <span className="rounded-full border border-[#1562f0]/15 bg-white px-3 py-0.5 text-[10px] font-bold text-[#1562f0] sm:px-4 sm:py-1 sm:text-xs">
                             {programsOverviewTierRowsSortedAscending.length.toLocaleString()} active tiers
@@ -33402,7 +33402,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             type="button"
                             onClick={openCardIssuanceTierCreate}
                             className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#1562f0] shadow-sm transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                            aria-label="Add membership tier"
+                            aria-label={tu('programs_tier_add_aria')}
                           >
                             <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
                           </button>
@@ -33507,7 +33507,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <>
                   <motion.button
                     type="button"
-                    aria-label="Close coupon editor"
+                    aria-label={tu('programs_share_close_coupon_editor')}
                     className="fixed inset-0 z-[92] bg-[#2c2f31]/35 backdrop-blur-[2px]"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -33682,26 +33682,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div className="space-y-3 pb-24 pt-1">
                     {cardIssuanceCouponEditingIssued ? (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-medium text-sky-900">
-                        This coupon has already been issued on-chain. Coupon name, claim method, total issuance, and validity
-                        period are locked. You can still update the coupon icon, optional wide background photo (hides tile
-                        background color), description, and tile background color when no photo is set.
+                        {tu('programs_coupon_issued_locked')}
                       </div>
                     ) : null}
                     <div>
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon name</label>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_name_label')}</label>
                       <input
                         type="text"
                         value={cardIssuanceCouponName}
                         onChange={(e) => setCardIssuanceCouponName(e.target.value)}
                         disabled={cardIssuanceCouponEditingIssued}
-                        placeholder="e.g., Welcome bonus"
+                        placeholder={tu('programs_coupon_name_ph')}
                         autoComplete="off"
                         className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                       />
                     </div>
                     <div>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                        Description
+                        {tu('programs_overview_description')}
                       </label>
                       <input
                         type="text"
@@ -33761,7 +33759,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
                         htmlFor="programs-overview-coupon-issue-total"
                       >
-                        Total issuance
+                        {tu('programs_coupon_total_issuance')}
                       </label>
                       <input
                         ref={cardIssuanceCouponIssueTotalWheelRef}
@@ -33795,7 +33793,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       </p>
                     </div>
                     <div>
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon icon</label>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_icon_label')}</label>
                       <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
                         Recommended: square image, 512 × 512 px or larger, 1:1 ratio. Keep the artwork centered inside a
                         circular safe area because the ticket displays this icon as a round crop.
@@ -33833,7 +33831,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               if (cardIssuanceCouponIconFileRef.current) cardIssuanceCouponIconFileRef.current.value = '';
                             }}
                             className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                            aria-label="Remove coupon icon"
+                            aria-label={tu('programs_coupon_remove_icon_aria')}
                           >
                             <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
                           </button>
@@ -33885,7 +33883,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               }
                             }}
                             className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                            aria-label="Remove coupon background image"
+                            aria-label={tu('programs_coupon_remove_bg_aria')}
                           >
                             <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
                           </button>
@@ -33897,7 +33895,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     </div>
                     {tileBackgroundColorApplies(cardIssuanceCouponImage) ? (
                     <div className="space-y-2">
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Coupon background color</label>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_bg_color')}</label>
                       <div className="flex flex-wrap gap-2">
                         {CARD_ISSUANCE_TIER_COLOR_PRESETS.map((hex) => {
                           const selected =
@@ -33923,7 +33921,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           value={tierBackgroundColorForPayload(cardIssuanceCouponBackgroundColor) ?? '#0051d1'}
                           onChange={(e) => setCardIssuanceCouponBackgroundColor(e.target.value)}
                           className="h-10 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
-                          aria-label="Choose custom coupon color"
+                          aria-label={tu('programs_coupon_choose_color_aria')}
                         />
                         <input
                           type="text"
@@ -34058,7 +34056,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <>
                   <motion.button
                     type="button"
-                    aria-label="Close tier editor"
+                    aria-label={tu('programs_config_close_tier_editor_aria')}
                     className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -34077,17 +34075,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div>
                         <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
                           {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
-                            ? 'Edit Base Tier'
+                            ? tu('programs_config_edit_base_tier')
                             : cardIssuanceEditingTierId
-                              ? 'Edit Tier'
+                              ? tu('programs_config_edit_tier')
                               : 'New Tier'}
                         </span>
                         <h3 className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
                           {cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
-                            ? 'Edit Base Tier'
+                            ? tu('programs_config_edit_base_tier')
                             : cardIssuanceEditingTierId
-                              ? 'Edit Reward Tier'
-                              : 'Add Reward Tier'}
+                              ? tu('programs_config_edit_reward_tier')
+                              : tu('programs_config_add_reward_tier')}
                         </h3>
                         <p className="mt-2 text-sm leading-relaxed text-[#595c5e]">
                           {getCardIssuanceRewardTierEditorSubtitle()[programsOverviewTierRuleKey]}
@@ -34108,7 +34106,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]" htmlFor="programs-overview-tier-name">
-                          Tier Name
+                          {tu('programs_tier_name_label')}
                         </label>
                         <input
                           id="programs-overview-tier-name"
@@ -34116,7 +34114,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           autoComplete="off"
                           value={cardIssuanceTierEditorName}
                           onChange={(e) => setCardIssuanceTierEditorName(e.target.value.slice(0, 32))}
-                          placeholder="e.g., Base, Gold, Platinum"
+                          placeholder={tu('programs_overview_tier_name_ph')}
                           className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-3.5 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                         />
                       </div>
@@ -34188,7 +34186,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             value={tierBackgroundColorForPayload(cardIssuanceTierEditorBackgroundColor) ?? '#0051d1'}
                             onChange={(e) => setCardIssuanceTierEditorBackgroundColor(e.target.value)}
                             className="h-11 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
-                            aria-label="Choose custom tier color"
+                            aria-label={tu('programs_config_choose_tier_color_aria')}
                           />
                           <input
                             type="text"
@@ -34212,7 +34210,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
                               )
                             }
-                            placeholder="Optional. Shown in tier metadata for wallets and explorers."
+                            placeholder={tu('programs_config_tier_desc_ph')}
                             rows={3}
                             maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
                             spellCheck={true}
@@ -34270,7 +34268,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <>
                    <motion.button
                      type="button"
-                     aria-label="Close bonus rule editor"
+                     aria-label={tu('programs_config_close_bonus_editor')}
                      className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
                      initial={{ opacity: 0 }}
                      animate={{ opacity: 1 }}
@@ -34359,7 +34357,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                checked={cardIssuanceBonusRuleBonusProportional}
                                onChange={(e) => setCardIssuanceBonusRuleBonusProportional(e.target.checked)}
                                className={`h-4 w-4 shrink-0 rounded border-[#abadaf] text-[#0051d1] ${bizFocusRingClass}`}
-                               aria-label="Percentage: bonus scales with top-up amount"
+                               aria-label={tu('programs_bonus_percent_aria')}
                              />
                              Percentage
                            </label>
@@ -34416,7 +34414,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  ) : null}
                                </>
                              ) : cardIssuanceBonusRuleBonusProportional ? (
-                               <>Enter a positive Payment Amount to preview the percentage rate.</>
+                               <>{tu('programs_bonus_percent_preview_hint')}</>
                              ) : (
                                <>
                                  Customer receives total balance of{' '}
@@ -35843,27 +35841,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
                  <Trash2 size={24} />
                </div>
-               <h2 className="text-xl font-bold tracking-tight text-black">Delete Merchant Card</h2>
+               <h2 className="text-xl font-bold tracking-tight text-black">{tu('programs_delete_card_title')}</h2>
              </div>
              <button
                type="button"
                onClick={() => !deleteMerchantCardLoading && (setDeleteMerchantCardConfirmOpen(false), setDeleteMerchantCardError(null))}
                className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black disabled:opacity-50"
-               aria-label="关闭"
+               aria-label={tu('programs_common_close')}
              >
                <X size={20} />
              </button>
            </div>
            <p className="mb-3 text-[15px] leading-relaxed text-slate-600">
-             This merchant card will be added to the Beamio API blacklist. All users will stop seeing this card&apos;s assets,
-             coupons, and Discover listings in SilentPassUI and other Beamio apps.
+             {tu('programs_delete_card_body')}
            </p>
            <p className="mb-4 text-[13px] leading-relaxed text-slate-500">
-             Contract{' '}
-             <span className="font-mono font-semibold text-slate-800">
-               {cardIssuanceExistingCard.cardAddress.slice(0, 6)}…{cardIssuanceExistingCard.cardAddress.slice(-4)}
-             </span>{' '}
-             remains on-chain; this action only hides it from Beamio product surfaces.
+             {tu('programs_delete_card_contract_note', {
+               address: `${cardIssuanceExistingCard.cardAddress.slice(0, 6)}…${cardIssuanceExistingCard.cardAddress.slice(-4)}`,
+             })}
            </p>
            {deleteMerchantCardError ? (
              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] font-medium text-rose-700">
@@ -35886,10 +35881,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                {deleteMerchantCardLoading ? (
                  <>
                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
-                   Deleting…
+                   {tu('programs_delete_card_deleting')}
                  </>
                ) : (
-                 '继续'
+                 tu('programs_delete_card_confirm')
                )}
              </button>
            </div>
@@ -36102,7 +36097,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      type="button"
                      onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
                      className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black"
-                     aria-label="关闭"
+                     aria-label={tu('programs_common_close')}
                    >
                      <X size={20} aria-hidden />
                    </button>
@@ -36814,7 +36809,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                type="button"
                onClick={() => setIsBUnitsExplainerOpen(false)}
                className="group rounded-full p-2 text-[#595c5e] transition-colors hover:bg-[#eef1f3] active:scale-95"
-               aria-label="关闭"
+               aria-label={tu('programs_common_close')}
              >
                <X className="size-6 transition-transform group-active:scale-90" strokeWidth={2} />
              </button>
@@ -37284,7 +37279,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 type="button"
                 onClick={closeMarketProductModal}
                 className="absolute top-6 left-6 z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/70 backdrop-blur-md transition-colors hover:text-white"
-                aria-label="关闭"
+                aria-label={tu('programs_common_close')}
               >
                 <X size={22} strokeWidth={2} className="shrink-0" />
               </button>
@@ -37921,7 +37916,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           type="button"
           className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
           onClick={closeCardIssuanceCouponShare}
-          aria-label="Close coupon share dialog"
+          aria-label={tu('programs_share_close_aria')}
         />
         <div
           className="relative z-10 w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
@@ -37993,8 +37988,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
                         : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                   } ${cardIssuanceCouponShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
-                  aria-label="Download coupon share PNG"
-                  title="Download PNG for WeChat"
+                  aria-label={tu('programs_share_download_coupon_png')}
+                  title={tu('programs_share_download_png')}
                 >
                   {cardIssuanceCouponShareImageStatus === 'loading' ? (
                     <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
@@ -38026,7 +38021,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           type="button"
           className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
           onClick={closeCardIssuanceCouponRedeemShare}
-          aria-label="Close redeem share dialog"
+          aria-label={tu('programs_share_close_redeem_dialog')}
         />
         <div
           className="relative z-10 w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
@@ -38088,7 +38083,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 ) {
                   return (
                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-                      This code is already redeemed. The link may no longer work for new claims.
+                      {tu('programs_share_code_redeemed_warning')}
                     </p>
                   );
                 }
@@ -38143,8 +38138,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
                         : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                   } ${cardIssuanceCouponRedeemShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
-                  aria-label="Download redeem coupon share PNG"
-                  title="Download PNG for WeChat"
+                  aria-label={tu('programs_share_download_redeem_coupon_png')}
+                  title={tu('programs_share_download_png')}
                 >
                   {cardIssuanceCouponRedeemShareImageStatus === 'loading' ? (
                     <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
@@ -38291,7 +38286,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           type="button"
           className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
           onClick={closeCardIssuanceProductionRedeemShare}
-          aria-label="Close catalog redeem share dialog"
+          aria-label={tu('programs_share_close_catalog_redeem')}
         />
         <div
           className="relative z-10 flex max-h-[min(92vh,44rem)] w-full max-w-xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
@@ -38300,7 +38295,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">
-                Redeem Code Distribution
+                {tu('programs_share_redeem_title')}
               </p>
               <h2
                 id="catalog-redeem-share-qr-title"
@@ -38309,8 +38304,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 {cardIssuanceProductionRedeemShareRow.name}
               </h2>
               <p className="mt-1 text-xs font-medium text-[#595c5e]">
-                Share this URL or QR with the recipient. They can open it in the Beamio app to redeem this catalog
-                item.
+                {tu('programs_share_catalog_redeem_hint')}
               </p>
               <p className="mt-2 font-mono text-[11px] text-[#747779]">
                 {cardIssuanceProductionRedeemShareOpen.code}
@@ -38320,7 +38314,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               type="button"
               onClick={closeCardIssuanceProductionRedeemShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="关闭"
+              aria-label={tu('programs_common_close')}
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
@@ -38365,7 +38359,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     ) {
                       return (
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-                          This code is already redeemed. The link may no longer work for new claims.
+                          {tu('programs_share_code_redeemed_warning')}
                         </p>
                       );
                     }
@@ -38376,8 +38370,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     ) {
                       return (
                         <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-900">
-                          This code is not active on chain yet. Registration may have failed or is still indexing; try
-                          registering again before sharing.
+                          {tu('programs_share_code_not_active_warning')}
                         </p>
                       );
                     }
@@ -38385,7 +38378,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   })()}
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-                      Redeem URL
+                      {tu('programs_share_redeem_url')}
                     </p>
                     <p className="break-all font-mono text-[11px] text-slate-700">
                       {cardIssuanceProductionRedeemShareUrl}
@@ -38424,8 +38417,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
                             : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                       } ${cardIssuanceProductionRedeemShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
-                      aria-label="Download catalog redeem share PNG"
-                      title="Download PNG for WeChat"
+                      aria-label={tu('programs_share_download_catalog_redeem_png')}
+                      title={tu('programs_share_download_png')}
                     >
                       {cardIssuanceProductionRedeemShareImageStatus === 'loading' ? (
                         <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
@@ -38442,7 +38435,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               </>
             ) : (
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
-                Redeem URL is unavailable. Link your issued program card before sharing redeem codes.
+                {tu('programs_share_redeem_url')} is unavailable. Link your issued program card before sharing redeem codes.
               </p>
             )}
           </div>
@@ -38464,7 +38457,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           type="button"
           className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
           onClick={closeCardIssuanceProductionShare}
-          aria-label="Close catalog share dialog"
+          aria-label={tu('programs_share_close_catalog_dialog')}
         />
         <div
           className="relative z-10 flex max-h-[min(92vh,44rem)] w-full max-w-xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(2,6,23,0.28)]"
@@ -38472,7 +38465,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         >
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">Catalog Distribution</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#ea580c]">{tu('programs_share_catalog_distribution')}</p>
               <h2
                 id="catalog-share-qr-title"
                 className="mt-1 truncate font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31]"
@@ -38480,14 +38473,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 {cardIssuanceProductionShareRow.name}
               </h2>
               <p className="mt-1 text-xs font-medium text-[#595c5e]">
-                Share this URL or QR with members. Anyone who meets eligibility can claim without redeem code.
+                {tu('programs_coupon_share_open_hint_long')}
               </p>
             </div>
             <button
               type="button"
               onClick={closeCardIssuanceProductionShare}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 ${bizFocusRingClass}`}
-              aria-label="关闭"
+              aria-label={tu('programs_common_close')}
             >
               <X className="h-5 w-5" strokeWidth={2} aria-hidden />
             </button>
@@ -38550,8 +38543,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
                             : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                       } ${cardIssuanceProductionShareImageStatus !== 'idle' ? 'cursor-not-allowed' : ''} ${bizFocusRingClass}`}
-                      aria-label="Download catalog share PNG"
-                      title="Download PNG for WeChat"
+                      aria-label={tu('programs_share_download_catalog_png')}
+                      title={tu('programs_share_download_png')}
                     >
                       {cardIssuanceProductionShareImageStatus === 'loading' ? (
                         <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden />
@@ -38568,7 +38561,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               </>
             ) : (
               <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-                Program card address is unavailable. Open your program card first, then try again.
+                {tu('programs_share_catalog_unavailable')}
               </p>
             )}
           </div>
@@ -38586,7 +38579,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              setRawTxJsonModal(null);
              setRawTxJsonCopied(false);
            }}
-           aria-label="关闭"
+           aria-label={tu('programs_common_close')}
          />
          <div
            className="relative bg-white rounded-[20px] shadow-xl border border-slate-200 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden"

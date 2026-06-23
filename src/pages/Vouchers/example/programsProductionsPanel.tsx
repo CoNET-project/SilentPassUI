@@ -71,7 +71,7 @@ import {
   preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys';
 import { catalogProductionHasVideoBackgroundMedia } from '@/utils/catalogProductionVideoOg';
-import { useTu } from '@/locale/beamioLocale';
+import { tu, useTu } from '@/locale/beamioLocale';
 import {
   buildBusinessCatalogEditorPreviewRow,
   BusinessCatalogListItemPreviewCard,
@@ -161,7 +161,7 @@ function ClickToPlayProductionVideo(props: {
           type="button"
           onClick={handleOverlayPlay}
           className={`absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-white transition hover:bg-black/45 ${bizFocusRingClass}`}
-          aria-label="Play video"
+          aria-label={tu('programs_catalog_play_video')}
         >
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-[#2c2f31] shadow-md">
             <Play className="ml-0.5 h-6 w-6" strokeWidth={2.4} fill="currentColor" aria-hidden />
@@ -187,7 +187,7 @@ function ProductionBackgroundMediaDeleteButton(props: {
       onClick={props.onClick}
       disabled={props.disabled}
       className={`absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-black/50 text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-45 ${bizFocusRingClass}`}
-      aria-label="Remove background media"
+      aria-label={tu('programs_catalog_remove_media')}
     >
       <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
     </button>
@@ -208,7 +208,7 @@ function ProductionBackgroundMediaPreview(props: {
       return (
         <iframe
           src={embedUrl}
-          title="YouTube background video"
+          title={tu('programs_catalog_youtube_bg_title')}
           className={props.className ?? 'h-full w-full border-0'}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
@@ -231,7 +231,7 @@ function ProductionBackgroundMediaPreview(props: {
         className={`flex h-full w-full flex-col items-center justify-center gap-2 bg-[#eef1f3] px-3 text-[#595c5e] ${props.className ?? ''}`}
       >
         <FileText className="h-8 w-8 shrink-0" strokeWidth={2} aria-hidden />
-        <span className="text-center text-[11px] font-semibold">PDF uploaded</span>
+        <span className="text-center text-[11px] font-semibold">{tu('programs_catalog_pdf_uploaded')}</span>
         <a
           href={props.url}
           target="_blank"
@@ -949,7 +949,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                             disabled={productionRedeemRegistering}
                                             className={`inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#ea580c] text-white shadow-sm transition-colors hover:bg-[#c2410c] disabled:opacity-60 ${bizFocusRingClass}`}
                                             aria-label={`Register redeem codes for ${row.name}`}
-                                            title="Register redeem codes (batch)"
+                                            title={tu('programs_catalog_register_codes')}
                                           >
                                             {productionRedeemRegistering ? (
                                               <Loader2
@@ -1048,7 +1048,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                                           }}
                                                           className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#ea580c] transition-colors hover:bg-[#ea580c]/10 ${bizFocusRingClass}`}
                                                           aria-label={`Copy redeem code ${redeemRow.code}`}
-                                                          title="Copy code"
+                                                          title={tu('programs_table_copy_code')}
                                                         >
                                                           {productionRedeemCopiedHash === redeemRow.hash ? (
                                                             <Check
@@ -1168,7 +1168,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                 <>
                   <motion.button
                     type="button"
-                    aria-label="Close service editor"
+                    aria-label={tu('programs_catalog_close_editor')}
                     className={`absolute inset-0 z-[2] bg-[#2c2f31]/25 ${
                       productionBackgroundUploadLocked ? 'pointer-events-none' : ''
                     }`}
@@ -1490,7 +1490,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                               value={backgroundColorPickerValue}
                               onChange={(e) => setBackgroundColor(e.target.value)}
                               className="h-10 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
-                              aria-label="Choose custom tile color"
+                              aria-label={tu('programs_catalog_choose_tile_color')}
                             />
                             <input
                               type="text"
@@ -1512,7 +1512,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           disabled={editingIssued}
-                          placeholder="e.g. Signature Guasha Facial"
+                          placeholder={tu('programs_catalog_name_ph')}
                           autoComplete="off"
                           className="mb-3 w-full rounded-xl border-none bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-[#e5e9eb] disabled:opacity-60"
                         />
@@ -1522,7 +1522,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           value={subtitle}
                           onChange={(e) => setSubtitle(e.target.value)}
                           disabled={editingIssued}
-                          placeholder="Optional short line under the title"
+                          placeholder={tu('programs_catalog_subtitle_ph')}
                           autoComplete="off"
                           className="w-full rounded-xl border-none bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-[#e5e9eb] disabled:opacity-60"
                         />
@@ -1552,14 +1552,14 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     enterKeyHint="done"
                                     disabled={saving}
                                     className="min-w-0 w-28 max-w-[9rem] border-none bg-transparent text-xs font-bold text-[#2c2f31] focus:outline-none disabled:opacity-60 sm:w-36 sm:max-w-[11rem]"
-                                    aria-label="Category name"
+                                    aria-label={tu('programs_catalog_category_name_aria')}
                                   />
                                   <button
                                     type="button"
                                     disabled={saving || !editingCategoryLabel.trim()}
                                     onClick={() => void saveCategoryEdit(opt.id)}
                                     className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ea580c] text-white disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                                    aria-label="Save category"
+                                    aria-label={tu('programs_catalog_category_save_aria')}
                                   >
                                     {saving ? (
                                       <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.4} aria-hidden />
@@ -1572,7 +1572,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                     disabled={saving}
                                     onClick={cancelCategoryEdit}
                                     className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#747779] disabled:opacity-50 ${bizFocusRingClass}`}
-                                    aria-label="Cancel category edit"
+                                    aria-label={tu('programs_catalog_category_cancel_aria')}
                                   >
                                     <X className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden />
                                   </button>
@@ -1625,7 +1625,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             }
                             onClick={handleAddServiceCategory}
                             className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-dashed border-[#ea580c]/45 bg-white text-[#ea580c] shadow-sm transition-colors hover:border-[#ea580c] hover:bg-[#fff7ed] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                            aria-label="Add category"
+                            aria-label={tu('programs_catalog_add_category_aria')}
                           >
                             <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
                           </button>
@@ -1634,8 +1634,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           <p className="mt-2 text-[11px] font-medium text-amber-800">{serviceCategoryEditError}</p>
                         ) : null}
                         <p className="mt-2 text-[10px] font-medium leading-relaxed text-[#747779]">
-                          Item categories are shared across catalog items and saved to metadata{' '}
-                          <span className="font-semibold">itemCategory</span>.
+                          {tu('programs_catalog_item_category_hint')}
                         </p>
                       </section>
 
@@ -1699,7 +1698,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                                           type="button"
                                           onClick={() => onRemovePackageDeal(deal.id)}
                                           className={`shrink-0 rounded-full p-1.5 text-[#747779] hover:bg-[#eef1f3] ${bizFocusRingClass}`}
-                                          aria-label="Remove package deal"
+                                          aria-label={tu('programs_catalog_remove_package_aria')}
                                         >
                                           <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
                                         </button>
@@ -1948,7 +1947,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                           value={description}
                           onChange={(e) => setDescription(e.target.value)}
                           rows={4}
-                          placeholder="Briefly describe the service, benefits, and duration…"
+                          placeholder={tu('programs_catalog_description_ph')}
                           className="w-full resize-none rounded-xl border-none bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-[#e5e9eb] focus:outline-none focus:ring-2 focus:ring-[#ea580c]/25"
                         />
                       </section>

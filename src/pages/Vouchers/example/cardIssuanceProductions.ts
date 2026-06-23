@@ -553,15 +553,15 @@ export function computePackagePerSessionPrice(draft: CatalogPackageDealDraft): n
 export function validateCatalogPackageDealDraft(draft: CatalogPackageDealDraft): string | null {
   if (draft.issued) return null;
   const totalN = parseProductionMoney(draft.packageTotalPrice);
-  if (totalN == null || totalN <= 0) return 'Each package deal must have a total price greater than 0.';
+  if (totalN == null || totalN <= 0) return tu('programs_package_total_price_required');
   const sessionsN = Number.parseInt(String(draft.packageSessions).replace(/,/g, ''), 10);
   if (!Number.isFinite(sessionsN) || sessionsN < 1) {
-    return 'Each package deal must include at least 1 session.';
+    return tu('programs_package_sessions_min');
   }
   const bonusRaw = String(draft.packageBonusSessions).replace(/,/g, '').trim();
   const bonusN = bonusRaw === '' ? 0 : Number.parseInt(bonusRaw, 10);
   if (!Number.isFinite(bonusN) || bonusN < 0) {
-    return 'Package bonus sessions must be 0 or greater.';
+    return tu('programs_package_bonus_min');
   }
   return null;
 }
@@ -686,7 +686,7 @@ export function resolveProductionIssueTotalUnlimitedFromHydration(
 export function productionIssueTotalDisplayLabel(
   row: Pick<CardIssuanceProductionRow, 'issueTotal' | 'issueTotalUnlimited'>
 ): string {
-  if (row.issueTotalUnlimited) return 'Unlimited';
+  if (row.issueTotalUnlimited) return tu('programs_issue_total_unlimited');
   const issueN = Number.parseInt(String(row.issueTotal).replace(/,/g, ''), 10);
   return Number.isFinite(issueN) ? issueN.toLocaleString() : String(row.issueTotal);
 }

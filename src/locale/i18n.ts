@@ -56,7 +56,10 @@ function resolveInitialUiLocale(): BeamioUiLocale {
 }
 
 function resolveCurrentTranslationLocale(): BeamioUiLocale {
-	return readOnboardingUiLocaleSession() ?? normalizeBeamioUiLocale(readActiveI18nLanguage())
+	// Runtime truth: i18next active language (updated by applyBeamioUiLanguageFromProfile).
+	const active = normalizeBeamioUiLocale(readActiveI18nLanguage())
+	if (active) return active
+	return readBeamioUiLanguageBootstrap() ?? readOnboardingUiLocaleSession() ?? detectBrowserBeamioLocale()
 }
 
 removeLegacyUiLocaleStorage()

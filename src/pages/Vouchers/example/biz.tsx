@@ -25831,7 +25831,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <Landmark className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Customer Balance</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('overview_customer_balance')}</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             {formatMerchantChargeOverviewHuman(
                               overviewCustomerBalanceFromActivity,
@@ -25847,7 +25847,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <Users className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Total Members</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('overview_total_members')}</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             {membersTopupKpisAll.count.toLocaleString()}
                           </p>
@@ -25860,7 +25860,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <Coins className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">B-Units</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('overview_b_units_label')}</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             {protocolFuelReserve.toFixed(2)}
                           </p>
@@ -25875,7 +25875,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <PlusCircle className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">充值</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('top_ups')}</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${overviewActivityTopupDisplayTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
@@ -25888,7 +25888,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <CreditCard className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">Charges</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('overview_charges')}</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                           </p>
@@ -25901,7 +25901,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <Heart className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
                         </div>
                         <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">小费</p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('tips')}</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${overviewActivityTipsLedgerCadTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
@@ -25914,7 +25914,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 {renderDashboardPendingTerminalAuthorizationSection('')}
 
                 {terminals.length > 0 ? (
-                  <section className="mt-4" aria-label="活跃终端摘要">
+                  <section className="mt-4" aria-label={tu('active_terminals_summary')}>
                     <button
                       type="button"
                       onClick={() => handleTabChange('Staff')}
@@ -25924,12 +25924,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <MonitorSmartphone className="size-5 sm:size-6" strokeWidth={2} aria-hidden />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">终端</p>
-                        <p className="mt-0.5 font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-lg">Active Terminals</p>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('terminals')}</p>
+                        <p className="mt-0.5 font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-lg">{tu('overview_terminals_active')}</p>
                         <p className="mt-0.5 text-xs font-medium text-[#595c5e] sm:text-sm">
                           {terminals.length === 1
-                            ? '1 device linked · Open Staff to manage'
-                            : `${terminals.length} devices linked · Open Staff to manage`}
+                            ? tu('overview_terminals_linked_staff_one')
+                            : tu('overview_terminals_linked_staff_many', { count: terminals.length.toLocaleString() })}
                         </p>
                       </div>
                       <ChevronRight className="size-5 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
@@ -25963,7 +25963,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 <Nfc className="size-9 text-white" strokeWidth={2} aria-hidden />
                               </div>
                               <p className="font-manrope mt-4 text-[13px] font-extrabold leading-snug tracking-tight text-white sm:text-sm">
-                                Launch SoftPOS App
+                                {tu('overview_launch_softpos')}
                               </p>
                             </div>
                             <div className="absolute -right-0.5 -top-0.5 flex size-12 items-center justify-center rounded-2xl border border-[#e5e9eb] bg-white shadow-md">
@@ -25974,7 +25974,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       </div>
                       <div className="flex flex-col items-center px-4 pb-5 pt-3 text-center sm:px-6 sm:pb-8 sm:pt-4">
                         <p className="max-w-[280px] text-xs font-medium leading-relaxed text-[#595c5e] sm:text-sm">
-                          Turn your phone into a secure payment terminal in one tap.
+                          {tu('overview_softpos_desc')}
                         </p>
                         <button
                           type="button"
@@ -25983,7 +25983,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           }}
                           className={`mt-4 w-full max-w-[320px] rounded-full bg-[#0051d1] px-5 py-3 font-manrope text-[10px] font-bold uppercase tracking-[0.18em] text-white shadow-[0_10px_28px_rgba(0,81,209,0.35)] transition-colors hover:bg-[#0047b8] active:scale-[0.98] sm:mt-6 sm:px-6 sm:py-3.5 sm:text-xs sm:tracking-[0.2em] md:text-sm md:tracking-widest ${bizFocusRingClass}`}
                         >
-                          Activate Native App
+                          {tu('overview_activate_native_app')}
                         </button>
                       </div>
                     </div>
@@ -26003,9 +26003,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 />
                 <div className="relative mb-3 flex items-center justify-between">
                   <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    Total capital retained
+                    {tu('overview_total_capital_retained')}
                   </span>
-                  <span className="rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold text-[#1562f0]">(Current)</span>
+                  <span className="rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold text-[#1562f0]">{tu('overview_current_badge')}</span>
                 </div>
                 <div className="relative space-y-1">
                   <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
@@ -26016,15 +26016,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   </h2>
                   <p className="flex items-center gap-1 text-[11px] font-bold text-[#1562f0] sm:text-xs">
                     <TrendingUp className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-                    Current stored value across customer cards
+                    {tu('overview_stored_value_activity')}
                   </p>
                 </div>
               </div>
 
               <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#7a9dff] bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">Active cards</span>
-                  <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
+                  <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">{tu('overview_active_cards')}</span>
+                  <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">{tu('overview_current_badge')}</span>
                 </div>
                 <div className="space-y-1">
                   <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
@@ -26057,13 +26057,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
               <div className="group relative overflow-hidden rounded-lg border-b-4 border-[#d8e3fb] bg-white p-4 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">System quota</span>
-                  <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">(Current)</span>
+                  <span className="font-manrope text-[10px] font-black uppercase tracking-widest text-slate-400">{tu('overview_system_quota')}</span>
+                  <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">{tu('overview_current_badge')}</span>
                 </div>
                 <div className="space-y-1">
                   <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
                     {protocolFuelReserve.toFixed(2)}{' '}
-                    <span className="text-base font-bold text-slate-400 lg:text-lg">B-Units</span>
+                    <span className="text-base font-bold text-slate-400 lg:text-lg">{tu('overview_b_units_label')}</span>
                   </h2>
                   <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3] sm:mt-4">
                     <div
@@ -26075,10 +26075,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   </div>
                   <p className="pt-1 text-[10px] font-bold uppercase text-slate-400">
                     {protocolFuelReserve >= 4000
-                      ? 'High capacity headroom'
+                      ? tu('overview_reserve_high')
                       : protocolFuelReserve >= 1500
-                        ? 'Healthy reserve'
-                        : 'Refuel recommended'}
+                        ? tu('overview_reserve_healthy')
+                        : tu('overview_reserve_refuel')}
                   </p>
                 </div>
               </div>
@@ -26089,14 +26089,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2.5 sm:gap-3">
                   <div className="h-7 w-1.5 rounded-full bg-[#1562f0] sm:h-8 sm:w-2" aria-hidden />
-                  <h2 className="font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">{`${timeFilter}'s Activity`}</h2>
+                  <h2 className="font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">{overviewPeriodActivityTitle(timeFilter, tu)}</h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleTabChange('Transactions')}
                   className={`inline-flex items-center gap-2 text-sm font-bold text-[#1562f0] transition-colors hover:underline ${bizFocusRingClass} rounded-sm`}
                 >
-                  View live feed
+                  {tu('overview_view_live_feed')}
                   <ArrowRight className="size-4 shrink-0" strokeWidth={2} aria-hidden />
                 </button>
               </div>
@@ -26106,10 +26106,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <PlusCircle className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">充值</p>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('top_ups')}</p>
                     <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">{`C$${overviewActivityTopupDisplayTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                      {overviewActivityTopupDisplayCount.toLocaleString()} transactions
+                      {tu('overview_activity_transactions', { count: overviewActivityTopupDisplayCount.toLocaleString() })}
                     </p>
                   </div>
                 </div>
@@ -26118,12 +26118,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <Landmark className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Charges</p>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('overview_charges')}</p>
                     <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">
                       {formatMerchantChargeOverviewHuman(overviewActivityChargeDisplayTotal, programCardBeamioCurrencyType)}
                     </h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                      {overviewActivityChargeDisplayCount.toLocaleString()} payments
+                      {tu('overview_activity_payments', { count: overviewActivityChargeDisplayCount.toLocaleString() })}
                     </p>
                   </div>
                 </div>
@@ -26132,10 +26132,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <Heart className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">小费</p>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('tips')}</p>
                     <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">{`C$${overviewActivityTipsLedgerCadTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                      {overviewActivityTipsLedgerCount.toLocaleString()} micro-tips
+                      {tu('overview_activity_micro_tips', { count: overviewActivityTipsLedgerCount.toLocaleString() })}
                     </p>
                   </div>
                 </div>
@@ -26144,14 +26144,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <Nfc className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
                   </div>
                   <div>
-                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Member activations</p>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{tu('overview_member_activations')}</p>
                     <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">
-                      {overviewMemberActivationsFromApi.total.toLocaleString()}{' '}
-                      {overviewMemberActivationsFromApi.total === 1 ? 'activation' : 'activations'}
+                      {overviewActivationCountLabel(overviewMemberActivationsFromApi.total, tu)}
                     </h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
-                      {overviewMemberActivationsFromApi.nfc.toLocaleString()} NFC • {overviewMemberActivationsFromApi.app.toLocaleString()}{' '}
-                      app · All-time
+                      {tu('overview_activations_breakdown_alltime', {
+                        nfc: overviewMemberActivationsFromApi.nfc.toLocaleString(),
+                        app: overviewMemberActivationsFromApi.app.toLocaleString(),
+                      })}
                     </p>
                   </div>
                 </div>
@@ -26162,9 +26163,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             <section className="hidden gap-5 lg:grid lg:grid-cols-2">
               <div className="flex min-h-[280px] flex-col justify-between rounded-lg bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
                 <div>
-                  <h3 className="mb-1.5 font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Reload velocity</h3>
+                  <h3 className="mb-1.5 font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">{tu('overview_reload_velocity')}</h3>
                   <p className="mb-4 max-w-xs text-xs text-slate-500 sm:mb-6 sm:text-sm">
-                    Tracking the momentum of recurring top-ups over the last 24 hours (global ledger, same reporting scope as Overview).
+                    {tu('overview_reload_velocity_desc')}
                   </p>
                 </div>
                 {overviewReloadVelocity24h.hasData ? (
@@ -26184,7 +26185,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   opacity: 0.35 + (hPct / 100) * 0.55,
                                 }
                           }
-                          title={`${overviewReloadVelocity24h.barCounts[bi]} top-up(s) · 3h slot ${bi + 1}/${RELOAD_VELOCITY_BAR_SLOTS} (last 24h)`}
+                          title={overviewReloadBarTooltip(
+                            tu,
+                            overviewReloadVelocity24h.barCounts[bi],
+                            bi + 1,
+                            RELOAD_VELOCITY_BAR_SLOTS,
+                          )}
                         />
                       )
                     })}
@@ -26194,35 +26200,35 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#eef1f3]">
                       <BarChart3 className="size-7 text-slate-300" strokeWidth={1.5} aria-hidden />
                     </div>
-                    <p className="text-sm font-bold text-[#595c5e]">No top-ups in the last 24 hours</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Ledger will populate this chart</p>
+                    <p className="text-sm font-bold text-[#595c5e]">{tu('overview_no_topups_24h')}</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">{tu('overview_ledger_chart_hint')}</p>
                   </div>
                 )}
                 <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
                   <div className="text-center">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">Avg. gap</p>
-                    <p className="font-manrope text-base font-bold text-[#2c2f31] sm:text-lg">{overviewReloadVelocity24h.avgGapLabel}</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">{tu('overview_avg_gap')}</p>
+                    <p className="font-manrope text-base font-bold text-[#2c2f31] sm:text-lg">{overviewReloadAvgGapDisplay(overviewReloadVelocity24h.avgGapLabel, tu)}</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">Peak window</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">{tu('overview_peak_window')}</p>
                     <p className="font-manrope text-base font-bold leading-tight text-[#2c2f31] sm:text-lg">{overviewReloadVelocity24h.peakHourLabel}</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">{tu('overview_status_label')}</p>
                     <p
                       className={`text-sm font-bold ${
                         overviewReloadVelocity24h.statusLabel === 'Quiet' ? 'text-slate-400' : 'text-[#1562f0]'
                       }`}
                     >
-                      {overviewReloadVelocity24h.statusLabel}
+                      {overviewReloadStatusLabel(overviewReloadVelocity24h.statusLabel, tu)}
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="min-h-[280px] rounded-lg bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.03)]">
-                <h3 className="mb-1.5 font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">Gift pack conversions</h3>
-                <p className="mb-5 text-xs text-slate-500 sm:mb-8 sm:text-sm">Journey from initial discovery to successful redemption.</p>
+                <h3 className="mb-1.5 font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">{tu('overview_gift_pack_conversions')}</h3>
+                <p className="mb-5 text-xs text-slate-500 sm:mb-8 sm:text-sm">{tu('overview_gift_journey_desc')}</p>
                 {(() => {
                   const funnelBase = Math.max(
                     1,
@@ -26241,7 +26247,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="space-y-4">
                         <div>
                           <div className="mb-1 flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-600">Discovery</span>
+                            <span className="text-xs font-bold text-slate-600">{tu('overview_funnel_discovery')}</span>
                             <span className="text-xs font-black text-[#1562f0]">
                               {membersTopupKpisAll.totalTopupEvents.toLocaleString()}
                             </span>
@@ -26252,7 +26258,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                         <div className="pl-8">
                           <div className="mb-1 flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-600">Selection</span>
+                            <span className="text-xs font-bold text-slate-600">{tu('overview_funnel_selection')}</span>
                             <span className="text-xs font-black text-[#1562f0]">
                               {membersTopupKpisAll.repeatMembers.toLocaleString()}
                             </span>
@@ -26263,7 +26269,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                         <div className="pl-16">
                           <div className="mb-1 flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-600">Redemption</span>
+                            <span className="text-xs font-bold text-slate-600">{tu('overview_funnel_redemption')}</span>
                             <span className="text-xs font-black text-[#1562f0]">
                               {membersTopupKpisAll.count.toLocaleString()}
                             </span>
@@ -26276,8 +26282,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <div className="mt-6 flex items-center gap-3 rounded-xl bg-[#1562f0]/5 p-3 sm:mt-8 sm:gap-4 sm:p-4">
                         <Star className="size-5 shrink-0 fill-[#1562f0] text-[#1562f0]" strokeWidth={1.5} aria-hidden />
                         <div>
-                          <p className="text-xs font-bold text-[#2c2f31]">{effPct}% total efficiency</p>
-                          <p className="text-[10px] font-medium text-slate-500">Unique members per top-up event (rollup)</p>
+                          <p className="text-xs font-bold text-[#2c2f31]">{tu('overview_efficiency_total', { pct: effPct })}</p>
+                          <p className="text-[10px] font-medium text-slate-500">{tu('overview_efficiency_sub')}</p>
                         </div>
                       </div>
                     </>

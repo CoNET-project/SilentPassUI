@@ -13,6 +13,8 @@ import { isCardExcludedFromDisplay } from '@/services/BeamioCard'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
 import baseIcon from '@/components/assets/base-logo.png'
+import conetIcon from '@/components/Home/assets/conet-token.svg'
+import { beamioConetMainnetTxExplorerUrl } from '@/utils/beamioUserCardChain'
 import {
 	resolveMyBrandSecondarySubtitle,
 	resolveMyBrandsOwnedCatalogDisplays,
@@ -302,27 +304,39 @@ function shortBaseScanTxHash(txHash: string): string {
 	return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`
 }
 
-/** Base 链上交易 hash 胶囊：点击打开 BaseScan tx 详情。 */
+/** Recent Activity tx hash capsule — BaseScan or CoNET mainnet explorer. */
 export function RecentActivityTxHashCapsule({
 	txHash,
 	className = '',
+	explorerChain = 'base',
 }: {
 	txHash: string
 	className?: string
+	/** Merchant program card top-up/charge uses CoNET L1 (`mainnet.conet.network`). */
+	explorerChain?: 'base' | 'conet'
 }) {
 	const normalized = String(txHash ?? '').trim()
 	if (!normalized || !/^0x[0-9a-fA-F]{40,64}$/i.test(normalized)) return null
-	const openBaseScan = () => {
-		openExternalUrl(`https://basescan.org/tx/${normalized}`)
+	const explorerLabel = explorerChain === 'conet' ? 'CoNET' : 'BaseScan'
+	const openExplorer = () => {
+		openExternalUrl(
+			explorerChain === 'conet'
+				? beamioConetMainnetTxExplorerUrl(normalized)
+				: `https://basescan.org/tx/${normalized}`,
+		)
 	}
 	return (
 		<button
 			type="button"
-			onClick={openBaseScan}
+			onClick={openExplorer}
 			className={`inline-flex max-w-full shrink-0 items-center gap-1 rounded-full border border-[#c3c6d8]/40 bg-white/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#424655] transition hover:border-[#1562f0]/35 hover:bg-[#1562f0]/5 hover:text-[#1562f0] dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-400 dark:hover:border-[#6ba3ff]/40 dark:hover:bg-[#6ba3ff]/10 dark:hover:text-[#8db8ff] ${className}`}
-			aria-label={`View transaction on BaseScan: ${normalized}`}
+			aria-label={`View transaction on ${explorerLabel}: ${normalized}`}
 		>
-			<IpfsImg src={baseIcon} alt="Base" className="h-3.5 w-3.5 shrink-0 rounded-full object-contain" />
+			<IpfsImg
+				src={explorerChain === 'conet' ? conetIcon : baseIcon}
+				alt={explorerChain === 'conet' ? 'CoNET' : 'Base'}
+				className="h-3.5 w-3.5 shrink-0 rounded-full object-contain"
+			/>
 			<span className="truncate">{shortBaseScanTxHash(normalized)}</span>
 			<ExternalLink className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2} aria-hidden />
 		</button>

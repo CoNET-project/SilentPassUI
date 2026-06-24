@@ -33,6 +33,14 @@ export async function getCardFactoryGatewayForEip712(cardAddress: string): Promi
 	return ethers.getAddress(await c.factoryGateway())
 }
 
+export const CONET_MAINNET_TX_EXPLORER_BASE = 'https://mainnet.conet.network/tx/' as const
+
+export function beamioConetMainnetTxExplorerUrl(txHash: string): string {
+	const raw = String(txHash ?? '').trim()
+	const normalized = raw.startsWith('0x') ? raw : `0x${raw}`
+	return `${CONET_MAINNET_TX_EXPLORER_BASE}${normalized}`
+}
+
 export function beamioUserCardAddressExplorerUrl(address: string, chainId: number): string {
 	const normalized = ethers.getAddress(address)
 	if (chainId === CONET_MAINNET_CHAIN_ID) {

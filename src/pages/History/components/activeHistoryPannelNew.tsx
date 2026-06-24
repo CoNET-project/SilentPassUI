@@ -81,6 +81,7 @@ import contracts from '@/utils/contracts'
 import { formatAmount, formatAmountWithCurrencyProtocol, fiatPrefix, getDecimals } from '@/services/currency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
+import { beamioConetMainnetTxExplorerUrl } from '@/utils/beamioUserCardChain'
 import { shouldUpdateRecentActivityList } from '@/utils/recentActivityFeedState'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import ShowCard from '@/components/card/ShowCard'
@@ -466,10 +467,12 @@ function RecentActivityRowSubtitleMeta({
 	label,
 	txHash,
 	timestampMs,
+	txExplorerChain = 'base',
 }: {
 	label?: string
 	txHash?: string
 	timestampMs: number
+	txExplorerChain?: 'base' | 'conet'
 }) {
 	const trimmedLabel = String(label ?? '').trim()
 	const trimmedHash = String(txHash ?? '').trim()
@@ -488,7 +491,11 @@ function RecentActivityRowSubtitleMeta({
 					onKeyDown={(e) => e.stopPropagation()}
 					role="presentation"
 				>
-					<RecentActivityTxHashCapsule txHash={trimmedHash} className="max-w-[96px]" />
+					<RecentActivityTxHashCapsule
+						txHash={trimmedHash}
+						className="max-w-[96px]"
+						explorerChain={txExplorerChain}
+					/>
 				</span>
 			) : null}
 			{trimmedLabel || trimmedHash ? (
@@ -946,6 +953,7 @@ function RecentActivityTxItemRow({
 							label={rowSubtitleLabel}
 							txHash={rowBaseScanTxHash}
 							timestampMs={tx.timestampMs}
+							txExplorerChain={isCardTopupLedgerTx || isMerchantChargeLedgerTx ? 'conet' : 'base'}
 						/>
 						{tx.type === 'request_fulfilled' && (
 							<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">{tu('request')}</span>
@@ -3057,31 +3065,42 @@ const ActiveHistoryPannelNew = ({
 
 						<div className="space-y-3 mb-8">
 							{(() => {
-								const baseScanTxHash = resolveTxViewBaseScanTxHash(selectedTx)
+								const settlementTxHash = resolveTxViewBaseScanTxHash(selectedTx)
+								const useConetExplorer = selectedIsProgramCardLedgerKind
 								return (
 									<>
 							<h4 className="text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-2 pl-2">
-								{baseScanTxHash ? tu('settlement_proof') : tu('creation_proof')}
+								{settlementTxHash ? tu('settlement_proof') : tu('creation_proof')}
 							</h4>
-							{baseScanTxHash ? (
+							{settlementTxHash ? (
 								<button
 									type="button"
-									onClick={() => openExternalUrl(`https://basescan.org/tx/${baseScanTxHash}`)}
+									onClick={() =>
+										openExternalUrl(
+											useConetExplorer
+												? beamioConetMainnetTxExplorerUrl(settlementTxHash)
+												: `https://basescan.org/tx/${settlementTxHash}`,
+										)
+									}
 									className="flex w-full items-center justify-between p-3.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-[16px] shadow-sm active:bg-gray-50 dark:active:bg-slate-700 transition-colors cursor-pointer text-left"
 								>
 									<div className="flex items-center gap-2.5">
 										<div className="w-2.5 h-2.5 bg-[#1562f0] rounded-full shadow-[0_0_8px_rgba(21,98,240,0.5)]" />
-										<span className="text-[13px] font-semibold text-gray-700 dark:text-slate-300">{tu('base_l2_value')}</span>
+										<span className="text-[13px] font-semibold text-gray-700 dark:text-slate-300">
+											{useConetExplorer ? 'CoNET L1' : tu('base_l2_value')}
+										</span>
 									</div>
 									<div className="flex items-center gap-2 text-[12px] font-mono text-[#1562f0]">
-										{baseScanTxHash.substring(0, 7)}...{baseScanTxHash.slice(-5)} <ExternalLink size={12} />
+										{settlementTxHash.substring(0, 7)}...{settlementTxHash.slice(-5)} <ExternalLink size={12} />
 									</div>
 								</button>
 							) : (
 								<div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-600 rounded-[16px] border-dashed opacity-70">
 									<div className="flex items-center gap-2.5">
 										<div className="w-2.5 h-2.5 bg-gray-400 rounded-full" />
-										<span className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">{tu('base_l2_pending')}</span>
+										<span className="text-[13px] font-semibold text-gray-500 dark:text-slate-400">
+											{useConetExplorer ? 'CoNET L1 (Pending)' : tu('base_l2_pending')}
+										</span>
 									</div>
 									<span className="text-[11px] font-medium text-gray-400">{tu('awaiting_payment')}</span>
 								</div>

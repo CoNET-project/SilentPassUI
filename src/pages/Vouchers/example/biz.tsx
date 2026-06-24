@@ -6675,6 +6675,27 @@ function terminalLastActivityLabelFromIndexerTxs(
   })
 }
 
+/**
+ * Latest indexer transactions processed by this Staff terminal (POS `subordinate` = terminal EOA,
+ * or same terminal label as the Transactions filter) — newest first, excluding standalone B-Unit
+ * service-fee ledger rows. Mirrors `terminalLastActivityLabelFromIndexerTxs` matching so the list
+ * head equals the terminal's "Last activity".
+ */
+function terminalRecentTxsFromIndexerTxs(
+  txs: readonly TxDisplayRow[],
+  term: { id: string; tag: string; name?: string },
+  limit: number
+): TxDisplayRow[] {
+  const matched: TxDisplayRow[] = []
+  for (const tx of txs) {
+    if (txDisplayRowIsIndexerBunitLedger(tx)) continue
+    if (!txMatchesTerminalForStaffLastActivity(tx, term)) continue
+    matched.push(tx)
+  }
+  matched.sort((a, b) => txDisplayRowTimestampSec(b) - txDisplayRowTimestampSec(a))
+  return matched.slice(0, Math.max(0, limit))
+}
+
 /** Latest `TX_Terminal_RESET` whose payee is this terminal → same locale as Last activity */
 function terminalSettlementClearLabelFromIndexerTxs(
   txs: readonly TxDisplayRow[],
@@ -19867,6 +19888,16 @@ const txQueryRootAddress = useMemo(() => {
    return out
  }, [indexerTransactions, terminals])
 
+ /** Staff Active Devices: latest 5 transactions per terminal (POS `subordinate` = terminal EOA), newest first. */
+ const staffTerminalRecentTxsFromLedger = useMemo(() => {
+   const out: Record<string, TxDisplayRow[]> = {}
+   for (const term of terminals) {
+     const rows = terminalRecentTxsFromIndexerTxs(indexerTransactions, term, 5)
+     if (rows.length > 0) out[term.id.toLowerCase()] = rows
+   }
+   return out
+ }, [indexerTransactions, terminals])
+
  /** Dashboard (Overview): activity row counts for selected `timeFilter`, ignoring Transactions table search/filters. */
  const overviewDashboardActivityFilterCtx = useMemo(
    (): BizTxTableFilterCtx => ({
@@ -24619,6 +24650,66 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  </div>
                                </div>
                              ) : null}
+                             {(() => {
+                               const recentTxs = staffTerminalRecentTxsFromLedger[term.id.toLowerCase()] ?? [];
+                               if (recentTxs.length === 0) return null;
+                               return (
+                                 <div className="mt-4 border-t border-[#abadaf]/10 pt-3 sm:mt-5 sm:pt-4">
+                                   <span className="mb-2 block text-[9px] font-bold uppercase tracking-wider text-[#595c5e] sm:mb-3 sm:text-[10px]">
+                                     Recent Transactions
+                                   </span>
+                                   <div className="flex flex-col gap-2">
+                                     {recentTxs.map((tx) => {
+                                       const { Icon, wrap } = walletMobileActivityIconFrame(tx);
+                                       const { top } = walletMobileActivityRightColumn(tx);
+                                       const isPositive = tx.type === 'In-Store Top-Up';
+                                       const activityTitle =
+                                         tx.type === 'In-Store Top-Up'
+                                           ? 'New Deposit'
+                                           : isCreateIssuedNftBuintLedgerRowType(tx.type)
+                                             ? txDisplayRowLedgerTypeTitle(tx.type)
+                                             : tx.type;
+                                       const normalizedTop = top.replace(/^\+\s*/, '').trim();
+                                       const displayTop =
+                                         top === '—'
+                                           ? top
+                                           : isPositive
+                                             ? `+${normalizedTop}`
+                                             : tx.type === 'Charge' || tx.type === 'Tip'
+                                               ? `-${normalizedTop}`
+                                               : normalizedTop;
+                                       return (
+                                         <div
+                                           key={tx.indexerTxId}
+                                           className="flex items-center justify-between gap-3 rounded-xl border border-[#abadaf]/10 bg-[#f9fafb] px-3 py-2"
+                                         >
+                                           <div className="flex min-w-0 items-center gap-2.5">
+                                             <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${wrap}`}>
+                                               <Icon className="size-4" strokeWidth={2} aria-hidden />
+                                             </div>
+                                             <div className="min-w-0">
+                                               <p className="truncate text-sm font-semibold text-[#2c2f31]">{activityTitle}</p>
+                                               <p className="mt-0.5 truncate text-[11px] text-[#595c5e]">
+                                                 {tx.dateStr}
+                                                 {tx.time ? `, ${tx.time}` : ''}
+                                                 {tx.bUnits > 0 ? ` • -${tx.bUnits.toFixed(2)} B-Units` : ''}
+                                               </p>
+                                             </div>
+                                           </div>
+                                           <span
+                                             className={`shrink-0 text-sm font-bold tabular-nums ${
+                                               isPositive ? 'text-emerald-600' : 'text-[#2c2f31]'
+                                             }`}
+                                           >
+                                             {displayTop}
+                                           </span>
+                                         </div>
+                                       );
+                                     })}
+                                   </div>
+                                 </div>
+                               );
+                             })()}
                            </div>
                          );
                        })}

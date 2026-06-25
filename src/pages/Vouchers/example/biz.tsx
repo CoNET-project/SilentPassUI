@@ -23233,6 +23233,8 @@ const programsMobileTopNavVisible =
  (showBizFirstMembershipOnboarding && activeTab !== 'Card Issuance Setup') ||
  settingsSecurityBackupOpen ||
  (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff');
+ /** The mobile/tablet global search floating bar (menu + search + @tag, rendered below `lg`) is showing. When it is, the desktop sticky header must not also appear in the medium (md) range, otherwise the header stacks directly under the global search control. */
+ const mobileGlobalSearchBarVisible = !hideMobileFloatingBar && !programsMobileTopNavVisible;
 /** Wallet tab Total Estimated Value: sum trusted EOA + AA USDC balance, then display by card currency (USDC keeps native; others use CAD oracle). */
 const walletTreasuryCombinedUsdc = useMemo(() => {
   const parseUsdc = (raw: string | null): number | null => {
@@ -25285,9 +25287,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
      {/* --- Main Content Area --- */}
      <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out min-w-0">
-      {!hideMobileFloatingBar && !programsMobileTopNavVisible && (
-        <div
-          className="pointer-events-none fixed inset-x-0 z-20 px-3 lg:hidden"
+     {mobileGlobalSearchBarVisible && (
+       <div
+         className="pointer-events-none fixed inset-x-0 z-20 px-3 lg:hidden"
           style={{
             top: 'max(0.75rem, env(safe-area-inset-top, 0px))',
             opacity: mobileFloatingBarOpacity,
@@ -25343,7 +25345,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
       <header
         className={`sticky top-0 z-10 hidden shrink-0 border-b border-slate-200/60 bg-white/70 px-3 py-3 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl md:px-5 md:py-2.5 ${
-          mediumMenuPageUsesGlobalOnly ? 'lg:block' : 'md:block'
+          mediumMenuPageUsesGlobalOnly || mobileGlobalSearchBarVisible ? 'lg:block' : 'md:block'
         }`}
       >
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-2">

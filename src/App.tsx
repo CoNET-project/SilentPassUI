@@ -49,6 +49,8 @@ import WalletOverview from '@/pages/Wallet/WalletOverview'
 import BusinessStartKetRedeemAdminPage from '@/pages/Wallet/BusinessStartKetRedeemAdminPage'
 import ValidatorNodeProfilePage from '@/pages/Wallet/ValidatorNodeProfilePage'
 import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
+import BountyBoard from '@/pages/BountyBoard'
+import CoNetMiningDetailPage from '@/pages/BountyBoard/CoNetMiningDetailPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -1420,6 +1422,8 @@ function AppShell() {
 					<Route path="/wallet/conet-nodes" element={<ValidatorNodeProfilePage />} />
 					<Route path="/History" element={<History />} />
 					<Route path="/Pay" element={<Pay />} />
+					<Route path="/BountyBoard" element={<BountyBoard />} />
+					<Route path="/BountyBoard/conet-mining" element={<CoNetMiningDetailPage />} />
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />
 					<Route path="/chat/:id" element={<ChatDetail />} />

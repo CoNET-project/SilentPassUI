@@ -57,11 +57,25 @@ import {
 } from '@/utils/myBrandsOwnedCatalog'
 import { syncNativeFooterChatBadge } from '@/utils/cashTreesNativeAppStateBridge'
 import { CONET_RPC_URL } from '@/config/chainAddresses'
+import {
+	fetchConetNetworkStats,
+	fetchConetDepinStats,
+	type ConetNetworkStats,
+	type ConetDepinStats,
+} from '@/services/conetNetworkStats'
+import {
+	loadConetMiningStatsLocalCache,
+	saveConetMiningStatsLocalCache,
+	CONET_MINING_STATS_SEED,
+} from '@/utils/conetMiningStatsLocalCache'
 
 export type { MyBrandCardFeedDetailsMap }
 
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
+
+/** CoNET Mining dashboard 全网指标全局喂料间隔（毫秒）；全网统计变动慢，30s 一轮足够 */
+const CONET_MINING_STATS_FEED_INTERVAL_MS = 30_000
 
 type ClaimableCouponSummary = {
   count: number
@@ -332,6 +346,12 @@ type DaemonContext = {
 	recentActivityNoAaLoading: boolean
 	recentActivityNoAaError: string | null
 	refreshRecentActivityNoAa: () => Promise<void>
+	/**
+	 * CoNET Mining dashboard 全网指标（L1 验证节点 / CONET 增发 + DePIN 节点 / GB 总产量）。
+	 * 由全局 background daemon 刷新；本地优先（首屏即有 seed/缓存值，永不 `—`、永不 loading）。
+	 */
+	conetNetworkStats: ConetNetworkStats
+	conetDepinStats: ConetDepinStats
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -531,6 +551,8 @@ const defaultContextValue: DaemonContext = {
 	recentActivityNoAaLoading: false,
 	recentActivityNoAaError: null,
 	refreshRecentActivityNoAa: async () => {},
+	conetNetworkStats: CONET_MINING_STATS_SEED.network,
+	conetDepinStats: CONET_MINING_STATS_SEED.depin,
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -1524,6 +1546,55 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [fetchOracle])
 
+  /**
+   * CoNET Mining dashboard 全网指标：本地优先 + 全局 background daemon。
+   * 首屏同步用 localStorage 快照（或 seed）初始化 → 永不 `—`、永不 loading；
+   * 后台 setTimeout 链每 30s 刷新，仅可信成功才覆盖 state + 写本地缓存（失败保留上次值）。
+   */
+  const [conetNetworkStats, setConetNetworkStats] = useState<ConetNetworkStats>(
+    () => loadConetMiningStatsLocalCache().network
+  )
+  const [conetDepinStats, setConetDepinStats] = useState<ConetDepinStats>(
+    () => loadConetMiningStatsLocalCache().depin
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runStatsChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          const [net, depin] = await Promise.all([
+            fetchConetNetworkStats().catch(() => ({ ok: false }) as const),
+            fetchConetDepinStats().catch(() => ({ ok: false }) as const),
+          ])
+          if (cancelled) return
+          if (net.ok) {
+            setConetNetworkStats(net.stats)
+            saveConetMiningStatsLocalCache({ network: net.stats })
+          }
+          if (depin.ok) {
+            setConetDepinStats(depin.stats)
+            saveConetMiningStatsLocalCache({ depin: depin.stats })
+          }
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(
+              runStatsChain,
+              CONET_MINING_STATS_FEED_INTERVAL_MS
+            ) as unknown as number
+          }
+        }
+      })()
+    }
+    runStatsChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [])
+
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
@@ -1536,6 +1607,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
+				conetNetworkStats, conetDepinStats,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

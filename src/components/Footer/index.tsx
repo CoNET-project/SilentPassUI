@@ -226,7 +226,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		if (p === '/' || p.startsWith('/?')) return '/history'
 		if (p.startsWith('/history')) return '/history'
 		if (p.startsWith('/wallet')) return '/wallet'
-		if (p.startsWith('/pay') || p.startsWith('/qr')) return '/pay'
+		if (p.startsWith('/bountyboard') || p.startsWith('/pay') || p.startsWith('/qr')) return '/pay'
 		if (p.startsWith('/chat')) return '/chat'
 		if (p.startsWith('/settings') || p.startsWith('/discover')) return '/settings'
 		return 'home'
@@ -252,7 +252,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			/* 中间购物图标 → Discover */
 			navigate('/discover')
 		} else if (k === '/pay') {
-			navigate('/Pay')
+			navigate('/BountyBoard')
 		} else {
 			navigate(k)
 		}

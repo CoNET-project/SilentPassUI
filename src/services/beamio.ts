@@ -157,7 +157,7 @@ const getFollowersUrl = `${beamioApi}/api/getMyFollowStatus`
 const CONET_CHAIN_ID = 224422
 
 /** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xFd60936707cb4583c08D8AacBA19E4bfaEE446B8'
+const CONET_BUNIT_AIRDROP_ADDRESS = '0xb9cf45AF87b16853c8F48a16b0495F030309e70f'
 
 /** 检查是否可领取 BeamioBUnits */
 export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {

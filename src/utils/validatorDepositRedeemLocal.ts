@@ -6,7 +6,8 @@ export type StoredValidatorRedeemCode = {
 	allowedClaimer: string
 	validatorCount: number
 	targetNodeIp: string
-	conetDepinNodeIps: string[]
+	/** @deprecated Auto-allocation: DePIN node IPs are resolved from Guardian at claim, not at create. */
+	conetDepinNodeIps?: string[]
 	gbMiningNodeCount: number
 	validAfter: number
 	validBefore: number

@@ -41,22 +41,6 @@ function formatTs(sec: number): string {
 	}
 }
 
-function parseIpList(raw: string, count: number): string[] {
-	const parts = raw
-		.split(/[\n,]+/)
-		.map((s) => s.trim().toLowerCase())
-		.filter(Boolean)
-	if (parts.length !== count) {
-		throw new Error(`Enter exactly ${count} DePIN node IP(s), one per line or comma-separated.`)
-	}
-	for (const ip of parts) {
-		if (!/^[a-z0-9.:-]+$/.test(ip) || ip.length > 64) {
-			throw new Error(`Invalid IP: ${ip}`)
-		}
-	}
-	return parts
-}
-
 export function ValidatorDepositRedeemManagementPanel({
 	currentEoa,
 	privateKeyArmor,
@@ -77,7 +61,6 @@ export function ValidatorDepositRedeemManagementPanel({
 	const [allowedClaimer, setAllowedClaimer] = useState('')
 	const [validatorCount, setValidatorCount] = useState('1')
 	const [targetNodeIp, setTargetNodeIp] = useState('')
-	const [depinIpsRaw, setDepinIpsRaw] = useState('')
 	const [gbMiningNodeCount, setGbMiningNodeCount] = useState('')
 	const [validDays, setValidDays] = useState('30')
 
@@ -133,7 +116,6 @@ export function ValidatorDepositRedeemManagementPanel({
 			const pk = requirePrivateKey()
 			const count = Number.parseInt(validatorCount, 10)
 			if (!Number.isFinite(count) || count <= 0) throw new Error('validatorCount must be a positive integer.')
-			const depinIps = parseIpList(depinIpsRaw, count)
 			const targetIp = targetNodeIp.trim().toLowerCase()
 			if (!targetIp || !/^[a-z0-9.:-]+$/.test(targetIp)) throw new Error('Invalid target validator node IP.')
 			const gbCountRaw = gbMiningNodeCount.trim() ? Number.parseInt(gbMiningNodeCount, 10) : count
@@ -164,7 +146,6 @@ export function ValidatorDepositRedeemManagementPanel({
 				allowedClaimer: claimer,
 				validatorCount: BigInt(count),
 				targetNodeIp: targetIp,
-				conetDepinNodeIps: depinIps,
 				gbMiningNodeCount: BigInt(gbCountRaw),
 				validAfter,
 				validBefore,
@@ -178,7 +159,6 @@ export function ValidatorDepositRedeemManagementPanel({
 				allowedClaimer: claimer,
 				validatorCount: String(count),
 				targetNodeIp: targetIp,
-				conetDepinNodeIps: depinIps,
 				gbMiningNodeCount: String(gbCountRaw),
 				validAfter: validAfter.toString(),
 				validBefore: validBefore.toString(),
@@ -195,7 +175,6 @@ export function ValidatorDepositRedeemManagementPanel({
 				allowedClaimer: claimer,
 				validatorCount: count,
 				targetNodeIp: targetIp,
-				conetDepinNodeIps: depinIps,
 				gbMiningNodeCount: gbCountRaw,
 				validAfter: Number(validAfter),
 				validBefore: Number(validBefore),
@@ -350,16 +329,11 @@ export function ValidatorDepositRedeemManagementPanel({
 								className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"
 							/>
 						</label>
-						<label className="block text-xs font-semibold text-slate-600 sm:col-span-2">
-							CoNET DePIN node IPs ({validatorCount} required)
-							<textarea
-								value={depinIpsRaw}
-								onChange={(e) => setDepinIpsRaw(e.target.value)}
-								placeholder="One IP per line or comma-separated"
-								rows={3}
-								className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm"
-							/>
-						</label>
+						<div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[11px] leading-relaxed text-emerald-700 sm:col-span-2">
+							CoNET DePIN nodes are <span className="font-semibold">auto-allocated</span> from Guardian at claim time
+							(Validator count = nodes assigned). The beneficiary cannot revoke this allocation. Manual IP entry is no
+							longer required.
+						</div>
 						<label className="block text-xs font-semibold text-slate-600">
 							Valid for (days)
 							<input

@@ -4332,7 +4332,7 @@ export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<se
 const VALIDATOR_DEPOSIT_REDEEM_ABI = [
 	'function redeemAdmins(address account) view returns (bool)',
 	'function redeemAdminNonces(address account) view returns (uint256)',
-	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, uint256 validatorCount, string targetNodeIp, string[] conetDepinNodeIps, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
+	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, uint256 validatorCount, string targetNodeIp, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
 ] as const
 
 export type ValidatorDepositRedeemOnChainStatus = {
@@ -4341,19 +4341,12 @@ export type ValidatorDepositRedeemOnChainStatus = {
 	allowedClaimer: string
 	validatorCount: string
 	targetNodeIp: string
-	conetDepinNodeIps: string[]
 	gbMiningNodeCount: string
 	validAfter: number
 	validBefore: number
 	active: boolean
 	consumed: boolean
 	error?: string
-}
-
-export function hashValidatorDepinNodeIps(ips: string[]): string {
-	const normalized = ips.map((ip) => ip.trim().toLowerCase())
-	const hashes = normalized.map((v) => ethers.keccak256(ethers.toUtf8Bytes(v)))
-	return ethers.keccak256(ethers.concat(hashes))
 }
 
 export function validatorDepositRedeemCodeHash(code: string): string {
@@ -4384,7 +4377,6 @@ export async function queryValidatorDepositRedeemOnChain(code: string): Promise<
 			allowedClaimer: ethers.ZeroAddress,
 			validatorCount: '0',
 			targetNodeIp: '',
-			conetDepinNodeIps: [],
 			gbMiningNodeCount: '0',
 			validAfter: 0,
 			validBefore: 0,
@@ -4400,19 +4392,17 @@ export async function queryValidatorDepositRedeemOnChain(code: string): Promise<
 		const allowedClaimer = ethers.getAddress(r[0])
 		const validatorCount = (r[1] as bigint).toString()
 		const targetNodeIp = String(r[2] ?? '')
-		const conetDepinNodeIps = (r[3] as string[]) ?? []
-		const gbMiningNodeCount = (r[4] as bigint).toString()
-		const validAfter = Number(r[5] ?? 0)
-		const validBefore = Number(r[6] ?? 0)
-		const active = Boolean(r[7])
-		const consumed = Boolean(r[8])
+		const gbMiningNodeCount = (r[3] as bigint).toString()
+		const validAfter = Number(r[4] ?? 0)
+		const validBefore = Number(r[5] ?? 0)
+		const active = Boolean(r[6])
+		const consumed = Boolean(r[7])
 		return {
 			valid: true,
 			codeHash,
 			allowedClaimer,
 			validatorCount,
 			targetNodeIp,
-			conetDepinNodeIps,
 			gbMiningNodeCount,
 			validAfter,
 			validBefore,
@@ -4427,7 +4417,6 @@ export async function queryValidatorDepositRedeemOnChain(code: string): Promise<
 			allowedClaimer: ethers.ZeroAddress,
 			validatorCount: '0',
 			targetNodeIp: '',
-			conetDepinNodeIps: [],
 			gbMiningNodeCount: '0',
 			validAfter: 0,
 			validBefore: 0,
@@ -4476,7 +4465,6 @@ export const validatorDepositRedeemCreateTypedDataTypes: Record<string, { name: 
 		{ name: 'allowedClaimer', type: 'address' },
 		{ name: 'validatorCount', type: 'uint256' },
 		{ name: 'targetNodeIp', type: 'string' },
-		{ name: 'conetDepinNodeIpsHash', type: 'bytes32' },
 		{ name: 'gbMiningNodeCount', type: 'uint256' },
 		{ name: 'validAfter', type: 'uint256' },
 		{ name: 'validBefore', type: 'uint256' },
@@ -4502,7 +4490,6 @@ export async function signValidatorDepositRedeemCreate(
 		allowedClaimer: string
 		validatorCount: bigint
 		targetNodeIp: string
-		conetDepinNodeIps: string[]
 		gbMiningNodeCount: bigint
 		validAfter: bigint
 		validBefore: bigint
@@ -4518,7 +4505,6 @@ export async function signValidatorDepositRedeemCreate(
 		allowedClaimer: ethers.getAddress(args.allowedClaimer),
 		validatorCount: args.validatorCount,
 		targetNodeIp: args.targetNodeIp.trim().toLowerCase(),
-		conetDepinNodeIpsHash: hashValidatorDepinNodeIps(args.conetDepinNodeIps),
 		gbMiningNodeCount: args.gbMiningNodeCount,
 		validAfter: args.validAfter,
 		validBefore: args.validBefore,
@@ -4549,7 +4535,6 @@ export async function postValidatorDepositRedeemAdminCreate(body: {
 	allowedClaimer: string
 	validatorCount: string
 	targetNodeIp: string
-	conetDepinNodeIps: string[]
 	gbMiningNodeCount: string
 	validAfter: string
 	validBefore: string

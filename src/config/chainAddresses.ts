@@ -16,17 +16,17 @@ export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xA756F2E27a332d6Be2d399dA543E3Ce
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C4'
 /** CoNET BUint ERC20（balanceOf / balanceOfAll）；与 deployments/conet-addresses.json `BUint` 同步 */
-export const CONET_BUINT = '0xf5484F11b7De647E17aea1089e3CbD6BF15dfC0f'
+export const CONET_BUINT = '0xa354CC4c414568Dd14F6d63b53013f35483427f0'
 /** CoNET BUnitAirdrop（claim / getBUnitBalance）；与 deployments/conet-addresses.json 同步 */
-export const CONET_BUNIT_AIRDROP_ADDRESS = '0xFd60936707cb4583c08D8AacBA19E4bfaEE446B8'
+export const CONET_BUNIT_AIRDROP_ADDRESS = '0xb9cf45AF87b16853c8F48a16b0495F030309e70f'
 /** BuintRedeemAirdrop（CoNET）；与 x402sdk chainAddresses / 部署记录同步 */
-export const CONET_BUINT_REDEEM_AIRDROP = '0xd633E268bCcC5A38122873a8BeA3aD7Fd83a9966'
+export const CONET_BUINT_REDEEM_AIRDROP = '0x02e954D352EB4C687AB066f0967E35D41E7721b6'
 /** BusinessStartKet ERC1155（CoNET）；用户持有的 Ket 在此合约 `balanceOf`；须与 Redeem 构造参数 `ket` / deployments 同步 */
 export const CONET_BUSINESS_START_KET = '0xAcf20dbb4DE0992d8947Ef00b505bBc17E6A03b2'
 /** BusinessStartKetRedeem（CoNET）；Ket + B-Unit 兑换码 */
 export const CONET_BUSINESS_START_KET_REDEEM = '0xe9CeDC2c9F7DE7c0e6d1f1ba1F7e7126F0F1D3c8'
 /** ValidatorDepositRedeem（CoNET）；validator deposit 兑换码 */
-export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0xdcfFFDD58E8d1242b5ee52FBcdfeB698f4cd5681'
+export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0x4319A3A3572C6311BA6E7f95B07620eb0861cE2E'
 /** CoNET UserCard Factory（224422） */
 export const CONET_CARD_FACTORY = '0xfA52a0CcC96C19cF4b6Ea864615F6d52BD0774FB'
 /** CoNET EntryPoint-aware BeamioFactoryPaymasterV07（224422） */
@@ -34,7 +34,7 @@ export const CONET_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
 /** CoNET 默认 BeamioUserCard */
 export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
 /** CoNET USDC（ConetTreasury FactoryERC20） */
-export const CONET_USDC = '0x40E302aBC19f6c9f376D7Dee037192a7a203e3Aa'
+export const CONET_USDC = '0x2975c85D8Cc8F5d263492E332A6dAa7ad11aDBdC'
 export const CONET_BEAMIO_USER_CARD_FORMATTING_LIB = '0x9727136BC5DAA5540e7397C9086e9980EBDD0e48'
 export const CONET_BEAMIO_USER_CARD_TRANSFER_LIB = '0xBcf3f8C5994B02B89fB743e1dee6AFDD5a49a664'
 /** BeamioOracle on CoNET mainnet (getRate returns 1 currency = X USD, E18) */

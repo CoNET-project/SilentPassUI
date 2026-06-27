@@ -47,6 +47,7 @@ import MobilePOS from '@/pages/Vouchers/example/Pos'
 import CardManager from '@/pages/cardManager'
 import WalletOverview from '@/pages/Wallet/WalletOverview'
 import BusinessStartKetRedeemAdminPage from '@/pages/Wallet/BusinessStartKetRedeemAdminPage'
+import ValidatorNodeProfilePage from '@/pages/Wallet/ValidatorNodeProfilePage'
 import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
@@ -1416,6 +1417,7 @@ function AppShell() {
 					<Route path="/" element={<Home />} />
 					<Route path="/wallet" element={<WalletOverview />} />
 					<Route path="/wallet/business-start-ket-redeem" element={<BusinessStartKetRedeemAdminPage />} />
+					<Route path="/wallet/conet-nodes" element={<ValidatorNodeProfilePage />} />
 					<Route path="/History" element={<History />} />
 					<Route path="/Pay" element={<Pay />} />
 					<Route path="/qr" element={<QrOperationPage />} />

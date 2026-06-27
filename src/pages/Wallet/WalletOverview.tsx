@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Gift } from 'lucide-react'
+import { Gift, Server } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useBusinessStartKetRedeemAdmin } from '@/hooks/useBusinessStartKetRedeemAdmin'
@@ -72,20 +72,30 @@ export default function WalletOverview() {
 					<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">{tu('wallet')}</span>
 				</button>
 
-				{showRedeemAdminIcon ? (
+				<div className="flex items-center gap-2">
 					<button
 						type="button"
-						onClick={() => navigate('/wallet/business-start-ket-redeem')}
+						onClick={() => navigate('/wallet/conet-nodes')}
 						className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${capsuleChrome} text-[#1562f0] transition-transform active:scale-[0.98] hover:bg-slate-50 dark:hover:bg-slate-700/50`}
 						style={{ pointerEvents: capsulePointer }}
-						aria-label="Redeem admin"
-						title="Redeem admin"
+						aria-label="My CoNET nodes"
+						title="My CoNET nodes"
 					>
-						<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						<Server className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 					</button>
-				) : (
-					<span className="w-0 shrink-0" aria-hidden />
-				)}
+					{showRedeemAdminIcon ? (
+						<button
+							type="button"
+							onClick={() => navigate('/wallet/business-start-ket-redeem')}
+							className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${capsuleChrome} text-[#1562f0] transition-transform active:scale-[0.98] hover:bg-slate-50 dark:hover:bg-slate-700/50`}
+							style={{ pointerEvents: capsulePointer }}
+							aria-label="Redeem admin"
+							title="Redeem admin"
+						>
+							<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						</button>
+					) : null}
+				</div>
 			</div>
 
 			<div

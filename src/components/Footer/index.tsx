@@ -13,7 +13,7 @@ import { ReactComponent as HomeIconBlue } from './assets/home-icon-blue.svg'
 import { ReactComponent as ChatBlueIcon } from './assets/chat-blue.svg'
 import { ReactComponent as ChatGreyIcon } from './assets/chat-grey.svg'
 
-import { ReactComponent as LedgerIcon } from './assets/ledger.svg'
+import { ReactComponent as PayIcon } from './assets/pay-icon.svg'
 
 import { Search } from 'lucide-react'
 import { searchUsername, storeSystemData } from '@/services/beamio'
@@ -291,8 +291,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			},
 			{
 				key: '/pay' as const,
-				iconGrey: <LedgerIcon className={LEDGER_ICON_CLASS} />,
-				iconBlue: <LedgerIcon className={LEDGER_ICON_CLASS} />,
+				iconGrey: <PayIcon className={LEDGER_ICON_CLASS} />,
+				iconBlue: <PayIcon className={LEDGER_ICON_CLASS} />,
 				title: '',
 				// ✅ 不要 badge
 			},

@@ -52,6 +52,10 @@ export const CONET_ACCOUNT_REGISTRY = '0xfFDc8d2021A41F4638Cb3eCf58B5155383EE9f6
 export const CONET_GB1155 = '0xcA423EEBC09d09834dC9CA28861798B3321893ab'
 /** ConetGB_total（原 sGB_Dashboard） */
 export const CONET_GB_TOTAL = '0x96CF03e7ea65CE9954Fe206DA7bEC797427adD11'
+/** ValidatorDepositRedeem（CoNET 224422）— 钱包节点档案 getWalletNodeProfile */
+export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0xdcfFFDD58E8d1242b5ee52FBcdfeB698f4cd5681'
+/** GB net-total token id on ConetGB1155（id=0 累计净 GB，18 decimals） */
+export const CONET_GB_TOTAL_TOKEN_ID = 0
 
 export const BASE_MAINNET_FACTORIES = {
   AA_FACTORY: BEAMIO_AA_FACTORY,

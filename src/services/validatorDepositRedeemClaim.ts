@@ -7,6 +7,7 @@ import {
 	readValidatorDepositRedeemOnChain,
 	validatorDepositRedeemCodeHashFromSecret,
 	validatorDepositRedeemEip712Domain,
+	preflightValidatorDepositRedeemClaimAllocation,
 	type ValidatorDepositRedeemChainRedeem,
 } from '@/services/validatorDepositRedeemAdmin'
 
@@ -70,6 +71,9 @@ export async function previewValidatorDepositRedeemClaim(input: {
 	if (referrer !== ethers.ZeroAddress && referrer.toLowerCase() === beneficiary.toLowerCase()) {
 		return { ok: false, error: 'Referrer cannot equal beneficiary.' }
 	}
+
+	const alloc = await preflightValidatorDepositRedeemClaimAllocation(beneficiary, BigInt(chain.validatorCount))
+	if (!alloc.ok) return { ok: false, error: alloc.error }
 
 	return { ok: true, codeHash, redeem: chain }
 }

@@ -2,6 +2,7 @@ import { ethers } from 'ethers'
 import {
 	CONET_MAINNET_CHAIN_ID,
 	CONET_VALIDATOR_DEPOSIT_REDEEM,
+	CONET_GUARDIAN_NODES_INFO_V6,
 } from '@/config/chainAddresses'
 import { conetDepinProvider, beamioApi } from '@/utils/constants'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
@@ -17,6 +18,71 @@ const REDEEM_ADMIN_NONCES_ABI = ['function redeemAdminNonces(address account) vi
 const GET_REDEEM_ABI = [
 	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, address referrer, uint256 validatorCount, string targetNodeIp, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
 ] as const
+
+const CLAIM_ALLOC_REDEEM_ABI = [
+	'function nextGuardianAllocId() view returns (uint256)',
+	'function guardianAllocStartId() view returns (uint256)',
+	'function guardianIdBeneficiary(uint256 nodeId) view returns (address)',
+	'function nodeWalletBeneficiary(address nodeWallet) view returns (address)',
+] as const
+
+const GUARDIAN_ALLOC_ABI = [
+	'function id2ip(uint256 id) view returns (string)',
+	'function idOwner(uint256 id) view returns (address)',
+	'function ipaddress2owner(string ip) view returns (address)',
+	'function ipaddressExisting(string ip) view returns (bool)',
+] as const
+
+/** RPC preflight: would the next guardian allocation succeed for this beneficiary? */
+export async function preflightValidatorDepositRedeemClaimAllocation(
+	beneficiaryEoa: string,
+	validatorCount: bigint,
+	contractAddress: string = CONET_VALIDATOR_DEPOSIT_REDEEM,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+	if (!ethers.isAddress(beneficiaryEoa)) return { ok: false, error: 'Invalid beneficiary' }
+	if (validatorCount <= 0n) return { ok: true }
+	const ben = ethers.getAddress(beneficiaryEoa.trim())
+	const redeem = new ethers.Contract(contractAddress, CLAIM_ALLOC_REDEEM_ABI, conetDepinProvider)
+	const guardian = new ethers.Contract(CONET_GUARDIAN_NODES_INFO_V6, GUARDIAN_ALLOC_ABI, conetDepinProvider)
+	let nextId = (await redeem.nextGuardianAllocId!()) as bigint
+	const startId = (await redeem.guardianAllocStartId!()) as bigint
+	for (let need = 0n; need < validatorCount; need++) {
+		let resolved = false
+		while (!resolved) {
+			if (nextId < startId) {
+				return { ok: false, error: 'Guardian allocation pool exhausted.' }
+			}
+			const idBen = ethers.getAddress((await redeem.guardianIdBeneficiary!(nextId)) as string)
+			if (idBen !== ethers.ZeroAddress) {
+				nextId++
+				continue
+			}
+			const ip = String(await guardian.id2ip!(nextId))
+			if (!ip) return { ok: false, error: `Guardian node ${nextId.toString()} has no IP.` }
+			if (!(await guardian.ipaddressExisting!(ip))) {
+				return { ok: false, error: `Guardian IP ${ip} is not registered on-chain.` }
+			}
+			let nodeWallet = ethers.getAddress((await guardian.idOwner!(nextId)) as string)
+			if (nodeWallet === ethers.ZeroAddress) {
+				nodeWallet = ethers.getAddress((await guardian.ipaddress2owner!(ip)) as string)
+			}
+			if (nodeWallet === ethers.ZeroAddress) {
+				return { ok: false, error: `Guardian node ${nextId.toString()} has no operator wallet.` }
+			}
+			const walletBen = ethers.getAddress((await redeem.nodeWalletBeneficiary!(nodeWallet)) as string)
+			if (walletBen !== ethers.ZeroAddress && walletBen.toLowerCase() !== ben.toLowerCase()) {
+				return {
+					ok: false,
+					error:
+						'The next DePIN operator wallet is already assigned to another beneficiary. Claim with the same beneficiary wallet as the prior claim, or wait for a ValidatorDepositRedeem contract upgrade.',
+				}
+			}
+			resolved = true
+			nextId++
+		}
+	}
+	return { ok: true }
+}
 
 export const VALIDATOR_DEPOSIT_REDEEM_CREATE_TYPED_DATA_TYPES: Record<string, { name: string; type: string }[]> = {
 	CreateRedeem: [
@@ -135,9 +201,18 @@ export const VALIDATOR_DEPOSIT_REDEEM_PENDING_CHAIN_GRACE_MS = 3 * 60 * 1000
 /** Previous broken deployment — failed creates there must not linger in Issued codes. */
 export const LEGACY_VALIDATOR_DEPOSIT_REDEEM = '0x970792658C09A96E27Fc4D8B69fF9989C2AcB50E'
 
+/** Retired deployments still probed for issued-code reconciliation (newest last). */
+export const DEPRECATED_VALIDATOR_DEPOSIT_REDEEM_ADDRESSES = [
+	'0x970792658C09A96E27Fc4D8B69fF9989C2AcB50E',
+	'0x02C425537E3E2C7B9F3071DdFc4E0d81DD3B2EFC',
+] as const
+
 function isLegacyValidatorDepositRedeemContract(contract: string | undefined): boolean {
 	if (!contract || !ethers.isAddress(contract)) return false
-	return ethers.getAddress(contract) === ethers.getAddress(LEGACY_VALIDATOR_DEPOSIT_REDEEM)
+	const normalized = ethers.getAddress(contract)
+	return DEPRECATED_VALIDATOR_DEPOSIT_REDEEM_ADDRESSES.some(
+		(a) => ethers.getAddress(a) === normalized,
+	)
 }
 
 export async function readValidatorDepositRedeemCreateTxReceipt(

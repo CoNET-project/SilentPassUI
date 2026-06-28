@@ -11,7 +11,7 @@ import {
 	resolveValidatorDepositRedeemDisplayStatus,
 	shouldEagerRemoveValidatorDepositRedeemIssuedLocally,
 	shouldRemoveValidatorDepositRedeemIssuedAfterTrustedChainProbe,
-	LEGACY_VALIDATOR_DEPOSIT_REDEEM,
+	DEPRECATED_VALIDATOR_DEPOSIT_REDEEM_ADDRESSES,
 } from '@/services/validatorDepositRedeemAdmin'
 import {
 	deleteValidatorDepositRedeemIssued,
@@ -20,12 +20,13 @@ import {
 	type ValidatorDepositRedeemIssuedRecord,
 } from '@/utils/validatorDepositRedeemIssuedDb'
 
-/** Previous broken deployment — still probed so failed creates there are pruned locally. */
-const LEGACY_VALIDATOR_DEPOSIT_REDEEM_PROBE = LEGACY_VALIDATOR_DEPOSIT_REDEEM
-
 function probeContractAddresses(row: ValidatorDepositRedeemIssuedRecord): string[] {
 	const out = new Set<string>()
-	for (const raw of [CONET_VALIDATOR_DEPOSIT_REDEEM, LEGACY_VALIDATOR_DEPOSIT_REDEEM_PROBE, row.contract]) {
+	for (const raw of [
+		CONET_VALIDATOR_DEPOSIT_REDEEM,
+		...DEPRECATED_VALIDATOR_DEPOSIT_REDEEM_ADDRESSES,
+		row.contract,
+	]) {
 		if (raw && ethers.isAddress(raw)) out.add(ethers.getAddress(raw))
 	}
 	return [...out]

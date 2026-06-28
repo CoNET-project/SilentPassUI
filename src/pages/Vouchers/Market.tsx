@@ -42,6 +42,9 @@ import {
   ExternalLink,
   Gift,
   Copy,
+  Star,
+  Minus,
+  Plus,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -120,6 +123,22 @@ const TRENDING_CACHE_VERSION = 10
 const TRENDING_CACHE_KEY = `beamio:trending:latestCards:v${TRENDING_CACHE_VERSION}:limit${DISCOVER_LATEST_CARDS_LIMIT}`
 /** /api/latestCards 实测可能 504 / 60s+ 挂起，给出明确超时；超时按 untrusted 处理，不清空已显示的 trusted rows */
 const TRENDING_FETCH_TIMEOUT_MS = 12_000
+
+/**
+ * CoNET Genesis Node merchant card — Discover detail renders a bespoke
+ * infrastructure-sale layout (Genesis Node Offers / Evangelist Program /
+ * About CoNET) instead of the standard coupons + reward tiers body.
+ */
+const CONET_GENESIS_DISCOVER_CARD_ADDRESS = '0xafE482D2612327a0D723544B9fB713C514a793a2'
+const CONET_EXPLORE_NETWORK_URL = 'https://mainnet.conet.network/'
+const CONET_GENESIS_NODE_PRICE_USDC = 1250
+const CONET_GENESIS_CLOUD_OPEX_USDC = 120
+const CONET_GENESIS_GLOBAL_CAP = 12000
+
+function isConetGenesisDiscoverCard(cardAddress: string | null | undefined): boolean {
+	if (!cardAddress) return false
+	return cardAddress.trim().toLowerCase() === CONET_GENESIS_DISCOVER_CARD_ADDRESS.toLowerCase()
+}
 
 /** LongDhang CoNET program card (post Base→CoNET migration). Discover detail panels keyed here. */
 const LONGDHANG_DISCOVER_CARD_ADDRESS = '0xc06055AEEd896F832e602a5876D2Dbe1CB365A8A'
@@ -1904,6 +1923,241 @@ function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoP
 }
 
 /** Full-screen merchant detail from Discover list (slide in from right). */
+/**
+ * Bespoke CoNET Genesis Node sale layout for the Discover detail body.
+ * Replaces the standard coupons / reward-tier panels for
+ * {@link CONET_GENESIS_DISCOVER_CARD_ADDRESS}.
+ */
+function ConetGenesisNodeDiscoverSection({
+	evangelistLink,
+	onExplore,
+	onLockSeat,
+}: {
+	evangelistLink: string
+	onExplore: () => void
+	onLockSeat: (quantity: number, cloudNode: boolean, totalUsdc: number) => void
+}) {
+	const [quantity, setQuantity] = useState(1)
+	const [cloudNode, setCloudNode] = useState(true)
+	const [linkCopied, setLinkCopied] = useState(false)
+	const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+	useEffect(() => {
+		return () => {
+			if (linkCopiedTimerRef.current != null) clearTimeout(linkCopiedTimerRef.current)
+		}
+	}, [])
+
+	const totalThreshold = useMemo(
+		() =>
+			quantity * CONET_GENESIS_NODE_PRICE_USDC +
+			(cloudNode ? quantity * CONET_GENESIS_CLOUD_OPEX_USDC : 0),
+		[quantity, cloudNode],
+	)
+
+	const copyEvangelistLink = useCallback(async () => {
+		const link = evangelistLink.trim()
+		if (!link) return
+		try {
+			await navigator.clipboard.writeText(link)
+			setLinkCopied(true)
+			if (linkCopiedTimerRef.current != null) clearTimeout(linkCopiedTimerRef.current)
+			linkCopiedTimerRef.current = setTimeout(() => setLinkCopied(false), 2500)
+		} catch {
+			Toast.show({ content: 'Unable to copy link' })
+		}
+	}, [evangelistLink])
+
+	return (
+		<>
+			{/* Genesis Node Offers */}
+			<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+				<div className="mb-4 flex items-center gap-2">
+					<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-500 dark:bg-amber-500/15">
+						<Star className="h-[18px] w-[18px]" strokeWidth={2.25} fill="currentColor" aria-hidden />
+					</span>
+					<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+						Genesis Node Offers
+					</h2>
+				</div>
+
+				<div className="rounded-[18px] bg-[#eef2fb] p-4 dark:bg-slate-800/70">
+					<div className="flex items-start justify-between gap-3">
+						<div className="min-w-0">
+							<p className="text-[15px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+								Tier 1 (Institutional Cornerstone Round) Genesis Node
+							</p>
+							<p className="mt-1 text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
+								Global cap {CONET_GENESIS_GLOBAL_CAP.toLocaleString('en-US')}, limited spots remaining
+							</p>
+						</div>
+						<div className="shrink-0 text-right">
+							<p className="text-[20px] font-bold leading-none text-[#1f2328] dark:text-slate-100">
+								{CONET_GENESIS_NODE_PRICE_USDC.toLocaleString('en-US')}
+							</p>
+							<p className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">USDC</p>
+							<p className="text-[11px] text-slate-400">per node</p>
+						</div>
+					</div>
+
+					<div className="mt-4 flex items-center justify-between gap-3">
+						<span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">Quantity</span>
+						<div className="flex items-center gap-3 rounded-full bg-white px-2 py-1 shadow-sm ring-1 ring-[#e2e7f0] dark:bg-slate-900 dark:ring-slate-700">
+							<button
+								type="button"
+								onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+								disabled={quantity <= 1}
+								className="flex h-7 w-7 items-center justify-center rounded-full text-[#1562f0] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+								aria-label="Decrease quantity"
+							>
+								<Minus className="h-4 w-4" strokeWidth={2.75} aria-hidden />
+							</button>
+							<span className="min-w-[1.5rem] text-center text-[15px] font-bold tabular-nums text-[#1f2328] dark:text-slate-100">
+								{quantity}
+							</span>
+							<button
+								type="button"
+								onClick={() => setQuantity((q) => Math.min(CONET_GENESIS_GLOBAL_CAP, q + 1))}
+								className="flex h-7 w-7 items-center justify-center rounded-full text-[#1562f0] transition active:scale-95"
+								aria-label="Increase quantity"
+							>
+								<Plus className="h-4 w-4" strokeWidth={2.75} aria-hidden />
+							</button>
+						</div>
+					</div>
+
+					<div className="mt-4 border-t border-white/70 pt-3 dark:border-slate-700/70">
+						<button
+							type="button"
+							onClick={() => setCloudNode((v) => !v)}
+							className="flex w-full items-center gap-3 text-left"
+							role="switch"
+							aria-checked={cloudNode}
+						>
+							<span
+								className={[
+									'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition',
+									cloudNode ? 'bg-[#1562f0]' : 'bg-slate-300 dark:bg-slate-600',
+								].join(' ')}
+							>
+								<span
+									className={[
+										'inline-block h-5 w-5 transform rounded-full bg-white shadow transition',
+										cloudNode ? 'translate-x-[22px]' : 'translate-x-[2px]',
+									].join(' ')}
+								/>
+							</span>
+							<span className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">
+								Cloud Node Deployment Service
+							</span>
+						</button>
+						<p className="mt-2 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
+							OPEX: {CONET_GENESIS_CLOUD_OPEX_USDC} USDC/year/node for 24/7 maintenance. Enjoy dual-track
+							rewards with zero hardware maintenance hassle.
+						</p>
+					</div>
+				</div>
+
+				<div className="mt-4 rounded-[18px] bg-[#f4f6fa] py-4 text-center dark:bg-slate-800/50">
+					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Total Entry Threshold</p>
+					<p className="mt-1 text-[26px] font-bold leading-none text-[#1562f0]">
+						{totalThreshold.toLocaleString('en-US')} USDC
+					</p>
+				</div>
+
+				<button
+					type="button"
+					onClick={() => onLockSeat(quantity, cloudNode, totalThreshold)}
+					className="mt-4 w-full rounded-full bg-[#1562f0] px-4 py-3.5 text-[15px] font-bold text-white shadow-lg shadow-blue-500/25 transition active:scale-[0.98] hover:bg-blue-600"
+				>
+					Lock Infrastructure Seat Now
+				</button>
+			</div>
+
+			{/* Evangelist Program */}
+			<div className="rounded-[22px] bg-[#0e1c33] p-5 shadow-[0_8px_22px_rgba(15,23,42,0.18)] ring-1 ring-white/5">
+				<div className="mb-4 flex items-center gap-2">
+					<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+						<Medal className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+					</span>
+					<h2 className="text-[18px] font-bold leading-snug text-white">Evangelist Program</h2>
+				</div>
+
+				<div className="rounded-[16px] bg-white/[0.04] p-4 ring-1 ring-white/5">
+					<p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">
+						Total USDC Cash Rewards
+					</p>
+					<p className="mt-1 text-[26px] font-bold leading-none text-white">
+						0.00 <span className="text-[14px] font-semibold text-slate-400">USDC</span>
+					</p>
+				</div>
+
+				<div className="mt-3 rounded-[16px] bg-white/[0.04] p-4 ring-1 ring-white/5">
+					<p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">
+						Activated Free Node Pool
+					</p>
+					<p className="mt-1 text-[26px] font-bold leading-none text-white">
+						0 <span className="text-[14px] font-semibold text-slate-400">Units</span>
+					</p>
+				</div>
+
+				<div className="mt-3 rounded-[16px] bg-white/[0.04] p-4 ring-1 ring-white/5">
+					<div className="flex items-center justify-between gap-2">
+						<p className="text-[12px] font-semibold text-slate-300">Referral Progress (10+1 Matrix)</p>
+						<p className="text-[13px] font-bold text-white tabular-nums">0 / 10</p>
+					</div>
+					<div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
+						<div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300" style={{ width: '0%' }} />
+					</div>
+					<p className="mt-2 text-[12px] leading-relaxed text-slate-400">
+						Refer 10 nodes to receive 1 physical validator node airdrop from the Treasury.
+					</p>
+				</div>
+
+				<button
+					type="button"
+					onClick={() => void copyEvangelistLink()}
+					className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/25 px-4 py-3 text-[14px] font-bold text-white transition active:scale-[0.98] hover:bg-white/5"
+				>
+					{linkCopied ? (
+						<Check className="h-[17px] w-[17px] text-emerald-400" strokeWidth={2.5} aria-hidden />
+					) : (
+						<Copy className="h-[17px] w-[17px]" strokeWidth={2.25} aria-hidden />
+					)}
+					{linkCopied ? 'Link Copied' : 'Copy My Evangelist Link'}
+				</button>
+			</div>
+
+			{/* About CoNET */}
+			<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+				<div className="mb-3 flex items-center gap-2">
+					<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
+						<Info className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+					</span>
+					<h2 className="text-[15px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">About CoNET</h2>
+				</div>
+				<h3 className="text-[20px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+					Reshaping Digital Infrastructure, Mastering Data Sovereignty
+				</h3>
+				<p className="mt-3 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
+					CoNET is a Layer-1 blockchain based on a Decentralized Physical Infrastructure Network (DePIN).
+					Through our pioneering Layer Minus protocol, we discard IP addresses at the network transmission
+					layer, using asymmetric encrypted wallet addresses as the unique identifier, making privacy a
+					fundamental human right.
+				</p>
+				<button
+					type="button"
+					onClick={onExplore}
+					className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#1562f0] px-5 py-3 text-[14px] font-bold text-white shadow-md shadow-blue-500/25 transition active:scale-[0.98] hover:bg-blue-600"
+				>
+					Explore Network
+					<ArrowRight className="h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
+				</button>
+			</div>
+		</>
+	)
+}
+
 function DiscoverMerchantDetailFullScreen({
 	item,
 	onClose,
@@ -1983,6 +2237,27 @@ function DiscoverMerchantDetailFullScreen({
 		: Number(merchantAssets?.points ?? 0)
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
 	const heroRechargeBonusPill = discoverFeaturedRechargeBonusSidePill(item)
+	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
+	const conetEvangelistLink = useMemo(() => {
+		const ref = (profile?.keyID ?? '').trim()
+		return ref
+			? `${CONET_EXPLORE_NETWORK_URL}?ref=${encodeURIComponent(ref)}`
+			: CONET_EXPLORE_NETWORK_URL
+	}, [profile?.keyID])
+	const openConetExplore = useCallback(() => {
+		void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
+	}, [])
+	const lockConetGenesisSeat = useCallback(
+		(quantity: number, cloudNode: boolean, totalUsdc: number) => {
+			Toast.show({
+				content: `Reserved ${quantity} Genesis Node${quantity > 1 ? 's' : ''}${
+					cloudNode ? ' + Cloud Service' : ''
+				} · ${totalUsdc.toLocaleString('en-US')} USDC`,
+			})
+			void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
+		},
+		[],
+	)
 
 	const resolveUserEoa = useCallback((): string | null => {
 		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
@@ -2591,6 +2866,14 @@ function DiscoverMerchantDetailFullScreen({
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-28 pt-4">
 				<div className="mx-auto max-w-lg space-y-4">
+					{isConetGenesisCard ? (
+						<ConetGenesisNodeDiscoverSection
+							evangelistLink={conetEvangelistLink}
+							onExplore={openConetExplore}
+							onLockSeat={lockConetGenesisSeat}
+						/>
+					) : (
+					<>
 					{merchantInfoPanel ? (
 						<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 							<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
@@ -2865,6 +3148,8 @@ function DiscoverMerchantDetailFullScreen({
 					{merchantInfoPanel && hasDiscoverMerchantAboutPanel(merchantInfoPanel) ? (
 						<DiscoverMerchantInfoPanelCard panel={merchantInfoPanel} />
 					) : null}
+					</>
+					)}
 
 				</div>
 			</div>

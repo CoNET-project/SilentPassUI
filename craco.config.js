@@ -47,6 +47,23 @@ module.exports = {
             webpackConfig.cache = { type: 'filesystem' };
             webpackConfig.plugins = webpackConfig.plugins || [];
             webpackConfig.plugins.push(new BuildProgressPlugin());
+
+            // CRA source-map-loader breaks on missing maps / ESM paths in node_modules.
+            webpackConfig.module.rules.forEach((rule) => {
+                if (!rule.oneOf) return;
+                rule.oneOf.forEach((oneOfRule) => {
+                    if (
+                        oneOfRule.loader &&
+                        String(oneOfRule.loader).includes('source-map-loader')
+                    ) {
+                        oneOfRule.exclude = /node_modules/;
+                    }
+                });
+            });
+            webpackConfig.ignoreWarnings = [
+                ...(webpackConfig.ignoreWarnings || []),
+                /Failed to parse source map/,
+            ];
             if (process.env.NODE_ENV === 'production') {
                 webpackConfig.optimization.minimizer = [
                     new TerserPlugin({

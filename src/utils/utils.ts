@@ -1,5 +1,5 @@
 import bs58 from "bs58"
-import { Keypair } from "@solana/web3.js";
+import nacl from "tweetnacl"
 import { apiv4_endpoint, XMLHttpRequestTimeout } from "./constants";
 import contracts from "./contracts";
 
@@ -329,23 +329,14 @@ export const calcSpInUsd = (sp9999: string) => {
 
 export function isValidSolanaBase58PrivateKey(base58Key: string) {
   try {
-    // Decode Base58 string to Uint8Array
-    let privateKey = bs58.decode(base58Key);
-
-    // Check if it's 64 bytes (Ed25519 private key length)
+    const privateKey = bs58.decode(base58Key)
     if (privateKey.length !== 64) {
-      console.error("Invalid private key length:", privateKey.length);
-      return false;
+      return false
     }
-
-    // Attempt to create a Keypair
-    let keypair = Keypair.fromSecretKey(privateKey);
-
-    console.log("Valid private key! Public Key:", keypair.publicKey.toBase58());
-    return true;
-  } catch (error) {
-    console.error("Invalid Private Key:", error);
-    return false;
+    nacl.sign.keyPair.fromSecretKey(privateKey)
+    return true
+  } catch {
+    return false
   }
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSpring, animated } from "react-spring";
+import { useSpring, animated } from "@react-spring/web";
 import blobshape from "blobshape";
 import "./index.css";
 

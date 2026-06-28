@@ -1,7 +1,11 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Gift, Utensils, Share2, Filter, Settings2 } from 'lucide-react'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
+import { useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
+import { useDaemonContext } from '@/providers/DaemonProvider'
+import { formatWithThousands } from '@/services/beamio'
+import { formatConetChainTokenBalance } from '@/services/conetUsdcBalance'
 
 /**
  * Bounty Board — referral rewards hub.
@@ -25,6 +29,48 @@ const capsuleChrome =
 
 const cardChrome =
 	'rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
+
+const FALLBACK_RATES: Record<string, number> = { USD: 1, CAD: 1.35, JPY: 150, EUR: 0.92, CNY: 7.2, HKD: 7.8, TWD: 31, SGD: 1.35 }
+
+function fxRateUsdcToCurrency(currency: ICurrency, currencyData: Record<string, number>): number {
+	const usdcToUsd = (currencyData.USDC ?? 1) || 1
+	if (currency === 'USD') return usdcToUsd
+	if (currency === 'USDC') return 1
+	const raw = currencyData[currency] ?? FALLBACK_RATES[currency] ?? 1
+	const rate = usdcToUsd * (raw || (FALLBACK_RATES[currency] ?? 1))
+	return rate > 0 ? rate : (FALLBACK_RATES[currency] ?? 1)
+}
+
+function formatConetUsdcFiatApprox(usdcAmount: string, currency: ICurrency, currencyData: Record<string, number>): string {
+	const n = Math.max(0, Number(usdcAmount) || 0)
+	const rate = fxRateUsdcToCurrency(currency, currencyData)
+	const v = currency === 'USDC' ? n : n * rate
+	switch (currency) {
+		case 'EUR':
+			return `≈ € ${formatWithThousands(v, 2)}`
+		case 'TWD':
+			return `≈ NT$ ${formatWithThousands(v, 2)}`
+		case 'SGD':
+			return `≈ SG$ ${formatWithThousands(v, 2)}`
+		case 'HKD':
+			return `≈ HK$ ${formatWithThousands(v, 2)}`
+		case 'JPY':
+			return `≈ JP¥ ${formatWithThousands(v, 0)}`
+		case 'CNY':
+			return `≈ RMB¥ ${formatWithThousands(v, 2)}`
+		case 'CAD':
+			return `≈ CA$ ${formatWithThousands(v, 2)}`
+		case 'USDC':
+			return `≈ ${formatWithThousands(n, 2)} USDC`
+		case 'USD':
+		default:
+			return `≈ US$ ${formatWithThousands(v, 2)}`
+	}
+}
+
+function formatConetUsdcDisplay(balance: string): string {
+	return formatWithThousands(Math.max(0, Number(balance) || 0), 2)
+}
 
 const SAMPLE_BOUNTIES: BountyItem[] = [
 	{
@@ -80,6 +126,37 @@ function BountyCard({ item }: { item: BountyItem }) {
 export default function BountyBoard() {
 	const navigate = useNavigate()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
+	const { profiles, currencyData, conetNetworkStats, conetDepinStats } = useDaemonContext()
+	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
+	const profileCurrency = (profiles?.[0]?.beamio?.currency ?? 'USD') as ICurrency
+	const { balances: conetWalletBalances } = useConetWalletBalances(eoa)
+
+	const usdcDisplay = useMemo(() => formatConetUsdcDisplay(conetWalletBalances.usdc), [conetWalletBalances.usdc])
+	const fiatApprox = useMemo(
+		() => formatConetUsdcFiatApprox(conetWalletBalances.usdc, profileCurrency, currencyData as Record<string, number>),
+		[conetWalletBalances.usdc, profileCurrency, currencyData]
+	)
+	const miningGbDisplay = useMemo(
+		() => formatConetChainTokenBalance(conetWalletBalances.gb),
+		[conetWalletBalances.gb]
+	)
+	const miningCnetDisplay = useMemo(
+		() => formatConetChainTokenBalance(conetWalletBalances.cnet),
+		[conetWalletBalances.cnet]
+	)
+	const miningUsdcDisplay = useMemo(
+		() => formatConetUsdcDisplay(conetWalletBalances.usdc),
+		[conetWalletBalances.usdc]
+	)
+	const totalNodesDisplay = useMemo(() => {
+		const total = conetNetworkStats.stakedValidators + conetDepinStats.depinNodeCount
+		return total.toLocaleString()
+	}, [conetNetworkStats.stakedValidators, conetDepinStats.depinNodeCount])
+	const nodeBreakdownDisplay = useMemo(
+		() =>
+			`${conetNetworkStats.stakedValidatorsFormatted} staked · ${conetDepinStats.depinNodeCountFormatted} DePIN`,
+		[conetNetworkStats.stakedValidatorsFormatted, conetDepinStats.depinNodeCountFormatted]
+	)
 
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
 
@@ -122,25 +199,9 @@ export default function BountyBoard() {
 					<section className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#1d4ed8] to-[#2563eb] p-6 text-white shadow-[0_10px_30px_rgba(37,99,235,0.35)]">
 						<p className="text-[11px] font-semibold uppercase tracking-widest text-white/70">Total Bounties Earned</p>
 						<p className="mt-2 text-[44px] font-extrabold leading-none tracking-tight tabular-nums">
-							245.80 <span className="text-3xl font-bold">USDC</span>
+							{usdcDisplay} <span className="text-3xl font-bold">USDC</span>
 						</p>
-						<p className="mt-2 text-sm text-white/75">≈ CA$ 332.10</p>
-
-						<div className="mt-5 grid grid-cols-2 gap-3">
-							<button
-								type="button"
-								onClick={() => navigate('/Pay')}
-								className="flex items-center justify-center rounded-full bg-white px-4 py-3 text-sm font-bold text-[#1562f0] transition active:scale-[0.98]"
-							>
-								Pay In-Store
-							</button>
-							<button
-								type="button"
-								className="flex items-center justify-center rounded-full border border-white/70 px-4 py-3 text-sm font-bold text-white transition active:scale-[0.98] hover:bg-white/10"
-							>
-								Cash Out
-							</button>
-						</div>
+						<p className="mt-2 text-sm text-white/75">{fiatApprox}</p>
 					</section>
 
 					{/* CONET mining */}
@@ -162,8 +223,10 @@ export default function BountyBoard() {
 							{/* DePIN Mining */}
 							<div className="min-w-0">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">DePIN Mining</p>
-								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">1,240 GB</p>
-								<p className="text-[11px] text-slate-400">≈ 12.40 USDC</p>
+								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+									{miningGbDisplay} GB
+								</p>
+								<p className="text-[11px] text-slate-400">≈ {miningUsdcDisplay} USDC</p>
 								<button
 									type="button"
 									className="mt-2 inline-flex items-center justify-center rounded-full border border-[#1562f0] px-3 py-1.5 text-xs font-bold text-[#1562f0] transition active:scale-[0.98]"
@@ -175,16 +238,19 @@ export default function BountyBoard() {
 							{/* L1 Mining */}
 							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">L1 Mining</p>
-								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">85.5</p>
-								<p className="text-sm font-bold text-slate-900 dark:text-slate-50">$CNET</p>
+								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+									{miningCnetDisplay} CNET
+								</p>
 								<p className="mt-1 text-[11px] leading-tight text-slate-400">Native Gas Token</p>
 							</div>
 
 							{/* Total Nodes */}
 							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Nodes</p>
-								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">1,248</p>
-								<p className="mt-1 text-[11px] leading-tight text-slate-400">Active Nodes</p>
+								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+									{totalNodesDisplay}
+								</p>
+								<p className="mt-1 text-[11px] leading-tight text-slate-400">{nodeBreakdownDisplay}</p>
 							</div>
 						</div>
 					</section>

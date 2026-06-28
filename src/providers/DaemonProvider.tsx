@@ -68,14 +68,20 @@ import {
 	saveConetMiningStatsLocalCache,
 	CONET_MINING_STATS_SEED,
 } from '@/utils/conetMiningStatsLocalCache'
+import {
+	fetchConetWalletBalances,
+	type ConetWalletBalances,
+} from '@/services/conetUsdcBalance'
+import {
+	loadConetWalletBalancesLocalCache,
+	saveConetWalletBalancesLocalCache,
+	EMPTY_CONET_WALLET_BALANCES,
+} from '@/utils/conetWalletBalancesLocalCache'
 
 export type { MyBrandCardFeedDetailsMap }
 
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
-
-/** CoNET Mining dashboard 全网指标全局喂料间隔（毫秒）；全网统计变动慢，30s 一轮足够 */
-const CONET_MINING_STATS_FEED_INTERVAL_MS = 30_000
 
 type ClaimableCouponSummary = {
   count: number
@@ -352,6 +358,8 @@ type DaemonContext = {
 	 */
 	conetNetworkStats: ConetNetworkStats
 	conetDepinStats: ConetDepinStats
+	/** CoNET L1 钱包 USDC / CNET / GB；本地优先，全局 daemon 每 6s 刷新 */
+	conetWalletBalances: ConetWalletBalances
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -553,6 +561,7 @@ const defaultContextValue: DaemonContext = {
 	refreshRecentActivityNoAa: async () => {},
 	conetNetworkStats: CONET_MINING_STATS_SEED.network,
 	conetDepinStats: CONET_MINING_STATS_SEED.depin,
+	conetWalletBalances: EMPTY_CONET_WALLET_BALANCES,
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -1211,6 +1220,61 @@ export function DaemonProvider({ children }: DaemonProps) {
     recentActivityNoAaItemsRef.current = recentActivityNoAaItems
   }, [recentActivityNoAaItems])
 
+  const [conetWalletBalances, setConetWalletBalances] = useState<ConetWalletBalances>(
+    () => EMPTY_CONET_WALLET_BALANCES
+  )
+
+  /** EOA 切换：从本地恢复 CoNET USDC / CNET / GB；无缓存则用零值首帧，等 daemon 回填 */
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    const eoaLower = raw.toLowerCase()
+    if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      setConetWalletBalances(EMPTY_CONET_WALLET_BALANCES)
+      return
+    }
+    const hit = loadConetWalletBalancesLocalCache(eoaLower)
+    setConetWalletBalances(hit ?? EMPTY_CONET_WALLET_BALANCES)
+  }, [profileWalletKeyId])
+
+  const runConetWalletBalancesFeedTick = useCallback(async (): Promise<void> => {
+    const eoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    if (!eoa || !ethers.isAddress(eoa)) return
+    const eoaLower = eoa.toLowerCase()
+    const res = await fetchConetWalletBalances(eoa, { bypassMemoryCache: true }).catch(
+      () => ({ ok: false as const })
+    )
+    if (!res.ok) return
+    if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== eoaLower) return
+    setConetWalletBalances(res.balances)
+    saveConetWalletBalancesLocalCache(eoaLower, res.balances)
+  }, [])
+
+  /**
+   * CoNET Mining 全网指标（Total staked validators / DePIN nodes）：本地优先 + 6s 全局喂料。
+   * 与 CoNetMiningDetailPage 同源（conetNetworkStats / conetDepinStats）。
+   */
+  const [conetNetworkStats, setConetNetworkStats] = useState<ConetNetworkStats>(
+    () => loadConetMiningStatsLocalCache().network
+  )
+  const [conetDepinStats, setConetDepinStats] = useState<ConetDepinStats>(
+    () => loadConetMiningStatsLocalCache().depin
+  )
+
+  const runConetMiningStatsFeedTick = useCallback(async (): Promise<void> => {
+    const [net, depin] = await Promise.all([
+      fetchConetNetworkStats().catch(() => ({ ok: false }) as const),
+      fetchConetDepinStats().catch(() => ({ ok: false }) as const),
+    ])
+    if (net.ok) {
+      setConetNetworkStats(net.stats)
+      saveConetMiningStatsLocalCache({ network: net.stats })
+    }
+    if (depin.ok) {
+      setConetDepinStats(depin.stats)
+      saveConetMiningStatsLocalCache({ depin: depin.stats })
+    }
+  }, [])
+
   /** EOA 切换：从本地恢复 Recent Activity；无缓存则等首轮拉取 */
   useLayoutEffect(() => {
     const raw = profileWalletKeyId?.trim() ?? ''
@@ -1436,7 +1500,11 @@ export function DaemonProvider({ children }: DaemonProps) {
   const runGlobalWalletFeedTick = useCallback(async () => {
     const cardDetails = await runMyBrandsFeedTick()
     await runNoAaWalletFeedTick(cardDetails)
-  }, [runMyBrandsFeedTick, runNoAaWalletFeedTick])
+    await Promise.all([
+      runConetWalletBalancesFeedTick(),
+      runConetMiningStatsFeedTick(),
+    ])
+  }, [runMyBrandsFeedTick, runNoAaWalletFeedTick, runConetWalletBalancesFeedTick, runConetMiningStatsFeedTick])
 
   const refreshRecentActivityNoAa = useCallback(async () => {
     const cardDetails = await runMyBrandsFeedTick()
@@ -1546,55 +1614,6 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [fetchOracle])
 
-  /**
-   * CoNET Mining dashboard 全网指标：本地优先 + 全局 background daemon。
-   * 首屏同步用 localStorage 快照（或 seed）初始化 → 永不 `—`、永不 loading；
-   * 后台 setTimeout 链每 30s 刷新，仅可信成功才覆盖 state + 写本地缓存（失败保留上次值）。
-   */
-  const [conetNetworkStats, setConetNetworkStats] = useState<ConetNetworkStats>(
-    () => loadConetMiningStatsLocalCache().network
-  )
-  const [conetDepinStats, setConetDepinStats] = useState<ConetDepinStats>(
-    () => loadConetMiningStatsLocalCache().depin
-  )
-
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runStatsChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          const [net, depin] = await Promise.all([
-            fetchConetNetworkStats().catch(() => ({ ok: false }) as const),
-            fetchConetDepinStats().catch(() => ({ ok: false }) as const),
-          ])
-          if (cancelled) return
-          if (net.ok) {
-            setConetNetworkStats(net.stats)
-            saveConetMiningStatsLocalCache({ network: net.stats })
-          }
-          if (depin.ok) {
-            setConetDepinStats(depin.stats)
-            saveConetMiningStatsLocalCache({ depin: depin.stats })
-          }
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(
-              runStatsChain,
-              CONET_MINING_STATS_FEED_INTERVAL_MS
-            ) as unknown as number
-          }
-        }
-      })()
-    }
-    runStatsChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [])
-
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
@@ -1607,7 +1626,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
-				conetNetworkStats, conetDepinStats,
+				conetNetworkStats, conetDepinStats, conetWalletBalances,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

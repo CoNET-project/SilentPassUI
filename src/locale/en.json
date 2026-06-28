@@ -556,6 +556,8 @@
     "current": "Current",
     "total_purchasing_power": "Total Purchasing Power",
     "usdc_balance": "USDC Balance",
+    "cnet_balance": "CNET Balance",
+    "gb_balance": "GB Balance",
     "merchant_assets": "Merchant Assets",
     "tap_at_any_beamio_softpos_to_pay_seamlessly": "Tap at any Beamio SoftPOS to pay seamlessly.",
     "see_all": "See all",

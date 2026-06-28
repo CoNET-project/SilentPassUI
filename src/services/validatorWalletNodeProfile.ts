@@ -41,7 +41,26 @@ const VALIDATOR_REFERRER_EXTENSION_ABI = [
 const GUARDIAN_NODES_INFO_V6_ABI = [
 	'function ipaddress2owner(string ipaddress) view returns (address)',
 	'function getOwnerIPs(address owner) view returns (string[])',
+	'function ipaddressToRegion(string ipaddress) view returns (string)',
 ] as const
+
+const DEPIN_NODE_COUNTRY_LABELS: Record<string, string> = {
+	US: 'United States',
+	CA: 'Canada',
+	GB: 'United Kingdom',
+	DE: 'Germany',
+	ES: 'Spain',
+	FR: 'France',
+	AU: 'Australia',
+	HK: 'Hong Kong',
+	JP: 'Japan',
+	SG: 'Singapore',
+	NL: 'Netherlands',
+}
+
+const DEPIN_NODE_REGION_CACHE_TTL_MS = 30_000
+const depinNodeRegionCache = new Map<string, { region: string; fetchedAt: number }>()
+const depinNodeRegionInflight = new Map<string, Promise<string>>()
 
 function normalizeDepinIp(raw: string): string {
 	return String(raw ?? '').trim().toLowerCase()
@@ -85,6 +104,83 @@ async function readDepinNodeIpsByWallet(nodeWallet: string): Promise<string[]> {
 	} catch {
 		return []
 	}
+}
+
+/** Guardian `regionName`（如 `PA.US` / `NW.DE`）→ ISO 国家码。 */
+export function formatDepinNodeCountryCodeFromRegionName(regionName: string): string {
+	const raw = String(regionName ?? '').trim()
+	if (!raw) return ''
+	const parts = raw.split('.').filter(Boolean)
+	if (parts.length >= 2) {
+		const country = parts[parts.length - 1]
+		if (/^[A-Z]{2}$/i.test(country)) return country.toUpperCase()
+	}
+	if (/^[A-Z]{2}$/i.test(raw)) return raw.toUpperCase()
+	return ''
+}
+
+/** 用户可见国家名（英语）；未知 ISO 码回退原 region 末段或 region 全文。 */
+export function formatDepinNodeCountryLabel(regionName: string): string {
+	const code = formatDepinNodeCountryCodeFromRegionName(regionName)
+	if (code) return DEPIN_NODE_COUNTRY_LABELS[code] ?? code
+	const raw = String(regionName ?? '').trim()
+	return raw
+}
+
+async function readDepinNodeRegionByIp(ip: string): Promise<string> {
+	const guardianAddr = resolveGuardianNodesInfoAddress()
+	if (!guardianAddr) return ''
+	const trimmed = ip.trim()
+	if (!trimmed) return ''
+	const cached = depinNodeRegionCache.get(trimmed.toLowerCase())
+	if (cached && Date.now() - cached.fetchedAt < DEPIN_NODE_REGION_CACHE_TTL_MS) {
+		return cached.region
+	}
+	const inflight = depinNodeRegionInflight.get(trimmed.toLowerCase())
+	if (inflight) return inflight
+
+	const task = (async (): Promise<string> => {
+		const guardian = new ethers.Contract(guardianAddr, GUARDIAN_NODES_INFO_V6_ABI, conetDepinProvider)
+		const candidates =
+			trimmed.toLowerCase() === trimmed ? [trimmed] : [trimmed, trimmed.toLowerCase()]
+		for (const candidate of candidates) {
+			try {
+				const region = String(await guardian.ipaddressToRegion!(candidate)).trim()
+				if (region) {
+					depinNodeRegionCache.set(trimmed.toLowerCase(), { region, fetchedAt: Date.now() })
+					return region
+				}
+			} catch {
+				// try next candidate
+			}
+		}
+		depinNodeRegionCache.set(trimmed.toLowerCase(), { region: '', fetchedAt: Date.now() })
+		return ''
+	})().finally(() => {
+		depinNodeRegionInflight.delete(trimmed.toLowerCase())
+	})
+
+	depinNodeRegionInflight.set(trimmed.toLowerCase(), task)
+	return task
+}
+
+/** RPC 直读 GuardianNodesInfoV6.ipaddressToRegion → 国家展示名；无映射时 null。 */
+export async function fetchDepinNodeCountryLabelByIp(ip: string): Promise<string | null> {
+	const region = await readDepinNodeRegionByIp(ip)
+	if (!region) return null
+	const label = formatDepinNodeCountryLabel(region)
+	return label || null
+}
+
+/** 按 IP 串行拉取国家（30s TTL）；失败项跳过，不覆写调用方已有缓存。 */
+export async function fetchDepinNodeCountryLabelsByIps(ips: string[]): Promise<Record<string, string>> {
+	const out: Record<string, string> = {}
+	const unique = [...new Set(ips.map((ip) => normalizeDepinIp(ip)).filter(Boolean))]
+	for (const ip of unique) {
+		const label = await fetchDepinNodeCountryLabelByIp(ip)
+		if (label) out[ip] = label
+	}
+	return out
 }
 
 async function readBeneficiaryByIp(

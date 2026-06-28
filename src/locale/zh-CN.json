@@ -556,6 +556,8 @@
     "current": "当前",
     "total_purchasing_power": "总购买力",
     "usdc_balance": "USDC 余额",
+    "cnet_balance": "CNET 余额",
+    "gb_balance": "GB 余额",
     "merchant_assets": "商户资产",
     "tap_at_any_beamio_softpos_to_pay_seamlessly": "在任意 Beamio SoftPOS 终端贴近即可顺畅付款。",
     "see_all": "查看全部",

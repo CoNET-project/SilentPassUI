@@ -53,7 +53,7 @@ export const CONET_GB1155 = '0x3Dc53e528d45225e8F38c391Cc6a72CDec435748'
 /** ConetGB_total（原 sGB_Dashboard） */
 export const CONET_GB_TOTAL = '0x949ed49faB0e999f685f16e09Cf5EaaF4090F290'
 /** ValidatorDepositRedeem（CoNET 224422）— resolveNodeBundle / resolveUnifiedIncomeStats RPC 直读 */
-export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0x4319A3A3572C6311BA6E7f95B07620eb0861cE2E'
+export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0x02C425537E3E2C7B9F3071DdFc4E0d81DD3B2EFC'
 /** GB net-total token id on ConetGB1155（id=0 累计净 GB，18 decimals） */
 export const CONET_GB_TOTAL_TOKEN_ID = 0
 

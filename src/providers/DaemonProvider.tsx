@@ -73,6 +73,20 @@ import {
 	type ConetWalletBalances,
 } from '@/services/conetUsdcBalance'
 import {
+	fetchValidatorWalletNodeProfile,
+	fetchUnifiedIncomeStats,
+	type ValidatorWalletNodeProfile,
+	type UnifiedIncomeStats,
+} from '@/services/validatorWalletNodeProfile'
+import {
+	peekValidatorWalletNodeProfileCache,
+	seedValidatorWalletNodeProfileCache,
+} from '@/hooks/useValidatorWalletNodeProfile'
+import {
+	peekUnifiedIncomeStatsCache,
+	seedUnifiedIncomeStatsCache,
+} from '@/hooks/useUnifiedIncomeStats'
+import {
 	loadConetWalletBalancesLocalCache,
 	saveConetWalletBalancesLocalCache,
 	EMPTY_CONET_WALLET_BALANCES,
@@ -360,6 +374,10 @@ type DaemonContext = {
 	conetDepinStats: ConetDepinStats
 	/** CoNET L1 钱包 USDC / CNET / GB；本地优先，全局 daemon 每 6s 刷新 */
 	conetWalletBalances: ConetWalletBalances
+	/** 用户 Validator / DePIN 节点档案；本地优先，全局 daemon 每 6s 刷新 */
+	validatorWalletNodeProfile: ValidatorWalletNodeProfile | null
+	/** 用户 CoNET Mining 收益（resolveUnifiedIncomeStats）；本地优先，全局 daemon 每 6s 刷新 */
+	unifiedIncomeStats: UnifiedIncomeStats | null
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -562,6 +580,8 @@ const defaultContextValue: DaemonContext = {
 	conetNetworkStats: CONET_MINING_STATS_SEED.network,
 	conetDepinStats: CONET_MINING_STATS_SEED.depin,
 	conetWalletBalances: EMPTY_CONET_WALLET_BALANCES,
+	validatorWalletNodeProfile: null,
+	unifiedIncomeStats: null,
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -1249,6 +1269,55 @@ export function DaemonProvider({ children }: DaemonProps) {
     saveConetWalletBalancesLocalCache(eoaLower, res.balances)
   }, [])
 
+  const [validatorWalletNodeProfile, setValidatorWalletNodeProfile] =
+    useState<ValidatorWalletNodeProfile | null>(null)
+
+  /** EOA 切换：从 hook 模块缓存恢复用户节点档案；无缓存则等 daemon 回填 */
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    const eoaLower = raw.toLowerCase()
+    if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      setValidatorWalletNodeProfile(null)
+      return
+    }
+    setValidatorWalletNodeProfile(peekValidatorWalletNodeProfileCache(eoaLower))
+  }, [profileWalletKeyId])
+
+  const runValidatorWalletNodeProfileFeedTick = useCallback(async (): Promise<void> => {
+    const eoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    if (!eoa || !ethers.isAddress(eoa)) return
+    const eoaLower = eoa.toLowerCase()
+    const res = await fetchValidatorWalletNodeProfile(eoa).catch(() => ({ ok: false as const }))
+    if (!res.ok) return
+    if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== eoaLower) return
+    setValidatorWalletNodeProfile(res.profile)
+    seedValidatorWalletNodeProfileCache(eoaLower, res.profile)
+  }, [])
+
+  const [unifiedIncomeStats, setUnifiedIncomeStats] = useState<UnifiedIncomeStats | null>(null)
+
+  /** EOA 切换：从模块缓存恢复收益统计；无缓存则等 daemon 回填 */
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    const eoaLower = raw.toLowerCase()
+    if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      setUnifiedIncomeStats(null)
+      return
+    }
+    setUnifiedIncomeStats(peekUnifiedIncomeStatsCache(eoaLower))
+  }, [profileWalletKeyId])
+
+  const runUnifiedIncomeStatsFeedTick = useCallback(async (): Promise<void> => {
+    const eoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    if (!eoa || !ethers.isAddress(eoa)) return
+    const eoaLower = eoa.toLowerCase()
+    const res = await fetchUnifiedIncomeStats(eoa, 0).catch(() => ({ ok: false as const }))
+    if (!res.ok) return
+    if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== eoaLower) return
+    setUnifiedIncomeStats(res.stats)
+    seedUnifiedIncomeStatsCache(eoaLower, res.stats)
+  }, [])
+
   /**
    * CoNET Mining 全网指标（Total staked validators / DePIN nodes）：本地优先 + 6s 全局喂料。
    * 与 CoNetMiningDetailPage 同源（conetNetworkStats / conetDepinStats）。
@@ -1503,8 +1572,17 @@ export function DaemonProvider({ children }: DaemonProps) {
     await Promise.all([
       runConetWalletBalancesFeedTick(),
       runConetMiningStatsFeedTick(),
+      runValidatorWalletNodeProfileFeedTick(),
+      runUnifiedIncomeStatsFeedTick(),
     ])
-  }, [runMyBrandsFeedTick, runNoAaWalletFeedTick, runConetWalletBalancesFeedTick, runConetMiningStatsFeedTick])
+  }, [
+    runMyBrandsFeedTick,
+    runNoAaWalletFeedTick,
+    runConetWalletBalancesFeedTick,
+    runConetMiningStatsFeedTick,
+    runValidatorWalletNodeProfileFeedTick,
+    runUnifiedIncomeStatsFeedTick,
+  ])
 
   const refreshRecentActivityNoAa = useCallback(async () => {
     const cardDetails = await runMyBrandsFeedTick()
@@ -1626,7 +1704,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
-				conetNetworkStats, conetDepinStats, conetWalletBalances,
+				conetNetworkStats, conetDepinStats, conetWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

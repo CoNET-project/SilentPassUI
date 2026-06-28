@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Gift, Utensils, Share2, Filter, Settings2 } from 'lucide-react'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
+import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatWithThousands } from '@/services/beamio'
 import { formatConetChainTokenBalance } from '@/services/conetUsdcBalance'
@@ -126,10 +127,11 @@ function BountyCard({ item }: { item: BountyItem }) {
 export default function BountyBoard() {
 	const navigate = useNavigate()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
-	const { profiles, currencyData, conetNetworkStats, conetDepinStats } = useDaemonContext()
+	const { profiles, currencyData } = useDaemonContext()
 	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
 	const profileCurrency = (profiles?.[0]?.beamio?.currency ?? 'USD') as ICurrency
 	const { balances: conetWalletBalances } = useConetWalletBalances(eoa)
+	const { profile: validatorProfile } = useDaemonValidatorWalletNodeProfile()
 
 	const usdcDisplay = useMemo(() => formatConetUsdcDisplay(conetWalletBalances.usdc), [conetWalletBalances.usdc])
 	const fiatApprox = useMemo(
@@ -149,14 +151,15 @@ export default function BountyBoard() {
 		[conetWalletBalances.usdc]
 	)
 	const totalNodesDisplay = useMemo(() => {
-		const total = conetNetworkStats.stakedValidators + conetDepinStats.depinNodeCount
-		return total.toLocaleString()
-	}, [conetNetworkStats.stakedValidators, conetDepinStats.depinNodeCount])
-	const nodeBreakdownDisplay = useMemo(
-		() =>
-			`${conetNetworkStats.stakedValidatorsFormatted} staked · ${conetDepinStats.depinNodeCountFormatted} DePIN`,
-		[conetNetworkStats.stakedValidatorsFormatted, conetDepinStats.depinNodeCountFormatted]
-	)
+		const staked = validatorProfile?.validatorNodeCount ?? 0
+		const depin = validatorProfile?.gbMiningNodeCount ?? 0
+		return (staked + depin).toLocaleString()
+	}, [validatorProfile?.validatorNodeCount, validatorProfile?.gbMiningNodeCount])
+	const nodeBreakdownDisplay = useMemo(() => {
+		const staked = validatorProfile?.validatorNodeCount ?? 0
+		const depin = validatorProfile?.gbMiningNodeCount ?? 0
+		return `${staked.toLocaleString()} staked · ${depin.toLocaleString()} DePIN`
+	}, [validatorProfile?.validatorNodeCount, validatorProfile?.gbMiningNodeCount])
 
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
 

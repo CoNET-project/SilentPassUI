@@ -220,6 +220,8 @@ export type ValidatorWalletNodeProfile = {
 	wallet: string
 	/** 该钱包累计拥有的 CoNET 验证节点数量 */
 	validatorNodeCount: number
+	/** 尚未 active 的验证节点数量（总数 − 链上 active 绑定数） */
+	validatorPendingCount: number
 	/** 该钱包累计拥有的 GB 挖矿节点数量 */
 	gbMiningNodeCount: number
 	/** 成功兑换次数 */
@@ -402,12 +404,26 @@ async function resolveValidatorReferrerExtensionAddress(): Promise<string | null
 	}
 }
 
+/** 链上 active 绑定数 = validatorActive 中为 true 的条目；pending = 总数 − active。 */
+export function computeValidatorPendingCount(
+	validatorNodeCount: number,
+	validatorActive: boolean[]
+): number {
+	const total = Math.max(0, validatorNodeCount)
+	const active = validatorActive.filter(Boolean).length
+	return Math.max(0, total - active)
+}
+
 /** 将 {resolveNodeBundle} 解析结果转为受益人钱包档案视图。 */
 function bundleToWalletProfile(bundle: BeneficiaryNodeBundle): ValidatorWalletNodeProfile | null {
 	if (!bundle.beneficiary) return null
 	return {
 		wallet: bundle.beneficiary,
 		validatorNodeCount: bundle.validatorNodeCount,
+		validatorPendingCount: computeValidatorPendingCount(
+			bundle.validatorNodeCount,
+			bundle.validatorActive
+		),
 		gbMiningNodeCount: bundle.gbMiningNodeCount,
 		claimCount: bundle.claimCount,
 		conetDepinNodeIps: bundle.conetDepinNodeIps,

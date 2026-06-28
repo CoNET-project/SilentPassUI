@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
 	Server,
@@ -8,26 +8,21 @@ import {
 	Database,
 	TicketPlus,
 	Ticket,
-	Loader2,
-	RefreshCw,
-	Check,
-	AlertTriangle,
+	Clock,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { ValidatorDepositRedeemAdminSheet } from '@/components/BountyBoard/ValidatorDepositRedeemAdminSheet'
 import { ValidatorDepositRedeemClaimSheet } from '@/components/BountyBoard/ValidatorDepositRedeemClaimSheet'
 import { useValidatorDepositRedeemAdmin } from '@/hooks/useValidatorDepositRedeemAdmin'
-import { useValidatorWalletNodeProfile } from '@/hooks/useValidatorWalletNodeProfile'
-import { useUnifiedIncomeStats } from '@/hooks/useUnifiedIncomeStats'
+import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
+import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats'
 import { useDepinNodeCountryLabelsByIp } from '@/hooks/useDepinNodeCountryLabelsByIp'
 import { resolveSessionEoa } from '@/utils/resolveSessionEoa'
 import { syncValidatorDepositRedeemIssuedForAdmin } from '@/utils/syncValidatorDepositRedeemIssuedRecords'
 import type { ValidatorWalletNodeProfile } from '@/services/validatorWalletNodeProfile'
 
 const VALIDATOR_REDEEM_ISSUED_SYNC_MS = 30_000
-
-type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
 
 /**
  * CoNET Mining detail — second-level page opened from the Bounty Board mining panel.
@@ -38,7 +33,7 @@ type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
  * 全局喂料（首屏即有本地缓存/seed 值，永不 `—`、永不 loading），本页只读不拉取。
  * 见 beamio-app-dashboard-daemon-local-first.mdc。
  *
- * 用户个人节点 / 收益：直读 ValidatorDepositRedeem（resolveNodeBundle + resolveUnifiedIncomeStats）。
+ * 用户个人节点 / 收益：DaemonProvider 每 6s 喂料（resolveNodeBundle + resolveUnifiedIncomeStats）。
  */
 
 const cardChrome =
@@ -50,6 +45,27 @@ function formatBalance(raw: string): string {
 	if (n === 0) return '0'
 	if (n >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 4 })
 	return n.toLocaleString(undefined, { maximumFractionDigits: 8 })
+}
+
+function ValidatorNodeCountDisplay({ profile }: { profile: ValidatorWalletNodeProfile }) {
+	const { validatorNodeCount } = profile
+	const validatorPendingCount = profile.validatorPendingCount ?? 0
+	if (validatorPendingCount <= 0) {
+		return <span>{validatorNodeCount}</span>
+	}
+	return (
+		<span className="inline-flex items-center gap-1">
+			<span>{validatorNodeCount}</span>
+			<span className="font-bold text-white/55">/</span>
+			<span
+				className="inline-flex items-center gap-1 text-amber-300"
+				title={`${validatorPendingCount} validator node${validatorPendingCount === 1 ? '' : 's'} pending activation`}
+			>
+				<span>{validatorPendingCount}</span>
+				<Clock className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
+			</span>
+		</span>
+	)
 }
 
 function beneficiaryHasNodes(profile: ValidatorWalletNodeProfile | null): boolean {
@@ -72,10 +88,8 @@ export default function CoNetMiningDetailPage() {
 		useDaemonContext()
 	const eoa = useMemo(() => resolveSessionEoa(profiles), [profiles])
 	const { isRedeemAdmin } = useValidatorDepositRedeemAdmin(eoa)
-	const { profile, loading: profileLoading, stale: profileStale, refresh: refreshProfile } =
-		useValidatorWalletNodeProfile(eoa)
-	const { stats: incomeStats, loading: incomeLoading, stale: incomeStale, refresh: refreshIncome } =
-		useUnifiedIncomeStats(eoa)
+	const { profile } = useDaemonValidatorWalletNodeProfile()
+	const { stats: incomeStats } = useDaemonUnifiedIncomeStats()
 	const nodeIncomeIps = useMemo(
 		() => (incomeStats?.nodes ?? []).map((row) => row.depinNodeIp).filter(Boolean),
 		[incomeStats?.nodes]
@@ -84,27 +98,9 @@ export default function CoNetMiningDetailPage() {
 
 	const [redeemSheetOpen, setRedeemSheetOpen] = useState(false)
 	const [claimSheetOpen, setClaimSheetOpen] = useState(false)
-	const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle')
 
 	const showRedeemAdminManageButton = isRedeemAdmin === true
 	const hasNodes = beneficiaryHasNodes(profile)
-	const personalStale = profileStale || incomeStale
-	const showPersonalLoading = Boolean(eoa && profileLoading && !profile)
-
-	const handlePersonalRefresh = useCallback(async () => {
-		if (refreshStatus !== 'idle' || !eoa) return
-		setRefreshStatus('loading')
-		try {
-			refreshProfile()
-			refreshIncome()
-			await new Promise((r) => window.setTimeout(r, 600))
-			setRefreshStatus('success')
-		} catch {
-			setRefreshStatus('error')
-		} finally {
-			window.setTimeout(() => setRefreshStatus('idle'), 3000)
-		}
-	}, [eoa, refreshProfile, refreshIncome, refreshStatus])
 
 	useEffect(() => {
 		setShowFooter(false)
@@ -167,26 +163,6 @@ export default function CoNetMiningDetailPage() {
 									title="Create / manage redeem codes"
 								>
 									<TicketPlus className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
-								</button>
-							) : null}
-							{hasNodes ? (
-								<button
-									type="button"
-									onClick={() => void handlePersonalRefresh()}
-									disabled={refreshStatus !== 'idle'}
-									className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/40 bg-white/20 text-white/90 backdrop-blur-md shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-70"
-									aria-label="Refresh your mining stats"
-									title="Refresh your mining stats"
-								>
-									{refreshStatus === 'loading' ? (
-										<Loader2 className="h-[17px] w-[17px] animate-spin" aria-hidden />
-									) : refreshStatus === 'success' ? (
-										<Check className="h-[17px] w-[17px] text-emerald-300" aria-hidden />
-									) : refreshStatus === 'error' ? (
-										<AlertTriangle className="h-[17px] w-[17px] text-amber-300" aria-hidden />
-									) : (
-										<RefreshCw className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
-									)}
 								</button>
 							) : null}
 						</div>
@@ -279,7 +255,7 @@ export default function CoNetMiningDetailPage() {
 										<div>
 											<p className="text-[11px] text-white/55">Validator nodes</p>
 											<p className="mt-0.5 text-xl font-extrabold leading-none tabular-nums">
-												{profile.validatorNodeCount}
+												<ValidatorNodeCountDisplay profile={profile} />
 											</p>
 										</div>
 										<div>
@@ -292,29 +268,10 @@ export default function CoNetMiningDetailPage() {
 								</div>
 							) : null}
 						</div>
-					) : hasNodes && incomeLoading ? (
-						<div className="mt-6 flex items-center gap-2 text-sm text-white/70">
-							<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-							Loading your mining rewards…
-						</div>
 					) : null}
 				</div>
 
 				<main className="mx-auto w-full max-w-2xl space-y-5 px-6 pt-5 pb-10">
-					{showPersonalLoading ? (
-						<div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
-							<Loader2 className="h-5 w-5 animate-spin text-[#1562f0]" aria-hidden />
-							Loading your validator profile…
-						</div>
-					) : null}
-
-					{personalStale && hasNodes ? (
-						<div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
-							<AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-							<span>Showing the last known data — couldn&apos;t refresh from CoNET just now.</span>
-						</div>
-					) : null}
-
 					{eoa ? (
 						<section className={`${cardChrome} p-5`}>
 							<div className="flex items-start gap-3">
@@ -341,7 +298,7 @@ export default function CoNetMiningDetailPage() {
 						</section>
 					) : null}
 
-					{eoa && !showPersonalLoading && !hasNodes ? (
+					{eoa && !hasNodes ? (
 						<section className={`${cardChrome} p-5`}>
 							<p className="text-sm text-slate-500 dark:text-slate-400">
 								No ValidatorDepositRedeem nodes are linked to this wallet yet. Redeem a code to claim validator and

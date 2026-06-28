@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
-import { useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
-import { formatConetChainTokenBalance } from '@/services/conetUsdcBalance'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
 import { IpfsImg } from '@/components/IpfsImg';
@@ -1708,17 +1706,6 @@ const Home = (_props: HomeProps) => {
 		return cadPartsFromNumber(pointsCad)
 	}, [myBrandCardDetails, currencyData])
 
-	const homeEoa = profiles?.[0]?.keyID
-	const { balances: homeConetWalletBalances } = useConetWalletBalances(homeEoa)
-	const homeCnetDisplay = useMemo(
-		() => formatConetChainTokenBalance(homeConetWalletBalances.cnet),
-		[homeConetWalletBalances.cnet]
-	)
-	const homeGbDisplay = useMemo(
-		() => formatConetChainTokenBalance(homeConetWalletBalances.gb),
-		[homeConetWalletBalances.gb]
-	)
-
 	const merchantGiftCardOptions = useMemo((): MerchantGiftCardOption[] => {
 		const out: MerchantGiftCardOption[] = []
 		for (const uc of myBrandCards) {
@@ -1942,22 +1929,6 @@ const Home = (_props: HomeProps) => {
 														</p>
 														<p className="text-lg font-bold tabular-nums">
 															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
-														</p>
-													</div>
-													<div className="space-y-1 text-left">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-															{tu('cnet_balance')}
-														</p>
-														<p className="text-lg font-bold tabular-nums">
-															{homeCnetDisplay} CNET
-														</p>
-													</div>
-													<div className="space-y-1 text-right">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-															{tu('gb_balance')}
-														</p>
-														<p className="text-lg font-bold tabular-nums">
-															{homeGbDisplay} GB
 														</p>
 													</div>
 												</div>

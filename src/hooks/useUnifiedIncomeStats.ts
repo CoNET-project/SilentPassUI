@@ -46,6 +46,17 @@ export function invalidateUnifiedIncomeStatsCache(walletLower?: string): void {
 	inflight.clear()
 }
 
+/** Daemon / EOA 切换：读取模块内可信缓存（不发起 RPC）。 */
+export function peekUnifiedIncomeStatsCache(walletLower: string): UnifiedIncomeStats | null {
+	const hit = incomeCache.get(walletLower.trim().toLowerCase())
+	return hit?.stats ?? null
+}
+
+/** Daemon 喂料成功后写入模块缓存。 */
+export function seedUnifiedIncomeStatsCache(walletLower: string, stats: UnifiedIncomeStats): void {
+	incomeCache.set(walletLower.trim().toLowerCase(), { stats, fetchedAt: Date.now() })
+}
+
 export type UseUnifiedIncomeStatsState = {
 	stats: UnifiedIncomeStats | null
 	loading: boolean

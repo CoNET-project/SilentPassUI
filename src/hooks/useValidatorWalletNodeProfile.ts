@@ -46,6 +46,22 @@ export function invalidateValidatorWalletNodeProfileCache(walletLower?: string):
 	inflight.clear()
 }
 
+/** Daemon / EOA 切换：读取模块内可信缓存（不发起 RPC）。 */
+export function peekValidatorWalletNodeProfileCache(
+	walletLower: string
+): ValidatorWalletNodeProfile | null {
+	const hit = profileCache.get(walletLower.trim().toLowerCase())
+	return hit?.profile ?? null
+}
+
+/** Daemon 喂料成功后写入模块缓存，供 hook 与详情页 refresh 共用。 */
+export function seedValidatorWalletNodeProfileCache(
+	walletLower: string,
+	profile: ValidatorWalletNodeProfile
+): void {
+	profileCache.set(walletLower.trim().toLowerCase(), { profile, fetchedAt: Date.now() })
+}
+
 export type UseValidatorWalletNodeProfileState = {
 	/** 可信链上档案；null = 尚未成功拉取且无缓存 */
 	profile: ValidatorWalletNodeProfile | null

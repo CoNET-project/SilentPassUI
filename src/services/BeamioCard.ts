@@ -4332,13 +4332,16 @@ export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<se
 const VALIDATOR_DEPOSIT_REDEEM_ABI = [
 	'function redeemAdmins(address account) view returns (bool)',
 	'function redeemAdminNonces(address account) view returns (uint256)',
-	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, uint256 validatorCount, string targetNodeIp, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
+	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, address referrer, uint256 validatorCount, string targetNodeIp, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
 ] as const
 
 export type ValidatorDepositRedeemOnChainStatus = {
 	valid: boolean
+	/** Trusted RPC success and validatorCount > 0 on-chain. */
+	exists: boolean
 	codeHash: string
 	allowedClaimer: string
+	referrer: string
 	validatorCount: string
 	targetNodeIp: string
 	gbMiningNodeCount: string
@@ -4368,13 +4371,18 @@ export async function queryValidatorDepositRedeemAdminOnChain(eoa: string): Prom
 	}
 }
 
-export async function queryValidatorDepositRedeemOnChain(code: string): Promise<ValidatorDepositRedeemOnChainStatus> {
+export async function queryValidatorDepositRedeemOnChain(
+	code: string,
+	contractAddress: string = CONET_VALIDATOR_DEPOSIT_REDEEM,
+): Promise<ValidatorDepositRedeemOnChainStatus> {
 	const b = ethers.toUtf8Bytes(code || '')
 	if (!code || b.length === 0 || b.length > 512) {
 		return {
 			valid: false,
+			exists: false,
 			codeHash: '0x',
 			allowedClaimer: ethers.ZeroAddress,
+			referrer: ethers.ZeroAddress,
 			validatorCount: '0',
 			targetNodeIp: '',
 			gbMiningNodeCount: '0',
@@ -4386,21 +4394,42 @@ export async function queryValidatorDepositRedeemOnChain(code: string): Promise<
 		}
 	}
 	const codeHash = validatorDepositRedeemCodeHash(code)
-	const c = new ethers.Contract(CONET_VALIDATOR_DEPOSIT_REDEEM, VALIDATOR_DEPOSIT_REDEEM_ABI, conetDepinProvider)
+	if (!contractAddress || !ethers.isAddress(contractAddress)) {
+		return {
+			valid: false,
+			exists: false,
+			codeHash,
+			allowedClaimer: ethers.ZeroAddress,
+			referrer: ethers.ZeroAddress,
+			validatorCount: '0',
+			targetNodeIp: '',
+			gbMiningNodeCount: '0',
+			validAfter: 0,
+			validBefore: 0,
+			active: false,
+			consumed: false,
+			error: 'ValidatorDepositRedeem address not configured',
+		}
+	}
+	const c = new ethers.Contract(contractAddress, VALIDATOR_DEPOSIT_REDEEM_ABI, conetDepinProvider)
 	try {
 		const r = await c.getRedeem!(codeHash)
 		const allowedClaimer = ethers.getAddress(r[0])
-		const validatorCount = (r[1] as bigint).toString()
-		const targetNodeIp = String(r[2] ?? '')
-		const gbMiningNodeCount = (r[3] as bigint).toString()
-		const validAfter = Number(r[4] ?? 0)
-		const validBefore = Number(r[5] ?? 0)
-		const active = Boolean(r[6])
-		const consumed = Boolean(r[7])
+		const referrer = ethers.getAddress(r[1])
+		const validatorCount = (r[2] as bigint).toString()
+		const targetNodeIp = String(r[3] ?? '')
+		const gbMiningNodeCount = (r[4] as bigint).toString()
+		const validAfter = Number(r[5] ?? 0)
+		const validBefore = Number(r[6] ?? 0)
+		const active = Boolean(r[7])
+		const consumed = Boolean(r[8])
+		const exists = BigInt(validatorCount) > 0n
 		return {
 			valid: true,
+			exists,
 			codeHash,
 			allowedClaimer,
+			referrer,
 			validatorCount,
 			targetNodeIp,
 			gbMiningNodeCount,
@@ -4413,8 +4442,10 @@ export async function queryValidatorDepositRedeemOnChain(code: string): Promise<
 		const err = e as { shortMessage?: string; message?: string }
 		return {
 			valid: false,
+			exists: false,
 			codeHash,
 			allowedClaimer: ethers.ZeroAddress,
+			referrer: ethers.ZeroAddress,
 			validatorCount: '0',
 			targetNodeIp: '',
 			gbMiningNodeCount: '0',
@@ -4424,6 +4455,50 @@ export async function queryValidatorDepositRedeemOnChain(code: string): Promise<
 			consumed: false,
 			error: err?.shortMessage ?? err?.message ?? 'getRedeem failed',
 		}
+	}
+}
+
+/** Previous broken deployment — included so failed creates there are pruned locally. */
+export const LEGACY_VALIDATOR_DEPOSIT_REDEEM = '0x970792658C09A96E27Fc4D8B69fF9989C2AcB50E'
+
+export const DEPRECATED_VALIDATOR_DEPOSIT_REDEEM_ADDRESSES = [
+	'0x970792658C09A96E27Fc4D8B69fF9989C2AcB50E',
+	'0x02C425537E3E2C7B9F3071DdFc4E0d81DD3B2EFC',
+] as const
+
+export async function queryValidatorDepositRedeemExistsOnAnyContract(code: string): Promise<{
+	ok: boolean
+	exists: boolean
+}> {
+	const contracts = new Set<string>()
+	if (CONET_VALIDATOR_DEPOSIT_REDEEM && ethers.isAddress(CONET_VALIDATOR_DEPOSIT_REDEEM)) {
+		contracts.add(ethers.getAddress(CONET_VALIDATOR_DEPOSIT_REDEEM))
+	}
+	for (const raw of DEPRECATED_VALIDATOR_DEPOSIT_REDEEM_ADDRESSES) {
+		if (ethers.isAddress(raw)) contracts.add(ethers.getAddress(raw))
+	}
+	let anyOk = false
+	let anyExists = false
+	for (const addr of contracts) {
+		const chain = await queryValidatorDepositRedeemOnChain(code, addr)
+		if (chain.valid) {
+			anyOk = true
+			if (chain.exists) anyExists = true
+		}
+	}
+	return { ok: anyOk, exists: anyExists }
+}
+
+export async function readValidatorDepositRedeemCreateTxReceipt(
+	txHash: string | undefined,
+): Promise<{ ok: true; status: 'pending' | 'success' | 'reverted' } | { ok: false }> {
+	if (!txHash || !ethers.isHexString(txHash, 32)) return { ok: false }
+	try {
+		const receipt = await conetDepinProvider.getTransactionReceipt(txHash)
+		if (!receipt) return { ok: true, status: 'pending' }
+		return { ok: true, status: receipt.status === 1 ? 'success' : 'reverted' }
+	} catch {
+		return { ok: false }
 	}
 }
 
@@ -4463,6 +4538,7 @@ export const validatorDepositRedeemCreateTypedDataTypes: Record<string, { name: 
 		{ name: 'admin', type: 'address' },
 		{ name: 'codeHash', type: 'bytes32' },
 		{ name: 'allowedClaimer', type: 'address' },
+		{ name: 'referrer', type: 'address' },
 		{ name: 'validatorCount', type: 'uint256' },
 		{ name: 'targetNodeIp', type: 'string' },
 		{ name: 'gbMiningNodeCount', type: 'uint256' },
@@ -4488,6 +4564,7 @@ export async function signValidatorDepositRedeemCreate(
 		admin: string
 		codeHash: string
 		allowedClaimer: string
+		referrer: string
 		validatorCount: bigint
 		targetNodeIp: string
 		gbMiningNodeCount: bigint
@@ -4503,6 +4580,7 @@ export async function signValidatorDepositRedeemCreate(
 		admin: ethers.getAddress(args.admin),
 		codeHash: args.codeHash,
 		allowedClaimer: ethers.getAddress(args.allowedClaimer),
+		referrer: ethers.getAddress(args.referrer),
 		validatorCount: args.validatorCount,
 		targetNodeIp: args.targetNodeIp.trim().toLowerCase(),
 		gbMiningNodeCount: args.gbMiningNodeCount,
@@ -4533,6 +4611,7 @@ export async function postValidatorDepositRedeemAdminCreate(body: {
 	admin: string
 	codeHash: string
 	allowedClaimer: string
+	referrer: string
 	validatorCount: string
 	targetNodeIp: string
 	gbMiningNodeCount: string

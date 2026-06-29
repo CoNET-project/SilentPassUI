@@ -841,8 +841,9 @@ export type NodeIncomeRow = {
 /**
  * CNET airdrop（vesting）账本：airdrop-flagged redeem claim 累计的 CNET 授予额，
  * 来源 ValidatorDepositRedeem.airdropInfoOf(beneficiary)。
- * - accrued：累计授予；claimed：已领取；claimable：剩余（accrued − claimed，受 claimableAt 时间闸门）。
- * UI「Vesting」展示为剩余额（claimable）。
+ * - accrued：累计授予；claimed：已领取；claimable：当前可领取额（vested − claimed）。
+ * - 6 个月线性解锁：从链上 claimableAt 起 180 天内按比例 vest，满 180 天解锁全部 accrued；claimable 即当前已解锁未领取额。
+ * UI「Vesting」展示为当前可领取额（claimable）。
  */
 export type AirdropInfo = {
 	accruedRaw: string

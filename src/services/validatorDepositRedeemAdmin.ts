@@ -403,10 +403,34 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 	| { success: true; txHash?: string; codeHash: string }
 	| { success: false; error: string }
 > {
-	const admin = ethers.getAddress(params.adminEoa.trim())
 	const armor = params.privateKeyArmor?.trim() || resolveSigningPrivateKeyArmor()
 	if (!armor) {
 		return { success: false, error: 'Wallet signing key unavailable. Unlock your wallet and try again.' }
+	}
+	let wallet: ethers.Wallet
+	try {
+		wallet = new ethers.Wallet(armor, conetDepinProvider)
+	} catch {
+		return { success: false, error: 'Wallet signing key unavailable. Unlock your wallet and try again.' }
+	}
+	// EIP-712 admin must be the signing EOA (not a stale profile keyID).
+	const admin = wallet.address
+	if (params.adminEoa?.trim() && ethers.isAddress(params.adminEoa)) {
+		const hinted = ethers.getAddress(params.adminEoa.trim())
+		if (hinted.toLowerCase() !== admin.toLowerCase()) {
+			return {
+				success: false,
+				error:
+					'Wallet address does not match your session profile. Lock and unlock your wallet, or restore with the redeem-admin account.',
+			}
+		}
+	}
+	const adminProbe = await probeValidatorDepositRedeemAdmin(admin)
+	if (!adminProbe.ok) {
+		return { success: false, error: adminProbe.error }
+	}
+	if (!adminProbe.isRedeemAdmin) {
+		return { success: false, error: 'Redeem admin role is required to create codes.' }
 	}
 	if (!Number.isFinite(params.validatorCount) || params.validatorCount <= 0) {
 		return { success: false, error: 'Validator count must be a positive integer.' }
@@ -453,7 +477,6 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 
 	let signature: string
 	try {
-		const wallet = new ethers.Wallet(armor, conetDepinProvider)
 		signature = await wallet.signTypedData(domain, VALIDATOR_DEPOSIT_REDEEM_CREATE_TYPED_DATA_TYPES, message)
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }
@@ -487,10 +510,33 @@ export async function signAndSubmitValidatorDepositRedeemCancel(params: {
 	codeHash: string
 	privateKeyArmor?: string
 }): Promise<{ success: true; txHash?: string } | { success: false; error: string }> {
-	const admin = ethers.getAddress(params.adminEoa.trim())
 	const armor = params.privateKeyArmor?.trim() || resolveSigningPrivateKeyArmor()
 	if (!armor) {
 		return { success: false, error: 'Wallet signing key unavailable. Unlock your wallet and try again.' }
+	}
+	let wallet: ethers.Wallet
+	try {
+		wallet = new ethers.Wallet(armor, conetDepinProvider)
+	} catch {
+		return { success: false, error: 'Wallet signing key unavailable. Unlock your wallet and try again.' }
+	}
+	const admin = wallet.address
+	if (params.adminEoa?.trim() && ethers.isAddress(params.adminEoa)) {
+		const hinted = ethers.getAddress(params.adminEoa.trim())
+		if (hinted.toLowerCase() !== admin.toLowerCase()) {
+			return {
+				success: false,
+				error:
+					'Wallet address does not match your session profile. Lock and unlock your wallet, or restore with the redeem-admin account.',
+			}
+		}
+	}
+	const adminProbe = await probeValidatorDepositRedeemAdmin(admin)
+	if (!adminProbe.ok) {
+		return { success: false, error: adminProbe.error }
+	}
+	if (!adminProbe.isRedeemAdmin) {
+		return { success: false, error: 'Redeem admin role is required to cancel codes.' }
 	}
 
 	const nonceRes = await readValidatorDepositRedeemAdminNonceOnChain(admin)
@@ -510,7 +556,6 @@ export async function signAndSubmitValidatorDepositRedeemCancel(params: {
 
 	let signature: string
 	try {
-		const wallet = new ethers.Wallet(armor, conetDepinProvider)
 		signature = await wallet.signTypedData(domain, VALIDATOR_DEPOSIT_REDEEM_CANCEL_TYPED_DATA_TYPES, message)
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }

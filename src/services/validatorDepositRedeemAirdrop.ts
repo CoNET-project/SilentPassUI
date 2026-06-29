@@ -29,6 +29,17 @@ const BENEFICIARY_NONCES_ABI = [
 	'function beneficiaryNonces(address account) view returns (uint256)',
 ] as const
 
+const CLAIM_AIRDROP_FOR_ABI = [
+	'function claimAirdropFor(address beneficiary, uint256 amount, uint256 nonce, uint256 deadline, bytes signature) external',
+] as const
+
+/**
+ * Linear vesting window for the CNET airdrop. Mirrors the on-chain (internal) constant
+ * {ValidatorDepositRedeem.AIRDROP_VESTING_DURATION} = 180 days. Accrued CNET unlocks linearly from the on-chain
+ * {airdropClaimableAt} start over this duration; clients render the schedule against that on-chain start.
+ */
+export const VALIDATOR_DEPOSIT_REDEEM_AIRDROP_VESTING_DURATION_SECONDS = 180 * 24 * 60 * 60
+
 export type ValidatorDepositRedeemAirdropInfo = {
 	ok: true
 	/** Cumulative CNET entitlement accrued (wei, 18 decimals). */
@@ -168,5 +179,83 @@ export async function signAndSubmitValidatorDepositRedeemClaimAirdrop(params: {
 	} catch (e: unknown) {
 		const err = e as { message?: string }
 		return { success: false, error: err?.message ?? tu('network_error') }
+	}
+}
+
+/**
+ * User-paid-gas airdrop release. The beneficiary signs EIP-712 {ClaimAirdrop} and submits {claimAirdropFor}
+ * directly from their own CoNET wallet (no relay — gas is paid by the user). The on-chain contract only pays the
+ * currently vested-and-unclaimed (linear over {VALIDATOR_DEPOSIT_REDEEM_AIRDROP_VESTING_DURATION_SECONDS}) portion.
+ * When `amount` is omitted the full currently releasable balance is claimed.
+ */
+export async function releaseValidatorDepositRedeemAirdropSelf(params: {
+	beneficiaryEoa: string
+	/** Optional explicit amount in wei; defaults to the full currently releasable balance. */
+	amount?: bigint
+	privateKeyArmor?: string
+	contractAddress?: string
+}): Promise<{ success: true; txHash: string; amount: bigint } | { success: false; error: string }> {
+	if (!params.beneficiaryEoa || !ethers.isAddress(params.beneficiaryEoa)) {
+		return { success: false, error: 'Wallet EOA unavailable.' }
+	}
+	const beneficiary = ethers.getAddress(params.beneficiaryEoa.trim())
+	const contract = params.contractAddress?.trim() || CONET_VALIDATOR_DEPOSIT_REDEEM
+	if (!ethers.isAddress(contract)) {
+		return { success: false, error: 'ValidatorDepositRedeem address not configured' }
+	}
+
+	const armor = params.privateKeyArmor?.trim() || resolveSigningPrivateKeyArmor()
+	if (!armor) {
+		return { success: false, error: 'Unlock your wallet to release the airdrop.' }
+	}
+
+	const info = await readValidatorDepositRedeemAirdropInfo(beneficiary, contract)
+	if (!info.ok) return { success: false, error: info.error }
+	if (info.claimableAt === 0n) {
+		return { success: false, error: 'Airdrop vesting has not started yet.' }
+	}
+	if (BigInt(Math.floor(Date.now() / 1000)) < info.claimableAt) {
+		return { success: false, error: 'Airdrop vesting has not started yet.' }
+	}
+	const amount = params.amount ?? info.claimable
+	if (amount <= 0n) {
+		return { success: false, error: 'No unlocked CNET to release yet.' }
+	}
+	if (amount > info.claimable) {
+		return { success: false, error: 'Amount exceeds unlocked CNET.' }
+	}
+
+	const nonceRes = await readBeneficiaryNonce(beneficiary, contract)
+	if (!nonceRes.ok) return { success: false, error: nonceRes.error }
+
+	const nonce = nonceRes.nonce
+	const deadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60)
+	const message = { beneficiary, amount, nonce, deadline }
+
+	let wallet: ethers.Wallet
+	let signature: string
+	try {
+		wallet = new ethers.Wallet(armor, conetDepinProvider)
+		signature = await wallet.signTypedData(
+			validatorDepositRedeemEip712Domain(),
+			VALIDATOR_DEPOSIT_REDEEM_CLAIM_AIRDROP_TYPED_DATA_TYPES,
+			message,
+		)
+	} catch (e: unknown) {
+		const err = e as { shortMessage?: string; message?: string }
+		return { success: false, error: err?.shortMessage ?? err?.message ?? 'Signing failed' }
+	}
+
+	try {
+		const c = new ethers.Contract(contract, CLAIM_AIRDROP_FOR_ABI, wallet)
+		const tx = await c.claimAirdropFor!(beneficiary, amount, nonce, deadline, signature)
+		const receipt = await tx.wait()
+		if (!receipt || receipt.status !== 1) {
+			return { success: false, error: 'Release transaction failed.' }
+		}
+		return { success: true, txHash: tx.hash as string, amount }
+	} catch (e: unknown) {
+		const err = e as { shortMessage?: string; message?: string }
+		return { success: false, error: err?.shortMessage ?? err?.message ?? 'Release failed' }
 	}
 }

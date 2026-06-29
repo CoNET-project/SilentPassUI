@@ -4,6 +4,7 @@ import { X, Copy, Check, Loader2, AlertTriangle, Ban, TicketPlus, Gift } from 'l
 import { Toast } from 'antd-mobile'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
+import { CoNET_Data } from '@/utils/globals'
 import {
 	generateValidatorDepositRedeemSecretCode,
 	isValidTargetNodeIp,
@@ -173,7 +174,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 			referrer = ethers.getAddress(referrerInput.trim())
 		}
 
-		const armor = resolveSigningPrivateKeyArmor(profiles?.[0])
+		const armor = resolveSigningPrivateKeyArmor(profiles?.[0] ?? CoNET_Data?.profiles?.[0])
 		if (!armor) {
 			setFormError('Unlock your wallet to sign the redeem authorization.')
 			return
@@ -279,7 +280,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 			})
 			if (display !== 'pending') return
 
-			const armor = resolveSigningPrivateKeyArmor(profiles?.[0])
+			const armor = resolveSigningPrivateKeyArmor(profiles?.[0] ?? CoNET_Data?.profiles?.[0])
 			if (!armor) {
 				Toast.show({ content: 'Unlock wallet to cancel', position: 'top' })
 				return

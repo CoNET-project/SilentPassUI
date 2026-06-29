@@ -18,6 +18,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { ValidatorDepositRedeemAdminSheet } from '@/components/BountyBoard/ValidatorDepositRedeemAdminSheet'
 import { ValidatorDepositRedeemClaimSheet } from '@/components/BountyBoard/ValidatorDepositRedeemClaimSheet'
+import { GenesisLoyaltyVestingSheet } from '@/components/BountyBoard/GenesisLoyaltyVestingSheet'
 import { useValidatorDepositRedeemAdmin } from '@/hooks/useValidatorDepositRedeemAdmin'
 import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
 import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats'
@@ -132,6 +133,7 @@ export default function CoNetMiningDetailPage() {
 
 	const [redeemSheetOpen, setRedeemSheetOpen] = useState(false)
 	const [claimSheetOpen, setClaimSheetOpen] = useState(false)
+	const [vestingSheetOpen, setVestingSheetOpen] = useState(false)
 
 	// Inline "Activate Your Node" redeem flow (replaces the old Redeem code button).
 	const [inlineCode, setInlineCode] = useState('')
@@ -323,10 +325,15 @@ export default function CoNetMiningDetailPage() {
 										<span className="text-sm font-bold text-white/80">CNET</span>
 									</p>
 									{incomeStats.airdrop && Number(incomeStats.airdrop.claimable) > 0 ? (
-										<p className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium tabular-nums text-white/60 underline decoration-white/30 underline-offset-2">
+										<button
+											type="button"
+											onClick={() => setVestingSheetOpen(true)}
+											className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium tabular-nums text-white/60 underline decoration-white/30 underline-offset-2 transition hover:text-white/90"
+											aria-label="View Genesis Loyalty Reward vesting details"
+										>
 											<Lock className="h-3 w-3 shrink-0" strokeWidth={2.25} aria-hidden />
 											{formatVestingCnet(incomeStats.airdrop.claimable)} CNET (Vesting)
-										</p>
+										</button>
 									) : null}
 								</div>
 								<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
@@ -620,6 +627,13 @@ export default function CoNetMiningDetailPage() {
 					/>
 				</>
 			) : null}
+
+			<GenesisLoyaltyVestingSheet
+				open={vestingSheetOpen}
+				onClose={() => setVestingSheetOpen(false)}
+				airdrop={incomeStats?.airdrop ?? null}
+				eoa={eoa}
+			/>
 		</div>
 	)
 }

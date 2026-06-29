@@ -77,6 +77,7 @@ import {
 	fetchUnifiedIncomeStats,
 	type ValidatorWalletNodeProfile,
 	type UnifiedIncomeStats,
+	type ReferrerDashboardSummary,
 } from '@/services/validatorWalletNodeProfile'
 import {
 	peekValidatorWalletNodeProfileCache,
@@ -86,6 +87,11 @@ import {
 	peekUnifiedIncomeStatsCache,
 	seedUnifiedIncomeStatsCache,
 } from '@/hooks/useUnifiedIncomeStats'
+import {
+	peekReferrerSummaryCache,
+	seedReferrerSummaryCache,
+	fetchReferrerSummaryForDaemon,
+} from '@/hooks/useReferrerSummary'
 import {
 	loadConetWalletBalancesLocalCache,
 	saveConetWalletBalancesLocalCache,
@@ -378,6 +384,8 @@ type DaemonContext = {
 	validatorWalletNodeProfile: ValidatorWalletNodeProfile | null
 	/** 用户 CoNET Mining 收益（resolveUnifiedIncomeStats）；本地优先，全局 daemon 每 6s 刷新 */
 	unifiedIncomeStats: UnifiedIncomeStats | null
+	/** 用户 Genesis Node 推荐进度（ValidatorDepositRedeem referrer extension）；本地优先，daemon 每 6s 刷新 */
+	referrerSummary: ReferrerDashboardSummary | null
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -582,6 +590,7 @@ const defaultContextValue: DaemonContext = {
 	conetWalletBalances: EMPTY_CONET_WALLET_BALANCES,
 	validatorWalletNodeProfile: null,
 	unifiedIncomeStats: null,
+	referrerSummary: null,
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -1318,6 +1327,30 @@ export function DaemonProvider({ children }: DaemonProps) {
     seedUnifiedIncomeStatsCache(eoaLower, res.stats)
   }, [])
 
+  const [referrerSummary, setReferrerSummary] = useState<ReferrerDashboardSummary | null>(null)
+
+  /** EOA 切换：从模块缓存恢复推荐进度；无缓存则等 daemon 回填 */
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    const eoaLower = raw.toLowerCase()
+    if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      setReferrerSummary(null)
+      return
+    }
+    setReferrerSummary(peekReferrerSummaryCache(eoaLower))
+  }, [profileWalletKeyId])
+
+  const runReferrerSummaryFeedTick = useCallback(async (): Promise<void> => {
+    const eoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    if (!eoa || !ethers.isAddress(eoa)) return
+    const eoaLower = eoa.toLowerCase()
+    const summary = await fetchReferrerSummaryForDaemon(eoaLower)
+    if (!summary) return
+    if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== eoaLower) return
+    setReferrerSummary(summary)
+    seedReferrerSummaryCache(eoaLower, summary)
+  }, [])
+
   /**
    * CoNET Mining 全网指标（Total staked validators / DePIN nodes）：本地优先 + 6s 全局喂料。
    * 与 CoNetMiningDetailPage 同源（conetNetworkStats / conetDepinStats）。
@@ -1574,6 +1607,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       runConetMiningStatsFeedTick(),
       runValidatorWalletNodeProfileFeedTick(),
       runUnifiedIncomeStatsFeedTick(),
+      runReferrerSummaryFeedTick(),
     ])
   }, [
     runMyBrandsFeedTick,
@@ -1582,6 +1616,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     runConetMiningStatsFeedTick,
     runValidatorWalletNodeProfileFeedTick,
     runUnifiedIncomeStatsFeedTick,
+    runReferrerSummaryFeedTick,
   ])
 
   const refreshRecentActivityNoAa = useCallback(async () => {
@@ -1704,7 +1739,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
-				conetNetworkStats, conetDepinStats, conetWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats,
+				conetNetworkStats, conetDepinStats, conetWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

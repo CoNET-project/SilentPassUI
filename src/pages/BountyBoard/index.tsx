@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Gift, Utensils, Share2, Filter, Settings2 } from 'lucide-react'
+import { Gift, Utensils, Share2, Filter, Settings2, Info, UserPlus } from 'lucide-react'
+import { useDaemonReferrerSummary } from '@/hooks/useDaemonReferrerSummary'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
 import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
@@ -84,6 +85,66 @@ const SAMPLE_BOUNTIES: BountyItem[] = [
 	},
 ]
 
+function GenesisNodeReferralCard() {
+	const { summary } = useDaemonReferrerSummary()
+	const perReward = Math.max(1, Number(summary?.nodesPerReward ?? '10') || 10)
+	const referredTotal = Math.max(0, Number(summary?.referralNodeTotal ?? '0') || 0)
+	// 当前里程碑内进度（每满 perReward 个推荐节点奖励 1 个 FREE Node）
+	const progress = referredTotal % perReward
+	const remaining = perReward - progress
+
+	return (
+		<div className={`${cardChrome} relative overflow-hidden border-l-4 border-l-amber-400 p-4`}>
+			<div className="flex items-start justify-between gap-2">
+				<h3 className="text-base font-bold text-slate-900 dark:text-slate-50">Genesis Node Referral</h3>
+				<span className="shrink-0 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">
+					[ 10% USDC Direct Reward ]
+				</span>
+			</div>
+
+			<p className="mt-2 text-sm leading-snug text-slate-600 dark:text-slate-300">
+				Refer <span className="font-bold text-amber-600 dark:text-amber-400">{remaining}</span> more to get 1 FREE Node.
+			</p>
+
+			<div className="mt-4">
+				<div className="flex items-center justify-between gap-2">
+					<span className="text-xs font-bold text-slate-500 dark:text-slate-400">Progress</span>
+					<span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+						{progress}/{perReward} Nodes Referred
+					</span>
+				</div>
+				<div className="mt-2 flex items-center gap-1.5">
+					{Array.from({ length: perReward }).map((_, i) => (
+						<div
+							key={i}
+							className={`h-1.5 flex-1 rounded-full ${
+								i < progress ? 'bg-amber-400' : 'bg-slate-200 dark:bg-slate-700'
+							}`}
+						/>
+					))}
+				</div>
+			</div>
+
+			<div className="mt-4 grid grid-cols-2 gap-3">
+				<button
+					type="button"
+					className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700 transition active:scale-[0.98] dark:bg-slate-800 dark:text-slate-200"
+				>
+					<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+					Details
+				</button>
+				<button
+					type="button"
+					className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700 transition active:scale-[0.98] dark:bg-slate-800 dark:text-slate-200"
+				>
+					<UserPlus className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+					Invite Friends
+				</button>
+			</div>
+		</div>
+	)
+}
+
 function BountyCard({ item }: { item: BountyItem }) {
 	return (
 		<div className={`${cardChrome} p-4`}>
@@ -93,25 +154,31 @@ function BountyCard({ item }: { item: BountyItem }) {
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="flex items-start justify-between gap-2">
-						<h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">{item.name}</h3>
+						<h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">
+							{item.name} <span className="font-bold">[ Beamio Partner ]</span>
+						</h3>
 						<span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
 							Pool: ${item.poolLeftUsd} left
 						</span>
 					</div>
-					<p className="mt-1 text-sm leading-snug text-slate-500 dark:text-slate-400">
-						Share with friends. Get <span className="font-semibold text-[#1562f0]">${item.claimRewardUsd}</span> when
-						they claim, plus <span className="font-semibold text-[#1562f0]">${item.redeemRewardUsd}</span> when they
-						redeem in-store.
-					</p>
+					<span className="mt-1 inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">
+						Verified Merchant
+					</span>
 				</div>
 			</div>
+
+			<p className="mt-3 text-sm leading-snug text-slate-600 dark:text-slate-300">
+				Earn <span className="font-bold text-[#1562f0]">${item.claimRewardUsd}</span> on claim +{' '}
+				<span className="font-bold text-[#1562f0]">${item.redeemRewardUsd}</span> on store redeem.
+			</p>
 
 			<div className="mt-4 grid grid-cols-2 gap-3">
 				<button
 					type="button"
-					className="flex items-center justify-center rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700 transition active:scale-[0.98] dark:bg-slate-800 dark:text-slate-200"
+					className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700 transition active:scale-[0.98] dark:bg-slate-800 dark:text-slate-200"
 				>
-					View Details
+					<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+					Details
 				</button>
 				<button
 					type="button"
@@ -146,11 +213,10 @@ export default function BountyBoard() {
 		() => formatConetChainTokenBalance(incomeStats?.gbBeneficiary.cumulative ?? '0'),
 		[incomeStats?.gbBeneficiary.cumulative]
 	)
-	// DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC
+	// DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC（GB 为 0 也显示 ≈ 0.00 USDC）
 	const miningGbUsdcApprox = useMemo(() => {
 		const gb = Number(incomeStats?.gbBeneficiary.cumulative ?? '0')
-		if (!Number.isFinite(gb) || gb <= 0) return null
-		const usdc = gb * 0.1
+		const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.1 : 0
 		return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
 	}, [incomeStats?.gbBeneficiary.cumulative])
 	const miningCnetDisplay = useMemo(
@@ -158,14 +224,10 @@ export default function BountyBoard() {
 		[incomeStats?.cnetBeneficiary.cumulative]
 	)
 	const totalNodesDisplay = useMemo(() => {
+		// Validator / DePIN 成对出现（1:1），不再求和；展示节点对数量。
 		const staked = validatorProfile?.validatorNodeCount ?? 0
 		const depin = validatorProfile?.gbMiningNodeCount ?? 0
-		return (staked + depin).toLocaleString()
-	}, [validatorProfile?.validatorNodeCount, validatorProfile?.gbMiningNodeCount])
-	const nodeBreakdownDisplay = useMemo(() => {
-		const staked = validatorProfile?.validatorNodeCount ?? 0
-		const depin = validatorProfile?.gbMiningNodeCount ?? 0
-		return `${staked.toLocaleString()} staked · ${depin.toLocaleString()} DePIN`
+		return Math.max(staked, depin).toLocaleString()
 	}, [validatorProfile?.validatorNodeCount, validatorProfile?.gbMiningNodeCount])
 
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
@@ -239,11 +301,9 @@ export default function BountyBoard() {
 								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
 									{miningGbDisplay} GB
 								</p>
-								{miningGbUsdcApprox ? (
-									<p className="mt-0.5 text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
-										{miningGbUsdcApprox}
-									</p>
-								) : null}
+								<p className="mt-0.5 text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+									{miningGbUsdcApprox}
+								</p>
 								<button
 									type="button"
 									className="mt-2 inline-flex items-center justify-center rounded-full border border-[#1562f0] px-3 py-1.5 text-xs font-bold text-[#1562f0] transition active:scale-[0.98]"
@@ -252,9 +312,9 @@ export default function BountyBoard() {
 								</button>
 							</div>
 
-							{/* L1 Mining */}
+							{/* L1 Network Gas */}
 							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
-								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">L1 Mining</p>
+								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">L1 Network Gas</p>
 								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
 									{miningCnetDisplay} CNET
 								</p>
@@ -266,7 +326,6 @@ export default function BountyBoard() {
 								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
 									{totalNodesDisplay}
 								</p>
-								<p className="mt-1 text-[11px] leading-tight text-slate-400">{nodeBreakdownDisplay}</p>
 							</div>
 						</div>
 					</section>
@@ -277,7 +336,7 @@ export default function BountyBoard() {
 							<div className="min-w-0">
 								<h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50">Bounty Board</h2>
 								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-									Share with friends. Earn when they claim and redeem.
+									Share with friends. Earn when they join, claim, or redeem.
 								</p>
 							</div>
 							<button
@@ -288,6 +347,8 @@ export default function BountyBoard() {
 								Filter
 							</button>
 						</div>
+
+						<GenesisNodeReferralCard />
 
 						{SAMPLE_BOUNTIES.map((item) => (
 							<BountyCard key={item.id} item={item} />

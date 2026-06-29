@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
 	Server,
@@ -9,6 +9,9 @@ import {
 	TicketPlus,
 	Ticket,
 	Clock,
+	Loader2,
+	ArrowRight,
+	CheckCircle2,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -19,6 +22,11 @@ import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorW
 import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats'
 import { useDepinNodeCountryLabelsByIp } from '@/hooks/useDepinNodeCountryLabelsByIp'
 import { resolveSessionEoa } from '@/utils/resolveSessionEoa'
+import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
+import {
+	previewValidatorDepositRedeemClaim,
+	signAndSubmitValidatorDepositRedeemClaim,
+} from '@/services/validatorDepositRedeemClaim'
 import { syncValidatorDepositRedeemIssuedForAdmin } from '@/utils/syncValidatorDepositRedeemIssuedRecords'
 import type { ValidatorWalletNodeProfile } from '@/services/validatorWalletNodeProfile'
 
@@ -47,11 +55,10 @@ function formatBalance(raw: string): string {
 	return n.toLocaleString(undefined, { maximumFractionDigits: 8 })
 }
 
-/** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC */
-function formatGbUsdcApprox(gbCumulative: string): string | null {
+/** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC（GB 为 0 也显示 ≈ 0.00 USDC） */
+function formatGbUsdcApprox(gbCumulative: string): string {
 	const gb = Number(gbCumulative)
-	if (!Number.isFinite(gb) || gb <= 0) return null
-	const usdc = gb * 0.1
+	const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.1 : 0
 	return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
 }
 
@@ -117,6 +124,64 @@ export default function CoNetMiningDetailPage() {
 
 	const [redeemSheetOpen, setRedeemSheetOpen] = useState(false)
 	const [claimSheetOpen, setClaimSheetOpen] = useState(false)
+
+	// Inline "Activate Your Node" redeem flow (replaces the old Redeem code button).
+	const [inlineCode, setInlineCode] = useState('')
+	const [inlineStatus, setInlineStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+	const [inlineError, setInlineError] = useState('')
+	const [inlineRedeemedCount, setInlineRedeemedCount] = useState(0)
+
+	const inlineBusy = inlineStatus === 'loading'
+
+	const handleInlineRedeem = useCallback(async () => {
+		if (!eoa) return
+		const code = inlineCode.trim()
+		if (!code) {
+			setInlineStatus('error')
+			setInlineError('Enter a redeem code.')
+			return
+		}
+		const armor = resolveSigningPrivateKeyArmor(profiles?.[0])
+		if (!armor) {
+			setInlineStatus('error')
+			setInlineError('Unlock your wallet to sign the claim.')
+			return
+		}
+		setInlineStatus('loading')
+		setInlineError('')
+		try {
+			const preview = await previewValidatorDepositRedeemClaim({ secretCode: code, claimerEoa: eoa })
+			if (!preview.ok) {
+				setInlineStatus('error')
+				setInlineError(preview.error)
+				return
+			}
+			const count = Number(preview.redeem.validatorCount) || 0
+			const res = await signAndSubmitValidatorDepositRedeemClaim({
+				claimerEoa: eoa,
+				secretCode: code,
+				privateKeyArmor: armor,
+			})
+			if (!res.success) {
+				setInlineStatus('error')
+				setInlineError(res.error)
+				return
+			}
+			setInlineRedeemedCount(count)
+			setInlineStatus('success')
+		} catch (e: unknown) {
+			const err = e as { message?: string }
+			setInlineStatus('error')
+			setInlineError(err?.message ?? String(e))
+		}
+	}, [eoa, inlineCode, profiles])
+
+	const handleInlineReset = useCallback(() => {
+		setInlineCode('')
+		setInlineStatus('idle')
+		setInlineError('')
+		setInlineRedeemedCount(0)
+	}, [])
 
 	const showRedeemAdminManageButton = isRedeemAdmin === true
 	const hasNodes = beneficiaryHasNodes(profile)
@@ -261,11 +326,9 @@ export default function CoNetMiningDetailPage() {
 										{formatBalance(incomeStats.gbBeneficiary.cumulative)}{' '}
 										<span className="text-sm font-bold text-white/80">GB</span>
 									</p>
-									{gbUsdcApprox ? (
-										<p className="mt-1 text-[11px] font-medium tabular-nums text-white/60">
-											{gbUsdcApprox}
-										</p>
-									) : null}
+									<p className="mt-1 text-[11px] font-medium tabular-nums text-white/60">
+										{gbUsdcApprox}
+									</p>
 									<p className="mt-1.5 text-[11px] text-white/55">GB · cumulative rewards</p>
 								</div>
 							</div>
@@ -298,27 +361,97 @@ export default function CoNetMiningDetailPage() {
 				<main className="mx-auto w-full max-w-2xl space-y-5 px-6 pt-5 pb-10">
 					{eoa ? (
 						<section className={`${cardChrome} p-5`}>
-							<div className="flex items-start gap-3">
-								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
-									<Ticket className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-								</div>
-								<div className="min-w-0 flex-1">
-									<h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">
-										Validator redeem
+							{inlineStatus === 'success' ? (
+								<div className="flex flex-col items-center text-center">
+									<div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+										<CheckCircle2 className="h-7 w-7" strokeWidth={2.25} aria-hidden />
+									</div>
+									<h2 className="mt-3 text-base font-bold tracking-tight text-slate-900 dark:text-slate-50">
+										Congratulations!
 									</h2>
-									<p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-										Have a redeem code from an operator? Claim validator and DePIN GB node slots to your
-										beneficiary wallet.
+									<p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+										You successfully redeemed{' '}
+										<span className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+											{inlineRedeemedCount}
+										</span>{' '}
+										CoNET node{inlineRedeemedCount === 1 ? '' : 's'}.
 									</p>
 									<button
 										type="button"
-										onClick={() => setClaimSheetOpen(true)}
-										className="mt-4 w-full rounded-xl bg-[#1562f0] py-2.5 text-sm font-bold text-white shadow-sm"
+										onClick={handleInlineReset}
+										className="mt-5 w-full rounded-xl bg-[#1562f0] py-2.5 text-sm font-bold text-white shadow-sm"
 									>
-										Redeem code
+										OK
 									</button>
 								</div>
-							</div>
+							) : (
+								<div className="flex items-start gap-3">
+									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
+										<Ticket className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+									</div>
+									<div className="min-w-0 flex-1">
+										<h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">
+											Activate Your Node
+										</h2>
+										<p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+											Enter your code to unlock sovereign power and begin mining.
+										</p>
+
+										<div
+											className={`mt-4 flex items-center gap-2 rounded-xl border bg-slate-50 pl-3 pr-1.5 transition-colors dark:bg-slate-800 ${
+												inlineStatus === 'error'
+													? 'border-red-300 dark:border-red-900/60'
+													: 'border-slate-200 dark:border-slate-600'
+											} ${inlineBusy ? 'opacity-70' : ''}`}
+										>
+											<input
+												id="vdr-inline-claim-code"
+												type="text"
+												autoComplete="off"
+												enterKeyHint="go"
+												value={inlineCode}
+												onChange={(e) => {
+													setInlineCode(e.target.value)
+													if (inlineStatus === 'error') {
+														setInlineStatus('idle')
+														setInlineError('')
+													}
+												}}
+												onKeyDown={(e) => {
+													if (e.key === 'Enter' && !inlineBusy && inlineCode.trim()) {
+														e.preventDefault()
+														void handleInlineRedeem()
+													}
+												}}
+												disabled={inlineBusy}
+												readOnly={inlineBusy}
+												aria-busy={inlineBusy}
+												className="min-w-0 flex-1 bg-transparent py-2.5 font-mono text-sm text-slate-900 outline-none disabled:cursor-not-allowed dark:text-slate-100"
+												placeholder="Entry Redeem code"
+											/>
+											<button
+												type="button"
+												onClick={() => void handleInlineRedeem()}
+												disabled={inlineBusy || !inlineCode.trim()}
+												className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1562f0] text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+												aria-label="Submit redeem code"
+											>
+												{inlineBusy ? (
+													<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+												) : (
+													<ArrowRight className="h-4 w-4 stroke-[2.5]" aria-hidden />
+												)}
+											</button>
+										</div>
+
+										{inlineStatus === 'error' && inlineError ? (
+											<p className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100">
+												{inlineError}
+											</p>
+										) : null}
+									</div>
+								</div>
+							)}
 						</section>
 					) : null}
 

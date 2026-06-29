@@ -216,6 +216,8 @@ export default function RestoreWalletUnifiedScreen({
 				recoveryCode: regenerated.recoverCode,
 				beamioTag: beamioProfile.accountName || trimmed,
 			})
+		} catch {
+			setLoginError('Something went wrong while restoring your wallet.')
 		} finally {
 			setLoginLoading(false)
 		}
@@ -241,6 +243,8 @@ export default function RestoreWalletUnifiedScreen({
 				recoveryCode: recoveryCode.trim(),
 				beamioTag: canRestore?.beamio?.accountName || '',
 			})
+		} catch {
+			setRecoveryError('Something went wrong while restoring your wallet.')
 		} finally {
 			setRecoveryLoading(false)
 		}

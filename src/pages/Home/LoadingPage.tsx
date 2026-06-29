@@ -38,10 +38,11 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { getUserInfo, storeSystemData, checkStorage, restoreWithRedeem, ensureProfilePrivateKeyArmorFromMnemonic } from "@/services/beamio"
+import { getUserInfo, storeSystemData, checkStorageWithTimeout, restoreWithRedeem, ensureProfilePrivateKeyArmorFromMnemonic } from "@/services/beamio"
 import {
 	beamioTagFromUrlSearch,
 	consumerAppNeedsWalletRecover,
+	hasCompletedBeamioAccount,
 	hasLocalPlaintextMnemonic,
 	knownBeamioAccountNameFromStorage,
 } from '@/utils/consumerWalletGate'
@@ -399,6 +400,9 @@ type Props = {
 	onInitComplete?: () => void
 	/** Account exists locally but plaintext mnemonic missing — force Restore (BeamioTag + password). */
 	requireWalletRecover?: boolean
+	/** AppEntryGate 已读到本地存储（含超时降级），下传后弹窗不再二次 checkStorage（Safari 私密模式会挂起）。 */
+	bootResolved?: boolean
+	bootCoNETData?: encrypt_keys_object | null
 }
 
 const TOP_OFFSET = "calc(env(safe-area-inset-top) + 4rem)"
@@ -496,7 +500,7 @@ function parseRedeemFromUrl(): { cardAddress: string; redeemCode: string } | nul
 	}
 }
 
-export default function BeamioOnboardingModal({ home, onInitComplete, requireWalletRecover = false }: Props) {
+export default function BeamioOnboardingModal({ home, onInitComplete, requireWalletRecover = false, bootResolved = false, bootCoNETData = null }: Props) {
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading, 
 		setAllNodes, setGossip, gossip,
 		setIsInitialLoading, myAddress, setMyAddress, usdcbalance, setShowFooter, setCharts } = useDaemonContext()
@@ -545,28 +549,30 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	}, [redeemActivating, redeeming, redeemFromUrl, redeemResult?.success, setShowFooter])
 
 	const init = async (temp?: encrypt_keys_object, opts?: { dontClose?: boolean }) => {
-
-		const isAcc = await checkStorage()
-		if (!isAcc) {
+		// 显式传入的 restore/create 结果优先；仅缺失时才读本地（带超时，避免 Safari 私密模式挂起）。
+		let working = temp?.profiles?.length ? temp : null
+		if (!working) {
+			working = await checkStorageWithTimeout()
+		}
+		if (!working?.profiles?.length) {
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
 			onInitComplete?.()
 			return
 		}
 
-		temp = temp || isAcc
-		temp = ensureProfilePrivateKeyArmorFromMnemonic(temp) ?? temp
+		working = ensureProfilePrivateKeyArmorFromMnemonic(working) ?? working
 
-		const profiles = temp?.profiles
+		const profiles = working.profiles
 
-		if (!temp || !profiles) {
+		if (!working || !profiles) {
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
 			onInitComplete?.()
 			return
 		}
 
-		if (!hasLocalPlaintextMnemonic(temp)) {
+		if (!hasLocalPlaintextMnemonic(working)) {
 			setIsInitialLoading(true)
 			setIsInitialEntry(false)
 			setSettingsOpen('RestoreWalletScreen')
@@ -577,20 +583,17 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 
 		setProfiles(profiles)
 
-		
-		const loadUserInfo = (): Promise<beamio> => new Promise(async (resolve) => {
-			const userInfo = await getUserInfo(profiles[0].keyID)
-			if (!userInfo) {
-				return setTimeout(async () => {
-					return resolve(await loadUserInfo())
-				}, 1000)
-			}
-			return resolve(userInfo)
-		})
-			
-		const userInfo = await loadUserInfo()
+		let userInfo: beamio | null = null
+		for (let attempt = 0; attempt < 20; attempt++) {
+			userInfo = await getUserInfo(profiles[0].keyID)
+			if (userInfo) break
+			await new Promise((resolve) => setTimeout(resolve, 1000))
+		}
+		if (!userInfo) {
+			userInfo = working.beamio ?? null
+		}
 		if (!userInfo) return
-		
+
 		const bo: beamio = userInfo
 
 		SetLoading(true)
@@ -598,15 +601,14 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 			setCharts((prev: string[]) => [...prev, message])
 		})
 		dispatchBeamioWalletReady('loading-page-init')
-		
+
 		bo.initialLoading = true
-		
-		
+
 		setDarkModle(bo.darkTheme)
 		setBeamio (bo)
-		temp.beamio = bo
-		
-		setCoNET_Data(temp)
+		working.beamio = bo
+
+		setCoNET_Data(working)
 		await storeSystemData()
 		const eoa = profiles[0]?.keyID?.trim()
 		if (eoa && ethers.isAddress(eoa)) {
@@ -635,7 +637,8 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 			}
 
 			if (requireWalletRecover) {
-				const isAcc = await checkStorage()
+				// 优先用门闸已读到的快照，避免 Safari 私密模式 checkStorage 二次挂起。
+				const isAcc = bootResolved ? bootCoNETData : await checkStorageWithTimeout()
 				if (isAcc && consumerAppNeedsWalletRecover(isAcc)) {
 					setIsInitialEntry(false)
 					setSettingsOpen('RestoreWalletScreen')
@@ -669,6 +672,14 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 				setIsInitialEntry(true)
 				setSettingsOpen('RestoreWalletScreen')
 				setHasCheckedUrl(true)
+				onInitComplete?.()
+				return
+			}
+			// 门闸已确认本地无账号（含 IndexedDB 挂起超时降级）：直接进入初始 onboarding 主页（hero），
+			// 不再调用 init() 内的 checkStorage()，避免 Safari 私密模式再次挂起卡成黑屏。
+			if (bootResolved && !hasCompletedBeamioAccount(bootCoNETData)) {
+				setIsInitialLoading(true)
+				setIsInitialEntry(true)
 				onInitComplete?.()
 				return
 			}

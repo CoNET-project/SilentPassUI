@@ -1171,7 +1171,11 @@ const duplicateAPI = `${apiv4_endpoint}duplicate`
 // }
 
 export const createOrGetWallet = async (secretPhrase: string | null, initAccount = false, referrals = '', ChannelPartners = '' ) => {
-	await checkStorage()
+	const hasIncomingMnemonic = typeof secretPhrase === 'string' && secretPhrase.length > 0
+	// Restore / 临时券钱包：不依赖本地库；私密模式 IndexedDB 读可能永久挂起。
+	if (!hasIncomingMnemonic && !initAccount) {
+		await checkStorageWithTimeout()
+	}
 
   if (secretPhrase|| initAccount ) setCoNET_Data(null)
 
@@ -1268,6 +1272,21 @@ export const checkStorage = async () => {
     // 误入 App，且用户主动清空 _pouch_conet 时也会被 cache 兜底覆盖。
     return null
   }
+}
+
+/** Safari 私密浏览等环境 IndexedDB 可能永不 resolve；超时按「无本地钱包」处理。 */
+export const CHECK_STORAGE_TIMEOUT_MS = 8_000
+
+export async function checkStorageWithTimeout(
+  timeoutMs = CHECK_STORAGE_TIMEOUT_MS,
+): Promise<encrypt_keys_object | null> {
+  if (typeof window === 'undefined') return null
+  return Promise.race([
+    checkStorage().catch(() => null),
+    new Promise<null>((resolve) => {
+      window.setTimeout(() => resolve(null), timeoutMs)
+    }),
+  ])
 }
 
 /** Cache 用的绝对 URL（Safari / PWA 路径不同，必须用 origin 级别 key 确保一致）

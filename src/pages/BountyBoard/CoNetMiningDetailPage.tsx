@@ -12,6 +12,7 @@ import {
 	Loader2,
 	ArrowRight,
 	CheckCircle2,
+	Lock,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -53,6 +54,13 @@ function formatBalance(raw: string): string {
 	if (n === 0) return '0'
 	if (n >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 4 })
 	return n.toLocaleString(undefined, { maximumFractionDigits: 8 })
+}
+
+/** CNET airdrop（vesting）剩余额展示：固定两位小数（如 100.00 CNET）。 */
+function formatVestingCnet(claimable: string): string {
+	const n = Number(claimable)
+	if (!Number.isFinite(n)) return claimable
+	return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 /** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC（GB 为 0 也显示 ≈ 0.00 USDC） */
@@ -257,22 +265,21 @@ export default function CoNetMiningDetailPage() {
 						<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 							<div className="flex items-center gap-1.5 text-white/70">
 								<ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-								<span className="text-[10px] font-semibold uppercase tracking-widest">Total Staked</span>
+								<span className="text-[10px] font-semibold uppercase tracking-widest">L1 VALIDATORS</span>
 							</div>
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{networkStats.stakedValidatorsFormatted}
 							</p>
-							<p className="mt-1 text-[11px] text-white/55">CoNET L1 network</p>
+							
 						</div>
 						<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 							<div className="flex items-center gap-1.5 text-white/70">
 								<TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-								<span className="text-[10px] font-semibold uppercase tracking-widest">Total L1 Gas Minted</span>
+								<span className="text-[10px] font-semibold uppercase tracking-widest">L1 Gas Minted</span>
 							</div>
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{networkStats.supplyIncreaseFormatted}
 							</p>
-							<p className="mt-1 text-[11px] text-white/55">$CNET · cumulative</p>
 						</div>
 					</div>
 
@@ -286,41 +293,46 @@ export default function CoNetMiningDetailPage() {
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{depinStats.depinNodeCountFormatted}
 							</p>
-							<p className="mt-1 text-[11px] text-white/55">CoNET DePIN · online</p>
+							
 						</div>
 						<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 							<div className="flex items-center gap-1.5 text-white/70">
 								<Database className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-								<span className="text-[10px] font-semibold uppercase tracking-widest">Total Bandwidth</span>
+								<span className="text-[10px] font-semibold uppercase tracking-widest">Data Routed</span>
 							</div>
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{depinStats.totalGbIssuedFormatted}
 								<span className="ml-1 text-sm font-bold text-white/70">GB</span>
 							</p>
-							<p className="mt-1 text-[11px] text-white/55">DePIN bandwidth rewards</p>
+							
 						</div>
 					</div>
 
 					{/* Your CoNET Mining — 仅 redeem 受益人且持有节点时展示链上累计收益 */}
 					{hasNodes && incomeStats ? (
 						<div className="mt-6">
-							<p className="text-[11px] font-semibold uppercase tracking-widest text-white/70">Your CoNET Mining</p>
+							<p className="text-[11px] font-semibold uppercase tracking-widest text-white/70">Your Contributions</p>
 							<div className="mt-3 grid grid-cols-2 gap-3">
 								<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 									<div className="flex items-center gap-1.5 text-white/70">
 										<TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-										<span className="text-[10px] font-semibold uppercase tracking-widest">L1 Mining</span>
+										<span className="text-[10px] font-semibold uppercase tracking-widest">L1 GAS EARNED</span>
 									</div>
 									<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 										{formatBalance(incomeStats.cnetBeneficiary.cumulative)}{' '}
 										<span className="text-sm font-bold text-white/80">CNET</span>
 									</p>
-									<p className="mt-1.5 text-[11px] text-white/55">$CNET · cumulative rewards</p>
+									{incomeStats.airdrop && Number(incomeStats.airdrop.claimable) > 0 ? (
+										<p className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium tabular-nums text-white/60 underline decoration-white/30 underline-offset-2">
+											<Lock className="h-3 w-3 shrink-0" strokeWidth={2.25} aria-hidden />
+											{formatVestingCnet(incomeStats.airdrop.claimable)} CNET (Vesting)
+										</p>
+									) : null}
 								</div>
 								<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 									<div className="flex items-center gap-1.5 text-white/70">
 										<Database className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-										<span className="text-[10px] font-semibold uppercase tracking-widest">DePIN Routing</span>
+										<span className="text-[10px] font-semibold uppercase tracking-widest">BANDWIDTH PROVIDED</span>
 									</div>
 									<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 										{formatBalance(incomeStats.gbBeneficiary.cumulative)}{' '}
@@ -329,7 +341,7 @@ export default function CoNetMiningDetailPage() {
 									<p className="mt-1 text-[11px] font-medium tabular-nums text-white/60">
 										{gbUsdcApprox}
 									</p>
-									<p className="mt-1.5 text-[11px] text-white/55">GB · cumulative rewards</p>
+									
 								</div>
 							</div>
 							{profile ? (
@@ -340,13 +352,13 @@ export default function CoNetMiningDetailPage() {
 									</div>
 									<div className="mt-2 grid grid-cols-2 gap-3">
 										<div>
-											<p className="text-[11px] text-white/55">Validator nodes</p>
+											<p className="text-[11px] text-white/55">L1 Validators</p>
 											<p className="mt-0.5 text-xl font-extrabold leading-none tabular-nums">
 												<ValidatorNodeCountDisplay profile={profile} />
 											</p>
 										</div>
 										<div>
-											<p className="text-[11px] text-white/55">DePIN mining nodes</p>
+											<p className="text-[11px] text-white/55">DePIN Routers</p>
 											<p className="mt-0.5 text-xl font-extrabold leading-none tabular-nums">
 												{profile.gbMiningNodeCount}
 											</p>
@@ -536,47 +548,53 @@ export default function CoNetMiningDetailPage() {
 										</span>
 									</div>
 									<div className="mt-4 overflow-x-auto">
-										<table className="w-full min-w-[280px] text-left text-sm">
+										<table className="w-full min-w-[340px] text-left text-sm">
 											<thead>
 												<tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:border-slate-700">
 													<th className="pb-2 pr-3 font-bold">Validator pubkey</th>
+													<th className="pb-2 pr-3 font-bold">Status</th>
 													<th className="pb-2 font-bold text-right">CNET</th>
 												</tr>
 											</thead>
 											<tbody>
-												{incomeStats.nodes.map((row) => (
+												{incomeStats.nodes.map((row) => {
+													const isActive = Boolean(row.validatorActive)
+													return (
 													<tr
 														key={`l1-${row.nodeWallet}-${row.depinNodeIp}`}
 														className="border-b border-slate-50 last:border-0 dark:border-slate-800"
 													>
 														<td className="py-3 pr-3 align-top">
-															<div className="flex items-center gap-2">
+															<span
+																className="font-mono text-xs text-slate-800 dark:text-slate-100"
+																title={row.validatorPubkey ?? 'Validator not registered yet'}
+															>
+																{shortValidatorPubkey(row.validatorPubkey)}
+															</span>
+														</td>
+														<td className="py-3 pr-3 align-top">
+															<span
+																className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+																	isActive
+																		? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+																		: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+																}`}
+															>
 																<span
-																	className="font-mono text-xs text-slate-800 dark:text-slate-100"
-																	title={row.validatorPubkey ?? 'Validator not registered yet'}
-																>
-																	{shortValidatorPubkey(row.validatorPubkey)}
-																</span>
-																<span
-																	className={`h-2 w-2 shrink-0 rounded-full ${
-																		row.validatorActive ? 'bg-emerald-500' : 'bg-amber-400'
+																	className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+																		isActive ? 'bg-emerald-500' : 'bg-amber-400'
 																	}`}
-																	title={
-																		row.validatorActive
-																			? 'Validator: active'
-																			: 'Validator: inactive / pending'
-																	}
-																	aria-label={
-																		row.validatorActive ? 'Validator active' : 'Validator inactive'
-																	}
+																	aria-hidden
 																/>
-															</div>
+																{isActive ? 'Active' : 'Pending'}
+															</span>
 														</td>
 														<td className="py-3 align-top text-right tabular-nums font-semibold text-slate-900 dark:text-slate-50">
 															{formatBalance(row.cnet.cumulative)}
 														</td>
 													</tr>
-												))}
+													)
+												})}
 											</tbody>
 										</table>
 									</div>

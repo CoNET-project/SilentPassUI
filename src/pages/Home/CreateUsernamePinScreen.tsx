@@ -87,6 +87,7 @@ const CreateUsernamePinScreen = forwardRef<
 	const passwordInputRef = useRef<HTMLInputElement>(null)
 	const [tagStatus, setTagStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
 	const [tagError, setTagError] = useState("")
+	const [createError, setCreateError] = useState("")
 	const [loading, setLoading] = useState(false)
 	const [creatingStep, setCreatingStep] = useState(0)
 	const [viewportHeight, setViewportHeight] = useState(() =>
@@ -251,6 +252,7 @@ const CreateUsernamePinScreen = forwardRef<
 		if (!trimmedTag || !l || !m || !n) return
 
 		setLoading(true)
+		setCreateError("")
 		// 先让浏览器提交 loading UI 并跑几步动画，再进入会长时间占用主线程的加密运算
 		await new Promise<void>((resolve) => {
 			window.setTimeout(resolve, CREATE_RECOVER_START_DELAY_MS)
@@ -259,11 +261,16 @@ const CreateUsernamePinScreen = forwardRef<
 		let kks: Awaited<ReturnType<typeof createRecover>> = null
 		try {
 			kks = await createRecover(trimmedTag, pwd)
+		} catch {
+			setCreateError(tu('network_error_try_again'))
 		} finally {
 			setLoading(false)
 		}
 
-		if (!kks) return
+		if (!kks) {
+			if (!createError) setCreateError(tu('network_error_try_again'))
+			return
+		}
 
 		close({
 			qrDataUrl: kks.qrCode,
@@ -658,6 +665,12 @@ const CreateUsernamePinScreen = forwardRef<
 						</div>
 
 					<div className="mt-auto flex w-full shrink-0 flex-col items-center px-0 pt-2 [@media(max-height:700px)]:pt-1.5 [@media(max-height:640px)]:pt-1 [@media(max-height:560px)]:pt-0.5">
+						{createError ? (
+							<div className="mb-3 flex w-full items-start gap-1.5 px-1 text-red-600">
+								<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+								<span className="text-[11px] font-semibold leading-snug">{createError}</span>
+							</div>
+						) : null}
 						<AppButton
 							fullWidth
 							loading={loading}

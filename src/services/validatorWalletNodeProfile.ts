@@ -27,7 +27,34 @@ const VALIDATOR_WALLET_NODE_PROFILE_ABI = [
 	`function getBeneficiaryNodeBundle(address beneficiary) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveNodeBundle(address maybeWallet, string conetDepinNodeIp) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveUnifiedIncomeStats(address maybeWallet, string conetDepinNodeIp, uint256 anchorTs) view returns (${UNIFIED_INCOME_STATS_TUPLE})`,
+	'function airdropInfoOf(address beneficiary) view returns (uint256 accrued, uint256 claimed, uint256 claimable, uint64 claimableAt)',
 	'function referrerExtension() view returns (address)',
+	'function gbToken() view returns (address)',
+	'function rewardIndexer() view returns (address)',
+] as const
+
+// ConetGB1155 income views（与合约 IConetGB1155Income 对齐）。用于 unified 单调用因 gas cap 失败时，
+// 客户端按受益人 / 每节点**分别**直读（每次 RPC 调用独立，各自落在节点 eth_call gasCap 之内）。
+const GB_INCOME_ABI = [
+	'function balanceOf(address account, uint256 id) view returns (uint256)',
+	'function nodeTotalIssued(address node) view returns (uint256)',
+	'function nodeIssuedThisHourOf(address node) view returns (uint256)',
+	'function nodeIssuedTodayOf(address node) view returns (uint256)',
+	'function nodeIssuedThisWeekOf(address node) view returns (uint256)',
+	'function nodeIssuedThisMonthOf(address node) view returns (uint256)',
+	'function nodeIssuedThisYearOf(address node) view returns (uint256)',
+	'function issuedThisHourOf(address account) view returns (uint256)',
+	'function issuedTodayOf(address account) view returns (uint256)',
+	'function issuedThisWeekOf(address account) view returns (uint256)',
+	'function issuedThisMonthOf(address account) view returns (uint256)',
+	'function issuedThisYearOf(address account) view returns (uint256)',
+] as const
+
+// ValidatorNodeRewardIndexer summary（每次约 21M gas：年度按小时桶聚合）。务必**逐个**调用，
+// 多个 subject 聚合进单次 unified 会超过节点 eth_call gasCap（~50M），导致 OOG → "revert no data"。
+const REWARD_INDEXER_SUMMARY_ABI = [
+	'function getNodeRewardSummary(address nodeWallet, uint256 anchorTs) view returns (uint256 cumulative, uint256 hour, uint256 day, uint256 week, uint256 month, uint256 year)',
+	'function getBeneficiaryRewardSummary(address beneficiary, uint256 anchorTs) view returns (uint256 cumulative, uint256 hour, uint256 day, uint256 week, uint256 month, uint256 year)',
 ] as const
 
 const VALIDATOR_REFERRER_EXTENSION_ABI = [
@@ -811,12 +838,31 @@ export type NodeIncomeRow = {
 	validatorPubkey?: string
 }
 
+/**
+ * CNET airdrop（vesting）账本：airdrop-flagged redeem claim 累计的 CNET 授予额，
+ * 来源 ValidatorDepositRedeem.airdropInfoOf(beneficiary)。
+ * - accrued：累计授予；claimed：已领取；claimable：剩余（accrued − claimed，受 claimableAt 时间闸门）。
+ * UI「Vesting」展示为剩余额（claimable）。
+ */
+export type AirdropInfo = {
+	accruedRaw: string
+	claimedRaw: string
+	claimableRaw: string
+	accrued: string
+	claimed: string
+	claimable: string
+	/** 全局可领取起始 unix 秒（0 = 未开放）。 */
+	claimableAt: number
+}
+
 /** {resolveUnifiedIncomeStats} 解析结果：受益人 GB/CNET 总量 + 每节点明细。 */
 export type UnifiedIncomeStats = {
 	beneficiary: string | null
 	gbBeneficiary: IncomeTotals
 	cnetBeneficiary: IncomeTotals
 	nodes: NodeIncomeRow[]
+	/** CNET airdrop（vesting）账本；本轮未能可信读取时为 null（不覆盖 UI 上次可信值）。 */
+	airdrop: AirdropInfo | null
 }
 
 export type UnifiedIncomeStatsResult =
@@ -878,12 +924,133 @@ function parseUnifiedIncomeStats(r: ethers.Result | Record<string, unknown> | un
 			cnet: parseIncomeTotals(nGet('cnet', 3) as ethers.Result),
 		}
 	})
-	return { beneficiary, gbBeneficiary, cnetBeneficiary, nodes }
+	return { beneficiary, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null }
+}
+
+/** 解析 airdropInfoOf(beneficiary) → (accrued, claimed, claimable, claimableAt)。 */
+function parseAirdropInfo(raw: ethers.Result | unknown[] | Record<string, unknown>): AirdropInfo {
+	const t = raw as Record<string, unknown>
+	const arr = raw as unknown[]
+	const get = (name: string, idx: number): bigint => BigInt(String(t?.[name] !== undefined ? t[name] : arr[idx] ?? 0))
+	const accruedRaw = get('accrued', 0).toString()
+	const claimedRaw = get('claimed', 1).toString()
+	const claimableRaw = get('claimable', 2).toString()
+	const claimableAt = Number(get('claimableAt', 3))
+	const fmt = (v: string) => ethers.formatUnits(v, CONET_NATIVE_DECIMALS)
+	return {
+		accruedRaw,
+		claimedRaw,
+		claimableRaw,
+		accrued: fmt(accruedRaw),
+		claimed: fmt(claimedRaw),
+		claimable: fmt(claimableRaw),
+		claimableAt: Number.isFinite(claimableAt) ? claimableAt : 0,
+	}
+}
+
+/** 6 个 GB income 子读数 → IncomeTotals（顺序 [cumulative,hour,day,week,month,year]）。失败的子项以 0 计。 */
+async function readGbSubjectTotals(
+	gb: ethers.Contract,
+	subject: string,
+	isBeneficiary: boolean
+): Promise<IncomeTotals> {
+	const z = async (p: Promise<unknown>): Promise<bigint> => {
+		try {
+			return BigInt(String((await p) ?? 0))
+		} catch {
+			return 0n
+		}
+	}
+	const [cumulative, hour, day, week, month, year] = isBeneficiary
+		? await Promise.all([
+				z(gb.balanceOf!(subject, 0n)),
+				z(gb.issuedThisHourOf!(subject)),
+				z(gb.issuedTodayOf!(subject)),
+				z(gb.issuedThisWeekOf!(subject)),
+				z(gb.issuedThisMonthOf!(subject)),
+				z(gb.issuedThisYearOf!(subject)),
+			])
+		: await Promise.all([
+				z(gb.nodeTotalIssued!(subject)),
+				z(gb.nodeIssuedThisHourOf!(subject)),
+				z(gb.nodeIssuedTodayOf!(subject)),
+				z(gb.nodeIssuedThisWeekOf!(subject)),
+				z(gb.nodeIssuedThisMonthOf!(subject)),
+				z(gb.nodeIssuedThisYearOf!(subject)),
+			])
+	return parseIncomeTotals([cumulative, hour, day, week, month, year])
+}
+
+/**
+ * 客户端拼装 UnifiedIncomeStats（回退路径）。
+ *
+ * 当 redeem.resolveUnifiedIncomeStats 单调用因把「受益人 + 每个节点」的 ValidatorNodeRewardIndexer
+ * 年度按小时聚合（单 subject ≈ 21M gas）合并进一次 eth_call 而超过节点 gasCap（~50M）OOG 时，
+ * 改为**逐个 subject 独立 eth_call**：每次 idx 调用单独落在 gasCap 之内，互不叠加。
+ *
+ * 节点列表来自已可信返回的 resolveNodeBundle（不含昂贵聚合），因此即使 unified 失败也能显示节点。
+ */
+async function assembleUnifiedIncomeStatsClientSide(
+	redeem: ethers.Contract,
+	bundle: BeneficiaryNodeBundle,
+	anchorTs: number
+): Promise<UnifiedIncomeStats> {
+	const ts = BigInt(Math.max(0, anchorTs))
+	const [gbAddr, idxAddr] = await Promise.all([
+		(redeem.gbToken!() as Promise<string>).catch(() => ethers.ZeroAddress),
+		(redeem.rewardIndexer!() as Promise<string>).catch(() => ethers.ZeroAddress),
+	])
+	const gb =
+		gbAddr && gbAddr !== ethers.ZeroAddress
+			? new ethers.Contract(gbAddr, GB_INCOME_ABI, conetDepinProvider)
+			: null
+	const idx =
+		idxAddr && idxAddr !== ethers.ZeroAddress
+			? new ethers.Contract(idxAddr, REWARD_INDEXER_SUMMARY_ABI, conetDepinProvider)
+			: null
+
+	const zeroTotals = (): IncomeTotals => parseIncomeTotals([0n, 0n, 0n, 0n, 0n, 0n])
+	const ben = bundle.beneficiary
+
+	// 受益人维度（gb + cnet）。
+	const [gbBeneficiary, cnetBeneficiary] = await Promise.all([
+		gb && ben ? readGbSubjectTotals(gb, ben, true) : Promise.resolve(zeroTotals()),
+		idx && ben
+			? (idx.getBeneficiaryRewardSummary!(ben, ts) as Promise<ethers.Result>)
+					.then((r) => parseIncomeTotals(r))
+					.catch(() => zeroTotals())
+			: Promise.resolve(zeroTotals()),
+	])
+
+	// 每节点维度：逐个 idx.getNodeRewardSummary（各 ~21M gas，独立 eth_call）。
+	const nodes: NodeIncomeRow[] = []
+	for (const n of bundle.nodes) {
+		const wallet = n.nodeWallet
+		const [gbNode, cnetNode] = await Promise.all([
+			gb ? readGbSubjectTotals(gb, wallet, false) : Promise.resolve(zeroTotals()),
+			idx
+				? (idx.getNodeRewardSummary!(wallet, ts) as Promise<ethers.Result>)
+						.then((r) => parseIncomeTotals(r))
+						.catch(() => zeroTotals())
+				: Promise.resolve(zeroTotals()),
+		])
+		nodes.push({
+			nodeWallet: wallet,
+			depinNodeIp: normalizeDepinIp(n.ip),
+			gb: gbNode,
+			cnet: cnetNode,
+		})
+	}
+
+	return { beneficiary: ben, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null }
 }
 
 /**
  * 单次 RPC：{resolveUnifiedIncomeStats} — 受益人 GB（ConetGB1155）+ CNET（ValidatorNodeRewardIndexer）
  * 收入统计；合约内部 staticcall gbToken + rewardIndexer，客户端不直连 GB/indexer API。
+ *
+ * 单调用因把受益人 + 每节点的年度按小时聚合合并进一次 eth_call 超过节点 gasCap 而 revert 时，
+ * 回退到 resolveNodeBundle + 逐个 subject 客户端拼装（节点仍可显示，收益逐项独立读取）。
  *
  * @param ipOrWallet 受益人钱包 / 节点运营钱包 / DePIN IP（解析顺序同 resolveNodeBundle）
  * @param anchorTs CNET 周期锚点 unix 秒（0 = 链上 block.timestamp）
@@ -901,29 +1068,78 @@ export async function fetchUnifiedIncomeStats(
 	const ip = isAddr ? '' : normalizeDepinIp(raw)
 	const redeem = new ethers.Contract(contract, VALIDATOR_WALLET_NODE_PROFILE_ABI, conetDepinProvider)
 	try {
-		// 收益统计与节点 bundle 同源（resolveUnifiedIncomeStats 内部本就基于 resolveNodeBundle），
-		// 并行多读一次 bundle 仅用于 join 每个节点的 validator active 状态；bundle 读失败不影响收益可信性。
-		const [r, bundleRaw] = await Promise.all([
-			redeem.resolveUnifiedIncomeStats!(maybeWallet, ip, BigInt(Math.max(0, anchorTs))),
+		// 收益统计与节点 bundle 同源（resolveUnifiedIncomeStats 内部本就基于 resolveNodeBundle）。
+		// unified 单调用可能因把受益人+每节点的年度聚合合并进一次 eth_call 超过节点 gasCap 而 revert，
+		// 因此对 unified 与 bundle 各自 catch：bundle 用于 join validator active，且是回退拼装的节点来源。
+		const [r, bundleRaw, airdropRaw] = await Promise.all([
+			(redeem.resolveUnifiedIncomeStats!(maybeWallet, ip, BigInt(Math.max(0, anchorTs))) as Promise<ethers.Result>).catch(
+				() => null,
+			),
 			(redeem.resolveNodeBundle!(maybeWallet, ip) as Promise<ethers.Result>).catch(() => null),
+			// airdrop（vesting）账本按受益人地址查询；IP 入口时 maybeWallet 为零，下方用解析出的 beneficiary 补查。
+			isAddr
+				? (redeem.airdropInfoOf!(maybeWallet) as Promise<ethers.Result>).catch(() => null)
+				: Promise.resolve(null),
 		])
-		const stats = parseUnifiedIncomeStats(r as ethers.Result)
+		// bundle 优先解析（回退拼装与 validator-active join 都依赖它）。
+		let parsedBundle: BeneficiaryNodeBundle | null = null
 		if (bundleRaw) {
 			try {
-				const bundle = parseNodeBundle(bundleRaw)
-				const activeByKey = new Map<string, boolean>()
-				const pubkeyByKey = new Map<string, string>()
+				parsedBundle = parseNodeBundle(bundleRaw)
+			} catch {
+				parsedBundle = null
+			}
+		}
+		let stats: UnifiedIncomeStats
+		if (r) {
+			// 单调用成功：直接解析。
+			stats = parseUnifiedIncomeStats(r as ethers.Result)
+		} else if (parsedBundle && (parsedBundle.beneficiary || parsedBundle.nodes.length > 0)) {
+			// 单调用因 gasCap OOG 失败，但 bundle 可信：逐个 subject 客户端拼装收益（节点仍可显示）。
+			stats = await assembleUnifiedIncomeStatsClientSide(redeem, parsedBundle, anchorTs)
+		} else {
+			// 既无收益、又无可信节点：交由外层 catch 返回 ok:false（不覆盖 UI 上次可信值）。
+			return { ok: false, error: 'resolveUnifiedIncomeStats read failed' }
+		}
+		// airdrop（vesting）：可信读取才写入；失败保持 null（UI 不覆盖上次可信值）。
+		if (airdropRaw) {
+			try {
+				stats.airdrop = parseAirdropInfo(airdropRaw)
+			} catch {
+				/* keep airdrop = null */
+			}
+		} else if (!isAddr && stats.beneficiary) {
+			try {
+				const fallbackAirdrop = await (redeem.airdropInfoOf!(stats.beneficiary) as Promise<ethers.Result>).catch(
+					() => null,
+				)
+				if (fallbackAirdrop) stats.airdrop = parseAirdropInfo(fallbackAirdrop)
+			} catch {
+				/* keep airdrop = null */
+			}
+		}
+		if (parsedBundle) {
+			try {
+				const bundle = parsedBundle
+				// guardian-id 绑定后，validator pubkey / active 按「每个 guardian 节点」聚合，
+				// 同一 nodeWallet 可能拥有多个 guardian 节点（各自独立 validator）。
+				// 因此 join key 必须是 **单个 guardian 节点**（DePIN IP，全局唯一），不能用 nodeWallet
+				// （会把同钱包多个节点的 BLS pubkey 折叠成同一个）。IP 缺失时回退到下标对齐
+				// （income 与 bundle 同源于 resolveNodeBundle 的同序 guardian 遍历）。
+				const activeByIp = new Map<string, boolean>()
+				const pubkeyByIp = new Map<string, string>()
 				bundle.nodes.forEach((n) => {
-					const key = `${n.nodeWallet.toLowerCase()}|${normalizeDepinIp(n.ip)}`
-					activeByKey.set(key, n.validatorActive)
-					if (n.validatorPubkey) pubkeyByKey.set(key, n.validatorPubkey)
+					const ip = normalizeDepinIp(n.ip)
+					if (!ip) return
+					activeByIp.set(ip, n.validatorActive)
+					if (n.validatorPubkey) pubkeyByIp.set(ip, n.validatorPubkey)
 				})
 				stats.nodes = stats.nodes.map((rowNode, i) => {
-					const key = `${rowNode.nodeWallet.toLowerCase()}|${normalizeDepinIp(rowNode.depinNodeIp)}`
-					const active = activeByKey.has(key)
-						? activeByKey.get(key)!
-						: bundle.validatorActive[i]
-					const pubkey = pubkeyByKey.get(key) ?? bundle.validatorPubkeys[i] ?? ''
+					const ip = normalizeDepinIp(rowNode.depinNodeIp)
+					const active = ip && activeByIp.has(ip)
+						? activeByIp.get(ip)!
+						: bundle.validatorActive[i] ?? false
+					const pubkey = (ip && pubkeyByIp.get(ip)) || bundle.validatorPubkeys[i] || ''
 					return {
 						...rowNode,
 						validatorActive: Boolean(active),
@@ -954,14 +1170,14 @@ const BEAMIO_API_BASE = 'https://beamio.app'
 
 const VALIDATOR_DEPOSIT_REDEEM_TRANSFER_ABI = [
 	'function beneficiaryNonces(address account) view returns (uint256)',
-	'function getBeneficiaryByNodeWallet(address nodeWallet) view returns (address)',
+	'function guardianIdBeneficiary(uint256 guardianId) view returns (address)',
 ] as const
 
 export const validatorNodeTransferTypes: Record<string, { name: string; type: string }[]> = {
 	TransferNodes: [
 		{ name: 'fromBeneficiary', type: 'address' },
 		{ name: 'toBeneficiary', type: 'address' },
-		{ name: 'nodeWallets', type: 'address[]' },
+		{ name: 'guardianIds', type: 'uint256[]' },
 		{ name: 'nonce', type: 'uint256' },
 		{ name: 'deadline', type: 'uint256' },
 	],
@@ -970,16 +1186,16 @@ export const validatorNodeTransferTypes: Record<string, { name: string; type: st
 export type NodeTransferResult = { success: true; txHash?: string } | { success: false; error: string }
 
 /**
- * 受益人离线签名并提交一笔「把所选 node 钱包转让给新受益人」的请求。
+ * 受益人离线签名并提交一笔「把所选 guardian 节点转让给新受益人」的请求。
  * @param privateKey 当前受益人 EOA 私钥（来自 CoNET_Data.profiles[0].privateKeyArmor）。
  * @param toBeneficiary 新受益人地址。
- * @param nodeWallets 选中的 node 钱包地址（必须当前都属于本人）。
+ * @param guardianIds 选中的 guardian 节点 id（必须当前都属于本人）。
  * @param validForSeconds 签名有效期（秒），默认 3600。
  */
 export async function signAndSubmitNodeTransfer(args: {
 	privateKey: string
 	toBeneficiary: string
-	nodeWallets: string[]
+	guardianIds: (bigint | string | number)[]
 	validForSeconds?: number
 }): Promise<NodeTransferResult> {
 	const contract = resolveValidatorDepositRedeemAddress()
@@ -1003,23 +1219,23 @@ export async function signAndSubmitNodeTransfer(args: {
 		return { success: false, error: 'New beneficiary must differ from current' }
 	}
 
-	let nodeWallets: string[]
+	let guardianIds: bigint[]
 	try {
-		nodeWallets = (args.nodeWallets || []).map((a) => ethers.getAddress(a))
+		guardianIds = (args.guardianIds || []).map((g) => BigInt(g))
 	} catch {
-		return { success: false, error: 'Invalid node wallet address' }
+		return { success: false, error: 'Invalid guardian id' }
 	}
-	if (!nodeWallets.length) return { success: false, error: 'Select at least one node to transfer' }
+	if (!guardianIds.length) return { success: false, error: 'Select at least one node to transfer' }
 
 	const read = new ethers.Contract(contract, VALIDATOR_DEPOSIT_REDEEM_TRANSFER_ABI, conetDepinProvider)
 
-	// 归属校验（每个 node 必须当前属于本人）+ 读取 nonce，均走 RPC。
+	// 归属校验（每个 guardian 节点必须当前属于本人）+ 读取 nonce，均走 RPC。
 	let nonce: bigint
 	try {
-		for (const nw of nodeWallets) {
-			const owner = ethers.getAddress(await read.getBeneficiaryByNodeWallet!(nw))
+		for (const gid of guardianIds) {
+			const owner = ethers.getAddress(await read.guardianIdBeneficiary!(gid))
 			if (owner.toLowerCase() !== fromBeneficiary.toLowerCase()) {
-				return { success: false, error: `Node ${nw} is not owned by you` }
+				return { success: false, error: `Guardian #${gid.toString()} is not owned by you` }
 			}
 		}
 		nonce = (await read.beneficiaryNonces!(fromBeneficiary)) as bigint
@@ -1041,7 +1257,7 @@ export async function signAndSubmitNodeTransfer(args: {
 		signature = await wallet.signTypedData(domain, validatorNodeTransferTypes, {
 			fromBeneficiary,
 			toBeneficiary,
-			nodeWallets,
+			guardianIds,
 			nonce,
 			deadline,
 		})
@@ -1058,7 +1274,7 @@ export async function signAndSubmitNodeTransfer(args: {
 				contract,
 				fromBeneficiary,
 				toBeneficiary,
-				nodeWallets,
+				guardianIds: guardianIds.map((g) => g.toString()),
 				nonce: nonce.toString(),
 				deadline: deadline.toString(),
 				signature,
@@ -1082,10 +1298,10 @@ export async function signAndSubmitNodeTransfer(args: {
 
 const VALIDATOR_DEPOSIT_REDEEM_ORDER_ABI = [
 	'function beneficiaryNonces(address account) view returns (uint256)',
-	'function getBeneficiaryByNodeWallet(address nodeWallet) view returns (address)',
-	'function nodeOrder(address nodeWallet) view returns (uint256)',
+	'function guardianIdBeneficiary(uint256 guardianId) view returns (address)',
+	'function nodeOrder(uint256 guardianId) view returns (uint256)',
 	'function usdcToken() view returns (address)',
-	'function getTransferOrder(uint256 orderId) view returns (address seller, address[] nodeWallets, uint256 priceUsdc6, bool active, address buyer, uint64 createdAt, uint64 filledAt)',
+	'function getTransferOrder(uint256 orderId) view returns (address seller, uint256[] guardianIds, uint256 priceUsdc6, bool active, address buyer, uint64 createdAt, uint64 filledAt)',
 ] as const
 
 const CONET_USDC_ABI = [
@@ -1114,7 +1330,7 @@ function usdcTokenDomain(tokenName: string, tokenAddress: string) {
 export const validatorCreateTransferOrderTypes: Record<string, { name: string; type: string }[]> = {
 	CreateTransferOrder: [
 		{ name: 'seller', type: 'address' },
-		{ name: 'nodeWallets', type: 'address[]' },
+		{ name: 'guardianIds', type: 'uint256[]' },
 		{ name: 'priceUsdc6', type: 'uint256' },
 		{ name: 'nonce', type: 'uint256' },
 		{ name: 'deadline', type: 'uint256' },
@@ -1144,7 +1360,7 @@ export type TransferOrderResult = { success: true; txHash?: string; orderId?: st
 export type TransferOrderView = {
 	orderId: string
 	seller: string
-	nodeWallets: string[]
+	guardianIds: string[]
 	priceUsdc6: string
 	active: boolean
 	buyer: string
@@ -1159,7 +1375,7 @@ function validatorRedeemDomain(contract: string) {
 /** 受益人离线签名挂单：选中的 node 钱包以 priceUsdc6（CoNET-USDC, 6 位精度）出售。 */
 export async function signAndSubmitCreateTransferOrder(args: {
 	privateKey: string
-	nodeWallets: string[]
+	guardianIds: (bigint | string | number)[]
 	priceUsdc6: bigint | string
 	validForSeconds?: number
 }): Promise<TransferOrderResult> {
@@ -1172,13 +1388,13 @@ export async function signAndSubmitCreateTransferOrder(args: {
 		return { success: false, error: 'Invalid signing key' }
 	}
 	const seller = ethers.getAddress(wallet.address)
-	let nodeWallets: string[]
+	let guardianIds: bigint[]
 	try {
-		nodeWallets = (args.nodeWallets || []).map((a) => ethers.getAddress(a))
+		guardianIds = (args.guardianIds || []).map((g) => BigInt(g))
 	} catch {
-		return { success: false, error: 'Invalid node wallet address' }
+		return { success: false, error: 'Invalid guardian id' }
 	}
-	if (!nodeWallets.length) return { success: false, error: 'Select at least one node to list' }
+	if (!guardianIds.length) return { success: false, error: 'Select at least one node to list' }
 	let priceUsdc6: bigint
 	try {
 		priceUsdc6 = BigInt(args.priceUsdc6)
@@ -1190,11 +1406,11 @@ export async function signAndSubmitCreateTransferOrder(args: {
 	const read = new ethers.Contract(contract, VALIDATOR_DEPOSIT_REDEEM_ORDER_ABI, conetDepinProvider)
 	let nonce: bigint
 	try {
-		for (const nw of nodeWallets) {
-			const owner = ethers.getAddress(await read.getBeneficiaryByNodeWallet!(nw))
-			if (owner.toLowerCase() !== seller.toLowerCase()) return { success: false, error: `Node ${nw} is not owned by you` }
-			const listed = (await read.nodeOrder!(nw)) as bigint
-			if (listed !== 0n) return { success: false, error: `Node ${nw} is already listed (order ${listed.toString()})` }
+		for (const gid of guardianIds) {
+			const owner = ethers.getAddress(await read.guardianIdBeneficiary!(gid))
+			if (owner.toLowerCase() !== seller.toLowerCase()) return { success: false, error: `Guardian #${gid.toString()} is not owned by you` }
+			const listed = (await read.nodeOrder!(gid)) as bigint
+			if (listed !== 0n) return { success: false, error: `Guardian #${gid.toString()} is already listed (order ${listed.toString()})` }
 		}
 		nonce = (await read.beneficiaryNonces!(seller)) as bigint
 	} catch (e: unknown) {
@@ -1207,7 +1423,7 @@ export async function signAndSubmitCreateTransferOrder(args: {
 	try {
 		signature = await wallet.signTypedData(validatorRedeemDomain(contract), validatorCreateTransferOrderTypes, {
 			seller,
-			nodeWallets,
+			guardianIds,
 			priceUsdc6,
 			nonce,
 			deadline,
@@ -1220,7 +1436,7 @@ export async function signAndSubmitCreateTransferOrder(args: {
 		const res = await fetch(`${BEAMIO_API_BASE}/api/validatorCreateTransferOrder`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ contract, seller, nodeWallets, priceUsdc6: priceUsdc6.toString(), nonce: nonce.toString(), deadline: deadline.toString(), signature }),
+			body: JSON.stringify({ contract, seller, guardianIds: guardianIds.map((g) => g.toString()), priceUsdc6: priceUsdc6.toString(), nonce: nonce.toString(), deadline: deadline.toString(), signature }),
 		})
 		const j = (await res.json().catch(() => null)) as { success?: boolean; txHash?: string; orderId?: string; error?: string } | null
 		if (!res.ok || !j?.success) return { success: false, error: j?.error ?? `HTTP ${res.status}` }
@@ -1406,7 +1622,7 @@ export async function readTransferOrder(orderId: bigint | string): Promise<Trans
 		return {
 			orderId: BigInt(orderId).toString(),
 			seller: ethers.getAddress(o[0]),
-			nodeWallets: (o[1] as string[]).map((a) => ethers.getAddress(a)),
+			guardianIds: (o[1] as bigint[]).map((g) => g.toString()),
 			priceUsdc6: (o[2] as bigint).toString(),
 			active: Boolean(o[3]),
 			buyer: ethers.getAddress(o[4]),

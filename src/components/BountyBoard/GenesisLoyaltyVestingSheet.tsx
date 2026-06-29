@@ -24,12 +24,17 @@ function formatCnet(value: string | number): string {
 	return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-/** unix 秒 → 本地化日期；0/无效返回 null。 */
+/** unix 秒 → UTC 日期（如 "Dec 1, 2026 UTC"）；0/无效返回 null。 */
 function formatDate(unixSec: number): string | null {
 	if (!Number.isFinite(unixSec) || unixSec <= 0) return null
 	const d = new Date(unixSec * 1000)
 	if (Number.isNaN(d.getTime())) return null
-	return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+	return `${d.toLocaleDateString('en-US', {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+		timeZone: 'UTC',
+	})} UTC`
 }
 
 /**

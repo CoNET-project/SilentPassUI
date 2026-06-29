@@ -173,7 +173,7 @@ export default function CoNetMiningDetailPage() {
 						<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 							<div className="flex items-center gap-1.5 text-white/70">
 								<ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-								<span className="text-[10px] font-semibold uppercase tracking-widest">Total staked validators</span>
+								<span className="text-[10px] font-semibold uppercase tracking-widest">Total Staked</span>
 							</div>
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{networkStats.stakedValidatorsFormatted}
@@ -183,7 +183,7 @@ export default function CoNetMiningDetailPage() {
 						<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 							<div className="flex items-center gap-1.5 text-white/70">
 								<TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-								<span className="text-[10px] font-semibold uppercase tracking-widest">CONET supply increase</span>
+								<span className="text-[10px] font-semibold uppercase tracking-widest">Total L1 Gas Minted</span>
 							</div>
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{networkStats.supplyIncreaseFormatted}
@@ -197,7 +197,7 @@ export default function CoNetMiningDetailPage() {
 						<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 							<div className="flex items-center gap-1.5 text-white/70">
 								<Server className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-								<span className="text-[10px] font-semibold uppercase tracking-widest">DePIN nodes</span>
+								<span className="text-[10px] font-semibold uppercase tracking-widest">Total DePIN Nodes</span>
 							</div>
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{depinStats.depinNodeCountFormatted}
@@ -207,7 +207,7 @@ export default function CoNetMiningDetailPage() {
 						<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 							<div className="flex items-center gap-1.5 text-white/70">
 								<Database className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-								<span className="text-[10px] font-semibold uppercase tracking-widest">GB minted (total)</span>
+								<span className="text-[10px] font-semibold uppercase tracking-widest">Total Bandwidth</span>
 							</div>
 							<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 								{depinStats.totalGbIssuedFormatted}
@@ -309,13 +309,13 @@ export default function CoNetMiningDetailPage() {
 
 					{hasNodes && profile ? (
 						<>
-							{/* Per-node earnings */}
+							{/* CoNET DePIN nodes — per DePIN node wallet, GB mining income */}
 							{incomeStats && incomeStats.nodes.length > 0 ? (
 								<section className={`${cardChrome} p-5`}>
 									<div className="flex items-center gap-2">
 										<Coins className="h-4 w-4 text-[#1562f0]" aria-hidden />
 										<h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">
-											Node earnings
+											CoNET DePIN nodes
 										</h2>
 										<span className="ml-auto text-xs font-semibold tabular-nums text-slate-400">
 											{incomeStats.nodes.length}
@@ -325,10 +325,9 @@ export default function CoNetMiningDetailPage() {
 										<table className="w-full min-w-[320px] text-left text-sm">
 											<thead>
 												<tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:border-slate-700">
-													<th className="pb-2 pr-3 font-bold">Node</th>
+													<th className="pb-2 pr-3 font-bold">Node wallet</th>
 													<th className="pb-2 pr-3 font-bold">Country</th>
-													<th className="pb-2 pr-3 font-bold text-right">GB</th>
-													<th className="pb-2 font-bold text-right">CNET</th>
+													<th className="pb-2 font-bold text-right">GB</th>
 												</tr>
 											</thead>
 											<tbody>
@@ -337,31 +336,87 @@ export default function CoNetMiningDetailPage() {
 													const countryLabel = ipKey ? countryByIp[ipKey] : undefined
 													return (
 													<tr
-														key={`${row.nodeWallet}-${row.depinNodeIp}`}
+														key={`depin-${row.nodeWallet}-${row.depinNodeIp}`}
 														className="border-b border-slate-50 last:border-0 dark:border-slate-800"
 													>
 														<td className="py-3 pr-3 align-top">
-															<div className="font-mono text-xs text-slate-800 dark:text-slate-100">
-																{row.depinNodeIp || shortAddress(row.nodeWallet)}
-															</div>
-															{row.depinNodeIp ? (
-																<div className="mt-0.5 font-mono text-[10px] text-slate-400">
+															<div className="flex items-center gap-2">
+																<span className="font-mono text-xs text-slate-800 dark:text-slate-100">
 																	{shortAddress(row.nodeWallet)}
-																</div>
-															) : null}
+																</span>
+																<span
+																	className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+																	title="DePIN node: online"
+																	aria-label="DePIN node online"
+																/>
+															</div>
 														</td>
 														<td className="py-3 pr-3 align-top text-xs text-slate-600 dark:text-slate-300">
 															{countryLabel ?? (ipKey ? '…' : 'Unavailable')}
 														</td>
-														<td className="py-3 pr-3 align-top text-right tabular-nums font-semibold text-slate-900 dark:text-slate-50">
+														<td className="py-3 align-top text-right tabular-nums font-semibold text-slate-900 dark:text-slate-50">
 															{formatBalance(row.gb.cumulative)}
+														</td>
+													</tr>
+													)
+												})}
+											</tbody>
+										</table>
+									</div>
+								</section>
+							) : null}
+
+							{/* CoNET L1 nodes — per Validator wallet, CNET validator income */}
+							{incomeStats && incomeStats.nodes.length > 0 ? (
+								<section className={`${cardChrome} p-5`}>
+									<div className="flex items-center gap-2">
+										<Coins className="h-4 w-4 text-[#1562f0]" aria-hidden />
+										<h2 className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">
+											CoNET L1 nodes
+										</h2>
+										<span className="ml-auto text-xs font-semibold tabular-nums text-slate-400">
+											{incomeStats.nodes.length}
+										</span>
+									</div>
+									<div className="mt-4 overflow-x-auto">
+										<table className="w-full min-w-[280px] text-left text-sm">
+											<thead>
+												<tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:border-slate-700">
+													<th className="pb-2 pr-3 font-bold">Validator wallet</th>
+													<th className="pb-2 font-bold text-right">CNET</th>
+												</tr>
+											</thead>
+											<tbody>
+												{incomeStats.nodes.map((row) => (
+													<tr
+														key={`l1-${row.nodeWallet}-${row.depinNodeIp}`}
+														className="border-b border-slate-50 last:border-0 dark:border-slate-800"
+													>
+														<td className="py-3 pr-3 align-top">
+															<div className="flex items-center gap-2">
+																<span className="font-mono text-xs text-slate-800 dark:text-slate-100">
+																	{shortAddress(row.nodeWallet)}
+																</span>
+																<span
+																	className={`h-2 w-2 shrink-0 rounded-full ${
+																		row.validatorActive ? 'bg-emerald-500' : 'bg-amber-400'
+																	}`}
+																	title={
+																		row.validatorActive
+																			? 'Validator: active'
+																			: 'Validator: inactive / pending'
+																	}
+																	aria-label={
+																		row.validatorActive ? 'Validator active' : 'Validator inactive'
+																	}
+																/>
+															</div>
 														</td>
 														<td className="py-3 align-top text-right tabular-nums font-semibold text-slate-900 dark:text-slate-50">
 															{formatBalance(row.cnet.cumulative)}
 														</td>
 													</tr>
-													)
-												})}
+												))}
 											</tbody>
 										</table>
 									</div>

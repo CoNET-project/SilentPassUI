@@ -802,6 +802,11 @@ export type NodeIncomeRow = {
 	depinNodeIp: string
 	gb: IncomeTotals
 	cnet: IncomeTotals
+	/**
+	 * 该节点 validator 是否 active（来自同源 resolveNodeBundle 的 validatorActive，按 nodeWallet+IP / 同序 join）。
+	 * undefined = 本轮未能 join 到 bundle（视为非 active）；不影响 gb/cnet 收益的可信性。
+	 */
+	validatorActive?: boolean
 }
 
 /** {resolveUnifiedIncomeStats} 解析结果：受益人 GB/CNET 总量 + 每节点明细。 */
@@ -894,8 +899,31 @@ export async function fetchUnifiedIncomeStats(
 	const ip = isAddr ? '' : normalizeDepinIp(raw)
 	const redeem = new ethers.Contract(contract, VALIDATOR_WALLET_NODE_PROFILE_ABI, conetDepinProvider)
 	try {
-		const r = await redeem.resolveUnifiedIncomeStats!(maybeWallet, ip, BigInt(Math.max(0, anchorTs)))
+		// 收益统计与节点 bundle 同源（resolveUnifiedIncomeStats 内部本就基于 resolveNodeBundle），
+		// 并行多读一次 bundle 仅用于 join 每个节点的 validator active 状态；bundle 读失败不影响收益可信性。
+		const [r, bundleRaw] = await Promise.all([
+			redeem.resolveUnifiedIncomeStats!(maybeWallet, ip, BigInt(Math.max(0, anchorTs))),
+			(redeem.resolveNodeBundle!(maybeWallet, ip) as Promise<ethers.Result>).catch(() => null),
+		])
 		const stats = parseUnifiedIncomeStats(r as ethers.Result)
+		if (bundleRaw) {
+			try {
+				const bundle = parseNodeBundle(bundleRaw)
+				const activeByKey = new Map<string, boolean>()
+				bundle.nodes.forEach((n) => {
+					activeByKey.set(`${n.nodeWallet.toLowerCase()}|${normalizeDepinIp(n.ip)}`, n.validatorActive)
+				})
+				stats.nodes = stats.nodes.map((rowNode, i) => {
+					const key = `${rowNode.nodeWallet.toLowerCase()}|${normalizeDepinIp(rowNode.depinNodeIp)}`
+					const active = activeByKey.has(key)
+						? activeByKey.get(key)!
+						: bundle.validatorActive[i]
+					return { ...rowNode, validatorActive: Boolean(active) }
+				})
+			} catch {
+				// keep income stats without validator-active join
+			}
+		}
 		return { ok: true, query: raw, stats }
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }

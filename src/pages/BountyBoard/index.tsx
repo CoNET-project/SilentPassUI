@@ -4,6 +4,7 @@ import { Gift, Utensils, Share2, Filter, Settings2 } from 'lucide-react'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
 import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
+import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatWithThousands } from '@/services/beamio'
 import { formatConetChainTokenBalance } from '@/services/conetUsdcBalance'
@@ -132,23 +133,22 @@ export default function BountyBoard() {
 	const profileCurrency = (profiles?.[0]?.beamio?.currency ?? 'USD') as ICurrency
 	const { balances: conetWalletBalances } = useConetWalletBalances(eoa)
 	const { profile: validatorProfile } = useDaemonValidatorWalletNodeProfile()
+	const { stats: incomeStats } = useDaemonUnifiedIncomeStats()
 
 	const usdcDisplay = useMemo(() => formatConetUsdcDisplay(conetWalletBalances.usdc), [conetWalletBalances.usdc])
 	const fiatApprox = useMemo(
 		() => formatConetUsdcFiatApprox(conetWalletBalances.usdc, profileCurrency, currencyData as Record<string, number>),
 		[conetWalletBalances.usdc, profileCurrency, currencyData]
 	)
+	// L1 / DePIN Mining 显示 ValidatorNodeRewardIndexer / ConetGB1155 的「受益人累计收益」，
+	// 非钱包余额。来源与 /BountyBoard/conet-mining 详情页同轨（resolveUnifiedIncomeStats）。
 	const miningGbDisplay = useMemo(
-		() => formatConetChainTokenBalance(conetWalletBalances.gb),
-		[conetWalletBalances.gb]
+		() => formatConetChainTokenBalance(incomeStats?.gbBeneficiary.cumulative ?? '0'),
+		[incomeStats?.gbBeneficiary.cumulative]
 	)
 	const miningCnetDisplay = useMemo(
-		() => formatConetChainTokenBalance(conetWalletBalances.cnet),
-		[conetWalletBalances.cnet]
-	)
-	const miningUsdcDisplay = useMemo(
-		() => formatConetUsdcDisplay(conetWalletBalances.usdc),
-		[conetWalletBalances.usdc]
+		() => formatConetChainTokenBalance(incomeStats?.cnetBeneficiary.cumulative ?? '0'),
+		[incomeStats?.cnetBeneficiary.cumulative]
 	)
 	const totalNodesDisplay = useMemo(() => {
 		const staked = validatorProfile?.validatorNodeCount ?? 0
@@ -205,13 +205,16 @@ export default function BountyBoard() {
 							{usdcDisplay} <span className="text-3xl font-bold">USDC</span>
 						</p>
 						<p className="mt-2 text-sm text-white/75">{fiatApprox}</p>
+						<p className="mt-4 text-[11px] leading-snug text-white/60">
+							All rewards are automatically synced to your Main Wallet.
+						</p>
 					</section>
 
 					{/* CONET mining */}
 					<section className={`${cardChrome} p-5`}>
 						<div className="flex items-center justify-between gap-2">
 							<p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-								CoNET Mining
+								NODE REWARDS
 							</p>
 							<button
 								type="button"
@@ -229,7 +232,6 @@ export default function BountyBoard() {
 								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
 									{miningGbDisplay} GB
 								</p>
-								<p className="text-[11px] text-slate-400">≈ {miningUsdcDisplay} USDC</p>
 								<button
 									type="button"
 									className="mt-2 inline-flex items-center justify-center rounded-full border border-[#1562f0] px-3 py-1.5 text-xs font-bold text-[#1562f0] transition active:scale-[0.98]"
@@ -244,7 +246,6 @@ export default function BountyBoard() {
 								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
 									{miningCnetDisplay} CNET
 								</p>
-								<p className="mt-1 text-[11px] leading-tight text-slate-400">Native Gas Token</p>
 							</div>
 
 							{/* Total Nodes */}

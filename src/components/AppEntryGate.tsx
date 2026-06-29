@@ -17,6 +17,9 @@ import {
 	hasLocalPlaintextMnemonic,
 } from '@/utils/consumerWalletGate'
 import { ensureEphemeralWalletForCouponClaim } from '@/utils/ephemeralCouponClaimWallet'
+import { BEAMIO_WALLET_READY_EVENT } from '@/utils/beamioWalletReadyEvent'
+
+const SPLASH_FORCE_DISMISS_MS = 12_000
 
 export default function AppEntryGate() {
 	const { setIsInitialLoading } = useDaemonContext()
@@ -25,34 +28,43 @@ export default function AppEntryGate() {
 	const [splashVisible, setSplashVisible] = useState(true)
 
 	const init = async () => {
-		let CoNETData = await checkStorage()
-		const provisioned = await ensureEphemeralWalletForCouponClaim()
-		if (provisioned) CoNETData = provisioned
+		try {
+			let CoNETData = await checkStorage()
+			const provisioned = await ensureEphemeralWalletForCouponClaim()
+			if (provisioned) CoNETData = provisioned
 
-		const hasAccount = hasCompletedBeamioAccount(CoNETData)
-		const needsRecover = consumerAppNeedsWalletRecover(CoNETData)
-		const hasMnemonic = hasLocalPlaintextMnemonic(CoNETData)
-		publishNativePwaLog(
-			'info',
-			`[AppEntryGate] storage hasAccount=${hasAccount} needsRecover=${needsRecover} hasMnemonic=${hasMnemonic}`,
-		)
-		if (hasAccount) {
-			if (consumerAppNeedsWalletRecover(CoNETData)) {
-				setRequireWalletRecover(true)
-				setIsInitialLoading(true)
-				setShowBeamioOnboardingModal(true)
-				setSplashVisible(false)
+			const hasAccount = hasCompletedBeamioAccount(CoNETData)
+			const needsRecover = consumerAppNeedsWalletRecover(CoNETData)
+			const hasMnemonic = hasLocalPlaintextMnemonic(CoNETData)
+			publishNativePwaLog(
+				'info',
+				`[AppEntryGate] storage hasAccount=${hasAccount} needsRecover=${needsRecover} hasMnemonic=${hasMnemonic}`,
+			)
+			if (hasAccount) {
+				if (consumerAppNeedsWalletRecover(CoNETData)) {
+					setRequireWalletRecover(true)
+					setIsInitialLoading(true)
+					setShowBeamioOnboardingModal(true)
+					return
+				}
 				return
 			}
+			// 未完成注册（无 profiles / EOA 非法 / 无 Beamio 账号名）必须走 onboarding。
+			setRequireWalletRecover(false)
+			setIsInitialLoading(true)
+			setShowBeamioOnboardingModal(true)
+		} catch (err) {
+			publishNativePwaLog(
+				'error',
+				`[AppEntryGate] init failed: ${err instanceof Error ? err.message : String(err)}`,
+			)
+			setRequireWalletRecover(false)
+			setIsInitialLoading(true)
+			setShowBeamioOnboardingModal(true)
+		} finally {
+			// 始终关闭 Splash：Firefox 等浏览器上 IndexedDB 偶发慢/挂起时，避免 #000414 全屏一直盖住主界面。
 			setSplashVisible(false)
-			return
 		}
-		// 未完成注册（无 profiles / EOA 非法 / 无 Beamio 账号名）必须走 onboarding；
-		// 同时立即关闭 splash，避免 modal 内部 init 卡住时 splash 一直遮挡。
-		setRequireWalletRecover(false)
-		setIsInitialLoading(true)
-		setShowBeamioOnboardingModal(true)
-		setSplashVisible(false)
 	}
 
 	useEffect(() => {
@@ -60,11 +72,25 @@ export default function AppEntryGate() {
 		const msg = `[PWA] AppEntryGate mounted nativeShell=${nativeShell}`
 		console.log(msg, { nativeShell })
 		publishNativePwaLog('info', msg)
+
+		const splashTimer = window.setTimeout(() => {
+			setSplashVisible(false)
+			publishNativePwaLog('warn', `[AppEntryGate] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms`)
+		}, SPLASH_FORCE_DISMISS_MS)
+
+		const onWalletReady = () => setSplashVisible(false)
+		window.addEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
+
 		void init()
+
+		return () => {
+			window.clearTimeout(splashTimer)
+			window.removeEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
+		}
 	}, [])
 
 	return (
-		<div className="flex min-h-0 h-full w-full flex-col">
+		<div className="flex h-full min-h-[100dvh] w-full flex-col">
 			<EmbeddedPwaUpdateBanner />
 			{splashVisible && <SplashScreen />}
 			{showBeamioOnboardingModal ? (

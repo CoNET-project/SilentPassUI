@@ -1746,7 +1746,7 @@ const Home = (_props: HomeProps) => {
 	return (
 		<div
 			className="
-		box-border flex h-full min-h-[100vh] w-full flex-col bg-[#f8f9fa] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900 dark:bg-slate-950
+		box-border flex min-h-[100dvh] w-full flex-1 flex-col bg-[#f8f9fa] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900 dark:bg-slate-950
 		"
 		>
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
@@ -3434,27 +3434,12 @@ const Home = (_props: HomeProps) => {
 
 
 			{/**		检索	 */}
-			{createPortal(
+			{openSearch && createPortal(
 				<div
-					className={[
-						"fixed inset-0 z-[9998] bg-white w-full h-full overscroll-none touch-action-none",
-						
-						// ✅ 修改点 1: 时间改为 500ms (0.5秒)，ease-in-out 让加减速更自然
-						"transition-opacity duration-500 ease-in-out",
-						
-						// 状态切换：控制透明度和点击穿透
-						openSearch ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-					].join(" ")}
+					className="fixed inset-0 z-[9998] bg-white w-full h-full overscroll-none touch-action-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
 					style={{ top: 0, left: 0, bottom: 0, right: 0 }}
 				>
-					{/* ✅ 修改点 2: 移除了 {openSearch && (...)} 
-					让内容常驻 DOM，这样“关闭”时，内容会跟随背景一起慢慢淡出，
-					而不是瞬间消失只剩下背景在淡出。
-					
-					注意：如果 BeamioSearch 内部有需要每次打开都重置的逻辑（比如 useEffect），
-					请确保它监听了 openSearch 或者是通过 key={openSearch ? 'open' : 'closed'} 来强制刷新。
-					*/}
-					<div className="h-full w-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+					<div className="h-full w-full flex flex-col">
 						<BeamioSearch
 							isOpen={openSearch}
 							close={(item) => {
@@ -3475,19 +3460,13 @@ const Home = (_props: HomeProps) => {
 			)}
 
 			{/* 底部向上弹出窗口 */}
+			{settingsOpen ? (
 			<div
-			className={[
-				"fixed inset-0 z-40",
-				settingsOpen ? "pointer-events-auto" : "pointer-events-none"
-			].join(" ")}
+			className="fixed inset-0 z-40 pointer-events-auto"
 			>
 				{/* 灰色遮罩：父页面不可用 */}
 				<div
-					className={[
-					"absolute inset-0",
-					"bg-black/50 transition-opacity duration-300 ease-out",
-					settingsOpen ? "opacity-100" : "opacity-0"
-					].join(" ")}
+					className="absolute inset-0 bg-black/50 transition-opacity duration-300 ease-out opacity-100"
 					onClick={() => {
 						setShowFooter(true)
 						setSettingsOpen('')
@@ -3496,11 +3475,7 @@ const Home = (_props: HomeProps) => {
 
 				{/* Bottom Sheet：全宽，从底部上来 */}
 				<div
-					className={[
-					"absolute inset-x-0 bottom-0",
-					"transition-transform duration-300 ease-out",
-					settingsOpen ? "translate-y-0" : "translate-y-full"
-					].join(" ")}
+					className="absolute inset-x-0 bottom-0 transition-transform duration-300 ease-out translate-y-0"
 					onTouchMove={(e) => e.stopPropagation()}
 				>
 					{/* Sheet 本体：h-auto 自适应内容高度 */}
@@ -3560,6 +3535,7 @@ const Home = (_props: HomeProps) => {
 					</div>
 				</div>
 			</div>
+			) : null}
 
 			<MyBrandsFullScreenDrawer
 				open={showMyBrandsDrawer}

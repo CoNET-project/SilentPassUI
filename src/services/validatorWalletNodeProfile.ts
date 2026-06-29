@@ -1072,15 +1072,11 @@ export async function fetchUnifiedIncomeStats(
 		// 收益统计与节点 bundle 同源（resolveUnifiedIncomeStats 内部本就基于 resolveNodeBundle）。
 		// unified 单调用可能因把受益人+每节点的年度聚合合并进一次 eth_call 超过节点 gasCap 而 revert，
 		// 因此对 unified 与 bundle 各自 catch：bundle 用于 join validator active，且是回退拼装的节点来源。
-		const [r, bundleRaw, airdropRaw] = await Promise.all([
+		const [r, bundleRaw] = await Promise.all([
 			(redeem.resolveUnifiedIncomeStats!(maybeWallet, ip, BigInt(Math.max(0, anchorTs))) as Promise<ethers.Result>).catch(
 				() => null,
 			),
 			(redeem.resolveNodeBundle!(maybeWallet, ip) as Promise<ethers.Result>).catch(() => null),
-			// airdrop（vesting）账本按受益人地址查询；IP 入口时 maybeWallet 为零，下方用解析出的 beneficiary 补查。
-			isAddr
-				? (redeem.airdropInfoOf!(maybeWallet) as Promise<ethers.Result>).catch(() => null)
-				: Promise.resolve(null),
 		])
 		// bundle 优先解析（回退拼装与 validator-active join 都依赖它）。
 		let parsedBundle: BeneficiaryNodeBundle | null = null
@@ -1102,19 +1098,15 @@ export async function fetchUnifiedIncomeStats(
 			// 既无收益、又无可信节点：交由外层 catch 返回 ok:false（不覆盖 UI 上次可信值）。
 			return { ok: false, error: 'resolveUnifiedIncomeStats read failed' }
 		}
-		// airdrop（vesting）：可信读取才写入；失败保持 null（UI 不覆盖上次可信值）。
-		if (airdropRaw) {
+		// airdrop（vesting）账本按 redeem **beneficiary** 查询（非 node operator 钱包）。
+		// 登录 EOA 可能是 nodeWallet；须用 resolve 出的 beneficiary，否则 accrued 恒为 0。
+		const airdropBeneficiary = stats.beneficiary ?? (isAddr ? maybeWallet : null)
+		if (airdropBeneficiary) {
 			try {
-				stats.airdrop = parseAirdropInfo(airdropRaw)
-			} catch {
-				/* keep airdrop = null */
-			}
-		} else if (!isAddr && stats.beneficiary) {
-			try {
-				const fallbackAirdrop = await (redeem.airdropInfoOf!(stats.beneficiary) as Promise<ethers.Result>).catch(
+				const airdropRow = await (redeem.airdropInfoOf!(airdropBeneficiary) as Promise<ethers.Result>).catch(
 					() => null,
 				)
-				if (fallbackAirdrop) stats.airdrop = parseAirdropInfo(fallbackAirdrop)
+				if (airdropRow) stats.airdrop = parseAirdropInfo(airdropRow)
 			} catch {
 				/* keep airdrop = null */
 			}

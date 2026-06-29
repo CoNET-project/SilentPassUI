@@ -57,11 +57,23 @@ function formatBalance(raw: string): string {
 	return n.toLocaleString(undefined, { maximumFractionDigits: 8 })
 }
 
-/** CNET airdrop（vesting）剩余额展示：固定两位小数（如 100.00 CNET）。 */
-function formatVestingCnet(claimable: string): string {
-	const n = Number(claimable)
-	if (!Number.isFinite(n)) return claimable
+/** CNET airdrop（vesting）展示：固定两位小数（如 100.00 CNET）。 */
+function formatVestingCnet(value: string): string {
+	const n = Number(value)
+	if (!Number.isFinite(n)) return value
 	return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** Genesis Loyalty 子行：有授予额即展示（含 claimableAt 未开、线性尚未解锁时 accrued>0 / claimable=0）。 */
+function genesisLoyaltyPanelLine(airdrop: { accrued: string; claimable: string } | null | undefined): string | null {
+	if (!airdrop) return null
+	const accrued = Number(airdrop.accrued)
+	const claimable = Number(airdrop.claimable)
+	if (!Number.isFinite(accrued) || accrued <= 0) return null
+	if (Number.isFinite(claimable) && claimable > 0) {
+		return `${formatVestingCnet(airdrop.claimable)} CNET (Vesting)`
+	}
+	return `${formatVestingCnet(airdrop.accrued)} CNET (Genesis Loyalty)`
 }
 
 /** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC（GB 为 0 也显示 ≈ 0.00 USDC） */
@@ -124,6 +136,10 @@ export default function CoNetMiningDetailPage() {
 	const gbUsdcApprox = useMemo(
 		() => formatGbUsdcApprox(incomeStats?.gbBeneficiary.cumulative ?? '0'),
 		[incomeStats?.gbBeneficiary.cumulative],
+	)
+	const genesisLoyaltyLine = useMemo(
+		() => genesisLoyaltyPanelLine(incomeStats?.airdrop ?? null),
+		[incomeStats?.airdrop],
 	)
 	const nodeIncomeIps = useMemo(
 		() => (incomeStats?.nodes ?? []).map((row) => row.depinNodeIp).filter(Boolean),
@@ -324,7 +340,7 @@ export default function CoNetMiningDetailPage() {
 										{formatBalance(incomeStats.cnetBeneficiary.cumulative)}{' '}
 										<span className="text-sm font-bold text-white/80">CNET</span>
 									</p>
-									{incomeStats.airdrop && Number(incomeStats.airdrop.claimable) > 0 ? (
+									{genesisLoyaltyLine ? (
 										<button
 											type="button"
 											onClick={() => setVestingSheetOpen(true)}
@@ -332,7 +348,7 @@ export default function CoNetMiningDetailPage() {
 											aria-label="View Genesis Loyalty Reward vesting details"
 										>
 											<Lock className="h-3 w-3 shrink-0" strokeWidth={2.25} aria-hidden />
-											{formatVestingCnet(incomeStats.airdrop.claimable)} CNET (Vesting)
+											{genesisLoyaltyLine}
 										</button>
 									) : null}
 								</div>

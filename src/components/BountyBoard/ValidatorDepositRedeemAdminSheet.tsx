@@ -273,6 +273,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 								validBefore: row.validBefore,
 								active: Boolean(row.chainActive),
 								consumed: Boolean(row.chainConsumed),
+								airdrop: Boolean(row.airdrop),
 							}
 						: null,
 			})
@@ -528,6 +529,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 													validBefore: row.validBefore,
 													active: Boolean(row.chainActive),
 													consumed: Boolean(row.chainConsumed),
+													airdrop: Boolean(row.airdrop),
 												}
 											: null,
 								})

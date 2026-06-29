@@ -70,7 +70,7 @@ export function GenesisLoyaltyVestingSheet({ open, onClose, airdrop, eoa }: Prop
 
 	const handleRelease = useCallback(async () => {
 		if (!eoa) {
-			showBeamioToast('Unlock your wallet to release the airdrop.')
+			showBeamioToast('Unlock your wallet to claim the airdrop.')
 			return
 		}
 		setStatus('loading')
@@ -78,7 +78,7 @@ export function GenesisLoyaltyVestingSheet({ open, onClose, airdrop, eoa }: Prop
 			const res = await releaseValidatorDepositRedeemAirdropSelf({ beneficiaryEoa: eoa })
 			if (res.success) {
 				setStatus('success')
-				showBeamioToast('Release submitted — CNET is on its way to your Main Wallet.')
+				showBeamioToast('Claim submitted — CNET is on its way to your Main Wallet.')
 				window.setTimeout(() => setStatus('idle'), 3000)
 			} else {
 				setStatus('error')
@@ -122,30 +122,28 @@ export function GenesisLoyaltyVestingSheet({ open, onClose, airdrop, eoa }: Prop
 
 				<div className="overflow-y-auto px-6 pt-3">
 					<p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-						100 $CNET awarded per historical node, unlocking linearly over 6 months.{' '}
+						100 $CNET per historical node. Vests linearly over 6 months{' '}
 						{view.startDate
 							? view.started
-								? `Started ${view.startDate}${view.endDate ? `, fully unlocks ${view.endDate}` : ''}.`
-								: `Unlocking begins ${view.startDate}.`
-							: 'The unlock start date will be announced.'}
+								? `(started ${view.startDate}${view.endDate ? `, fully unlocks ${view.endDate}` : ''}).`
+								: `starting ${view.startDate}.`
+							: '(start date to be announced).'}
 					</p>
 
-					{/* Releasable now (currently unlockable amount) */}
+					{/* Available to claim (currently unlockable amount) */}
 					<div className="mt-5 rounded-2xl border border-[#1562f0]/15 bg-[#1562f0]/5 px-4 py-4">
-						<p className="text-[11px] font-semibold uppercase tracking-wide text-[#1562f0]">Releasable now</p>
+						<p className="text-[11px] font-semibold uppercase tracking-wide text-[#1562f0]">Available to Claim</p>
 						<p className="mt-0.5 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-50">
 							{formatCnet(view.releasable)}{' '}
 							<span className="text-base font-semibold text-slate-400">CNET</span>
 						</p>
-						<p className="mt-0.5 text-xs tabular-nums text-slate-400">
-							of {formatCnet(view.accrued)} CNET total
-						</p>
+						<p className="mt-0.5 text-xs text-slate-400">Tokens remain in smart contract until claimed.</p>
 					</div>
 
 					{/* Vesting progress */}
 					<div className="mt-5 flex items-baseline justify-between gap-2 text-sm">
 						<span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-							{formatCnet(view.vested)} / {formatCnet(view.accrued)} Vested
+							Total Vested: {formatCnet(view.vested)} / {formatCnet(view.accrued)}
 						</span>
 						<span className="font-semibold tabular-nums text-slate-400">{view.pct}%</span>
 					</div>
@@ -156,11 +154,12 @@ export function GenesisLoyaltyVestingSheet({ open, onClose, airdrop, eoa }: Prop
 						/>
 					</div>
 
-					{view.claimed > 0 ? (
-						<p className="mt-3 text-xs tabular-nums text-slate-400">
-							{formatCnet(view.claimed)} CNET already released
-						</p>
-					) : null}
+					<div className="mt-4 flex items-baseline justify-between gap-2 text-sm">
+						<span className="text-slate-500 dark:text-slate-400">Already Claimed:</span>
+						<span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">
+							{formatCnet(view.claimed)} $CNET
+						</span>
+					</div>
 				</div>
 
 				<div className="px-6 pb-6 pt-5">
@@ -173,12 +172,12 @@ export function GenesisLoyaltyVestingSheet({ open, onClose, airdrop, eoa }: Prop
 						{status === 'loading' ? (
 							<>
 								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-								Releasing…
+								Claiming…
 							</>
 						) : status === 'success' ? (
 							<>
 								<Check className="h-4 w-4" aria-hidden />
-								Released
+								Claimed
 							</>
 						) : status === 'error' ? (
 							<>
@@ -188,16 +187,18 @@ export function GenesisLoyaltyVestingSheet({ open, onClose, airdrop, eoa }: Prop
 						) : (
 							<>
 								<ArrowDownToLine className="h-4 w-4" aria-hidden />
-								Release to Wallet
+								Claim to Wallet
 							</>
 						)}
 					</button>
 					<p className="mt-2.5 text-center text-[11px] leading-relaxed text-slate-400">
 						{view.releasable > 0
-							? 'Released to your Main Wallet (EOA). Network gas is paid from your wallet.'
+							? 'Claimed to your Main Wallet (EOA). Network gas is paid from your wallet.'
 							: view.started
-								? 'No CNET unlocked to release yet.'
-								: 'Release opens once vesting begins.'}
+								? 'No CNET unlocked to claim yet.'
+								: view.startDate
+									? `Claiming opens once vesting begins on ${view.startDate}.`
+									: 'Claiming opens once vesting begins.'}
 					</p>
 				</div>
 			</div>

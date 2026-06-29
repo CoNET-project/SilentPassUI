@@ -26,7 +26,7 @@ export const CONET_BUSINESS_START_KET = '0xAcf20dbb4DE0992d8947Ef00b505bBc17E6A0
 /** BusinessStartKetRedeem（CoNET）；Ket + B-Unit 兑换码 */
 export const CONET_BUSINESS_START_KET_REDEEM = '0xe9CeDC2c9F7DE7c0e6d1f1ba1F7e7126F0F1D3c8'
 /** ValidatorDepositRedeem（CoNET）；validator deposit 兑换码 */
-export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0x27d45092dA7847967aA8d3D5b490E2c5eb6c294f'
+export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0xc71e246DD78B37C2fABc905D340932F28F503433'
 /** CoNET UserCard Factory（224422） */
 export const CONET_CARD_FACTORY = '0xfA52a0CcC96C19cF4b6Ea864615F6d52BD0774FB'
 /** CoNET EntryPoint-aware BeamioFactoryPaymasterV07（224422） */

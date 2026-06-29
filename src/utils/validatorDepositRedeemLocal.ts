@@ -4,6 +4,7 @@ export type StoredValidatorRedeemCode = {
 	code: string
 	codeHash: string
 	allowedClaimer: string
+	referrer: string
 	validatorCount: number
 	targetNodeIp: string
 	/** @deprecated Auto-allocation: DePIN node IPs are resolved from Guardian at claim, not at create. */
@@ -41,6 +42,11 @@ export function saveStoredValidatorRedeemCodes(adminEoa: string, rows: StoredVal
 export function appendStoredValidatorRedeemCode(adminEoa: string, row: StoredValidatorRedeemCode): void {
 	const rows = loadStoredValidatorRedeemCodes(adminEoa)
 	rows.unshift(row)
+	saveStoredValidatorRedeemCodes(adminEoa, rows)
+}
+
+export function removeStoredValidatorRedeemCode(adminEoa: string, id: string): void {
+	const rows = loadStoredValidatorRedeemCodes(adminEoa).filter((r) => r.id !== id)
 	saveStoredValidatorRedeemCodes(adminEoa, rows)
 }
 

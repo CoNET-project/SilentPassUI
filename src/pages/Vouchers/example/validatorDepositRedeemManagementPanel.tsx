@@ -7,6 +7,8 @@ import {
 	generateValidatorRedeemCode,
 	postValidatorDepositRedeemAdminCancel,
 	postValidatorDepositRedeemAdminCreate,
+	queryValidatorDepositRedeemExistsOnAnyContract,
+	readValidatorDepositRedeemCreateTxReceipt,
 	queryValidatorDepositRedeemOnChain,
 	signValidatorDepositRedeemCancel,
 	signValidatorDepositRedeemCreate,
@@ -17,8 +19,32 @@ import {
 	appendStoredValidatorRedeemCode,
 	loadStoredValidatorRedeemCodes,
 	patchStoredValidatorRedeemCode,
+	removeStoredValidatorRedeemCode,
+	saveStoredValidatorRedeemCodes,
 	type StoredValidatorRedeemCode,
 } from '@/utils/validatorDepositRedeemLocal'
+
+const VALIDATOR_REDEEM_PENDING_CHAIN_GRACE_MS = 3 * 60 * 1000
+
+function shouldPruneStoredValidatorRedeemRow(input: {
+	row: StoredValidatorRedeemCode
+	existsOnChain: boolean
+	createTxReceipt?: 'pending' | 'success' | 'reverted'
+	nowMs?: number
+}): boolean {
+	if (input.existsOnChain) return false
+	const now = input.nowMs ?? Date.now()
+	if (!input.row.createTxHash) return true
+	if (input.createTxReceipt === 'reverted' || input.createTxReceipt === 'success') return true
+	if (input.createTxReceipt === 'pending') {
+		const createdMs = Date.parse(input.row.createdAt)
+		if (!Number.isFinite(createdMs)) return true
+		return now - createdMs > VALIDATOR_REDEEM_PENDING_CHAIN_GRACE_MS
+	}
+	const createdMs = Date.parse(input.row.createdAt)
+	if (!Number.isFinite(createdMs)) return true
+	return now - createdMs > VALIDATOR_REDEEM_PENDING_CHAIN_GRACE_MS
+}
 
 type ValidatorDepositRedeemManagementPanelProps = {
 	currentEoa?: string | null
@@ -59,6 +85,7 @@ export function ValidatorDepositRedeemManagementPanel({
 	const [notice, setNotice] = useState<{ kind: 'success' | 'warn' | 'error'; text: string } | null>(null)
 
 	const [allowedClaimer, setAllowedClaimer] = useState('')
+	const [referrer, setReferrer] = useState('')
 	const [validatorCount, setValidatorCount] = useState('1')
 	const [targetNodeIp, setTargetNodeIp] = useState('')
 	const [gbMiningNodeCount, setGbMiningNodeCount] = useState('')
@@ -82,23 +109,47 @@ export function ValidatorDepositRedeemManagementPanel({
 		return pk
 	}
 
+	const pruneStoredGhosts = useCallback(async () => {
+		if (!adminEoa) return
+		const rows = loadStoredValidatorRedeemCodes(adminEoa)
+		const kept: StoredValidatorRedeemCode[] = []
+		for (const row of rows) {
+			const probe = await queryValidatorDepositRedeemExistsOnAnyContract(row.code)
+			if (!probe.ok) {
+				kept.push(row)
+				continue
+			}
+			if (!probe.exists) {
+				let createTxReceipt: 'pending' | 'success' | 'reverted' | undefined
+				if (row.createTxHash) {
+					const receipt = await readValidatorDepositRedeemCreateTxReceipt(row.createTxHash)
+					if (receipt.ok) createTxReceipt = receipt.status
+				}
+				if (shouldPruneStoredValidatorRedeemRow({ row, existsOnChain: false, createTxReceipt })) {
+					removeStoredValidatorRedeemCode(adminEoa, row.id)
+					continue
+				}
+				kept.push(row)
+				continue
+			}
+			kept.push(row)
+		}
+		if (kept.length !== rows.length) {
+			saveStoredValidatorRedeemCodes(adminEoa, kept)
+			reloadStored()
+		}
+	}, [adminEoa, reloadStored])
+
+	useEffect(() => {
+		void pruneStoredGhosts()
+	}, [pruneStoredGhosts])
+
 	const refreshChainStatus = async () => {
 		if (!adminEoa) return
 		setBusy('refresh')
 		setNotice(null)
 		try {
-			const rows = loadStoredValidatorRedeemCodes(adminEoa)
-			await Promise.all(
-				rows.map(async (row) => {
-					const chain = await queryValidatorDepositRedeemOnChain(row.code)
-					if (chain.valid) {
-						patchStoredValidatorRedeemCode(adminEoa, row.id, {
-							...row,
-						})
-					}
-				})
-			)
-			reloadStored()
+			await pruneStoredGhosts()
 			setNotice({ kind: 'success', text: 'Chain status refreshed.' })
 		} catch (e: unknown) {
 			const err = e as { message?: string }
@@ -128,6 +179,11 @@ export function ValidatorDepositRedeemManagementPanel({
 				if (!ethers.isAddress(allowedClaimer.trim())) throw new Error('Invalid allowedClaimer address.')
 				claimer = ethers.getAddress(allowedClaimer.trim())
 			}
+			let referrerAddr = ethers.ZeroAddress
+			if (referrer.trim()) {
+				if (!ethers.isAddress(referrer.trim())) throw new Error('Invalid referrer address.')
+				referrerAddr = ethers.getAddress(referrer.trim())
+			}
 
 			const code = generateValidatorRedeemCode()
 			const codeHash = validatorDepositRedeemCodeHash(code)
@@ -144,6 +200,7 @@ export function ValidatorDepositRedeemManagementPanel({
 				admin: adminEoa,
 				codeHash,
 				allowedClaimer: claimer,
+				referrer: referrerAddr,
 				validatorCount: BigInt(count),
 				targetNodeIp: targetIp,
 				gbMiningNodeCount: BigInt(gbCountRaw),
@@ -157,6 +214,7 @@ export function ValidatorDepositRedeemManagementPanel({
 				admin: adminEoa,
 				codeHash,
 				allowedClaimer: claimer,
+				referrer: referrerAddr,
 				validatorCount: String(count),
 				targetNodeIp: targetIp,
 				gbMiningNodeCount: String(gbCountRaw),
@@ -173,6 +231,7 @@ export function ValidatorDepositRedeemManagementPanel({
 				code,
 				codeHash,
 				allowedClaimer: claimer,
+				referrer: referrerAddr,
 				validatorCount: count,
 				targetNodeIp: targetIp,
 				gbMiningNodeCount: gbCountRaw,
@@ -290,6 +349,15 @@ export function ValidatorDepositRedeemManagementPanel({
 						<Plus className="h-4 w-4" /> Create redeem
 					</h4>
 					<div className="grid gap-4 sm:grid-cols-2">
+						<label className="block text-xs font-semibold text-slate-600">
+							Referrer (optional, bound at issue)
+							<input
+								value={referrer}
+								onChange={(e) => setReferrer(e.target.value)}
+								placeholder="0x… or leave empty"
+								className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm"
+							/>
+						</label>
 						<label className="block text-xs font-semibold text-slate-600">
 							Allowed claimer (optional, blank = anyone)
 							<input
@@ -463,6 +531,10 @@ function StoredRedeemRow({
 						<div>
 							<span className="font-semibold text-slate-500">Claimer:</span>{' '}
 							{row.allowedClaimer === ethers.ZeroAddress ? 'Anyone' : shortAddr(row.allowedClaimer)}
+						</div>
+						<div>
+							<span className="font-semibold text-slate-500">Referrer:</span>{' '}
+							{row.referrer === ethers.ZeroAddress ? 'None' : shortAddr(row.referrer)}
 						</div>
 					</dl>
 				</div>

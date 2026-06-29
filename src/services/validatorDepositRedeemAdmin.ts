@@ -16,7 +16,7 @@ const REDEEM_ADMINS_ABI = ['function redeemAdmins(address account) view returns 
 const ADMINS_ABI = ['function admins(address account) view returns (bool)'] as const
 const REDEEM_ADMIN_NONCES_ABI = ['function redeemAdminNonces(address account) view returns (uint256)'] as const
 const GET_REDEEM_ABI = [
-	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, address referrer, uint256 validatorCount, string targetNodeIp, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed)',
+	'function getRedeem(bytes32 codeHash) view returns (address allowedClaimer, address referrer, uint256 validatorCount, string targetNodeIp, uint256 gbMiningNodeCount, uint64 validAfter, uint64 validBefore, bool active, bool consumed, bool airdrop)',
 ] as const
 
 const CLAIM_ALLOC_REDEEM_ABI = [
@@ -93,6 +93,7 @@ export const VALIDATOR_DEPOSIT_REDEEM_CREATE_TYPED_DATA_TYPES: Record<string, { 
 		{ name: 'validatorCount', type: 'uint256' },
 		{ name: 'targetNodeIp', type: 'string' },
 		{ name: 'gbMiningNodeCount', type: 'uint256' },
+		{ name: 'airdrop', type: 'bool' },
 		{ name: 'validAfter', type: 'uint256' },
 		{ name: 'validBefore', type: 'uint256' },
 		{ name: 'nonce', type: 'uint256' },
@@ -193,6 +194,7 @@ export type ValidatorDepositRedeemChainRedeem = {
 	validBefore: string
 	active: boolean
 	consumed: boolean
+	airdrop: boolean
 }
 
 /** Grace after create tx before pruning a pending row that is not yet visible on-chain. */
@@ -256,6 +258,7 @@ export async function readValidatorDepositRedeemOnChain(
 			validBefore: (row[6] as bigint).toString(),
 			active: Boolean(row[7]),
 			consumed: Boolean(row[8]),
+			airdrop: Boolean(row[9]),
 		}
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }
@@ -392,6 +395,7 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 	gbMiningNodeCount: number
 	allowedClaimer?: string
 	referrer?: string
+	airdrop?: boolean
 	validAfter?: bigint
 	validBefore?: bigint
 	privateKeyArmor?: string
@@ -430,6 +434,7 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 			: ethers.ZeroAddress
 	const validatorCount = BigInt(params.validatorCount)
 	const gbMiningNodeCount = BigInt(params.gbMiningNodeCount)
+	const airdrop = Boolean(params.airdrop)
 	const domain = validatorDepositRedeemEip712Domain()
 	const message = {
 		admin,
@@ -439,6 +444,7 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 		validatorCount,
 		targetNodeIp: params.targetNodeIp.trim(),
 		gbMiningNodeCount,
+		airdrop,
 		validAfter,
 		validBefore,
 		nonce,
@@ -462,6 +468,7 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 		validatorCount: validatorCount.toString(),
 		targetNodeIp: params.targetNodeIp.trim(),
 		gbMiningNodeCount: gbMiningNodeCount.toString(),
+		airdrop: airdrop ? 'true' : 'false',
 		validAfter: validAfter.toString(),
 		validBefore: validBefore.toString(),
 		nonce: nonce.toString(),

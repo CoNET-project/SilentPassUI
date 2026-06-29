@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, type KeyboardEvent, type WheelEvent } from 'react'
 import { ethers } from 'ethers'
-import { X, Copy, Check, Loader2, AlertTriangle, Ban, TicketPlus } from 'lucide-react'
+import { X, Copy, Check, Loader2, AlertTriangle, Ban, TicketPlus, Gift } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
@@ -72,6 +72,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 	const [targetNodeIp, setTargetNodeIp] = useState('38.102.85.33')
 	const [allowedClaimerInput, setAllowedClaimerInput] = useState('')
 	const [referrerInput, setReferrerInput] = useState('')
+	const [airdrop, setAirdrop] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const [formError, setFormError] = useState('')
 	const [rows, setRows] = useState<ValidatorDepositRedeemIssuedRecord[]>([])
@@ -190,6 +191,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 			referrer: referrer || '0x0000000000000000000000000000000000000000',
 			validAfter: '0',
 			validBefore: '0',
+			airdrop,
 		})
 		createInFlightRef.current = true
 		setSubmitting(true)
@@ -205,6 +207,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 				gbMiningNodeCount,
 				allowedClaimer: allowedClaimer || undefined,
 				referrer: referrer || undefined,
+				airdrop,
 				privateKeyArmor: armor,
 			})
 			if (!res.success) {
@@ -232,6 +235,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		}
 	}, [
 		adminEoa,
+		airdrop,
 		allowedClaimerInput,
 		canCreate,
 		profiles,
@@ -428,6 +432,49 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 								</p>
 							</div>
 
+							<div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-600 dark:bg-slate-800">
+								<button
+									type="button"
+									role="switch"
+									aria-checked={airdrop}
+									onClick={() => setAirdrop((v) => !v)}
+									disabled={submitting || !canCreate}
+									className="flex w-full items-center justify-between gap-3 disabled:opacity-60"
+								>
+									<span className="flex items-center gap-2.5 text-left">
+										<span
+											className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+												airdrop ? 'bg-[#1562f0] text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+											}`}
+										>
+											<Gift className="h-4.5 w-4.5" aria-hidden />
+										</span>
+										<span className="flex flex-col">
+											<span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Airdrop</span>
+											<span className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+												Accrues 100 CNET per validator node on claim, claimable after the on-chain date.
+											</span>
+										</span>
+									</span>
+									<span
+										className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+											airdrop ? 'bg-[#1562f0]' : 'bg-slate-300 dark:bg-slate-600'
+										}`}
+									>
+										<span
+											className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+												airdrop ? 'translate-x-[22px]' : 'translate-x-0.5'
+											}`}
+										/>
+									</span>
+								</button>
+								{airdrop ? (
+									<p className="mt-2 text-[11px] font-semibold tabular-nums text-[#1562f0]">
+										≈ {100 * Math.max(0, Number(validatorCountInput) || 0)} CNET airdrop on claim
+									</p>
+								) : null}
+							</div>
+
 							{formError ? (
 								<div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -501,6 +548,12 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 													<span className="text-xs text-slate-500">
 														{row.validatorCount} validator{row.validatorCount === '1' ? '' : 's'} · IP {row.targetNodeIp}
 													</span>
+													{row.airdrop ? (
+														<span className="inline-flex items-center gap-1 rounded-full border border-[#1562f0]/30 bg-[#1562f0]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1562f0]">
+															<Gift className="h-3 w-3" aria-hidden />
+															Airdrop
+														</span>
+													) : null}
 												</div>
 												<p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Secret code</p>
 												<p className="mt-0.5 break-all font-mono text-sm text-slate-900 dark:text-slate-100">{row.secretCode}</p>

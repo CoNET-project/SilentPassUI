@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useAutoFocus } from "@/components/input/useAutoFocus"
 import { XCircle } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { postBeamio, storeSystemData } from "@/services/beamio"
+import { persistBeamioProfileLocaleCurrency } from "@/services/beamio"
+import { showBeamioToastUi } from "@/locale/beamioToast"
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
-import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
+import { CoNET_Data } from '@/utils/globals'
 import IOSGlassPillButton from '@/components/button/IOSButton'
 import CurrencyPicker from './SelectCurrent'
 import { getDecimals} from '@/services/currency'
@@ -296,26 +297,28 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 		}
 	}
 
-	const handleSaveAvatar = async (curr: ICurrency) => {
-		if (!CoNET_Data||!beamio ) return
-		
-		const tmpData = CoNET_Data
-		
-		const profile: profile = tmpData.profiles[0]
-		const bo = beamio
+	const handleSaveAvatar = async (curr: ICurrency): Promise<boolean> => {
+		if (!CoNET_Data||!beamio ) return false
 
-		if (!beamio?.pgpPublicKeyID) {
-			
+		const profile: profile = CoNET_Data.profiles[0]
+		let next: Awaited<ReturnType<typeof persistBeamioProfileLocaleCurrency>> = null
+		try {
+			next = await persistBeamioProfileLocaleCurrency(beamio, profile.privateKeyArmor, {
+				currency: curr,
+			})
+		} catch {
+			next = null
 		}
 
-		bo.currency = curr
-		await postBeamio(bo, profile.privateKeyArmor)
+		if (next) {
+			setBeamio({ ...next })
+			return true
+		}
 
-		tmpData.beamio = bo
-		setCoNET_Data(tmpData)
-		
-		await storeSystemData()
-		setBeamio({...bo})
+		// 写链失败：本次会话仍按所选货币显示（与已转换的金额保持一致），但不写链/不落盘；
+		// 提示用户未保存，可再次选择同一货币重试。
+		setBeamio({ ...beamio, currency: curr })
+		return false
 	}
 
 	// ---------- Pick currency（含 USDC，由 CurrencyPicker 返回）----------
@@ -339,7 +342,16 @@ const AmountCurrency = ({ setAmount, amount, autoEntry, showMax, readOnly, needB
 			setDisplayAmount(next === 'USDC' ? formatUsdc(nextDisplay) : formatCurrencyAmount(nextDisplay, next))
 		}
 		
-		if (next !== 'USDC') handleSaveAvatar(next) // USDC 为输入模式，不写入 beamio.currency
+		if (next !== 'USDC') {
+			// USDC 为输入模式，不写入 beamio.currency
+			void handleSaveAvatar(next).then((ok) => {
+				if (ok) {
+					showBeamioToastUi('ui.locale_currency_saved', { icon: 'success' })
+				} else {
+					showBeamioToastUi('ui.locale_currency_save_failed', { icon: 'fail' })
+				}
+			})
+		}
 		setSendError("")
 		closePicker()
 	}

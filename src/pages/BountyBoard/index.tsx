@@ -128,9 +128,9 @@ function BountyCard({ item }: { item: BountyItem }) {
 export default function BountyBoard() {
 	const navigate = useNavigate()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
-	const { profiles, currencyData } = useDaemonContext()
+	const { profiles, currencyData, beamio } = useDaemonContext()
 	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
-	const profileCurrency = (profiles?.[0]?.beamio?.currency ?? 'USD') as ICurrency
+	const profileCurrency = (beamio?.currency ?? 'USD') as ICurrency
 	const { balances: conetWalletBalances } = useConetWalletBalances(eoa)
 	const { profile: validatorProfile } = useDaemonValidatorWalletNodeProfile()
 	const { stats: incomeStats } = useDaemonUnifiedIncomeStats()
@@ -140,12 +140,19 @@ export default function BountyBoard() {
 		() => formatConetUsdcFiatApprox(conetWalletBalances.usdc, profileCurrency, currencyData as Record<string, number>),
 		[conetWalletBalances.usdc, profileCurrency, currencyData]
 	)
-	// L1 / DePIN Mining 显示 ValidatorNodeRewardIndexer / ConetGB1155 的「受益人累计收益」，
+	// L1 / DePIN Routing 显示 ValidatorNodeRewardIndexer / ConetGB1155 的「受益人累计收益」，
 	// 非钱包余额。来源与 /BountyBoard/conet-mining 详情页同轨（resolveUnifiedIncomeStats）。
 	const miningGbDisplay = useMemo(
 		() => formatConetChainTokenBalance(incomeStats?.gbBeneficiary.cumulative ?? '0'),
 		[incomeStats?.gbBeneficiary.cumulative]
 	)
+	// DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC
+	const miningGbUsdcApprox = useMemo(() => {
+		const gb = Number(incomeStats?.gbBeneficiary.cumulative ?? '0')
+		if (!Number.isFinite(gb) || gb <= 0) return null
+		const usdc = gb * 0.1
+		return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
+	}, [incomeStats?.gbBeneficiary.cumulative])
 	const miningCnetDisplay = useMemo(
 		() => formatConetChainTokenBalance(incomeStats?.cnetBeneficiary.cumulative ?? '0'),
 		[incomeStats?.cnetBeneficiary.cumulative]
@@ -200,7 +207,7 @@ export default function BountyBoard() {
 				<main className="mx-auto w-full max-w-2xl space-y-5 px-6 pt-2">
 					{/* Total bounties earned */}
 					<section className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#1d4ed8] to-[#2563eb] p-6 text-white shadow-[0_10px_30px_rgba(37,99,235,0.35)]">
-						<p className="text-[11px] font-semibold uppercase tracking-widest text-white/70">Total Bounties Earned</p>
+						<p className="text-[11px] font-semibold uppercase tracking-widest text-white/70">Total Rewards Earned</p>
 						<p className="mt-2 text-[44px] font-extrabold leading-none tracking-tight tabular-nums">
 							{usdcDisplay} <span className="text-3xl font-bold">USDC</span>
 						</p>
@@ -226,12 +233,17 @@ export default function BountyBoard() {
 							</button>
 						</div>
 						<div className="mt-4 grid grid-cols-3 gap-3">
-							{/* DePIN Mining */}
+							{/* DePIN Routing */}
 							<div className="min-w-0">
-								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">DePIN Mining</p>
+								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">DePIN Routing</p>
 								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
 									{miningGbDisplay} GB
 								</p>
+								{miningGbUsdcApprox ? (
+									<p className="mt-0.5 text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+										{miningGbUsdcApprox}
+									</p>
+								) : null}
 								<button
 									type="button"
 									className="mt-2 inline-flex items-center justify-center rounded-full border border-[#1562f0] px-3 py-1.5 text-xs font-bold text-[#1562f0] transition active:scale-[0.98]"

@@ -807,6 +807,8 @@ export type NodeIncomeRow = {
 	 * undefined = 本轮未能 join 到 bundle（视为非 active）；不影响 gb/cnet 收益的可信性。
 	 */
 	validatorActive?: boolean
+	/** 48-byte BLS validator pubkey（hex）；未登记时为空，UI 可显示 Pending。 */
+	validatorPubkey?: string
 }
 
 /** {resolveUnifiedIncomeStats} 解析结果：受益人 GB/CNET 总量 + 每节点明细。 */
@@ -910,15 +912,23 @@ export async function fetchUnifiedIncomeStats(
 			try {
 				const bundle = parseNodeBundle(bundleRaw)
 				const activeByKey = new Map<string, boolean>()
+				const pubkeyByKey = new Map<string, string>()
 				bundle.nodes.forEach((n) => {
-					activeByKey.set(`${n.nodeWallet.toLowerCase()}|${normalizeDepinIp(n.ip)}`, n.validatorActive)
+					const key = `${n.nodeWallet.toLowerCase()}|${normalizeDepinIp(n.ip)}`
+					activeByKey.set(key, n.validatorActive)
+					if (n.validatorPubkey) pubkeyByKey.set(key, n.validatorPubkey)
 				})
 				stats.nodes = stats.nodes.map((rowNode, i) => {
 					const key = `${rowNode.nodeWallet.toLowerCase()}|${normalizeDepinIp(rowNode.depinNodeIp)}`
 					const active = activeByKey.has(key)
 						? activeByKey.get(key)!
 						: bundle.validatorActive[i]
-					return { ...rowNode, validatorActive: Boolean(active) }
+					const pubkey = pubkeyByKey.get(key) ?? bundle.validatorPubkeys[i] ?? ''
+					return {
+						...rowNode,
+						validatorActive: Boolean(active),
+						validatorPubkey: pubkey || undefined,
+					}
 				})
 			} catch {
 				// keep income stats without validator-active join

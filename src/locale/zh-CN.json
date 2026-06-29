@@ -490,6 +490,8 @@
     "simplified_chinese": "简体中文",
     "simplified_chinese_short": "中文",
     "language_save_failed": "无法保存语言至链上档案，本次会话已临时切换显示语言。",
+    "locale_currency_saved": "语言与货币已保存至你的链上档案。",
+    "locale_currency_save_failed": "未能保存至链上档案，请检查网络后重试。",
     "exchange_rate_2": "汇率",
     "default_stablecoin": "默认稳定币",
     "tax": "税率 %",

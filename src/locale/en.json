@@ -490,6 +490,8 @@
     "simplified_chinese": "Simplified Chinese",
     "simplified_chinese_short": "中文",
     "language_save_failed": "Could not save language to profile. UI updated for this session only.",
+    "locale_currency_saved": "Language & currency saved to your profile.",
+    "locale_currency_save_failed": "Could not save to your profile. Please check your connection and try again.",
     "exchange_rate_2": "Exchange rate",
     "default_stablecoin": "Default stablecoin",
     "tax": "Tax %",

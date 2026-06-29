@@ -31,6 +31,8 @@ export type ValidatorDepositRedeemIssuedRecord = {
 	referrer: string
 	validAfter: string
 	validBefore: string
+	/** When true, claiming accrues 100 CNET airdrop per validator node (claimable after the on-chain claimable date). */
+	airdrop?: boolean
 	localStatus: ValidatorDepositRedeemIssuedStatus
 	createTxHash?: string
 	cancelTxHash?: string
@@ -138,6 +140,7 @@ export function newValidatorDepositRedeemIssuedDraft(params: {
 	referrer: string
 	validAfter: string
 	validBefore: string
+	airdrop?: boolean
 }): ValidatorDepositRedeemIssuedRecord {
 	const now = new Date().toISOString()
 	return {
@@ -153,6 +156,7 @@ export function newValidatorDepositRedeemIssuedDraft(params: {
 		referrer: params.referrer,
 		validAfter: params.validAfter,
 		validBefore: params.validBefore,
+		airdrop: Boolean(params.airdrop),
 		localStatus: 'submitting',
 		createdAt: now,
 		updatedAt: now,

@@ -47,6 +47,14 @@ function formatBalance(raw: string): string {
 	return n.toLocaleString(undefined, { maximumFractionDigits: 8 })
 }
 
+/** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC */
+function formatGbUsdcApprox(gbCumulative: string): string | null {
+	const gb = Number(gbCumulative)
+	if (!Number.isFinite(gb) || gb <= 0) return null
+	const usdc = gb * 0.1
+	return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
+}
+
 function ValidatorNodeCountDisplay({ profile }: { profile: ValidatorWalletNodeProfile }) {
 	const { validatorNodeCount } = profile
 	const validatorPendingCount = profile.validatorPendingCount ?? 0
@@ -82,6 +90,13 @@ function shortAddress(addr: string): string {
 	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
+function shortValidatorPubkey(pubkey: string | undefined): string {
+	if (!pubkey) return 'Pending'
+	const hex = pubkey.startsWith('0x') ? pubkey.slice(2) : pubkey
+	if (hex.length <= 16) return pubkey.startsWith('0x') ? pubkey : `0x${pubkey}`
+	return `0x${hex.slice(0, 8)}…${hex.slice(-6)}`
+}
+
 export default function CoNetMiningDetailPage() {
 	const navigate = useNavigate()
 	const { profiles, setShowFooter, conetNetworkStats: networkStats, conetDepinStats: depinStats } =
@@ -90,6 +105,10 @@ export default function CoNetMiningDetailPage() {
 	const { isRedeemAdmin } = useValidatorDepositRedeemAdmin(eoa)
 	const { profile } = useDaemonValidatorWalletNodeProfile()
 	const { stats: incomeStats } = useDaemonUnifiedIncomeStats()
+	const gbUsdcApprox = useMemo(
+		() => formatGbUsdcApprox(incomeStats?.gbBeneficiary.cumulative ?? '0'),
+		[incomeStats?.gbBeneficiary.cumulative],
+	)
 	const nodeIncomeIps = useMemo(
 		() => (incomeStats?.nodes ?? []).map((row) => row.depinNodeIp).filter(Boolean),
 		[incomeStats?.nodes]
@@ -236,12 +255,17 @@ export default function CoNetMiningDetailPage() {
 								<div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
 									<div className="flex items-center gap-1.5 text-white/70">
 										<Database className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-										<span className="text-[10px] font-semibold uppercase tracking-widest">DePIN Mining</span>
+										<span className="text-[10px] font-semibold uppercase tracking-widest">DePIN Routing</span>
 									</div>
 									<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
 										{formatBalance(incomeStats.gbBeneficiary.cumulative)}{' '}
 										<span className="text-sm font-bold text-white/80">GB</span>
 									</p>
+									{gbUsdcApprox ? (
+										<p className="mt-1 text-[11px] font-medium tabular-nums text-white/60">
+											{gbUsdcApprox}
+										</p>
+									) : null}
 									<p className="mt-1.5 text-[11px] text-white/55">GB · cumulative rewards</p>
 								</div>
 							</div>
@@ -366,7 +390,7 @@ export default function CoNetMiningDetailPage() {
 								</section>
 							) : null}
 
-							{/* CoNET L1 nodes — per Validator wallet, CNET validator income */}
+							{/* CoNET L1 nodes — per validator BLS pubkey, CNET validator income */}
 							{incomeStats && incomeStats.nodes.length > 0 ? (
 								<section className={`${cardChrome} p-5`}>
 									<div className="flex items-center gap-2">
@@ -382,7 +406,7 @@ export default function CoNetMiningDetailPage() {
 										<table className="w-full min-w-[280px] text-left text-sm">
 											<thead>
 												<tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:border-slate-700">
-													<th className="pb-2 pr-3 font-bold">Validator wallet</th>
+													<th className="pb-2 pr-3 font-bold">Validator pubkey</th>
 													<th className="pb-2 font-bold text-right">CNET</th>
 												</tr>
 											</thead>
@@ -394,8 +418,11 @@ export default function CoNetMiningDetailPage() {
 													>
 														<td className="py-3 pr-3 align-top">
 															<div className="flex items-center gap-2">
-																<span className="font-mono text-xs text-slate-800 dark:text-slate-100">
-																	{shortAddress(row.nodeWallet)}
+																<span
+																	className="font-mono text-xs text-slate-800 dark:text-slate-100"
+																	title={row.validatorPubkey ?? 'Validator not registered yet'}
+																>
+																	{shortValidatorPubkey(row.validatorPubkey)}
 																</span>
 																<span
 																	className={`h-2 w-2 shrink-0 rounded-full ${

@@ -15,6 +15,7 @@ import baseIcon from '@/components/assets/base-logo.png'
 import { persistBeamioProfileLocaleCurrency } from '@/services/beamio'
 import { useDaemonContext} from '@/providers/DaemonProvider'
 import { IpfsImg } from '@/components/IpfsImg';
+import { showBeamioToast, showBeamioToastUi } from '@/locale/beamioToast'
 type prof = {
 	colse: () => void
 }
@@ -112,17 +113,26 @@ export default function BeamioRegionCurrencyScreen({colse}:prof) {
 		if (!CoNET_Data||!beamio ) return
 		setLoading(true)
 		const profile: profile = CoNET_Data.profiles[0]
-		const next = await persistBeamioProfileLocaleCurrency(beamio, profile.privateKeyArmor, {
-			language,
-			currency,
-			tax,
-		})
+		let next: Awaited<ReturnType<typeof persistBeamioProfileLocaleCurrency>> = null
+		try {
+			next = await persistBeamioProfileLocaleCurrency(beamio, profile.privateKeyArmor, {
+				language,
+				currency,
+				tax,
+			})
+		} catch {
+			next = null
+		}
+		setLoading(false)
 		if (next) {
 			savedLocaleRef.current = true
 			setBeamio({ ...next })
+			showBeamioToast(t('ui.locale_currency_saved'), { icon: 'success' })
+			colse()
+			return
 		}
-		setLoading(false)
-		if (next) colse()
+		// 写链失败：保持弹窗打开，提示用户重试（不静默关闭）
+		showBeamioToastUi('ui.locale_currency_save_failed', { icon: 'fail' })
 	}
 
 	const getAccountData = () => {

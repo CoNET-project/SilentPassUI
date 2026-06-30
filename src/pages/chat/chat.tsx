@@ -1213,12 +1213,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						const vw = typeof window !== 'undefined' ? window.innerWidth : 375
 						const vh = typeof window !== 'undefined' ? window.innerHeight : 667
 						const menuW = Math.min(244, vw - 24)
-						const right = rect.left + rect.width
-						const rawLeft = reactionUI.isMe ? right - menuW : rect.left
-						const menuLeft = clamp(rawLeft, 12, vw - menuW - 12)
+						// 以 item 为界：菜单始终在气泡下方、左对齐气泡左缘
+						const menuLeft = clamp(rect.left, 12, vw - menuW - 12)
 						const estH = 132
-						let menuTop = rect.bottom + 10
-						if (menuTop + estH > vh - 24) menuTop = clamp(rect.top - estH - 8, 12, vh - estH - 24)
+						const menuTop = clamp(rect.bottom + 8, 12, vh - estH - 16)
 						const hasText = !!(reactionUI.text && reactionUI.text.trim())
 						const tsLabel = reactionUI.createdAt ? formatTimeLabel(reactionUI.createdAt) : ''
 						return (

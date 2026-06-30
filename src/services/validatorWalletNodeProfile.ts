@@ -27,6 +27,8 @@ const VALIDATOR_WALLET_NODE_PROFILE_ABI = [
 	`function getBeneficiaryNodeBundle(address beneficiary) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveNodeBundle(address maybeWallet, string conetDepinNodeIp) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveUnifiedIncomeStats(address maybeWallet, string conetDepinNodeIp, uint256 anchorTs) view returns (${UNIFIED_INCOME_STATS_TUPLE})`,
+	'function clRewardPaid(address beneficiary) view returns (uint256)',
+	'event NodeRewardSettled(uint256 indexed guardianId, address indexed beneficiary, uint256 amount, bytes32 indexed eventKey)',
 	'function airdropInfoOf(address beneficiary) view returns (uint256 accrued, uint256 claimed, uint256 claimable, uint64 claimableAt)',
 	'function referrerExtension() view returns (address)',
 	'function gbToken() view returns (address)',
@@ -836,6 +838,8 @@ export type NodeIncomeRow = {
 	validatorActive?: boolean
 	/** 48-byte BLS validator pubkey（hex）；未登记时为空，UI 可显示 Pending。 */
 	validatorPubkey?: string
+	/** Guardian node id（来自 resolveNodeBundle，与 NodeRewardSettled 事件的 guardianId 对齐）。 */
+	guardianId?: number
 }
 
 /**
@@ -926,6 +930,104 @@ function parseUnifiedIncomeStats(r: ethers.Result | Record<string, unknown> | un
 		}
 	})
 	return { beneficiary, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null }
+}
+
+/** CL skim rewards actually paid to beneficiary via {settleNodeRewards} (wei). Indexer cumulative may lag. */
+async function readClRewardPaidWei(redeem: ethers.Contract, beneficiary: string | null): Promise<bigint> {
+	if (!beneficiary) return 0n
+	try {
+		return BigInt(String(await redeem.clRewardPaid!(beneficiary)))
+	} catch {
+		return 0n
+	}
+}
+
+/**
+ * Merge on-chain {clRewardPaid} into beneficiary CNET cumulative when it exceeds indexer totals.
+ * L1 gas panels must reflect settled CL payouts, not indexer-only ledger (may be 0 while wallet already received CNET).
+ */
+function mergeClRewardPaidIntoCnetBeneficiary(stats: UnifiedIncomeStats, clPaidWei: bigint): void {
+	if (clPaidWei <= 0n) return
+	const idxRaw = BigInt(stats.cnetBeneficiary.cumulativeRaw || '0')
+	if (clPaidWei <= idxRaw) return
+	stats.cnetBeneficiary = {
+		...stats.cnetBeneficiary,
+		cumulativeRaw: clPaidWei.toString(),
+		cumulative: ethers.formatUnits(clPaidWei, CONET_NATIVE_DECIMALS),
+	}
+}
+
+/**
+ * Per-node CL skim reward actually paid, grouped by guardianId.
+ *
+ * {settleNodeRewards} only stores the **beneficiary aggregate** `clRewardPaid[beneficiary]`; there is no
+ * per-node view. The per-guardian breakdown is recoverable only from `NodeRewardSettled(guardianId, beneficiary, amount, eventKey)`
+ * logs. ValidatorNodeRewardIndexer.getNodeRewardSummary is a separate ledger that may stay 0 while CL payouts
+ * already hit the wallet, so the L1-nodes panel must read settled CL logs, not the indexer-only per-node summary.
+ *
+ * 返回 Map<guardianId, wei>；读取失败返回空 Map（不覆盖 UI 上次可信值，见 beamio-trusted-vs-untrusted-fetch.mdc）。
+ */
+async function readClRewardPaidByGuardian(
+	redeem: ethers.Contract,
+	beneficiary: string | null,
+): Promise<Map<number, bigint>> {
+	const out = new Map<number, bigint>()
+	if (!beneficiary) return out
+	try {
+		const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
+		const logs = await redeem.queryFilter(filter, 0, 'latest')
+		for (const log of logs) {
+			const args = (log as ethers.EventLog).args
+			if (!args) continue
+			const guardianId = Number(args.guardianId ?? args[0])
+			const amount = BigInt(String(args.amount ?? args[2] ?? 0))
+			if (!Number.isFinite(guardianId) || amount <= 0n) continue
+			out.set(guardianId, (out.get(guardianId) ?? 0n) + amount)
+		}
+	} catch {
+		return new Map()
+	}
+	return out
+}
+
+/**
+ * Merge per-guardian settled CL rewards into each node row's CNET cumulative.
+ * Node rows match settle events via their guardianId (threaded from resolveNodeBundle); when settled CL exceeds the
+ * indexer per-node cumulative (often 0), the node's displayed CNET is bumped to the settled value.
+ */
+function mergeClRewardPaidIntoNodes(stats: UnifiedIncomeStats, guardianClPaid: Map<number, bigint>): void {
+	if (guardianClPaid.size === 0) return
+	for (const node of stats.nodes) {
+		const guardianId = node.guardianId
+		if (guardianId === undefined) continue
+		const clPaidWei = guardianClPaid.get(guardianId)
+		if (clPaidWei === undefined || clPaidWei <= 0n) continue
+		const idxRaw = BigInt(node.cnet.cumulativeRaw || '0')
+		if (clPaidWei <= idxRaw) continue
+		node.cnet = {
+			...node.cnet,
+			cumulativeRaw: clPaidWei.toString(),
+			cumulative: ethers.formatUnits(clPaidWei, CONET_NATIVE_DECIMALS),
+		}
+	}
+}
+
+/**
+ * 用 resolveNodeBundle 的 guardianNodeIds ↔ nodeWallets 对齐，把 guardianId 回填到每个 NodeIncomeRow。
+ * resolveUnifiedIncomeStats 的 node tuple 不含 guardianId，因此必须从 bundle join（按 nodeWallet 小写匹配）。
+ */
+function assignGuardianIdsToNodes(stats: UnifiedIncomeStats, bundle: BeneficiaryNodeBundle | null): void {
+	if (!bundle) return
+	const walletToGuardian = new Map<string, number>()
+	for (const n of bundle.nodes) {
+		const key = String(n.nodeWallet ?? '').toLowerCase()
+		if (key && key !== ethers.ZeroAddress.toLowerCase()) walletToGuardian.set(key, n.nodeId)
+	}
+	for (const node of stats.nodes) {
+		if (node.guardianId !== undefined) continue
+		const gid = walletToGuardian.get(String(node.nodeWallet ?? '').toLowerCase())
+		if (gid !== undefined) node.guardianId = gid
+	}
 }
 
 /** 解析 airdropInfoOf(beneficiary) → (accrued, claimed, claimable, claimableAt)。 */
@@ -1040,10 +1142,20 @@ async function assembleUnifiedIncomeStatsClientSide(
 			depinNodeIp: normalizeDepinIp(n.ip),
 			gb: gbNode,
 			cnet: cnetNode,
+			guardianId: n.nodeId,
 		})
 	}
 
-	return { beneficiary: ben, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null }
+	const stats: UnifiedIncomeStats = { beneficiary: ben, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null }
+	if (ben) {
+		const [clPaid, guardianClPaid] = await Promise.all([
+			readClRewardPaidWei(redeem, ben),
+			readClRewardPaidByGuardian(redeem, ben),
+		])
+		mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
+		mergeClRewardPaidIntoNodes(stats, guardianClPaid)
+	}
+	return stats
 }
 
 /**
@@ -1097,6 +1209,20 @@ export async function fetchUnifiedIncomeStats(
 		} else {
 			// 既无收益、又无可信节点：交由外层 catch 返回 ok:false（不覆盖 UI 上次可信值）。
 			return { ok: false, error: 'resolveUnifiedIncomeStats read failed' }
+		}
+		// L1 CL gas earned: indexer cumulative may be 0 while settleNodeRewards already paid (clRewardPaid).
+		// Beneficiary aggregate ← clRewardPaid; per-node ← NodeRewardSettled logs grouped by guardianId.
+		// resolveUnifiedIncomeStats node tuples lack guardianId, so join it from the bundle by nodeWallet first.
+		assignGuardianIdsToNodes(stats, parsedBundle)
+		const incomeBeneficiary =
+			stats.beneficiary ?? parsedBundle?.beneficiary ?? (isAddr ? maybeWallet : null)
+		if (incomeBeneficiary) {
+			const [clPaid, guardianClPaid] = await Promise.all([
+				readClRewardPaidWei(redeem, incomeBeneficiary),
+				readClRewardPaidByGuardian(redeem, incomeBeneficiary),
+			])
+			mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
+			mergeClRewardPaidIntoNodes(stats, guardianClPaid)
 		}
 		// airdrop（vesting）账本按 redeem **beneficiary** 查询（非 node operator 钱包）。
 		// 登录 EOA 可能是 nodeWallet；须用 resolve 出的 beneficiary，否则 accrued 恒为 0。

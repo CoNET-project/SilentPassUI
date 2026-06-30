@@ -207,8 +207,8 @@ export default function BountyBoard() {
 		() => formatConetUsdcFiatApprox(conetWalletBalances.usdc, profileCurrency, currencyData as Record<string, number>),
 		[conetWalletBalances.usdc, profileCurrency, currencyData]
 	)
-	// L1 / DePIN Routing 显示 ValidatorNodeRewardIndexer / ConetGB1155 的「受益人累计收益」，
-	// 非钱包余额。来源与 /BountyBoard/conet-mining 详情页同轨（resolveUnifiedIncomeStats）。
+	// L1 / DePIN Routing 显示受益人累计收益（非钱包余额）。
+	// CNET = max(ValidatorNodeRewardIndexer, clRewardPaid)；CL 已结算奖励可能先于 indexer 入账。
 	const miningGbDisplay = useMemo(
 		() => formatConetChainTokenBalance(incomeStats?.gbBeneficiary.cumulative ?? '0'),
 		[incomeStats?.gbBeneficiary.cumulative]

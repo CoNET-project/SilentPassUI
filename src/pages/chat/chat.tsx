@@ -24,7 +24,9 @@ import {
   Loader2,
   CheckCircle2,
   ExternalLink,
-  X
+  X,
+  CornerUpLeft,
+  Trash2
 } from "lucide-react"
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
 import {
@@ -331,7 +333,15 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		x: number
 		y: number
 		placement: "top"
+		/** 被长按气泡的视口矩形，用于在气泡下方定位 iOS 风格上下文菜单 */
+		rect?: { top: number; left: number; width: number; height: number; bottom: number }
+		isMe?: boolean
+		text?: string
+		hasCard?: boolean
+		createdAt?: number
 	}>(() => ({ open: false, x: 0, y: 0, placement: "top" }))
+	/** 引用回复草稿：用户点 Reply 后在输入框上方显示，发送时随 quote 一起发出 */
+	const [replyTo, setReplyTo] = useState<{ id: string; text: string; from: "me" | "them" } | null>(null)
 	/** 接收方点击 Pay 后，在卡片内显示确认（该条消息的 sendId 或 id） */
 	const [payConfirmForSendId, setPayConfirmForSendId] = useState<string | null>(null)
 	/** 正在执行 Payment Request 转账的 sendId（显示 loading） */
@@ -510,7 +520,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})
 	}, [])
 
-	function openReactionBarForElement(messageId: string, el: HTMLElement) {
+	function openReactionBarForElement(m: ChatMessage, el: HTMLElement, isMe: boolean) {
 		const r = el.getBoundingClientRect()
 		// iOS 风格：菜单宽度适中，可横向滚动显示更多
 		const menuWidth = Math.min(280, window.innerWidth - 24)
@@ -519,15 +529,58 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const y = clamp(r.top - 48, 12, window.innerHeight - 120)
 		setReactionUI({
 			open: true,
-			messageId,
+			messageId: m.sendId ?? m.id ?? '',
 			x,
 			y,
-			placement: "top"
+			placement: "top",
+			rect: { top: r.top, left: r.left, width: r.width, height: r.height, bottom: r.bottom },
+			isMe,
+			text: m.text || '',
+			hasCard: !!m.paymentCard,
+			createdAt: m.createdAt,
 		})
 	}
 
 		function closeReactionBar() {
 		setReactionUI(prev => ({ ...prev, open: false, messageId: undefined }))
+	}
+
+	/** Copy Text：复制被长按消息的文本 */
+	function handleCopyMessageText() {
+		const t = reactionUI.text || ''
+		if (t) {
+			try { navigator.clipboard.writeText(t) } catch { /* ignore */ }
+		}
+		closeReactionBar()
+	}
+
+	/** Reply：以被长按消息为引用，聚焦输入框 */
+	function handleReplyToMessage() {
+		const id = reactionUI.messageId
+		const t = reactionUI.text || ''
+		if (id) {
+			setReplyTo({ id, text: t, from: reactionUI.isMe ? 'me' : 'them' })
+			requestAnimationFrame(() => inputRef.current?.focus())
+		}
+		closeReactionBar()
+	}
+
+	/** Delete：本地删除该消息（及其 reaction 引用），并落盘 */
+	async function handleDeleteMessage() {
+		const id = reactionUI.messageId
+		closeReactionBar()
+		if (!id) return
+		const next: ChatMessage[] = (messagesRef.current || []).filter(m => {
+			const mid = m.sendId ?? m.id ?? ''
+			if (mid === id) return false
+			// 同时删除指向该消息的 reaction / reply
+			if (m.reply?.messageId === id) return false
+			return true
+		})
+		messagesRef.current = next
+		setMessages(next)
+		chatData.messages = next
+		await storageData()
 	}
 
 	/** 发送 reaction：带 reply 指针的消息，对方可根据 messageId 找到原消息并显示 icon */
@@ -860,6 +913,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const now = Date.now()
 		const sendId = crypto.randomUUID()
 
+		// 引用回复：发送方视角 from 取反（我引用对方=them，引用自己=me）；接收方解析时同样取反还原
+		const quoteForSend = replyTo
+			? { id: replyTo.id, text: (replyTo.text || '').slice(0, 240), from: (replyTo.from === 'me' ? 'me' : 'them') as 'me' | 'them' }
+			: undefined
+
 		// ✅ 1) 先插入 sending（同步构造 next），带 sendId 供对方 reply 时引用
 		const pendingMsg: ChatMessage = {
 			id: tempId,
@@ -868,6 +926,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			text: t,
 			createdAt: now,
 			status: "sending",
+			...(quoteForSend ? { quote: quoteForSend } : {}),
 		}
 
 		{
@@ -891,7 +950,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 
 		// ✅ 3) 发送：统一发 JSON 包，带 sendId，对方据此可 reply
-		const payload = { sendId, from: 'me' as const, text: t, createdAt: now }
+		const payload = { sendId, from: 'me' as const, text: t, createdAt: now, ...(quoteForSend ? { quote: quoteForSend } : {}) }
+		// 发送后清除引用草稿
+		setReplyTo(null)
 		let ok = false
 		try {
 			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))
@@ -1144,6 +1205,69 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 							</div>
 						</div>
 					</div>
+
+					{/* iOS 风格上下文菜单：在被长按气泡下方（位置空间不足时上移），与点赞 bar 并存 */}
+					{(() => {
+						const rect = reactionUI.rect
+						if (!rect) return null
+						const vw = typeof window !== 'undefined' ? window.innerWidth : 375
+						const vh = typeof window !== 'undefined' ? window.innerHeight : 667
+						const menuW = Math.min(244, vw - 24)
+						const right = rect.left + rect.width
+						const rawLeft = reactionUI.isMe ? right - menuW : rect.left
+						const menuLeft = clamp(rawLeft, 12, vw - menuW - 12)
+						const estH = 132
+						let menuTop = rect.bottom + 10
+						if (menuTop + estH > vh - 24) menuTop = clamp(rect.top - estH - 8, 12, vh - estH - 24)
+						const hasText = !!(reactionUI.text && reactionUI.text.trim())
+						const tsLabel = reactionUI.createdAt ? formatTimeLabel(reactionUI.createdAt) : ''
+						return (
+							<div
+								className="fixed z-[202] pointer-events-auto"
+								style={{ left: menuLeft, top: menuTop, width: menuW }}
+								onClick={e => e.stopPropagation()}
+							>
+								<div className="overflow-hidden rounded-2xl bg-white/95 backdrop-blur-xl ring-1 ring-black/5 shadow-[0_12px_40px_rgba(15,23,42,0.18)] text-[15px] text-slate-900">
+									<button
+										type="button"
+										onClick={handleReplyToMessage}
+										className="flex w-full items-center justify-between gap-3 px-4 py-3 active:bg-black/5"
+									>
+										<span className="font-medium">Reply</span>
+										<CornerUpLeft className="h-[18px] w-[18px] text-slate-500" strokeWidth={2} />
+									</button>
+									{hasText && (
+										<>
+											<div className="h-px bg-black/5" />
+											<button
+												type="button"
+												onClick={handleCopyMessageText}
+												className="flex w-full items-center justify-between gap-3 px-4 py-3 active:bg-black/5"
+											>
+												<span className="font-medium">Copy Text</span>
+												<Copy className="h-[18px] w-[18px] text-slate-500" strokeWidth={2} />
+											</button>
+										</>
+									)}
+									{tsLabel && (
+										<>
+											<div className="h-px bg-black/10" />
+											<div className="px-4 py-2.5 text-[12px] text-slate-400">{tsLabel}</div>
+										</>
+									)}
+									<div className="h-px bg-black/5" />
+									<button
+										type="button"
+										onClick={handleDeleteMessage}
+										className="flex w-full items-center justify-between gap-3 px-4 py-3 active:bg-rose-50"
+									>
+										<span className="font-medium text-rose-600">Delete</span>
+										<Trash2 className="h-[18px] w-[18px] text-rose-500" strokeWidth={2} />
+									</button>
+								</div>
+							</div>
+						)
+					})()}
 				</motion.div>
 			)}
 			</AnimatePresence>
@@ -1205,7 +1329,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
 														const target = e.currentTarget as HTMLElement
 														pressTimerRef.current = window.setTimeout(() => {
-															if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', target)
+															openReactionBarForElement(m, target, isMe)
 														}, 450)
 													}}
 													onPointerUp={() => {
@@ -1222,7 +1346,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													}}
 													onContextMenu={e => {
 														e.preventDefault()
-														if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', e.currentTarget as HTMLElement)
+														openReactionBarForElement(m, e.currentTarget as HTMLElement, isMe)
 													}}
 												>
 												{(() => {
@@ -1447,7 +1571,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
 													const target = e.currentTarget as HTMLElement
 													pressTimerRef.current = window.setTimeout(() => {
-														if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', target)
+														openReactionBarForElement(m, target, isMe)
 													}, 450)
 												}}
 												onPointerUp={() => {
@@ -1464,7 +1588,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 												}}
 												onContextMenu={e => {
 													e.preventDefault()
-													if (!isMe) openReactionBarForElement(m.sendId ?? m.id ?? '', e.currentTarget as HTMLElement)
+													openReactionBarForElement(m, e.currentTarget as HTMLElement, isMe)
 												}}
 												>
 												{(() => {
@@ -1485,6 +1609,18 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 														</div>
 													)
 												})()}
+												{m.quote?.text && (
+													<div
+														className={[
+															"mb-1.5 rounded-lg border-l-2 pl-2 pr-2 py-1 text-[12px] leading-snug line-clamp-2",
+															isMe
+																? "border-white/60 bg-white/15 text-white/85"
+																: "border-[#1652f0]/50 bg-slate-100 text-slate-500"
+														].join(" ")}
+													>
+														{m.quote.text}
+													</div>
+												)}
 												<div className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">
 													{m.text}
 												</div>
@@ -1557,6 +1693,26 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				<div className={["bg-white/0"].join(" ")}>
 					<div className="relative">
 						<div className="mx-auto w-full max-w-[820px] px-3 pt-3 pb-4">
+						{replyTo && (
+							<div className="mb-2 flex items-center gap-2 rounded-2xl bg-white/70 backdrop-blur-xl ring-1 ring-black/5 px-3 py-2 shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
+								<CornerUpLeft className="h-4 w-4 shrink-0 text-[#1652f0]" strokeWidth={2.2} />
+								<div className="min-w-0 flex-1">
+									<div className="text-[11px] font-semibold text-[#1652f0]">
+										{replyTo.from === 'me' ? 'Replying to yourself' : 'Replying'}
+									</div>
+									<div className="truncate text-[12px] text-slate-500">{replyTo.text || '…'}</div>
+								</div>
+								<button
+									type="button"
+									tabIndex={-1}
+									onClick={() => setReplyTo(null)}
+									className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-slate-400 active:scale-95 hover:bg-black/5"
+									aria-label="Cancel reply"
+								>
+									<X className="h-4 w-4" strokeWidth={2.4} />
+								</button>
+							</div>
+						)}
 						<div className="flex items-center gap-2">
 							<PlusActionMenu
 								open={plusOpen}

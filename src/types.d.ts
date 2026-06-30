@@ -740,6 +740,15 @@ type ChatMessage = {
 	paymentCard?: paymentCard
 	/** 本条为 reaction 时，messageId 为目标消息的 sendId */
 	reply?: ChatMessageReply
+	/** 引用回复：指向被回复消息的摘要，随 JSON 一起发送并在气泡内渲染 */
+	quote?: {
+		/** 被引用消息的 sendId 或 id */
+		id?: string
+		/** 被引用消息的文本摘要 */
+		text: string
+		/** 被引用消息发送方（相对发送者视角） */
+		from: "me" | "them"
+	}
 }
 
 type CheckHistory = {

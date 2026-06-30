@@ -342,6 +342,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}>(() => ({ open: false, x: 0, y: 0, placement: "top" }))
 	/** 引用回复草稿：用户点 Reply 后在输入框上方显示，发送时随 quote 一起发出 */
 	const [replyTo, setReplyTo] = useState<{ id: string; text: string; from: "me" | "them" } | null>(null)
+	/** 长按底部消息时，为让菜单完整显示而临时增加的底部占位高度（无法继续滚动时上提） */
+	const [menuBottomSpacer, setMenuBottomSpacer] = useState(0)
 	/** 接收方点击 Pay 后，在卡片内显示确认（该条消息的 sendId 或 id） */
 	const [payConfirmForSendId, setPayConfirmForSendId] = useState<string | null>(null)
 	/** 正在执行 Payment Request 转账的 sendId（显示 loading） */
@@ -520,7 +522,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})
 	}, [])
 
-	function openReactionBarForElement(m: ChatMessage, el: HTMLElement, isMe: boolean) {
+	/** 菜单与定位相关常量：菜单估算高度、间距、底部输入栏预留 */
+	const MENU_EST_H = 150
+	const MENU_GAP = 8
+	const BOTTOM_RESERVED = 132
+
+	function commitReactionUI(m: ChatMessage, el: HTMLElement, isMe: boolean) {
 		const r = el.getBoundingClientRect()
 		// iOS 风格：菜单宽度适中，可横向滚动显示更多
 		const menuWidth = Math.min(280, window.innerWidth - 24)
@@ -541,8 +548,47 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})
 	}
 
+	function openReactionBarForElement(m: ChatMessage, el: HTMLElement, isMe: boolean) {
+		const scroller = scrollRef.current
+		const vh = typeof window !== 'undefined' ? window.innerHeight : 667
+		const safeBottom = vh - BOTTOM_RESERVED
+		const r0 = el.getBoundingClientRect()
+		// 菜单显示在气泡下方，需要的底部边界
+		const menuBottom = r0.bottom + MENU_GAP + MENU_EST_H
+		const overflow = menuBottom - safeBottom
+
+		// 不会被遮挡：直接显示
+		if (overflow <= 0 || !scroller) {
+			commitReactionUI(m, el, isMe)
+			return
+		}
+
+		const maxScroll = scroller.scrollHeight - scroller.clientHeight
+		const canScrollMore = Math.max(0, maxScroll - scroller.scrollTop)
+
+		if (overflow <= canScrollMore) {
+			// 还能继续向上滚动：滚动到位后再显示
+			scroller.scrollTop = scroller.scrollTop + overflow
+			requestAnimationFrame(() => commitReactionUI(m, el, isMe))
+			return
+		}
+
+		// 无法继续滚动（如最新一条）：增加底部额外空间，再滚动上提
+		const extra = overflow - canScrollMore + 24
+		setMenuBottomSpacer(prev => Math.max(prev, extra))
+		requestAnimationFrame(() => {
+			const sc = scrollRef.current
+			if (sc) {
+				const newMax = sc.scrollHeight - sc.clientHeight
+				sc.scrollTop = Math.min(newMax, sc.scrollTop + overflow)
+			}
+			requestAnimationFrame(() => commitReactionUI(m, el, isMe))
+		})
+	}
+
 		function closeReactionBar() {
 		setReactionUI(prev => ({ ...prev, open: false, messageId: undefined }))
+		setMenuBottomSpacer(0)
 	}
 
 	/** Copy Text：复制被长按消息的文本 */
@@ -1215,8 +1261,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						const menuW = Math.min(244, vw - 24)
 						// 以 item 为界：菜单始终在气泡下方、左对齐气泡左缘
 						const menuLeft = clamp(rect.left, 12, vw - menuW - 12)
-						const estH = 132
-						const menuTop = clamp(rect.bottom + 8, 12, vh - estH - 16)
+						const menuTop = clamp(rect.bottom + MENU_GAP, 12, vh - MENU_EST_H - 16)
 						const hasText = !!(reactionUI.text && reactionUI.text.trim())
 						const tsLabel = reactionUI.createdAt ? formatTimeLabel(reactionUI.createdAt) : ''
 						return (
@@ -1676,6 +1721,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 					{/* ✅ 关键：底部 spacer */}
 					<div aria-hidden className="h-[96px]" />
+					{/* 长按底部消息时临时增加的额外空间，确保菜单完整显示 */}
+					{menuBottomSpacer > 0 && <div aria-hidden style={{ height: menuBottomSpacer }} />}
 				</div>
 				</div>
 			</div>

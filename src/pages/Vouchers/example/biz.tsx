@@ -32830,7 +32830,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                ) : (
                                  <ul className="space-y-2">
                                    {programSocialLikes.map((row) => {
-                                     const capsule = toCapsuleItem(addressProfileByLower[row.userEoa.toLowerCase()]);
+                                     const capsule = toCapsuleItem(row.userEoa);
                                      return (
                                        <li
                                          key={`${row.userEoa}:${row.createdAt}`}
@@ -32860,10 +32860,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                ) : (
                                  <ul className="space-y-2">
                                    {programSocialShareClicks.map((row) => {
-                                     const actorCapsule = toCapsuleItem(addressProfileByLower[row.actorEoa.toLowerCase()]);
-                                     const refCapsule = row.referrerEoa
-                                       ? toCapsuleItem(addressProfileByLower[row.referrerEoa.toLowerCase()])
-                                       : null;
+                                     const actorCapsule = toCapsuleItem(row.actorEoa);
+                                     const refCapsule = row.referrerEoa ? toCapsuleItem(row.referrerEoa) : null;
                                      return (
                                        <li
                                          key={`${row.actorEoa}:${row.createdAt}:${row.txHash ?? ''}`}

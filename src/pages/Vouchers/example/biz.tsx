@@ -20,6 +20,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { clearWorkspaceSessionUnlock, isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock';
 import { useReliableTapHandler } from '@/utils/reliableTap';
 import { hasSessionPrivateKeyArmor, getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
+import { ensureCardUserCumulativeStatInitializedSilent, ensureProfileOwnerCardsUserCumulativeStatInitializedSilent } from '@/utils/beamioCardUserCumulativeStatBootstrap';
 import {
   storeSystemData,
   generateCODE,
@@ -16690,7 +16691,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
          const cardAddrNorm = ethers.getAddress(createdAddr);
          if (!metadataOnlyPublish) {
            try {
-             const pk = profileForPost?.privateKeyArmor;
+             const pk = getSessionPrivateKeyArmor() ?? profileForPost?.privateKeyArmor;
              if (!pk) {
                setCardIssuanceOwnerAdminNotice({
                  kind: 'warn',
@@ -16699,6 +16700,11 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
              } else {
                const chainOwner = await getCardOwner(cardAddrNorm);
                const signerAddr = new ethers.Wallet(pk).address;
+               void ensureCardUserCumulativeStatInitializedSilent({
+                 cardAddress: cardAddrNorm,
+                 ownerEoa: ethers.getAddress(signerAddr),
+                 ownerPrivateKey: pk,
+               }).catch(() => undefined);
                if (ethers.getAddress(signerAddr) !== ethers.getAddress(chainOwner)) {
                  setCardIssuanceOwnerAdminNotice({
                    kind: 'warn',
@@ -21792,6 +21798,18 @@ useEffect(() => {
 
      const feederWork = async () => {
        await globalFetchQueue;
+
+       // Silent one-time init for cumulative stat tokens (likes/social) on all owner merchant cards.
+       if (!feederCancelledRef.current) {
+         const ownerPk = getSessionPrivateKeyArmor();
+         const profile0 = profiles?.[0];
+         if (ownerPk && profile0) {
+           void ensureProfileOwnerCardsUserCumulativeStatInitializedSilent({
+             profile: profile0,
+             ownerPrivateKey: ownerPk,
+           }).catch(() => undefined);
+         }
+       }
 
        if (!feederCancelledRef.current && programAddr && ethers.isAddress(programAddr)) {
          try {

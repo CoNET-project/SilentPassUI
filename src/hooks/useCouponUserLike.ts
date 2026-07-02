@@ -8,6 +8,7 @@ import {
 	fetchCouponLikeCount,
 	invalidateCouponLikeCountCache,
 	invalidateDiscoverUserLikeBalanceCache,
+	readDiscoverUserLikedLocalSeed,
 	resolveDiscoverUserHasLiked,
 } from '@/utils/discoverUserLike'
 import { saveDiscoverUserLikeLocalCache } from '@/utils/discoverUserLikeLocalCache'
@@ -58,6 +59,13 @@ export function useCouponUserLike({
 		void refreshLikeCount()
 		const eoa = resolveUserEoa()
 		if (eoa) {
+			const localSeed = readDiscoverUserLikedLocalSeed(
+				eoa,
+				cardAddress,
+				DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
+				tokenId,
+			)
+			if (localSeed != null) setUserLiked(localSeed)
 			void resolveDiscoverUserHasLiked(
 				cardAddress,
 				eoa,

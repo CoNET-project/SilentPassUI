@@ -118,7 +118,21 @@ export async function fetchUserHasLikedOnChain(
 	return task
 }
 
-/** Local-first liked state: cache seed, then optional chain refresh. */
+/** After a successful like API, chain balance may lag; do not clobber recent local liked=true with RPC false. */
+export const DISCOVER_USER_LIKE_OPTIMISTIC_MS = 90_000
+
+/** Sync local-first seed (no network). */
+export function readDiscoverUserLikedLocalSeed(
+	userEOA: string,
+	cardAddress: string,
+	targetKind: number = DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
+	issuedParentId: string | number = '0',
+): boolean | null {
+	const cached = loadDiscoverUserLikeLocalCache(userEOA, cardAddress, targetKind, issuedParentId)
+	return cached?.liked ?? null
+}
+
+/** Local-first liked state: cache seed, then chain refresh with optimistic window. */
 export async function resolveDiscoverUserHasLiked(
 	cardAddress: string,
 	userEOA: string,
@@ -127,9 +141,19 @@ export async function resolveDiscoverUserHasLiked(
 ): Promise<boolean | null> {
 	const cached = loadDiscoverUserLikeLocalCache(userEOA, cardAddress, targetKind, issuedParentId)
 	const chain = await fetchUserHasLikedOnChain(cardAddress, userEOA, targetKind, issuedParentId)
-	if (chain != null) {
-		saveDiscoverUserLikeLocalCache(userEOA, cardAddress, targetKind, issuedParentId, chain)
-		return chain
+	if (chain === true) {
+		saveDiscoverUserLikeLocalCache(userEOA, cardAddress, targetKind, issuedParentId, true)
+		return true
+	}
+	if (chain === false) {
+		if (
+			cached?.liked === true &&
+			Date.now() - cached.updatedAt < DISCOVER_USER_LIKE_OPTIMISTIC_MS
+		) {
+			return true
+		}
+		saveDiscoverUserLikeLocalCache(userEOA, cardAddress, targetKind, issuedParentId, false)
+		return false
 	}
 	return cached?.liked ?? null
 }

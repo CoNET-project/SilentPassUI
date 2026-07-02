@@ -81,6 +81,7 @@ import { formatDiscoverLikeCount, invalidateDiscoverMerchantStatCache } from "@/
 import {
 	DISCOVER_USER_LIKE_TARGET,
 	invalidateDiscoverUserLikeBalanceCache,
+	readDiscoverUserLikedLocalSeed,
 	resolveDiscoverUserHasLiked,
 } from "@/utils/discoverUserLike"
 import { saveDiscoverUserLikeLocalCache } from "@/utils/discoverUserLikeLocalCache"
@@ -2243,7 +2244,7 @@ function DiscoverMerchantDetailFullScreen({
 	onClose: () => void
 }) {
 	const navigate = useNavigate()
-	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards } = useDaemonContext()
+	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta } = useDaemonContext()
 	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName } = useMerchantCardDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
 	const [userLiked, setUserLiked] = useState<boolean | null>(null)
@@ -2361,6 +2362,13 @@ function DiscoverMerchantDetailFullScreen({
 			setUserLiked(null)
 			return
 		}
+		const localSeed = readDiscoverUserLikedLocalSeed(
+			eoa,
+			card,
+			DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
+			'0',
+		)
+		if (localSeed != null) setUserLiked(localSeed)
 		let cancelled = false
 		void resolveDiscoverUserHasLiked(card, eoa, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0').then((liked) => {
 			if (!cancelled && liked != null) setUserLiked(liked)
@@ -2412,6 +2420,11 @@ function DiscoverMerchantDetailFullScreen({
 				}
 				setUserLiked(liked)
 				invalidateDiscoverMerchantStatCache(cardNorm)
+				if (liked) {
+					applyDiscoverMerchantLikeCountDelta(cardNorm, 1)
+				} else {
+					applyDiscoverMerchantLikeCountDelta(cardNorm, -1)
+				}
 				registerDiscoverMerchantStatFeedCards([cardNorm])
 				Toast.show({ content: liked ? 'Liked' : 'Like removed', position: 'top' })
 			} finally {
@@ -2426,6 +2439,7 @@ function DiscoverMerchantDetailFullScreen({
 			navigate,
 			resolveUserEoa,
 			registerDiscoverMerchantStatFeedCards,
+			applyDiscoverMerchantLikeCountDelta,
 		],
 	)
 

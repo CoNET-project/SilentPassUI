@@ -1493,6 +1493,18 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 }
 
 /** User EIP-712 like / unlike — burns like stat token on unlike (≈ transfer to 0x0). */
+function mapCardRecordUserLikeApiError(error?: string, code?: string): string {
+	if (
+		code === 'UC_FACTORY_GATEWAY_INVOKE_NOT_DEPLOYED' ||
+		(error && /gatewayInvokeCard not deployed/i.test(error))
+	) {
+		return 'Likes are temporarily unavailable on this network. Please try again later.'
+	}
+	if (error && /already liked/i.test(error)) return 'You already liked this item.'
+	if (error && /has not liked/i.test(error)) return 'You have not liked this item yet.'
+	return error?.trim() || 'Like update failed'
+}
+
 export const postCardRecordUserLikeWithCurrentWallet = async (params: {
 	cardAddress: string
 	privateKeyArmor: string
@@ -1559,11 +1571,16 @@ export const postCardRecordUserLikeWithCurrentWallet = async (params: {
 				userSignature,
 			}),
 		})
-		const data = (await res.json().catch(() => ({}))) as { success?: boolean; tx?: string; error?: string }
+		const data = (await res.json().catch(() => ({}))) as {
+			success?: boolean
+			tx?: string
+			error?: string
+			code?: string
+		}
 		if (!res.ok || data.success === false) {
 			return {
 				success: false,
-				error: data.error ?? `HTTP ${res.status}`,
+				error: mapCardRecordUserLikeApiError(data.error, data.code),
 				status: res.status,
 			}
 		}

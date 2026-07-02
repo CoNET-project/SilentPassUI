@@ -402,6 +402,8 @@ type DaemonContext = {
 	discoverMerchantStatByCard: DiscoverMerchantStatsMap
 	/** Market 注册需刷新的商户卡地址（来自 trusted `/api/latestCards`） */
 	registerDiscoverMerchantStatFeedCards: (cardAddresses: string[]) => void
+	/** Like/unlike API 成功后乐观更新点赞数（链上 totalSupply 确认前） */
+	applyDiscoverMerchantLikeCountDelta: (cardAddress: string, delta: number) => void
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -608,6 +610,7 @@ const defaultContextValue: DaemonContext = {
 	unifiedIncomeStats: null,
 	referrerSummary: null,
 	discoverMerchantStatByCard: {},
+	applyDiscoverMerchantLikeCountDelta: () => {},
 	registerDiscoverMerchantStatFeedCards: () => {},
 
 	beamioUsers: [],
@@ -1420,7 +1423,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   const registerDiscoverMerchantStatFeedCards = useCallback(
     (cardAddresses: string[]) => {
-      const normalized = [
+      const incoming = [
         ...new Set(
           cardAddresses
             .map((a) => String(a ?? '').trim())
@@ -1435,15 +1438,42 @@ export function DaemonProvider({ children }: DaemonProps) {
         ),
       ]
       const prev = discoverMerchantStatFeedAddressesRef.current
+      const merged = [...new Set([...prev, ...incoming])]
       const same =
-        prev.length === normalized.length && prev.every((a, i) => a === normalized[i])
-      discoverMerchantStatFeedAddressesRef.current = normalized
-      if (!same && normalized.length > 0) {
+        merged.length === prev.length && merged.every((a) => prev.includes(a))
+      discoverMerchantStatFeedAddressesRef.current = merged
+      if (!same && merged.length > 0) {
         void runDiscoverMerchantStatsFeedTick()
       }
     },
     [runDiscoverMerchantStatsFeedTick],
   )
+
+  const applyDiscoverMerchantLikeCountDelta = useCallback((cardAddress: string, delta: number) => {
+    if (!Number.isFinite(delta) || delta === 0) return
+    let cardLower: string
+    try {
+      cardLower = ethers.getAddress(String(cardAddress ?? '').trim()).toLowerCase()
+    } catch {
+      return
+    }
+    setDiscoverMerchantStatByCard((prev) => {
+      const existing = prev[cardLower]
+      const base =
+        typeof existing?.likeCount === 'number' && Number.isFinite(existing.likeCount)
+          ? existing.likeCount
+          : 0
+      const nextLikeCount = Math.max(0, Math.trunc(base + delta))
+      if (existing?.likeCount === nextLikeCount) return prev
+      const nextEntry: DiscoverMerchantStatEntry = {
+        ...existing,
+        likeCount: nextLikeCount,
+        savedAt: Date.now(),
+      }
+      saveDiscoverMerchantStatEntry(cardLower, { likeCount: nextLikeCount })
+      return { ...prev, [cardLower]: nextEntry }
+    })
+  }, [])
 
   /**
    * CoNET Mining 全网指标（Total staked validators / DePIN nodes）：本地优先 + 6s 全局喂料。
@@ -1857,7 +1887,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
 				conetNetworkStats, conetDepinStats, conetWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
-				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards,
+				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

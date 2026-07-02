@@ -75,3 +75,22 @@ export function pickDiscoverMerchantRefClickCount(
 	const n = map[cardAddress.toLowerCase()]?.refClickCount
 	return typeof n === 'number' && Number.isFinite(n) ? Math.trunc(n) : null
 }
+
+/** Optimistic like count after trusted API success (before chain totalSupply catches up). */
+export function bumpDiscoverMerchantLikeCountLocal(
+	cardAddress: string,
+	delta: number,
+): number | null {
+	if (typeof window === 'undefined' || !cardAddress || !Number.isFinite(delta) || delta === 0) return null
+	try {
+		const cardLower = String(cardAddress).trim().toLowerCase()
+		if (!cardLower) return null
+		const prev = loadDiscoverMerchantStatsLocalCache()
+		const base = prev[cardLower]?.likeCount
+		const next = Math.max(0, (typeof base === 'number' && Number.isFinite(base) ? base : 0) + Math.trunc(delta))
+		saveDiscoverMerchantStatEntry(cardLower, { likeCount: next })
+		return next
+	} catch {
+		return null
+	}
+}

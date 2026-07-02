@@ -1,6 +1,10 @@
 import { ethers } from 'ethers'
 import { beamioApi } from '@/utils/constants'
-import { getCardsOfOwnerWithDetailsForProfile, signExecuteForOwner } from '@/services/BeamioCard'
+import {
+	getCardsOfOwnerWithDetailsForProfile,
+	signExecuteForOwner,
+	type UserCardInfo,
+} from '@/services/BeamioCard'
 import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain'
 
 const CARD_INIT_ENDPOINT = `${beamioApi}/api/cardInitializeUserCumulativeStat`
@@ -183,7 +187,7 @@ type ProfileForOwnerCards = {
 	aaAccount?: string | null
 	keyID?: string | null
 	privateKeyArmor?: string | null
-	issuedCards?: { cardAddress: string }[]
+	issuedCards?: UserCardInfo[]
 }
 
 /**

@@ -8120,6 +8120,64 @@ async function fetchBeamioCardMemberDirectoryPageHttp(
   return json;
 }
 
+type BeamioCardProgramSocialLikeRow = {
+  userEoa: string;
+  targetKind: number;
+  issuedParentId: string;
+  txHash: string | null;
+  createdAt: string;
+};
+
+type BeamioCardProgramSocialShareClickRow = {
+  actorEoa: string;
+  referrerEoa: string | null;
+  targetKind: number;
+  issuedParentId: string;
+  txHash: string | null;
+  createdAt: string;
+};
+
+type BeamioCardProgramSocialSummaryResponse = {
+  mode: 'summary';
+  cardAddress: string;
+  likeCount: number | null;
+  shareClickCount: number | null;
+  dbLikeTotal: number;
+  dbShareClickTotal: number;
+  likes: BeamioCardProgramSocialLikeRow[];
+  shareClicks: BeamioCardProgramSocialShareClickRow[];
+};
+
+function formatProgramSocialStatCount(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n) || n < 0) return '—';
+  const v = Math.trunc(n);
+  if (v >= 1_000_000) {
+    const m = v / 1_000_000;
+    return `${m >= 10 ? Math.round(m) : m.toFixed(1).replace(/\.0$/, '')}M`;
+  }
+  if (v >= 10_000) return `${Math.round(v / 1000)}k`;
+  if (v >= 1000) return `${(v / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  return String(v);
+}
+
+async function fetchBeamioCardProgramSocialSummary(
+  cardAddress: string,
+  limit = 50,
+  offset = 0,
+): Promise<BeamioCardProgramSocialSummaryResponse> {
+  const url = `${BEAMIO_APP_URL}/api/cardProgramSocial?${new URLSearchParams({
+    cardAddress: ethers.getAddress(cardAddress),
+    mode: 'summary',
+    limit: String(limit),
+    offset: String(offset),
+    targetKind: '1',
+    issuedParentId: '0',
+  })}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`cardProgramSocial summary: HTTP ${res.status}`);
+  return res.json() as Promise<BeamioCardProgramSocialSummaryResponse>;
+}
+
 /** Paginate until all members for a card are loaded (server max limit 2000 per page). Uses mode=directory for NFC/App fields. */
 async function fetchAllBeamioCardMemberDirectoryHttp(
   cardAddress: string
@@ -11504,6 +11562,11 @@ const handlePublishCardIssuanceRef = useRef<
    /** On-chain token #2 charge reward ratio; 1_000_000 = 1 point per 1 card-currency unit spent. */
    chargeRewardRatioE6: string | null;
  } | null>(null);
+const [programSocialLikeCount, setProgramSocialLikeCount] = useState<number | null>(null);
+const [programSocialShareClickCount, setProgramSocialShareClickCount] = useState<number | null>(null);
+const [programSocialLikes, setProgramSocialLikes] = useState<BeamioCardProgramSocialLikeRow[]>([]);
+const [programSocialShareClicks, setProgramSocialShareClicks] = useState<BeamioCardProgramSocialShareClickRow[]>([]);
+const [programSocialRefreshStatus, setProgramSocialRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 const cardIssuanceCouponShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponShareOpenId]
@@ -11654,6 +11717,37 @@ useEffect(() => {
  useEffect(() => {
    setCardIssuanceMerchantImageClearPending(false);
  }, [cardIssuanceExistingCard?.cardAddress]);
+
+ const loadProgramSocialOverview = useCallback(async () => {
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+   if (!addr || !ethers.isAddress(addr)) return;
+   setProgramSocialRefreshStatus('loading');
+   try {
+     const json = await fetchBeamioCardProgramSocialSummary(addr, 50, 0);
+     if (json.likeCount != null) setProgramSocialLikeCount(json.likeCount);
+     if (json.shareClickCount != null) setProgramSocialShareClickCount(json.shareClickCount);
+     setProgramSocialLikes(Array.isArray(json.likes) ? json.likes : []);
+     setProgramSocialShareClicks(Array.isArray(json.shareClicks) ? json.shareClicks : []);
+     const profileAddrs = new Set<string>();
+     for (const row of json.likes ?? []) {
+       if (row.userEoa && ethers.isAddress(row.userEoa)) profileAddrs.add(ethers.getAddress(row.userEoa));
+     }
+     for (const row of json.shareClicks ?? []) {
+       if (row.actorEoa && ethers.isAddress(row.actorEoa)) profileAddrs.add(ethers.getAddress(row.actorEoa));
+       if (row.referrerEoa && ethers.isAddress(row.referrerEoa)) profileAddrs.add(ethers.getAddress(row.referrerEoa));
+     }
+     if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
+     setProgramSocialRefreshStatus('success');
+     window.setTimeout(() => setProgramSocialRefreshStatus('idle'), 3000);
+   } catch {
+     setProgramSocialRefreshStatus('error');
+     window.setTimeout(() => setProgramSocialRefreshStatus('idle'), 3000);
+   }
+ }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
+
+ useEffect(() => {
+   void loadProgramSocialOverview();
+ }, [loadProgramSocialOverview]);
 
  useEffect(() => {
    if (cardIssuanceTiers.length === 0) {
@@ -32678,6 +32772,132 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                ? cardIssuanceDescription.trim()
                                : tu('programs_overview_no_description_team')}
                            </p>
+                         </div>
+                         <div className="rounded-xl border border-[#e8ecf0] bg-[#f8fafc] p-3 sm:p-4">
+                           <div className="mb-3 flex items-center justify-between gap-2">
+                             <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               {tu('programs_overview_social_stats_title')}
+                             </span>
+                             <button
+                               type="button"
+                               disabled={programSocialRefreshStatus !== 'idle'}
+                               onClick={() => void loadProgramSocialOverview()}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dce2f7] bg-white text-[#1562f0] shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               aria-label={tu('programs_overview_social_refresh')}
+                             >
+                               {programSocialRefreshStatus === 'loading' ? (
+                                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                               ) : programSocialRefreshStatus === 'success' ? (
+                                 <Check className="h-4 w-4 text-emerald-500" aria-hidden />
+                               ) : programSocialRefreshStatus === 'error' ? (
+                                 <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden />
+                               ) : (
+                                 <RefreshCw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                               )}
+                             </button>
+                           </div>
+                           <div className="mb-4 grid grid-cols-2 gap-3">
+                             <div className="rounded-lg border border-rose-100 bg-white px-3 py-2.5">
+                               <div className="mb-1 flex items-center gap-1.5 text-rose-500">
+                                 <Heart className="h-3.5 w-3.5" strokeWidth={2.25} fill="currentColor" aria-hidden />
+                                 <span className="text-[10px] font-bold uppercase tracking-wide">
+                                   {tu('programs_overview_total_likes')}
+                                 </span>
+                               </div>
+                               <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                                 {formatProgramSocialStatCount(programSocialLikeCount)}
+                               </p>
+                             </div>
+                             <div className="rounded-lg border border-[#dce2f7] bg-white px-3 py-2.5">
+                               <div className="mb-1 flex items-center gap-1.5 text-[#1562f0]">
+                                 <Share2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                 <span className="text-[10px] font-bold uppercase tracking-wide">
+                                   {tu('programs_overview_total_share_clicks')}
+                                 </span>
+                               </div>
+                               <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                                 {formatProgramSocialStatCount(programSocialShareClickCount)}
+                               </p>
+                             </div>
+                           </div>
+                           <div className="space-y-3">
+                             <div>
+                               <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#595c5e]">
+                                 {tu('programs_overview_likes_wallets')}
+                               </p>
+                               {programSocialLikes.length === 0 ? (
+                                 <p className="text-xs text-[#595c5e]">{tu('programs_overview_social_db_empty')}</p>
+                               ) : (
+                                 <ul className="space-y-2">
+                                   {programSocialLikes.map((row) => {
+                                     const capsule = toCapsuleItem(addressProfileByLower[row.userEoa.toLowerCase()]);
+                                     return (
+                                       <li
+                                         key={`${row.userEoa}:${row.createdAt}`}
+                                         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#e8ecf0] bg-white px-2 py-1.5"
+                                       >
+                                         <BeamioCapsule
+                                           item={capsule}
+                                           fallbackAddress={row.userEoa}
+                                           tone="onLight"
+                                           className="min-w-0 bg-transparent pl-0"
+                                         />
+                                         <span className="shrink-0 text-[10px] text-[#595c5e]">
+                                           {new Date(row.createdAt).toLocaleString()}
+                                         </span>
+                                       </li>
+                                     );
+                                   })}
+                                 </ul>
+                               )}
+                             </div>
+                             <div>
+                               <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#595c5e]">
+                                 {tu('programs_overview_share_clicks_wallets')}
+                               </p>
+                               {programSocialShareClicks.length === 0 ? (
+                                 <p className="text-xs text-[#595c5e]">{tu('programs_overview_social_db_empty')}</p>
+                               ) : (
+                                 <ul className="space-y-2">
+                                   {programSocialShareClicks.map((row) => {
+                                     const actorCapsule = toCapsuleItem(addressProfileByLower[row.actorEoa.toLowerCase()]);
+                                     const refCapsule = row.referrerEoa
+                                       ? toCapsuleItem(addressProfileByLower[row.referrerEoa.toLowerCase()])
+                                       : null;
+                                     return (
+                                       <li
+                                         key={`${row.actorEoa}:${row.createdAt}:${row.txHash ?? ''}`}
+                                         className="rounded-lg border border-[#e8ecf0] bg-white px-2 py-1.5"
+                                       >
+                                         <div className="flex flex-wrap items-center justify-between gap-2">
+                                           <BeamioCapsule
+                                             item={actorCapsule}
+                                             fallbackAddress={row.actorEoa}
+                                             tone="onLight"
+                                             className="min-w-0 bg-transparent pl-0"
+                                           />
+                                           <span className="shrink-0 text-[10px] text-[#595c5e]">
+                                             {new Date(row.createdAt).toLocaleString()}
+                                           </span>
+                                         </div>
+                                         {row.referrerEoa ? (
+                                           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                             <span>{tu('programs_overview_share_referrer')}:</span>
+                                             <BeamioCapsule
+                                               item={refCapsule}
+                                               fallbackAddress={row.referrerEoa}
+                                               tone="onLight"
+                                               className="min-w-0 bg-transparent pl-0 py-0"
+                                             />
+                                           </p>
+                                         ) : null}
+                                       </li>
+                                     );
+                                   })}
+                                 </ul>
+                               )}
+                             </div>
+                           </div>
                          </div>
                        </div>
                      </div>

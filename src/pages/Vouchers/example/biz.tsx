@@ -108,6 +108,7 @@ import {
   type UserCardInfo,
   type CardRedeemBatch,
   type CardRedeemItem,
+  type ShareTokenMetadataDiscoverAbout,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint } from '@/utils/constants';
@@ -428,6 +429,8 @@ import {
   PartyPopper,
   Clock,
   Calendar,
+  MapPin,
+  Phone,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
@@ -9150,6 +9153,43 @@ const CARD_ISSUANCE_MIN_TOPUP_DEFAULT = 5;
 const CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT = 10;
 /** Max length for Card Issuance configuration text (card description, tier description, etc.). */
 const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
+/** Discover detail About block — long-form detail paragraph. */
+const CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX = 2000;
+const CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX = 500;
+const CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX = 120;
+const CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX = 500;
+
+function buildDiscoverAboutMetadataPayload(fields: {
+  detail: string;
+  openingHours: string;
+  contact: string;
+  location: string;
+}): ShareTokenMetadataDiscoverAbout | undefined {
+  const detail = fields.detail.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX);
+  const openingHours = fields.openingHours.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX);
+  const contact = fields.contact.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX);
+  const location = fields.location.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX);
+  if (!detail && !openingHours && !contact && !location) return undefined;
+  return {
+    ...(detail ? { detail } : {}),
+    ...(openingHours ? { openingHours } : {}),
+    ...(contact ? { contact } : {}),
+    ...(location ? { location } : {}),
+  };
+}
+
+function discoverAboutFieldsEqual(
+  a: ShareTokenMetadataDiscoverAbout | undefined,
+  b: ShareTokenMetadataDiscoverAbout | undefined
+): boolean {
+  const norm = (v?: string) => (v ?? '').trim();
+  return (
+    norm(a?.detail) === norm(b?.detail) &&
+    norm(a?.openingHours) === norm(b?.openingHours) &&
+    norm(a?.contact) === norm(b?.contact) &&
+    norm(a?.location) === norm(b?.location)
+  );
+}
 /** Default max number of times a program coupon can be issued (metadata). */
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT = 100;
 /** Default coupon name shown in New Coupon editor. */
@@ -11531,6 +11571,10 @@ const handlePublishCardIssuanceRef = useRef<
  const [cardIssuanceCategoryId, setCardIssuanceCategoryId] = useState<string>(CARD_ISSUANCE_DEFAULT_CATEGORY_ID);
  /** Card-level metadata description (`shareTokenMetadata.description`). */
  const [cardIssuanceDescription, setCardIssuanceDescription] = useState('');
+ const [cardIssuanceDiscoverAboutDetail, setCardIssuanceDiscoverAboutDetail] = useState('');
+ const [cardIssuanceDiscoverAboutOpeningHours, setCardIssuanceDiscoverAboutOpeningHours] = useState('');
+ const [cardIssuanceDiscoverAboutContact, setCardIssuanceDiscoverAboutContact] = useState('');
+ const [cardIssuanceDiscoverAboutLocation, setCardIssuanceDiscoverAboutLocation] = useState('');
  const [cardIssuanceCreateLoading, setCardIssuanceCreateLoading] = useState(false);
  /** Coupon editor (Create / Save Coupon) — separate from global Publish loading */
  const [cardIssuanceCouponEditorPublishing, setCardIssuanceCouponEditorPublishing] = useState(false);
@@ -12354,6 +12398,23 @@ useEffect(() => {
    const desc = (cardIssuanceExistingCard.meta.description ?? '').trim();
    setCardIssuanceDescription(desc.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS));
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.description]);
+
+ useEffect(() => {
+   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+   const about = cardIssuanceExistingCard.meta.discoverAbout;
+   setCardIssuanceDiscoverAboutDetail(
+     (about?.detail ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX)
+   );
+   setCardIssuanceDiscoverAboutOpeningHours(
+     (about?.openingHours ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX)
+   );
+   setCardIssuanceDiscoverAboutContact(
+     (about?.contact ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX)
+   );
+   setCardIssuanceDiscoverAboutLocation(
+     (about?.location ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX)
+   );
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.discoverAbout]);
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
@@ -13478,10 +13539,17 @@ const merchantPanelTextDirty = useMemo(() => {
   const savedName = (meta.name ?? cardIssuanceExistingCard?.userCard.name ?? '').trim();
   const savedDesc = (meta.description ?? '').trim();
   const savedDisplay = (meta.displayName ?? '').trim();
+  const draftAbout = buildDiscoverAboutMetadataPayload({
+    detail: cardIssuanceDiscoverAboutDetail,
+    openingHours: cardIssuanceDiscoverAboutOpeningHours,
+    contact: cardIssuanceDiscoverAboutContact,
+    location: cardIssuanceDiscoverAboutLocation,
+  });
   return (
     cardIssuanceProgramName.trim() !== savedName ||
     cardIssuanceDescription.trim() !== savedDesc ||
-    cardIssuanceStoreDisplayName.trim() !== savedDisplay
+    cardIssuanceStoreDisplayName.trim() !== savedDisplay ||
+    !discoverAboutFieldsEqual(draftAbout, meta.discoverAbout)
   );
 }, [
   cardIssuanceExistingCard?.meta,
@@ -13489,7 +13557,54 @@ const merchantPanelTextDirty = useMemo(() => {
   cardIssuanceProgramName,
   cardIssuanceDescription,
   cardIssuanceStoreDisplayName,
+  cardIssuanceDiscoverAboutDetail,
+  cardIssuanceDiscoverAboutOpeningHours,
+  cardIssuanceDiscoverAboutContact,
+  cardIssuanceDiscoverAboutLocation,
 ]);
+
+const merchantPanelAboutPreviewTitle = useMemo(() => {
+  const name =
+    cardIssuanceStoreDisplayName.trim() ||
+    cardIssuanceProgramName.trim() ||
+    cardIssuanceExistingCard?.meta?.displayName?.trim() ||
+    cardIssuanceExistingCard?.meta?.name?.trim() ||
+    cardIssuanceExistingCard?.userCard.name ||
+    'Merchant';
+  return `About ${name}`;
+}, [
+  cardIssuanceStoreDisplayName,
+  cardIssuanceProgramName,
+  cardIssuanceExistingCard?.meta?.displayName,
+  cardIssuanceExistingCard?.meta?.name,
+  cardIssuanceExistingCard?.userCard?.name,
+]);
+
+const merchantPanelAboutPreviewRows = useMemo(
+  () =>
+    [
+      {
+        label: tu('programs_merchant_about_opening_hours'),
+        value: cardIssuanceDiscoverAboutOpeningHours.trim(),
+        Icon: Clock,
+      },
+      {
+        label: tu('programs_merchant_about_contact'),
+        value: cardIssuanceDiscoverAboutContact.trim(),
+        Icon: Phone,
+      },
+      {
+        label: tu('programs_merchant_about_location'),
+        value: cardIssuanceDiscoverAboutLocation.trim(),
+        Icon: MapPin,
+      },
+    ] as const,
+  [
+    cardIssuanceDiscoverAboutOpeningHours,
+    cardIssuanceDiscoverAboutContact,
+    cardIssuanceDiscoverAboutLocation,
+  ]
+);
 
 const merchantPanelDiscoverAssetLabel = useMemo(() => {
   const metaTiers = programsOverviewTiersSortedAscending;
@@ -16702,6 +16817,12 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
           CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
         rewardTokenId: CARD_ISSUANCE_POINT_REWARD_TOKEN_ID,
       };
+     const discoverAboutForPublish = buildDiscoverAboutMetadataPayload({
+       detail: cardIssuanceDiscoverAboutDetail,
+       openingHours: cardIssuanceDiscoverAboutOpeningHours,
+       contact: cardIssuanceDiscoverAboutContact,
+       location: cardIssuanceDiscoverAboutLocation,
+     });
      const shareTokenMetadataForPublish = {
        name: metaName,
        minimumTopup: minTopupN,
@@ -16729,6 +16850,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
        logoDisplayTier: cardIssuanceLogoDisplayTier,
        ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
        ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
+       ...(discoverAboutForPublish ? { discoverAbout: discoverAboutForPublish } : {}),
      };
      const tierRuleUpgradeForPublish =
        tierRuleForPublish === 'balance'
@@ -16936,6 +17058,10 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    cardIssuanceLogoDisplayTier,
    cardIssuanceCategoryId,
    cardIssuanceDescription,
+   cardIssuanceDiscoverAboutDetail,
+   cardIssuanceDiscoverAboutOpeningHours,
+   cardIssuanceDiscoverAboutContact,
+   cardIssuanceDiscoverAboutLocation,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
   cardIssuanceMinTopupCurrencyFloor,
@@ -17069,6 +17195,12 @@ useEffect(() => {
        0,
        CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX
      );
+     const discoverAboutSaved = buildDiscoverAboutMetadataPayload({
+       detail: cardIssuanceDiscoverAboutDetail,
+       openingHours: cardIssuanceDiscoverAboutOpeningHours,
+       contact: cardIssuanceDiscoverAboutContact,
+       location: cardIssuanceDiscoverAboutLocation,
+     });
      invalidateBeamioCardMetadataCache(cardAddress);
      setCardIssuanceExistingCard((prev) =>
        prev
@@ -17081,18 +17213,22 @@ useEffect(() => {
                    name: trimmedName,
                    ...(trimmedDesc ? { description: trimmedDesc } : { description: undefined }),
                    ...(trimmedDisplay ? { displayName: trimmedDisplay } : { displayName: undefined }),
+                   ...(discoverAboutSaved
+                     ? { discoverAbout: discoverAboutSaved }
+                     : { discoverAbout: undefined }),
                  }
                : ({
                    name: trimmedName,
                    ...(trimmedDesc ? { description: trimmedDesc } : {}),
                    ...(trimmedDisplay ? { displayName: trimmedDisplay } : {}),
+                   ...(discoverAboutSaved ? { discoverAbout: discoverAboutSaved } : {}),
                  } as CardMetadataFromUri),
            }
          : prev
      );
      setCardIssuanceOwnerAdminNotice({
        kind: 'ok',
-       text: 'Merchant name and description published. Discover and consumer apps will refresh after a short cache delay.',
+       text: 'Merchant profile published. Discover and consumer apps will refresh after a short cache delay.',
      });
    } catch (e: unknown) {
      setCardIssuanceCreateError(e instanceof Error ? e.message : 'Could not update merchant text.');
@@ -17104,6 +17240,10 @@ useEffect(() => {
    cardIssuanceProgramName,
    cardIssuanceDescription,
    cardIssuanceStoreDisplayName,
+   cardIssuanceDiscoverAboutDetail,
+   cardIssuanceDiscoverAboutOpeningHours,
+   cardIssuanceDiscoverAboutContact,
+   cardIssuanceDiscoverAboutLocation,
  ]);
 
  const submitCardIssuanceBonusRuleEditor = useCallback(async () => {
@@ -33208,6 +33348,138 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
                             })}
                           </p>
+                        </div>
+                        <div className="space-y-3 border-t border-[#1562f0]/10 pt-3">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                              {tu('programs_merchant_about_section')}
+                            </p>
+                            <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#747779]">
+                              {tu('programs_merchant_about_section_hint')}
+                            </p>
+                          </div>
+                          {(cardIssuanceDiscoverAboutDetail.trim() ||
+                            merchantPanelAboutPreviewRows.some((row) => row.value)) && (
+                            <div className="rounded-[22px] bg-[#eef1f4] p-4">
+                              <h3 className="text-[16px] font-bold text-[#1f2328]">
+                                {merchantPanelAboutPreviewTitle}
+                              </h3>
+                              {cardIssuanceDiscoverAboutDetail.trim() ? (
+                                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                                  {cardIssuanceDiscoverAboutDetail.trim()}
+                                </p>
+                              ) : null}
+                              {merchantPanelAboutPreviewRows.some((row) => row.value) ? (
+                                <div className="mt-5 space-y-4">
+                                  {merchantPanelAboutPreviewRows
+                                    .filter((row) => row.value)
+                                    .map(({ label, value, Icon }) => (
+                                      <div key={label} className="flex gap-3">
+                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0]">
+                                          <Icon className="h-5 w-5" strokeWidth={2} aria-hidden />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-[14px] font-bold text-[#1f2328]">{label}</p>
+                                          <p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-slate-600">
+                                            {value}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
+                          <div className="space-y-1.5">
+                            <label
+                              htmlFor="programs-merchant-panel-about-detail"
+                              className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                            >
+                              {tu('programs_merchant_about_detail_label', {
+                                max: String(CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX),
+                              })}
+                            </label>
+                            <textarea
+                              id="programs-merchant-panel-about-detail"
+                              rows={4}
+                              value={cardIssuanceDiscoverAboutDetail}
+                              onChange={(e) =>
+                                setCardIssuanceDiscoverAboutDetail(
+                                  e.target.value.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX)
+                                )
+                              }
+                              placeholder={tu('programs_merchant_about_detail_ph')}
+                              maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX}
+                              disabled={cardIssuanceMerchantTextSaving}
+                              className={`w-full resize-y rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-medium leading-relaxed text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label
+                              htmlFor="programs-merchant-panel-about-hours"
+                              className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                            >
+                              {tu('programs_merchant_about_opening_hours')}
+                            </label>
+                            <textarea
+                              id="programs-merchant-panel-about-hours"
+                              rows={2}
+                              value={cardIssuanceDiscoverAboutOpeningHours}
+                              onChange={(e) =>
+                                setCardIssuanceDiscoverAboutOpeningHours(
+                                  e.target.value.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX)
+                                )
+                              }
+                              placeholder={tu('programs_merchant_about_opening_hours_ph')}
+                              maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX}
+                              disabled={cardIssuanceMerchantTextSaving}
+                              className={`w-full resize-y rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-medium leading-relaxed text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label
+                              htmlFor="programs-merchant-panel-about-contact"
+                              className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                            >
+                              {tu('programs_merchant_about_contact')}
+                            </label>
+                            <input
+                              id="programs-merchant-panel-about-contact"
+                              type="text"
+                              value={cardIssuanceDiscoverAboutContact}
+                              onChange={(e) =>
+                                setCardIssuanceDiscoverAboutContact(
+                                  e.target.value.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX)
+                                )
+                              }
+                              placeholder={tu('programs_merchant_about_contact_ph')}
+                              maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX}
+                              disabled={cardIssuanceMerchantTextSaving}
+                              className={`w-full rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label
+                              htmlFor="programs-merchant-panel-about-location"
+                              className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                            >
+                              {tu('programs_merchant_about_location')}
+                            </label>
+                            <textarea
+                              id="programs-merchant-panel-about-location"
+                              rows={2}
+                              value={cardIssuanceDiscoverAboutLocation}
+                              onChange={(e) =>
+                                setCardIssuanceDiscoverAboutLocation(
+                                  e.target.value.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX)
+                                )
+                              }
+                              placeholder={tu('programs_merchant_about_location_ph')}
+                              maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX}
+                              disabled={cardIssuanceMerchantTextSaving}
+                              className={`w-full resize-y rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-medium leading-relaxed text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                            />
+                          </div>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <p className="text-[11px] font-medium leading-relaxed text-[#747779]">

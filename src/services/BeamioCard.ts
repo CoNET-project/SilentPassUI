@@ -3094,6 +3094,17 @@ export const getTierIndexForRedeemAmount = (
 	return bestIdx >= 0 ? bestIdx : 0
 }
 
+/** Discover detail About block (`shareTokenMetadata.discoverAbout`). */
+export type ShareTokenMetadataDiscoverAbout = {
+	/** Long-form About paragraph on Discover merchant detail */
+	detail?: string
+	openingHours?: string
+	contact?: string
+	location?: string
+	/** Optional override; consumer default is `About {merchantName}` */
+	aboutTitle?: string
+}
+
 /** 卡级 metadata（getCardMetadataFromApi / getCardMetadataFromUri）；cardOwner 用于请求 per-NFT metadata */
 export type CardMetadataFromUri = {
 	name?: string
@@ -3101,6 +3112,8 @@ export type CardMetadataFromUri = {
 	description?: string
 	/** From shareTokenMetadata.displayName — shown on consumer card when set */
 	displayName?: string
+	/** From shareTokenMetadata.discoverAbout — Discover detail About / hours / contact */
+	discoverAbout?: ShareTokenMetadataDiscoverAbout
 	image?: string
 	/** From shareTokenMetadata.merchantImage — optional banner / hero image URL */
 	merchantImage?: string
@@ -3133,6 +3146,7 @@ const cardMetadataCache = new Map<
 		name?: string
 		description?: string
 		displayName?: string
+		discoverAbout?: ShareTokenMetadataDiscoverAbout
 		image?: string
 		merchantImage?: string
 		tiers?: CardTierMetadata[]
@@ -3218,6 +3232,34 @@ function shareTokenDescriptionFromUnknown(
 	}
 	if (typeof fallback === 'string' && fallback.trim()) return fallback.trim()
 	return undefined
+}
+
+function shareTokenDiscoverAboutStringField(raw: unknown): string | undefined {
+	if (typeof raw !== 'string') return undefined
+	const t = raw.trim()
+	return t || undefined
+}
+
+export function shareTokenDiscoverAboutFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): ShareTokenMetadataDiscoverAbout | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.discoverAbout
+	if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+	const o = raw as Record<string, unknown>
+	const detail = shareTokenDiscoverAboutStringField(o.detail)
+	const openingHours = shareTokenDiscoverAboutStringField(o.openingHours)
+	const contact = shareTokenDiscoverAboutStringField(o.contact)
+	const location = shareTokenDiscoverAboutStringField(o.location)
+	const aboutTitle = shareTokenDiscoverAboutStringField(o.aboutTitle)
+	if (!detail && !openingHours && !contact && !location && !aboutTitle) return undefined
+	return {
+		...(detail ? { detail } : {}),
+		...(openingHours ? { openingHours } : {}),
+		...(contact ? { contact } : {}),
+		...(location ? { location } : {}),
+		...(aboutTitle ? { aboutTitle } : {}),
+	}
 }
 
 function shareTokenMerchantImageFromUnknown(share: Record<string, unknown> | undefined | null): string | undefined {
@@ -3574,6 +3616,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const limits = topupLimitsFromShareTokenMetadata(share)
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const description = shareTokenDescriptionFromUnknown(share, json?.description)
+		const discoverAbout = shareTokenDiscoverAboutFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
@@ -3589,6 +3632,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			image: (share?.image ?? json?.image) as string | undefined,
 			...(displayName && { displayName }),
 			...(description && { description }),
+			...(discoverAbout && { discoverAbout }),
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
@@ -3627,6 +3671,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const limits = topupLimitsFromShareTokenMetadata(share)
 		const displayName = shareTokenDisplayNameFromUnknown(share)
 		const description = shareTokenDescriptionFromUnknown(share, metaJson.description)
+		const discoverAbout = shareTokenDiscoverAboutFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
@@ -3645,6 +3690,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			image: (share?.image ?? metaJson.image) as string | undefined,
 			...(displayName && { displayName }),
 			...(description && { description }),
+			...(discoverAbout && { discoverAbout }),
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
@@ -3772,6 +3818,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const limits = topupLimitsFromShareTokenMetadata(shareObj)
 		const displayName = shareTokenDisplayNameFromUnknown(shareObj)
 		const description = shareTokenDescriptionFromUnknown(shareObj, json?.description)
+		const discoverAbout = shareTokenDiscoverAboutFromUnknown(shareObj)
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
 		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
@@ -3787,6 +3834,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			image: json?.image ?? json?.shareTokenMetadata?.image,
 			...(displayName && { displayName }),
 			...(description && { description }),
+			...(discoverAbout && { discoverAbout }),
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),

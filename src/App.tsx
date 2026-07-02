@@ -66,6 +66,7 @@ import {
 	isRedeemDeepLink,
 	isCouponOpenClaimDeepLink,
 } from "@/utils/beamioDeepLinkParams"
+import { parseDiscoverMerchantFromParams } from "@/utils/discoverMerchantShare"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
@@ -147,6 +148,7 @@ function AppShell() {
   const bUnitClaimAttemptedRef = useRef(false)
   const initialRedeemUrlProcessedRef = useRef(false)
   const initialOpenClaimUrlProcessedRef = useRef(false)
+  const initialDiscoverMerchantUrlProcessedRef = useRef(false)
   const routeLockHashRef = useRef<string>("")
   const routeLockApplyingRef = useRef(false)
 
@@ -192,6 +194,19 @@ function AppShell() {
     setCouponClaimIntent(parsed)
     setShowFooter(false)
     navigate('/History')
+  }, [isInitialLoading, navigate, setShowFooter])
+
+  // Discover merchant deep link (?beamiocard=…&discover=open) → open merchant detail on /discover
+  useEffect(() => {
+    if (isInitialLoading || initialDiscoverMerchantUrlProcessedRef.current) return
+    if (typeof window === 'undefined') return
+
+    const parsed = parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))
+    if (!parsed) return
+
+    initialDiscoverMerchantUrlProcessedRef.current = true
+    setShowFooter(true)
+    navigate('/discover', { state: { openDiscoverMerchantCard: parsed.cardAddress } })
   }, [isInitialLoading, navigate, setShowFooter])
 
   const handleConfirmRedeemClaim = async () => {
@@ -1147,6 +1162,14 @@ function AppShell() {
       setCouponClaimIntent(null)
       setShowFooter(false)
       navigate('/History')
+      return
+    }
+
+    // Discover merchant URL → /discover detail panel
+    const parsedDiscover = parseDiscoverMerchantFromParams(searchParams)
+    if (parsedDiscover) {
+      setShowFooter(true)
+      navigate('/discover', { state: { openDiscoverMerchantCard: parsedDiscover.cardAddress } })
       return
     }
 

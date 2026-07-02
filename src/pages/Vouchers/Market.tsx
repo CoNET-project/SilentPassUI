@@ -123,8 +123,11 @@ import blackCard from "./assets/BlackCard.png"
 import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
 import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPromo.png"
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
+import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
+import { parseDiscoverMerchantFromParams } from '@/utils/discoverMerchantShare'
+import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
@@ -3075,25 +3078,33 @@ function DiscoverMerchantDetailFullScreen({
 						style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
 					>
 						<BeamioCircularBackButton onClick={onClose} />
-						<button
-							type="button"
-							onClick={onMerchantLikeHeartClick}
-							disabled={likeLoading || Boolean(userLiked)}
-							className={[
-								"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95 disabled:opacity-70",
-								userLiked
-									? "bg-rose-500 text-white ring-rose-600/30 disabled:cursor-default"
-									: "bg-slate-800/85 text-white ring-white/10",
-							].join(" ")}
-							aria-label={userLiked ? "Liked" : "Like this brand"}
-							aria-pressed={Boolean(userLiked)}
-						>
-							{likeLoading ? (
-								<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-							) : (
-								<Heart className="h-5 w-5" strokeWidth={2} fill={userLiked ? "currentColor" : "none"} />
-							)}
-						</button>
+						<div className="flex items-center gap-2">
+							{item.cardAddress ? (
+								<DiscoverMerchantShareButton
+									cardAddress={item.cardAddress}
+									merchantTitle={item.title}
+								/>
+							) : null}
+							<button
+								type="button"
+								onClick={onMerchantLikeHeartClick}
+								disabled={likeLoading || Boolean(userLiked)}
+								className={[
+									"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95 disabled:opacity-70",
+									userLiked
+										? "bg-rose-500 text-white ring-rose-600/30 disabled:cursor-default"
+										: "bg-slate-800/85 text-white ring-white/10",
+								].join(" ")}
+								aria-label={userLiked ? "Liked" : "Like this brand"}
+								aria-pressed={Boolean(userLiked)}
+							>
+								{likeLoading ? (
+									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+								) : (
+									<Heart className="h-5 w-5" strokeWidth={2} fill={userLiked ? "currentColor" : "none"} />
+								)}
+							</button>
+						</div>
 					</div>
 					<div className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-5 pt-8">
 						<div className="mb-1 flex items-center gap-2">
@@ -3537,7 +3548,7 @@ export default function Market() {
 	}, [latestCardsRows, registerCardAddresses, registerDiscoverMerchantStatFeedCards])
 
 	useEffect(() => {
-		const state = location.state as { openCardDetail?: boolean } | null
+		const state = location.state as { openCardDetail?: boolean; openDiscoverMerchantCard?: string } | null
 		if (state?.openCardDetail) {
 		setShowFooter(false)
 		setOverlayMode("cardItem")
@@ -3655,6 +3666,21 @@ export default function Market() {
 		// No placeholder brands when API list is empty (Discover is driven by real `latestCards` only).
 		return []
 	}, [latestCardsRows, resolveDisplayName, resolveImage])
+
+	const discoverDeepLinkOpenedRef = useRef(false)
+	useEffect(() => {
+		if (discoverDeepLinkOpenedRef.current) return
+		const state = location.state as { openDiscoverMerchantCard?: string } | null
+		const fromState = state?.openDiscoverMerchantCard?.trim() ?? ''
+		const fromUrl = parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))
+		const targetAddr = (fromState || fromUrl?.cardAddress || '').trim()
+		if (!targetAddr || !ethers.isAddress(targetAddr)) return
+		const cardNorm = ethers.getAddress(targetAddr).toLowerCase()
+		const match = discoverFeaturedCards.find((c) => c.cardAddress?.toLowerCase() === cardNorm)
+		if (!match) return
+		discoverDeepLinkOpenedRef.current = true
+		openDiscoverMerchantDetail(match)
+	}, [discoverFeaturedCards, location.state])
 
 	const filteredFeaturedCards = useMemo(
 		() => {

@@ -13,6 +13,8 @@ type Props = {
 	redeemCode: string
 	submitting?: boolean
 	onResolved?: (row: ActiveCouponListItem | null) => void
+	getPrivateKeyArmor?: () => string | undefined
+	onWalletUnlock?: () => void
 }
 
 /** Redeem Code panel ticket — same renderer as Home / My Brands (`ActiveCouponTicketItem`). */
@@ -21,6 +23,8 @@ export default function RedeemClaimTicketPreview({
 	redeemCode,
 	submitting = false,
 	onResolved,
+	getPrivateKeyArmor,
+	onWalletUnlock,
 }: Props) {
 	const [row, setRow] = useState<ActiveCouponListItem | undefined>(undefined)
 	const onResolvedRef = useRef(onResolved)
@@ -59,6 +63,9 @@ export default function RedeemClaimTicketPreview({
 			punchBgClassName="bg-[#f3f4f5] dark:bg-slate-800"
 			metadataBelowBackgroundImage
 			showActionButton={false}
+			showUserLike={Boolean(row.tokenId?.trim())}
+			getPrivateKeyArmor={getPrivateKeyArmor}
+			onWalletUnlock={onWalletUnlock}
 		/>
 	)
 }

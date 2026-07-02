@@ -570,6 +570,7 @@ const executeForOwnerEndpoint = `${beamioApi}/api/executeForOwner`
 const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
 const cardCouponOpenClaimEndpoint = `${beamioApi}/api/cardCouponOpenClaim`
+const cardRecordUserLikeEndpoint = `${beamioApi}/api/cardRecordUserLike`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardCreateRedeemAdminEndpoint = `${beamioApi}/api/cardCreateRedeemAdmin`
 const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
@@ -1488,6 +1489,87 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 		return { success: true, tx: data.tx, tokenId: data.tokenId ?? tokenId }
 	} catch (e: any) {
 		return { success: false, error: mapCouponOpenClaimApiError(e?.shortMessage ?? e?.message ?? String(e)) }
+	}
+}
+
+/** User EIP-712 like / unlike — burns like stat token on unlike (≈ transfer to 0x0). */
+export const postCardRecordUserLikeWithCurrentWallet = async (params: {
+	cardAddress: string
+	privateKeyArmor: string
+	liked: boolean
+	targetKind?: number
+	issuedParentId?: string
+}): Promise<{ success: boolean; tx?: string; error?: string; status?: number }> => {
+	const cardAddress = params.cardAddress?.trim() ?? ''
+	const privateKeyArmor = params.privateKeyArmor?.trim() ?? ''
+	const liked = Boolean(params.liked)
+	const targetKind = Number(params.targetKind ?? 1)
+	const issuedParentId = String(params.issuedParentId ?? '0')
+	if (!cardAddress || !privateKeyArmor || !ethers.isAddress(cardAddress)) {
+		return { success: false, error: 'Invalid cardAddress or privateKey' }
+	}
+	try {
+		const signer = new ethers.Wallet(privateKeyArmor)
+		const userEOA = ethers.getAddress(signer.address)
+		const cardNorm = ethers.getAddress(cardAddress)
+		const verifyingContract = await getCardFactoryGatewayForEip712(cardNorm)
+		const chainId = await eip712ChainIdForBeamioUserCard(cardNorm)
+		const deadline = Math.floor(Date.now() / 1000) + 15 * 60
+		const nonce = ethers.hexlify(ethers.randomBytes(32))
+		const userSignature = await signer.signTypedData(
+			{
+				name: 'BeamioUserCardFactory',
+				version: '1',
+				chainId,
+				verifyingContract,
+			},
+			{
+				RecordUserLike: [
+					{ name: 'cardAddress', type: 'address' },
+					{ name: 'userEOA', type: 'address' },
+					{ name: 'targetKind', type: 'uint8' },
+					{ name: 'issuedParentId', type: 'uint256' },
+					{ name: 'liked', type: 'bool' },
+					{ name: 'deadline', type: 'uint256' },
+					{ name: 'nonce', type: 'bytes32' },
+				],
+			},
+			{
+				cardAddress: cardNorm,
+				userEOA,
+				targetKind,
+				issuedParentId: BigInt(issuedParentId),
+				liked,
+				deadline: BigInt(deadline),
+				nonce,
+			},
+		)
+
+		const res = await fetch(cardRecordUserLikeEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: cardNorm,
+				userEOA,
+				targetKind,
+				issuedParentId,
+				liked,
+				deadline,
+				nonce,
+				userSignature,
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as { success?: boolean; tx?: string; error?: string }
+		if (!res.ok || data.success === false) {
+			return {
+				success: false,
+				error: data.error ?? `HTTP ${res.status}`,
+				status: res.status,
+			}
+		}
+		return { success: true, tx: data.tx }
+	} catch (e: any) {
+		return { success: false, error: e?.shortMessage ?? e?.message ?? String(e) }
 	}
 }
 

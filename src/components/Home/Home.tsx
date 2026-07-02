@@ -38,6 +38,7 @@ import PayScreen from '@/pages/Pay/send'
 import ActiveCouponsScreen from '@/pages/Home/ActiveCouponsScreen'
 import RedeemVoucherScreen from '@/pages/Home/RedeemVoucherScreen'
 import { buildRedeemVoucherHistoryPath } from '@/pages/Home/redeemVoucherPath'
+import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 
 import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -3561,7 +3562,8 @@ const Home = (_props: HomeProps) => {
 									<ActiveCouponsScreen
 										onBack={() => setActivateGiftVoucherScreen('')}
 										onManualEntry={() => setActivateGiftVoucherScreen('redeemVoucher')}
-										getPrivateKeyArmor={() => profiles?.[0]?.privateKeyArmor}
+										getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
+										onWalletUnlock={() => navigate('/settings')}
 										onClaimSuccess={() => setActivateGiftVoucherScreen('')}
 									/>
 								) : null}

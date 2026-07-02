@@ -3,7 +3,7 @@ import { IpfsImg } from '@/components/IpfsImg';
  * Shared My Brands list body — used by full page route and slide-over drawer.
  */
 
-import React, { useMemo } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { useObjectImgSrc } from '@/components/card/useObjectImgSrc'
 import { useNavigate } from 'react-router-dom'
 import { CreditCard, ExternalLink } from 'lucide-react'
@@ -12,6 +12,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { isCardExcludedFromDisplay } from '@/services/BeamioCard'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import { ActiveCouponTicketItem, type ActiveCouponListItem } from '@/pages/Home/ActiveCouponsScreen'
+import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import baseIcon from '@/components/assets/base-logo.png'
 import conetIcon from '@/components/Home/assets/conet-token.svg'
 import { beamioConetMainnetTxExplorerUrl } from '@/utils/beamioUserCardChain'
@@ -211,6 +212,12 @@ export function MyBrandListEntries({
 	details: Record<string, MyBrandCardDetailLike | undefined>
 }) {
 	const punchBgClassName = 'bg-[#f3f4f5] dark:bg-slate-800'
+	const { profiles } = useDaemonContext()
+	const navigate = useNavigate()
+	const getPrivateKeyArmor = useCallback(
+		(): string | undefined => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined,
+		[profiles],
+	)
 
 	const allCoupons: ActiveCouponListItem[] = []
 	const seenCouponIds = new Set<string>()
@@ -272,6 +279,9 @@ export function MyBrandListEntries({
 					actionLabel={tu('owned')}
 					disabled
 					showOpenClaimShareButton
+					showUserLike
+					getPrivateKeyArmor={getPrivateKeyArmor}
+					onWalletUnlock={() => navigate('/settings')}
 					metadataBelowBackgroundImage
 					aria-label={`Owned coupon ${ownedCoupon.title}`}
 					punchBgClassName={punchBgClassName}

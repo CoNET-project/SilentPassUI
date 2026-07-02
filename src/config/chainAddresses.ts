@@ -20,7 +20,7 @@ export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 export const CONET_MAINNET_CHAIN_ID = 224422
 /** CoNET PoS HTTP RPC — 与 deployments/conet-addresses.json `rpcUrl` 同步 */
 export const CONET_RPC_URL = 'https://publicrpc.conet.network'
-export const CONET_BUINT = '0xa354CC4c414568Dd14F6d63b53013f35483427f0'
+export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'
 export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C4'
 /** CoNET BUnitAirdrop（claim / getBUnitBalance）；与 deployments/conet-addresses.json 同步 */
 export const CONET_BUNIT_AIRDROP_ADDRESS = '0xb9cf45AF87b16853c8F48a16b0495F030309e70f'
@@ -37,7 +37,9 @@ export const CONET_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
 /** CoNET 默认 BeamioUserCard（AA Factory `beamioUserCard`） */
 export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
 /** CoNET USDC（ConetTreasury FactoryERC20） */
-export const CONET_USDC = '0x2975c85D8Cc8F5d263492E332A6dAa7ad11aDBdC'
+export const CONET_USDC = '0x84e55A7d82aEa1243cB88b20dDde9Ba5cea0E134'
+/** @deprecated legacy FactoryERC20 (non-UUPS) */
+export const CONET_USDC_LEGACY = '0x2975c85D8Cc8F5d263492E332A6dAa7ad11aDBdC'
 export const CONET_BEAMIO_USER_CARD_FORMATTING_LIB = '0x9727136BC5DAA5540e7397C9086e9980EBDD0e48'
 export const CONET_BEAMIO_USER_CARD_TRANSFER_LIB = '0xBcf3f8C5994B02B89fB743e1dee6AFDD5a49a664'
 /** BeamioOracle on CoNET mainnet */

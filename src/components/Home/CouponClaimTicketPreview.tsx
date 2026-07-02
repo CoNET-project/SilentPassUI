@@ -12,6 +12,8 @@ type Props = {
 	couponId: string
 	submitting?: boolean
 	onResolved?: (row: ActiveCouponListItem | null) => void
+	getPrivateKeyArmor?: () => string | undefined
+	onWalletUnlock?: () => void
 }
 
 /** Coupon Claim panel ticket — same renderer as Home / My Brands (`ActiveCouponTicketItem`). */
@@ -20,6 +22,8 @@ export default function CouponClaimTicketPreview({
 	couponId,
 	submitting = false,
 	onResolved,
+	getPrivateKeyArmor,
+	onWalletUnlock,
 }: Props) {
 	const [row, setRow] = useState<ActiveCouponListItem | undefined>(undefined)
 	const onResolvedRef = useRef(onResolved)
@@ -58,6 +62,9 @@ export default function CouponClaimTicketPreview({
 			punchBgClassName="bg-white dark:bg-slate-900"
 			metadataBelowBackgroundImage
 			showActionButton={false}
+			showUserLike={Boolean(row.tokenId?.trim())}
+			getPrivateKeyArmor={getPrivateKeyArmor}
+			onWalletUnlock={onWalletUnlock}
 		/>
 	)
 }

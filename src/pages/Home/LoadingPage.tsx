@@ -58,6 +58,7 @@ import RedeemVoucherScreen from './RedeemVoucherScreen'
 import ActiveCouponsScreen from './ActiveCouponsScreen'
 import { WALLET_READY_INTENT_KEY } from './walletReadyIntent'
 import { buildRedeemVoucherHistoryPath } from './redeemVoucherPath'
+import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import OnboardingWelcomeScreen from './OnboardingWelcomeScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
@@ -1252,9 +1253,10 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 										onBack={() => setSettingsOpen('WalletReadyScreen')}
 										onManualEntry={() => setSettingsOpen('RedeemVoucherScreen')}
 										getPrivateKeyArmor={() =>
-											CoNET_Data?.profiles?.[0]?.privateKeyArmor ??
-											temp?.profiles?.[0]?.privateKeyArmor
+											resolveSigningPrivateKeyArmor(CoNET_Data?.profiles?.[0] ?? temp?.profiles?.[0]) ||
+											undefined
 										}
+										onWalletUnlock={() => navigate('/settings')}
 										onClaimSuccess={() => {
 											home()
 											navigate('/')

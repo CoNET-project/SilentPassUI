@@ -69,6 +69,16 @@ import {
 	CONET_MINING_STATS_SEED,
 } from '@/utils/conetMiningStatsLocalCache'
 import {
+	fetchDiscoverMerchantLikeCount,
+	fetchDiscoverMerchantRefClickCount,
+} from '@/utils/discoverMerchantLikeCount'
+import {
+	loadDiscoverMerchantStatsLocalCache,
+	saveDiscoverMerchantStatEntry,
+	type DiscoverMerchantStatEntry,
+	type DiscoverMerchantStatsMap,
+} from '@/utils/discoverMerchantStatsLocalCache'
+import {
 	fetchConetWalletBalances,
 	type ConetWalletBalances,
 } from '@/services/conetUsdcBalance'
@@ -102,6 +112,8 @@ export type { MyBrandCardFeedDetailsMap }
 
 /** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
+/** Discover 商户点赞 / 转发点击：30s TTL 对齐 beamio-chain-fetch-protocol */
+const DISCOVER_MERCHANT_STATS_FEED_INTERVAL_MS = 30_000
 
 type ClaimableCouponSummary = {
   count: number
@@ -386,6 +398,10 @@ type DaemonContext = {
 	unifiedIncomeStats: UnifiedIncomeStats | null
 	/** 用户 Genesis Node 推荐进度（ValidatorDepositRedeem referrer extension）；本地优先，daemon 每 6s 刷新 */
 	referrerSummary: ReferrerDashboardSummary | null
+	/** Discover Featured Brands 链上点赞 / 转发点击；localStorage 首屏 + daemon 30s 刷新 */
+	discoverMerchantStatByCard: DiscoverMerchantStatsMap
+	/** Market 注册需刷新的商户卡地址（来自 trusted `/api/latestCards`） */
+	registerDiscoverMerchantStatFeedCards: (cardAddresses: string[]) => void
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -591,6 +607,8 @@ const defaultContextValue: DaemonContext = {
 	validatorWalletNodeProfile: null,
 	unifiedIncomeStats: null,
 	referrerSummary: null,
+	discoverMerchantStatByCard: {},
+	registerDiscoverMerchantStatFeedCards: () => {},
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -1351,6 +1369,82 @@ export function DaemonProvider({ children }: DaemonProps) {
     seedReferrerSummaryCache(eoaLower, summary)
   }, [])
 
+  const discoverMerchantStatFeedAddressesRef = useRef<string[]>([])
+  const discoverMerchantStatsFeedInFlightRef = useRef(false)
+  const [discoverMerchantStatByCard, setDiscoverMerchantStatByCard] = useState<DiscoverMerchantStatsMap>(
+    () => loadDiscoverMerchantStatsLocalCache(),
+  )
+
+  const runDiscoverMerchantStatsFeedTick = useCallback(async (): Promise<void> => {
+    if (discoverMerchantStatsFeedInFlightRef.current) return
+    const addresses = discoverMerchantStatFeedAddressesRef.current
+    if (!addresses.length) return
+    discoverMerchantStatsFeedInFlightRef.current = true
+    try {
+      for (const cardLower of addresses) {
+        let addr: string
+        try {
+          addr = ethers.getAddress(cardLower)
+        } catch {
+          continue
+        }
+        const likeCount = await fetchDiscoverMerchantLikeCount(addr)
+        const refClickCount = await fetchDiscoverMerchantRefClickCount(addr)
+        if (likeCount == null && refClickCount == null) continue
+
+        setDiscoverMerchantStatByCard((prev) => {
+          const existing = prev[cardLower]
+          const nextEntry: DiscoverMerchantStatEntry = {
+            likeCount: likeCount ?? existing?.likeCount,
+            refClickCount: refClickCount ?? existing?.refClickCount,
+            savedAt: Date.now(),
+          }
+          if (
+            existing?.likeCount === nextEntry.likeCount &&
+            existing?.refClickCount === nextEntry.refClickCount
+          ) {
+            return prev
+          }
+          return { ...prev, [cardLower]: nextEntry }
+        })
+
+        const patch: { likeCount?: number; refClickCount?: number } = {}
+        if (likeCount != null) patch.likeCount = likeCount
+        if (refClickCount != null) patch.refClickCount = refClickCount
+        saveDiscoverMerchantStatEntry(cardLower, patch)
+      }
+    } finally {
+      discoverMerchantStatsFeedInFlightRef.current = false
+    }
+  }, [])
+
+  const registerDiscoverMerchantStatFeedCards = useCallback(
+    (cardAddresses: string[]) => {
+      const normalized = [
+        ...new Set(
+          cardAddresses
+            .map((a) => String(a ?? '').trim())
+            .filter((a) => {
+              try {
+                return ethers.isAddress(a)
+              } catch {
+                return false
+              }
+            })
+            .map((a) => ethers.getAddress(a).toLowerCase()),
+        ),
+      ]
+      const prev = discoverMerchantStatFeedAddressesRef.current
+      const same =
+        prev.length === normalized.length && prev.every((a, i) => a === normalized[i])
+      discoverMerchantStatFeedAddressesRef.current = normalized
+      if (!same && normalized.length > 0) {
+        void runDiscoverMerchantStatsFeedTick()
+      }
+    },
+    [runDiscoverMerchantStatsFeedTick],
+  )
+
   /**
    * CoNET Mining 全网指标（Total staked validators / DePIN nodes）：本地优先 + 6s 全局喂料。
    * 与 CoNetMiningDetailPage 同源（conetNetworkStats / conetDepinStats）。
@@ -1727,6 +1821,29 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [fetchOracle])
 
+  /** Discover 商户点赞 / 转发点击：setTimeout 串行链，30s 节拍；仅 trusted 成功写 state + localStorage */
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          await runDiscoverMerchantStatsFeedTick()
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(runChain, DISCOVER_MERCHANT_STATS_FEED_INTERVAL_MS) as unknown as number
+          }
+        }
+      })()
+    }
+    runChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [runDiscoverMerchantStatsFeedTick])
+
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
@@ -1740,6 +1857,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
 				conetNetworkStats, conetDepinStats, conetWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
+				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

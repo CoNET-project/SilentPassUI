@@ -15,8 +15,9 @@ import {
   Lock,
   Cpu,
   Wallet,
-  Share,
-  Truck,
+	Share,
+	Share2,
+	Truck,
 	MapPin,
 	Database,
 	Flame,
@@ -48,14 +49,15 @@ import {
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Toast } from "antd-mobile"
+import { Toast, Popup } from "antd-mobile"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage } from "@/services/beamio"
-import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { fiatPrefix, formatAmount } from "@/services/currency"
+import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	discoverUsdcTopupRulesHintText,
 	eoaCanSelfFundDiscoverTopup,
@@ -75,7 +77,17 @@ import {
 } from "@/utils/discoverUsdcTopupSession"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
-import { fiatPrefix, formatAmount } from "@/services/currency"
+import { formatDiscoverLikeCount, invalidateDiscoverMerchantStatCache } from "@/utils/discoverMerchantLikeCount"
+import {
+	DISCOVER_USER_LIKE_TARGET,
+	invalidateDiscoverUserLikeBalanceCache,
+	resolveDiscoverUserHasLiked,
+} from "@/utils/discoverUserLike"
+import { saveDiscoverUserLikeLocalCache } from "@/utils/discoverUserLikeLocalCache"
+import {
+	pickDiscoverMerchantLikeCount,
+	pickDiscoverMerchantRefClickCount,
+} from "@/utils/discoverMerchantStatsLocalCache"
 import {
 	formatDiscoverRechargeBonusDisplayString,
 	formatDiscoverRechargeBonusSidePillText,
@@ -528,6 +540,64 @@ type DiscoverFeaturedCard = {
 	rechargeBonusDisplay: string | null
 }
 
+function DiscoverFeaturedLikeCountBadge({ count }: { count: number | null }) {
+	if (count == null) return null
+	return (
+		<span
+			className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#e8ecf0] bg-[#f8fafc] px-2.5 py-1 text-[12px] font-semibold text-[#64748b] dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300"
+			aria-label={`${formatDiscoverLikeCount(count)} likes`}
+		>
+			<Heart className="h-3.5 w-3.5 text-rose-500" strokeWidth={2.25} fill="currentColor" aria-hidden />
+			{formatDiscoverLikeCount(count)}
+		</span>
+	)
+}
+
+function DiscoverFeaturedShareClickCountBadge({ count }: { count: number | null }) {
+	if (count == null) return null
+	return (
+		<span
+			className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#e8ecf0] bg-[#f8fafc] px-2.5 py-1 text-[12px] font-semibold text-[#64748b] dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300"
+			aria-label={`${formatDiscoverLikeCount(count)} share clicks`}
+		>
+			<Share2 className="h-3.5 w-3.5 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
+			{formatDiscoverLikeCount(count)}
+		</span>
+	)
+}
+
+function DiscoverHeroStatCapsules({
+	likeCount,
+	shareClickCount,
+}: {
+	likeCount: number | null
+	shareClickCount: number | null
+}) {
+	if (likeCount == null && shareClickCount == null) return null
+	return (
+		<div className="mt-3 flex flex-wrap items-center gap-2">
+			{likeCount != null ? (
+				<span
+					className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-[12px] font-semibold text-white backdrop-blur-sm"
+					aria-label={`${formatDiscoverLikeCount(likeCount)} likes`}
+				>
+					<Heart className="h-3.5 w-3.5 text-rose-300" strokeWidth={2.25} fill="currentColor" aria-hidden />
+					{formatDiscoverLikeCount(likeCount)}
+				</span>
+			) : null}
+			{shareClickCount != null ? (
+				<span
+					className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-[12px] font-semibold text-white backdrop-blur-sm"
+					aria-label={`${formatDiscoverLikeCount(shareClickCount)} share clicks`}
+				>
+					<Share2 className="h-3.5 w-3.5 text-sky-200" strokeWidth={2.25} aria-hidden />
+					{formatDiscoverLikeCount(shareClickCount)}
+				</span>
+			) : null}
+		</div>
+	)
+}
+
 /** Only allow safe inline style colors (hex / rgb / rgba). */
 function discoverSafeCssColor(raw: string | null | undefined): string | null {
 	if (raw == null || typeof raw !== "string") return null
@@ -708,12 +778,16 @@ function DiscoverMerchantCouponOfferRow({
 	claimStatus = 'idle',
 	claimError,
 	onClaim,
+	getPrivateKeyArmor,
+	onWalletUnlock,
 }: {
 	row: DiscoverMerchantCouponOffer
 	claimEligibility: CouponOpenClaimEligibility | undefined
 	claimStatus?: DiscoverCouponClaimButtonStatus
 	claimError?: string
 	onClaim?: () => void
+	getPrivateKeyArmor?: () => string | undefined
+	onWalletUnlock?: () => void
 }) {
 	const showClaimButton = claimEligibility != null && claimEligibility !== 'not_open_claim'
 	const isAlreadyClaimed = claimEligibility === 'already_claimed'
@@ -733,6 +807,9 @@ function DiscoverMerchantCouponOfferRow({
 				punchBgClassName="bg-white dark:bg-slate-900"
 				metadataBelowBackgroundImage
 				showOpenClaimShareButton
+				showUserLike
+				getPrivateKeyArmor={getPrivateKeyArmor}
+				onWalletUnlock={onWalletUnlock}
 				showActionButton={showClaimButton}
 				actionLabel={tu('claim')}
 				actionStatus={ticketActionStatus}
@@ -2166,10 +2243,14 @@ function DiscoverMerchantDetailFullScreen({
 	onClose: () => void
 }) {
 	const navigate = useNavigate()
-	const { profiles, setProfiles } = useDaemonContext()
+	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards } = useDaemonContext()
 	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName } = useMerchantCardDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
-	const [favorited, setFavorited] = useState(false)
+	const [userLiked, setUserLiked] = useState<boolean | null>(null)
+	const [likeLoading, setLikeLoading] = useState(false)
+	const [unlikeSheetOpen, setUnlikeSheetOpen] = useState(false)
+	const merchantLikeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
+	const merchantShareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
@@ -2267,6 +2348,98 @@ function DiscoverMerchantDetailFullScreen({
 		} catch {
 			return null
 		}
+	}, [profile])
+
+	useEffect(() => {
+		const card = item.cardAddress?.trim()
+		if (!card) {
+			setUserLiked(null)
+			return
+		}
+		const eoa = resolveUserEoa()
+		if (!eoa) {
+			setUserLiked(null)
+			return
+		}
+		let cancelled = false
+		void resolveDiscoverUserHasLiked(card, eoa, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0').then((liked) => {
+			if (!cancelled && liked != null) setUserLiked(liked)
+		})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
+
+	const submitMerchantUserLike = useCallback(
+		async (liked: boolean) => {
+			const card = item.cardAddress?.trim()
+			if (!card || likeLoading) return
+			let privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+			if (!privateKeyArmor) {
+				const stored = await checkStorage()
+				if (stored?.profiles?.length) {
+					setProfiles(stored.profiles)
+					privateKeyArmor = resolveSigningPrivateKeyArmor(stored.profiles[0])
+				}
+			}
+			if (!privateKeyArmor) {
+				Toast.show({
+					content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
+					position: 'top',
+				})
+				navigate('/settings')
+				return
+			}
+			setLikeLoading(true)
+			setUnlikeSheetOpen(false)
+			try {
+				const cardNorm = ethers.getAddress(card)
+				const ret = await postCardRecordUserLikeWithCurrentWallet({
+					cardAddress: cardNorm,
+					privateKeyArmor,
+					liked,
+					targetKind: DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
+					issuedParentId: '0',
+				})
+				if (!ret.success) {
+					Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
+					return
+				}
+				const eoa = resolveUserEoa()
+				if (eoa) {
+					saveDiscoverUserLikeLocalCache(eoa, cardNorm, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0', liked)
+					invalidateDiscoverUserLikeBalanceCache(eoa, cardNorm, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0')
+				}
+				setUserLiked(liked)
+				invalidateDiscoverMerchantStatCache(cardNorm)
+				registerDiscoverMerchantStatFeedCards([cardNorm])
+				Toast.show({ content: liked ? 'Liked' : 'Like removed', position: 'top' })
+			} finally {
+				setLikeLoading(false)
+			}
+		},
+		[
+			item.cardAddress,
+			likeLoading,
+			profile,
+			setProfiles,
+			navigate,
+			resolveUserEoa,
+			registerDiscoverMerchantStatFeedCards,
+		],
+	)
+
+	const onMerchantLikeHeartClick = useCallback(() => {
+		if (likeLoading) return
+		if (userLiked) {
+			setUnlikeSheetOpen(true)
+			return
+		}
+		void submitMerchantUserLike(true)
+	}, [likeLoading, userLiked, submitMerchantUserLike])
+
+	const getPrivateKeyArmorForLike = useCallback((): string | undefined => {
+		return resolveSigningPrivateKeyArmor(profile) || undefined
 	}, [profile])
 
 	const refreshMerchantAssets = useCallback(() => {
@@ -2838,17 +3011,22 @@ function DiscoverMerchantDetailFullScreen({
 						<BeamioCircularBackButton onClick={onClose} />
 						<button
 							type="button"
-							onClick={() => setFavorited((v) => !v)}
+							onClick={onMerchantLikeHeartClick}
+							disabled={likeLoading}
 							className={[
-								"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95",
-								favorited
+								"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95 disabled:opacity-70",
+								userLiked
 									? "bg-rose-500 text-white ring-rose-600/30"
 									: "bg-slate-800/85 text-white ring-white/10",
 							].join(" ")}
-							aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-							aria-pressed={favorited}
+							aria-label={userLiked ? "Remove like" : "Like this brand"}
+							aria-pressed={Boolean(userLiked)}
 						>
-							<Heart className="h-5 w-5" strokeWidth={2} fill={favorited ? "currentColor" : "none"} />
+							{likeLoading ? (
+								<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+							) : (
+								<Heart className="h-5 w-5" strokeWidth={2} fill={userLiked ? "currentColor" : "none"} />
+							)}
 						</button>
 					</div>
 					<div className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-5 pt-8">
@@ -2859,6 +3037,7 @@ function DiscoverMerchantDetailFullScreen({
 						</div>
 						<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
 						<p className="mt-1 text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
+						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
 						{item.cardAddress ? <DiscoverMerchantCardAddressCapsule address={item.cardAddress} /> : null}
 					</div>
 				</div>
@@ -3088,6 +3267,8 @@ function DiscoverMerchantDetailFullScreen({
 											claimStatus={couponClaimStatusById[row.coupon.id] ?? 'idle'}
 											claimError={couponClaimErrorById[row.coupon.id]}
 											onClaim={() => void handleDiscoverCouponClaim(row)}
+											getPrivateKeyArmor={getPrivateKeyArmorForLike}
+											onWalletUnlock={() => navigate('/settings')}
 										/>
 									))}
 								</div>
@@ -3153,6 +3334,43 @@ function DiscoverMerchantDetailFullScreen({
 
 				</div>
 			</div>
+
+			<Popup
+				visible={unlikeSheetOpen}
+				onMaskClick={() => setUnlikeSheetOpen(false)}
+				position="bottom"
+				bodyStyle={{
+					borderTopLeftRadius: 20,
+					borderTopRightRadius: 20,
+					paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+				}}
+			>
+				<div className="px-5 pb-2 pt-5">
+					<h2 className="text-[18px] font-bold text-[#1f2328] dark:text-slate-100">Remove like?</h2>
+					<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
+						Your like badge will be removed from this brand. The public like count may decrease after
+						confirmation.
+					</p>
+					<div className="mt-5 flex flex-col gap-2.5">
+						<button
+							type="button"
+							disabled={likeLoading}
+							onClick={() => void submitMerchantUserLike(false)}
+							className="inline-flex w-full items-center justify-center rounded-full bg-rose-500 px-4 py-3 text-[15px] font-bold text-white shadow-md shadow-rose-500/25 transition active:scale-[0.98] disabled:opacity-70"
+						>
+							{likeLoading ? 'Removing…' : 'Remove Like'}
+						</button>
+						<button
+							type="button"
+							disabled={likeLoading}
+							onClick={() => setUnlikeSheetOpen(false)}
+							className="inline-flex w-full items-center justify-center rounded-full border border-slate-200 px-4 py-3 text-[15px] font-semibold text-slate-700 transition active:scale-[0.98] dark:border-slate-600 dark:text-slate-200"
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			</Popup>
 		</div>
 	)
 }
@@ -3160,7 +3378,7 @@ function DiscoverMerchantDetailFullScreen({
 export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { profiles, myAddress, setShowFooter, chatSearchOpen, setChatSearchOpen, beamio } = useDaemonContext()
+	const { profiles, myAddress, setShowFooter, chatSearchOpen, setChatSearchOpen, beamio, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards } = useDaemonContext()
 	const { registerCardAddresses, mergeTrustedCards, resolveDisplayName, resolveImage } = useMerchantCardDatabase()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
@@ -3286,7 +3504,8 @@ export default function Market() {
 	useEffect(() => {
 		if (latestCardsRows.length === 0) return
 		registerCardAddresses(latestCardsRows.map((r) => r.cardAddress))
-	}, [latestCardsRows, registerCardAddresses])
+		registerDiscoverMerchantStatFeedCards(latestCardsRows.map((r) => r.cardAddress))
+	}, [latestCardsRows, registerCardAddresses, registerDiscoverMerchantStatFeedCards])
 
 	useEffect(() => {
 		const state = location.state as { openCardDetail?: boolean } | null
@@ -3487,6 +3706,8 @@ export default function Market() {
 
 				<div className="grid grid-cols-1 gap-5">
 				{filteredFeaturedCards.map((item) => {
+					const likeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
+					const shareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
 					return (
 					<button
 						key={item.id}
@@ -3545,6 +3766,10 @@ export default function Market() {
 									</div>
 								</div>
 							) : null}
+							<div className="mt-2 flex justify-end gap-2">
+								<DiscoverFeaturedLikeCountBadge count={likeCount} />
+								<DiscoverFeaturedShareClickCountBadge count={shareClickCount} />
+							</div>
 						</div>
 					</button>
 					)

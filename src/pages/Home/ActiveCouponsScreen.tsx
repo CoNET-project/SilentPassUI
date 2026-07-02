@@ -5,6 +5,8 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Copy, Gif
 import { ethers } from 'ethers'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
+import { CouponUserLikeCountPill, CouponUserLikeHeartButton, CouponUnlikeSheet } from '@/components/CouponUserLikeChrome'
+import { useCouponUserLike } from '@/hooks/useCouponUserLike'
 import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
 import { t } from '@/locale/i18n'
@@ -38,6 +40,7 @@ type ActiveCouponsScreenProps = {
 	onBack: () => void
 	onManualEntry: () => void
 	getPrivateKeyArmor: () => string | undefined
+	onWalletUnlock?: () => void
 	onClaimSuccess?: () => void
 }
 
@@ -388,6 +391,9 @@ export function ActiveCouponTicketItem({
 	showOpenClaimShareButton = false,
 	/** biz Coupon preview parity: banner ticket shows icon only; title/subtitle/expiry below. */
 	metadataBelowBackgroundImage = false,
+	showUserLike = false,
+	getPrivateKeyArmor,
+	onWalletUnlock,
 }: {
 	row: ActiveCouponListItem
 	actionStatus?: ClaimButtonStatus
@@ -401,7 +407,17 @@ export function ActiveCouponTicketItem({
 	showActionButton?: boolean
 	showOpenClaimShareButton?: boolean
 	metadataBelowBackgroundImage?: boolean
+	showUserLike?: boolean
+	getPrivateKeyArmor?: () => string | undefined
+	onWalletUnlock?: () => void
 }) {
+	const couponLike = useCouponUserLike({
+		cardAddress: row.cardAddress,
+		tokenId: row.tokenId,
+		enabled: showUserLike,
+		getPrivateKeyArmor,
+		onWalletUnlock,
+	})
 	const expires = formatCouponExpiryPill(row.validBeforeSec)
 	const showExpiryPill = shouldShowCouponExpiryPill(expires)
 	const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
@@ -561,6 +577,17 @@ export function ActiveCouponTicketItem({
 				aria-hidden
 			/>
 			<div className="relative min-h-[7.5rem] overflow-hidden rounded-[1.75rem] shadow-none ring-1 ring-black/[0.08]">
+				{showUserLike ? (
+					<div className="pointer-events-none absolute left-3 top-3 z-[3] sm:left-4 sm:top-4">
+						<div className="pointer-events-auto">
+							<CouponUserLikeHeartButton
+								userLiked={couponLike.userLiked}
+								likeLoading={couponLike.likeLoading}
+								onHeartClick={couponLike.onHeartClick}
+							/>
+						</div>
+					</div>
+				) : null}
 				{hasBanner ? (
 					<CouponBannerImage src={row.backgroundImage} />
 				) : (
@@ -608,6 +635,11 @@ export function ActiveCouponTicketItem({
 								<CouponCardAddressCapsule address={row.cardAddress} />
 							) : null}
 							{showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
+							{showUserLike && couponLike.likeCount != null ? (
+								<div className={showExpiryPill ? 'mt-2' : 'mt-2'}>
+									<CouponUserLikeCountPill count={couponLike.likeCount} variant={hasBanner ? 'onDark' : 'light'} />
+								</div>
+							) : null}
 						</div>
 					) : null}
 
@@ -618,7 +650,19 @@ export function ActiveCouponTicketItem({
 	)
 
 	if (!copyBelowBanner) {
-		return ticketShell
+		return (
+			<>
+				{ticketShell}
+				{showUserLike ? (
+					<CouponUnlikeSheet
+						visible={couponLike.unlikeSheetOpen}
+						likeLoading={couponLike.likeLoading}
+						onClose={() => couponLike.setUnlikeSheetOpen(false)}
+						onConfirm={() => void couponLike.submitCouponLike(false)}
+					/>
+				) : null}
+			</>
+		)
 	}
 
 	return (
@@ -634,12 +678,31 @@ export function ActiveCouponTicketItem({
 					'text-sm text-[#595c5e] dark:text-slate-400',
 					title ? 'mt-0.5' : ''
 				)}
-				{showExpiryPill ? (
+				{showUserLike && couponLike.likeCount != null ? (
 					<div className={title || subtitle || showBaseScanNftLink || showOpenClaimShareButton ? 'mt-2' : ''}>
+						<CouponUserLikeCountPill count={couponLike.likeCount} />
+					</div>
+				) : null}
+				{showExpiryPill ? (
+					<div
+						className={
+							title || subtitle || showBaseScanNftLink || showOpenClaimShareButton || (showUserLike && couponLike.likeCount != null)
+								? 'mt-2'
+								: ''
+						}
+					>
 						{renderExpiryPill('external')}
 					</div>
 				) : null}
 			</div>
+			{showUserLike ? (
+				<CouponUnlikeSheet
+					visible={couponLike.unlikeSheetOpen}
+					likeLoading={couponLike.likeLoading}
+					onClose={() => couponLike.setUnlikeSheetOpen(false)}
+					onConfirm={() => void couponLike.submitCouponLike(false)}
+				/>
+			) : null}
 		</div>
 	)
 }
@@ -648,6 +711,7 @@ export default function ActiveCouponsScreen({
 	onBack,
 	onManualEntry,
 	getPrivateKeyArmor,
+	onWalletUnlock,
 	onClaimSuccess,
 }: ActiveCouponsScreenProps) {
 	const [coupons, setCoupons] = useState<ActiveCouponListItem[]>([])
@@ -866,6 +930,10 @@ export default function ActiveCouponsScreen({
 										key={row.id}
 										row={row}
 										showCardAddress
+										metadataBelowBackgroundImage
+										showUserLike
+										getPrivateKeyArmor={getPrivateKeyArmor}
+										onWalletUnlock={onWalletUnlock}
 										actionStatus={claimStatus}
 										actionError={claimErrorById[row.id]}
 										disabled={claimButtonDisabled}

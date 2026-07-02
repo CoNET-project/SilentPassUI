@@ -1664,6 +1664,8 @@ function AppShell() {
 									cardAddress={redeemClaimIntent.cardAddress}
 									redeemCode={redeemClaimIntent.redeemCode}
 									submitting={redeemClaimSubmitting}
+									getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
+									onWalletUnlock={() => navigate('/settings')}
 								/>
 							) : (
 								<div className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-4">
@@ -1718,6 +1720,8 @@ function AppShell() {
 								couponId={couponClaimIntent.couponId}
 								submitting={couponClaimSubmitting}
 								onResolved={setCouponClaimPreviewRow}
+								getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
+								onWalletUnlock={() => navigate('/settings')}
 							/>
 						</div>
 

@@ -73,8 +73,9 @@ import {
 	fetchDiscoverMerchantRefClickCount,
 } from '@/utils/discoverMerchantLikeCount'
 import {
-	loadDiscoverMerchantStatsLocalCache,
-	saveDiscoverMerchantStatEntry,
+  loadDiscoverMerchantStatsLocalCache,
+  mergeDiscoverMerchantLikeCount,
+  saveDiscoverMerchantStatEntry,
 	type DiscoverMerchantStatEntry,
 	type DiscoverMerchantStatsMap,
 } from '@/utils/discoverMerchantStatsLocalCache'
@@ -1397,8 +1398,9 @@ export function DaemonProvider({ children }: DaemonProps) {
 
         setDiscoverMerchantStatByCard((prev) => {
           const existing = prev[cardLower]
+          const mergedLike = mergeDiscoverMerchantLikeCount(likeCount, existing?.likeCount, existing?.savedAt)
           const nextEntry: DiscoverMerchantStatEntry = {
-            likeCount: likeCount ?? existing?.likeCount,
+            likeCount: mergedLike,
             refClickCount: refClickCount ?? existing?.refClickCount,
             savedAt: Date.now(),
           }
@@ -1412,7 +1414,13 @@ export function DaemonProvider({ children }: DaemonProps) {
         })
 
         const patch: { likeCount?: number; refClickCount?: number } = {}
-        if (likeCount != null) patch.likeCount = likeCount
+        const existingEntry = loadDiscoverMerchantStatsLocalCache()[cardLower]
+        const mergedLikeForSave = mergeDiscoverMerchantLikeCount(
+          likeCount,
+          existingEntry?.likeCount,
+          existingEntry?.savedAt,
+        )
+        if (mergedLikeForSave != null) patch.likeCount = mergedLikeForSave
         if (refClickCount != null) patch.refClickCount = refClickCount
         saveDiscoverMerchantStatEntry(cardLower, patch)
       }

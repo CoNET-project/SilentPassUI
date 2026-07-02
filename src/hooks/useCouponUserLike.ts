@@ -30,7 +30,6 @@ export function useCouponUserLike({
 }: UseCouponUserLikeOptions) {
 	const [userLiked, setUserLiked] = useState<boolean | null>(null)
 	const [likeLoading, setLikeLoading] = useState(false)
-	const [unlikeSheetOpen, setUnlikeSheetOpen] = useState(false)
 	const [likeCount, setLikeCount] = useState<number | null>(null)
 
 	const resolveUserEoa = useCallback((): string | null => {
@@ -59,20 +58,24 @@ export function useCouponUserLike({
 		void refreshLikeCount()
 		const eoa = resolveUserEoa()
 		if (eoa) {
-			const localSeed = readDiscoverUserLikedLocalSeed(
-				eoa,
-				cardAddress,
-				DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
-				tokenId,
-			)
-			if (localSeed != null) setUserLiked(localSeed)
 			void resolveDiscoverUserHasLiked(
 				cardAddress,
 				eoa,
 				DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
 				tokenId,
 			).then((liked) => {
-				if (!cancelled && liked != null) setUserLiked(liked)
+				if (cancelled) return
+				if (liked != null) {
+					setUserLiked(liked)
+					return
+				}
+				const localSeed = readDiscoverUserLikedLocalSeed(
+					eoa,
+					cardAddress,
+					DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
+					tokenId,
+				)
+				if (localSeed != null) setUserLiked(localSeed)
 			})
 		} else {
 			setUserLiked(null)
@@ -82,89 +85,78 @@ export function useCouponUserLike({
 		}
 	}, [enabled, cardAddress, tokenId, resolveUserEoa, refreshLikeCount])
 
-	const submitCouponLike = useCallback(
-		async (liked: boolean) => {
-			if (!enabled || likeLoading || !cardAddress?.trim() || !tokenId?.trim()) return
-			const privateKeyArmor = getPrivateKeyArmor?.()?.trim() ?? ''
-			if (!privateKeyArmor) {
-				Toast.show({
-					content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
-					position: 'top',
-				})
-				onWalletUnlock?.()
+	const submitLike = useCallback(async () => {
+		if (!enabled || likeLoading || !cardAddress?.trim() || !tokenId?.trim()) return
+		const privateKeyArmor = getPrivateKeyArmor?.()?.trim() ?? ''
+		if (!privateKeyArmor) {
+			Toast.show({
+				content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
+				position: 'top',
+			})
+			onWalletUnlock?.()
+			return
+		}
+		setLikeLoading(true)
+		try {
+			const cardNorm = ethers.getAddress(cardAddress)
+			const ret = await postCardRecordUserLikeWithCurrentWallet({
+				cardAddress: cardNorm,
+				privateKeyArmor,
+				liked: true,
+				targetKind: DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
+				issuedParentId: tokenId,
+			})
+			if (!ret.success) {
+				Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
 				return
 			}
-			setLikeLoading(true)
-			setUnlikeSheetOpen(false)
-			try {
-				const cardNorm = ethers.getAddress(cardAddress)
-				const ret = await postCardRecordUserLikeWithCurrentWallet({
-					cardAddress: cardNorm,
-					privateKeyArmor,
-					liked,
-					targetKind: DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
-					issuedParentId: tokenId,
-				})
-				if (!ret.success) {
-					Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
-					return
-				}
-				const eoa = resolveUserEoa()
-				if (eoa) {
-					saveDiscoverUserLikeLocalCache(
-						eoa,
-						cardNorm,
-						DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
-						tokenId,
-						liked,
-					)
-					invalidateDiscoverUserLikeBalanceCache(
-						eoa,
-						cardNorm,
-						DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
-						tokenId,
-					)
-				}
-				setUserLiked(liked)
-				invalidateCouponLikeCountCache(cardNorm, tokenId)
-				await refreshLikeCount()
-				Toast.show({ content: liked ? 'Liked' : 'Like removed', position: 'top' })
-			} finally {
-				setLikeLoading(false)
+			const eoa = resolveUserEoa()
+			if (eoa) {
+				saveDiscoverUserLikeLocalCache(
+					eoa,
+					cardNorm,
+					DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
+					tokenId,
+					true,
+				)
+				invalidateDiscoverUserLikeBalanceCache(
+					eoa,
+					cardNorm,
+					DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
+					tokenId,
+				)
 			}
-		},
-		[
-			enabled,
-			likeLoading,
-			cardAddress,
-			tokenId,
-			getPrivateKeyArmor,
-			onWalletUnlock,
-			resolveUserEoa,
-			refreshLikeCount,
-		],
-	)
+			setUserLiked(true)
+			invalidateCouponLikeCountCache(cardNorm, tokenId)
+			await refreshLikeCount()
+			Toast.show({ content: 'Liked', position: 'top' })
+		} finally {
+			setLikeLoading(false)
+		}
+	}, [
+		enabled,
+		likeLoading,
+		cardAddress,
+		tokenId,
+		getPrivateKeyArmor,
+		onWalletUnlock,
+		resolveUserEoa,
+		refreshLikeCount,
+	])
 
 	const onHeartClick = useCallback(
 		(e?: MouseEvent) => {
 			e?.stopPropagation()
-			if (likeLoading) return
-			if (userLiked) {
-				setUnlikeSheetOpen(true)
-				return
-			}
-			void submitCouponLike(true)
+			if (likeLoading || userLiked) return
+			void submitLike()
 		},
-		[likeLoading, userLiked, submitCouponLike],
+		[likeLoading, userLiked, submitLike],
 	)
 
 	return {
 		userLiked,
 		likeLoading,
-		unlikeSheetOpen,
-		setUnlikeSheetOpen,
 		likeCount,
 		onHeartClick,
-		submitCouponLike,
 	}
 }

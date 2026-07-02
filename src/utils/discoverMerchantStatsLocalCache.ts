@@ -76,6 +76,29 @@ export function pickDiscoverMerchantRefClickCount(
 	return typeof n === 'number' && Number.isFinite(n) ? Math.trunc(n) : null
 }
 
+/** After like API success, chain totalSupply may lag briefly; do not clobber with 0 in this window. */
+export const DISCOVER_MERCHANT_LIKE_OPTIMISTIC_MS = 120_000
+
+/** Chain totalSupply vs local cache; keep recent optimistic bump when chain still reads 0. */
+export function mergeDiscoverMerchantLikeCount(
+	chainLike: number | null,
+	cachedLike: number | undefined,
+	cachedSavedAt?: number,
+): number | undefined {
+	if (chainLike == null) return cachedLike
+	const chain = Math.max(0, Math.trunc(chainLike))
+	if (cachedLike == null || !Number.isFinite(cachedLike)) return chain
+	const cached = Math.max(0, Math.trunc(cachedLike))
+	if (
+		cached > chain &&
+		cachedSavedAt != null &&
+		Date.now() - cachedSavedAt < DISCOVER_MERCHANT_LIKE_OPTIMISTIC_MS
+	) {
+		return cached
+	}
+	return chain
+}
+
 /** Optimistic like count after trusted API success (before chain totalSupply catches up). */
 export function bumpDiscoverMerchantLikeCountLocal(
 	cardAddress: string,

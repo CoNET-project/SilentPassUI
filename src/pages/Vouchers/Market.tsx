@@ -49,7 +49,7 @@ import {
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Toast, Popup } from "antd-mobile"
+import { Toast } from "antd-mobile"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
@@ -332,6 +332,61 @@ type DiscoverMerchantInfoPanel = {
 	location?: string
 }
 
+type ShareTokenMetadataDiscoverAbout = {
+	detail?: string
+	openingHours?: string
+	contact?: string
+	location?: string
+	aboutTitle?: string
+}
+
+function parseDiscoverAboutFromShare(
+	share: Record<string, unknown> | null | undefined
+): ShareTokenMetadataDiscoverAbout | null {
+	if (!share) return null
+	const raw = share.discoverAbout
+	if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null
+	const o = raw as Record<string, unknown>
+	const field = (key: string): string | undefined => {
+		const v = o[key]
+		return typeof v === "string" && v.trim() ? v.trim() : undefined
+	}
+	const detail = field("detail")
+	const openingHours = field("openingHours")
+	const contact = field("contact")
+	const location = field("location")
+	const aboutTitle = field("aboutTitle")
+	if (!detail && !openingHours && !contact && !location && !aboutTitle) return null
+	return { detail, openingHours, contact, location, aboutTitle }
+}
+
+function resolveDiscoverMerchantInfoPanel(
+	cardAddress: string,
+	discoverAbout: ShareTokenMetadataDiscoverAbout | null | undefined,
+	merchantDisplayName: string
+): DiscoverMerchantInfoPanel | undefined {
+	const legacy = DISCOVER_MERCHANT_INFO_PANELS[resolveDiscoverCardPanelKey(cardAddress)]
+	if (discoverAbout) {
+		const aboutText = discoverAbout.detail?.trim()
+		const openingHours = discoverAbout.openingHours?.trim()
+		const contact = discoverAbout.contact?.trim()
+		const location = discoverAbout.location?.trim()
+		if (aboutText || openingHours || contact || location) {
+			return {
+				welcomeTitle: legacy?.welcomeTitle ?? `Welcome to ${merchantDisplayName}`,
+				welcomeText: legacy?.welcomeText ?? "",
+				aboutTitle:
+					discoverAbout.aboutTitle?.trim() || legacy?.aboutTitle || `About ${merchantDisplayName}`,
+				aboutText: aboutText || legacy?.aboutText,
+				openingHours: openingHours || legacy?.openingHours,
+				contact: contact || legacy?.contact,
+				location: location || legacy?.location,
+			}
+		}
+	}
+	return legacy
+}
+
 function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolean {
 	return Boolean(
 		panel.aboutTitle?.trim() &&
@@ -439,6 +494,8 @@ type DiscoverLatestCardRow = {
 	/** bizSite Define your brand — `merchantImage` (wide hero), not square program logo. */
 	merchantImage: string | null
 	primaryRechargeBonus: DiscoverRechargeBonusRule | null
+	/** From shareTokenMetadata.discoverAbout — Discover detail About block */
+	discoverAbout: ShareTokenMetadataDiscoverAbout | null
 }
 
 /** Discover filter chip: category tab or show all merchants. */
@@ -539,6 +596,7 @@ type DiscoverFeaturedCard = {
 	primaryRechargeBonus: DiscoverRechargeBonusRule | null
 	rechargeBonusSidePill: string | null
 	rechargeBonusDisplay: string | null
+	discoverAbout: ShareTokenMetadataDiscoverAbout | null
 }
 
 function DiscoverFeaturedLikeCountBadge({ count }: { count: number | null }) {
@@ -1108,6 +1166,7 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 	const businessName = parseDiscoverBusinessName(meta)
 	const merchantImage = parseDiscoverMerchantImage(meta)
 	const primaryRechargeBonus = resolveDiscoverPrimaryRechargeBonus(addr, meta)
+	const discoverAbout = parseDiscoverAboutFromShare(share)
 	const ownerRaw = r.cardOwner ?? r.card_owner
 	let cardOwner: string | null = null
 	if (typeof ownerRaw === "string" && ownerRaw.trim() && ethers.isAddress(ownerRaw.trim())) {
@@ -1143,6 +1202,7 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 		symbol,
 		merchantImage,
 		primaryRechargeBonus,
+		discoverAbout,
 	}
 }
 
@@ -2249,7 +2309,6 @@ function DiscoverMerchantDetailFullScreen({
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
 	const [userLiked, setUserLiked] = useState<boolean | null>(null)
 	const [likeLoading, setLikeLoading] = useState(false)
-	const [unlikeSheetOpen, setUnlikeSheetOpen] = useState(false)
 	const merchantLikeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
 	const merchantShareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
@@ -2282,11 +2341,11 @@ function DiscoverMerchantDetailFullScreen({
 	const usdcTopupPollAbortRef = useRef<AbortController | null>(null)
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const ccy = (item.currency || "CAD").toUpperCase()
+	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
 	const merchantInfoPanel =
 		item.cardAddress != null
-			? DISCOVER_MERCHANT_INFO_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
+			? resolveDiscoverMerchantInfoPanel(item.cardAddress, item.discoverAbout, passTitle)
 			: undefined
-	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
 	const displayCurrency = (merchantAssets?.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
 	const balancePrefix = fiatPrefix(displayCurrency)
 	const balanceAmount = formatAmount(Number(merchantAssets?.points ?? 0), displayCurrency)
@@ -2362,94 +2421,87 @@ function DiscoverMerchantDetailFullScreen({
 			setUserLiked(null)
 			return
 		}
-		const localSeed = readDiscoverUserLikedLocalSeed(
-			eoa,
-			card,
-			DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
-			'0',
-		)
-		if (localSeed != null) setUserLiked(localSeed)
 		let cancelled = false
 		void resolveDiscoverUserHasLiked(card, eoa, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0').then((liked) => {
-			if (!cancelled && liked != null) setUserLiked(liked)
+			if (cancelled) return
+			if (liked != null) {
+				setUserLiked(liked)
+				return
+			}
+			const localSeed = readDiscoverUserLikedLocalSeed(
+				eoa,
+				card,
+				DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
+				'0',
+			)
+			if (localSeed != null) setUserLiked(localSeed)
 		})
 		return () => {
 			cancelled = true
 		}
 	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
 
-	const submitMerchantUserLike = useCallback(
-		async (liked: boolean) => {
-			const card = item.cardAddress?.trim()
-			if (!card || likeLoading) return
-			let privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
-			if (!privateKeyArmor) {
-				const stored = await checkStorage()
-				if (stored?.profiles?.length) {
-					setProfiles(stored.profiles)
-					privateKeyArmor = resolveSigningPrivateKeyArmor(stored.profiles[0])
-				}
+	const submitMerchantUserLike = useCallback(async () => {
+		const card = item.cardAddress?.trim()
+		if (!card || likeLoading || userLiked) return
+		let privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+		if (!privateKeyArmor) {
+			const stored = await checkStorage()
+			if (stored?.profiles?.length) {
+				setProfiles(stored.profiles)
+				privateKeyArmor = resolveSigningPrivateKeyArmor(stored.profiles[0])
 			}
-			if (!privateKeyArmor) {
-				Toast.show({
-					content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
-					position: 'top',
-				})
-				navigate('/settings')
-				return
-			}
-			setLikeLoading(true)
-			setUnlikeSheetOpen(false)
-			try {
-				const cardNorm = ethers.getAddress(card)
-				const ret = await postCardRecordUserLikeWithCurrentWallet({
-					cardAddress: cardNorm,
-					privateKeyArmor,
-					liked,
-					targetKind: DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
-					issuedParentId: '0',
-				})
-				if (!ret.success) {
-					Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
-					return
-				}
-				const eoa = resolveUserEoa()
-				if (eoa) {
-					saveDiscoverUserLikeLocalCache(eoa, cardNorm, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0', liked)
-					invalidateDiscoverUserLikeBalanceCache(eoa, cardNorm, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0')
-				}
-				setUserLiked(liked)
-				invalidateDiscoverMerchantStatCache(cardNorm)
-				if (liked) {
-					applyDiscoverMerchantLikeCountDelta(cardNorm, 1)
-				} else {
-					applyDiscoverMerchantLikeCountDelta(cardNorm, -1)
-				}
-				registerDiscoverMerchantStatFeedCards([cardNorm])
-				Toast.show({ content: liked ? 'Liked' : 'Like removed', position: 'top' })
-			} finally {
-				setLikeLoading(false)
-			}
-		},
-		[
-			item.cardAddress,
-			likeLoading,
-			profile,
-			setProfiles,
-			navigate,
-			resolveUserEoa,
-			registerDiscoverMerchantStatFeedCards,
-			applyDiscoverMerchantLikeCountDelta,
-		],
-	)
-
-	const onMerchantLikeHeartClick = useCallback(() => {
-		if (likeLoading) return
-		if (userLiked) {
-			setUnlikeSheetOpen(true)
+		}
+		if (!privateKeyArmor) {
+			Toast.show({
+				content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
+				position: 'top',
+			})
+			navigate('/settings')
 			return
 		}
-		void submitMerchantUserLike(true)
+		setLikeLoading(true)
+		try {
+			const cardNorm = ethers.getAddress(card)
+			const ret = await postCardRecordUserLikeWithCurrentWallet({
+				cardAddress: cardNorm,
+				privateKeyArmor,
+				liked: true,
+				targetKind: DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
+				issuedParentId: '0',
+			})
+			if (!ret.success) {
+				Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
+				return
+			}
+			const eoa = resolveUserEoa()
+			if (eoa) {
+				saveDiscoverUserLikeLocalCache(eoa, cardNorm, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0', true)
+				invalidateDiscoverUserLikeBalanceCache(eoa, cardNorm, DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD, '0')
+			}
+			setUserLiked(true)
+			invalidateDiscoverMerchantStatCache(cardNorm)
+			applyDiscoverMerchantLikeCountDelta(cardNorm, 1)
+			registerDiscoverMerchantStatFeedCards([cardNorm])
+			Toast.show({ content: 'Liked', position: 'top' })
+		} finally {
+			setLikeLoading(false)
+		}
+	}, [
+		item.cardAddress,
+		likeLoading,
+		userLiked,
+		profile,
+		setProfiles,
+		navigate,
+		resolveUserEoa,
+		registerDiscoverMerchantStatFeedCards,
+		applyDiscoverMerchantLikeCountDelta,
+	])
+
+	const onMerchantLikeHeartClick = useCallback(() => {
+		if (likeLoading || userLiked) return
+		void submitMerchantUserLike()
 	}, [likeLoading, userLiked, submitMerchantUserLike])
 
 	const getPrivateKeyArmorForLike = useCallback((): string | undefined => {
@@ -3026,14 +3078,14 @@ function DiscoverMerchantDetailFullScreen({
 						<button
 							type="button"
 							onClick={onMerchantLikeHeartClick}
-							disabled={likeLoading}
+							disabled={likeLoading || Boolean(userLiked)}
 							className={[
 								"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95 disabled:opacity-70",
 								userLiked
-									? "bg-rose-500 text-white ring-rose-600/30"
+									? "bg-rose-500 text-white ring-rose-600/30 disabled:cursor-default"
 									: "bg-slate-800/85 text-white ring-white/10",
 							].join(" ")}
-							aria-label={userLiked ? "Remove like" : "Like this brand"}
+							aria-label={userLiked ? "Liked" : "Like this brand"}
 							aria-pressed={Boolean(userLiked)}
 						>
 							{likeLoading ? (
@@ -3348,43 +3400,6 @@ function DiscoverMerchantDetailFullScreen({
 
 				</div>
 			</div>
-
-			<Popup
-				visible={unlikeSheetOpen}
-				onMaskClick={() => setUnlikeSheetOpen(false)}
-				position="bottom"
-				bodyStyle={{
-					borderTopLeftRadius: 20,
-					borderTopRightRadius: 20,
-					paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
-				}}
-			>
-				<div className="px-5 pb-2 pt-5">
-					<h2 className="text-[18px] font-bold text-[#1f2328] dark:text-slate-100">Remove like?</h2>
-					<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
-						Your like badge will be removed from this brand. The public like count may decrease after
-						confirmation.
-					</p>
-					<div className="mt-5 flex flex-col gap-2.5">
-						<button
-							type="button"
-							disabled={likeLoading}
-							onClick={() => void submitMerchantUserLike(false)}
-							className="inline-flex w-full items-center justify-center rounded-full bg-rose-500 px-4 py-3 text-[15px] font-bold text-white shadow-md shadow-rose-500/25 transition active:scale-[0.98] disabled:opacity-70"
-						>
-							{likeLoading ? 'Removing…' : 'Remove Like'}
-						</button>
-						<button
-							type="button"
-							disabled={likeLoading}
-							onClick={() => setUnlikeSheetOpen(false)}
-							className="inline-flex w-full items-center justify-center rounded-full border border-slate-200 px-4 py-3 text-[15px] font-semibold text-slate-700 transition active:scale-[0.98] dark:border-slate-600 dark:text-slate-200"
-						>
-							Cancel
-						</button>
-					</div>
-				</div>
-			</Popup>
 		</div>
 	)
 }
@@ -3633,6 +3648,7 @@ export default function Market() {
 				primaryRechargeBonus: primaryBonus,
 				rechargeBonusSidePill,
 				rechargeBonusDisplay,
+				discoverAbout: card.discoverAbout,
 			}
 		})
 		if (rows.length > 0) return [...rows].reverse()

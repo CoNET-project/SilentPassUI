@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Copy, Gif
 import { ethers } from 'ethers'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
-import { CouponUserLikeCountPill, CouponUserLikeHeartButton, CouponUnlikeSheet } from '@/components/CouponUserLikeChrome'
+import { CouponUserLikeCountPill, CouponUserLikeHeartButton } from '@/components/CouponUserLikeChrome'
 import { useCouponUserLike } from '@/hooks/useCouponUserLike'
 import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
@@ -650,19 +650,7 @@ export function ActiveCouponTicketItem({
 	)
 
 	if (!copyBelowBanner) {
-		return (
-			<>
-				{ticketShell}
-				{showUserLike ? (
-					<CouponUnlikeSheet
-						visible={couponLike.unlikeSheetOpen}
-						likeLoading={couponLike.likeLoading}
-						onClose={() => couponLike.setUnlikeSheetOpen(false)}
-						onConfirm={() => void couponLike.submitCouponLike(false)}
-					/>
-				) : null}
-			</>
-		)
+		return ticketShell
 	}
 
 	return (
@@ -695,14 +683,6 @@ export function ActiveCouponTicketItem({
 					</div>
 				) : null}
 			</div>
-			{showUserLike ? (
-				<CouponUnlikeSheet
-					visible={couponLike.unlikeSheetOpen}
-					likeLoading={couponLike.likeLoading}
-					onClose={() => couponLike.setUnlikeSheetOpen(false)}
-					onConfirm={() => void couponLike.submitCouponLike(false)}
-				/>
-			) : null}
 		</div>
 	)
 }

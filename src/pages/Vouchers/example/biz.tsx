@@ -22,6 +22,14 @@ import { useReliableTapHandler } from '@/utils/reliableTap';
 import { hasSessionPrivateKeyArmor, getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
 import { ensureCardUserCumulativeStatInitializedSilent, ensureProfileOwnerCardsUserCumulativeStatInitializedSilent } from '@/utils/beamioCardUserCumulativeStatBootstrap';
 import {
+  UC_REWARD_ASSET,
+  readRewardMintBudget13,
+  readOwnerRewardAssetBalance,
+  postPurchaseRewardProgram,
+  formatRewardMintBudget13Display,
+  type RewardFundAssetKind,
+} from '@/utils/beamioCardRewardProgramFund';
+import {
   storeSystemData,
   generateCODE,
   getBalance,
@@ -11586,6 +11594,14 @@ const [programSocialShareClickCount, setProgramSocialShareClickCount] = useState
 const [programSocialLikes, setProgramSocialLikes] = useState<BeamioCardProgramSocialLikeRow[]>([]);
 const [programSocialShareClicks, setProgramSocialShareClicks] = useState<BeamioCardProgramSocialShareClickRow[]>([]);
 const [programSocialRefreshStatus, setProgramSocialRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+const [programRewardBudget13, setProgramRewardBudget13] = useState<bigint | null>(null);
+const [programRewardFundAmount, setProgramRewardFundAmount] = useState('');
+const [programRewardFundAssetKind, setProgramRewardFundAssetKind] = useState<RewardFundAssetKind>(UC_REWARD_ASSET.POINTS0);
+const [programRewardOwnerBalance, setProgramRewardOwnerBalance] = useState<bigint | null>(null);
+const [programRewardBudgetRefreshStatus, setProgramRewardBudgetRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+const [programRewardFundSubmitting, setProgramRewardFundSubmitting] = useState(false);
+const [programRewardFundError, setProgramRewardFundError] = useState<string | null>(null);
+const [programRewardFundSuccess, setProgramRewardFundSuccess] = useState<string | null>(null);
 const cardIssuanceCouponShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponShareOpenId]
@@ -11767,6 +11783,83 @@ useEffect(() => {
  useEffect(() => {
    void loadProgramSocialOverview();
  }, [loadProgramSocialOverview]);
+
+ const programOwnerEOA = useMemo(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return null;
+   return ethers.getAddress(raw);
+ }, [profiles?.[0]?.keyID, myAddress]);
+
+ const loadProgramRewardBudgetOverview = useCallback(async () => {
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+   if (!addr || !ethers.isAddress(addr)) return;
+   setProgramRewardBudgetRefreshStatus('loading');
+   try {
+     const budget = await readRewardMintBudget13(addr);
+     if (budget != null) setProgramRewardBudget13(budget);
+     if (programOwnerEOA) {
+       const bal = await readOwnerRewardAssetBalance(addr, programOwnerEOA, programRewardFundAssetKind);
+       if (bal != null) setProgramRewardOwnerBalance(bal);
+     }
+     setProgramRewardBudgetRefreshStatus('success');
+     window.setTimeout(() => setProgramRewardBudgetRefreshStatus('idle'), 3000);
+   } catch {
+     setProgramRewardBudgetRefreshStatus('error');
+     window.setTimeout(() => setProgramRewardBudgetRefreshStatus('idle'), 3000);
+   }
+ }, [cardIssuanceExistingCard?.cardAddress, programOwnerEOA, programRewardFundAssetKind]);
+
+ useEffect(() => {
+   void loadProgramRewardBudgetOverview();
+ }, [loadProgramRewardBudgetOverview]);
+
+ const handleProgramRewardFundSubmit = useCallback(async () => {
+   const cardRaw = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+   if (!cardRaw || !ethers.isAddress(cardRaw) || !programOwnerEOA) {
+     setProgramRewardFundError('Wallet or program card unavailable.');
+     return;
+   }
+   const parsed = programRewardFundAmount.trim().replace(/,/g, '');
+   if (!/^\d+(\.\d{1,6})?$/.test(parsed)) {
+     setProgramRewardFundError('Enter a valid amount.');
+     return;
+   }
+   const [wholePart, fracPart = ''] = parsed.split('.');
+   const fracPadded = `${fracPart}000000`.slice(0, 6);
+   const amount6 = BigInt(wholePart) * 1_000_000n + BigInt(fracPadded || '0');
+   if (amount6 <= 0n) {
+     setProgramRewardFundError('Amount must be greater than zero.');
+     return;
+   }
+   setProgramRewardFundError(null);
+   setProgramRewardFundSuccess(null);
+   setProgramRewardFundSubmitting(true);
+   try {
+     const res = await postPurchaseRewardProgram({
+       cardAddress: cardRaw,
+       payerEOA: programOwnerEOA,
+       assetKind: programRewardFundAssetKind,
+       amount6,
+     });
+     if (!res.success) throw new Error(res.error ?? 'Fund reward budget failed.');
+     setProgramRewardFundSuccess(tu('programs_overview_reward_budget_success'));
+     setProgramRewardFundAmount('');
+     void loadProgramRewardBudgetOverview();
+     window.setTimeout(() => setProgramRewardFundSuccess(null), 4000);
+   } catch (e: unknown) {
+     const msg = e instanceof Error ? e.message : String(e);
+     setProgramRewardFundError(msg || 'Fund reward budget failed.');
+   } finally {
+     setProgramRewardFundSubmitting(false);
+   }
+ }, [
+   cardIssuanceExistingCard?.cardAddress,
+   programOwnerEOA,
+   programRewardFundAmount,
+   programRewardFundAssetKind,
+   loadProgramRewardBudgetOverview,
+   tu,
+ ]);
 
  useEffect(() => {
    if (cardIssuanceTiers.length === 0) {
@@ -33117,6 +33210,118 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                )}
                              </div>
                            </div>
+                         </div>
+                         <div className="rounded-xl border border-[#dce2f7] bg-white p-3 sm:p-4">
+                           <div className="mb-3 flex items-center justify-between gap-2">
+                             <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               {tu('programs_overview_reward_budget_title')}
+                             </span>
+                             <button
+                               type="button"
+                               disabled={programRewardBudgetRefreshStatus !== 'idle'}
+                               onClick={() => void loadProgramRewardBudgetOverview()}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dce2f7] bg-white text-[#1562f0] shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               aria-label={tu('programs_overview_reward_budget_refresh')}
+                             >
+                               {programRewardBudgetRefreshStatus === 'loading' ? (
+                                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                               ) : programRewardBudgetRefreshStatus === 'success' ? (
+                                 <Check className="h-4 w-4 text-emerald-500" aria-hidden />
+                               ) : programRewardBudgetRefreshStatus === 'error' ? (
+                                 <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden />
+                               ) : (
+                                 <RefreshCw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                               )}
+                             </button>
+                           </div>
+                           <p className="mb-3 text-xs leading-relaxed text-[#595c5e] sm:text-sm">
+                             {tu('programs_overview_reward_budget_hint')}
+                           </p>
+                           <div className="mb-4 rounded-lg border border-[#1562f0]/15 bg-[#1562f0]/5 px-3 py-2.5">
+                             <p className="text-[10px] font-bold uppercase tracking-wide text-[#1562f0]">
+                               {tu('programs_overview_reward_budget_balance')}
+                             </p>
+                             <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                               {programRewardBudget13 != null
+                                 ? formatRewardMintBudget13Display(programRewardBudget13)
+                                 : tu('programs_overview_reward_budget_unavailable')}
+                             </p>
+                           </div>
+                           <div className="grid gap-3 sm:grid-cols-2">
+                             <div>
+                               <label
+                                 htmlFor="program-reward-fund-asset"
+                                 className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#595c5e]"
+                               >
+                                 Asset
+                               </label>
+                               <select
+                                 id="program-reward-fund-asset"
+                                 value={programRewardFundAssetKind}
+                                 onChange={(e) => {
+                                   setProgramRewardFundAssetKind(Number(e.target.value) as RewardFundAssetKind);
+                                 }}
+                                 className="w-full rounded-lg border border-[#e8ecf0] bg-white px-3 py-2 text-sm text-[#2c2f31] outline-none focus:border-[#1562f0]/40"
+                               >
+                                 <option value={UC_REWARD_ASSET.POINTS0}>
+                                   {tu('programs_overview_reward_budget_asset_points')}
+                                 </option>
+                                 <option value={UC_REWARD_ASSET.CHARGE_REWARD2}>
+                                   {tu('programs_overview_reward_budget_asset_charge')}
+                                 </option>
+                               </select>
+                               <p className="mt-1 text-[10px] text-[#595c5e]">
+                                 {tu('programs_overview_reward_budget_available')}:{' '}
+                                 {programRewardOwnerBalance != null
+                                   ? (Number(programRewardOwnerBalance) / 1_000_000).toFixed(2)
+                                   : '—'}
+                               </p>
+                             </div>
+                             <div>
+                               <label
+                                 htmlFor="program-reward-fund-amount"
+                                 className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#595c5e]"
+                               >
+                                 {tu('programs_overview_reward_budget_amount')}
+                               </label>
+                               <input
+                                 id="program-reward-fund-amount"
+                                 type="number"
+                                 min={0}
+                                 step="any"
+                                 inputMode="decimal"
+                                 autoComplete="off"
+                                 enterKeyHint="done"
+                                 value={programRewardFundAmount}
+                                 onChange={(e) => setProgramRewardFundAmount(e.target.value)}
+                                 onKeyDown={preventNumericInputStepKeys}
+                                 onWheel={preventNumericInputWheelStep}
+                                 className="w-full rounded-lg border border-[#e8ecf0] bg-white px-3 py-2 text-sm text-[#2c2f31] outline-none focus:border-[#1562f0]/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+                                 placeholder="0"
+                               />
+                             </div>
+                           </div>
+                           {programRewardFundError ? (
+                             <p className="mt-3 text-xs font-medium text-rose-600">{programRewardFundError}</p>
+                           ) : null}
+                           {programRewardFundSuccess ? (
+                             <p className="mt-3 text-xs font-medium text-emerald-600">{programRewardFundSuccess}</p>
+                           ) : null}
+                           <button
+                             type="button"
+                             disabled={programRewardFundSubmitting || !programOwnerEOA}
+                             onClick={() => void handleProgramRewardFundSubmit()}
+                             className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#1256d8] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                           >
+                             {programRewardFundSubmitting ? (
+                               <>
+                                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                 {tu('programs_overview_reward_budget_funding')}
+                               </>
+                             ) : (
+                               tu('programs_overview_reward_budget_fund')
+                             )}
+                           </button>
                          </div>
                        </div>
                      </div>

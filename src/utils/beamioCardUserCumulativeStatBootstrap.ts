@@ -8,17 +8,46 @@ import {
 import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain'
 
 const CARD_INIT_ENDPOINT = `${beamioApi}/api/cardInitializeUserCumulativeStat`
-const LS_PREFIX = 'beamio:biz:cumulative-stat-init:v1:'
+const CARD_BOOTSTRAP_ISSUED_ENDPOINT = `${beamioApi}/api/cardBootstrapIssuedNftV2Stat`
+const CARD_CONFIGURE_REWARD_ENDPOINT = `${beamioApi}/api/cardConfigureEventRewardRule`
+
+const LS_INIT_PREFIX = 'beamio:biz:cumulative-stat-init:v1:'
+const LS_ISSUED_BOOTSTRAP_PREFIX = 'beamio:biz:v2-issued-stat-bootstrap:v1:'
+const LS_REWARD_RULES_PREFIX = 'beamio:biz:v2-reward-rules:v1:'
+
 const READ_CACHE_TTL_MS = 30_000
 const FAIL_RETRY_MS = 60_000
+const ISSUED_NFT_START_ID = 100_000_000_000n
+
+/** UserCumulativeStatLib / x402sdk UC_METRIC (subset). */
+const UC_METRIC_USER_CLICK = 3
+/** UserCumulativeStatLib.TARGET_MERCHANT_CARD_COUPON */
+const UC_TARGET_MERCHANT_CARD = 1
+
+/** Default Discover share-click rule slot (homepage scans ruleId 1..12). */
+const DEFAULT_MERCHANT_SHARE_CLICK_RULE_ID = 1
+/** Minimal #13 mint per event so dispatchEventReward13 records cumulative stats (needs budget at runtime). */
+const DEFAULT_SHARE_CLICK_MINT13 = 1n
 
 const USER_CUMULATIVE_STAT_READ_ABI = [
 	'function owner() view returns (address)',
 	'function cardUserCumulativeStatTokensInitialized() view returns (bool)',
 ] as const
 
+const REWARD_RULE_READ_ABI = [
+	'function getRewardRule(uint256 ruleId) view returns (bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
+] as const
+
 const INIT_IFACE = new ethers.Interface([
 	'function initializeCardUserCumulativeStatTokens()',
+])
+
+const BOOTSTRAP_ISSUED_IFACE = new ethers.Interface([
+	'function bootstrapIssuedNftV2StatTokens(uint256 parentTokenId)',
+])
+
+const CONFIGURE_REWARD_IFACE = new ethers.Interface([
+	'function configureEventRewardRule(uint256 ruleId, bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
 ])
 
 type ReadCacheEntry = { initialized: boolean; owner: string; fetchedAt: number }
@@ -31,15 +60,23 @@ function cardKey(cardAddress: string): string {
 	return ethers.getAddress(cardAddress).toLowerCase()
 }
 
-function trustedLsKey(eoaLower: string, cardLower: string): string {
-	return `${LS_PREFIX}${eoaLower}:${cardLower}`
+function trustedInitLsKey(eoaLower: string, cardLower: string): string {
+	return `${LS_INIT_PREFIX}${eoaLower}:${cardLower}`
+}
+
+function trustedIssuedBootstrapLsKey(eoaLower: string, cardLower: string, parentId: string): string {
+	return `${LS_ISSUED_BOOTSTRAP_PREFIX}${eoaLower}:${cardLower}:${parentId}`
+}
+
+function trustedRewardRulesLsKey(eoaLower: string, cardLower: string): string {
+	return `${LS_REWARD_RULES_PREFIX}${eoaLower}:${cardLower}`
 }
 
 function markInitializedTrusted(eoa: string, cardAddress: string): void {
 	const cardLower = cardKey(cardAddress)
 	const eoaLower = ethers.getAddress(eoa).toLowerCase()
 	try {
-		localStorage.setItem(trustedLsKey(eoaLower, cardLower), '1')
+		localStorage.setItem(trustedInitLsKey(eoaLower, cardLower), '1')
 	} catch {
 		/* ignore quota */
 	}
@@ -54,12 +91,55 @@ function isInitializedTrusted(eoa: string, cardAddress: string): boolean {
 	const cardLower = cardKey(cardAddress)
 	const eoaLower = ethers.getAddress(eoa).toLowerCase()
 	try {
-		if (localStorage.getItem(trustedLsKey(eoaLower, cardLower)) === '1') return true
+		if (localStorage.getItem(trustedInitLsKey(eoaLower, cardLower)) === '1') return true
 	} catch {
 		/* ignore */
 	}
 	const cached = readCache.get(cardLower)
 	return cached?.initialized === true
+}
+
+function markIssuedBootstrapTrusted(eoa: string, cardAddress: string, parentTokenId: bigint): void {
+	const cardLower = cardKey(cardAddress)
+	const eoaLower = ethers.getAddress(eoa).toLowerCase()
+	try {
+		localStorage.setItem(trustedIssuedBootstrapLsKey(eoaLower, cardLower, parentTokenId.toString()), '1')
+	} catch {
+		/* ignore */
+	}
+}
+
+function isIssuedBootstrapTrusted(eoa: string, cardAddress: string, parentTokenId: bigint): boolean {
+	const cardLower = cardKey(cardAddress)
+	const eoaLower = ethers.getAddress(eoa).toLowerCase()
+	try {
+		return localStorage.getItem(trustedIssuedBootstrapLsKey(eoaLower, cardLower, parentTokenId.toString())) === '1'
+	} catch {
+		return false
+	}
+}
+
+function markRewardRulesTrusted(eoa: string, cardAddress: string): void {
+	try {
+		localStorage.setItem(
+			trustedRewardRulesLsKey(ethers.getAddress(eoa).toLowerCase(), cardKey(cardAddress)),
+			'1',
+		)
+	} catch {
+		/* ignore */
+	}
+}
+
+function isRewardRulesTrusted(eoa: string, cardAddress: string): boolean {
+	try {
+		return (
+			localStorage.getItem(
+				trustedRewardRulesLsKey(ethers.getAddress(eoa).toLowerCase(), cardKey(cardAddress)),
+			) === '1'
+		)
+	} catch {
+		return false
+	}
 }
 
 /** RPC read; `null` = untrusted failure (do not treat as uninitialized). */
@@ -87,15 +167,20 @@ export async function readCardUserCumulativeStatInitialized(
 	}
 }
 
-async function postCardInitializeUserCumulativeStat(payload: {
-	cardAddress: string
-	data: string
-	deadline: number
-	nonce: string
-	ownerSignature: string
-}): Promise<{ success: boolean; error?: string }> {
+async function postOwnerExecuteForOwner(
+	endpoint: string,
+	payload: {
+		cardAddress: string
+		data: string
+		deadline: number
+		nonce: string
+		ownerSignature: string
+		extra?: Record<string, string | number>
+	},
+	idempotentPatterns: RegExp[] = [],
+): Promise<{ success: boolean; error?: string }> {
 	try {
-		const res = await fetch(CARD_INIT_ENDPOINT, {
+		const res = await fetch(endpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
@@ -104,12 +189,13 @@ async function postCardInitializeUserCumulativeStat(payload: {
 				deadline: payload.deadline,
 				nonce: payload.nonce,
 				ownerSignature: payload.ownerSignature,
+				...payload.extra,
 			}),
 		})
 		const data = (await res.json()) as { success?: boolean; error?: string }
 		if (!res.ok) {
-			const err = typeof data.error === 'string' ? data.error : 'cardInitializeUserCumulativeStat failed'
-			if (/already initialized/i.test(err)) return { success: true }
+			const err = typeof data.error === 'string' ? data.error : `${endpoint} failed`
+			if (idempotentPatterns.some((re) => re.test(err))) return { success: true }
 			return { success: false, error: err }
 		}
 		return { success: data.success !== false }
@@ -119,11 +205,210 @@ async function postCardInitializeUserCumulativeStat(payload: {
 	}
 }
 
+async function signOwnerExecuteForOwner(
+	ownerPrivateKey: string,
+	cardAddress: string,
+	data: string,
+): Promise<{ data: string; deadline: number; nonce: string; ownerSignature: string }> {
+	const deadline = Math.floor(Date.now() / 1000) + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const ownerSignature = await signExecuteForOwner(ownerPrivateKey, cardAddress, data, deadline, nonce)
+	return { data, deadline, nonce, ownerSignature }
+}
+
+type IssuedSeriesRow = { tokenId?: string }
+
+async function fetchIssuedSeriesParentIds(cardAddress: string): Promise<{ parentIds: bigint[]; trusted: boolean }> {
+	const card = ethers.getAddress(cardAddress)
+	const urls = [
+		`${beamioApi}/api/cardActiveIssuedCouponSeries?card=${encodeURIComponent(card)}&limit=50`,
+		`${beamioApi}/api/cardActiveIssuedProductionSeries?card=${encodeURIComponent(card)}&limit=50`,
+	]
+	const parentIds = new Set<string>()
+	let anyOk = false
+	await Promise.all(
+		urls.map(async (url) => {
+			try {
+				const res = await fetch(url)
+				if (!res.ok) return
+				anyOk = true
+				const json = (await res.json()) as { items?: IssuedSeriesRow[] }
+				if (!Array.isArray(json.items)) return
+				for (const row of json.items) {
+					const raw = String(row?.tokenId ?? '').trim()
+					if (!raw || !/^\d+$/.test(raw)) continue
+					try {
+						const id = BigInt(raw)
+						if (id >= ISSUED_NFT_START_ID) parentIds.add(id.toString())
+					} catch {
+						/* skip */
+					}
+				}
+			} catch {
+				/* untrusted */
+			}
+		}),
+	)
+	if (!anyOk) return { parentIds: [], trusted: false }
+	return { parentIds: [...parentIds].map((s) => BigInt(s)), trusted: true }
+}
+
+/** Trusted chain read: active merchant-card USER_CLICK rule with mint budget semantics. */
+async function readActiveMerchantShareClickRuleId(cardAddress: string): Promise<number | null> {
+	try {
+		const { provider } = await providerForBeamioUserCard(cardAddress)
+		const reader = new ethers.Contract(cardAddress, REWARD_RULE_READ_ABI, provider)
+		for (let ruleId = 1; ruleId <= 12; ruleId++) {
+			const row = (await reader.getRewardRule(ruleId)) as [
+				boolean,
+				number,
+				number,
+				bigint,
+				bigint,
+				bigint,
+			]
+			const [active, eventKind, targetKind, , actorMint13, refMint13] = row
+			if (
+				active &&
+				Number(eventKind) === UC_METRIC_USER_CLICK &&
+				Number(targetKind) === UC_TARGET_MERCHANT_CARD &&
+				(actorMint13 > 0n || refMint13 > 0n)
+			) {
+				return ruleId
+			}
+		}
+		return null
+	} catch {
+		return null
+	}
+}
+
+async function ensureCardUserCumulativeStatInitializedSilentInner(params: {
+	cardAddress: string
+	ownerEoa: string
+	ownerPrivateKey: string
+}): Promise<boolean> {
+	const card = ethers.getAddress(params.cardAddress)
+	const ownerEoa = ethers.getAddress(params.ownerEoa)
+
+	if (isInitializedTrusted(ownerEoa, card)) return true
+
+	const status = await readCardUserCumulativeStatInitialized(card)
+	if (!status) return false
+	if (status.initialized) {
+		markInitializedTrusted(ownerEoa, card)
+		return true
+	}
+	if (status.owner.toLowerCase() !== ownerEoa.toLowerCase()) return false
+
+	const data = INIT_IFACE.encodeFunctionData('initializeCardUserCumulativeStatTokens', [])
+	const signed = await signOwnerExecuteForOwner(params.ownerPrivateKey, card, data)
+	const result = await postCardInitializeUserCumulativeStat({
+		cardAddress: card,
+		...signed,
+	})
+	if (result.success) {
+		markInitializedTrusted(ownerEoa, card)
+		return true
+	}
+	return false
+}
+
+async function postCardInitializeUserCumulativeStat(payload: {
+	cardAddress: string
+	data: string
+	deadline: number
+	nonce: string
+	ownerSignature: string
+}): Promise<{ success: boolean; error?: string }> {
+	return postOwnerExecuteForOwner(CARD_INIT_ENDPOINT, payload, [/already initialized/i])
+}
+
+async function ensureIssuedSeriesV2StatBootstrappedSilentInner(params: {
+	cardAddress: string
+	ownerEoa: string
+	ownerPrivateKey: string
+}): Promise<void> {
+	const card = ethers.getAddress(params.cardAddress)
+	const ownerEoa = ethers.getAddress(params.ownerEoa)
+
+	const { parentIds, trusted } = await fetchIssuedSeriesParentIds(card)
+	if (!trusted) return
+
+	for (const parentTokenId of parentIds) {
+		if (isIssuedBootstrapTrusted(ownerEoa, card, parentTokenId)) continue
+
+		const data = BOOTSTRAP_ISSUED_IFACE.encodeFunctionData('bootstrapIssuedNftV2StatTokens', [parentTokenId])
+		const signed = await signOwnerExecuteForOwner(params.ownerPrivateKey, card, data)
+		const result = await postOwnerExecuteForOwner(
+			CARD_BOOTSTRAP_ISSUED_ENDPOINT,
+			{
+				cardAddress: card,
+				...signed,
+				extra: { parentTokenId: parentTokenId.toString() },
+			},
+			[/already/i, /initialized/i],
+		)
+		if (result.success) {
+			markIssuedBootstrapTrusted(ownerEoa, card, parentTokenId)
+		}
+	}
+}
+
+async function ensureDefaultMerchantShareClickRewardRuleSilentInner(params: {
+	cardAddress: string
+	ownerEoa: string
+	ownerPrivateKey: string
+}): Promise<void> {
+	const card = ethers.getAddress(params.cardAddress)
+	const ownerEoa = ethers.getAddress(params.ownerEoa)
+
+	if (isRewardRulesTrusted(ownerEoa, card)) return
+
+	const existingRuleId = await readActiveMerchantShareClickRuleId(card)
+	if (existingRuleId != null) {
+		markRewardRulesTrusted(ownerEoa, card)
+		return
+	}
+
+	const data = CONFIGURE_REWARD_IFACE.encodeFunctionData('configureEventRewardRule', [
+		BigInt(DEFAULT_MERCHANT_SHARE_CLICK_RULE_ID),
+		true,
+		UC_METRIC_USER_CLICK,
+		UC_TARGET_MERCHANT_CARD,
+		0n,
+		DEFAULT_SHARE_CLICK_MINT13,
+		DEFAULT_SHARE_CLICK_MINT13,
+	])
+	const signed = await signOwnerExecuteForOwner(params.ownerPrivateKey, card, data)
+	const result = await postOwnerExecuteForOwner(CARD_CONFIGURE_REWARD_ENDPOINT, {
+		cardAddress: card,
+		...signed,
+		extra: {
+			ruleId: DEFAULT_MERCHANT_SHARE_CLICK_RULE_ID,
+			active: 1,
+			eventKind: UC_METRIC_USER_CLICK,
+			targetKind: UC_TARGET_MERCHANT_CARD,
+			issuedParentId: '0',
+			actorMint13: DEFAULT_SHARE_CLICK_MINT13.toString(),
+			refMint13: DEFAULT_SHARE_CLICK_MINT13.toString(),
+		},
+	})
+	if (result.success) {
+		markRewardRulesTrusted(ownerEoa, card)
+	}
+}
+
 /**
- * 商家卡未 initializeCardUserCumulativeStatTokens 时，由卡主 EOA 静默补初始化（无 UI 提示）。
- * 失败仅内部重试；RPC 不可信时不提交链上写。
+ * Full CoNET merchant-card V2 silent bootstrap for an already-issued card (additive only):
+ * 1) initializeCardUserCumulativeStatTokens
+ * 2) bootstrapIssuedNftV2StatTokens for each active issued coupon/catalog parent
+ * 3) configure default Discover USER_CLICK reward rule (ruleId 1) when none exists
+ *
+ * Does not mutate card bytecode; only owner executeForOwner writes.
+ * Share-click dispatch still requires Factory gatewayInvokeCard + rewardMintBudget13 funding.
  */
-export async function ensureCardUserCumulativeStatInitializedSilent(params: {
+export async function ensureCardMerchantV2SilentBootstrap(params: {
 	cardAddress: string
 	ownerEoa: string
 	ownerPrivateKey: string
@@ -131,8 +416,6 @@ export async function ensureCardUserCumulativeStatInitializedSilent(params: {
 	const card = ethers.getAddress(params.cardAddress)
 	const key = cardKey(card)
 	const ownerEoa = ethers.getAddress(params.ownerEoa)
-
-	if (isInitializedTrusted(ownerEoa, card)) return
 
 	const inflight = inflightByCard.get(key)
 	if (inflight) {
@@ -144,43 +427,33 @@ export async function ensureCardUserCumulativeStatInitializedSilent(params: {
 		const lastFail = lastFailedAttemptMs.get(key)
 		if (lastFail != null && Date.now() - lastFail < FAIL_RETRY_MS) return
 
-		const status = await readCardUserCumulativeStatInitialized(card)
-		if (!status) return
-		if (status.initialized) {
-			markInitializedTrusted(ownerEoa, card)
+		const initOk = await ensureCardUserCumulativeStatInitializedSilentInner(params)
+		if (!initOk) {
+			lastFailedAttemptMs.set(key, Date.now())
 			return
 		}
-		if (status.owner.toLowerCase() !== ownerEoa.toLowerCase()) return
 
-		const data = INIT_IFACE.encodeFunctionData('initializeCardUserCumulativeStatTokens', [])
-		const deadline = Math.floor(Date.now() / 1000) + 3600
-		const nonce = ethers.hexlify(ethers.randomBytes(32))
-		const ownerSignature = await signExecuteForOwner(
-			params.ownerPrivateKey,
-			card,
-			data,
-			deadline,
-			nonce,
-		)
-		const result = await postCardInitializeUserCumulativeStat({
-			cardAddress: card,
-			data,
-			deadline,
-			nonce,
-			ownerSignature,
-		})
-		if (result.success) {
-			markInitializedTrusted(ownerEoa, card)
-			lastFailedAttemptMs.delete(key)
-			return
-		}
-		lastFailedAttemptMs.set(key, Date.now())
+		await ensureIssuedSeriesV2StatBootstrappedSilentInner(params)
+		await ensureDefaultMerchantShareClickRewardRuleSilentInner(params)
+
+		lastFailedAttemptMs.delete(key)
 	})().finally(() => {
 		inflightByCard.delete(key)
 	})
 
 	inflightByCard.set(key, work)
 	await work
+}
+
+/**
+ * Step 1 only (legacy export). Prefer ensureCardMerchantV2SilentBootstrap for full V2.
+ */
+export async function ensureCardUserCumulativeStatInitializedSilent(params: {
+	cardAddress: string
+	ownerEoa: string
+	ownerPrivateKey: string
+}): Promise<void> {
+	await ensureCardMerchantV2SilentBootstrap(params)
 }
 
 type ProfileForOwnerCards = {
@@ -191,7 +464,7 @@ type ProfileForOwnerCards = {
 }
 
 /**
- * 对 profile 下 factory 索引到的全部商家卡静默补 initialize（仅链上 owner 与签名 EOA 一致时提交）。
+ * Silent V2 bootstrap for every owner merchant card on CoNET (login / feeder).
  */
 export async function ensureProfileOwnerCardsUserCumulativeStatInitializedSilent(params: {
 	profile: ProfileForOwnerCards
@@ -214,10 +487,14 @@ export async function ensureProfileOwnerCardsUserCumulativeStatInitializedSilent
 	if (addresses.size === 0 && !trusted) return
 
 	for (const cardAddress of addresses) {
-		await ensureCardUserCumulativeStatInitializedSilent({
+		await ensureCardMerchantV2SilentBootstrap({
 			cardAddress,
 			ownerEoa,
 			ownerPrivateKey: params.ownerPrivateKey,
 		}).catch(() => undefined)
 	}
 }
+
+/** Alias for explicit full-V2 naming in new call sites. */
+export const ensureProfileOwnerCardsMerchantV2SilentBootstrap =
+	ensureProfileOwnerCardsUserCumulativeStatInitializedSilent

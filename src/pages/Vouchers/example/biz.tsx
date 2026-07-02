@@ -90,6 +90,7 @@ import {
   encodeSetTiers,
   fetchCardsByCategory,
   getCardOwner,
+  invalidateBeamioCardMetadataCache,
   queryBusinessStartKetRedeemOnChain,
   queryBusinessStartKetBalanceOfOnChain,
   postBusinessStartKetRedeemRedeem,
@@ -11441,6 +11442,7 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(true);
  const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('1');
  const [cardIssuancePointSystemSaving, setCardIssuancePointSystemSaving] = useState(false);
+ const [cardIssuanceMerchantTextSaving, setCardIssuanceMerchantTextSaving] = useState(false);
  const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
  const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
  /** `{ passive: false }` wheel listeners — React `onWheel` alone may not block number input step (Chromium). */
@@ -12308,6 +12310,9 @@ useEffect(() => {
  );
 
  const programsOverviewDisplayName = useMemo(() => {
+   const stateTitle =
+     cardIssuanceStoreDisplayName.trim() || cardIssuanceProgramName.trim();
+   if (stateTitle) return stateTitle;
    if (!cardIssuanceExistingCard) {
      return cardIssuancePreviewProgram;
    }
@@ -12317,13 +12322,38 @@ useEffect(() => {
      cardIssuanceExistingCard.userCard.name ||
      cardIssuancePreviewProgram
    );
- }, [cardIssuanceExistingCard, cardIssuancePreviewProgram]);
+ }, [
+   cardIssuanceExistingCard,
+   cardIssuancePreviewProgram,
+   cardIssuanceStoreDisplayName,
+   cardIssuanceProgramName,
+ ]);
 
  useEffect(() => {
    if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
    const dn = (cardIssuanceExistingCard.meta.displayName ?? '').trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX);
    setCardIssuanceStoreDisplayName(dn);
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.displayName]);
+
+ useEffect(() => {
+   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+   const pn = (
+     cardIssuanceExistingCard.meta.name ??
+     cardIssuanceExistingCard.userCard.name ??
+     ''
+   ).trim();
+   if (pn) setCardIssuanceProgramName(pn);
+ }, [
+   cardIssuanceExistingCard?.cardAddress,
+   cardIssuanceExistingCard?.meta?.name,
+   cardIssuanceExistingCard?.userCard?.name,
+ ]);
+
+ useEffect(() => {
+   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+   const desc = (cardIssuanceExistingCard.meta.description ?? '').trim();
+   setCardIssuanceDescription(desc.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS));
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.description]);
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
@@ -13439,8 +13469,27 @@ const merchantPanelDiscoverHeroSrc = useMemo(() => {
 const merchantPanelDiscoverSubtitle = useMemo(() => {
   const d = cardIssuanceDescription.trim();
   if (d) return d;
-  return 'Member perks and program details appear here for customers on Discover.';
-}, [cardIssuanceDescription]);
+  return tu('programs_overview_no_description');
+}, [cardIssuanceDescription, tu]);
+
+const merchantPanelTextDirty = useMemo(() => {
+  const meta = cardIssuanceExistingCard?.meta;
+  if (!meta) return false;
+  const savedName = (meta.name ?? cardIssuanceExistingCard?.userCard.name ?? '').trim();
+  const savedDesc = (meta.description ?? '').trim();
+  const savedDisplay = (meta.displayName ?? '').trim();
+  return (
+    cardIssuanceProgramName.trim() !== savedName ||
+    cardIssuanceDescription.trim() !== savedDesc ||
+    cardIssuanceStoreDisplayName.trim() !== savedDisplay
+  );
+}, [
+  cardIssuanceExistingCard?.meta,
+  cardIssuanceExistingCard?.userCard?.name,
+  cardIssuanceProgramName,
+  cardIssuanceDescription,
+  cardIssuanceStoreDisplayName,
+]);
 
 const merchantPanelDiscoverAssetLabel = useMemo(() => {
   const metaTiers = programsOverviewTiersSortedAscending;
@@ -16996,6 +17045,65 @@ useEffect(() => {
    cardIssuancePointRatioInput,
    cardIssuancePointSystemEnabled,
    profiles,
+ ]);
+
+ const handleSaveMerchantImagePanelMetadata = useCallback(async () => {
+   const cardAddress = cardIssuanceExistingCard?.cardAddress;
+   if (!cardAddress) return;
+   if (!cardIssuanceProgramName.trim()) {
+     setCardIssuanceCreateError('Card name is required.');
+     return;
+   }
+   setCardIssuanceCreateError('');
+   setCardIssuanceOwnerAdminNotice(null);
+   setCardIssuanceMerchantTextSaving(true);
+   try {
+     const metadataOk = await handlePublishCardIssuanceRef.current({
+       metadataOnly: true,
+       loadingScope: 'bonusEditor',
+     });
+     if (!metadataOk) return;
+     const trimmedName = cardIssuanceProgramName.trim();
+     const trimmedDesc = cardIssuanceDescription.trim();
+     const trimmedDisplay = cardIssuanceStoreDisplayName.trim().slice(
+       0,
+       CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX
+     );
+     invalidateBeamioCardMetadataCache(cardAddress);
+     setCardIssuanceExistingCard((prev) =>
+       prev
+         ? {
+             ...prev,
+             userCard: { ...prev.userCard, name: trimmedName },
+             meta: prev.meta
+               ? {
+                   ...prev.meta,
+                   name: trimmedName,
+                   ...(trimmedDesc ? { description: trimmedDesc } : { description: undefined }),
+                   ...(trimmedDisplay ? { displayName: trimmedDisplay } : { displayName: undefined }),
+                 }
+               : ({
+                   name: trimmedName,
+                   ...(trimmedDesc ? { description: trimmedDesc } : {}),
+                   ...(trimmedDisplay ? { displayName: trimmedDisplay } : {}),
+                 } as CardMetadataFromUri),
+           }
+         : prev
+     );
+     setCardIssuanceOwnerAdminNotice({
+       kind: 'ok',
+       text: 'Merchant name and description published. Discover and consumer apps will refresh after a short cache delay.',
+     });
+   } catch (e: unknown) {
+     setCardIssuanceCreateError(e instanceof Error ? e.message : 'Could not update merchant text.');
+   } finally {
+     setCardIssuanceMerchantTextSaving(false);
+   }
+ }, [
+   cardIssuanceExistingCard?.cardAddress,
+   cardIssuanceProgramName,
+   cardIssuanceDescription,
+   cardIssuanceStoreDisplayName,
  ]);
 
  const submitCardIssuanceBonusRuleEditor = useCallback(async () => {
@@ -33020,6 +33128,108 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               {merchantPanelDiscoverAssetLabel}
                             </span>
                           </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-3 rounded-xl border border-[#1562f0]/10 bg-[#f8fbff] p-3 sm:p-4">
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor="programs-merchant-panel-name"
+                            className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                          >
+                            {tu('programs_config_unit_name')}
+                          </label>
+                          <input
+                            id="programs-merchant-panel-name"
+                            type="text"
+                            value={cardIssuanceProgramName}
+                            onChange={(e) => setCardIssuanceProgramName(e.target.value)}
+                            placeholder={tu('programs_config_unit_name_ph')}
+                            disabled={cardIssuanceMerchantTextSaving}
+                            className={`w-full rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor="programs-merchant-panel-display-name"
+                            className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                          >
+                            {tu('programs_config_store_display_name')}
+                            <span className="ml-1 font-medium normal-case tracking-normal text-[#747779]">
+                              ({tu('programs_config_store_display_optional')})
+                            </span>
+                          </label>
+                          <input
+                            id="programs-merchant-panel-display-name"
+                            type="text"
+                            value={cardIssuanceStoreDisplayName}
+                            onChange={(e) =>
+                              setCardIssuanceStoreDisplayName(
+                                e.target.value.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
+                              )
+                            }
+                            placeholder={tu('programs_config_store_display_name_ph')}
+                            maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
+                            disabled={cardIssuanceMerchantTextSaving}
+                            className={`w-full rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                          />
+                          <p className="text-[10px] font-medium text-[#747779]">
+                            {tu('programs_config_store_display_max', {
+                              max: String(CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
+                            })}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor="programs-merchant-panel-description"
+                            className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                          >
+                            {tu('programs_config_program_description_label', {
+                              max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
+                            })}
+                          </label>
+                          <textarea
+                            id="programs-merchant-panel-description"
+                            rows={3}
+                            value={cardIssuanceDescription}
+                            onChange={(e) =>
+                              setCardIssuanceDescription(
+                                e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
+                              )
+                            }
+                            placeholder={tu('programs_config_program_description_ph')}
+                            maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                            disabled={cardIssuanceMerchantTextSaving}
+                            className={`w-full resize-y rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-medium leading-relaxed text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                          />
+                          <p className="text-[10px] font-medium text-[#747779]">
+                            {tu('programs_config_chars_count', {
+                              current: String(cardIssuanceDescription.length),
+                              max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
+                            })}
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
+                            {tu('programs_overview_merchant_text_save_hint')}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveMerchantImagePanelMetadata()}
+                            disabled={
+                              cardIssuanceMerchantTextSaving ||
+                              !merchantPanelTextDirty ||
+                              !cardIssuanceProgramName.trim()
+                            }
+                            className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                          >
+                            {cardIssuanceMerchantTextSaving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
+                            ) : (
+                              <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                            )}
+                            {tu('programs_overview_merchant_text_save')}
+                          </button>
                         </div>
                       </div>
 

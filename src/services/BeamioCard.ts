@@ -3097,6 +3097,8 @@ export const getTierIndexForRedeemAmount = (
 /** 卡级 metadata（getCardMetadataFromApi / getCardMetadataFromUri）；cardOwner 用于请求 per-NFT metadata */
 export type CardMetadataFromUri = {
 	name?: string
+	/** From shareTokenMetadata.description — program copy on Discover / card previews */
+	description?: string
 	/** From shareTokenMetadata.displayName — shown on consumer card when set */
 	displayName?: string
 	image?: string
@@ -3129,6 +3131,7 @@ const cardMetadataCache = new Map<
 	string,
 	{
 		name?: string
+		description?: string
 		displayName?: string
 		image?: string
 		merchantImage?: string
@@ -3203,6 +3206,18 @@ function shareTokenDisplayNameFromUnknown(share: Record<string, unknown> | undef
 	if (typeof raw !== 'string') return undefined
 	const t = raw.trim()
 	return t || undefined
+}
+
+function shareTokenDescriptionFromUnknown(
+	share: Record<string, unknown> | undefined | null,
+	fallback?: unknown
+): string | undefined {
+	if (share && typeof share === 'object') {
+		const raw = share.description
+		if (typeof raw === 'string' && raw.trim()) return raw.trim()
+	}
+	if (typeof fallback === 'string' && fallback.trim()) return fallback.trim()
+	return undefined
 }
 
 function shareTokenMerchantImageFromUnknown(share: Record<string, unknown> | undefined | null): string | undefined {
@@ -3558,6 +3573,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const categories = shareTokenCategoriesFromUnknown(share)
 		const limits = topupLimitsFromShareTokenMetadata(share)
 		const displayName = shareTokenDisplayNameFromUnknown(share)
+		const description = shareTokenDescriptionFromUnknown(share, json?.description)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
@@ -3572,6 +3588,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			name: (share?.name ?? json?.name) as string | undefined,
 			image: (share?.image ?? json?.image) as string | undefined,
 			...(displayName && { displayName }),
+			...(description && { description }),
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
@@ -3609,6 +3626,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const categories = shareTokenCategoriesFromUnknown(share)
 		const limits = topupLimitsFromShareTokenMetadata(share)
 		const displayName = shareTokenDisplayNameFromUnknown(share)
+		const description = shareTokenDescriptionFromUnknown(share, metaJson.description)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
@@ -3626,6 +3644,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			name: (share?.name ?? metaJson.name) as string | undefined,
 			image: (share?.image ?? metaJson.image) as string | undefined,
 			...(displayName && { displayName }),
+			...(description && { description }),
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
@@ -3752,6 +3771,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const categories = shareTokenCategoriesFromUnknown(shareObj)
 		const limits = topupLimitsFromShareTokenMetadata(shareObj)
 		const displayName = shareTokenDisplayNameFromUnknown(shareObj)
+		const description = shareTokenDescriptionFromUnknown(shareObj, json?.description)
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
 		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
@@ -3766,6 +3786,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			name: json?.name ?? json?.shareTokenMetadata?.name,
 			image: json?.image ?? json?.shareTokenMetadata?.image,
 			...(displayName && { displayName }),
+			...(description && { description }),
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),

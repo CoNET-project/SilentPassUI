@@ -9917,12 +9917,6 @@ function ProgramsCouponShareCardPreview({
     </div>
   );
 
-  const shareQrBelowTicket = shareUrl ? (
-    <div className="mx-auto mt-4 flex w-fit justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
-      <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin={false} />
-    </div>
-  ) : null;
-
   return (
     <div className="relative w-full text-left" role="region" aria-label={tu('programs_coupon_preview_aria')}>
       <p className="mb-3 text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg">
@@ -9936,11 +9930,8 @@ function ProgramsCouponShareCardPreview({
           </p>
           <p className="mt-1.5 break-words font-manrope text-sm font-semibold leading-[2.25] text-[#595c5e]">{subtitle}</p>
           {showExpiryPill ? <div className="mt-2">{renderExpiryPill('external')}</div> : null}
-          {shareQrBelowTicket}
         </div>
-      ) : (
-        shareQrBelowTicket
-      )}
+      ) : null}
     </div>
   );
 }
@@ -9986,13 +9977,6 @@ function ProgramsCatalogShareCardPreview({
           showPrice={showCatalogPrice}
           shareDistributionTicket
         />
-        {shareUrl ? (
-          <div className="mx-auto mt-4 flex w-full max-w-[32rem] shrink-0 justify-center">
-            <div className="shrink-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
-              <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin />
-            </div>
-          </div>
-        ) : null}
       </div>
     );
   }
@@ -10086,23 +10070,12 @@ function ProgramsCatalogShareCardPreview({
     </div>
   );
 
-  const shareQrBelowTicket = shareUrl ? (
-    <div className="mx-auto mt-4 flex w-fit shrink-0 justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-black/[0.08]">
-      <QRCodeCanvas value={shareUrl} size={120} level="M" includeMargin />
-    </div>
-  ) : null;
-
   return (
     <div className="relative w-full text-left" role="region" aria-label="Catalog item preview">
       {ticketShell}
       {hasBanner ? (
-        <div className="mt-3 w-full py-2">
-          {renderCatalogMetadata('external')}
-          {shareQrBelowTicket}
-        </div>
-      ) : (
-        shareQrBelowTicket
-      )}
+        <div className="mt-3 w-full py-2">{renderCatalogMetadata('external')}</div>
+      ) : null}
     </div>
   );
 }

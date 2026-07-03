@@ -88,6 +88,7 @@
   "programs_overview_reward_budget_refresh": "Refresh reward budget",
   "programs_overview_reward_budget_success": "Reward budget funded.",
   "programs_overview_reward_budget_unavailable": "Budget unavailable",
+  "programs_overview_reward_budget_zero_hint": "Share clicks are not recorded until you fund this budget. Open the app-download share link after funding to verify.",
   "programs_overview_no_description": "No program description yet. Open Card Configurator to add copy for your members.",
   "programs_overview_coupons": "Coupons",
   "programs_overview_coupons_total": "{{count}} total",

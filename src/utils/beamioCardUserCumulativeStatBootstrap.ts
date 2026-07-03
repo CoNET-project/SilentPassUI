@@ -363,7 +363,15 @@ async function ensureDefaultMerchantShareClickRewardRuleSilentInner(params: {
 	const card = ethers.getAddress(params.cardAddress)
 	const ownerEoa = ethers.getAddress(params.ownerEoa)
 
-	if (isRewardRulesTrusted(ownerEoa, card)) return
+	if (isRewardRulesTrusted(ownerEoa, card)) {
+		const stillActive = await readActiveMerchantShareClickRuleId(card)
+		if (stillActive != null) return
+		try {
+			localStorage.removeItem(trustedRewardRulesLsKey(ownerEoa.toLowerCase(), cardKey(card)))
+		} catch {
+			/* ignore */
+		}
+	}
 
 	const existingRuleId = await readActiveMerchantShareClickRuleId(card)
 	if (existingRuleId != null) {
@@ -406,7 +414,7 @@ async function ensureDefaultMerchantShareClickRewardRuleSilentInner(params: {
  * 3) configure default Discover USER_CLICK reward rule (ruleId 1) when none exists
  *
  * Does not mutate card bytecode; only owner executeForOwner writes.
- * Share-click dispatch still requires Factory gatewayInvokeCard + rewardMintBudget13 funding.
+ * Share-click dispatch still requires rewardMintBudget13 funding (merchant Programs → Top-up reward budget).
  */
 export async function ensureCardMerchantV2SilentBootstrap(params: {
 	cardAddress: string

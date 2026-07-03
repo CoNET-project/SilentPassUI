@@ -11813,6 +11813,18 @@ useEffect(() => {
    void loadProgramRewardBudgetOverview();
  }, [loadProgramRewardBudgetOverview]);
 
+ useEffect(() => {
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+   if (!addr || !ethers.isAddress(addr) || !programOwnerEOA) return;
+   const pk = getSessionPrivateKeyArmor();
+   if (!pk) return;
+   void ensureCardUserCumulativeStatInitializedSilent({
+     cardAddress: addr,
+     ownerEoa: programOwnerEOA,
+     ownerPrivateKey: pk,
+   }).catch(() => undefined);
+ }, [cardIssuanceExistingCard?.cardAddress, programOwnerEOA]);
+
  const handleProgramRewardFundSubmit = useCallback(async () => {
    const cardRaw = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
    if (!cardRaw || !ethers.isAddress(cardRaw) || !programOwnerEOA) {
@@ -33237,6 +33249,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <p className="mb-3 text-xs leading-relaxed text-[#595c5e] sm:text-sm">
                              {tu('programs_overview_reward_budget_hint')}
                            </p>
+                           {programRewardBudget13 === 0n ? (
+                             <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                               {tu('programs_overview_reward_budget_zero_hint')}
+                             </p>
+                           ) : null}
                            <div className="mb-4 rounded-lg border border-[#1562f0]/15 bg-[#1562f0]/5 px-3 py-2.5">
                              <p className="text-[10px] font-bold uppercase tracking-wide text-[#1562f0]">
                                {tu('programs_overview_reward_budget_balance')}

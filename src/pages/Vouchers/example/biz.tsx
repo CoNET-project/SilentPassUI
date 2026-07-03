@@ -936,6 +936,8 @@ type TxDisplayRowCore = {
     | 'B-Unit Fee'
     | 'Create Coupon'
     | 'Create Catalogs'
+    | 'Social Like'
+    | 'Social Share Click'
   subtotal: number
   tip: number
   total: number
@@ -2650,6 +2652,8 @@ function walletMobileActivityIconFrame(tx: TxDisplayRow): { Icon: LucideIcon; wr
   if (tx.type === 'B-Unit Fee') return { Icon: Fuel, wrap: 'bg-orange-500/10 text-orange-600' };
   if (tx.type === 'Create Coupon') return { Icon: Gift, wrap: 'bg-fuchsia-500/10 text-fuchsia-600' };
   if (tx.type === 'Create Catalogs') return { Icon: Package, wrap: 'bg-violet-500/10 text-violet-600' };
+  if (tx.type === 'Social Like') return { Icon: Heart, wrap: 'bg-rose-500/10 text-rose-600' };
+  if (tx.type === 'Social Share Click') return { Icon: Share2, wrap: 'bg-sky-500/10 text-sky-600' };
   return { Icon: Fuel, wrap: 'bg-[#8d3a8b]/10 text-[#8d3a8b]' };
 }
 
@@ -4872,6 +4876,10 @@ const TX_BUINT_CARD_REDEEM_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('cardRe
 const TX_BUINT_POS_COUPON_BURN_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('posCouponBurn:bunitService'))
 /** Indexer: Charge B-Unit 服务费单独一条（`charge:bunitService`） */
 const TX_BUINT_CHARGE_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('charge:bunitService'))
+/** Indexer: Discover social like B-Unit service fee (`socialLike:bunitService`) */
+const TX_BUINT_SOCIAL_LIKE_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('socialLike:bunitService'))
+/** Indexer: Discover share link click B-Unit service fee (`socialShareClick:bunitService`) */
+const TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('socialShareClick:bunitService'))
 
 /** Indexer：全部 `*:bunitService`（txId=CoNET consume；originalPaymentHash=Base 业务 tx） */
 const BUINT_SERVICE_FEE_CATEGORY_LOWER = new Set([
@@ -4882,6 +4890,8 @@ const BUINT_SERVICE_FEE_CATEGORY_LOWER = new Set([
   TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase(),
   TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
   TX_BUINT_CHARGE_SERVICE.toLowerCase(),
+  TX_BUINT_SOCIAL_LIKE_SERVICE.toLowerCase(),
+  TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE.toLowerCase(),
 ])
 
 /** bizSite：有主业务时合并进 Top-Up / Charge / Claim 主行 */
@@ -4897,6 +4907,8 @@ const BUINT_SERVICE_PRIMARY_ONLY_CATEGORY_LOWER = new Set([
   TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
   TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE.toLowerCase(),
   TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
+  TX_BUINT_SOCIAL_LIKE_SERVICE.toLowerCase(),
+  TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE.toLowerCase(),
 ])
 
 function isStandaloneBuintServiceFeeCategory(cat: unknown): boolean {
@@ -6310,6 +6322,12 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
       let ledgerTitle = display.title ?? 'B-Unit service fee'
       if (catHex === TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase()) {
         displayType = 'In-Store Redeem'
+      } else if (catHex === TX_BUINT_SOCIAL_LIKE_SERVICE.toLowerCase()) {
+        displayType = 'Social Like'
+        ledgerTitle = display.title ?? 'Social Like'
+      } else if (catHex === TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE.toLowerCase()) {
+        displayType = 'Social Share Click'
+        ledgerTitle = display.title ?? 'Social Share Click'
       } else if (isCreateIssuedNftBunitIndexerCategory(tx.txCategory)) {
         const productKind = resolveCreateIssuedNftBunitProductKind(tx.displayJson ?? '')
         displayType = createIssuedNftBunitTxDisplayType(productKind)

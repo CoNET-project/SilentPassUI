@@ -171,8 +171,8 @@ export default function RestoreWalletUnifiedScreen({
 			setLoginError('Please enter a username')
 			return ''
 		}
-		if (!/^[a-zA-Z0-9_.-]{3,20}$/.test(trimmed)) {
-			setLoginError('Use 3–20 letters, numbers, dots, _ or -')
+		if (!/^[a-zA-Z0-9_.-]{3,26}$/.test(trimmed)) {
+			setLoginError('Use 3–26 letters, numbers, dots, _ or -')
 			return ''
 		}
 		return trimmed

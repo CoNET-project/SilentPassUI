@@ -173,7 +173,7 @@
   "BeamioTag": "beamiotag",
   "用户名": "username",
   "请输入 BeamioTag": "please_enter_a_beamiotag",
-  "请使用 3–20 个字母、数字、点或下划线": "use_3_20_letters_numbers_dots_or_underscores",
+  "请使用 3–26 个字母、数字、点或下划线": "use_3_20_letters_numbers_dots_or_underscores",
   "@{{tag}} 已被占用": "tag_is_already_taken",
   "网络错误，请重试。": "network_error_try_again",
   "此标签可用": "this_tag_is_available",

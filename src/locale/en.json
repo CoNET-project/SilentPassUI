@@ -179,7 +179,7 @@
     "beamiotag": "BeamioTag",
     "username": "username",
     "please_enter_a_beamiotag": "Please enter a BeamioTag",
-    "use_3_20_letters_numbers_dots_or_underscores": "Use 3–20 letters, numbers, dots, or underscores",
+    "use_3_20_letters_numbers_dots_or_underscores": "Use 3–26 letters, numbers, dots, or underscores",
     "tag_is_already_taken": "@{{tag}} is already taken",
     "network_error_try_again": "Network error. Try again.",
     "this_tag_is_available": "This tag is available",

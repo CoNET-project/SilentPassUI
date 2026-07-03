@@ -116,7 +116,7 @@ const CreateUsernamePinScreen = forwardRef<
 	const localValidateTag = (raw: string) => {
 		const trimmed = normalizeBeamioTagInput(raw)
 		if (!trimmed) return { ok: false, v: "", msg: tu('please_enter_a_beamiotag') }
-		if (!/^[a-zA-Z0-9_\.]{3,20}$/.test(trimmed)) {
+		if (!/^[a-zA-Z0-9_\.]{3,26}$/.test(trimmed)) {
 			return { ok: false, v: trimmed, msg: tu('use_3_20_letters_numbers_dots_or_underscores') }
 		}
 		return { ok: true, v: trimmed, msg: "" }

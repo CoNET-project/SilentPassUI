@@ -1,6 +1,20 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Gift, Utensils, Share2, Filter, Settings2, Info, UserPlus } from 'lucide-react'
+import {
+	Gift,
+	Utensils,
+	Share2,
+	Filter,
+	Settings2,
+	Info,
+	UserPlus,
+	MousePointerClick,
+	Smartphone,
+	Ticket,
+	Store,
+	ShoppingBag,
+	Sparkles,
+} from 'lucide-react'
 import { useDaemonReferrerSummary } from '@/hooks/useDaemonReferrerSummary'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
@@ -9,6 +23,12 @@ import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatWithThousands } from '@/services/beamio'
 import { formatConetChainTokenBalance, formatConetChainTokenBalanceCompact } from '@/services/conetUsdcBalance'
+import {
+	fetchBountySocialReferralPoints,
+	formatSocialPoints,
+	type MerchantSocialReferralPoints,
+	type SocialReferralEventKey,
+} from '@/utils/bountySocialReferralPoints'
 
 /**
  * Bounty Board — referral rewards hub.
@@ -192,6 +212,109 @@ function BountyCard({ item }: { item: BountyItem }) {
 	)
 }
 
+const EVENT_ICON: Record<SocialReferralEventKey, React.ReactNode> = {
+	shareClicks: <MousePointerClick className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />,
+	installs: <Smartphone className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />,
+	claims: <Ticket className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />,
+	redeems: <Store className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />,
+	purchases: <ShoppingBag className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />,
+}
+
+function SocialReferralPointsSection({
+	rows,
+}: {
+	rows: MerchantSocialReferralPoints[] | null
+}) {
+	const totalPoints = useMemo(
+		() => (rows ?? []).reduce((s, r) => s + r.points, 0),
+		[rows],
+	)
+	const totalEvents = useMemo(
+		() => (rows ?? []).reduce((s, r) => s + r.eventTotal, 0),
+		[rows],
+	)
+
+	return (
+		<section className="space-y-3">
+			<div className="min-w-0">
+				<h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50">
+					Social Referral Points
+				</h2>
+				<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+					Points you earn as referrer when friends open your merchant share link, install Beamio, top up,
+					claim, or redeem.
+				</p>
+			</div>
+
+			<div className={`${cardChrome} overflow-hidden p-4`}>
+				<div className="flex items-center gap-3">
+					<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
+						<Sparkles className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+					</div>
+					<div className="min-w-0 flex-1">
+						<p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+							Total referral points
+						</p>
+						<p className="mt-0.5 text-2xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+							{formatSocialPoints(totalPoints)}{' '}
+							<span className="text-base font-bold text-slate-500">pts</span>
+						</p>
+						{totalEvents > 0 ? (
+							<p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+								{totalEvents.toLocaleString()} referral events across {(rows ?? []).length} merchant
+								{(rows ?? []).length === 1 ? '' : 's'}
+							</p>
+						) : null}
+					</div>
+				</div>
+			</div>
+
+			{rows == null ? null : rows.length === 0 ? (
+				<div className={`${cardChrome} p-4 text-center text-sm font-medium text-slate-500 dark:text-slate-400`}>
+					No referral points yet. Share a merchant card from Discover to start earning.
+				</div>
+			) : (
+				rows.map((row) => (
+					<div key={row.cardAddress} className={`${cardChrome} p-4`}>
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0">
+								<h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">
+									{row.merchantName}
+								</h3>
+								<p className="mt-0.5 font-mono text-[11px] text-slate-400">
+									{row.cardAddress.slice(0, 6)}…{row.cardAddress.slice(-4)}
+								</p>
+							</div>
+							<span className="shrink-0 rounded-full bg-[#1562f0]/10 px-3 py-1 text-sm font-extrabold tabular-nums text-[#1562f0]">
+								{formatSocialPoints(row.points)} pts
+							</span>
+						</div>
+
+						<ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+							{row.events.map((ev) => (
+								<li
+									key={ev.key}
+									className="flex items-center justify-between gap-2 text-sm"
+								>
+									<span className="flex min-w-0 items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
+										<span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+											{EVENT_ICON[ev.key]}
+										</span>
+										<span className="truncate">{ev.label}</span>
+									</span>
+									<span className="shrink-0 font-bold tabular-nums text-slate-900 dark:text-slate-50">
+										{ev.count.toLocaleString()}
+									</span>
+								</li>
+							))}
+						</ul>
+					</div>
+				))
+			)}
+		</section>
+	)
+}
+
 export default function BountyBoard() {
 	const navigate = useNavigate()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
@@ -201,6 +324,26 @@ export default function BountyBoard() {
 	const { balances: conetWalletBalances } = useConetWalletBalances(eoa)
 	const { profile: validatorProfile } = useDaemonValidatorWalletNodeProfile()
 	const { stats: incomeStats } = useDaemonUnifiedIncomeStats()
+	const [socialReferralRows, setSocialReferralRows] = useState<MerchantSocialReferralPoints[] | null>(
+		null,
+	)
+
+	useEffect(() => {
+		if (!eoa) {
+			setSocialReferralRows(null)
+			return
+		}
+		let cancelled = false
+		void (async () => {
+			const rows = await fetchBountySocialReferralPoints(eoa)
+			if (cancelled) return
+			// Trusted success only (incl. empty list); failure keeps previous.
+			if (rows != null) setSocialReferralRows(rows)
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [eoa])
 
 	const usdcDisplay = useMemo(() => formatConetUsdcDisplay(conetWalletBalances.usdc), [conetWalletBalances.usdc])
 	const fiatApprox = useMemo(
@@ -339,6 +482,8 @@ export default function BountyBoard() {
 							</div>
 						</div>
 					</section>
+
+					<SocialReferralPointsSection rows={socialReferralRows} />
 
 					{/* Bounty board list */}
 					<section className="space-y-3">

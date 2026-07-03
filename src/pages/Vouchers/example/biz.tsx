@@ -8149,6 +8149,16 @@ type BeamioCardProgramSocialShareClickRow = {
   createdAt: string;
 };
 
+function programSocialShareClickShowsReferrer(actorEoa: string, referrerEoa: string | null | undefined): boolean {
+  if (!referrerEoa || !ethers.isAddress(referrerEoa)) return false;
+  if (!ethers.isAddress(actorEoa)) return true;
+  try {
+    return ethers.getAddress(referrerEoa) !== ethers.getAddress(actorEoa);
+  } catch {
+    return referrerEoa.trim().toLowerCase() !== actorEoa.trim().toLowerCase();
+  }
+}
+
 type BeamioCardProgramSocialSummaryResponse = {
   mode: 'summary';
   cardAddress: string;
@@ -8523,6 +8533,7 @@ function formatRegistryApiRowChannel(m: { usedNfc: boolean; usedApp: boolean }):
 const MEMBER_REGISTRY_PAGE_SIZE = 20;
 
 const BEAMIO_CONET_BLOCKSCOUT_ADDRESS_BASE = 'https://scan.conet.network/address' as const;
+const BEAMIO_CONET_BLOCKSCOUT_TX_BASE = 'https://scan.conet.network/tx' as const;
 
 function beamioConetBlockscoutAddressUrl(rawAddress: string): string | null {
   try {
@@ -8530,6 +8541,39 @@ function beamioConetBlockscoutAddressUrl(rawAddress: string): string | null {
   } catch {
     return null;
   }
+}
+
+function beamioConetBlockscoutTxUrl(rawTxHash: string | null | undefined): string | null {
+  const h = rawTxHash?.trim();
+  if (!h || !/^0x[0-9a-fA-F]{64}$/.test(h)) return null;
+  return `${BEAMIO_CONET_BLOCKSCOUT_TX_BASE}/${h}`;
+}
+
+function formatConetTxHashShort(rawTxHash: string): string {
+  const h = rawTxHash.trim();
+  if (h.startsWith('0x') && h.length > 12) return `${h.slice(0, 10)}…${h.slice(-6)}`;
+  return h || '—';
+}
+
+function ProgramSocialOnChainTxLink({ txHash }: { txHash: string | null }) {
+  const href = beamioConetBlockscoutTxUrl(txHash);
+  if (!href || !txHash) {
+    return (
+      <span className="text-[10px] text-[#939699]">{tu('programs_overview_social_tx_unavailable')}</span>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1 rounded-full border border-[#dce2f7] bg-[#e9edff] px-2 py-0.5 font-mono text-[10px] font-medium text-[#0051d1] transition hover:bg-[#dde4ff] ${bizFocusRingClass}`}
+      aria-label={tu('programs_overview_social_tx_aria')}
+    >
+      {formatConetTxHashShort(txHash)}
+      <ExternalLink className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
+    </a>
+  );
 }
 
 /** 地址胶囊：短缩地址 + 右侧 copy 图标；可选 `explorerUrl` 时点击地址在新标签打开浏览器 */
@@ -11593,6 +11637,7 @@ const [programSocialLikeCount, setProgramSocialLikeCount] = useState<number | nu
 const [programSocialShareClickCount, setProgramSocialShareClickCount] = useState<number | null>(null);
 const [programSocialLikes, setProgramSocialLikes] = useState<BeamioCardProgramSocialLikeRow[]>([]);
 const [programSocialShareClicks, setProgramSocialShareClicks] = useState<BeamioCardProgramSocialShareClickRow[]>([]);
+const [programSocialEngagementDrawer, setProgramSocialEngagementDrawer] = useState<'likes' | 'shareClicks' | null>(null);
 const [programSocialRefreshStatus, setProgramSocialRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 const [programRewardBudget13, setProgramRewardBudget13] = useState<bigint | null>(null);
 const [programRewardFundAmount, setProgramRewardFundAmount] = useState('');
@@ -11751,6 +11796,10 @@ useEffect(() => {
 
  useEffect(() => {
    setCardIssuanceMerchantImageClearPending(false);
+ }, [cardIssuanceExistingCard?.cardAddress]);
+
+ useEffect(() => {
+   setProgramSocialEngagementDrawer(null);
  }, [cardIssuanceExistingCard?.cardAddress]);
 
  const loadProgramSocialOverview = useCallback(async () => {
@@ -33122,8 +33171,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                )}
                              </button>
                            </div>
-                           <div className="mb-4 grid grid-cols-2 gap-3">
-                             <div className="rounded-lg border border-rose-100 bg-white px-3 py-2.5">
+                           <div className="grid grid-cols-2 gap-3">
+                             <button
+                               type="button"
+                               onClick={() => setProgramSocialEngagementDrawer('likes')}
+                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                                 programSocialEngagementDrawer === 'likes'
+                                   ? 'border-rose-300 ring-2 ring-rose-200/80'
+                                   : 'border-rose-100 hover:border-rose-200'
+                               } ${bizFocusRingClass}`}
+                               aria-expanded={programSocialEngagementDrawer === 'likes'}
+                             >
                                <div className="mb-1 flex items-center gap-1.5 text-rose-500">
                                  <Heart className="h-3.5 w-3.5" strokeWidth={2.25} fill="currentColor" aria-hidden />
                                  <span className="text-[10px] font-bold uppercase tracking-wide">
@@ -33133,8 +33191,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
                                  {formatProgramSocialStatCount(programSocialLikeCount)}
                                </p>
-                             </div>
-                             <div className="rounded-lg border border-[#dce2f7] bg-white px-3 py-2.5">
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => setProgramSocialEngagementDrawer('shareClicks')}
+                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                                 programSocialEngagementDrawer === 'shareClicks'
+                                   ? 'border-[#1562f0]/40 ring-2 ring-[#1562f0]/20'
+                                   : 'border-[#dce2f7] hover:border-[#1562f0]/25'
+                               } ${bizFocusRingClass}`}
+                               aria-expanded={programSocialEngagementDrawer === 'shareClicks'}
+                             >
                                <div className="mb-1 flex items-center gap-1.5 text-[#1562f0]">
                                  <Share2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
                                  <span className="text-[10px] font-bold uppercase tracking-wide">
@@ -33144,85 +33211,142 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
                                  {formatProgramSocialStatCount(programSocialShareClickCount)}
                                </p>
-                             </div>
-                           </div>
-                           <div className="space-y-3">
-                             <div>
-                               <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#595c5e]">
-                                 {tu('programs_overview_likes_wallets')}
-                               </p>
-                               {programSocialLikes.length === 0 ? (
-                                 <p className="text-xs text-[#595c5e]">{tu('programs_overview_social_db_empty')}</p>
-                               ) : (
-                                 <ul className="space-y-2">
-                                   {programSocialLikes.map((row) => {
-                                     const capsule = toCapsuleItem(row.userEoa);
-                                     return (
-                                       <li
-                                         key={`${row.userEoa}:${row.createdAt}`}
-                                         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#e8ecf0] bg-white px-2 py-1.5"
-                                       >
-                                         <BeamioCapsule
-                                           item={capsule}
-                                           fallbackAddress={row.userEoa}
-                                           tone="onLight"
-                                           className="min-w-0 bg-transparent pl-0"
-                                         />
-                                         <span className="shrink-0 text-[10px] text-[#595c5e]">
-                                           {new Date(row.createdAt).toLocaleString()}
-                                         </span>
-                                       </li>
-                                     );
-                                   })}
-                                 </ul>
-                               )}
-                             </div>
-                             <div>
-                               <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#595c5e]">
-                                 {tu('programs_overview_share_clicks_wallets')}
-                               </p>
-                               {programSocialShareClicks.length === 0 ? (
-                                 <p className="text-xs text-[#595c5e]">{tu('programs_overview_social_db_empty')}</p>
-                               ) : (
-                                 <ul className="space-y-2">
-                                   {programSocialShareClicks.map((row) => {
-                                     const actorCapsule = toCapsuleItem(row.actorEoa);
-                                     const refCapsule = row.referrerEoa ? toCapsuleItem(row.referrerEoa) : null;
-                                     return (
-                                       <li
-                                         key={`${row.actorEoa}:${row.createdAt}:${row.txHash ?? ''}`}
-                                         className="rounded-lg border border-[#e8ecf0] bg-white px-2 py-1.5"
-                                       >
-                                         <div className="flex flex-wrap items-center justify-between gap-2">
-                                           <BeamioCapsule
-                                             item={actorCapsule}
-                                             fallbackAddress={row.actorEoa}
-                                             tone="onLight"
-                                             className="min-w-0 bg-transparent pl-0"
-                                           />
-                                           <span className="shrink-0 text-[10px] text-[#595c5e]">
-                                             {new Date(row.createdAt).toLocaleString()}
-                                           </span>
-                                         </div>
-                                         {row.referrerEoa ? (
-                                           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
-                                             <span>{tu('programs_overview_share_referrer')}:</span>
-                                             <BeamioCapsule
-                                               item={refCapsule}
-                                               fallbackAddress={row.referrerEoa}
-                                               tone="onLight"
-                                               className="min-w-0 bg-transparent pl-0 py-0"
-                                             />
-                                           </p>
-                                         ) : null}
-                                       </li>
-                                     );
-                                   })}
-                                 </ul>
-                               )}
-                             </div>
+                             </button>
                            </div>
                          </div>
+                         <AnimatePresence>
+                           {programSocialEngagementDrawer ? (
+                             <>
+                               <motion.button
+                                 type="button"
+                                 aria-label={tu('programs_config_close_tier_editor_aria')}
+                                 className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                                 initial={{ opacity: 0 }}
+                                 animate={{ opacity: 1 }}
+                                 exit={{ opacity: 0 }}
+                                 onClick={() => setProgramSocialEngagementDrawer(null)}
+                               />
+                               <motion.div
+                                 role="dialog"
+                                 aria-modal="true"
+                                 aria-labelledby="program-social-engagement-drawer-title"
+                                 className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                                 initial={{ y: '100%' }}
+                                 animate={{ y: 0 }}
+                                 exit={{ y: '100%' }}
+                                 transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                               >
+                                 <div className="shrink-0 px-6 pt-6">
+                                   <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                                   <div className="mb-4 flex items-start justify-between gap-4">
+                                     <div className="min-w-0">
+                                       <h3
+                                         id="program-social-engagement-drawer-title"
+                                         className="font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl"
+                                       >
+                                         {programSocialEngagementDrawer === 'likes'
+                                           ? tu('programs_overview_likes_wallets')
+                                           : tu('programs_overview_share_clicks_wallets')}
+                                       </h3>
+                                       <p className="mt-1 text-xs text-[#595c5e]">
+                                         {programSocialEngagementDrawer === 'likes'
+                                           ? formatProgramSocialStatCount(programSocialLikeCount)
+                                           : formatProgramSocialStatCount(programSocialShareClickCount)}
+                                       </p>
+                                     </div>
+                                     <button
+                                       type="button"
+                                       onClick={() => setProgramSocialEngagementDrawer(null)}
+                                       className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                                       aria-label={tu('programs_config_close_tier_editor_aria')}
+                                     >
+                                       <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                                     </button>
+                                   </div>
+                                 </div>
+                                 <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+                                   {programSocialEngagementDrawer === 'likes' ? (
+                                     programSocialLikes.length === 0 ? (
+                                       <p className="text-sm text-[#595c5e]">{tu('programs_overview_social_db_empty')}</p>
+                                     ) : (
+                                       <ul className="space-y-2">
+                                         {programSocialLikes.map((row) => {
+                                           const capsule = toCapsuleItem(row.userEoa);
+                                           return (
+                                             <li
+                                               key={`${row.userEoa}:${row.createdAt}:${row.txHash ?? ''}`}
+                                               className="rounded-lg border border-[#e8ecf0] bg-[#f8fafc] px-2 py-1.5"
+                                             >
+                                               <div className="flex flex-wrap items-center justify-between gap-2">
+                                                 <BeamioCapsule
+                                                   item={capsule}
+                                                   fallbackAddress={row.userEoa}
+                                                   tone="onLight"
+                                                   className="min-w-0 bg-transparent pl-0"
+                                                 />
+                                                 <span className="shrink-0 text-[10px] text-[#595c5e]">
+                                                   {new Date(row.createdAt).toLocaleString()}
+                                                 </span>
+                                               </div>
+                                               <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                                 <span>{tu('programs_overview_social_tx_label')}:</span>
+                                                 <ProgramSocialOnChainTxLink txHash={row.txHash} />
+                                               </p>
+                                             </li>
+                                           );
+                                         })}
+                                       </ul>
+                                     )
+                                   ) : programSocialShareClicks.length === 0 ? (
+                                     <p className="text-sm text-[#595c5e]">{tu('programs_overview_social_db_empty')}</p>
+                                   ) : (
+                                     <ul className="space-y-2">
+                                       {programSocialShareClicks.map((row) => {
+                                         const actorCapsule = toCapsuleItem(row.actorEoa);
+                                         const showReferrer = programSocialShareClickShowsReferrer(row.actorEoa, row.referrerEoa);
+                                         const refCapsule =
+                                           showReferrer && row.referrerEoa ? toCapsuleItem(row.referrerEoa) : null;
+                                         return (
+                                           <li
+                                             key={`${row.actorEoa}:${row.createdAt}:${row.txHash ?? ''}`}
+                                             className="rounded-lg border border-[#e8ecf0] bg-[#f8fafc] px-2 py-1.5"
+                                           >
+                                             <div className="flex flex-wrap items-center justify-between gap-2">
+                                               <BeamioCapsule
+                                                 item={actorCapsule}
+                                                 fallbackAddress={row.actorEoa}
+                                                 tone="onLight"
+                                                 className="min-w-0 bg-transparent pl-0"
+                                               />
+                                               <span className="shrink-0 text-[10px] text-[#595c5e]">
+                                                 {new Date(row.createdAt).toLocaleString()}
+                                               </span>
+                                             </div>
+                                             {showReferrer && row.referrerEoa ? (
+                                               <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                                 <span>{tu('programs_overview_share_referrer')}:</span>
+                                                 <BeamioCapsule
+                                                   item={refCapsule}
+                                                   fallbackAddress={row.referrerEoa}
+                                                   tone="onLight"
+                                                   className="min-w-0 bg-transparent pl-0 py-0"
+                                                 />
+                                               </p>
+                                             ) : null}
+                                             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                               <span>{tu('programs_overview_social_tx_label')}:</span>
+                                               <ProgramSocialOnChainTxLink txHash={row.txHash} />
+                                             </p>
+                                           </li>
+                                         );
+                                       })}
+                                     </ul>
+                                   )}
+                                 </div>
+                               </motion.div>
+                             </>
+                           ) : null}
+                         </AnimatePresence>
                          <div className="rounded-xl border border-[#dce2f7] bg-white p-3 sm:p-4">
                            <div className="mb-3 flex items-center justify-between gap-2">
                              <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">

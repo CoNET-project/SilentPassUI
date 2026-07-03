@@ -127,6 +127,7 @@ import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButto
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { parseDiscoverMerchantFromParams } from '@/utils/discoverMerchantShare'
+import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
@@ -2307,6 +2308,7 @@ function DiscoverMerchantDetailFullScreen({
 	onClose: () => void
 }) {
 	const navigate = useNavigate()
+	const location = useLocation()
 	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta } = useDaemonContext()
 	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName } = useMerchantCardDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
@@ -2412,6 +2414,36 @@ function DiscoverMerchantDetailFullScreen({
 			return null
 		}
 	}, [profile])
+
+	const shareReferrerEoa = useMemo(() => {
+		const keyId = profile?.keyID?.trim() ?? ''
+		return keyId && ethers.isAddress(keyId) ? ethers.getAddress(keyId) : null
+	}, [profile?.keyID])
+
+	const shareReferrerFromUrl = useMemo(() => {
+		const fromParams =
+			parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))?.referrerEoa ??
+			null
+		const state = location.state as { discoverShareReferrerEoa?: string | null } | null
+		const fromState = state?.discoverShareReferrerEoa ?? null
+		const raw = fromParams ?? fromState
+		if (!raw || !ethers.isAddress(raw)) return null
+		return ethers.getAddress(raw)
+	}, [location.state])
+
+	const shareClickRecordedRef = useRef(false)
+	useEffect(() => {
+		const card = item.cardAddress?.trim()
+		if (shareClickRecordedRef.current || !card || !ethers.isAddress(card)) return
+		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+		if (!privateKeyArmor) return
+		shareClickRecordedRef.current = true
+		void recordDiscoverShareClickIfNeeded({
+			cardAddress: card,
+			privateKeyArmor,
+			referrerEoa: shareReferrerFromUrl,
+		})
+	}, [item.cardAddress, profile, shareReferrerFromUrl])
 
 	useEffect(() => {
 		const card = item.cardAddress?.trim()
@@ -3083,6 +3115,7 @@ function DiscoverMerchantDetailFullScreen({
 								<DiscoverMerchantShareButton
 									cardAddress={item.cardAddress}
 									merchantTitle={item.title}
+									referrerEoa={shareReferrerEoa}
 								/>
 							) : null}
 							<button
@@ -3670,7 +3703,10 @@ export default function Market() {
 	const discoverDeepLinkOpenedRef = useRef(false)
 	useEffect(() => {
 		if (discoverDeepLinkOpenedRef.current) return
-		const state = location.state as { openDiscoverMerchantCard?: string } | null
+		const state = location.state as {
+			openDiscoverMerchantCard?: string
+			discoverShareReferrerEoa?: string | null
+		} | null
 		const fromState = state?.openDiscoverMerchantCard?.trim() ?? ''
 		const fromUrl = parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))
 		const targetAddr = (fromState || fromUrl?.cardAddress || '').trim()

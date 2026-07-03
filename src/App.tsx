@@ -206,7 +206,12 @@ function AppShell() {
 
     initialDiscoverMerchantUrlProcessedRef.current = true
     setShowFooter(true)
-    navigate('/discover', { state: { openDiscoverMerchantCard: parsed.cardAddress } })
+    navigate('/discover', {
+      state: {
+        openDiscoverMerchantCard: parsed.cardAddress,
+        discoverShareReferrerEoa: parsed.referrerEoa,
+      },
+    })
   }, [isInitialLoading, navigate, setShowFooter])
 
   const handleConfirmRedeemClaim = async () => {
@@ -1169,7 +1174,12 @@ function AppShell() {
     const parsedDiscover = parseDiscoverMerchantFromParams(searchParams)
     if (parsedDiscover) {
       setShowFooter(true)
-      navigate('/discover', { state: { openDiscoverMerchantCard: parsedDiscover.cardAddress } })
+      navigate('/discover', {
+        state: {
+          openDiscoverMerchantCard: parsedDiscover.cardAddress,
+          discoverShareReferrerEoa: parsedDiscover.referrerEoa,
+        },
+      })
       return
     }
 

@@ -73,6 +73,33 @@ export function fetchDiscoverMerchantRefClickCount(cardAddress: string): Promise
 	return fetchDiscoverMerchantStatCount(cardAddress, DISCOVER_MERCHANT_CARD_REF_CLICK_TOKEN_ID)
 }
 
+const BEAMIO_CARD_PROGRAM_SOCIAL_API = 'https://beamio.app/api/cardProgramSocial'
+
+/** Trusted API success → dbShareClickTotal (recorded going forward list); failure → null. */
+export async function fetchDiscoverMerchantDbShareClickTotal(cardAddress: string): Promise<number | null> {
+	let addr: string
+	try {
+		addr = ethers.getAddress(String(cardAddress ?? '').trim())
+	} catch {
+		return null
+	}
+	try {
+		const url = `${BEAMIO_CARD_PROGRAM_SOCIAL_API}?${new URLSearchParams({
+			cardAddress: addr,
+			mode: 'summary',
+			limit: '1',
+		})}`
+		const res = await fetch(url)
+		if (!res.ok) return null
+		const json = (await res.json()) as { dbShareClickTotal?: unknown; shareClickCount?: unknown }
+		const raw = json.dbShareClickTotal ?? json.shareClickCount
+		const n = Number(raw)
+		return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null
+	} catch {
+		return null
+	}
+}
+
 /** Drop cached aggregate stat after like/unlike so the next feed tick refetches. */
 export function invalidateDiscoverMerchantStatCache(cardAddress: string, tokenId: bigint = DISCOVER_MERCHANT_CARD_LIKE_TOKEN_ID): void {
 	try {

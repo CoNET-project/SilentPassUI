@@ -69,12 +69,14 @@ import {
 	CONET_MINING_STATS_SEED,
 } from '@/utils/conetMiningStatsLocalCache'
 import {
+	fetchDiscoverMerchantDbShareClickTotal,
 	fetchDiscoverMerchantLikeCount,
 	fetchDiscoverMerchantRefClickCount,
 } from '@/utils/discoverMerchantLikeCount'
 import {
   loadDiscoverMerchantStatsLocalCache,
   mergeDiscoverMerchantLikeCount,
+  mergeDiscoverMerchantRefClickCount,
   saveDiscoverMerchantStatEntry,
 	type DiscoverMerchantStatEntry,
 	type DiscoverMerchantStatsMap,
@@ -1393,15 +1395,21 @@ export function DaemonProvider({ children }: DaemonProps) {
           continue
         }
         const likeCount = await fetchDiscoverMerchantLikeCount(addr)
-        const refClickCount = await fetchDiscoverMerchantRefClickCount(addr)
-        if (likeCount == null && refClickCount == null) continue
+        const refClickChain = await fetchDiscoverMerchantRefClickCount(addr)
+        const refClickDb = await fetchDiscoverMerchantDbShareClickTotal(addr)
+        if (likeCount == null && refClickChain == null && refClickDb == null) continue
 
         setDiscoverMerchantStatByCard((prev) => {
           const existing = prev[cardLower]
           const mergedLike = mergeDiscoverMerchantLikeCount(likeCount, existing?.likeCount, existing?.savedAt)
+          const mergedRef = mergeDiscoverMerchantRefClickCount(
+            refClickChain,
+            refClickDb,
+            existing?.refClickCount,
+          )
           const nextEntry: DiscoverMerchantStatEntry = {
             likeCount: mergedLike,
-            refClickCount: refClickCount ?? existing?.refClickCount,
+            refClickCount: mergedRef,
             savedAt: Date.now(),
           }
           if (
@@ -1421,7 +1429,12 @@ export function DaemonProvider({ children }: DaemonProps) {
           existingEntry?.savedAt,
         )
         if (mergedLikeForSave != null) patch.likeCount = mergedLikeForSave
-        if (refClickCount != null) patch.refClickCount = refClickCount
+        const mergedRefForSave = mergeDiscoverMerchantRefClickCount(
+          refClickChain,
+          refClickDb,
+          existingEntry?.refClickCount,
+        )
+        if (mergedRefForSave != null) patch.refClickCount = mergedRefForSave
         saveDiscoverMerchantStatEntry(cardLower, patch)
       }
     } finally {

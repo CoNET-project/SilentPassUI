@@ -117,3 +117,15 @@ export function bumpDiscoverMerchantLikeCountLocal(
 		return null
 	}
 }
+
+export function mergeDiscoverMerchantRefClickCount(
+	chainRef: number | null,
+	dbRef: number | null,
+	cachedRef?: number,
+): number | undefined {
+	const parts: number[] = []
+	if (chainRef != null && Number.isFinite(chainRef)) parts.push(Math.max(0, Math.trunc(chainRef)))
+	if (dbRef != null && Number.isFinite(dbRef)) parts.push(Math.max(0, Math.trunc(dbRef)))
+	if (parts.length === 0) return cachedRef
+	return Math.max(...parts, cachedRef ?? 0)
+}

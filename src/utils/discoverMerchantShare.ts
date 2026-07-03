@@ -2,16 +2,29 @@ import { ethers } from 'ethers'
 
 /**
  * Discover merchant share URL — aligned with x402sdk `buildDiscoverMerchantAppDownloadUrl`.
- * Inner: `/app/?beamiocard=…&discover=open`
+ * Inner: `/app/?beamiocard=…&discover=open[&ref=referrerEOA]`
  * Outer: `/app-download?target=…`
+ * When `referrerEoa` is set (sharer wallet), openers record that address as referrer.
  */
-export function buildDiscoverMerchantShareUrl(cardAddress: string): string {
+export function buildDiscoverMerchantShareUrl(
+	cardAddress: string,
+	referrerEoa?: string | null,
+): string {
 	const addr = cardAddress?.trim() ?? ''
 	if (!addr || !ethers.isAddress(addr)) return ''
-	const discoverUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
-		ethers.getAddress(addr)
-	)}&discover=open`
+	const cardNorm = ethers.getAddress(addr)
+	let discoverUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(cardNorm)}&discover=open`
+	const refRaw = referrerEoa?.trim() ?? ''
+	if (refRaw && ethers.isAddress(refRaw)) {
+		discoverUrl += `&ref=${encodeURIComponent(ethers.getAddress(refRaw))}`
+	}
 	return `https://beamio.app/app-download?target=${encodeURIComponent(discoverUrl)}`
+}
+
+function parseDiscoverReferrerFromParams(sp: URLSearchParams): string | null {
+	const raw = (sp.get('ref') ?? sp.get('referrer') ?? '').trim()
+	if (!raw || !ethers.isAddress(raw)) return null
+	return ethers.getAddress(raw)
 }
 
 export async function shareDiscoverMerchantUrl(
@@ -42,7 +55,7 @@ export async function shareDiscoverMerchantUrl(
 
 export function parseDiscoverMerchantFromParams(
 	sp: URLSearchParams
-): { cardAddress: string } | null {
+): { cardAddress: string; referrerEoa: string | null } | null {
 	const redeemcode = (sp.get('redeemcode') ?? sp.get('Redeemcode') ?? '').trim()
 	if (redeemcode) return null
 	const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
@@ -51,5 +64,8 @@ export function parseDiscoverMerchantFromParams(
 	const discover = (sp.get('discover') ?? '').trim().toLowerCase()
 	if (!cardAddress || !ethers.isAddress(cardAddress)) return null
 	if (discover !== 'open' && discover !== '1' && discover !== 'true') return null
-	return { cardAddress: ethers.getAddress(cardAddress) }
+	return {
+		cardAddress: ethers.getAddress(cardAddress),
+		referrerEoa: parseDiscoverReferrerFromParams(sp),
+	}
 }

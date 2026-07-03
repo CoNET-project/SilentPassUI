@@ -10,14 +10,17 @@ import {
 export default function DiscoverMerchantShareButton({
 	cardAddress,
 	merchantTitle,
+	referrerEoa,
 	className = '',
 }: {
 	cardAddress: string
 	merchantTitle?: string
+	/** Sharer wallet — embedded as `ref=` so openers attribute the click to this referrer. */
+	referrerEoa?: string | null
 	className?: string
 }) {
 	const [shared, setShared] = useState(false)
-	const shareUrl = buildDiscoverMerchantShareUrl(cardAddress)
+	const shareUrl = buildDiscoverMerchantShareUrl(cardAddress, referrerEoa)
 
 	const handleShare = useCallback(
 		async (e: React.MouseEvent) => {
@@ -44,7 +47,7 @@ export default function DiscoverMerchantShareButton({
 			}
 			Toast.show({ content: tu('could_not_share_claim_url'), position: 'top' })
 		},
-		[shareUrl, merchantTitle]
+		[shareUrl, merchantTitle, referrerEoa]
 	)
 
 	if (!shareUrl) return null

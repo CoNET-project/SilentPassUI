@@ -32,9 +32,9 @@ const CreateBeamioTag = ({ loading, value, onChange, onNext }: CreateBeamioTagPr
   const localValidate = (raw: string) => {
     const trimmed = raw.trim().replace(/^@+/, "")
     if (!trimmed) return { ok: false, v: "", msg: "Please enter a BeamioTag" }
-    // Regex allows alphanumeric, underscores, dots. Length 3-20.
-    if (!/^[a-zA-Z0-9_\.]{3,20}$/.test(trimmed)) {
-      return { ok: false, v: trimmed, msg: "Use 3–20 letters, numbers or dots" }
+    // Regex allows alphanumeric, underscores, dots. Length 3-26.
+    if (!/^[a-zA-Z0-9_\.]{3,26}$/.test(trimmed)) {
+      return { ok: false, v: trimmed, msg: "Use 3–26 letters, numbers or dots" }
     }
     return { ok: true, v: trimmed, msg: "" }
   }

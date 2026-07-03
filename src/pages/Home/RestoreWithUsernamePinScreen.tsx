@@ -30,8 +30,8 @@ const RestoreWithUsernamePinScreen = ({ onRestore }: RestoreWithUsernamePinScree
       return ''
     }
 
-    if (!/^[a-zA-Z0-9_.-]{3,20}$/.test(trimmed)) {
-      setError('Use 3–20 letters, numbers, dots, _ or -')
+    if (!/^[a-zA-Z0-9_.-]{3,26}$/.test(trimmed)) {
+      setError('Use 3–26 letters, numbers, dots, _ or -')
       return ''
     }
 

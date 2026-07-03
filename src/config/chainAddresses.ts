@@ -22,9 +22,9 @@ export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C
 /** CoNET BUint ERC20（balanceOf / balanceOfAll）；与 deployments/conet-addresses.json `BUint` 同步 */
 export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'
 /** CoNET BUnitAirdrop（claim / getBUnitBalance）；与 deployments/conet-addresses.json 同步 */
-export const CONET_BUNIT_AIRDROP_ADDRESS = '0xb9cf45AF87b16853c8F48a16b0495F030309e70f'
+export const CONET_BUNIT_AIRDROP_ADDRESS = '0xa01DFfD68b355540B840310a9f0C1E7a779C3Ce8'
 /** BuintRedeemAirdrop（CoNET）；与 x402sdk chainAddresses / 部署记录同步 */
-export const CONET_BUINT_REDEEM_AIRDROP = '0x02e954D352EB4C687AB066f0967E35D41E7721b6'
+export const CONET_BUINT_REDEEM_AIRDROP = '0x74Fc5C1f105E64663689692e3240127DdE649AF1'
 /** BusinessStartKet ERC1155（CoNET）；用户持有的 Ket 在此合约 `balanceOf`；须与 Redeem 构造参数 `ket` / deployments 同步 */
 export const CONET_BUSINESS_START_KET = '0xAcf20dbb4DE0992d8947Ef00b505bBc17E6A03b2'
 /** BusinessStartKetRedeem（CoNET）；Ket + B-Unit 兑换码 */

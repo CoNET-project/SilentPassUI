@@ -19,6 +19,12 @@ export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 // Old: 0xd990719B2f05ccab4Acdd5D7A3f7aDfd2Fc584Fe (no code on chain).
 export const BEAMIO_INDEXER_DIAMOND = '0x45D45de73465b8913B50974Fc188529dFFb7AfFA'
 
+/** CoNET BUint UUPS proxy（canonical）；与 deployments/conet-addresses.json `BUint` 同步 */
+export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'
+/** CoNET BUnitAirdrop（claim / getBUnitBalance） */
+export const CONET_BUNIT_AIRDROP_ADDRESS = '0xb9cf45AF87b16853c8F48a16b0495F030309e70f'
+export const CONET_BUINT_REDEEM_AIRDROP = '0x02e954D352EB4C687AB066f0967E35D41E7721b6'
+
 export const BASE_MAINNET_FACTORIES = {
   AA_FACTORY: BASE_AA_FACTORY,
   BEAMIO_ACCOUNT_DEPLOYER: BASE_BEAMIO_ACCOUNT_DEPLOYER,
@@ -39,5 +45,8 @@ export const CONTRACT_ADDRESSES = {
   conet: {
     chainId: 224422,
     beamioIndexerDiamond: BEAMIO_INDEXER_DIAMOND,
+    bUint: CONET_BUINT,
+    bunitAirdrop: CONET_BUNIT_AIRDROP_ADDRESS,
+    buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
   },
 } as const

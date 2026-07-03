@@ -26,7 +26,7 @@ import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
 import beamioConetCoreABI from '@/services/ABI/beamioConetCoreABI.json'
 import { parseNodeEX,ParsedNote } from "@/services/currency"
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
-import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
+import { BASE_MAINNET_FACTORIES, CONET_BUNIT_AIRDROP_ADDRESS } from '@/config/chainAddresses'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
 
@@ -135,8 +135,6 @@ const CONET_CHAIN_ID = 224422
 
 /** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致；CoNET 224422 重启后地址）。
  *  旧值 0xbE1CF54f76BcAb40DC49cDcD7FBA525b9ABDa264 已废弃（链上无代码，会触发 BAD_DATA）。 */
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xb9cf45AF87b16853c8F48a16b0495F030309e70f'
-
 /** 检查是否可领取 BeamioBUnits */
 export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
 	try {

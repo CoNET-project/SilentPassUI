@@ -3,10 +3,8 @@
  * Mirrors Merchant OS ledger semantics (biz.tsx) — classification uses txCategory + displayJson.title.
  */
 import { ethers } from 'ethers'
-import { BEAMIO_INDEXER_DIAMOND } from '@/config/chainAddresses'
+import { BEAMIO_INDEXER_DIAMOND, CONET_BUINT } from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
-
-const CONET_BUINT_ADDRESS = '0x1330297821814B06A6DafE3557Fa730F690D7007'
 
 const TX_PAGE_TUPLE =
 	'tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)'
@@ -94,7 +92,7 @@ function normalizeIndexerTxCategoryHex(cat: unknown): string {
 
 function isIndexerBuintConsumePayee(payee: unknown): boolean {
 	const p = typeof payee === 'string' && ethers.isAddress(payee) ? ethers.getAddress(payee).toLowerCase() : ''
-	return p === CONET_BUINT_ADDRESS.toLowerCase()
+	return p === CONET_BUINT.toLowerCase()
 }
 
 function isIndexerFetchedRowBunitLedger(tx: { txCategory: string; payee: string }): boolean {

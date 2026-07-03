@@ -8,7 +8,7 @@ import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorW
 import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatWithThousands } from '@/services/beamio'
-import { formatConetChainTokenBalance } from '@/services/conetUsdcBalance'
+import { formatConetChainTokenBalance, formatConetChainTokenBalanceCompact } from '@/services/conetUsdcBalance'
 
 /**
  * Bounty Board — referral rewards hub.
@@ -220,9 +220,14 @@ export default function BountyBoard() {
 		return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
 	}, [incomeStats?.gbBeneficiary.cumulative])
 	const miningCnetDisplay = useMemo(
-		() => formatConetChainTokenBalance(incomeStats?.cnetBeneficiary.cumulative ?? '0'),
+		() => formatConetChainTokenBalanceCompact(incomeStats?.cnetBeneficiary.cumulative ?? '0', 8),
 		[incomeStats?.cnetBeneficiary.cumulative]
 	)
+	const miningCnetUnitLabel = useMemo(() => {
+		const d = miningCnetDisplay
+		if (d.endsWith('K') || d.endsWith('M')) return ''
+		return 'CNET'
+	}, [miningCnetDisplay])
 	const totalNodesDisplay = useMemo(() => {
 		// Validator / DePIN 成对出现（1:1），不再求和；展示节点对数量。
 		const staked = validatorProfile?.validatorNodeCount ?? 0
@@ -313,11 +318,16 @@ export default function BountyBoard() {
 							</div>
 
 							{/* L1 Network Gas */}
-							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
+							<div className="min-w-0 overflow-hidden border-l border-slate-100 pl-3 dark:border-slate-800">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">L1 Network Gas</p>
-								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
-									{miningCnetDisplay} CNET
+								<p className="mt-1 truncate text-lg font-extrabold tabular-nums leading-tight text-slate-900 sm:text-xl dark:text-slate-50">
+									{miningCnetDisplay}
 								</p>
+								{miningCnetUnitLabel ? (
+									<p className="mt-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+										{miningCnetUnitLabel}
+									</p>
+								) : null}
 							</div>
 
 							{/* Total Nodes */}

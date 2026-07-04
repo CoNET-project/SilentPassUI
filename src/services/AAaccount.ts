@@ -274,6 +274,9 @@ export type AAtoEOARequest = {
 	toEOA: string
 	amountUSDC6: string
 	packedUserOp: AAtoEOAUserOp
+	/** Legacy Base Smart Wallet USDC UserOp relay. */
+	relayChain?: 'base' | 'conet'
+	transferAsset?: string
 }
 
 export type AAtoEOAResponse = {
@@ -346,6 +349,8 @@ export async function AAtoEOA(
 		toEOA,
 		amountUSDC6,
 		packedUserOp,
+		relayChain: 'base',
+		transferAsset: 'base_usdc',
 	}
 	const res = await fetch(url, {
 		method: 'POST',

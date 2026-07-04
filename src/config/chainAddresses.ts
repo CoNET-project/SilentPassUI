@@ -38,6 +38,8 @@ export const CONET_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
 export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
 /** CoNET USDC（ConetTreasury FactoryERC20） */
 export const CONET_USDC = '0xF9240fd613C00d5C479f1E9f1690130c5Fdc8BC3'
+/** GBToken ERC20（Payment GB / paidPool）；与 deployments/conet-addresses.json GBTokenERC20 同步 */
+export const CONET_GB_ERC20 = '0xC3EF02DaE632b4C10abB66e07d92a387c10838D8'
 /** @deprecated minter=旧国库 0x6dC6… */
 export const CONET_USDC_LEGACY_UUPS_V1 = '0x84e55A7d82aEa1243cB88b20dDde9Ba5cea0E134'
 /** @deprecated legacy FactoryERC20 (non-UUPS) */

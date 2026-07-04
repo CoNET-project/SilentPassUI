@@ -1,6 +1,6 @@
 /**
  * AA Smart Wallet multisig over CoNET decentralized chat.
- * Type: `beamio_aa_multisig_v1` — local-first task store + gossip sync (no central API).
+ * Type: `beamio_aa_multisig_v1` — local-first task store + gossip sync; offline sign/import supported.
  */
 
 import { ethers } from 'ethers'
@@ -10,6 +10,15 @@ export const BEAMIO_AA_MULTISIG_TYPE = 'beamio_aa_multisig_v1' as const
 export type AaMultisigAction = 'propose' | 'sign' | 'reject' | 'submitted'
 
 export type AaMultisigTaskKind = 'transfer' | 'set_policy' | 'cancel'
+
+/** CoNET / Base Smart Wallet transfer asset (local + gossip). */
+export type AaMultisigTransferAssetId =
+	| 'cnet'
+	| 'usdc'
+	| 'gb_paid'
+	| 'buint_paid'
+	| 'base_eth'
+	| 'base_usdc'
 
 export type AaMultisigTaskStatus =
 	| 'pending'
@@ -59,6 +68,8 @@ export type AaMultisigTaskLocal = {
 	rejects: AaMultisigRejectEntry[]
 	toEoa?: string
 	amountUsdc6?: string
+	transferAsset?: AaMultisigTransferAssetId
+	amountRaw?: string
 	newManagers?: string[]
 	newThreshold?: number
 	title?: string
@@ -88,6 +99,8 @@ export type AaMultisigProposeInner = AaMultisigInnerBase & {
 	packedUserOp: AaMultisigPackedUserOp
 	toEoa?: string
 	amountUsdc6?: string
+	transferAsset?: AaMultisigTransferAssetId
+	amountRaw?: string
 	newManagers?: string[]
 	newThreshold?: number
 	title?: string
@@ -177,6 +190,44 @@ export function parseAaMultisigInnerFromChatDisplayText(displayText: string): Aa
 	}
 }
 
+/** Parse exported JSON (inner or chat outer line) for offline import. */
+export function parseAaMultisigInnerFromExport(text: string): AaMultisigInner | null {
+	const trimmed = (text ?? '').trim()
+	if (!trimmed) return null
+	try {
+		const obj = JSON.parse(trimmed) as Record<string, unknown>
+		if (obj?.type === BEAMIO_AA_MULTISIG_TYPE && typeof obj.action === 'string') {
+			return obj as unknown as AaMultisigInner
+		}
+		if (typeof obj.text === 'string') {
+			const fromOuter = parseAaMultisigInnerFromChatDisplayText(trimmed)
+			if (fromOuter) return fromOuter
+		}
+	} catch {
+		/* fall through */
+	}
+	return parseAaMultisigInnerFromChatDisplayText(trimmed)
+}
+
+export function serializeAaMultisigInnerForExport(inner: AaMultisigInner): string {
+	return JSON.stringify(inner, null, 2)
+}
+
+export function resolveFromEoaForMultisigInner(inner: AaMultisigInner): string | null {
+	switch (inner.action) {
+		case 'propose':
+			return normEoa(inner.creatorEoa)
+		case 'sign':
+			return normEoa(inner.signerEoa)
+		case 'reject':
+			return normEoa(inner.signerEoa)
+		case 'submitted':
+			return normEoa(inner.submitterEoa)
+		default:
+			return null
+	}
+}
+
 export function buildAaMultisigChatOuterLine(inner: AaMultisigInner): string {
 	return JSON.stringify({
 		sendId: inner.sendId,
@@ -236,6 +287,8 @@ export function mergeInboundMultisigInner(
 			rejects: [],
 			toEoa: inner.toEoa ? ethers.getAddress(inner.toEoa) : undefined,
 			amountUsdc6: inner.amountUsdc6,
+			transferAsset: inner.transferAsset,
+			amountRaw: inner.amountRaw,
 			newManagers: inner.newManagers?.map((m) => ethers.getAddress(m)),
 			newThreshold: inner.newThreshold,
 			title: inner.title,

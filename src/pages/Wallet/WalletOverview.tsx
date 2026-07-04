@@ -2,8 +2,9 @@
  * Wallet overview — aligned with pages/Vouchers/example/codingTemp.html (Wallet, 1–245)
  */
 
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ethers } from 'ethers'
 import { Gift, Hexagon } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -28,9 +29,12 @@ export default function WalletOverview() {
 		myBrandCards,
 		myBrandCardDetails,
 		myBrandsFeedLoading,
+		setShowFooter,
 	} = useDaemonContext()
 
 	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
+	const aaAccount = profiles?.[0]?.aaAccount?.trim() ?? ''
+	const showAaMultisigIcon = aaAccount.length > 0
 	const eoaLower = eoa.toLowerCase()
 	const { isRedeemAdmin } = useBusinessStartKetRedeemAdmin(eoa)
 	const showRedeemAdminIcon = isRedeemAdmin === true
@@ -44,11 +48,26 @@ export default function WalletOverview() {
 
 	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)
 
+	const openMerchantDetail = useCallback(
+		(cardAddress: string) => {
+			const trimmed = cardAddress.trim()
+			if (!trimmed || !ethers.isAddress(trimmed)) return
+			setShowFooter(false)
+			navigate('/discover', {
+				state: {
+					openDiscoverMerchantCard: ethers.getAddress(trimmed),
+					discoverDetailReturnTo: '/wallet',
+				},
+			})
+		},
+		[navigate, setShowFooter],
+	)
+
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
 
 	return (
 		<div className="flex h-full min-h-0 flex-1 flex-col bg-[#F2F2F7] text-slate-900 dark:bg-slate-950 dark:text-slate-50">
-			{/* 顶栏：左侧 Wallet 胶囊；BusinessStartKetRedeem admin 可见右侧 redeem 入口 */}
+			{/* 顶栏：左侧 Wallet 胶囊；右上 AA Multisig / Redeem admin 圆形入口 */}
 			<div
 				className="fixed left-4 right-4 z-40 flex items-center justify-between gap-2 transition-opacity duration-300"
 				style={{
@@ -73,6 +92,18 @@ export default function WalletOverview() {
 				</button>
 
 				<div className="flex items-center gap-2">
+					{showAaMultisigIcon ? (
+						<button
+							type="button"
+							onClick={() => navigate('/wallet/aa-multisig')}
+							className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${capsuleChrome} text-[#8d3a8b] transition-transform active:scale-[0.98] hover:bg-slate-50 dark:hover:bg-slate-700/50`}
+							style={{ pointerEvents: capsulePointer }}
+							aria-label="Smart Wallet Multisig"
+							title="Smart Wallet Multisig"
+						>
+							<Hexagon className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						</button>
+					) : null}
 					{showRedeemAdminIcon ? (
 						<button
 							type="button"
@@ -99,22 +130,10 @@ export default function WalletOverview() {
 					style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
 				/>
 				<main className="mx-auto w-full max-w-2xl space-y-6 px-6 pt-2">
-					<button
-						type="button"
-						onClick={() => navigate('/wallet/aa-multisig')}
-						className="flex w-full items-center gap-3 rounded-2xl border border-[#eadcf7] bg-[#f5ecff] px-4 py-3 text-left shadow-sm transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-900"
-					>
-						<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b] text-white">
-							<Hexagon className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-						</div>
-						<div className="min-w-0 flex-1">
-							<p className="text-sm font-semibold text-[#424655] dark:text-slate-100">Smart Wallet Multisig</p>
-							<p className="text-xs text-slate-500">Co-sign via CoNET chat · local-first</p>
-						</div>
-					</button>
 					<WalletMerchantPassStack
 						view={merchantPassesView}
 						onSeeAll={() => setShowMyBrandsDrawer(true)}
+						onOpenMerchantDetail={openMerchantDetail}
 					/>
 				</main>
 			</div>

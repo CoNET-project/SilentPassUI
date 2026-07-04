@@ -7,6 +7,9 @@ import {
 	getAaMultisigTask,
 	ingestAaMultisigTaskLocal,
 } from '@/utils/aaMultisigLocalStore'
+import { ingestAaMultisigFromExport } from '@/utils/aaMultisigOfflineSync'
+
+export { ingestAaMultisigFromExport }
 
 /**
  * Parse inbound CoNET chat displayText and merge into local AA multisig task store.

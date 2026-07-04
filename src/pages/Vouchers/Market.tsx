@@ -1,6 +1,6 @@
 import { IpfsImg } from '@/components/IpfsImg';
 import { useObjectImgSrc } from '@/components/card/useObjectImgSrc';
-import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
+import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import {
   ChevronRight,
   Server,
@@ -57,7 +57,7 @@ import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage } from "@/services/beamio"
 import { fiatPrefix, formatAmount } from "@/services/currency"
-import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	discoverUsdcTopupRulesHintText,
 	eoaCanSelfFundDiscoverTopup,
@@ -601,6 +601,73 @@ type DiscoverFeaturedCard = {
 	rechargeBonusSidePill: string | null
 	rechargeBonusDisplay: string | null
 	discoverAbout: ShareTokenMetadataDiscoverAbout | null
+}
+
+/** Wallet / deep-link: held merchant card may be absent from `/api/latestCards`. */
+function buildDiscoverFeaturedCardFromMerchantDb(
+	cardAddress: string,
+	meta: CardMetadataFromUri | null,
+	resolveDisplayName: (cardAddress: string | undefined) => string,
+	resolveImage: (cardAddress: string | undefined) => string,
+): DiscoverFeaturedCard {
+	const dbImage = resolveImage(cardAddress)?.trim() || ''
+	const programName = meta?.name?.trim() || resolveDisplayName(cardAddress) || 'Merchant'
+	const category = classifyDiscoverMerchantCategory({
+		name: programName,
+		programDescription: meta?.programDescription ?? '',
+		categoryId: meta?.categoryId ?? null,
+	})
+	const subtitleOverride =
+		DISCOVER_CARD_SUBTITLE_OVERRIDES[resolveDiscoverCardPanelKey(cardAddress)]
+	const hero = resolveDiscoverFeaturedHeroImage(cardAddress, {
+		programBackgroundImage: merchantBackgroundImageFromMetadataRoot(meta as Record<string, unknown> | null),
+		merchantImage: merchantBackgroundImageFromMetadataRoot(meta as Record<string, unknown> | null),
+		dbImage: dbImage || meta?.image || meta?.icon || null,
+		fallbackIndex: 0,
+	})
+	const metaRecord = meta as Record<string, unknown> | null
+	const primaryBonus = resolveDiscoverPrimaryRechargeBonus(cardAddress, metaRecord)
+	const currency = 'CAD'
+	const rechargeBonusSidePill = primaryBonus
+		? formatDiscoverRechargeBonusSidePillText(primaryBonus, currency)
+		: null
+	const rechargeBonusDisplay = primaryBonus
+		? formatDiscoverRechargeBonusDisplayString(primaryBonus, currency)
+		: null
+	return {
+		id: cardAddress,
+		cardAddress,
+		category,
+		title: programName,
+		programName,
+		subtitle: subtitleOverride || meta?.programDescription?.trim() || 'Member benefits and offers',
+		assetLabel: tu('member_benefits'),
+		rating: '4.8',
+		image: hero,
+		logo:
+			merchantIconUrlFromMetadataRoot(metaRecord) ??
+			meta?.icon?.trim() ??
+			meta?.image?.trim() ??
+			(dbImage || null),
+		currency,
+		primaryRechargeBonus: primaryBonus,
+		rechargeBonusSidePill,
+		rechargeBonusDisplay,
+		discoverAbout: parseDiscoverAboutFromShare(
+			readDiscoverNestedObject(metaRecord, 'shareTokenMetadata'),
+		),
+	}
+}
+
+function resolveDiscoverMerchantDeepLinkTarget(
+	location: ReturnType<typeof useLocation>,
+): string | null {
+	const state = location.state as { openDiscoverMerchantCard?: string } | null
+	const fromState = state?.openDiscoverMerchantCard?.trim() ?? ''
+	const fromUrl = parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))
+	const targetAddr = (fromState || fromUrl?.cardAddress || '').trim()
+	if (!targetAddr || !ethers.isAddress(targetAddr)) return null
+	return ethers.getAddress(targetAddr)
 }
 
 function DiscoverFeaturedLikeCountBadge({ count }: { count: number | null }) {
@@ -3452,7 +3519,7 @@ export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, myAddress, setShowFooter, chatSearchOpen, setChatSearchOpen, beamio, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards } = useDaemonContext()
-	const { registerCardAddresses, mergeTrustedCards, resolveDisplayName, resolveImage } = useMerchantCardDatabase()
+	const { registerCardAddresses, mergeTrustedCards, resolveDisplayName, resolveImage, fetchCardMetadata, peekMetadata } = useMerchantCardDatabase()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
@@ -3471,6 +3538,11 @@ export default function Market() {
 	const [qrPayload, setQrPayload] = useState<string>("")
 	const [discoverCategory, setDiscoverCategory] = useState<DiscoverFilterTab>("all")
 	const [discoverMerchantDetail, setDiscoverMerchantDetail] = useState<DiscoverFeaturedCard | null>(null)
+	const [discoverDetailEnterImmediate, setDiscoverDetailEnterImmediate] = useState(false)
+	const discoverDeepLinkTarget = useMemo(
+		() => resolveDiscoverMerchantDeepLinkTarget(location),
+		[location],
+	)
 	const discoverCategoryTabsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
 		if (discoverCategory === "all") return DISCOVER_CATEGORY_OPTIONS
 		const selected = DISCOVER_CATEGORY_OPTIONS.find((o) => o.id === discoverCategory)
@@ -3634,15 +3706,27 @@ export default function Market() {
 		setChatSearchOpen(true)
 	}
 
-	const openDiscoverMerchantDetail = (card: DiscoverFeaturedCard) => {
-		setDiscoverMerchantDetail(card)
-		setShowFooter(false)
-	}
+	const openDiscoverMerchantDetail = useCallback(
+		(card: DiscoverFeaturedCard, opts?: { immediate?: boolean }) => {
+			if (opts?.immediate) setDiscoverDetailEnterImmediate(true)
+			setDiscoverMerchantDetail(card)
+			setShowFooter(false)
+		},
+		[setShowFooter],
+	)
 
-	const closeDiscoverMerchantDetail = () => {
+	const closeDiscoverMerchantDetail = useCallback(() => {
+		const returnTo = discoverDetailReturnToRef.current
+		discoverDetailReturnToRef.current = null
 		setDiscoverMerchantDetail(null)
+		setDiscoverDetailEnterImmediate(false)
+		if (returnTo) {
+			navigate(returnTo, { replace: true })
+			setShowFooter(true)
+			return
+		}
 		setShowFooter(true)
-	}
+	}, [navigate, setShowFooter])
 
 	const discoverFeaturedCards = useMemo<DiscoverFeaturedCard[]>(() => {
 		const rows: DiscoverFeaturedCard[] = latestCardsRows.map((card, idx) => {
@@ -3700,23 +3784,87 @@ export default function Market() {
 		return []
 	}, [latestCardsRows, resolveDisplayName, resolveImage])
 
-	const discoverDeepLinkOpenedRef = useRef(false)
-	useEffect(() => {
-		if (discoverDeepLinkOpenedRef.current) return
-		const state = location.state as {
-			openDiscoverMerchantCard?: string
-			discoverShareReferrerEoa?: string | null
-		} | null
-		const fromState = state?.openDiscoverMerchantCard?.trim() ?? ''
-		const fromUrl = parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))
-		const targetAddr = (fromState || fromUrl?.cardAddress || '').trim()
-		if (!targetAddr || !ethers.isAddress(targetAddr)) return
-		const cardNorm = ethers.getAddress(targetAddr).toLowerCase()
+	const discoverDeepLinkHandledForRef = useRef<string | null>(null)
+	const discoverDetailReturnToRef = useRef<string | null>(null)
+
+	useLayoutEffect(() => {
+		if (!discoverDeepLinkTarget) return
+		const state = location.state as { discoverDetailReturnTo?: string } | null
+		const returnTo = state?.discoverDetailReturnTo?.trim()
+		if (returnTo) discoverDetailReturnToRef.current = returnTo
+		setShowFooter(false)
+	}, [discoverDeepLinkTarget, location.state, setShowFooter])
+
+	useLayoutEffect(() => {
+		if (!discoverDeepLinkTarget) return
+		const cardNorm = discoverDeepLinkTarget.toLowerCase()
+		if (discoverDeepLinkHandledForRef.current === cardNorm) return
+
 		const match = discoverFeaturedCards.find((c) => c.cardAddress?.toLowerCase() === cardNorm)
-		if (!match) return
-		discoverDeepLinkOpenedRef.current = true
-		openDiscoverMerchantDetail(match)
-	}, [discoverFeaturedCards, location.state])
+		if (match) {
+			discoverDeepLinkHandledForRef.current = cardNorm
+			openDiscoverMerchantDetail(match, { immediate: true })
+			navigate('.', { replace: true, state: {} })
+			return
+		}
+
+		const peeked = peekMetadata(discoverDeepLinkTarget)
+		const dbName = resolveDisplayName(discoverDeepLinkTarget)?.trim()
+		if (peeked || dbName) {
+			const fallback = buildDiscoverFeaturedCardFromMerchantDb(
+				discoverDeepLinkTarget,
+				peeked,
+				resolveDisplayName,
+				resolveImage,
+			)
+			discoverDeepLinkHandledForRef.current = cardNorm
+			openDiscoverMerchantDetail(fallback, { immediate: true })
+			navigate('.', { replace: true, state: {} })
+		}
+	}, [
+		discoverDeepLinkTarget,
+		discoverFeaturedCards,
+		navigate,
+		openDiscoverMerchantDetail,
+		peekMetadata,
+		resolveDisplayName,
+		resolveImage,
+	])
+
+	useEffect(() => {
+		if (!discoverDeepLinkTarget) return
+		const cardNorm = discoverDeepLinkTarget.toLowerCase()
+		if (discoverDeepLinkHandledForRef.current === cardNorm) return
+		if (latestCardsLoading) return
+
+		let cancelled = false
+		void (async () => {
+			await fetchCardMetadata(discoverDeepLinkTarget)
+			if (cancelled || discoverDeepLinkHandledForRef.current === cardNorm) return
+			const fallback = buildDiscoverFeaturedCardFromMerchantDb(
+				discoverDeepLinkTarget,
+				peekMetadata(discoverDeepLinkTarget),
+				resolveDisplayName,
+				resolveImage,
+			)
+			discoverDeepLinkHandledForRef.current = cardNorm
+			openDiscoverMerchantDetail(fallback, { immediate: true })
+			navigate('.', { replace: true, state: {} })
+		})()
+
+		return () => {
+			cancelled = true
+		}
+	}, [
+		discoverDeepLinkTarget,
+		fetchCardMetadata,
+		latestCardsLoading,
+		navigate,
+		openDiscoverMerchantDetail,
+		peekMetadata,
+		resolveDisplayName,
+		resolveImage,
+	])
 
 	const filteredFeaturedCards = useMemo(
 		() => {
@@ -3730,6 +3878,7 @@ export default function Market() {
 	)
 
 	const showDiscoverEmpty = !latestCardsLoading && filteredFeaturedCards.length === 0
+	const hideDiscoverMainForDeepLink = Boolean(discoverDeepLinkTarget) && discoverMerchantDetail == null
 
 	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
 
@@ -3742,7 +3891,12 @@ export default function Market() {
 
 	return (
 		<>
-		<div className="w-full h-full min-h-0 h-screen bg-[#f5f7f9] dark:bg-slate-950 overflow-x-hidden overflow-y-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100 text-[#2c2f31] dark:text-slate-100 antialiased">
+		<div
+			className={[
+				'w-full h-full min-h-0 h-screen bg-[#f5f7f9] dark:bg-slate-950 overflow-x-hidden overflow-y-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] selection:bg-blue-100 text-[#2c2f31] dark:text-slate-100 antialiased',
+				hideDiscoverMainForDeepLink ? 'invisible' : '',
+			].join(' ')}
+		>
 
 		{/* 滚动容器：Discover 布局对齐 example/market.html */}
 		<div
@@ -3884,10 +4038,10 @@ export default function Market() {
 				<motion.div
 					key={`discover-merchant-${discoverMerchantDetail.id}`}
 					className="fixed inset-0 z-[100] flex flex-col bg-[#f5f7f9] dark:bg-slate-950"
-					initial={{ x: "100%" }}
+					initial={discoverDetailEnterImmediate ? false : { x: '100%' }}
 					animate={{ x: 0 }}
-					exit={{ x: "100%" }}
-					transition={{ duration: 0.28, ease: "easeOut" }}
+					exit={{ x: '100%' }}
+					transition={discoverDetailEnterImmediate ? { duration: 0 } : { duration: 0.28, ease: 'easeOut' }}
 					onTouchMove={(e) => e.stopPropagation()}
 				>
 					<DiscoverMerchantDetailFullScreen

@@ -1,11 +1,12 @@
 import { IpfsImg } from '@/components/IpfsImg';
 import React from 'react'
 import { Store, Info, QrCode, ShoppingBasket, type LucideIcon } from 'lucide-react'
+import { ethers } from 'ethers'
 import type { UserCardInfo } from '@/services/BeamioCard'
 import type { WalletMerchantPassStackDisplay } from '@/pages/Wallet/walletMerchantPassDisplay'
 import { STACK_CARD_H, STACK_STEP_PX } from '@/pages/Wallet/walletMerchantPassStackLayout'
 
-const FOOTER_ICONS = [Info, QrCode, ShoppingBasket] as const
+const FOOTER_ICONS = [QrCode, ShoppingBasket] as const
 
 type Props = {
 	uc: UserCardInfo
@@ -18,14 +19,17 @@ type Props = {
 	isStackExpanded: boolean
 	stackCount: number
 	onToggleExpand: () => void
+	onOpenMerchantDetail?: (cardAddress: string) => void
 }
 
 function PassCardFace({
 	display,
 	stackIdx,
+	suppressFooterIcon,
 }: {
 	display: WalletMerchantPassStackDisplay
 	stackIdx: number
+	suppressFooterIcon?: boolean
 }) {
 	const FooterIcon: LucideIcon = FOOTER_ICONS[stackIdx % FOOTER_ICONS.length]!
 	const { tierTheme, tierGradient, title, tierLbl, balanceLine, balanceSubtitle, imgUrl } = display
@@ -92,7 +96,11 @@ function PassCardFace({
 				</div>
 				<div className="mt-auto flex items-end justify-between" style={{ color: tierTheme.accent }}>
 					<p className="text-[10px] font-bold uppercase">Pass</p>
-					<FooterIcon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+					{suppressFooterIcon ? (
+						<span className="h-4 w-4 shrink-0" aria-hidden />
+					) : (
+						<FooterIcon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+					)}
 				</div>
 			</div>
 		</>
@@ -100,6 +108,7 @@ function PassCardFace({
 }
 
 function WalletMerchantPassStackCardInner({
+	uc,
 	display,
 	stackIdx,
 	topPx,
@@ -108,6 +117,7 @@ function WalletMerchantPassStackCardInner({
 	isStackExpanded,
 	stackCount,
 	onToggleExpand,
+	onOpenMerchantDetail,
 }: Props) {
 	const { tierTheme, title } = display
 	const zIndex = isExpanded ? 100 + stackCount : stackIdx + 1
@@ -116,6 +126,11 @@ function WalletMerchantPassStackCardInner({
 	const canExpandPeek = !isStackExpanded && !isFrontmost
 	const canCollapse = isStackExpanded && isExpanded
 	const peekHitHeight = STACK_STEP_PX
+	const cardAddress = uc.cardAddress?.trim() ?? ''
+	const canOpenMerchantDetail =
+		Boolean(onOpenMerchantDetail) && cardAddress.length > 0 && ethers.isAddress(cardAddress)
+	const showMerchantDetailControl =
+		canOpenMerchantDetail && (isExpanded || (isFrontmost && !isStackExpanded))
 
 	const cardShellStyle: React.CSSProperties = {
 		top,
@@ -138,8 +153,32 @@ function WalletMerchantPassStackCardInner({
 				style={cardShellStyle}
 				aria-hidden
 			>
-				<PassCardFace display={display} stackIdx={stackIdx} />
+				<PassCardFace
+					display={display}
+					stackIdx={stackIdx}
+					suppressFooterIcon={showMerchantDetailControl}
+				/>
 			</div>
+
+			{showMerchantDetailControl ? (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation()
+						onOpenMerchantDetail?.(ethers.getAddress(cardAddress))
+					}}
+					className="absolute flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 backdrop-blur-sm transition active:scale-[0.96] hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
+					style={{
+						top: top + STACK_CARD_H - 44,
+						right: 16,
+						zIndex: zIndex + 2,
+						transition: 'top 300ms ease-out',
+					}}
+					aria-label={`View ${title} merchant details`}
+				>
+					<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+				</button>
+			) : null}
 
 			{canExpandPeek ? (
 				<button
@@ -200,5 +239,6 @@ export const WalletMerchantPassStackCard = React.memo(
 		prev.isExpanded === next.isExpanded &&
 		prev.isStackExpanded === next.isStackExpanded &&
 		prev.stackCount === next.stackCount &&
+		prev.onOpenMerchantDetail === next.onOpenMerchantDetail &&
 		prev.display.sig === next.display.sig
 )

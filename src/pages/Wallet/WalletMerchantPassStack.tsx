@@ -14,6 +14,7 @@ import {
 type Props = {
 	view: WalletMerchantPassesStickyView
 	onSeeAll: () => void
+	onOpenMerchantDetail?: (cardAddress: string) => void
 }
 
 function PassStackSkeleton({ cardCount }: { cardCount: number }) {
@@ -28,7 +29,7 @@ function PassStackSkeleton({ cardCount }: { cardCount: number }) {
 	)
 }
 
-function WalletMerchantPassStackInner({ view, onSeeAll }: Props) {
+function WalletMerchantPassStackInner({ view, onSeeAll, onOpenMerchantDetail }: Props) {
 	const { stackCards, details, badgeCount, showEmpty, showSkeleton, showStack } = view
 	const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
 	const stackAddrsKey = stackCards.map((c) => c.cardAddress.toLowerCase()).join('|')
@@ -109,6 +110,7 @@ function WalletMerchantPassStackInner({ view, onSeeAll }: Props) {
 								onToggleExpand={() =>
 									setExpandedIdx((prev) => (prev === stackIdx ? null : stackIdx))
 								}
+								onOpenMerchantDetail={onOpenMerchantDetail}
 							/>
 						)
 					})}
@@ -121,6 +123,7 @@ function WalletMerchantPassStackInner({ view, onSeeAll }: Props) {
 }
 
 export const WalletMerchantPassStack = React.memo(WalletMerchantPassStackInner, (prev, next) => {
+	if (prev.onOpenMerchantDetail !== next.onOpenMerchantDetail) return false
 	if (prev.view.showEmpty !== next.view.showEmpty) return false
 	if (prev.view.showSkeleton !== next.view.showSkeleton) return false
 	if (prev.view.showStack !== next.view.showStack) return false

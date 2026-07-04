@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Gift } from 'lucide-react'
+import { Gift, Hexagon } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useBusinessStartKetRedeemAdmin } from '@/hooks/useBusinessStartKetRedeemAdmin'
@@ -99,6 +99,19 @@ export default function WalletOverview() {
 					style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
 				/>
 				<main className="mx-auto w-full max-w-2xl space-y-6 px-6 pt-2">
+					<button
+						type="button"
+						onClick={() => navigate('/wallet/aa-multisig')}
+						className="flex w-full items-center gap-3 rounded-2xl border border-[#eadcf7] bg-[#f5ecff] px-4 py-3 text-left shadow-sm transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-900"
+					>
+						<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b] text-white">
+							<Hexagon className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						</div>
+						<div className="min-w-0 flex-1">
+							<p className="text-sm font-semibold text-[#424655] dark:text-slate-100">Smart Wallet Multisig</p>
+							<p className="text-xs text-slate-500">Co-sign via CoNET chat · local-first</p>
+						</div>
+					</button>
 					<WalletMerchantPassStack
 						view={merchantPassesView}
 						onSeeAll={() => setShowMyBrandsDrawer(true)}

@@ -18,6 +18,8 @@ import {
 	getCardBasicMetadataStaleWhileRevalidate,
 	getAAAccount,
 	rememberCardBasicMetadataTrusted,
+	resolveMyCardAssetsForFeedRow,
+	enrichMyCardAssetsWithProgramStatHoldings,
 	type UserCardInfo,
 	type CardActiveIssuedCouponSeriesItem,
 } from '@/services/BeamioCard'
@@ -1129,9 +1131,22 @@ export function DaemonProvider({ children }: DaemonProps) {
               : null
             if (lateSummary?.count) couponsForRow = lateSummary
           }
+          let mergedAssets = resolveMyCardAssetsForFeedRow(
+              assetsFromMyAssets,
+              assetsFromWallet,
+              prevRow?.assets ?? null
+            )
+          if (eoaNormForCoupons && ethers.isAddress(eoaNormForCoupons)) {
+            mergedAssets = await enrichMyCardAssetsWithProgramStatHoldings(
+              mergedAssets,
+              uc.cardAddress,
+              eoaNormForCoupons,
+              aaNormForCoupons
+            )
+          }
           next[key] = {
             meta: meta ?? prevRow?.meta ?? null,
-            assets: assetsFromMyAssets ?? assetsFromWallet ?? prevRow?.assets ?? null,
+            assets: mergedAssets,
             claimableCoupons: couponsForRow,
             ownedCatalogs,
           }

@@ -57,21 +57,35 @@ function hasPositivePoints(pointsRaw: unknown): boolean {
 	return Number.isFinite(n) && n > 0
 }
 
-function hasActivePassNft(nftsRaw: unknown): boolean {
+function hasPositiveChargeRewardPoints(raw: unknown): boolean {
+	if (raw == null || String(raw).trim() === '') return false
+	const n = Number(raw)
+	return Number.isFinite(n) && n > 0
+}
+
+/** 任意 tokenId > 0 的 ERC-1155 持仓（含已过期会员 NFT / issued coupon）。 */
+function hasAnyMerchantNftHolding(nftsRaw: unknown): boolean {
 	if (!Array.isArray(nftsRaw)) return false
 	return nftsRaw.some((n) => {
 		const tokenId = Number((n as { tokenId?: string | number })?.tokenId ?? 0)
-		const expired = Boolean((n as { isExpired?: boolean })?.isExpired)
-		return tokenId > 0 && !expired
+		return tokenId > 0
 	})
+}
+
+function myBrandRowHasMerchantHoldings(row: MyBrandCardFeedDetailsMap[string]): boolean {
+	if (hasPositivePoints(row.assets?.points)) return true
+	if (hasPositiveChargeRewardPoints(row.assets?.chargeRewardPoints)) return true
+	if (hasAnyMerchantNftHolding(row.assets?.nfts)) return true
+	if ((row.claimableCoupons?.count ?? 0) > 0) return true
+	if ((row.ownedCatalogs?.count ?? 0) > 0) return true
+	return false
 }
 
 function isDisplayableMerchantPass(card: UserCardInfo, details: MyBrandCardFeedDetailsMap): boolean {
 	const row = details[card.cardAddress.toLowerCase()]
 	// Detail 未就绪时暂时保留，等可信资产详情回来后再决定是否展示。
 	if (row === undefined) return true
-	if (!row.assets) return false
-	return hasPositivePoints(row.assets.points) || hasActivePassNft(row.assets.nfts)
+	return myBrandRowHasMerchantHoldings(row)
 }
 
 /**

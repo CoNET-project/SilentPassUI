@@ -17,6 +17,11 @@ import {
 } from "@/utils/cardBasicMetadataGlobalCache";
 import { discoverCategoryFieldsFromMetadataRoot } from "@/utils/discoverMerchantCategory";
 import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
+import {
+	fetchCardLevelStatNftHoldings,
+	userHasAnyCardLevelStatBalance,
+	userHasAnyProgramAssetOnCard,
+} from "@/utils/beamioCardUserCumulativeStatHoldings";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
 import { cardAbi } from "../utils/abis";
@@ -1756,6 +1761,73 @@ function walletAssetsRowHasHoldings(row: WalletAssetsCardRow): boolean {
 	return nfts.some((n) => Number(n?.tokenId ?? 0) > 0)
 }
 
+/** 与 getWalletAssets holder 判定一致：点数 / charge-reward / 任意 tokenId>0 NFT。 */
+export function myCardAssetsHasHoldings(assets: MyCardAssets | null | undefined): boolean {
+	if (!assets) return false
+	const pts = Number(assets.points ?? 0)
+	const crp = Number(assets.chargeRewardPoints ?? 0)
+	if (Number.isFinite(pts) && pts > 0) return true
+	if (Number.isFinite(crp) && crp > 0) return true
+	return (assets.nfts ?? []).some((n) => Number(n?.tokenId ?? 0) > 0)
+}
+
+/** My Brands feeder：getMyAssets 空 NFT 时保留 wallet 快照中的持仓。 */
+export function resolveMyCardAssetsForFeedRow(
+	fromMyAssets: MyCardAssets | null,
+	fromWallet: MyCardAssets | null | undefined,
+	prev: MyCardAssets | null | undefined
+): MyCardAssets | null {
+	const wallet = fromWallet ?? null
+	const prevAssets = prev ?? null
+	if (fromMyAssets) {
+		if (wallet) {
+			const myHasNft = (fromMyAssets.nfts ?? []).some((n) => Number(n?.tokenId ?? 0) > 0)
+			const walletHasNft = (wallet.nfts ?? []).some((n) => Number(n?.tokenId ?? 0) > 0)
+			if (!myHasNft && walletHasNft) {
+				return { ...fromMyAssets, nfts: wallet.nfts }
+			}
+			if (!myCardAssetsHasHoldings(fromMyAssets) && myCardAssetsHasHoldings(wallet)) {
+				return wallet
+			}
+		}
+		return fromMyAssets
+	}
+	return wallet ?? prevAssets
+}
+
+/** Merge social / user-cumulative stat ERC-1155 (#3–#30 on EOA) into assets.nfts for wallet display. */
+export async function enrichMyCardAssetsWithProgramStatHoldings(
+	assets: MyCardAssets | null,
+	cardAddress: string,
+	eoa: string,
+	aa?: string | null
+): Promise<MyCardAssets | null> {
+	const statNfts = await fetchCardLevelStatNftHoldings(cardAddress, eoa, aa)
+	if (!statNfts.length) return assets
+	const existingIds = new Set((assets?.nfts ?? []).map((n) => String(n.tokenId)))
+	const mergedNfts = [...(assets?.nfts ?? [])]
+	for (const n of statNfts) {
+		if (!existingIds.has(n.tokenId)) mergedNfts.push(n)
+	}
+	if (assets) return { ...assets, nfts: mergedNfts }
+	let cardCurrency: ICurrency = 'CAD'
+	try {
+		const { provider } = await providerForBeamioUserCard(cardAddress)
+		const c = new ethers.Contract(cardAddress, ['function currency() view returns (uint8)'], provider)
+		cardCurrency = getICurrency(await c.currency())
+	} catch {
+		/* keep default */
+	}
+	return {
+		address: aa && ethers.isAddress(aa) ? ethers.getAddress(aa) : '',
+		cardAddress: ethers.getAddress(cardAddress),
+		cardOwner: null,
+		points: '0',
+		cardCurrency,
+		nfts: mergedNfts,
+	}
+}
+
 function userCardInfoFromWalletAssetsRow(row: WalletAssetsCardRow): UserCardInfo | null {
 	const rawAddr = String(row.cardAddress ?? '').trim()
 	if (!rawAddr || !ethers.isAddress(rawAddr)) return null
@@ -1934,7 +2006,25 @@ async function fetchHeldCardsFromLatestForEOA(
 			const key = addr.toLowerCase()
 			if (existingCardAddresses.has(key)) return null
 			try {
-				const card = new ethers.Contract(addr, ownershipAbi, baseEndpoint)
+				const { provider } = await providerForBeamioUserCard(addr)
+				const chainHasAsset = await userHasAnyProgramAssetOnCard(addr, eoa)
+				if (chainHasAsset === true) {
+					const currency = String(it?.currency ?? 'CAD').toUpperCase()
+					const priceNum = Number(it?.priceInCurrencyE6 ?? 0)
+					const priceE6 = Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0
+					const ptsPer1Currency = priceE6 > 0 ? (1_000_000 / priceE6) : 0
+					const cardName =
+						String(it?.metadata?.shareTokenMetadata?.name ?? 'User Card').trim() || 'User Card'
+					return {
+						cardAddress: addr,
+						name: cardName,
+						currency,
+						priceE6: String(priceE6),
+						ptsPer1Currency: String(ptsPer1Currency),
+					} as UserCardInfo
+				}
+
+				const card = new ethers.Contract(addr, ownershipAbi, provider)
 				let hasPoints = false
 				let hasNft = false
 				try {
@@ -1946,13 +2036,17 @@ async function fetchHeldCardsFromLatestForEOA(
 					hasNft =
 						Array.isArray(nftsRaw) && nftsRaw.some((n) => Number(n?.tokenId ?? 0n) > 0)
 				} catch {
-					/* fall through to issued-coupon balance scan */
+					/* fall through to stat / issued-coupon balance scan */
+				}
+				let hasStatNft = false
+				if (!hasPoints && !hasNft && chainHasAsset === null) {
+					hasStatNft = await userHasAnyCardLevelStatBalance(addr, eoa, aa)
 				}
 				let hasIssuedCoupon = false
-				if (!hasPoints && !hasNft) {
+				if (!hasPoints && !hasNft && !hasStatNft) {
 					const series = await fetchCardActiveIssuedCouponSeriesTrusted(addr, 10)
 					if (series?.length) {
-						const balContract = new ethers.Contract(addr, MY_BRANDS_COUPON_BALANCE_ABI, baseEndpoint)
+						const balContract = new ethers.Contract(addr, MY_BRANDS_COUPON_BALANCE_ABI, provider)
 						for (const row of series) {
 							let tokenId: bigint
 							try {
@@ -1975,7 +2069,7 @@ async function fetchHeldCardsFromLatestForEOA(
 						}
 					}
 				}
-				if (!hasPoints && !hasNft && !hasIssuedCoupon) return null
+				if (!hasPoints && !hasNft && !hasStatNft && !hasIssuedCoupon) return null
 
 				const currency = String(it?.currency ?? 'CAD').toUpperCase()
 				const priceNum = Number(it?.priceInCurrencyE6 ?? 0)
@@ -2074,14 +2168,13 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 		if (eoa && ethers.isAddress(eoa)) {
 			if (walletSnapshot !== null) {
 				mergeDiscoveredHolderCards(walletSnapshot.holderCards, seen, merged, holderCards)
-			} else {
-				const discoveredHolderCards = await fetchHeldCardsFromLatestForEOA(
-					ethers.getAddress(eoa),
-					seen,
-					aa
-				)
-				mergeDiscoveredHolderCards(discoveredHolderCards, seen, merged, holderCards)
 			}
+			const discoveredHolderCards = await fetchHeldCardsFromLatestForEOA(
+				ethers.getAddress(eoa),
+				seen,
+				aa ?? walletResolvedAaAddress
+			)
+			mergeDiscoveredHolderCards(discoveredHolderCards, seen, merged, holderCards)
 		}
 
 		const ownerCards = merged.filter(
@@ -3115,7 +3208,8 @@ export const getMyAssets = async (
 				}
 				profile.aaAccount = aa
 			}
-			// 1. 实例化卡合约（用 getOwnershipByEOA 由卡按自身 gateway 的 AA Factory 解析 EOA→AA，与购卡时一致）
+			// 1. 实例化卡合约（CoNET 商户卡须用 providerForBeamioUserCard，非 Base RPC）
+			const { provider: cardProvider } = await providerForBeamioUserCard(cardAddress)
 			const cardContract = new ethers.Contract(
             cardAddress,
             [
@@ -3123,7 +3217,7 @@ export const getMyAssets = async (
                 'function currency() view returns (uint8)',
                 'function balanceOf(address account, uint256 id) view returns (uint256)',
             ],
-            baseEndpoint
+            cardProvider
         );
 
         const eoa = profile.keyID;
@@ -3177,11 +3271,19 @@ export const getMyAssets = async (
 			usdcBalance: usdcBalance
         }
 
-			// 打印结果
-			console.table(result.nfts)
+			const enriched = await enrichMyCardAssetsWithProgramStatHoldings(
+				result,
+				cardAddress,
+				eoa,
+				profile.aaAccount
+			)
+			const finalResult = enriched ?? result
 
-			getMyAssetsCache.set(key, { result, timestamp: Date.now() })
-			return result
+			// 打印结果
+			console.table(finalResult.nfts)
+
+			getMyAssetsCache.set(key, { result: finalResult, timestamp: Date.now() })
+			return finalResult
 		} catch (error: unknown) {
 			if (isRpcQuotaOrNetworkError(error)) reportRpcFailure()
 			throw error

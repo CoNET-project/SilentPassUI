@@ -47,6 +47,7 @@ import MobilePOS from '@/pages/Vouchers/example/Pos'
 import CardManager from '@/pages/cardManager'
 import WalletOverview from '@/pages/Wallet/WalletOverview'
 import BusinessStartKetRedeemAdminPage from '@/pages/Wallet/BusinessStartKetRedeemAdminPage'
+import AaMultisigPage from '@/pages/Wallet/AaMultisigPage'
 import ValidatorNodeProfilePage from '@/pages/Wallet/ValidatorNodeProfilePage'
 import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import BountyBoard from '@/pages/BountyBoard'
@@ -70,6 +71,7 @@ import { parseDiscoverMerchantFromParams } from "@/utils/discoverMerchantShare"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
+import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 
@@ -939,6 +941,15 @@ function AppShell() {
 			if (!sign) continue
 			const signAddr = sign
 
+			const walletEoa = profile.keyID?.trim() ?? ''
+			if (walletEoa) {
+				try {
+					ingestAaMultisigFromChat({ displayText, fromEoa: signAddr, walletEoa })
+				} catch {
+					/* multisig ingest must not break chat */
+				}
+			}
+
 			let idx = chats.findIndex(n => n?.address?.toLowerCase() === signAddr.toLowerCase())
 			let chat = idx >= 0 ? { ...chats[idx] } : null
 
@@ -1452,6 +1463,7 @@ function AppShell() {
 					<Route path="/" element={<Home />} />
 					<Route path="/wallet" element={<WalletOverview />} />
 					<Route path="/wallet/business-start-ket-redeem" element={<BusinessStartKetRedeemAdminPage />} />
+					<Route path="/wallet/aa-multisig" element={<AaMultisigPage />} />
 					<Route path="/wallet/conet-nodes" element={<ValidatorNodeProfilePage />} />
 					<Route path="/History" element={<History />} />
 					<Route path="/Pay" element={<Pay />} />

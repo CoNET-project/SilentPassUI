@@ -46,6 +46,8 @@ import {
   Star,
   Minus,
   Plus,
+  UserPlus,
+  ImageIcon,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -126,7 +128,7 @@ import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
-import { parseDiscoverMerchantFromParams } from '@/utils/discoverMerchantShare'
+import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 
@@ -465,6 +467,238 @@ const DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS: Record<string, DiscoverMerchantW
 		nextTierThresholdPts: 1500,
 		benefitLabel: "New Member Benefit: 10% off clinical assessments",
 	},
+}
+
+type DiscoverCuratedCollectOffer = {
+	id: string
+	title: string
+	subtitle: string
+	accent: "blue" | "orange"
+}
+
+type DiscoverCuratedSocialMission = {
+	id: string
+	title: string
+	description: string
+	icon: "share" | "gift"
+	iconAccent: "blue" | "orange"
+	shareTitle?: string
+}
+
+type DiscoverCuratedFeaturedMenuItem = {
+	id: string
+	title: string
+	priceLabel: string
+	imageUrl?: string | null
+}
+
+type DiscoverMerchantCuratedOffersPanel = {
+	topUpBonus: {
+		title: string
+		description: string
+	}
+	beamioPoints: {
+		title: string
+		earnRateLabel: string
+		spendUnitLabel: string
+		pointsMallLabel: string
+		redeemFootnote: string
+	}
+	collectOffers: DiscoverCuratedCollectOffer[]
+	socialMissions?: {
+		title: string
+		missions: DiscoverCuratedSocialMission[]
+	}
+	featuredMenu?: {
+		title: string
+		viewAllLabel: string
+		orderPhone?: string
+		items: DiscoverCuratedFeaturedMenuItem[]
+	}
+}
+
+/** Curated offer stack on Discover merchant detail (design comps). Key: card address lowercased. */
+const DISCOVER_MERCHANT_CURATED_OFFERS: Record<string, DiscoverMerchantCuratedOffersPanel> = {
+	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
+		topUpBonus: {
+			title: "10% Bonus on every Top-Up!",
+			description:
+				"Top up $100 CAD or more to instantly unlock a 10% bonus balance. Value that never expires.",
+		},
+		beamioPoints: {
+			title: "Beamio Points",
+			earnRateLabel: "1 Point",
+			spendUnitLabel: "CA$ 1",
+			pointsMallLabel: "Points Mall",
+			redeemFootnote: "Redeemable for Store Credit or USDC",
+		},
+		collectOffers: [
+			{
+				id: "free-soy-milk",
+				title: "Free Soy Milk",
+				subtitle: "With any dim sum order",
+				accent: "blue",
+			},
+			{
+				id: "cash-voucher-5",
+				title: "$5 Cash Voucher",
+				subtitle: "Min spend $30",
+				accent: "orange",
+			},
+		],
+		socialMissions: {
+			title: "Social Missions",
+			missions: [
+				{
+					id: "invite-friend",
+					title: "Invite a Friend",
+					description: "Earn $0.50 on claim + $2.00 on redeem.",
+					icon: "share",
+					iconAccent: "blue",
+					shareTitle: "Join me at LongDhang on Beamio",
+				},
+				{
+					id: "share-xiao-long-bao",
+					title: "Share Xiao Long Bao",
+					description: "Share our signature dish to unlock a mystery reward.",
+					icon: "gift",
+					iconAccent: "orange",
+					shareTitle: "Try LongDhang Signature Xiao Long Bao on Beamio",
+				},
+			],
+		},
+		featuredMenu: {
+			title: "Featured Menu",
+			viewAllLabel: "View All",
+			orderPhone: "+16042851818",
+			items: [
+				{
+					id: "signature-xiao-long-bao",
+					title: "Signature Xiao Long Bao",
+					priceLabel: "CA$12.99",
+				},
+				{
+					id: "fried-pork-chops",
+					title: "Fried Pork Chops",
+					priceLabel: "CA$15.99",
+				},
+			],
+		},
+	},
+}
+
+function DiscoverCuratedTopUpBonusCard({
+	title,
+	description,
+}: {
+	title: string
+	description: string
+}) {
+	return (
+		<div className="overflow-hidden rounded-[20px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+			<div className="flex items-start gap-3.5 bg-gradient-to-r from-orange-50 via-orange-50/40 to-white p-4 dark:from-orange-950/30 dark:via-slate-900 dark:to-slate-900 sm:p-5">
+				<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-500 dark:bg-orange-950/50 dark:text-orange-400">
+					<Star className="h-5 w-5" strokeWidth={2.25} fill="currentColor" aria-hidden />
+				</span>
+				<div className="min-w-0 flex-1">
+					<h3 className="text-[17px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">{title}</h3>
+					<p className="mt-1.5 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">{description}</p>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function DiscoverCuratedBeamioPointsCard({
+	config,
+	onPointsMallClick,
+}: {
+	config: DiscoverMerchantCuratedOffersPanel["beamioPoints"]
+	onPointsMallClick?: () => void
+}) {
+	return (
+		<div className="overflow-hidden rounded-[20px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+			<div className="p-4 sm:p-5">
+				<div className="flex items-start gap-3">
+					<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-[15px] font-bold text-white">
+						$
+					</span>
+					<div className="min-w-0 flex-1">
+						<h3 className="text-[17px] font-bold leading-snug text-[#1562f0]">{config.title}</h3>
+						<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
+							Earn <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.earnRateLabel}</span> for
+							every <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.spendUnitLabel}</span>{" "}
+							spent. Use them in our{" "}
+							<button
+								type="button"
+								onClick={onPointsMallClick}
+								className="font-semibold text-[#1562f0] underline decoration-[#1562f0]/35 underline-offset-2 transition hover:text-blue-700"
+							>
+								{config.pointsMallLabel}
+							</button>{" "}
+							for exclusive products and coupons.
+						</p>
+					</div>
+				</div>
+			</div>
+			<div className="flex items-center gap-2 border-t border-[#eadcf7] bg-[#f5ecff] px-4 py-3 dark:border-[#8d3a8b]/20 dark:bg-[#8d3a8b]/10 sm:px-5">
+				<Info className="h-4 w-4 shrink-0 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />
+				<p className="text-[13px] font-medium text-[#8d3a8b]">{config.redeemFootnote}</p>
+			</div>
+		</div>
+	)
+}
+
+function DiscoverCuratedCollectOfferRow({
+	offer,
+	onCollect,
+}: {
+	offer: DiscoverCuratedCollectOffer
+	onCollect?: () => void
+}) {
+	const accentBorder = offer.accent === "blue" ? "border-[#1562f0]" : "border-orange-500"
+	const accentTitle = offer.accent === "blue" ? "text-[#1562f0]" : "text-orange-600"
+	return (
+		<div className="flex items-center justify-between gap-3 rounded-[20px] border border-[#e8ecf0] bg-white py-4 pl-4 pr-3 shadow-[0_4px_16px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-900 sm:pl-5 sm:pr-4">
+			<div className={["min-w-0 flex-1 border-l-[3px] pl-3.5", accentBorder].join(" ")}>
+				<h4 className={["truncate text-[16px] font-bold leading-tight", accentTitle].join(" ")}>
+					{offer.title}
+				</h4>
+				<p className="mt-0.5 truncate text-[13px] font-medium text-slate-500 dark:text-slate-400">{offer.subtitle}</p>
+			</div>
+			<button
+				type="button"
+				onClick={onCollect}
+				className="shrink-0 rounded-full bg-[#f5ecff] px-4 py-2 text-[13px] font-bold text-[#8d3a8b] transition active:scale-[0.98] hover:bg-[#eadcf7] dark:bg-[#8d3a8b]/15 dark:text-[#c98fd0] dark:hover:bg-[#8d3a8b]/25"
+			>
+				Collect
+			</button>
+		</div>
+	)
+}
+
+function DiscoverMerchantCuratedOffersStack({
+	config,
+	onCollectOffer,
+	onPointsMallClick,
+}: {
+	config: DiscoverMerchantCuratedOffersPanel
+	onCollectOffer?: (offerId: string) => void
+	onPointsMallClick?: () => void
+}) {
+	return (
+		<div className="space-y-3">
+			<DiscoverCuratedTopUpBonusCard title={config.topUpBonus.title} description={config.topUpBonus.description} />
+			<DiscoverCuratedBeamioPointsCard config={config.beamioPoints} onPointsMallClick={onPointsMallClick} />
+			{config.collectOffers.map((offer) => (
+				<DiscoverCuratedCollectOfferRow
+					key={offer.id}
+					offer={offer}
+					onCollect={() => onCollectOffer?.(offer.id)}
+				/>
+			))}
+		</div>
+	)
 }
 
 type DiscoverLatestCardRow = {
@@ -2433,14 +2667,23 @@ function DiscoverMerchantDetailFullScreen({
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[resolveDiscoverCardPanelKey(item.cardAddress)]
 			: undefined
+	const curatedOffersPanel =
+		item.cardAddress != null
+			? DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
+			: undefined
+	const promoRewardTierForList = curatedOffersPanel ? undefined : promoRewardTier
+	const couponsSectionRef = useRef<HTMLDivElement | null>(null)
+	const scrollToCouponsSection = useCallback(() => {
+		couponsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+	}, [])
 	const metadataTierCount = merchantOfferTiers?.length ?? 0
 	const rewardTierDisplayCount =
-		promoRewardTier != null || merchantOfferTiers != null
-			? (promoRewardTier ? 1 : 0) + metadataTierCount
+		promoRewardTierForList != null || merchantOfferTiers != null
+			? (promoRewardTierForList ? 1 : 0) + metadataTierCount
 			: null
-	const showRewardTiersLoading = merchantOffersLoading && merchantOfferTiers == null && !promoRewardTier
+	const showRewardTiersLoading = merchantOffersLoading && merchantOfferTiers == null && !promoRewardTierForList
 	const hasRewardTierContent =
-		promoRewardTier != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
+		promoRewardTierForList != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
 	const wellnessPointsPanel =
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
@@ -3417,10 +3660,21 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 					</div>
 
+					{curatedOffersPanel ? (
+						<DiscoverMerchantCuratedOffersStack
+							config={curatedOffersPanel}
+							onPointsMallClick={scrollToCouponsSection}
+							onCollectOffer={scrollToCouponsSection}
+						/>
+					) : null}
+
 					<div className="space-y-4">
 						<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
 
-						<div className="rounded-[22px] bg-white px-6 py-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-7">
+						<div
+							ref={couponsSectionRef}
+							className="rounded-[22px] bg-white px-6 py-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-7"
+						>
 							<header className="mb-3 flex items-center justify-between gap-2">
 								<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Coupons</h3>
 								{merchantCoupons != null ? (
@@ -3472,9 +3726,9 @@ function DiscoverMerchantDetailFullScreen({
 								</div>
 							) : hasRewardTierContent ? (
 								<div className="space-y-2.5">
-									{promoRewardTier ? (
+									{promoRewardTierForList ? (
 										<DiscoverMerchantPromoRewardTierCard
-											config={promoRewardTier}
+											config={promoRewardTierForList}
 											fallbackImage={item.image}
 										/>
 									) : null}

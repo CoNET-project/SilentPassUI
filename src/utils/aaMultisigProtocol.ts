@@ -257,6 +257,18 @@ function recomputeStatus(task: AaMultisigTaskLocal): AaMultisigTaskStatus {
 	return 'pending'
 }
 
+/** True when policy is 1-of-1 and the only manager is the current wallet EOA. */
+export function isSoleSelfSignerMultisig(
+	walletEoa: string,
+	managers: string[],
+	threshold: number
+): boolean {
+	if (threshold !== 1 || managers.length !== 1) return false
+	const w = normEoa(walletEoa)
+	const m = normEoa(managers[0])
+	return Boolean(w && m && w === m)
+}
+
 export function mergeInboundMultisigInner(
 	existing: AaMultisigTaskLocal | null,
 	inner: AaMultisigInner,

@@ -272,6 +272,7 @@ export async function submitAaMultisigUserOp(params: {
 	toEOA: string
 	amountUSDC6: string
 	packedUserOp: AaMultisigPackedUserOp
+	transferAsset: AaMultisigTransferAssetId
 }): Promise<{ success: boolean; hash?: string; error?: string }> {
 	const res = await fetch('https://beamio.app/api/AAtoEOA', {
 		method: 'POST',
@@ -280,6 +281,7 @@ export async function submitAaMultisigUserOp(params: {
 			toEOA: params.toEOA,
 			amountUSDC6: params.amountUSDC6,
 			packedUserOp: params.packedUserOp,
+			transferAsset: params.transferAsset,
 		}),
 	})
 	const json = (await res.json().catch(() => ({}))) as {

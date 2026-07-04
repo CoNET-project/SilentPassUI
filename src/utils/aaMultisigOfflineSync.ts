@@ -18,6 +18,7 @@ import {
 	isPaidOfflineSignInner,
 	postAaMultisigOfflineSignSubmit,
 } from '@/services/aaMultisigOfflineSubmitApi'
+import { formatTransferTaskSummary } from '@/utils/aaMultisigConetTransferAssets'
 
 export const AA_MULTISIG_OUTBOUND_CHANGED_EVENT = 'beamio-aa-multisig-outbound-changed'
 
@@ -125,6 +126,77 @@ export function isAaMultisigOutboundPending(
 
 export function countAaMultisigOutboundPending(walletEoa: string): number {
 	return loadAaMultisigOutboundQueue(walletEoa).length
+}
+
+export type AaMultisigOutboundListItem = {
+	id: string
+	actionLabel: string
+	title: string
+	detail: string
+	attempts: number
+	createdAt: number
+	inner: AaMultisigInner
+}
+
+function shortTaskId(taskId: string): string {
+	const t = taskId.trim()
+	if (t.length <= 10) return t
+	return `${t.slice(0, 8)}…`
+}
+
+/** Human-readable rows for Offline sync queue UI (oldest first). */
+export function listAaMultisigOutboundForDisplay(walletEoa: string): AaMultisigOutboundListItem[] {
+	return loadAaMultisigOutboundQueue(walletEoa)
+		.slice()
+		.sort((a, b) => a.createdAt - b.createdAt)
+		.map((row) => {
+			const inner = row.inner
+			const task =
+				inner.aaAccount && inner.taskId
+					? getAaMultisigTask(walletEoa, inner.aaAccount, inner.taskId)
+					: null
+
+			let actionLabel: string = inner.action
+			let title = task?.title ?? ''
+
+			if (inner.action === 'propose') {
+				actionLabel = 'Propose'
+				if (inner.kind === 'transfer') {
+					title =
+						inner.title ??
+						task?.title ??
+						formatTransferTaskSummary({
+							transferAsset: inner.transferAsset,
+							amountRaw: inner.amountRaw,
+							amountUsdc6: inner.amountUsdc6,
+							toEoa: inner.toEoa,
+						})
+				} else {
+					title = inner.title ?? task?.title ?? 'Update multisig signers'
+				}
+			} else if (inner.action === 'sign') {
+				actionLabel = 'Sign'
+				title = task?.title ?? `Sign · ${shortTaskId(inner.taskId)}`
+			} else if (inner.action === 'reject') {
+				actionLabel = 'Reject'
+				title = task?.title ?? `Reject · ${shortTaskId(inner.taskId)}`
+			}
+
+			const detailParts = [`${row.recipients.length} recipient${row.recipients.length === 1 ? '' : 's'}`]
+			if (row.attempts > 0) {
+				detailParts.push(`${row.attempts} retr${row.attempts === 1 ? 'y' : 'ies'}`)
+			}
+
+			return {
+				id: row.id,
+				actionLabel,
+				title,
+				detail: detailParts.join(' · '),
+				attempts: row.attempts,
+				createdAt: row.createdAt,
+				inner,
+			}
+		})
 }
 
 /** Sign packets must pass paid API (0.1 B-Unit) before gossip sync. */

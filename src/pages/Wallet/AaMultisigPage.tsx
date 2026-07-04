@@ -21,6 +21,7 @@ import {
 } from '@/utils/aaMultisigLocalStore'
 import {
 	concatMultisigSignatures,
+	isSoleSelfSignerMultisig,
 	mergeInboundMultisigInner,
 	sortManagersStrict,
 	type AaMultisigTaskLocal,
@@ -57,11 +58,12 @@ import {
 	buildSignInnerExportForTask,
 	buildProposeInnerExportFromTask,
 	copyAaMultisigInnerExport,
-	countAaMultisigOutboundPending,
 	flushAaMultisigOutboundQueue,
 	ingestAaMultisigFromExport,
 	isAaMultisigOutboundPending,
+	listAaMultisigOutboundForDisplay,
 	publishAaMultisigInnerWithOfflineFallback,
+	type AaMultisigOutboundListItem,
 } from '@/utils/aaMultisigOfflineSync'
 
 type TabId = 'signers' | 'pending' | 'transfer' | 'history'
@@ -224,24 +226,24 @@ export default function AaMultisigPage() {
 	const [transferAssetsLoading, setTransferAssetsLoading] = useState(false)
 	const [importPayload, setImportPayload] = useState('')
 	const [showImportPanel, setShowImportPanel] = useState(false)
-	const [outboundPendingCount, setOutboundPendingCount] = useState(0)
+	const [outboundQueue, setOutboundQueue] = useState<AaMultisigOutboundListItem[]>([])
 
 	const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 
-	const refreshOutboundCount = useCallback(() => {
+	const refreshOutboundQueue = useCallback(() => {
 		if (!eoa) {
-			setOutboundPendingCount(0)
+			setOutboundQueue([])
 			return
 		}
-		setOutboundPendingCount(countAaMultisigOutboundPending(eoa))
+		setOutboundQueue(listAaMultisigOutboundForDisplay(eoa))
 	}, [eoa])
 
 	useEffect(() => {
-		refreshOutboundCount()
-		const onOutbound = () => refreshOutboundCount()
+		refreshOutboundQueue()
+		const onOutbound = () => refreshOutboundQueue()
 		window.addEventListener(AA_MULTISIG_OUTBOUND_CHANGED_EVENT, onOutbound)
 		return () => window.removeEventListener(AA_MULTISIG_OUTBOUND_CHANGED_EVENT, onOutbound)
-	}, [refreshOutboundCount])
+	}, [refreshOutboundQueue])
 
 	useEffect(() => {
 		if (!eoa || !privateKeyArmor || !allNodes?.length) return
@@ -260,7 +262,7 @@ export default function AaMultisigPage() {
 				allNodes,
 			})
 			if (cancelled) return
-			setOutboundPendingCount(result.remaining)
+			refreshOutboundQueue()
 			scheduleRetry(result.remaining)
 		}
 
@@ -269,7 +271,7 @@ export default function AaMultisigPage() {
 			cancelled = true
 			if (timer !== undefined) clearTimeout(timer)
 		}
-	}, [eoa, privateKeyArmor, allNodes])
+	}, [eoa, privateKeyArmor, allNodes, refreshOutboundQueue])
 
 	useEffect(() => {
 		if (!eoa) {
@@ -499,7 +501,7 @@ export default function AaMultisigPage() {
 				allNodes: allNodes ?? [],
 				excludeEoa: eoa,
 			})
-			refreshOutboundCount()
+			refreshOutboundQueue()
 			Toast.show({
 				content:
 					pub.mode === 'broadcast' && pub.sent > 0
@@ -584,7 +586,26 @@ export default function AaMultisigPage() {
 				allNodes: allNodes ?? [],
 				excludeEoa: eoa,
 			})
-			refreshOutboundCount()
+			refreshOutboundQueue()
+
+			const soleSignerReady =
+				merged?.kind === 'transfer' &&
+				merged.status === 'ready' &&
+				isSoleSelfSignerMultisig(eoa, managers, threshold)
+
+			if (soleSignerReady && merged) {
+				const submitted = await submitTask(merged)
+				setTransferTo('')
+				setTransferAmount('')
+				void reloadTransferAssets()
+				if (submitted) {
+					setTab('history')
+				} else {
+					setTab('pending')
+				}
+				return
+			}
+
 			Toast.show({
 				content:
 					pub.mode === 'broadcast' && pub.sent > 0
@@ -627,7 +648,7 @@ export default function AaMultisigPage() {
 				allNodes: allNodes ?? [],
 				excludeEoa: eoa,
 			})
-			refreshOutboundCount()
+			refreshOutboundQueue()
 			if (pub.mode === 'broadcast' && pub.sent > 0) {
 				Toast.show({ content: 'Signature recorded and shared via CoNET chat.' })
 			} else if (pub.apiError) {
@@ -670,7 +691,7 @@ export default function AaMultisigPage() {
 				allNodes: allNodes ?? [],
 				excludeEoa: eoa,
 			})
-			refreshOutboundCount()
+			refreshOutboundQueue()
 			Toast.show({
 				content:
 					pub.mode === 'broadcast' && pub.sent > 0
@@ -683,11 +704,11 @@ export default function AaMultisigPage() {
 		}
 	}
 
-	const submitTask = async (task: AaMultisigTaskLocal) => {
-		if (!requireWalletReady()) return
+	const submitTask = async (task: AaMultisigTaskLocal): Promise<boolean> => {
+		if (!requireWalletReady()) return false
 		if (task.signatures.length < task.threshold) {
 			Toast.show({ content: 'Not enough signatures yet.' })
-			return
+			return false
 		}
 		setBusy(`submit-${task.taskId}`)
 		try {
@@ -707,13 +728,14 @@ export default function AaMultisigPage() {
 					toEOA: task.toEoa,
 					amountUSDC6: relayAmount,
 					packedUserOp,
+					transferAsset: task.transferAsset ?? 'usdc',
 				})
 				if (!res.success) {
 					const failed: AaMultisigTaskLocal = { ...task, status: 'failed', updatedAt: Date.now() }
 					upsertAaMultisigTask(eoa, aaAccount, failed)
 					Toast.show({ content: res.error ?? 'Submit failed' })
 					reloadTasks()
-					return
+					return false
 				}
 				hash = res.hash
 			} else if (task.kind === 'set_policy') {
@@ -721,19 +743,20 @@ export default function AaMultisigPage() {
 					toEOA: task.creatorEoa,
 					amountUSDC6: '1',
 					packedUserOp,
+					transferAsset: 'cnet',
 				})
 				if (!res.success) {
 					const failed: AaMultisigTaskLocal = { ...task, status: 'failed', updatedAt: Date.now() }
 					upsertAaMultisigTask(eoa, aaAccount, failed)
 					Toast.show({ content: res.error ?? 'Submit failed' })
 					reloadTasks()
-					return
+					return false
 				}
 				hash = res.hash
 				void reloadPolicy()
 			} else {
 				Toast.show({ content: 'Unsupported task kind for submit.' })
-				return
+				return false
 			}
 			const completed: AaMultisigTaskLocal = {
 				...task,
@@ -758,13 +781,15 @@ export default function AaMultisigPage() {
 					allNodes: allNodes ?? [],
 					excludeEoa: eoa,
 				})
-				refreshOutboundCount()
+				refreshOutboundQueue()
 			}
 			Toast.show({ content: 'Multisig transfer submitted.' })
 			reloadTasks()
+			return true
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
 			Toast.show({ content: msg.slice(0, 120) })
+			return false
 		} finally {
 			setBusy(null)
 		}
@@ -781,6 +806,13 @@ export default function AaMultisigPage() {
 		setShowImportPanel(false)
 		reloadTasks()
 		Toast.show({ content: 'Multisig packet imported.' })
+	}
+
+	const copyQueuedPacket = async (item: AaMultisigOutboundListItem) => {
+		const ok = await copyAaMultisigInnerExport(item.inner)
+		Toast.show({
+			content: ok ? 'Packet copied. Share with co-signers offline.' : 'Copy failed.',
+		})
 	}
 
 	const exportTaskSignPacket = async (task: AaMultisigTaskLocal) => {
@@ -1100,15 +1132,48 @@ export default function AaMultisigPage() {
 						<div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
 							<div className="flex items-center justify-between gap-2">
 								<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Offline sync</p>
-								{outboundPendingCount > 0 ? (
+								{outboundQueue.length > 0 ? (
 									<span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-										{outboundPendingCount} queued
+										{outboundQueue.length} queued
 									</span>
 								) : null}
 							</div>
 							<p className="mt-1 text-xs text-slate-500">
 								Sign without CoNET chat, then copy the sign packet or import co-signer packets below.
 							</p>
+							{outboundQueue.length > 0 ? (
+								<ul className="mt-3 space-y-2">
+									{outboundQueue.map((item) => (
+										<li
+											key={item.id}
+											className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2.5 dark:border-amber-900/40 dark:bg-amber-950/25"
+										>
+											<div className="flex items-start justify-between gap-2">
+												<div className="min-w-0 flex-1">
+													<div className="flex flex-wrap items-center gap-2">
+														<span className="shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-900/60 dark:text-amber-100">
+															{item.actionLabel}
+														</span>
+														<p className="min-w-0 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+															{item.title}
+														</p>
+													</div>
+													<p className="mt-0.5 text-xs text-slate-500">{item.detail}</p>
+												</div>
+												<button
+													type="button"
+													onClick={() => void copyQueuedPacket(item)}
+													className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
+													style={{ color: aaAccent.accent }}
+												>
+													<Copy className="h-3.5 w-3.5" aria-hidden />
+													Copy packet
+												</button>
+											</div>
+										</li>
+									))}
+								</ul>
+							) : null}
 							<button
 								type="button"
 								onClick={() => setShowImportPanel((v) => !v)}

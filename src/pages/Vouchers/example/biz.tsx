@@ -4877,6 +4877,10 @@ const TX_BUINT_CHARGE_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('charge:buni
 const TX_BUINT_SOCIAL_LIKE_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('socialLike:bunitService'))
 /** Indexer: Discover share link click B-Unit service fee (`socialShareClick:bunitService`) */
 const TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE = ethers.keccak256(ethers.toUtf8Bytes('socialShareClick:bunitService'))
+/** Indexer: AA Smart Wallet offline sign submit B-Unit service fee (`aaMultisigOfflineSubmit:bunitService`) */
+const TX_BUINT_AA_MULTISIG_OFFLINE_SUBMIT_SERVICE = ethers.keccak256(
+  ethers.toUtf8Bytes('aaMultisigOfflineSubmit:bunitService')
+)
 
 /** Indexer：全部 `*:bunitService`（txId=CoNET consume；originalPaymentHash=Base 业务 tx） */
 const BUINT_SERVICE_FEE_CATEGORY_LOWER = new Set([
@@ -4889,6 +4893,7 @@ const BUINT_SERVICE_FEE_CATEGORY_LOWER = new Set([
   TX_BUINT_CHARGE_SERVICE.toLowerCase(),
   TX_BUINT_SOCIAL_LIKE_SERVICE.toLowerCase(),
   TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE.toLowerCase(),
+  TX_BUINT_AA_MULTISIG_OFFLINE_SUBMIT_SERVICE.toLowerCase(),
 ])
 
 /** bizSite：有主业务时合并进 Top-Up / Charge / Claim 主行 */
@@ -4906,6 +4911,7 @@ const BUINT_SERVICE_PRIMARY_ONLY_CATEGORY_LOWER = new Set([
   TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
   TX_BUINT_SOCIAL_LIKE_SERVICE.toLowerCase(),
   TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE.toLowerCase(),
+  TX_BUINT_AA_MULTISIG_OFFLINE_SUBMIT_SERVICE.toLowerCase(),
 ])
 
 function isStandaloneBuintServiceFeeCategory(cat: unknown): boolean {
@@ -6325,6 +6331,9 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
       } else if (catHex === TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE.toLowerCase()) {
         displayType = 'Social Share Click'
         ledgerTitle = display.title ?? 'Social Share Click'
+      } else if (catHex === TX_BUINT_AA_MULTISIG_OFFLINE_SUBMIT_SERVICE.toLowerCase()) {
+        displayType = 'B-Unit Fee'
+        ledgerTitle = display.title ?? 'AA Multisig Offline Sign'
       } else if (isCreateIssuedNftBunitIndexerCategory(tx.txCategory)) {
         const productKind = resolveCreateIssuedNftBunitProductKind(tx.displayJson ?? '')
         displayType = createIssuedNftBunitTxDisplayType(productKind)

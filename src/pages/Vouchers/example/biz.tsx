@@ -11817,16 +11817,22 @@ useEffect(() => {
    setProgramSocialEngagementDrawer(null);
  }, [cardIssuanceExistingCard?.cardAddress]);
 
- const loadProgramSocialOverview = useCallback(async () => {
+ /**
+  * Program social likes / share-click lists (DB, recorded going forward).
+  * `silent: true` — Overview feeder / background: trusted-success only, no refresh-button chrome.
+  */
+ const loadProgramSocialOverview = useCallback(async (opts?: { silent?: boolean }) => {
+   const silent = opts?.silent === true;
    const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
    if (!addr || !ethers.isAddress(addr)) return;
-   setProgramSocialRefreshStatus('loading');
+   if (!silent) setProgramSocialRefreshStatus('loading');
    try {
      const json = await fetchBeamioCardProgramSocialSummary(addr, 50, 0);
+     // Trusted success only — never clear prior lists/counts on failure.
      if (json.likeCount != null) setProgramSocialLikeCount(json.likeCount);
      if (json.shareClickCount != null) setProgramSocialShareClickCount(json.shareClickCount);
-     setProgramSocialLikes(Array.isArray(json.likes) ? json.likes : []);
-     setProgramSocialShareClicks(Array.isArray(json.shareClicks) ? json.shareClicks : []);
+     if (Array.isArray(json.likes)) setProgramSocialLikes(json.likes);
+     if (Array.isArray(json.shareClicks)) setProgramSocialShareClicks(json.shareClicks);
      const profileAddrs = new Set<string>();
      for (const row of json.likes ?? []) {
        if (row.userEoa && ethers.isAddress(row.userEoa)) profileAddrs.add(ethers.getAddress(row.userEoa));
@@ -11836,13 +11842,20 @@ useEffect(() => {
        if (row.referrerEoa && ethers.isAddress(row.referrerEoa)) profileAddrs.add(ethers.getAddress(row.referrerEoa));
      }
      if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
-     setProgramSocialRefreshStatus('success');
-     window.setTimeout(() => setProgramSocialRefreshStatus('idle'), 3000);
+     if (!silent) {
+       setProgramSocialRefreshStatus('success');
+       window.setTimeout(() => setProgramSocialRefreshStatus('idle'), 3000);
+     }
    } catch {
-     setProgramSocialRefreshStatus('error');
-     window.setTimeout(() => setProgramSocialRefreshStatus('idle'), 3000);
+     if (!silent) {
+       setProgramSocialRefreshStatus('error');
+       window.setTimeout(() => setProgramSocialRefreshStatus('idle'), 3000);
+     }
    }
  }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
+
+ const loadProgramSocialOverviewRef = useRef(loadProgramSocialOverview);
+ loadProgramSocialOverviewRef.current = loadProgramSocialOverview;
 
  useEffect(() => {
    void loadProgramSocialOverview();
@@ -22295,6 +22308,11 @@ useEffect(() => {
          } catch {
            if (!feederCancelledRef.current && cachedMetadata != null) setFixedCardMetadata(cachedMetadata);
          }
+       }
+
+       // Program social: Liked by / Share clicks lists (DB, recorded going forward)
+       if (!feederCancelledRef.current && programAddr && ethers.isAddress(programAddr)) {
+         await loadProgramSocialOverviewRef.current({ silent: true });
        }
 
        // 0b. Active Cards KPI: server directory hint when Members daemon has not merged rows yet (same90d rule on `lastTopupAt`; no holder balance RPC).

@@ -438,25 +438,42 @@ export function ActiveCouponTicketItem({
 	const iconUrl = hasBanner ? '' : row.iconUrl.trim()
 	const showBaseScanNftLink = beamioBaseScanNftUrl(row.cardAddress, row.tokenId) != null
 
-	const renderSubtitleWithBaseScan = (subtitleClassName: string, marginTopClass = 'mt-0.5') => {
-		if (!subtitle && !showBaseScanNftLink && !showOpenClaimShareButton) return null
+	const showShareButton = Boolean(showOpenClaimShareButton && row.couponId)
+	const showLikeCountPill = Boolean(showUserLike && couponLike.likeCount != null)
+	const showSocialStatRow = showLikeCountPill || showShareButton
+
+	/** Detail line only — never mix like/share capsules into this row. */
+	const renderDetailSubtitle = (subtitleClassName: string, marginTopClass = 'mt-0.5') => {
+		if (!subtitle && !showBaseScanNftLink) return null
 		return (
-			<div
-				className={`inline-flex max-w-full flex-wrap items-center gap-2 ${marginTopClass}`.trim()}
-			>
+			<div className={`min-w-0 ${marginTopClass}`.trim()}>
 				{subtitle ? (
 					<p className={`min-w-0 truncate font-manrope font-semibold ${subtitleClassName}`}>
 						{subtitle}
 					</p>
 				) : null}
 				{showBaseScanNftLink ? (
-					<BeamioBaseScanNftCapsule
-						cardAddress={row.cardAddress}
-						tokenId={row.tokenId}
-						className="shrink-0"
-					/>
+					<div className={subtitle ? 'mt-1.5' : ''}>
+						<BeamioBaseScanNftCapsule
+							cardAddress={row.cardAddress}
+							tokenId={row.tokenId}
+							className="shrink-0"
+						/>
+					</div>
 				) : null}
-				{showOpenClaimShareButton && row.couponId ? (
+			</div>
+		)
+	}
+
+	/** Dedicated row under detail for like count + share action capsules. */
+	const renderSocialStatRow = (likeVariant: 'light' | 'onDark' = 'light') => {
+		if (!showSocialStatRow) return null
+		return (
+			<div className="mt-2 flex w-full flex-wrap items-center gap-2">
+				{showLikeCountPill ? (
+					<CouponUserLikeCountPill count={couponLike.likeCount} variant={likeVariant} />
+				) : null}
+				{showShareButton ? (
 					<CouponOpenClaimShareButton
 						cardAddress={row.cardAddress}
 						couponId={row.couponId}
@@ -628,18 +645,14 @@ export function ActiveCouponTicketItem({
 							<p className="truncate text-[1.05rem] font-extrabold leading-tight tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] sm:text-lg">
 								{row.title}
 							</p>
-							{renderSubtitleWithBaseScan(
+							{renderDetailSubtitle(
 								'text-sm text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]'
 							)}
 							{showCardAddress && row.cardAddress ? (
 								<CouponCardAddressCapsule address={row.cardAddress} />
 							) : null}
+							{renderSocialStatRow(hasBanner ? 'onDark' : 'light')}
 							{showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
-							{showUserLike && couponLike.likeCount != null ? (
-								<div className={showExpiryPill ? 'mt-2' : 'mt-2'}>
-									<CouponUserLikeCountPill count={couponLike.likeCount} variant={hasBanner ? 'onDark' : 'light'} />
-								</div>
-							) : null}
 						</div>
 					) : null}
 
@@ -662,21 +675,15 @@ export function ActiveCouponTicketItem({
 						{title}
 					</p>
 				) : null}
-				{renderSubtitleWithBaseScan(
+				{renderDetailSubtitle(
 					'text-sm text-[#595c5e] dark:text-slate-400',
 					title ? 'mt-0.5' : ''
 				)}
-				{showUserLike && couponLike.likeCount != null ? (
-					<div className={title || subtitle || showBaseScanNftLink || showOpenClaimShareButton ? 'mt-2' : ''}>
-						<CouponUserLikeCountPill count={couponLike.likeCount} />
-					</div>
-				) : null}
+				{renderSocialStatRow('light')}
 				{showExpiryPill ? (
 					<div
 						className={
-							title || subtitle || showBaseScanNftLink || showOpenClaimShareButton || (showUserLike && couponLike.likeCount != null)
-								? 'mt-2'
-								: ''
+							title || subtitle || showBaseScanNftLink || showSocialStatRow ? 'mt-2' : ''
 						}
 					>
 						{renderExpiryPill('external')}

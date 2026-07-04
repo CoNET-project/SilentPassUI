@@ -638,7 +638,7 @@ function DiscoverHeroStatCapsules({
 }) {
 	if (likeCount == null && shareClickCount == null) return null
 	return (
-		<div className="mt-3 flex flex-wrap items-center gap-2">
+		<div className="mt-3 flex w-full flex-wrap items-center gap-2">
 			{likeCount != null ? (
 				<span
 					className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-[12px] font-semibold text-white backdrop-blur-sm"
@@ -3146,7 +3146,7 @@ function DiscoverMerchantDetailFullScreen({
 							</span>
 						</div>
 						<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
-						<p className="mt-1 text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
+						<p className="mt-1 block w-full text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
 						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
 						{item.cardAddress ? <DiscoverMerchantCardAddressCapsule address={item.cardAddress} /> : null}
 					</div>

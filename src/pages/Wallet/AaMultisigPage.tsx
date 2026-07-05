@@ -1,11 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Hexagon, Loader2, Users, Send, History, AlertTriangle, Check, Copy } from 'lucide-react'
+import { Hexagon, Loader2, Users, Send, History, AlertTriangle, Check, Copy, Search, X, ChevronLeft } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
-import { BeamioCircularBackButton, BEAMIO_CIRCULAR_BACK_ROW_CLASS } from '@/components/BeamioCircularBackButton'
+import {
+	BeamioSearchResultRow,
+	beamioSearchAvatarUrl,
+	beamioSearchDisplayName,
+	beamioSearchShortAddress,
+	makeBeamioSearchAddressOnlyResult,
+} from '@/components/Home/beamioSearchResultPresentation'
+import { IpfsImg } from '@/components/IpfsImg'
+import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
+import { tu } from '@/locale/beamioLocale'
+import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
@@ -34,9 +44,15 @@ import {
 	buildSubmittedInner,
 } from '@/services/aaMultisigGossip'
 import {
+	assertAaMultisigTaskEntryPointNonceFresh,
+	formatAaMultisigStaleNonceMessage,
+	readAaEntryPointNonce,
+} from '@/utils/aaMultisigEntryPointNonce'
+import {
 	buildUnsignedAaMultisigUserOp,
 	encodeAAExecuteConetAssetTransfer,
 	encodeAAExecuteSetThresholdPolicy,
+	isSetPolicyCallDataSelfExecuteWrapped,
 	readAaThresholdPolicy,
 	signAaUserOpHash,
 	submitAaMultisigUserOp,
@@ -65,6 +81,10 @@ import {
 	publishAaMultisigInnerWithOfflineFallback,
 	type AaMultisigOutboundListItem,
 } from '@/utils/aaMultisigOfflineSync'
+import {
+	resolveCosignerEoaFromInput,
+	resolveCosignerEoaFromSearchRow,
+} from '@/utils/resolveCosignerWalletIdentity'
 
 type TabId = 'signers' | 'pending' | 'transfer' | 'history'
 
@@ -199,9 +219,13 @@ function autoRequiredSignaturesAfterAddCosigner(
 	return Math.min(Math.max(1, currentThreshold), nextManagerCount)
 }
 
+const OFFLINE_SYNC_PAGE_SIZE = 10
+
 export default function AaMultisigPage() {
 	const navigate = useNavigate()
 	const { profiles, setShowFooter, allNodes } = useDaemonContext()
+	const { opacity: backBtnOpacity, onScroll: onPageScroll, setRef: setPageScrollRef } =
+		useScrollCapsuleOpacity(true)
 	const { lookupByAddress, toCapsuleItem, avatarImgUrl, ensureProfilesForAddresses, resolveTag } =
 		useBeamioTagDatabase()
 	const profile = profiles?.[0]
@@ -217,6 +241,11 @@ export default function AaMultisigPage() {
 	const [busy, setBusy] = useState<string | null>(null)
 
 	const [newSignerTag, setNewSignerTag] = useState('')
+	const [cosignerSearchResults, setCosignerSearchResults] = useState<searchResult[]>([])
+	const [cosignerSearchLoading, setCosignerSearchLoading] = useState(false)
+	const [showCosignerDropdown, setShowCosignerDropdown] = useState(false)
+	const [selectedCosigner, setSelectedCosigner] = useState<searchResult | null>(null)
+	const cosignerSearchRequestId = useRef(0)
 	const [transferTo, setTransferTo] = useState('')
 	const [transferAmount, setTransferAmount] = useState('')
 	const [transferAssetId, setTransferAssetId] = useState<AaMultisigTransferAssetId | ''>('')
@@ -227,8 +256,63 @@ export default function AaMultisigPage() {
 	const [importPayload, setImportPayload] = useState('')
 	const [showImportPanel, setShowImportPanel] = useState(false)
 	const [outboundQueue, setOutboundQueue] = useState<AaMultisigOutboundListItem[]>([])
+	const [outboundVisibleCount, setOutboundVisibleCount] = useState(OFFLINE_SYNC_PAGE_SIZE)
+	const outboundListRef = useRef<HTMLUListElement>(null)
+	const outboundLoadMoreRef = useRef<HTMLLIElement>(null)
+	const outboundListScrolledRef = useRef(false)
 
 	const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+
+	const normalizedCosignerQuery = useMemo(
+		() => newSignerTag.trim().replace(/^@/, ''),
+		[newSignerTag]
+	)
+	const canSearchCosigner = normalizedCosignerQuery.length >= 2
+
+	useEffect(() => {
+		if (selectedCosigner) return
+
+		if (!normalizedCosignerQuery || !canSearchCosigner) {
+			setCosignerSearchResults([])
+			setCosignerSearchLoading(false)
+			setShowCosignerDropdown(false)
+			return
+		}
+
+		const id = ++cosignerSearchRequestId.current
+		const timer = window.setTimeout(async () => {
+			setCosignerSearchLoading(true)
+			const lower = normalizedCosignerQuery.toLowerCase()
+			const data = await searchUsername(lower)
+			const rows: searchResult[] = data?.results ?? []
+			const managerSet = new Set((policy?.managers ?? []).map((m) => m.toLowerCase()))
+			const filtered = rows.filter((row) => {
+				const addr = (row.address ?? '').trim().toLowerCase()
+				if (!addr || !ethers.isAddress(addr)) return false
+				if (eoa && addr === eoa.toLowerCase()) return false
+				if (managerSet.has(addr)) return false
+				return true
+			})
+			if (!filtered.length && ethers.isAddress(normalizedCosignerQuery)) {
+				const identity = await resolveCosignerEoaFromInput(normalizedCosignerQuery)
+				if (identity && identity.inputKind !== 'contract') {
+					const addr = ethers.getAddress(identity.eoa)
+					if (
+						(!eoa || addr.toLowerCase() !== eoa.toLowerCase()) &&
+						!managerSet.has(addr.toLowerCase())
+					) {
+						filtered.push(makeBeamioSearchAddressOnlyResult(addr))
+					}
+				}
+			}
+			if (id !== cosignerSearchRequestId.current) return
+			setCosignerSearchResults(filtered)
+			setCosignerSearchLoading(false)
+			setShowCosignerDropdown(true)
+		}, 350)
+
+		return () => window.clearTimeout(timer)
+	}, [normalizedCosignerQuery, canSearchCosigner, eoa, policy?.managers, selectedCosigner])
 
 	const refreshOutboundQueue = useCallback(() => {
 		if (!eoa) {
@@ -244,6 +328,56 @@ export default function AaMultisigPage() {
 		window.addEventListener(AA_MULTISIG_OUTBOUND_CHANGED_EVENT, onOutbound)
 		return () => window.removeEventListener(AA_MULTISIG_OUTBOUND_CHANGED_EVENT, onOutbound)
 	}, [refreshOutboundQueue])
+
+	const outboundNewestFirst = useMemo(
+		() => [...outboundQueue].sort((a, b) => b.createdAt - a.createdAt),
+		[outboundQueue]
+	)
+
+	const visibleOutboundItems = useMemo(
+		() => outboundNewestFirst.slice(0, outboundVisibleCount),
+		[outboundNewestFirst, outboundVisibleCount]
+	)
+
+	const hasMoreOutbound = outboundVisibleCount < outboundNewestFirst.length
+
+	useEffect(() => {
+		setOutboundVisibleCount(OFFLINE_SYNC_PAGE_SIZE)
+		outboundListScrolledRef.current = false
+		outboundListRef.current?.scrollTo({ top: 0 })
+	}, [outboundQueue.length])
+
+	const loadMoreOutboundItems = useCallback(() => {
+		setOutboundVisibleCount((prev) =>
+			Math.min(prev + OFFLINE_SYNC_PAGE_SIZE, outboundNewestFirst.length)
+		)
+	}, [outboundNewestFirst.length])
+
+	const handleOutboundListScroll = useCallback(() => {
+		outboundListScrolledRef.current = true
+		const root = outboundListRef.current
+		if (!root || !hasMoreOutbound) return
+		if (root.scrollTop + root.clientHeight < root.scrollHeight - 24) return
+		loadMoreOutboundItems()
+	}, [hasMoreOutbound, loadMoreOutboundItems])
+
+	useEffect(() => {
+		const root = outboundListRef.current
+		const node = outboundLoadMoreRef.current
+		if (!root || !node || !hasMoreOutbound) return
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (!entries[0]?.isIntersecting) return
+				// Ignore viewport-visible sentinel before the user scrolls inside the list.
+				if (!outboundListScrolledRef.current) return
+				loadMoreOutboundItems()
+			},
+			{ root, rootMargin: '0px', threshold: 0 }
+		)
+		observer.observe(node)
+		return () => observer.disconnect()
+	}, [hasMoreOutbound, loadMoreOutboundItems, visibleOutboundItems.length])
 
 	useEffect(() => {
 		if (!eoa || !privateKeyArmor || !allNodes?.length) return
@@ -392,6 +526,26 @@ export default function AaMultisigPage() {
 		[tasks, eoa, aaAccount]
 	)
 
+	const [chainEntryPointNonce, setChainEntryPointNonce] = useState<string | null>(null)
+
+	const refreshChainEntryPointNonce = useCallback(async () => {
+		if (!aaAccount) {
+			setChainEntryPointNonce(null)
+			return
+		}
+		try {
+			const n = await readAaEntryPointNonce(aaMultisigProvider, aaAccount)
+			setChainEntryPointNonce(String(n))
+		} catch {
+			// untrusted — keep previous
+		}
+	}, [aaAccount])
+
+	useEffect(() => {
+		if (tab !== 'pending' && tab !== 'history') return
+		void refreshChainEntryPointNonce()
+	}, [tab, aaAccount, tasks, refreshChainEntryPointNonce])
+
 	const previewRequiredSignatures = useMemo(() => {
 		if (!policy) return null
 		return autoRequiredSignaturesAfterAddCosigner(
@@ -435,20 +589,50 @@ export default function AaMultisigPage() {
 		return true
 	}
 
+	const handleSelectCosigner = async (item: searchResult) => {
+		const signerEoa = await resolveCosignerEoaFromSearchRow(item)
+		if (!signerEoa) {
+			Toast.show({ content: 'Co-signer must be a Beamio EOA (not a contract).' })
+			return
+		}
+		setSelectedCosigner({ ...item, address: signerEoa })
+		setNewSignerTag('')
+		setCosignerSearchResults([])
+		setShowCosignerDropdown(false)
+	}
+
+	const resolveNewSignerEoa = async (): Promise<string | null> => {
+		if (selectedCosigner) {
+			return resolveCosignerEoaFromSearchRow(selectedCosigner)
+		}
+		const tag = newSignerTag.trim().replace(/^@/, '')
+		if (!tag) return null
+		if (ethers.isAddress(tag)) {
+			const identity = await resolveCosignerEoaFromInput(tag)
+			if (!identity || identity.inputKind === 'contract') return null
+			return ethers.getAddress(identity.eoa)
+		}
+		const search = await searchUsername(tag)
+		const row = search?.results?.[0]
+		if (!row) return null
+		return resolveCosignerEoaFromSearchRow(row)
+	}
+
 	const proposePolicyUpdate = async () => {
 		if (!requireWalletReady() || !policy) return
 		setBusy('policy')
 		try {
-			const tag = newSignerTag.trim().replace(/^@/, '')
-			if (!tag) {
-				Toast.show({ content: 'Enter a @BeamioTag for the new signer.' })
+			const signerEoa = await resolveNewSignerEoa()
+			if (!signerEoa) {
+				Toast.show({ content: 'Search and select a @BeamioTag for the new signer.' })
 				return
 			}
-			const search = await searchUsername(tag)
-			const rows = search?.results ?? []
-			const signerEoa = rows[0]?.address?.trim()
-			if (!signerEoa || !ethers.isAddress(signerEoa)) {
-				Toast.show({ content: 'Signer not found on Beamio.' })
+			if (signerEoa.toLowerCase() === eoa.toLowerCase()) {
+				Toast.show({ content: 'You cannot add yourself as a co-signer.' })
+				return
+			}
+			if (policy.managers.some((m) => m.toLowerCase() === signerEoa.toLowerCase())) {
+				Toast.show({ content: 'This address is already a co-signer.' })
 				return
 			}
 			const managers = sortManagersStrict(
@@ -509,6 +693,7 @@ export default function AaMultisigPage() {
 						: 'Proposed locally. Export or sync when CoNET chat is online.',
 			})
 			setNewSignerTag('')
+			setSelectedCosigner(null)
 			reloadTasks()
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
@@ -710,6 +895,21 @@ export default function AaMultisigPage() {
 			Toast.show({ content: 'Not enough signatures yet.' })
 			return false
 		}
+		if (
+			task.kind === 'set_policy' &&
+			isSetPolicyCallDataSelfExecuteWrapped(task.aaAccount, task.packedUserOp.callData)
+		) {
+			Toast.show({
+				content: 'Outdated policy UserOp encoding. Reject this task and propose again.',
+			})
+			return false
+		}
+		const nonceCheck = await assertAaMultisigTaskEntryPointNonceFresh(task.aaAccount, task)
+		if (!nonceCheck.ok) {
+			Toast.show({ content: nonceCheck.message })
+			void refreshChainEntryPointNonce()
+			return false
+		}
 		setBusy(`submit-${task.taskId}`)
 		try {
 			const combinedSig = concatMultisigSignatures(task.signatures)
@@ -840,6 +1040,12 @@ export default function AaMultisigPage() {
 		const userSigned = task.signatures.some((s) => s.signer.toLowerCase() === eoa.toLowerCase())
 		const syncPending = userSigned && isAaMultisigOutboundPending(eoa, task.taskId, eoa)
 		const userIsCreator = task.creatorEoa.toLowerCase() === eoa.toLowerCase()
+		const brokenSetPolicyEncoding =
+			task.kind === 'set_policy' &&
+			isSetPolicyCallDataSelfExecuteWrapped(task.aaAccount, task.packedUserOp.callData)
+		const entryPointNonceStale =
+			chainEntryPointNonce != null && task.entryPointNonce !== chainEntryPointNonce
+		const submitBlocked = brokenSetPolicyEncoding || entryPointNonceStale
 
 		return (
 		<div
@@ -860,6 +1066,21 @@ export default function AaMultisigPage() {
 					</p>
 					{syncPending ? (
 						<p className="mt-1 text-xs font-medium text-amber-600">Sync pending (offline sign)</p>
+					) : null}
+					{brokenSetPolicyEncoding ? (
+						<p className="mt-1 text-xs font-medium text-amber-700">
+							Outdated call encoding — reject and propose again.
+						</p>
+					) : null}
+					{entryPointNonceStale && chainEntryPointNonce != null ? (
+						<p className="mt-1 text-xs font-medium text-amber-700">
+							{formatAaMultisigStaleNonceMessage(task.entryPointNonce, BigInt(chainEntryPointNonce))}
+						</p>
+					) : null}
+					{task.status === 'failed' ? (
+						<p className="mt-1 text-xs font-medium text-red-600">
+							On-chain submit failed — reject and re-propose with nonce {chainEntryPointNonce ?? '…'}.
+						</p>
 					) : null}
 				</div>
 				<span
@@ -912,20 +1133,32 @@ export default function AaMultisigPage() {
 				</button>
 			) : null}
 			{actions === 'ready' ? (
-				<button
-					type="button"
-					disabled={busy === `submit-${task.taskId}`}
-					onClick={() => void submitTask(task)}
-					className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl py-2 text-sm font-semibold text-white"
-					style={{ backgroundColor: aaAccent.accent }}
-				>
-					{busy === `submit-${task.taskId}` ? (
-						<Loader2 className="h-4 w-4 animate-spin" />
-					) : (
-						<Send className="h-4 w-4" />
-					)}
-					Submit transfer
-				</button>
+				<>
+					<button
+						type="button"
+						disabled={busy === `submit-${task.taskId}` || submitBlocked}
+						onClick={() => void submitTask(task)}
+						className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl py-2 text-sm font-semibold text-white disabled:opacity-50"
+						style={{ backgroundColor: aaAccent.accent }}
+					>
+						{busy === `submit-${task.taskId}` ? (
+							<Loader2 className="h-4 w-4 animate-spin" />
+						) : (
+							<Send className="h-4 w-4" />
+						)}
+						{task.kind === 'transfer' ? 'Submit transfer' : 'Submit'}
+					</button>
+					{submitBlocked ? (
+						<button
+							type="button"
+							disabled={busy === `reject-${task.taskId}`}
+							onClick={() => void rejectTask(task)}
+							className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 py-2 text-sm font-medium text-amber-800"
+						>
+							Reject expired task
+						</button>
+					) : null}
+				</>
 			) : null}
 			{actions === 'history' && task.txHash ? (
 				<p className="mt-2 truncate text-xs text-slate-500">Tx {task.txHash}</p>
@@ -935,12 +1168,28 @@ export default function AaMultisigPage() {
 	}
 
 	return (
-		<div className="flex min-h-[100dvh] flex-col bg-[#F2F2F7] dark:bg-slate-950">
-			<div className={BEAMIO_CIRCULAR_BACK_ROW_CLASS} style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
-				<BeamioCircularBackButton onClick={() => navigate('/wallet')} className="absolute left-4 top-0" />
-			</div>
+		<div className="flex min-h-[100dvh] flex-col overflow-hidden bg-[#F2F2F7] dark:bg-slate-950">
+			<button
+				type="button"
+				onClick={() => navigate('/wallet')}
+				className={`fixed left-4 z-10 ${CAPSULE_BTN_CLASS}`}
+				style={{
+					top: 'max(1rem, env(safe-area-inset-top))',
+					opacity: backBtnOpacity,
+					pointerEvents: backBtnOpacity < 0.05 ? 'none' : 'auto',
+				}}
+				aria-label={tu('back')}
+			>
+				<ChevronLeft className="h-6 w-6 text-slate-900 dark:text-slate-100" strokeWidth={2.6} />
+			</button>
 
-			<div className="mx-auto w-full max-w-lg flex-1 px-4 pb-10 pt-14">
+			<div
+				ref={setPageScrollRef}
+				onScroll={onPageScroll}
+				className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+			>
+				<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
+				<div className="mx-auto w-full max-w-lg pb-10">
 				<div className="mb-4 flex items-center gap-3">
 					<div
 						className="flex h-11 w-11 items-center justify-center rounded-full text-white"
@@ -1012,18 +1261,85 @@ export default function AaMultisigPage() {
 							</button>
 						</div>
 
-						<div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+						<div className="relative overflow-visible rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
 							<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Add co-signer</p>
 							<p className="mt-1 text-xs text-slate-500">
 								Proposes a policy update via CoNET chat. Owner must remain the lowest address among signers.
 							</p>
-							<label className="mt-3 block text-xs font-medium text-slate-600">@BeamioTag</label>
-							<input
-								value={newSignerTag}
-								onChange={(e) => setNewSignerTag(e.target.value)}
-								placeholder="@alice"
-								className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
-							/>
+							<label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
+								@BeamioTag
+							</label>
+							{selectedCosigner ? (
+								<div className="mt-1 rounded-2xl border border-[#eadcf7] bg-[#f5ecff] p-3 dark:border-slate-600 dark:bg-slate-800/80">
+									<div className="flex items-start justify-between gap-3">
+										<div className="flex min-w-0 flex-1 items-center gap-2.5">
+											<IpfsImg
+												src={
+													selectedCosigner.image?.trim() ||
+													beamioSearchAvatarUrl(selectedCosigner.username || selectedCosigner.address)
+												}
+												alt=""
+												className="h-9 w-9 shrink-0 rounded-full border border-slate-200/80 object-cover dark:border-slate-600"
+											/>
+											<div className="min-w-0 flex-1 leading-tight">
+												<p className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+													{beamioSearchDisplayName(selectedCosigner)}
+												</p>
+												<p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+													@{selectedCosigner.username} · {beamioSearchShortAddress(selectedCosigner.address)}
+												</p>
+											</div>
+										</div>
+										<button
+											type="button"
+											className="rounded-full p-2 text-slate-500 hover:bg-white/60 dark:hover:bg-slate-700"
+											onClick={() => setSelectedCosigner(null)}
+											aria-label="Clear selected co-signer"
+										>
+											<X className="h-4 w-4" aria-hidden />
+										</button>
+									</div>
+								</div>
+							) : (
+								<div className="relative mt-1">
+									<div className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm ring-1 ring-transparent focus-within:ring-slate-300 dark:border-slate-600 dark:bg-slate-800">
+										<Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+										<input
+											value={newSignerTag}
+											onChange={(e) => setNewSignerTag(e.currentTarget.value)}
+											onFocus={() => {
+												if (canSearchCosigner && (cosignerSearchResults.length > 0 || cosignerSearchLoading)) {
+													setShowCosignerDropdown(true)
+												}
+											}}
+											placeholder="Search @BeamioTag or wallet address"
+											autoComplete="off"
+											inputMode="search"
+											className="w-full min-w-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
+										/>
+										{cosignerSearchLoading ? (
+											<Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" aria-hidden />
+										) : null}
+									</div>
+									{showCosignerDropdown && canSearchCosigner ? (
+										<div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800">
+											<div className="max-h-72 overflow-y-auto py-1">
+												{!cosignerSearchLoading &&
+													cosignerSearchResults.map((item) => (
+														<BeamioSearchResultRow
+															key={item.address}
+															item={item}
+															onSelect={(row) => void handleSelectCosigner(row)}
+														/>
+													))}
+												{!cosignerSearchLoading && cosignerSearchResults.length === 0 ? (
+													<div className="px-3 py-2.5 text-xs text-slate-400">No results</div>
+												) : null}
+											</div>
+										</div>
+									) : null}
+								</div>
+							)}
 							{previewRequiredSignatures != null ? (
 								<p className="mt-3 text-xs text-slate-600 dark:text-slate-400">
 									Required signatures:{' '}
@@ -1129,21 +1445,31 @@ export default function AaMultisigPage() {
 
 				{tab === 'pending' ? (
 					<div className="space-y-3">
+						{readyTasks.length > 0 ? (
+							<>
+								<p className="text-xs font-semibold uppercase text-slate-500">Ready to submit</p>
+								{readyTasks.map((t) => renderTaskRow(t, 'ready'))}
+							</>
+						) : null}
 						<div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
 							<div className="flex items-center justify-between gap-2">
 								<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Offline sync</p>
-								{outboundQueue.length > 0 ? (
+								{outboundNewestFirst.length > 0 ? (
 									<span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-										{outboundQueue.length} queued
+										{outboundNewestFirst.length} queued
 									</span>
 								) : null}
 							</div>
 							<p className="mt-1 text-xs text-slate-500">
 								Sign without CoNET chat, then copy the sign packet or import co-signer packets below.
 							</p>
-							{outboundQueue.length > 0 ? (
-								<ul className="mt-3 space-y-2">
-									{outboundQueue.map((item) => (
+							{outboundNewestFirst.length > 0 ? (
+								<ul
+									ref={outboundListRef}
+									onScroll={handleOutboundListScroll}
+									className="mt-3 max-h-[26rem] space-y-2 overflow-y-auto overscroll-contain"
+								>
+									{visibleOutboundItems.map((item) => (
 										<li
 											key={item.id}
 											className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2.5 dark:border-amber-900/40 dark:bg-amber-950/25"
@@ -1172,7 +1498,34 @@ export default function AaMultisigPage() {
 											</div>
 										</li>
 									))}
+									{hasMoreOutbound ? (
+										<li ref={outboundLoadMoreRef} className="h-px list-none" aria-hidden />
+									) : null}
 								</ul>
+							) : null}
+							{outboundNewestFirst.length > OFFLINE_SYNC_PAGE_SIZE ? (
+								<p className="mt-2 text-center text-[11px] text-slate-500">
+									{hasMoreOutbound
+										? `Showing ${visibleOutboundItems.length} of ${outboundNewestFirst.length} · scroll for older`
+										: `Showing all ${outboundNewestFirst.length} queued`}
+								</p>
+							) : null}
+							{hasMoreOutbound ? (
+								<button
+									type="button"
+									onClick={() => {
+										outboundListScrolledRef.current = true
+										loadMoreOutboundItems()
+									}}
+									className="mt-2 w-full rounded-xl border border-slate-200 py-2 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
+									style={{ color: aaAccent.accent }}
+								>
+									Show {Math.min(
+										OFFLINE_SYNC_PAGE_SIZE,
+										outboundNewestFirst.length - visibleOutboundItems.length
+									)}{' '}
+									older
+								</button>
 							) : null}
 							<button
 								type="button"
@@ -1207,12 +1560,6 @@ export default function AaMultisigPage() {
 						) : (
 							pendingForMe.map((t) => renderTaskRow(t, 'pending'))
 						)}
-						{readyTasks.length > 0 ? (
-							<>
-								<p className="pt-2 text-xs font-semibold uppercase text-slate-500">Ready to submit</p>
-								{readyTasks.map((t) => renderTaskRow(t, 'ready'))}
-							</>
-						) : null}
 					</div>
 				) : null}
 
@@ -1318,6 +1665,7 @@ export default function AaMultisigPage() {
 						)}
 					</div>
 				) : null}
+				</div>
 			</div>
 		</div>
 	)

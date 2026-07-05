@@ -84,12 +84,33 @@ export function encodeAAExecuteConetAssetTransfer(params: {
 }
 
 export function encodeAAExecuteSetThresholdPolicy(
-	aaAccount: string,
+	_aaAccount: string,
 	managersSorted: string[],
 	newThreshold: number
 ): string {
-	const inner = AA_POLICY.encodeFunctionData('setThresholdPolicy', [managersSorted, newThreshold])
-	return AA_EXECUTE.encodeFunctionData('execute', [aaAccount, 0n, inner])
+	// EntryPoint invokes userOp.callData on the AA with msg.sender = EntryPoint.
+	// setThresholdPolicy is onlyEntryPoint — must NOT wrap in execute(self, …) (self-call breaks sender).
+	return AA_POLICY.encodeFunctionData('setThresholdPolicy', [managersSorted, newThreshold])
+}
+
+/** Legacy bug: execute(aaAccount, 0, setThresholdPolicy) makes inner call msg.sender = AA → NotEntryPoint revert. */
+export function isSetPolicyCallDataSelfExecuteWrapped(
+	aaAccount: string,
+	callData: string
+): boolean {
+	if (!callData?.startsWith('0x') || callData.length < 10) return false
+	if (callData.slice(0, 10).toLowerCase() !== '0xb61d27f6') return false
+	try {
+		const decoded = AA_EXECUTE.decodeFunctionData('execute', callData)
+		const dest = ethers.getAddress(String(decoded[0]))
+		const inner = String(decoded[2] ?? '')
+		return (
+			dest.toLowerCase() === ethers.getAddress(aaAccount).toLowerCase() &&
+			inner.slice(0, 10).toLowerCase() === '0x17af07f3'
+		)
+	} catch {
+		return false
+	}
 }
 
 export function encodeAACancelNoOpCallData(): string {

@@ -2354,7 +2354,7 @@ function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoP
 					) : null}
 					{aboutText ? (
 						<p
-							className={`text-[14px] leading-relaxed text-slate-600 dark:text-slate-400${aboutTitle ? " mt-2" : ""}`}
+							className={`whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400${aboutTitle ? " mt-2" : ""}`}
 						>
 							{aboutText}
 						</p>

@@ -395,10 +395,9 @@ function resolveDiscoverMerchantInfoPanel(
 
 function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolean {
 	return Boolean(
-		panel.aboutTitle?.trim() &&
-			panel.aboutText?.trim() &&
-			panel.openingHours?.trim() &&
-			panel.contact?.trim() &&
+		panel.aboutText?.trim() ||
+			panel.openingHours?.trim() ||
+			panel.contact?.trim() ||
 			panel.location?.trim()
 	)
 }
@@ -2336,31 +2335,49 @@ const PurchaseCreditsSheet = ({
 }
 
 function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoPanel }) {
-	const rows = [
-		{ label: "Opening Hours", value: panel.openingHours, Icon: Clock },
-		{ label: "Contact", value: panel.contact, Icon: Phone },
-		{ label: "Location", value: panel.location, Icon: MapPin },
-	] as const
+	const aboutTitle = panel.aboutTitle?.trim()
+	const aboutText = panel.aboutText?.trim()
+	const rows = (
+		[
+			{ label: "Opening Hours", value: panel.openingHours, Icon: Clock },
+			{ label: "Contact", value: panel.contact, Icon: Phone },
+			{ label: "Location", value: panel.location, Icon: MapPin },
+		] as const
+	).filter((row) => row.value?.trim())
 
 	return (
 		<div className="rounded-[22px] bg-[#eef1f4] p-4 dark:bg-slate-800/80">
-			<h2 className="text-[16px] font-bold text-[#1f2328] dark:text-slate-100">{panel.aboutTitle}</h2>
-			<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">{panel.aboutText}</p>
-			<div className="mt-5 space-y-4">
-				{rows.map(({ label, value, Icon }) => (
-					<div key={label} className="flex gap-3">
-						<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
-							<Icon className="h-5 w-5" strokeWidth={2} />
-						</span>
-						<div className="min-w-0 flex-1">
-							<p className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">{label}</p>
-							<p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-slate-600 dark:text-slate-400">
-								{value}
-							</p>
+			{aboutTitle || aboutText ? (
+				<>
+					{aboutTitle ? (
+						<h2 className="text-[16px] font-bold text-[#1f2328] dark:text-slate-100">{aboutTitle}</h2>
+					) : null}
+					{aboutText ? (
+						<p
+							className={`text-[14px] leading-relaxed text-slate-600 dark:text-slate-400${aboutTitle ? " mt-2" : ""}`}
+						>
+							{aboutText}
+						</p>
+					) : null}
+				</>
+			) : null}
+			{rows.length > 0 ? (
+				<div className={`space-y-4${aboutTitle || aboutText ? " mt-5" : ""}`}>
+					{rows.map(({ label, value, Icon }) => (
+						<div key={label} className="flex gap-3">
+							<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
+								<Icon className="h-5 w-5" strokeWidth={2} />
+							</span>
+							<div className="min-w-0 flex-1">
+								<p className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">{label}</p>
+								<p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-slate-600 dark:text-slate-400">
+									{value}
+								</p>
+							</div>
 						</div>
-					</div>
-				))}
-			</div>
+					))}
+				</div>
+			) : null}
 		</div>
 	)
 }

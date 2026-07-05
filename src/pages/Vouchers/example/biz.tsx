@@ -33659,7 +33659,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 {merchantPanelAboutPreviewTitle}
                               </h3>
                               {cardIssuanceDiscoverAboutDetail.trim() ? (
-                                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                                <p className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-slate-600">
                                   {cardIssuanceDiscoverAboutDetail.trim()}
                                 </p>
                               ) : null}

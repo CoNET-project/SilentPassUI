@@ -346,6 +346,18 @@ type ShareTokenMetadataDiscoverAbout = {
 	aboutTitle?: string
 }
 
+function trimDiscoverAboutMultilineField(raw: string): string {
+	return raw.replace(/\r\n/g, "\n").replace(/^\s+|\s+$/g, "")
+}
+
+/** About detail for UI — keep newlines; legacy ".  " breaks become paragraphs. */
+function discoverAboutDetailForDisplay(raw: string): string {
+	const normalized = trimDiscoverAboutMultilineField(raw)
+	if (!normalized) return ""
+	if (normalized.includes("\n")) return normalized
+	return normalized.replace(/([.!?])\s{2,}/g, "$1\n\n")
+}
+
 function parseDiscoverAboutFromShare(
 	share: Record<string, unknown> | null | undefined
 ): ShareTokenMetadataDiscoverAbout | null {
@@ -355,7 +367,9 @@ function parseDiscoverAboutFromShare(
 	const o = raw as Record<string, unknown>
 	const field = (key: string): string | undefined => {
 		const v = o[key]
-		return typeof v === "string" && v.trim() ? v.trim() : undefined
+		if (typeof v !== "string") return undefined
+		const t = trimDiscoverAboutMultilineField(v)
+		return t || undefined
 	}
 	const detail = field("detail")
 	const openingHours = field("openingHours")
@@ -842,6 +856,7 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 	meta: CardMetadataFromUri | null,
 	resolveDisplayName: (cardAddress: string | undefined) => string,
 	resolveImage: (cardAddress: string | undefined) => string,
+	metadataRoot?: Record<string, unknown> | null,
 ): DiscoverFeaturedCard {
 	const dbImage = resolveImage(cardAddress)?.trim() || ''
 	const programName = meta?.name?.trim() || resolveDisplayName(cardAddress) || 'Merchant'
@@ -887,7 +902,8 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 		rechargeBonusSidePill,
 		rechargeBonusDisplay,
 		discoverAbout: parseDiscoverAboutFromShare(
-			readDiscoverNestedObject(metaRecord, 'shareTokenMetadata'),
+			readDiscoverNestedObject(metadataRoot ?? null, "shareTokenMetadata") ??
+				readDiscoverNestedObject(metaRecord, "shareTokenMetadata"),
 		),
 	}
 }
@@ -2334,6 +2350,36 @@ const PurchaseCreditsSheet = ({
   )
 }
 
+function DiscoverAboutDetailBody({
+	text,
+	className = "",
+}: {
+	text: string
+	className?: string
+}) {
+	const normalized = discoverAboutDetailForDisplay(text)
+	const paragraphs = normalized.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+	if (paragraphs.length <= 1) {
+		return (
+			<p className={`whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400${className}`}>
+				{normalized}
+			</p>
+		)
+	}
+	return (
+		<div className={`space-y-3${className}`}>
+			{paragraphs.map((paragraph, index) => (
+				<p
+					key={`about-paragraph-${index}`}
+					className="whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400"
+				>
+					{paragraph}
+				</p>
+			))}
+		</div>
+	)
+}
+
 function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoPanel }) {
 	const aboutTitle = panel.aboutTitle?.trim()
 	const aboutText = panel.aboutText?.trim()
@@ -2353,11 +2399,7 @@ function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoP
 						<h2 className="text-[16px] font-bold text-[#1f2328] dark:text-slate-100">{aboutTitle}</h2>
 					) : null}
 					{aboutText ? (
-						<p
-							className={`whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400${aboutTitle ? " mt-2" : ""}`}
-						>
-							{aboutText}
-						</p>
+						<DiscoverAboutDetailBody text={aboutText} className={aboutTitle ? " mt-2" : ""} />
 					) : null}
 				</>
 			) : null}
@@ -2628,8 +2670,12 @@ function DiscoverMerchantDetailFullScreen({
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta } = useDaemonContext()
-	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName } = useMerchantCardDatabase()
+	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName, lookupByAddress } =
+		useMerchantCardDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
+	const [resolvedDiscoverAbout, setResolvedDiscoverAbout] = useState<ShareTokenMetadataDiscoverAbout | null>(
+		item.discoverAbout,
+	)
 	const [userLiked, setUserLiked] = useState<boolean | null>(null)
 	const [likeLoading, setLikeLoading] = useState(false)
 	const merchantLikeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
@@ -2665,9 +2711,35 @@ function DiscoverMerchantDetailFullScreen({
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const ccy = (item.currency || "CAD").toUpperCase()
 	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
+
+	useEffect(() => {
+		setResolvedDiscoverAbout(item.discoverAbout)
+	}, [item.cardAddress, item.discoverAbout])
+
+	useEffect(() => {
+		if (!item.cardAddress) return
+		let cancelled = false
+		const cardAddress = item.cardAddress
+		void fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardAddress)}`)
+			.then(async (res) => (res.ok ? ((await res.json()) as { metadata?: Record<string, unknown> | null }) : null))
+			.then((data) => {
+				if (cancelled || !data?.metadata || typeof data.metadata !== "object") return
+				const about = parseDiscoverAboutFromShare(
+					readDiscoverNestedObject(data.metadata, "shareTokenMetadata"),
+				)
+				if (about) setResolvedDiscoverAbout(about)
+			})
+			.catch(() => {
+				/* untrusted — keep item.discoverAbout / cache */
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress])
+
 	const merchantInfoPanel =
 		item.cardAddress != null
-			? resolveDiscoverMerchantInfoPanel(item.cardAddress, item.discoverAbout, passTitle)
+			? resolveDiscoverMerchantInfoPanel(item.cardAddress, resolvedDiscoverAbout, passTitle)
 			: undefined
 	const displayCurrency = (merchantAssets?.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
 	const balancePrefix = fiatPrefix(displayCurrency)
@@ -3396,6 +3468,11 @@ function DiscoverMerchantDetailFullScreen({
 						setMerchantOfferTiers([])
 					}
 				}
+				const rec = lookupByAddress(cardAddress)
+				const freshAbout = parseDiscoverAboutFromShare(
+					readDiscoverNestedObject(rec?.metadataRoot ?? null, "shareTokenMetadata"),
+				)
+				if (freshAbout) setResolvedDiscoverAbout(freshAbout)
 			})
 			.catch(() => {
 				// Untrusted — keep previous coupon/tier state.
@@ -3406,7 +3483,7 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, ccy, fetchCardMetadata, registerCardAddresses])
+	}, [item.cardAddress, ccy, fetchCardMetadata, lookupByAddress, registerCardAddresses])
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -3790,7 +3867,15 @@ export default function Market() {
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, myAddress, setShowFooter, chatSearchOpen, setChatSearchOpen, beamio, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards } = useDaemonContext()
-	const { registerCardAddresses, mergeTrustedCards, resolveDisplayName, resolveImage, fetchCardMetadata, peekMetadata } = useMerchantCardDatabase()
+	const {
+		registerCardAddresses,
+		mergeTrustedCards,
+		resolveDisplayName,
+		resolveImage,
+		fetchCardMetadata,
+		peekMetadata,
+		lookupByAddress,
+	} = useMerchantCardDatabase()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
@@ -4087,6 +4172,7 @@ export default function Market() {
 				peeked,
 				resolveDisplayName,
 				resolveImage,
+				lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
 			)
 			discoverDeepLinkHandledForRef.current = cardNorm
 			openDiscoverMerchantDetail(fallback, { immediate: true })
@@ -4095,6 +4181,7 @@ export default function Market() {
 	}, [
 		discoverDeepLinkTarget,
 		discoverFeaturedCards,
+		lookupByAddress,
 		navigate,
 		openDiscoverMerchantDetail,
 		peekMetadata,
@@ -4117,6 +4204,7 @@ export default function Market() {
 				peekMetadata(discoverDeepLinkTarget),
 				resolveDisplayName,
 				resolveImage,
+				lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
 			)
 			discoverDeepLinkHandledForRef.current = cardNorm
 			openDiscoverMerchantDetail(fallback, { immediate: true })
@@ -4130,6 +4218,7 @@ export default function Market() {
 		discoverDeepLinkTarget,
 		fetchCardMetadata,
 		latestCardsLoading,
+		lookupByAddress,
 		navigate,
 		openDiscoverMerchantDetail,
 		peekMetadata,

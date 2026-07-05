@@ -9254,6 +9254,14 @@ function buildDiscoverAboutMetadataPayload(fields: {
   };
 }
 
+/** About detail for merchant preview — keep newlines; legacy double-space breaks become paragraphs. */
+function discoverAboutDetailForDisplay(raw: string): string {
+  const normalized = raw.replace(/\r\n/g, '\n').trim();
+  if (!normalized) return '';
+  if (normalized.includes('\n')) return normalized;
+  return normalized.replace(/([.!?])\s{2,}/g, '$1\n\n');
+}
+
 function discoverAboutFieldsEqual(
   a: ShareTokenMetadataDiscoverAbout | undefined,
   b: ShareTokenMetadataDiscoverAbout | undefined
@@ -33660,7 +33668,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               </h3>
                               {cardIssuanceDiscoverAboutDetail.trim() ? (
                                 <p className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-slate-600">
-                                  {cardIssuanceDiscoverAboutDetail.trim()}
+                                  {discoverAboutDetailForDisplay(cardIssuanceDiscoverAboutDetail)}
                                 </p>
                               ) : null}
                               {merchantPanelAboutPreviewRows.some((row) => row.value) ? (

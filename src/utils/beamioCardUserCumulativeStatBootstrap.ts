@@ -167,7 +167,7 @@ export async function readCardUserCumulativeStatInitialized(
 	}
 }
 
-async function postOwnerExecuteForOwner(
+export async function postOwnerExecuteForOwner(
 	endpoint: string,
 	payload: {
 		cardAddress: string

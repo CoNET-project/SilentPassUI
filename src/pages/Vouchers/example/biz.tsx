@@ -22,14 +22,6 @@ import { useReliableTapHandler } from '@/utils/reliableTap';
 import { hasSessionPrivateKeyArmor, getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
 import { ensureCardUserCumulativeStatInitializedSilent, ensureProfileOwnerCardsUserCumulativeStatInitializedSilent } from '@/utils/beamioCardUserCumulativeStatBootstrap';
 import {
-  UC_REWARD_ASSET,
-  readRewardMintBudget13,
-  readOwnerRewardAssetBalance,
-  postPurchaseRewardProgram,
-  formatRewardMintBudget13Display,
-  type RewardFundAssetKind,
-} from '@/utils/beamioCardRewardProgramFund';
-import {
   storeSystemData,
   generateCODE,
   getBalance,
@@ -71,8 +63,6 @@ import {
   postCardTerminalSettlementClear,
   signExecuteForOwner,
   encodeCreateIssuedNft,
-  encodeSetChargeRewardRatio,
-  postExecuteForOwner,
   postCardCreateIssuedNft,
   encodeCreateRedeemBatchBundle,
   postCardCreateRedeem,
@@ -115,14 +105,19 @@ import {
   type CardRedeemItem,
   type ShareTokenMetadataDiscoverAbout,
   type ShareTokenMetadataTopupPromotion,
+  type ShareTokenMetadataSocialPromotion,
+  type ShareTokenMetadataSocialExchange,
+  postCardFundSocialExchangeUsdcEscrow,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
+import usdc_abi from '@/services/ABI/usdc_abi.json';
 import { conetDepinProvider, baseEndpoint } from '@/utils/constants';
 import {
   BEAMIO_INDEXER_DIAMOND,
   CONET_BUINT,
   CONET_BUNIT_AIRDROP_ADDRESS,
   CONET_CARD_FACTORY,
+  CONET_USDC,
 } from '@/config/chainAddresses';
 import { CONET_MAINNET_CHAIN_ID, providerForBeamioUserCard, isMerchantUserCardOnConet } from '@/utils/beamioUserCardChain';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
@@ -327,6 +322,25 @@ import {
   validateTopupPromotionDraft,
   type TopupPromotionDraft,
 } from '@/utils/programTopupPromotion';
+import {
+  EMPTY_SOCIAL_PROMOTION_DRAFT,
+  formatSocialPromotionDisplay,
+  parseSocialPromotionFromMetadata,
+  socialPromotionDraftFromMetadata,
+  socialPromotionDraftToPayload,
+  validateSocialPromotionDraft,
+  type SocialPromotionDraft,
+} from '@/utils/programSocialPromotion';
+import {
+  EMPTY_SOCIAL_EXCHANGE_DRAFT,
+  parseSocialExchangeFromMetadata,
+  socialExchangeDraftFromMetadata,
+  socialExchangeDraftToPayload,
+  socialExchangeSummaryLabel,
+  validateSocialExchangeDraft,
+  type SocialExchangeDraft,
+} from '@/utils/programSocialExchange';
+import { applySocialPromotionOnChainRules } from '@/utils/beamioCardSocialPromotionRules';
 import {
   registerPOSApi,
   signRegisterPOS,
@@ -9604,6 +9618,8 @@ type CardIssuanceCouponRow = {
   issuedTokenId?: string;
   /** From issued-series API — Blockscout instance link needs minted count above zero. */
   issuedNftMintedCount?: string;
+  /** Social points (#13) exchange — burn on claim for coupon or USDC. */
+  socialExchange?: ShareTokenMetadataSocialExchange;
 };
 
 function makeCardIssuanceCouponRow(
@@ -9621,7 +9637,8 @@ function makeCardIssuanceCouponRow(
   issuedTokenId?: string,
   couponId?: string,
   issueLeft?: string,
-  issuedNftMintedCount?: string
+  issuedNftMintedCount?: string,
+  socialExchange?: ShareTokenMetadataSocialExchange
 ): CardIssuanceCouponRow {
   return {
     id: couponId?.trim() || `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -9639,6 +9656,7 @@ function makeCardIssuanceCouponRow(
     ...(issuedTokenId?.trim() ? { issuedTokenId: issuedTokenId.trim() } : {}),
     ...(issueLeft != null && String(issueLeft).trim() ? { issueLeft: String(issueLeft).trim() } : {}),
     ...(issuedNftMintedCount?.trim() ? { issuedNftMintedCount: issuedNftMintedCount.trim() } : {}),
+    ...(socialExchange ? { socialExchange } : {}),
   };
 }
 
@@ -9661,6 +9679,7 @@ type CardIssuanceCouponMetadataPayload = {
   issued?: boolean;
   /** On-chain ERC-1155 issued NFT series id */
   issuedTokenId?: string;
+  socialExchange?: ShareTokenMetadataSocialExchange;
 };
 
 function buildCardIssuanceCouponMetadataPayload(
@@ -9715,6 +9734,7 @@ function buildCardIssuanceCouponMetadataPayload(
       if (row.issued) payload.issued = true;
       const it = row.issuedTokenId?.trim();
       if (it) payload.issuedTokenId = it;
+      if (row.socialExchange) payload.socialExchange = row.socialExchange;
       return payload;
     })
     .filter((row): row is CardIssuanceCouponMetadataPayload => row != null);
@@ -11358,9 +11378,73 @@ const [cardIssuanceTopupPromotion, setCardIssuanceTopupPromotion] = useState<Top
    useState(false);
  const [cardIssuanceTopupPromotionEditorServerError, setCardIssuanceTopupPromotionEditorServerError] =
    useState('');
+const [cardIssuanceSocialPromotion, setCardIssuanceSocialPromotion] = useState<SocialPromotionDraft>(
+  EMPTY_SOCIAL_PROMOTION_DRAFT
+);
+const [cardIssuanceSocialPromotionEditorOpen, setCardIssuanceSocialPromotionEditorOpen] = useState(false);
+const [cardIssuanceSocialPromotionEditorPublishing, setCardIssuanceSocialPromotionEditorPublishing] =
+  useState(false);
+const [cardIssuanceSocialPromotionEditorServerError, setCardIssuanceSocialPromotionEditorServerError] =
+  useState('');
 const [cardIssuanceCoupons, setCardIssuanceCoupons] = useState<CardIssuanceCouponRow[]>([]);
+const [cardIssuanceSocialExchangeEditorOpen, setCardIssuanceSocialExchangeEditorOpen] = useState(false);
+const [cardIssuanceSocialExchangeDraft, setCardIssuanceSocialExchangeDraft] =
+  useState<SocialExchangeDraft>(EMPTY_SOCIAL_EXCHANGE_DRAFT);
+const [cardIssuanceSocialExchangeName, setCardIssuanceSocialExchangeName] = useState(
+  () => cardIssuanceCouponNameDefault()
+);
+const [cardIssuanceSocialExchangeIssueTotal, setCardIssuanceSocialExchangeIssueTotal] = useState(
+  String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)
+);
+const [cardIssuanceSocialExchangeDescription, setCardIssuanceSocialExchangeDescription] = useState(
+  cardIssuanceCouponDescriptionDefault()
+);
+const [cardIssuanceSocialExchangeIcon, setCardIssuanceSocialExchangeIcon] = useState('');
+const [cardIssuanceSocialExchangeImage, setCardIssuanceSocialExchangeImage] = useState('');
+const [cardIssuanceSocialExchangeBackgroundColor, setCardIssuanceSocialExchangeBackgroundColor] =
+  useState('#0051d1');
+const [cardIssuanceSocialExchangeDateRestriction, setCardIssuanceSocialExchangeDateRestriction] =
+  useState<'none' | 'range'>('none');
+const [cardIssuanceSocialExchangeValidFromYmd, setCardIssuanceSocialExchangeValidFromYmd] = useState(
+  () => couponDefaultValidFromYmd()
+);
+const [cardIssuanceSocialExchangeValidToYmd, setCardIssuanceSocialExchangeValidToYmd] = useState(
+  () => couponDefaultValidToYmd()
+);
+const cardIssuanceSocialExchangeIconFileRef = useRef<HTMLInputElement>(null);
+const cardIssuanceSocialExchangeImageFileRef = useRef<HTMLInputElement>(null);
+const [cardIssuanceSocialExchangeIconUploading, setCardIssuanceSocialExchangeIconUploading] =
+  useState(false);
+const [cardIssuanceSocialExchangeImageUploading, setCardIssuanceSocialExchangeImageUploading] =
+  useState(false);
+const cardIssuanceSocialExchangeIssueTotalWheelRef = useMemo(
+  () => createNumericInputWheelNonPassiveRefCallback(),
+  []
+);
+const [cardIssuanceSocialExchangeEditorPublishing, setCardIssuanceSocialExchangeEditorPublishing] =
+  useState(false);
+const [cardIssuanceSocialExchangeEditorError, setCardIssuanceSocialExchangeEditorError] = useState('');
+const cardIssuanceSocialExchangeCoupons = useMemo(
+  () => cardIssuanceCoupons.filter((c) => c.socialExchange?.enabled !== false && c.socialExchange),
+  [cardIssuanceCoupons]
+);
+const cardIssuanceSocialExchangeEditorValidationError = useMemo(
+  () => validateSocialExchangeDraft(cardIssuanceSocialExchangeDraft),
+  [cardIssuanceSocialExchangeDraft]
+);
 const catalogCouponsTrustedPersistArmedRef = useRef(false);
 const [cardIssuanceCouponEditorOpen, setCardIssuanceCouponEditorOpen] = useState(false);
+/** Non-null when editing a social-points exchange coupon in the shared coupon editor. */
+const [cardIssuanceCouponSocialExchangeDraft, setCardIssuanceCouponSocialExchangeDraft] =
+  useState<SocialExchangeDraft | null>(null);
+const cardIssuanceCouponEditorIsSocialExchange = cardIssuanceCouponSocialExchangeDraft !== null;
+const cardIssuanceCouponSocialExchangeEditorValidationError = useMemo(
+  () =>
+    cardIssuanceCouponSocialExchangeDraft
+      ? validateSocialExchangeDraft(cardIssuanceCouponSocialExchangeDraft)
+      : '',
+  [cardIssuanceCouponSocialExchangeDraft]
+);
 /** Hydration must not reset editing session while the coupon editor is open (draft IPFS URL vs server row). */
 const cardIssuanceCouponEditorOpenRef = useRef(false);
 useEffect(() => {
@@ -11557,7 +11641,6 @@ const cardIssuanceEditingCouponRow = useMemo(
 const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.issued);
  const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(true);
  const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('1');
- const [cardIssuancePointSystemSaving, setCardIssuancePointSystemSaving] = useState(false);
  const [cardIssuanceMerchantTextSaving, setCardIssuanceMerchantTextSaving] = useState(false);
  const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
  const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
@@ -11566,9 +11649,9 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const cardIssuanceReloadMaxTopupWheelRefMobile = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceReloadMinTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceReloadMaxTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
- const cardIssuancePointRatioWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionMinWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionRewardWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceSocialPromotionPointsWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceCouponIssueTotalWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const [cardIssuanceTierRule, setCardIssuanceTierRule] = useState<CardIssuanceTierRule>('single');
@@ -11620,6 +11703,7 @@ const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState
 const handlePublishCardIssuanceRef = useRef<
   (opts?: {
     topupPromotionOverride?: TopupPromotionDraft;
+    socialPromotionOverride?: SocialPromotionDraft;
     couponsOverride?: CardIssuanceCouponRow[];
     productionsOverride?: CardIssuanceProductionRow[];
     itemCategoryOverride?: ProductionServiceCategoryOption[];
@@ -11688,14 +11772,6 @@ const [programSocialLikes, setProgramSocialLikes] = useState<BeamioCardProgramSo
 const [programSocialShareClicks, setProgramSocialShareClicks] = useState<BeamioCardProgramSocialShareClickRow[]>([]);
 const [programSocialEngagementDrawer, setProgramSocialEngagementDrawer] = useState<'likes' | 'shareClicks' | null>(null);
 const [programSocialRefreshStatus, setProgramSocialRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-const [programRewardBudget13, setProgramRewardBudget13] = useState<bigint | null>(null);
-const [programRewardFundAmount, setProgramRewardFundAmount] = useState('');
-const [programRewardFundAssetKind, setProgramRewardFundAssetKind] = useState<RewardFundAssetKind>(UC_REWARD_ASSET.POINTS0);
-const [programRewardOwnerBalance, setProgramRewardOwnerBalance] = useState<bigint | null>(null);
-const [programRewardBudgetRefreshStatus, setProgramRewardBudgetRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-const [programRewardFundSubmitting, setProgramRewardFundSubmitting] = useState(false);
-const [programRewardFundError, setProgramRewardFundError] = useState<string | null>(null);
-const [programRewardFundSuccess, setProgramRewardFundSuccess] = useState<string | null>(null);
 const cardIssuanceCouponShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponShareOpenId]
@@ -11901,29 +11977,6 @@ useEffect(() => {
    return ethers.getAddress(raw);
  }, [profiles?.[0]?.keyID, myAddress]);
 
- const loadProgramRewardBudgetOverview = useCallback(async () => {
-   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
-   if (!addr || !ethers.isAddress(addr)) return;
-   setProgramRewardBudgetRefreshStatus('loading');
-   try {
-     const budget = await readRewardMintBudget13(addr);
-     if (budget != null) setProgramRewardBudget13(budget);
-     if (programOwnerEOA) {
-       const bal = await readOwnerRewardAssetBalance(addr, programOwnerEOA, programRewardFundAssetKind);
-       if (bal != null) setProgramRewardOwnerBalance(bal);
-     }
-     setProgramRewardBudgetRefreshStatus('success');
-     window.setTimeout(() => setProgramRewardBudgetRefreshStatus('idle'), 3000);
-   } catch {
-     setProgramRewardBudgetRefreshStatus('error');
-     window.setTimeout(() => setProgramRewardBudgetRefreshStatus('idle'), 3000);
-   }
- }, [cardIssuanceExistingCard?.cardAddress, programOwnerEOA, programRewardFundAssetKind]);
-
- useEffect(() => {
-   void loadProgramRewardBudgetOverview();
- }, [loadProgramRewardBudgetOverview]);
-
  useEffect(() => {
    const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
    if (!addr || !ethers.isAddress(addr) || !programOwnerEOA) return;
@@ -11935,54 +11988,6 @@ useEffect(() => {
      ownerPrivateKey: pk,
    }).catch(() => undefined);
  }, [cardIssuanceExistingCard?.cardAddress, programOwnerEOA]);
-
- const handleProgramRewardFundSubmit = useCallback(async () => {
-   const cardRaw = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
-   if (!cardRaw || !ethers.isAddress(cardRaw) || !programOwnerEOA) {
-     setProgramRewardFundError('Wallet or program card unavailable.');
-     return;
-   }
-   const parsed = programRewardFundAmount.trim().replace(/,/g, '');
-   if (!/^\d+(\.\d{1,6})?$/.test(parsed)) {
-     setProgramRewardFundError('Enter a valid amount.');
-     return;
-   }
-   const [wholePart, fracPart = ''] = parsed.split('.');
-   const fracPadded = `${fracPart}000000`.slice(0, 6);
-   const amount6 = BigInt(wholePart) * 1_000_000n + BigInt(fracPadded || '0');
-   if (amount6 <= 0n) {
-     setProgramRewardFundError('Amount must be greater than zero.');
-     return;
-   }
-   setProgramRewardFundError(null);
-   setProgramRewardFundSuccess(null);
-   setProgramRewardFundSubmitting(true);
-   try {
-     const res = await postPurchaseRewardProgram({
-       cardAddress: cardRaw,
-       payerEOA: programOwnerEOA,
-       assetKind: programRewardFundAssetKind,
-       amount6,
-     });
-     if (!res.success) throw new Error(res.error ?? 'Fund reward budget failed.');
-     setProgramRewardFundSuccess(tu('programs_overview_reward_budget_success'));
-     setProgramRewardFundAmount('');
-     void loadProgramRewardBudgetOverview();
-     window.setTimeout(() => setProgramRewardFundSuccess(null), 4000);
-   } catch (e: unknown) {
-     const msg = e instanceof Error ? e.message : String(e);
-     setProgramRewardFundError(msg || 'Fund reward budget failed.');
-   } finally {
-     setProgramRewardFundSubmitting(false);
-   }
- }, [
-   cardIssuanceExistingCard?.cardAddress,
-   programOwnerEOA,
-   programRewardFundAmount,
-   programRewardFundAssetKind,
-   loadProgramRewardBudgetOverview,
-   tu,
- ]);
 
  useEffect(() => {
    if (cardIssuanceTiers.length === 0) {
@@ -12706,6 +12711,8 @@ useEffect(() => {
           })
         );
   setCardIssuanceTopupPromotion(promo);
+  const socialPromo = parseSocialPromotionFromMetadata(shareRecord);
+  setCardIssuanceSocialPromotion(socialPromotionDraftFromMetadata(socialPromo));
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
@@ -12790,7 +12797,10 @@ useEffect(() => {
       dr.toYmd,
       coupon.issued === true,
       hydratedIssuedTok,
-      stableCouponId
+      stableCouponId,
+      undefined,
+      undefined,
+      parseSocialExchangeFromMetadata(coupon as Record<string, unknown>) ?? undefined
     );
   });
   void (async () => {
@@ -12870,7 +12880,8 @@ useEffect(() => {
             tokenId,
             idRaw || undefined,
             issueLeftFromChain || undefined,
-            mintedFromChain || undefined
+            mintedFromChain || undefined,
+            parseSocialExchangeFromMetadata({ ...rootMeta, ...beamioCoupon }) ?? undefined
           );
         });
       }
@@ -13334,6 +13345,68 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceCouponValidToYmd,
  ]);
 
+ /** Social exchange editor: ticket preview when reward is an activity coupon. */
+ const cardIssuanceSocialExchangeEditorLivePreview = useMemo(() => {
+   if (cardIssuanceSocialExchangeDraft.kind !== 'coupon') {
+     return null;
+   }
+   const offerTitle = cardIssuanceSocialExchangeName.trim();
+   const subtitle = cardIssuanceSocialExchangeDescription.trim();
+   const couponIcon = cardIssuanceSocialExchangeIcon.trim();
+   const hasRenderableCouponIcon =
+     couponIcon.length > 0 &&
+     (cardIssuanceCouponIconLooksLikeImageUrl(couponIcon) || couponIcon.startsWith('data:image'));
+   const iconUrl = hasRenderableCouponIcon ? couponIcon : '';
+   const hex =
+     tierBackgroundColorForPayload(cardIssuanceSocialExchangeBackgroundColor) ?? '#0051d1';
+   const banner = cardIssuanceSocialExchangeImage.trim();
+   let expiryVariant: 'none' | 'hours' | 'days' | 'expired' | 'incomplete';
+   let expiryLabel: string;
+   if (cardIssuanceSocialExchangeDateRestriction !== 'range') {
+     expiryVariant = 'none';
+     expiryLabel = tu('programs_coupon_expiry_no_expiry');
+   } else {
+     const ymd = cardIssuanceSocialExchangeValidToYmd.trim();
+     if (!ymd) {
+       expiryVariant = 'incomplete';
+       expiryLabel = tu('programs_coupon_expiry_set_end_date');
+     } else {
+       const parts = ymd.split('-').map((x) => Number.parseInt(x, 10));
+       const y = parts[0];
+       const m = parts[1];
+       const d = parts[2];
+       if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+         expiryVariant = 'incomplete';
+         expiryLabel = tu('programs_coupon_expiry_set_end_date');
+       } else {
+         const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+         const ms = end.getTime() - Date.now();
+         const hours = ms / 3600000;
+         if (ms <= 0) {
+           expiryVariant = 'expired';
+           expiryLabel = tu('programs_coupon_expiry_expired');
+         } else if (hours <= 48) {
+           expiryVariant = 'hours';
+           expiryLabel = tu('programs_coupon_expiry_hours', { n: Math.max(1, Math.ceil(hours)) });
+         } else {
+           expiryVariant = 'days';
+           expiryLabel = tu('programs_coupon_expiry_days', { n: Math.max(1, Math.ceil(hours / 24)) });
+         }
+       }
+     }
+   }
+   return { offerTitle, subtitle, iconUrl, hex, banner, expiryVariant, expiryLabel };
+ }, [
+   cardIssuanceSocialExchangeBackgroundColor,
+   cardIssuanceSocialExchangeDateRestriction,
+   cardIssuanceSocialExchangeDescription,
+   cardIssuanceSocialExchangeDraft.kind,
+   cardIssuanceSocialExchangeIcon,
+   cardIssuanceSocialExchangeImage,
+   cardIssuanceSocialExchangeName,
+   cardIssuanceSocialExchangeValidToYmd,
+ ]);
+
  const cardConfiguratorDiscoverPreviewAssetLabel = useMemo(() => {
    const rows = cardIssuanceTiers.filter((t) => t.name.trim() !== '');
    if (rows.length === 0) {
@@ -13587,6 +13660,16 @@ const cardIssuanceTopupPromotionEditorValidationError = useMemo(
   [cardIssuanceTopupPromotion]
 );
 
+const cardIssuanceSocialPromotionPayload = useMemo(
+  () => socialPromotionDraftToPayload(cardIssuanceSocialPromotion),
+  [cardIssuanceSocialPromotion]
+);
+
+const cardIssuanceSocialPromotionEditorValidationError = useMemo(
+  () => (cardIssuanceSocialPromotion.enabled ? validateSocialPromotionDraft(cardIssuanceSocialPromotion) : ''),
+  [cardIssuanceSocialPromotion]
+);
+
 const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
   const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
   const n = Number.parseFloat(raw);
@@ -13757,13 +13840,13 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
 }, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuanceTopupPromotionPayload]);
 
 useEffect(() => {
-  if (!cardIssuanceTopupPromotionEditorOpen && !cardIssuanceTierEditorOpen) return;
+  if (!cardIssuanceTopupPromotionEditorOpen && !cardIssuanceTierEditorOpen && !cardIssuanceSocialPromotionEditorOpen && !cardIssuanceSocialExchangeEditorOpen) return;
   const prevOverflow = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
   return () => {
     document.body.style.overflow = prevOverflow;
   };
-}, [cardIssuanceTopupPromotionEditorOpen, cardIssuanceTierEditorOpen]);
+}, [cardIssuanceTopupPromotionEditorOpen, cardIssuanceTierEditorOpen, cardIssuanceSocialPromotionEditorOpen, cardIssuanceSocialExchangeEditorOpen]);
 
 const cardIssuanceTierEditorThresholdInt = useMemo(() => {
   const raw = cardIssuanceTierEditorThreshold.replace(/,/g, '').trim();
@@ -13910,9 +13993,16 @@ const removeCardIssuanceTierFromEditor = useCallback(async () => {
   cardIssuanceTiers,
 ]);
 
+const closeCardIssuanceCouponEditor = useCallback(() => {
+  setCardIssuanceCouponEditorOpen(false);
+  setCardIssuanceEditingCouponId(null);
+  setCardIssuanceCouponSocialExchangeDraft(null);
+}, []);
+
 const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponEditorError('');
   setCardIssuanceEditingCouponId(null);
+  setCardIssuanceCouponSocialExchangeDraft(null);
   setCardIssuanceCouponName(cardIssuanceCouponNameDefault());
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage('');
@@ -13931,6 +14021,9 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   if (!row) return;
   setCardIssuanceCouponEditorError('');
   setCardIssuanceEditingCouponId(couponId);
+  setCardIssuanceCouponSocialExchangeDraft(
+    row.socialExchange ? socialExchangeDraftFromMetadata(row.socialExchange) : null
+  );
   setCardIssuanceCouponName(row.name);
   setCardIssuanceCouponIssueTotal(row.issueTotal || String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceCouponIcon(row.icon || '');
@@ -13939,7 +14032,9 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
     tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#0051d1')
   );
   setCardIssuanceCouponDescription(row.description || '');
-  setCardIssuanceCouponRequiresRedeemCode(row.requiresRedeemCode === true);
+  setCardIssuanceCouponRequiresRedeemCode(
+    row.socialExchange ? false : row.requiresRedeemCode === true
+  );
   setCardIssuanceCouponDateRestriction(row.couponDateRestriction === 'range' ? 'range' : 'none');
   setCardIssuanceCouponValidFromYmd(
     row.couponDateRestriction === 'range' && row.couponValidFromYmd ? row.couponValidFromYmd : couponDefaultValidFromYmd()
@@ -14142,6 +14237,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   const editingCouponExistingRow = cardIssuanceEditingCouponId
     ? cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null
     : null;
+  const isSocialExchangeEdit = cardIssuanceCouponSocialExchangeDraft !== null;
   const lockIssuedOnChainFields = Boolean(editingCouponExistingRow?.issued);
   const name = lockIssuedOnChainFields
     ? (editingCouponExistingRow?.name?.trim() ?? '')
@@ -14160,7 +14256,33 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   const issueTotalN = Number.parseInt(issueTotalRaw, 10);
   const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
   const hasCouponBackgroundImage = couponImageTrim.length > 0;
-  if (!name && !hasCouponBackgroundImage) {
+  const socialExchangeKind = cardIssuanceCouponSocialExchangeDraft?.kind ?? 'coupon';
+  if (isSocialExchangeEdit) {
+    const socialErr = validateSocialExchangeDraft(cardIssuanceCouponSocialExchangeDraft!);
+    if (socialErr) {
+      setCardIssuanceCouponEditorError(socialErr);
+      return;
+    }
+  }
+  if (
+    isSocialExchangeEdit &&
+    socialExchangeKind === 'usdc' &&
+    !lockIssuedOnChainFields &&
+    !name
+  ) {
+    setCardIssuanceCouponEditorError('Activity name is required.');
+    return;
+  }
+  if (!isSocialExchangeEdit && !name && !hasCouponBackgroundImage) {
+    setCardIssuanceCouponEditorError('Coupon name is required.');
+    return;
+  }
+  if (
+    isSocialExchangeEdit &&
+    socialExchangeKind === 'coupon' &&
+    !name &&
+    !hasCouponBackgroundImage
+  ) {
     setCardIssuanceCouponEditorError('Coupon name is required.');
     return;
   }
@@ -14193,9 +14315,11 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     }
   }
   const issueTotalFixed = String(issueTotalN);
-  const requiresRedeemCodeFinal = lockIssuedOnChainFields
-    ? editingCouponExistingRow?.requiresRedeemCode === true
-    : cardIssuanceCouponRequiresRedeemCode;
+  const requiresRedeemCodeFinal = isSocialExchangeEdit
+    ? false
+    : lockIssuedOnChainFields
+      ? editingCouponExistingRow?.requiresRedeemCode === true
+      : cardIssuanceCouponRequiresRedeemCode;
   const dr: 'none' | 'range' = lockIssuedOnChainFields
     ? (editingCouponExistingRow?.couponDateRestriction === 'range' ? 'range' : 'none')
     : (cardIssuanceCouponDateRestriction === 'range' ? 'range' : 'none');
@@ -14205,6 +14329,10 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   const vtStore = lockIssuedOnChainFields
     ? (dr === 'range' ? editingCouponExistingRow?.couponValidToYmd ?? '' : '')
     : (dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidToYmd) ?? '' : '');
+  const socialPayloadForSave =
+    isSocialExchangeEdit && !lockIssuedOnChainFields
+      ? socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft!)
+      : editingCouponExistingRow?.socialExchange ?? undefined;
   setCardIssuanceCouponEditorError('');
 
   /** Edit draft only (no new on-chain series). */
@@ -14215,7 +14343,11 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             ...item,
             name: item.issued ? item.name : name,
             issueTotal: item.issued ? item.issueTotal : issueTotalFixed,
-            requiresRedeemCode: item.issued ? item.requiresRedeemCode : requiresRedeemCodeFinal,
+            requiresRedeemCode: isSocialExchangeEdit
+              ? false
+              : item.issued
+                ? item.requiresRedeemCode
+                : requiresRedeemCodeFinal,
             couponDateRestriction: item.issued ? item.couponDateRestriction : dr,
             couponValidFromYmd: item.issued ? item.couponValidFromYmd : vfStore,
             couponValidToYmd: item.issued ? item.couponValidToYmd : vtStore,
@@ -14225,6 +14357,15 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             description,
             issued: item.issued,
             issuedTokenId: item.issuedTokenId,
+            ...(isSocialExchangeEdit
+              ? {
+                  socialExchange:
+                    socialPayloadForSave ??
+                    item.socialExchange ??
+                    socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft!) ??
+                    undefined,
+                }
+              : {}),
           }
         : item
     );
@@ -14305,6 +14446,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     }
     setCardIssuanceCouponEditorOpen(false);
     setCardIssuanceEditingCouponId(null);
+    setCardIssuanceCouponSocialExchangeDraft(null);
     return;
   }
 
@@ -14332,8 +14474,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
       ];
       return nextCoupons;
     });
-    setCardIssuanceCouponEditorOpen(false);
-    setCardIssuanceEditingCouponId(null);
+    closeCardIssuanceCouponEditor();
     return;
   }
 
@@ -14541,8 +14682,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     });
     if (metadataOk) {
       void postRequestExplorerNftMetadataRefresh({ cardAddress: cardAddr, tokenId: tokenIdStr });
-      setCardIssuanceCouponEditorOpen(false);
-      setCardIssuanceEditingCouponId(null);
+      closeCardIssuanceCouponEditor();
     } else {
       setCardIssuanceCouponEditorError(
         publishMetadataError ||
@@ -14581,6 +14721,8 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   cardIssuanceEffectiveMerchantLogo,
   cardIssuanceEditingCouponId,
   cardIssuanceCoupons,
+  cardIssuanceCouponSocialExchangeDraft,
+  closeCardIssuanceCouponEditor,
   profiles,
   updateIssuedCouponMetadata,
 ]);
@@ -15950,6 +16092,11 @@ const openCardIssuanceTopupPromotionEditor = useCallback(() => {
   setCardIssuanceTopupPromotionEditorOpen(true);
 }, []);
 
+const openCardIssuanceSocialPromotionEditor = useCallback(() => {
+  setCardIssuanceSocialPromotionEditorServerError('');
+  setCardIssuanceSocialPromotionEditorOpen(true);
+}, []);
+
 const disableCardIssuanceTopupPromotion = useCallback(() => {
   setCardIssuanceTopupPromotion({ ...EMPTY_TOPUP_PROMOTION_DRAFT });
   setCardIssuanceTopupPromotionEditorOpen(false);
@@ -16505,6 +16652,71 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
   [profiles]
 );
 
+const handleCardIssuanceSocialExchangeIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  async (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceSocialExchangeEditorError(
+        'Profile not available for upload. Open Settings and ensure your wallet is ready.'
+      );
+      return;
+    }
+    setCardIssuanceSocialExchangeEditorError('');
+    setCardIssuanceSocialExchangeIconUploading(true);
+    try {
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      if (hash) {
+        setCardIssuanceSocialExchangeIcon(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+      } else {
+        setCardIssuanceSocialExchangeEditorError('Coupon icon upload failed.');
+      }
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message ?? 'Coupon icon upload failed.';
+      setCardIssuanceSocialExchangeEditorError(message);
+    } finally {
+      setCardIssuanceSocialExchangeIconUploading(false);
+    }
+  },
+  [profiles]
+);
+
+const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  async (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceSocialExchangeEditorError(
+        'Profile not available for upload. Open Settings and ensure your wallet is ready.'
+      );
+      return;
+    }
+    setCardIssuanceSocialExchangeEditorError('');
+    setCardIssuanceSocialExchangeImageUploading(true);
+    try {
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      if (hash) {
+        setCardIssuanceSocialExchangeImage(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
+      } else {
+        setCardIssuanceSocialExchangeEditorError('Coupon background image upload failed.');
+      }
+    } catch (err: unknown) {
+      const message =
+        (err as { message?: string })?.message ?? 'Coupon background image upload failed.';
+      setCardIssuanceSocialExchangeEditorError(message);
+    } finally {
+      setCardIssuanceSocialExchangeImageUploading(false);
+    }
+  },
+  [profiles]
+);
+
  const persistBeamioProfileImage = useCallback(
    async (ipfsImageUrl: string): Promise<boolean> => {
      const tmpData = CoNET_Data;
@@ -16599,6 +16811,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    async (
      opts?: {
        topupPromotionOverride?: TopupPromotionDraft;
+    socialPromotionOverride?: SocialPromotionDraft;
       couponsOverride?: CardIssuanceCouponRow[];
       productionsOverride?: CardIssuanceProductionRow[];
       itemCategoryOverride?: ProductionServiceCategoryOption[];
@@ -16791,6 +17004,8 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    try {
      const promotionDraftForPublish = opts?.topupPromotionOverride ?? cardIssuanceTopupPromotion;
      const topupPromotionPayloadForPublish = topupPromotionDraftToPayload(promotionDraftForPublish);
+     const socialDraftForPublish = opts?.socialPromotionOverride ?? cardIssuanceSocialPromotion;
+     const socialPromotionPayloadForPublish = socialPromotionDraftToPayload(socialDraftForPublish);
      const bonusPayloadForPublish = topupPromotionPayloadForPublish
        ? (topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)
            ? [topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)!]
@@ -16843,6 +17058,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
              bonusRules: bonusPayloadForPublish,
            }
          : {}),
+       ...(socialPromotionPayloadForPublish ? { socialPromotion: socialPromotionPayloadForPublish } : {}),
        pointSystem: pointSystemForPublish,
       coupons: couponsPayloadForPublish ?? [],
       productions: productionsPayloadForPublish ?? [],
@@ -17141,95 +17357,356 @@ const clearCardIssuanceTopupPromotion = useCallback(async () => {
   }
 }, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance]);
 
- const handleSaveCardIssuancePointSystem = useCallback(async () => {
-   const cardAddress = cardIssuanceExistingCard?.cardAddress;
-   if (!cardAddress) return;
-   setCardIssuanceCreateError('');
-   setCardIssuanceOwnerAdminNotice(null);
-   const ratioParsed = parsePointRatioHumanToE6(cardIssuancePointRatioInput);
-   if (cardIssuancePointSystemEnabled && (ratioParsed == null || ratioParsed <= 0n)) {
-     setCardIssuanceCreateError('Point ratio must be greater than 0 when the point system is on.');
-     return;
-   }
-   const ratioMaxE6 = BigInt(CARD_ISSUANCE_POINT_RATIO_MAX) * 1_000_000n;
-   if (ratioParsed != null && ratioParsed > ratioMaxE6) {
-     setCardIssuanceCreateError(`Point ratio cannot exceed ${CARD_ISSUANCE_POINT_RATIO_MAX} points per sale unit.`);
-     return;
-   }
-   const nextRatioE6 = cardIssuancePointSystemEnabled ? ratioParsed ?? 0n : 0n;
-   const pointSystemPayload: CardIssuancePointSystemMetadata = {
-     enabled: cardIssuancePointSystemEnabled,
-     chargeRewardRatioE6: nextRatioE6.toString(),
-     rewardTokenId: CARD_ISSUANCE_POINT_REWARD_TOKEN_ID,
-   };
-   const pk = profiles?.[0]?.privateKeyArmor;
-   if (!pk) {
-     setCardIssuanceCreateError('Wallet key not available. Unlock the owner wallet to update point settings.');
-     return;
-   }
-   setCardIssuancePointSystemSaving(true);
-   try {
-     const cardAddrNorm = ethers.getAddress(cardAddress);
-     const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
-     const chainOwner = await getCardOwner(cardAddrNorm);
-     if (ethers.getAddress(chainOwner) !== signerAddr) {
-       setCardIssuanceCreateError('Point settings require the card owner wallet. Switch to the owner wallet and try again.');
-       return;
-     }
-     const currentRatio = cardIssuanceExistingCard?.chargeRewardRatioE6;
-     if (!currentRatio || BigInt(currentRatio) !== nextRatioE6) {
-       const data = encodeSetChargeRewardRatio(nextRatioE6);
-       const deadline = Math.floor(Date.now() / 1000) + 3600;
-       const nonce = ethers.hexlify(ethers.randomBytes(32));
-       const ownerSignature = await signExecuteForOwner(pk, cardAddrNorm, data, deadline, nonce);
-       const txRes = await postExecuteForOwner({
-         cardAddress: cardAddrNorm,
-         data,
-         deadline,
-         nonce,
-         ownerSignature,
-       });
-       if (!txRes.success) {
-         setCardIssuanceCreateError(txRes.error ?? 'Could not update on-chain point ratio.');
-         return;
-       }
-     }
-     const metadataOk = await handlePublishCardIssuanceRef.current({
-       pointSystemOverride: pointSystemPayload,
-       metadataOnly: true,
-       loadingScope: 'bonusEditor',
-     });
-     if (!metadataOk) return;
-     setCardIssuanceExistingCard((prev) =>
-       prev
-         ? {
-             ...prev,
-             chargeRewardRatioE6: nextRatioE6.toString(),
-             meta: prev.meta
-               ? { ...prev.meta, pointSystem: pointSystemPayload }
-               : ({ pointSystem: pointSystemPayload } as CardMetadataFromUri),
-           }
-         : prev
-     );
-     setCardIssuancePointRatioInput(
-       formatPointRatioE6ToHuman(nextRatioE6 === 0n ? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 : nextRatioE6)
-     );
-     setCardIssuanceOwnerAdminNotice({
-       kind: 'ok',
-       text: 'Point settings published. POS and client apps can use card metadata pointSystem.enabled before showing reward points.',
-     });
-   } catch (e: unknown) {
-     setCardIssuanceCreateError(e instanceof Error ? e.message : 'Could not update point settings.');
-   } finally {
-     setCardIssuancePointSystemSaving(false);
-   }
- }, [
-   cardIssuanceExistingCard?.cardAddress,
-   cardIssuanceExistingCard?.chargeRewardRatioE6,
-   cardIssuancePointRatioInput,
-   cardIssuancePointSystemEnabled,
-   profiles,
- ]);
+const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
+  if (cardIssuanceSocialPromotionEditorValidationError) return;
+  const nextPromotion = { ...cardIssuanceSocialPromotion, enabled: true };
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceSocialPromotion(nextPromotion);
+    setCardIssuanceSocialPromotionEditorOpen(false);
+    return;
+  }
+  setCardIssuanceSocialPromotionEditorServerError('');
+  setCardIssuanceCreateError('');
+  setCardIssuanceSocialPromotionEditorPublishing(true);
+  try {
+    const ok = await handlePublishCardIssuance({
+      socialPromotionOverride: nextPromotion,
+      loadingScope: 'bonusEditor',
+    });
+    if (!ok) {
+      setCardIssuanceSocialPromotionEditorServerError(
+        'Could not save social promotion metadata. Review the error below and try again.'
+      );
+      return;
+    }
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    if (!pk) {
+      setCardIssuanceSocialPromotion(nextPromotion);
+      setCardIssuanceSocialPromotionEditorOpen(false);
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Metadata saved, but wallet key was unavailable — on-chain reward rules were not updated. Unlock wallet and save again.',
+      });
+      return;
+    }
+    const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+    const payload = socialPromotionDraftToPayload(nextPromotion);
+    const ruleRes = await applySocialPromotionOnChainRules({
+      cardAddress: cardAddr,
+      ownerEoa: signerAddr,
+      ownerPrivateKey: pk,
+      socialPromotion: payload,
+    });
+    if (!ruleRes.success) {
+      setCardIssuanceSocialPromotionEditorServerError(
+        ruleRes.error ?? 'Metadata saved, but on-chain reward rule update failed. Try again.'
+      );
+      return;
+    }
+    setCardIssuanceSocialPromotion(nextPromotion);
+    setCardIssuanceSocialPromotionEditorOpen(false);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Social promotion saved. Fund #13 reward budget on-chain before vouchers can mint to referrers.',
+    });
+  } catch {
+    setCardIssuanceSocialPromotionEditorServerError('Could not save social promotion. Please try again.');
+  } finally {
+    setCardIssuanceSocialPromotionEditorPublishing(false);
+  }
+}, [
+  cardIssuanceSocialPromotion,
+  cardIssuanceSocialPromotionEditorValidationError,
+  cardIssuanceExistingCard?.cardAddress,
+  handlePublishCardIssuance,
+  profiles,
+]);
+
+const clearCardIssuanceSocialPromotion = useCallback(async () => {
+  const cleared = { ...EMPTY_SOCIAL_PROMOTION_DRAFT };
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceSocialPromotion(cleared);
+    return;
+  }
+  setCardIssuanceSocialPromotionEditorPublishing(true);
+  try {
+    const ok = await handlePublishCardIssuance({
+      socialPromotionOverride: cleared,
+      loadingScope: 'bonusEditor',
+    });
+    if (!ok) return;
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (pk) {
+      const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+      const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+      await applySocialPromotionOnChainRules({
+        cardAddress: cardAddr,
+        ownerEoa: signerAddr,
+        ownerPrivateKey: pk,
+        socialPromotion: null,
+      }).catch(() => undefined);
+    }
+    setCardIssuanceSocialPromotion(cleared);
+  } finally {
+    setCardIssuanceSocialPromotionEditorPublishing(false);
+  }
+}, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance, profiles]);
+
+const openCardIssuanceSocialExchangeEditor = useCallback(() => {
+  setCardIssuanceSocialExchangeEditorError('');
+  setCardIssuanceSocialExchangeDraft({ ...EMPTY_SOCIAL_EXCHANGE_DRAFT });
+  setCardIssuanceSocialExchangeName(cardIssuanceCouponNameDefault());
+  setCardIssuanceSocialExchangeIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
+  setCardIssuanceSocialExchangeDescription(cardIssuanceCouponDescriptionDefault());
+  setCardIssuanceSocialExchangeIcon('');
+  setCardIssuanceSocialExchangeImage('');
+  setCardIssuanceSocialExchangeBackgroundColor('#0051d1');
+  setCardIssuanceSocialExchangeDateRestriction('none');
+  setCardIssuanceSocialExchangeValidFromYmd(couponDefaultValidFromYmd());
+  setCardIssuanceSocialExchangeValidToYmd(couponDefaultValidToYmd());
+  setCardIssuanceSocialExchangeEditorOpen(true);
+}, []);
+
+const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
+  if (cardIssuanceSocialExchangeEditorValidationError) return;
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceSocialExchangeEditorError('Program card is required.');
+    return;
+  }
+  const socialPayload = socialExchangeDraftToPayload(cardIssuanceSocialExchangeDraft);
+  if (!socialPayload) {
+    setCardIssuanceSocialExchangeEditorError('Invalid social exchange settings.');
+    return;
+  }
+  const isCouponReward = socialPayload.kind === 'coupon';
+  const icon = isCouponReward ? cardIssuanceSocialExchangeIcon.trim() : '';
+  const couponImageTrim = isCouponReward ? cardIssuanceSocialExchangeImage.trim() : '';
+  const backgroundColorRaw = isCouponReward
+    ? cardIssuanceSocialExchangeBackgroundColor.trim()
+    : '#0051d1';
+  const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw) ?? '#0051d1';
+  const couponIconForMetadata =
+    icon || (isCouponReward ? cardIssuanceEffectiveMerchantLogo.trim() : '');
+  const name = cardIssuanceSocialExchangeName.trim();
+  const description = cardIssuanceSocialExchangeDescription.trim();
+  const issueTotalRaw = cardIssuanceSocialExchangeIssueTotal.replace(/,/g, '').trim();
+  const issueTotalN = Number.parseInt(issueTotalRaw, 10);
+  const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
+  const hasCouponBackgroundImage = couponImageTrim.length > 0;
+  if (isCouponReward && !name && !hasCouponBackgroundImage) {
+    setCardIssuanceSocialExchangeEditorError('Coupon name is required.');
+    return;
+  }
+  if (!name && !isCouponReward) {
+    setCardIssuanceSocialExchangeEditorError('Activity name is required.');
+    return;
+  }
+  if (
+    !Number.isFinite(issueTotalAsFloat) ||
+    !Number.isFinite(issueTotalN) ||
+    issueTotalAsFloat !== issueTotalN ||
+    issueTotalN < 1 ||
+    issueTotalN > CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX
+  ) {
+    setCardIssuanceSocialExchangeEditorError(
+      `Total issuance must be a whole number from 1 to ${CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX.toLocaleString()}.`
+    );
+    return;
+  }
+  if (isCouponReward && backgroundColorRaw && !tierBackgroundColorForPayload(backgroundColorRaw)) {
+    setCardIssuanceSocialExchangeEditorError('Background color must be a valid #RRGGBB value.');
+    return;
+  }
+  const dr: 'none' | 'range' =
+    isCouponReward && cardIssuanceSocialExchangeDateRestriction === 'range' ? 'range' : 'none';
+  const vfStore =
+    dr === 'range' ? parseCouponYmd(cardIssuanceSocialExchangeValidFromYmd) ?? '' : '';
+  const vtStore = dr === 'range' ? parseCouponYmd(cardIssuanceSocialExchangeValidToYmd) ?? '' : '';
+  if (isCouponReward && dr === 'range') {
+    if (!vfStore || !vtStore) {
+      setCardIssuanceSocialExchangeEditorError(
+        'Start date and end date are required when using a date range.'
+      );
+      return;
+    }
+    if (vfStore > vtStore) {
+      setCardIssuanceSocialExchangeEditorError('End date must be on or after the start date.');
+      return;
+    }
+  }
+  const p0 = profiles?.[0];
+  if (!p0?.privateKeyArmor?.trim()) {
+    setCardIssuanceSocialExchangeEditorError('Unlock your wallet; program owner key is required.');
+    return;
+  }
+  setCardIssuanceSocialExchangeEditorPublishing(true);
+  setCardIssuanceSocialExchangeEditorError('');
+  try {
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const wallet = new ethers.Wallet(p0.privateKeyArmor.trim());
+    const chainOwner = ethers.getAddress(
+      await withPromiseTimeout(getCardOwner(cardAddr), 20_000, 'card.owner()')
+    );
+    if (chainOwner !== ethers.getAddress(wallet.address)) {
+      setCardIssuanceSocialExchangeEditorError(
+        'Social exchange requires the Beamio program card owner wallet. Switch to owner in Wallet, then retry.'
+      );
+      return;
+    }
+    const displayName = name || cardIssuanceCouponNameDefault();
+    const displayDescription =
+      description ||
+      (isCouponReward
+        ? cardIssuanceCouponDescriptionDefault()
+        : 'Redeem social points for this activity reward.');
+    const couponRowDraft = makeCardIssuanceCouponRow(
+      displayName,
+      couponIconForMetadata,
+      backgroundColor,
+      displayDescription,
+      couponImageTrim,
+      issueTotalN,
+      false,
+      dr,
+      vfStore,
+      vtStore,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      socialPayload
+    );
+    const metaProps = {
+      category: CARD_ISSUANCE_COUPON_NFT_CATEGORY,
+      beamioCoupon: {
+        couponId: couponRowDraft.id,
+        name: displayName,
+        issueTotal: issueTotalN,
+        requiresRedeemCode: false,
+        ...(displayDescription ? { description: displayDescription } : {}),
+        ...(couponIconForMetadata ? { icon: couponIconForMetadata } : {}),
+        ...(couponImageTrim ? { couponImage: couponImageTrim } : {}),
+        backgroundColor,
+        ...(dr === 'range' && vfStore && vtStore
+          ? { validFrom: vfStore, validTo: vtStore }
+          : {}),
+        socialExchange: socialPayload,
+      },
+    };
+    const nftData = encodeCreateIssuedNft(displayName, 0, 0, issueTotalN, 0, '0');
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const ownerSig = await signExecuteForOwner(p0.privateKeyArmor.trim(), cardAddr, nftData, deadline, nonce);
+    const createRes = await postCardCreateIssuedNft({
+      cardAddress: cardAddr,
+      data: nftData,
+      deadline,
+      nonce,
+      ownerSignature: ownerSig,
+      description: displayDescription || `Social exchange: ${displayName}`,
+      background_color: backgroundColor,
+      ...(couponIconForMetadata ? { image: couponIconForMetadata } : {}),
+      metadata_extra_properties: metaProps,
+    });
+    if (!createRes.success) {
+      setCardIssuanceSocialExchangeEditorError(createRes.error ?? 'Failed to create exchange activity on-chain.');
+      return;
+    }
+    const issuedRaw = createRes.issuedNftTokenId?.trim();
+    if (!issuedRaw) {
+      setCardIssuanceSocialExchangeEditorError(
+        'Activity was submitted but issuedNftTokenId was not returned. Deploy current API build and retry.'
+      );
+      return;
+    }
+    const tokenIdStr = String(BigInt(issuedRaw));
+    void postRegisterIssuedNftSeries({
+      cardAddress: cardAddr,
+      tokenId: tokenIdStr,
+      metadata: {
+        category: CARD_ISSUANCE_COUPON_NFT_CATEGORY,
+        ...metaProps.beamioCoupon,
+        issuedTokenId: tokenIdStr,
+      },
+    }).catch(() => undefined);
+
+    if (socialPayload.kind === 'usdc' && socialPayload.usdcReward6 != null && socialPayload.usdcReward6 > 0) {
+      const usdcReward6 = BigInt(socialPayload.usdcReward6);
+      const escrowTotal = usdcReward6 * BigInt(issueTotalN);
+      const usdc = new ethers.Contract(CONET_USDC, usdc_abi, wallet.connect(conetDepinProvider));
+      const allowance = (await usdc.allowance(wallet.address, cardAddr)) as bigint;
+      if (allowance < escrowTotal) {
+        const approveTx = await usdc.approve(cardAddr, escrowTotal);
+        await approveTx.wait();
+      }
+      const fundRes = await postCardFundSocialExchangeUsdcEscrow({
+        cardAddress: cardAddr,
+        payerEOA: wallet.address,
+        amount6: escrowTotal.toString(),
+      });
+      if (!fundRes.success) {
+        setCardIssuanceSocialExchangeEditorError(
+          fundRes.error ??
+            'Activity created, but USDC escrow funding failed. Approve CONET-USDC for the card and fund escrow from Programs.'
+        );
+        return;
+      }
+    }
+
+    const finalRow: CardIssuanceCouponRow = {
+      ...couponRowDraft,
+      issued: true,
+      issuedTokenId: tokenIdStr,
+      socialExchange: socialPayload,
+    };
+    let nextCoupons: CardIssuanceCouponRow[] = [];
+    setCardIssuanceCoupons((prev) => {
+      nextCoupons = [...prev, finalRow];
+      return nextCoupons;
+    });
+    const metadataOk = await handlePublishCardIssuanceRef.current({
+      couponsOverride: nextCoupons,
+      loadingScope: 'bonusEditor',
+      metadataOnly: true,
+    });
+    if (!metadataOk) {
+      setCardIssuanceSocialExchangeEditorError(
+        'Activity is on-chain, but program metadata sync failed. Refresh and publish metadata if coupons list looks stale.'
+      );
+      return;
+    }
+    setCardIssuanceSocialExchangeEditorOpen(false);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text:
+        socialPayload.kind === 'usdc'
+          ? 'Social points USDC exchange created and escrow funded. Members can claim from the app.'
+          : 'Social points coupon exchange created. Members can claim from the app.',
+    });
+  } catch (e: unknown) {
+    const err = e as { message?: string };
+    setCardIssuanceSocialExchangeEditorError(err?.message ?? 'Could not create social exchange activity.');
+  } finally {
+    setCardIssuanceSocialExchangeEditorPublishing(false);
+  }
+}, [
+  cardIssuanceEffectiveMerchantLogo,
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceSocialExchangeBackgroundColor,
+  cardIssuanceSocialExchangeDateRestriction,
+  cardIssuanceSocialExchangeDescription,
+  cardIssuanceSocialExchangeDraft,
+  cardIssuanceSocialExchangeEditorValidationError,
+  cardIssuanceSocialExchangeIcon,
+  cardIssuanceSocialExchangeImage,
+  cardIssuanceSocialExchangeIssueTotal,
+  cardIssuanceSocialExchangeName,
+  cardIssuanceSocialExchangeValidFromYmd,
+  cardIssuanceSocialExchangeValidToYmd,
+  profiles,
+]);
 
  const handleSaveMerchantImagePanelMetadata = useCallback(async () => {
    const cardAddress = cardIssuanceExistingCard?.cardAddress;
@@ -33329,269 +33806,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </>
                            ) : null}
                          </AnimatePresence>
-                         <div className="rounded-xl border border-[#dce2f7] bg-white p-3 sm:p-4">
-                           <div className="mb-3 flex items-center justify-between gap-2">
-                             <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                               {tu('programs_overview_reward_budget_title')}
-                             </span>
-                             <button
-                               type="button"
-                               disabled={programRewardBudgetRefreshStatus !== 'idle'}
-                               onClick={() => void loadProgramRewardBudgetOverview()}
-                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dce2f7] bg-white text-[#1562f0] shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                               aria-label={tu('programs_overview_reward_budget_refresh')}
-                             >
-                               {programRewardBudgetRefreshStatus === 'loading' ? (
-                                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                               ) : programRewardBudgetRefreshStatus === 'success' ? (
-                                 <Check className="h-4 w-4 text-emerald-500" aria-hidden />
-                               ) : programRewardBudgetRefreshStatus === 'error' ? (
-                                 <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden />
-                               ) : (
-                                 <RefreshCw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                               )}
-                             </button>
-                           </div>
-                           <p className="mb-3 text-xs leading-relaxed text-[#595c5e] sm:text-sm">
-                             {tu('programs_overview_reward_budget_hint')}
-                           </p>
-                           {programRewardBudget13 === 0n ? (
-                             <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                               {tu('programs_overview_reward_budget_zero_hint')}
-                             </p>
-                           ) : null}
-                           <div className="mb-4 rounded-lg border border-[#1562f0]/15 bg-[#1562f0]/5 px-3 py-2.5">
-                             <p className="text-[10px] font-bold uppercase tracking-wide text-[#1562f0]">
-                               {tu('programs_overview_reward_budget_balance')}
-                             </p>
-                             <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
-                               {programRewardBudget13 != null
-                                 ? formatRewardMintBudget13Display(programRewardBudget13)
-                                 : tu('programs_overview_reward_budget_unavailable')}
-                             </p>
-                           </div>
-                           <div className="grid gap-3 sm:grid-cols-2">
-                             <div>
-                               <label
-                                 htmlFor="program-reward-fund-asset"
-                                 className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#595c5e]"
-                               >
-                                 Asset
-                               </label>
-                               <select
-                                 id="program-reward-fund-asset"
-                                 value={programRewardFundAssetKind}
-                                 onChange={(e) => {
-                                   setProgramRewardFundAssetKind(Number(e.target.value) as RewardFundAssetKind);
-                                 }}
-                                 className="w-full rounded-lg border border-[#e8ecf0] bg-white px-3 py-2 text-sm text-[#2c2f31] outline-none focus:border-[#1562f0]/40"
-                               >
-                                 <option value={UC_REWARD_ASSET.POINTS0}>
-                                   {tu('programs_overview_reward_budget_asset_points')}
-                                 </option>
-                                 <option value={UC_REWARD_ASSET.CHARGE_REWARD2}>
-                                   {tu('programs_overview_reward_budget_asset_charge')}
-                                 </option>
-                               </select>
-                               <p className="mt-1 text-[10px] text-[#595c5e]">
-                                 {tu('programs_overview_reward_budget_available')}:{' '}
-                                 {programRewardOwnerBalance != null
-                                   ? (Number(programRewardOwnerBalance) / 1_000_000).toFixed(2)
-                                   : '—'}
-                               </p>
-                             </div>
-                             <div>
-                               <label
-                                 htmlFor="program-reward-fund-amount"
-                                 className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#595c5e]"
-                               >
-                                 {tu('programs_overview_reward_budget_amount')}
-                               </label>
-                               <input
-                                 id="program-reward-fund-amount"
-                                 type="number"
-                                 min={0}
-                                 step="any"
-                                 inputMode="decimal"
-                                 autoComplete="off"
-                                 enterKeyHint="done"
-                                 value={programRewardFundAmount}
-                                 onChange={(e) => setProgramRewardFundAmount(e.target.value)}
-                                 onKeyDown={preventNumericInputStepKeys}
-                                 onWheel={preventNumericInputWheelStep}
-                                 className="w-full rounded-lg border border-[#e8ecf0] bg-white px-3 py-2 text-sm text-[#2c2f31] outline-none focus:border-[#1562f0]/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
-                                 placeholder="0"
-                               />
-                             </div>
-                           </div>
-                           {programRewardFundError ? (
-                             <p className="mt-3 text-xs font-medium text-rose-600">{programRewardFundError}</p>
-                           ) : null}
-                           {programRewardFundSuccess ? (
-                             <p className="mt-3 text-xs font-medium text-emerald-600">{programRewardFundSuccess}</p>
-                           ) : null}
-                           <button
-                             type="button"
-                             disabled={programRewardFundSubmitting || !programOwnerEOA}
-                             onClick={() => void handleProgramRewardFundSubmit()}
-                             className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#1256d8] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                           >
-                             {programRewardFundSubmitting ? (
-                               <>
-                                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                                 {tu('programs_overview_reward_budget_funding')}
-                               </>
-                             ) : (
-                               tu('programs_overview_reward_budget_fund')
-                             )}
-                           </button>
-                         </div>
                        </div>
                      </div>
                      </div>
                      ) : null}
-
-                    {cardIssuanceProgramSection === 'promotion' ? (
-                    <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
-                      <div
-                        className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
-                        aria-hidden
-                      />
-                      <header className="mb-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
-                            {tu('programs_overview_token_label')}
-                          </span>
-                          <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">
-                            {tu('programs_overview_point_system')}
-                          </h3>
-                        </div>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={cardIssuancePointSystemEnabled}
-                          onClick={() => setCardIssuancePointSystemEnabled((v) => !v)}
-                          disabled={cardIssuancePointSystemSaving}
-                          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                            cardIssuancePointSystemEnabled ? 'bg-[#1562f0]' : 'bg-slate-300'
-                          } ${bizFocusRingClass}`}
-                        >
-                          <span
-                            className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                              cardIssuancePointSystemEnabled ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                            aria-hidden
-                          />
-                        </button>
-                      </header>
-                      <div className="rounded-xl border border-[#1562f0]/10 bg-[#f8fbff] p-3 sm:p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-[#595c5e]">
-                              Current ratio
-                            </p>
-                            <p className="mt-1 font-manrope text-sm font-extrabold text-[#2c2f31] sm:text-base">
-                              {cardIssuancePointSystemEnabled
-                                ? `${formatPointRatioE6Display(
-                                    parsePointRatioHumanToE6(cardIssuancePointRatioInput)?.toString() ??
-                                      cardIssuanceExistingCard.chargeRewardRatioE6 ??
-                                      CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6
-                                  )} point per ${cardIssuanceDisplayMoneyPrefix}1 spent`
-                                : 'Point display is off'}
-                            </p>
-                          </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${
-                              cardIssuancePointSystemEnabled
-                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                                : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
-                            }`}
-                          >
-                            {cardIssuancePointSystemEnabled ? 'ON' : 'OFF'}
-                          </span>
-                        </div>
-                        {cardIssuancePointSystemEnabled ? (
-                          <div className="mt-4 space-y-2">
-                            <label
-                              htmlFor="programs-point-ratio"
-                              className="block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
-                            >
-                              Points per {cardIssuanceDisplayMoneyPrefix}1 spent
-                            </label>
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <input
-                                ref={cardIssuancePointRatioWheelRef}
-                                id="programs-point-ratio"
-                                type="number"
-                                inputMode="decimal"
-                                autoComplete="off"
-                                enterKeyHint="done"
-                                min={0}
-                                max={CARD_ISSUANCE_POINT_RATIO_MAX}
-                                step="0.01"
-                                value={cardIssuancePointRatioInput}
-                                onKeyDown={preventNumericInputStepKeys}
-                                onKeyDownCapture={preventNumericInputStepKeys}
-                                onWheel={preventNumericInputWheelStep}
-                                onChange={(e) =>
-                                  setCardIssuancePointRatioInput(normalizeCardIssuanceBonusRuleInput(e.target.value))
-                                }
-                                onBlur={() => {
-                                  const parsed = parsePointRatioHumanToE6(cardIssuancePointRatioInput);
-                                  if (parsed == null || parsed <= 0n) {
-                                    setCardIssuancePointRatioInput('1');
-                                    return;
-                                  }
-                                  const max = BigInt(CARD_ISSUANCE_POINT_RATIO_MAX) * 1_000_000n;
-                                  setCardIssuancePointRatioInput(
-                                    formatPointRatioE6ToHuman(parsed > max ? max : parsed)
-                                  );
-                                }}
-                                placeholder="1.00"
-                                disabled={cardIssuancePointSystemSaving}
-                                className={`min-w-0 flex-1 rounded-xl border border-[#1562f0]/15 bg-white px-3 py-2.5 text-sm font-bold text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => void handleSaveCardIssuancePointSystem()}
-                                disabled={cardIssuancePointSystemSaving}
-                                className={`inline-flex items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                              >
-                                {cardIssuancePointSystemSaving ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
-                                ) : (
-                                  <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                                )}
-                                Save
-                              </button>
-                            </div>
-                            <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
-                              Saving updates metadata for clients and the on-chain ratio used after successful charges.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
-                            <p className="text-[11px] font-medium leading-relaxed text-[#595c5e]">
-                              POS and client apps should hide point balances while this metadata switch is off.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveCardIssuancePointSystem()}
-                              disabled={cardIssuancePointSystemSaving}
-                              className={`inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                            >
-                              {cardIssuancePointSystemSaving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
-                              ) : (
-                                <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                              )}
-                              Save off
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    ) : null}
 
                     {cardIssuanceProgramSection === 'vouchers' ? (
                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
@@ -33615,6 +33833,79 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </button>
                         </div>
                       </header>
+                      <div className="mb-4 rounded-lg border border-[#1562f0]/10 bg-[#f8fbff] p-3 sm:rounded-xl sm:p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
+                              <Gift className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]" strokeWidth={2} aria-hidden />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                {tu('programs_social_exchange_title')}
+                              </p>
+                              <p className="text-[10px] text-[#595c5e]">
+                                {cardIssuanceSocialExchangeCoupons.length > 0
+                                  ? tu('programs_social_exchange_count', {
+                                      count: cardIssuanceSocialExchangeCoupons.length.toLocaleString(),
+                                    })
+                                  : tu('programs_social_exchange_none')}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={openCardIssuanceSocialExchangeEditor}
+                            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-[#1562f0] px-3 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-[#0d4ec4] sm:px-4 ${bizFocusRingClass}`}
+                            aria-label={tu('programs_social_exchange_create_aria')}
+                          >
+                            <Plus className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden />
+                            {tu('programs_social_exchange_create')}
+                          </button>
+                        </div>
+                        {cardIssuanceSocialExchangeCoupons.length > 0 ? (
+                          <ul className="mt-3 space-y-2 border-t border-[#1562f0]/10 pt-3">
+                            {cardIssuanceSocialExchangeCoupons.map((coupon) => (
+                              <li
+                                key={coupon.id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#1562f0]/10 bg-white px-3 py-2"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-[#2c2f31]">{coupon.name}</p>
+                                  <p className="text-[10px] font-medium text-[#595c5e]">
+                                    {coupon.socialExchange
+                                      ? socialExchangeSummaryLabel(coupon.socialExchange)
+                                      : ''}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  {coupon.issued && !coupon.requiresRedeemCode ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openCardIssuanceCouponShare(coupon.id)}
+                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                      aria-label={`Show claim URL and QR for ${coupon.name}`}
+                                      title={tu('programs_coupon_show_claim_qr')}
+                                    >
+                                      <QrCode className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => openCardIssuanceCouponEdit(coupon.id)}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                                    aria-label={`Edit social exchange ${coupon.name}`}
+                                  >
+                                    <Pencil className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                  </button>
+                                  <span className="shrink-0 rounded-full bg-[#1562f0]/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0]">
+                                    {tu('programs_social_exchange_open_claim_badge')}
+                                  </span>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
                       <div className="space-y-2.5 sm:space-y-3">
                         {cardIssuanceCoupons.length === 0 ? (
                           <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-[#f8fafc] p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
@@ -33680,6 +33971,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
                                   {coupon.requiresRedeemCode ? tu('programs_coupon_redeem_code') : tu('programs_coupon_open_claim')}
                                 </p>
+                                {coupon.socialExchange ? (
+                                  <p className="mt-0.5 text-[10px] font-medium text-[#1562f0]">
+                                    {socialExchangeSummaryLabel(coupon.socialExchange)}
+                                  </p>
+                                ) : null}
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
                                   {tu('programs_coupon_total_issuance_left')}{' '}
                                   {(() => {
@@ -34089,6 +34385,65 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </span>
                            </div>
                          </div>
+                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
+                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
+                               <Share2
+                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             </div>
+                             <div className="min-w-0">
+                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                 {tu('programs_social_promotion_title')}
+                               </p>
+                               <p className="text-[10px] text-[#595c5e]">
+                                 {cardIssuanceSocialPromotionPayload
+                                   ? formatSocialPromotionDisplay(cardIssuanceSocialPromotionPayload)
+                                   : tu('programs_social_promotion_none')}
+                               </p>
+                             </div>
+                           </div>
+                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                             <button
+                               type="button"
+                               onClick={openCardIssuanceSocialPromotionEditor}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                               aria-label={tu('programs_social_promotion_edit_aria')}
+                             >
+                               <Pencil
+                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             </button>
+                             {cardIssuanceSocialPromotionPayload ? (
+                               <button
+                                 type="button"
+                                 onClick={() => void clearCardIssuanceSocialPromotion()}
+                                 disabled={cardIssuanceSocialPromotionEditorPublishing}
+                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:opacity-50 ${bizFocusRingClass}`}
+                                 aria-label={tu('programs_social_promotion_clear_aria')}
+                               >
+                                 <Trash2
+                                   className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                   strokeWidth={2}
+                                   aria-hidden
+                                 />
+                               </button>
+                             ) : null}
+                             <span
+                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
+                                 cardIssuanceSocialPromotionPayload
+                                   ? 'bg-[#1562f0] text-white'
+                                   : 'bg-slate-200 text-slate-600'
+                               }`}
+                             >
+                               {cardIssuanceSocialPromotionPayload ? 'ACTIVE' : 'OFF'}
+                             </span>
+                           </div>
+                         </div>
                        </div>
                      </div>
                      ) : null}
@@ -34219,10 +34574,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    onClick={() => {
-                      setCardIssuanceCouponEditorOpen(false);
-                      setCardIssuanceEditingCouponId(null);
-                    }}
+                    onClick={closeCardIssuanceCouponEditor}
                   />
                   <motion.div
                     className="fixed inset-0 z-[93] flex w-full flex-col bg-white shadow-[-24px_0_64px_rgba(0,0,0,0.14)]"
@@ -34238,16 +34590,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
                               {cardIssuanceEditingCouponId ? tu('programs_coupon_edit') : tu('programs_coupon_new')}
                             </span>
+                            {cardIssuanceCouponEditorIsSocialExchange ? (
+                              <span className="ml-2 rounded-full bg-[#1562f0]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#1562f0]">
+                                {tu('programs_social_exchange_open_claim_badge')}
+                              </span>
+                            ) : null}
                             <h3 className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]">
                               {cardIssuanceEditingCouponId ? tu('programs_coupon_edit') : tu('programs_coupon_create')}
                             </h3>
                           </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              setCardIssuanceCouponEditorOpen(false);
-                              setCardIssuanceEditingCouponId(null);
-                            }}
+                            onClick={closeCardIssuanceCouponEditor}
                             className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#abadaf]/30 bg-white text-[#747779] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
                             aria-label={tu('programs_common_close')}
                           >
@@ -34423,6 +34777,94 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                         How members claim
                       </span>
+                      {cardIssuanceCouponEditorIsSocialExchange && cardIssuanceCouponSocialExchangeDraft ? (
+                        <>
+                          <p className="rounded-2xl bg-[#1562f0]/5 px-4 py-3 text-[11px] font-medium leading-relaxed text-[#1562f0]">
+                            {tu('programs_social_exchange_open_claim_note')}
+                          </p>
+                          <p className="mt-2 text-[11px] font-semibold text-[#595c5e]">
+                            {cardIssuanceCouponSocialExchangeDraft.kind === 'usdc'
+                              ? tu('programs_social_exchange_kind_usdc')
+                              : tu('programs_social_exchange_kind_coupon')}
+                          </p>
+                          <div className="mt-3">
+                            <label
+                              className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                              htmlFor="programs-coupon-edit-social-points"
+                            >
+                              {tu('programs_social_exchange_points_label')}
+                            </label>
+                            <input
+                              id="programs-coupon-edit-social-points"
+                              type="number"
+                              inputMode="numeric"
+                              min={1}
+                              step={1}
+                              value={cardIssuanceCouponSocialExchangeDraft.pointsCost}
+                              disabled={cardIssuanceCouponEditingIssued}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              onChange={(e) =>
+                                setCardIssuanceCouponSocialExchangeDraft((p) =>
+                                  p
+                                    ? {
+                                        ...p,
+                                        pointsCost: e.target.value.replace(/[^\d]/g, ''),
+                                        enabled: true,
+                                      }
+                                    : p
+                                )
+                              }
+                              className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                            />
+                            <p className="mt-1 text-[11px] text-[#abadaf]">
+                              {tu('programs_social_exchange_points_hint')}
+                            </p>
+                          </div>
+                          {cardIssuanceCouponSocialExchangeDraft.kind === 'usdc' ? (
+                            <div className="mt-3">
+                              <label
+                                className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                                htmlFor="programs-coupon-edit-social-usdc"
+                              >
+                                {tu('programs_social_exchange_usdc_label')}
+                              </label>
+                              <input
+                                id="programs-coupon-edit-social-usdc"
+                                type="number"
+                                inputMode="decimal"
+                                min={0.01}
+                                step={0.01}
+                                value={cardIssuanceCouponSocialExchangeDraft.usdcReward}
+                                disabled={cardIssuanceCouponEditingIssued}
+                                onKeyDown={preventNumericInputStepKeys}
+                                onWheel={preventNumericInputWheelStep}
+                                onChange={(e) =>
+                                  setCardIssuanceCouponSocialExchangeDraft((p) =>
+                                    p
+                                      ? {
+                                          ...p,
+                                          usdcReward: e.target.value,
+                                          enabled: true,
+                                        }
+                                      : p
+                                  )
+                                }
+                                className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                              />
+                              <p className="mt-1 text-[11px] text-[#abadaf]">
+                                {tu('programs_social_exchange_usdc_hint')}
+                              </p>
+                            </div>
+                          ) : null}
+                          {cardIssuanceCouponEditingIssued && cardIssuanceEditingCouponRow?.socialExchange ? (
+                            <p className="mt-2 text-[11px] font-medium text-sky-800">
+                              {socialExchangeSummaryLabel(cardIssuanceEditingCouponRow.socialExchange)}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -34460,6 +34902,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           ? `Members enter a redeem code to claim. Codes are registered on-chain in batches of up to ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} (contract limit); register more from the Coupons list as needed.`
                           : 'Members can claim without entering a secret redeem code, within your issuance cap.'}
                       </p>
+                        </>
+                      )}
                     </div>
                     <div>
                       <label
@@ -34499,6 +34943,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         batch at issue; add more later from the Coupons list.
                       </p>
                     </div>
+                    {!cardIssuanceCouponEditorIsSocialExchange ||
+                    cardIssuanceCouponSocialExchangeDraft?.kind === 'coupon' ? (
+                    <>
                     <div>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_icon_label')}</label>
                       <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
@@ -34640,6 +35087,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       </div>
                     </div>
                     ) : null}
+                    </>
+                    ) : null}
+                    {!cardIssuanceCouponEditorIsSocialExchange ||
+                    cardIssuanceCouponSocialExchangeDraft?.kind === 'coupon' ? (
                     <div>
                       <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                         Validity period
@@ -34727,6 +35178,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           : 'No validity window is stored; this coupon is not limited by start/end dates in metadata.'}
                       </p>
                     </div>
+                    ) : null}
+                    {cardIssuanceCouponEditorIsSocialExchange &&
+                    cardIssuanceCouponSocialExchangeEditorValidationError ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+                        {cardIssuanceCouponSocialExchangeEditorValidationError}
+                      </div>
+                    ) : null}
                     {cardIssuanceCouponEditorError ? (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
                         {cardIssuanceCouponEditorError}
@@ -34735,7 +35193,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <button
                       type="button"
                       onClick={submitCardIssuanceCouponEditor}
-                      disabled={cardIssuanceCouponIconUploading || cardIssuanceCouponEditorPublishing}
+                      disabled={
+                        cardIssuanceCouponIconUploading ||
+                        cardIssuanceCouponEditorPublishing ||
+                        Boolean(cardIssuanceCouponSocialExchangeEditorValidationError)
+                      }
                       className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                     >
                       {cardIssuanceCouponIconUploading || cardIssuanceCouponEditorPublishing ? (
@@ -35182,6 +35644,715 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              Clear Promotion
                            </button>
                          ) : null}
+                       </div>
+                     </div>
+                   </motion.div>
+                 </>
+               ) : null}
+             </AnimatePresence>
+             <AnimatePresence>
+               {cardIssuanceSocialPromotionEditorOpen ? (
+                 <>
+                   <motion.button
+                     type="button"
+                     aria-label="Close social promotion editor"
+                     className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                     exit={{ opacity: 0 }}
+                     onClick={() => setCardIssuanceSocialPromotionEditorOpen(false)}
+                   />
+                   <motion.div
+                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                     initial={{ y: '100%' }}
+                     animate={{ y: 0 }}
+                     exit={{ y: '100%' }}
+                     transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                   >
+                     <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                     <div className="mb-8 flex items-start justify-between gap-4">
+                       <div>
+                         <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                           Promotion
+                         </span>
+                         <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
+                           {tu('programs_social_promotion_editor_title')}
+                         </h3>
+                         <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                           {tu('programs_social_promotion_editor_desc')}
+                         </p>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => setCardIssuanceSocialPromotionEditorOpen(false)}
+                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                       >
+                         <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                       </button>
+                     </div>
+
+                     <div className="space-y-6">
+                       <div className="space-y-3">
+                         <p className="ml-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_social_promotion_event_label')}
+                         </p>
+                         <div className="flex flex-col gap-2 sm:flex-row">
+                           <button
+                             type="button"
+                             onClick={() =>
+                               setCardIssuanceSocialPromotion((p) => ({ ...p, eventKind: 'refClick', enabled: true }))
+                             }
+                             className={`flex-1 rounded-2xl border px-4 py-4 text-left transition-colors ${bizFocusRingClass} ${
+                               cardIssuanceSocialPromotion.eventKind === 'refClick'
+                                 ? 'border-[#0051d1] bg-[#0051d1]/5'
+                                 : 'border-[#e5e9eb] bg-[#eef1f3]'
+                             }`}
+                           >
+                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                               {tu('programs_social_promotion_event_click')}
+                             </p>
+                             <p className="mt-1 text-[11px] leading-snug text-[#595c5e]">
+                               {tu('programs_social_promotion_event_click_hint')}
+                             </p>
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() =>
+                               setCardIssuanceSocialPromotion((p) => ({ ...p, eventKind: 'refTopup', enabled: true }))
+                             }
+                             className={`flex-1 rounded-2xl border px-4 py-4 text-left transition-colors ${bizFocusRingClass} ${
+                               cardIssuanceSocialPromotion.eventKind === 'refTopup'
+                                 ? 'border-[#0051d1] bg-[#0051d1]/5'
+                                 : 'border-[#e5e9eb] bg-[#eef1f3]'
+                             }`}
+                           >
+                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                               {tu('programs_social_promotion_event_topup')}
+                             </p>
+                             <p className="mt-1 text-[11px] leading-snug text-[#595c5e]">
+                               {tu('programs_social_promotion_event_topup_hint')}
+                             </p>
+                           </button>
+                         </div>
+                         <p className="ml-2 text-[11px] leading-relaxed text-[#747779]">
+                           {tu('programs_social_promotion_exclusive_hint')}
+                         </p>
+                       </div>
+
+                       <div className="space-y-2">
+                         <label
+                           className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                           htmlFor="card-social-promo-points"
+                         >
+                           {tu('programs_social_promotion_points_label')}
+                         </label>
+                         <input
+                           id="card-social-promo-points"
+                           ref={cardIssuanceSocialPromotionPointsWheelRef}
+                           type="number"
+                           inputMode="numeric"
+                           autoComplete="off"
+                           enterKeyHint="done"
+                           min={1}
+                           step={1}
+                           placeholder="1"
+                           value={cardIssuanceSocialPromotion.refRewardPoints13}
+                           onKeyDown={preventNumericInputStepKeys}
+                           onWheel={preventNumericInputWheelStep}
+                           onChange={(e) =>
+                             setCardIssuanceSocialPromotion((p) => ({
+                               ...p,
+                               refRewardPoints13: e.target.value.replace(/[^\d]/g, ''),
+                               enabled: true,
+                             }))
+                           }
+                           className={`w-full rounded-full border-none bg-[#eef1f3] px-6 py-5 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                         />
+                         <p className="ml-2 text-[11px] leading-relaxed text-[#747779]">
+                           {tu('programs_social_promotion_points_hint')}
+                         </p>
+                       </div>
+
+                       {cardIssuanceSocialPromotionEditorValidationError ? (
+                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                           <p>{cardIssuanceSocialPromotionEditorValidationError}</p>
+                         </div>
+                       ) : null}
+                       {(cardIssuanceCreateError || cardIssuanceSocialPromotionEditorServerError) &&
+                       !cardIssuanceSocialPromotionEditorPublishing ? (
+                         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                           <p>{cardIssuanceCreateError || cardIssuanceSocialPromotionEditorServerError}</p>
+                         </div>
+                       ) : null}
+
+                       <div className="space-y-3 pt-2">
+                         <button
+                           type="button"
+                           onClick={() => void submitCardIssuanceSocialPromotionEditor()}
+                           disabled={
+                             Boolean(cardIssuanceSocialPromotionEditorValidationError) ||
+                             cardIssuanceSocialPromotionEditorPublishing
+                           }
+                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
+                         >
+                           {cardIssuanceSocialPromotionEditorPublishing ? (
+                             <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                           ) : (
+                             <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                           )}
+                           <span>
+                             {cardIssuanceSocialPromotionEditorPublishing
+                               ? tu('programs_social_promotion_saving')
+                               : tu('programs_social_promotion_save')}
+                           </span>
+                         </button>
+                         {cardIssuanceSocialPromotion.enabled || cardIssuanceSocialPromotionPayload ? (
+                           <button
+                             type="button"
+                             onClick={() => void clearCardIssuanceSocialPromotion()}
+                             disabled={cardIssuanceSocialPromotionEditorPublishing}
+                             className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] ${bizFocusRingClass}`}
+                           >
+                             {tu('programs_social_promotion_clear')}
+                           </button>
+                         ) : null}
+                       </div>
+                     </div>
+                   </motion.div>
+                 </>
+               ) : null}
+               {cardIssuanceSocialExchangeEditorOpen ? (
+                 <>
+                   <motion.button
+                     type="button"
+                     aria-label={tu('programs_catalog_close')}
+                     className="fixed inset-0 z-[92] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                     exit={{ opacity: 0 }}
+                     onClick={() => setCardIssuanceSocialExchangeEditorOpen(false)}
+                   />
+                   <motion.div
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="card-social-exchange-editor-title"
+                     className="fixed inset-0 z-[93] flex w-full flex-col bg-white shadow-[-24px_0_64px_rgba(0,0,0,0.14)]"
+                     initial={{ x: '100%' }}
+                     animate={{ x: 0 }}
+                     exit={{ x: '100%' }}
+                     transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+                   >
+                     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                       <div className="shrink-0 border-b border-[#e5e9eb]/80 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top,0px))] sm:px-6">
+                         <div className="flex items-start justify-between gap-4">
+                           <div>
+                             <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                               {tu('programs_social_exchange_open_claim_badge')}
+                             </span>
+                             <h3
+                               id="card-social-exchange-editor-title"
+                               className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]"
+                             >
+                               {tu('programs_social_exchange_editor_title')}
+                             </h3>
+                             <p className="mt-1 text-sm leading-relaxed text-[#595c5e]">
+                               {tu('programs_social_exchange_editor_desc')}
+                             </p>
+                           </div>
+                           <button
+                             type="button"
+                             onClick={() => setCardIssuanceSocialExchangeEditorOpen(false)}
+                             className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#abadaf]/30 bg-white text-[#747779] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
+                             aria-label={tu('programs_common_close')}
+                           >
+                             <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                           </button>
+                         </div>
+                       </div>
+                       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6">
+                     <div className="space-y-3 pb-24 pt-1">
+                       <div className="space-y-2">
+                         <span className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_social_exchange_kind_label')}
+                         </span>
+                         <div className="flex flex-col gap-2 sm:flex-row">
+                           <button
+                             type="button"
+                             onClick={() =>
+                               setCardIssuanceSocialExchangeDraft((p) => ({ ...p, kind: 'coupon', enabled: true }))
+                             }
+                             className={`flex-1 rounded-2xl border px-4 py-4 text-left transition-colors ${bizFocusRingClass} ${
+                               cardIssuanceSocialExchangeDraft.kind === 'coupon'
+                                 ? 'border-[#0051d1] bg-[#0051d1]/5'
+                                 : 'border-[#e5e9eb] bg-[#eef1f3]'
+                             }`}
+                           >
+                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                               {tu('programs_social_exchange_kind_coupon')}
+                             </p>
+                             <p className="mt-1 text-[11px] leading-snug text-[#595c5e]">
+                               {tu('programs_social_exchange_kind_coupon_hint')}
+                             </p>
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() =>
+                               setCardIssuanceSocialExchangeDraft((p) => ({ ...p, kind: 'usdc', enabled: true }))
+                             }
+                             className={`flex-1 rounded-2xl border px-4 py-4 text-left transition-colors ${bizFocusRingClass} ${
+                               cardIssuanceSocialExchangeDraft.kind === 'usdc'
+                                 ? 'border-[#0051d1] bg-[#0051d1]/5'
+                                 : 'border-[#e5e9eb] bg-[#eef1f3]'
+                             }`}
+                           >
+                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                               {tu('programs_social_exchange_kind_usdc')}
+                             </p>
+                             <p className="mt-1 text-[11px] leading-snug text-[#595c5e]">
+                               {tu('programs_social_exchange_kind_usdc_hint')}
+                             </p>
+                           </button>
+                         </div>
+                       </div>
+
+                       {cardIssuanceSocialExchangeDraft.kind === 'coupon' &&
+                       cardIssuanceSocialExchangeEditorLivePreview ? (
+                         <div className="sticky top-0 z-30 -mx-4 mb-4 border-b border-[#abadaf]/15 bg-white/95 px-4 pb-4 pt-3 backdrop-blur-md supports-[backdrop-filter]:bg-white/80 sm:-mx-6 sm:px-6">
+                           <span className="mb-3 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                             {tu('programs_coupon_preview')}
+                           </span>
+                           <ProgramsCouponShareCardPreview
+                             coupon={{
+                               name: cardIssuanceSocialExchangeEditorLivePreview.offerTitle,
+                               description: cardIssuanceSocialExchangeEditorLivePreview.subtitle,
+                               icon: cardIssuanceSocialExchangeEditorLivePreview.iconUrl,
+                               couponImage: cardIssuanceSocialExchangeEditorLivePreview.banner,
+                               backgroundColor: cardIssuanceSocialExchangeEditorLivePreview.hex,
+                               issueTotal: cardIssuanceSocialExchangeIssueTotal,
+                               requiresRedeemCode: false,
+                               couponDateRestriction: cardIssuanceSocialExchangeDateRestriction,
+                               couponValidFromYmd: cardIssuanceSocialExchangeValidFromYmd,
+                               couponValidToYmd: cardIssuanceSocialExchangeValidToYmd,
+                               id: 'social-exchange-preview',
+                               issued: false,
+                             }}
+                             shareUrl=""
+                             merchantName={programsOverviewDisplayName}
+                             shareKind="open_claim"
+                           />
+                         </div>
+                       ) : null}
+
+                       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-medium text-sky-900">
+                         {tu('programs_social_exchange_open_claim_note')}
+                       </div>
+
+                       <div>
+                         <label
+                           className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                           htmlFor="card-social-exchange-name"
+                         >
+                           {cardIssuanceSocialExchangeDraft.kind === 'coupon'
+                             ? tu('programs_coupon_name_label')
+                             : tu('programs_social_exchange_name_label')}
+                         </label>
+                         <input
+                           id="card-social-exchange-name"
+                           type="text"
+                           value={cardIssuanceSocialExchangeName}
+                           onChange={(e) => setCardIssuanceSocialExchangeName(e.target.value)}
+                           placeholder={tu('programs_coupon_name_ph')}
+                           autoComplete="off"
+                           className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                         />
+                       </div>
+
+                       <div>
+                         <label
+                           className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                           htmlFor="card-social-exchange-description"
+                         >
+                           {tu('programs_overview_description')}
+                         </label>
+                         <input
+                           id="card-social-exchange-description"
+                           type="text"
+                           value={cardIssuanceSocialExchangeDescription}
+                           onChange={(e) =>
+                             setCardIssuanceSocialExchangeDescription(e.target.value.replace(/\r?\n/g, ' '))
+                           }
+                           placeholder={cardIssuanceCouponDescriptionDefault()}
+                           autoComplete="off"
+                           className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                         />
+                       </div>
+
+                       <div>
+                         <label
+                           className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                           htmlFor="card-social-exchange-issue-total"
+                         >
+                           {tu('programs_coupon_total_issuance')}
+                         </label>
+                         <input
+                           ref={cardIssuanceSocialExchangeIssueTotalWheelRef}
+                           id="card-social-exchange-issue-total"
+                           type="number"
+                           inputMode="numeric"
+                           autoComplete="off"
+                           min={1}
+                           max={CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX}
+                           value={cardIssuanceSocialExchangeIssueTotal}
+                           onKeyDown={preventNumericInputStepKeys}
+                           onKeyDownCapture={preventNumericInputStepKeys}
+                           onWheel={preventNumericInputWheelStep}
+                           onChange={(e) => {
+                             const raw = e.target.value.replace(/,/g, '');
+                             if (raw === '') {
+                               setCardIssuanceSocialExchangeIssueTotal('');
+                               return;
+                             }
+                             setCardIssuanceSocialExchangeIssueTotal(raw.split('.')[0].replace(/\D/g, ''));
+                           }}
+                           placeholder={String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)}
+                           className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                         />
+                       </div>
+
+                       <div>
+                         <label
+                           className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                           htmlFor="card-social-exchange-points"
+                         >
+                           {tu('programs_social_exchange_points_label')}
+                         </label>
+                         <input
+                           id="card-social-exchange-points"
+                           type="number"
+                           inputMode="numeric"
+                           min={1}
+                           step={1}
+                           value={cardIssuanceSocialExchangeDraft.pointsCost}
+                           onKeyDown={preventNumericInputStepKeys}
+                           onWheel={preventNumericInputWheelStep}
+                           onChange={(e) =>
+                             setCardIssuanceSocialExchangeDraft((p) => ({
+                               ...p,
+                               pointsCost: e.target.value.replace(/[^\d]/g, ''),
+                               enabled: true,
+                             }))
+                           }
+                           className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                         />
+                         <p className="mt-1 text-[11px] text-[#abadaf]">
+                           {tu('programs_social_exchange_points_hint')}
+                         </p>
+                       </div>
+
+                       {cardIssuanceSocialExchangeDraft.kind === 'usdc' ? (
+                         <div>
+                           <label
+                             className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                             htmlFor="card-social-exchange-usdc"
+                           >
+                             {tu('programs_social_exchange_usdc_label')}
+                           </label>
+                           <input
+                             id="card-social-exchange-usdc"
+                             type="number"
+                             inputMode="decimal"
+                             min={0.01}
+                             step={0.01}
+                             value={cardIssuanceSocialExchangeDraft.usdcReward}
+                             onKeyDown={preventNumericInputStepKeys}
+                             onWheel={preventNumericInputWheelStep}
+                             onChange={(e) =>
+                               setCardIssuanceSocialExchangeDraft((p) => ({
+                                 ...p,
+                                 usdcReward: e.target.value,
+                                 enabled: true,
+                               }))
+                             }
+                             className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                           />
+                           <p className="mt-1 text-[11px] text-[#abadaf]">
+                             {tu('programs_social_exchange_usdc_hint')}
+                           </p>
+                         </div>
+                       ) : null}
+
+                       {cardIssuanceSocialExchangeDraft.kind === 'coupon' ? (
+                         <>
+                           <div>
+                             <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               {tu('programs_coupon_icon_label')}
+                             </label>
+                             <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
+                               Recommended: square image, 512 × 512 px or larger, 1:1 ratio. Keep the artwork centered inside a
+                               circular safe area because the ticket displays this icon as a round crop.
+                             </p>
+                             <input
+                               ref={cardIssuanceSocialExchangeIconFileRef}
+                               type="file"
+                               accept="image/*"
+                               className="hidden"
+                               onChange={handleCardIssuanceSocialExchangeIconPick}
+                             />
+                             {!cardIssuanceSocialExchangeIcon ? (
+                               <button
+                                 type="button"
+                                 onClick={() => cardIssuanceSocialExchangeIconFileRef.current?.click()}
+                                 disabled={cardIssuanceSocialExchangeIconUploading}
+                                 className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               >
+                                 {cardIssuanceSocialExchangeIconUploading ? (
+                                   <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                                 ) : (
+                                   <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
+                                 )}
+                                 <span className="mt-2 text-[11px] font-bold text-[#747779]">
+                                   {cardIssuanceSocialExchangeIconUploading
+                                     ? 'Uploading…'
+                                     : 'Upload icon (PNG, JPEG, or SVG)'}
+                                 </span>
+                               </button>
+                             ) : (
+                               <div className="relative h-[112px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
+                                 <IpfsImg
+                                   src={cardIssuanceSocialExchangeIcon}
+                                   alt=""
+                                   className="h-full w-full object-contain"
+                                 />
+                                 <button
+                                   type="button"
+                                   onClick={() => {
+                                     setCardIssuanceSocialExchangeIcon('');
+                                     if (cardIssuanceSocialExchangeIconFileRef.current) {
+                                       cardIssuanceSocialExchangeIconFileRef.current.value = '';
+                                     }
+                                   }}
+                                   className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
+                                   aria-label={tu('programs_coupon_remove_icon_aria')}
+                                 >
+                                   <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                 </button>
+                               </div>
+                             )}
+                           </div>
+                           <div>
+                             <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               Coupon background image (optional)
+                             </label>
+                             <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
+                               Recommended: wide banner, 2048 × 480 px, about 4.27:1. Keep key text and faces near the center
+                               80%; previews fill blank edges with a blurred cover layer and may crop extra width.
+                             </p>
+                             <input
+                               ref={cardIssuanceSocialExchangeImageFileRef}
+                               type="file"
+                               accept="image/*"
+                               className="hidden"
+                               onChange={handleCardIssuanceSocialExchangeImagePick}
+                             />
+                             {!cardIssuanceSocialExchangeImage ? (
+                               <button
+                                 type="button"
+                                 onClick={() => cardIssuanceSocialExchangeImageFileRef.current?.click()}
+                                 disabled={cardIssuanceSocialExchangeImageUploading}
+                                 className={`flex min-h-[96px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               >
+                                 {cardIssuanceSocialExchangeImageUploading ? (
+                                   <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
+                                 ) : (
+                                   <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
+                                 )}
+                                 <span className="mt-2 text-center text-[11px] font-bold text-[#747779]">
+                                   {cardIssuanceSocialExchangeImageUploading
+                                     ? 'Uploading…'
+                                     : 'Upload wide banner (PNG or JPEG). Default: solid color below.'}
+                                 </span>
+                               </button>
+                             ) : (
+                               <div className="relative h-[120px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#0f172a]/90">
+                                 <IpfsImg
+                                   src={cardIssuanceSocialExchangeImage}
+                                   alt=""
+                                   className="h-full w-full object-cover opacity-95"
+                                 />
+                                 <button
+                                   type="button"
+                                   onClick={() => {
+                                     setCardIssuanceSocialExchangeImage('');
+                                     if (cardIssuanceSocialExchangeImageFileRef.current) {
+                                       cardIssuanceSocialExchangeImageFileRef.current.value = '';
+                                     }
+                                   }}
+                                   className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
+                                   aria-label={tu('programs_coupon_remove_bg_aria')}
+                                 >
+                                   <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                 </button>
+                               </div>
+                             )}
+                           </div>
+                           {tileBackgroundColorApplies(cardIssuanceSocialExchangeImage) ? (
+                             <div className="space-y-2">
+                               <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                                 {tu('programs_coupon_bg_color')}
+                               </label>
+                               <div className="flex flex-wrap gap-2">
+                                 {CARD_ISSUANCE_TIER_COLOR_PRESETS.map((hex) => {
+                                   const selected =
+                                     (tierBackgroundColorForPayload(cardIssuanceSocialExchangeBackgroundColor) ??
+                                       cardIssuanceSocialExchangeBackgroundColor.toLowerCase()) === hex.toLowerCase();
+                                   return (
+                                     <button
+                                       key={`social-exchange-color-${hex}`}
+                                       type="button"
+                                       aria-label={`Select coupon color ${hex}`}
+                                       onClick={() => setCardIssuanceSocialExchangeBackgroundColor(hex)}
+                                       className={`h-8 w-8 rounded-full ring-2 ring-offset-2 transition-all hover:scale-110 ${
+                                         selected ? 'ring-[#1562f0]/35' : 'ring-transparent'
+                                       }`}
+                                       style={{ backgroundColor: hex }}
+                                     />
+                                   );
+                                 })}
+                               </div>
+                               <div className="flex items-center gap-2">
+                                 <input
+                                   type="color"
+                                   value={
+                                     tierBackgroundColorForPayload(cardIssuanceSocialExchangeBackgroundColor) ??
+                                     '#0051d1'
+                                   }
+                                   onChange={(e) => setCardIssuanceSocialExchangeBackgroundColor(e.target.value)}
+                                   className="h-10 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
+                                   aria-label={tu('programs_coupon_choose_color_aria')}
+                                 />
+                                 <input
+                                   type="text"
+                                   value={cardIssuanceSocialExchangeBackgroundColor}
+                                   onChange={(e) => setCardIssuanceSocialExchangeBackgroundColor(e.target.value)}
+                                   placeholder="#0051d1"
+                                   className={`min-w-0 flex-1 rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm font-mono text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                 />
+                               </div>
+                             </div>
+                           ) : null}
+                           <div>
+                             <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               Validity period
+                             </span>
+                             <div className="grid grid-cols-2 gap-2">
+                               <button
+                                 type="button"
+                                 onClick={() => setCardIssuanceSocialExchangeDateRestriction('none')}
+                                 className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                                   cardIssuanceSocialExchangeDateRestriction === 'none'
+                                     ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                                     : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                                 }`}
+                               >
+                                 No dates
+                               </button>
+                               <button
+                                 type="button"
+                                 onClick={() => {
+                                   setCardIssuanceSocialExchangeDateRestriction('range');
+                                   setCardIssuanceSocialExchangeValidFromYmd((prev) => prev || couponDefaultValidFromYmd());
+                                   setCardIssuanceSocialExchangeValidToYmd((prev) => prev || couponDefaultValidToYmd());
+                                 }}
+                                 className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                                   cardIssuanceSocialExchangeDateRestriction === 'range'
+                                     ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
+                                     : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                                 }`}
+                               >
+                                 Date range
+                               </button>
+                             </div>
+                             {cardIssuanceSocialExchangeDateRestriction === 'range' ? (
+                               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                 <div>
+                                   <label
+                                     className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                                     htmlFor="card-social-exchange-valid-from"
+                                   >
+                                     Start date
+                                   </label>
+                                   <input
+                                     id="card-social-exchange-valid-from"
+                                     type="date"
+                                     value={cardIssuanceSocialExchangeValidFromYmd}
+                                     onChange={(e) => {
+                                       const v = e.target.value;
+                                       setCardIssuanceSocialExchangeValidFromYmd(v);
+                                       if (v && cardIssuanceSocialExchangeValidToYmd && v > cardIssuanceSocialExchangeValidToYmd) {
+                                         setCardIssuanceSocialExchangeValidToYmd(v);
+                                       }
+                                     }}
+                                     className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                   />
+                                 </div>
+                                 <div>
+                                   <label
+                                     className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                                     htmlFor="card-social-exchange-valid-to"
+                                   >
+                                     End date
+                                   </label>
+                                   <input
+                                     id="card-social-exchange-valid-to"
+                                     type="date"
+                                     min={cardIssuanceSocialExchangeValidFromYmd || undefined}
+                                     value={cardIssuanceSocialExchangeValidToYmd}
+                                     onChange={(e) => setCardIssuanceSocialExchangeValidToYmd(e.target.value)}
+                                     className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                   />
+                                 </div>
+                               </div>
+                             ) : null}
+                           </div>
+                         </>
+                       ) : null}
+
+                       {cardIssuanceSocialExchangeEditorValidationError ? (
+                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                           <p>{cardIssuanceSocialExchangeEditorValidationError}</p>
+                         </div>
+                       ) : null}
+                       {cardIssuanceSocialExchangeEditorError && !cardIssuanceSocialExchangeEditorPublishing ? (
+                         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                           <p>{cardIssuanceSocialExchangeEditorError}</p>
+                         </div>
+                       ) : null}
+
+                       <button
+                         type="button"
+                         onClick={() => void submitCardIssuanceSocialExchangeEditor()}
+                         disabled={
+                           Boolean(cardIssuanceSocialExchangeEditorValidationError) ||
+                           cardIssuanceSocialExchangeEditorPublishing ||
+                           cardIssuanceSocialExchangeIconUploading ||
+                           cardIssuanceSocialExchangeImageUploading
+                         }
+                         className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
+                       >
+                         {cardIssuanceSocialExchangeEditorPublishing ||
+                         cardIssuanceSocialExchangeIconUploading ||
+                         cardIssuanceSocialExchangeImageUploading ? (
+                           <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                         ) : (
+                           <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                         )}
+                         {cardIssuanceSocialExchangeIconUploading || cardIssuanceSocialExchangeImageUploading
+                           ? 'Uploading…'
+                           : cardIssuanceSocialExchangeEditorPublishing
+                             ? tu('programs_social_exchange_creating')
+                             : tu('programs_social_exchange_create')}
+                       </button>
+                     </div>
                        </div>
                      </div>
                    </motion.div>

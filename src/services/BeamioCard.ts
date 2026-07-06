@@ -457,6 +457,7 @@ const cardCreateRedeemEndpoint = `${beamioApi}/api/cardCreateRedeem`
 const cardRedeemEndpoint = `${beamioApi}/api/cardRedeem`
 const cardRedeemPreCheckEndpoint = `${beamioApi}/api/cardRedeemPreCheck`
 const cardCouponOpenClaimEndpoint = `${beamioApi}/api/cardCouponOpenClaim`
+const cardFundSocialExchangeUsdcEscrowEndpoint = `${beamioApi}/api/cardFundSocialExchangeUsdcEscrow`
 const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
 const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
@@ -1315,6 +1316,27 @@ export type ShareTokenMetadataTopupPromotion = {
 	rewardValue: number
 }
 
+/** Social referral promotion — one active event at a time; syncs to configureEventRewardRule slots. */
+export type ShareTokenMetadataSocialPromotion = {
+	enabled?: boolean
+	/** refClick → share link click; refTopup → referred customer top-up. */
+	eventKind: 'refClick' | 'refTopup'
+	/** #13 reward voucher units minted to referrer per event (social points). */
+	refRewardPoints13: number
+	/** On-chain rule slot (1 = click, 2 = top-up); optional mirror for clients. */
+	ruleId?: number
+}
+
+/** Social points (#13) exchange activity on issued coupon series metadata. */
+export type ShareTokenMetadataSocialExchange = {
+	enabled?: boolean
+	kind: 'coupon' | 'usdc'
+	/** #13 units burned per claim. */
+	pointsCost: number
+	/** CONET-USDC 6-decimal reward when kind=usdc. */
+	usdcReward6?: number
+}
+
 export type ShareTokenMetadataPointSystem = {
 	enabled: boolean
 	/** E6 ratio: 1_000_000 means 1 reward point per 1 card-currency unit spent. */
@@ -1346,6 +1368,8 @@ export type ShareTokenMetadataCoupon = {
 	issued?: boolean
 	/** On-chain issued NFT `tokenId` after createIssuedNft (coupon series) */
 	issuedTokenId?: string | number
+	/** When set, claim burns #13 social points (coupon or USDC reward). */
+	socialExchange?: ShareTokenMetadataSocialExchange
 }
 
 export type ShareTokenMetadataServiceCategoryEntry = {
@@ -1402,6 +1426,8 @@ export type ShareTokenMetadata = {
 	maximumTopup?: number
 	/** Global top-up promotion (single); preferred over legacy bonusRules. */
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	/** Social referral #13 reward — one active event kind at a time. */
+	socialPromotion?: ShareTokenMetadataSocialPromotion
 	/** @deprecated Legacy single rule — derived from topupPromotion on publish; read compat only. */
 	bonusRule?: ShareTokenMetadataBonusRule
 	/** @deprecated Legacy rules array — POS reads topupPromotion first; read compat only. */
@@ -2464,6 +2490,33 @@ export const postCardCreateIssuedNft = async (payload: {
     }
 }
 
+/** Merchant owner funds CONET-USDC escrow for social exchange USDC activities (requires prior ERC-20 approve to card). */
+export const postCardFundSocialExchangeUsdcEscrow = async (params: {
+	cardAddress: string
+	payerEOA: string
+	amount6: string
+}): Promise<{ success: boolean; hash?: string; error?: string }> => {
+	try {
+		const res = await fetch(cardFundSocialExchangeUsdcEscrowEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: ethers.getAddress(params.cardAddress),
+				payerEOA: ethers.getAddress(params.payerEOA),
+				amount6: String(params.amount6),
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as { success?: boolean; hash?: string; error?: string }
+		if (!res.ok || data.success === false) {
+			return { success: false, error: data.error ?? `HTTP ${res.status}` }
+		}
+		return { success: true, hash: data.hash }
+	} catch (e: unknown) {
+		const err = e as { message?: string }
+		return { success: false, error: err?.message ?? String(e) }
+	}
+}
+
 const registerSeriesEndpoint = `${beamioApi}/api/registerSeries`
 
 /** 单次读 `issuedNftIndex()` 的 UI 超时（Create Coupon / 确认新系列）。慢 RPC 下过短会误判失败。 */
@@ -3135,6 +3188,7 @@ export type CardMetadataFromUri = {
 	cardOwner?: string
 	categories?: string[]
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	socialPromotion?: ShareTokenMetadataSocialPromotion
 	bonusRule?: ShareTokenMetadataBonusRule
 	bonusRules?: ShareTokenMetadataBonusRule[]
 	pointSystem?: ShareTokenMetadataPointSystem

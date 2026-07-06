@@ -59,7 +59,7 @@ import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage } from "@/services/beamio"
 import { fiatPrefix, formatAmount } from "@/services/currency"
-import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	discoverUsdcTopupRulesHintText,
 	eoaCanSelfFundDiscoverTopup,
@@ -131,6 +131,11 @@ import { mapServerError } from '@/locale/mapServerError'
 import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
+import {
+	collectActiveDiscoverMerchantPromotions,
+	formatSocialPoints13Display,
+	type DiscoverMerchantPromotionRow,
+} from '@/utils/discoverMerchantPromotions'
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
@@ -1292,6 +1297,75 @@ function DiscoverMerchantPromoRewardTierCard({
 					{config.description}
 				</p>
 			</div>
+		</div>
+	)
+}
+
+function DiscoverMerchantSocialPointsCard({ points, loading }: { points: number | null; loading: boolean }) {
+	const display = loading ? '—' : formatSocialPoints13Display(points)
+	return (
+		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
+			<div className="flex items-start gap-3">
+				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f5ecff] text-[#8d3a8b] dark:bg-purple-950/40">
+					<Star className="h-6 w-6" strokeWidth={2} aria-hidden />
+				</span>
+				<div className="min-w-0 flex-1">
+					<h3 className="text-[17px] font-bold leading-tight text-[#1f2328] dark:text-slate-100">
+						Your social points
+					</h3>
+					<p className="mt-1 text-[13px] font-medium text-slate-500 dark:text-slate-400">
+						#13 reward vouchers on this merchant card
+					</p>
+				</div>
+				<p className="shrink-0 text-[28px] font-extrabold leading-none tracking-tight text-[#8d3a8b]">
+					{display}
+				</p>
+			</div>
+		</div>
+	)
+}
+
+function DiscoverMerchantActivePromotionsCard({
+	promotions,
+	loading,
+}: {
+	promotions: DiscoverMerchantPromotionRow[] | null
+	loading: boolean
+}) {
+	return (
+		<div className="rounded-[22px] bg-white px-5 py-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-6">
+			<header className="mb-3 flex items-center justify-between gap-2">
+				<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Active promotions</h3>
+				{promotions != null ? (
+					<span className="rounded-full border border-[#1562f0]/15 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0]">
+						{promotions.length.toLocaleString()} active
+					</span>
+				) : null}
+			</header>
+			{loading && promotions == null ? (
+				<div className="flex items-center justify-center gap-2 py-5 text-slate-500 dark:text-slate-400">
+					<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+					<span className="text-[14px] font-medium">Loading promotions…</span>
+				</div>
+			) : promotions != null && promotions.length > 0 ? (
+				<ul className="space-y-3">
+					{promotions.map((row) => (
+						<li
+							key={row.id}
+							className="rounded-xl border border-slate-100 bg-slate-50/80 px-3.5 py-3 dark:border-slate-800 dark:bg-slate-800/50"
+						>
+							<p className="text-[13px] font-bold text-[#1f2328] dark:text-slate-100">{row.title}</p>
+							<p className="mt-1 text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
+								{row.description}
+							</p>
+						</li>
+					))}
+				</ul>
+			) : (
+				<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4 text-center text-[13px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
+					No active promotions right now.
+				</p>
+			)}
 		</div>
 	)
 }
@@ -2693,6 +2767,9 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
 	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
+	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(null)
+	const [userSocialPointsLoading, setUserSocialPointsLoading] = useState(false)
+	const [merchantMetadataRoot, setMerchantMetadataRoot] = useState<Record<string, unknown> | null>(null)
 	const [couponClaimEligibilityById, setCouponClaimEligibilityById] = useState<
 		Record<string, CouponOpenClaimEligibility>
 	>({})
@@ -2732,6 +2809,7 @@ function DiscoverMerchantDetailFullScreen({
 			.then(async (res) => (res.ok ? ((await res.json()) as { metadata?: Record<string, unknown> | null }) : null))
 			.then((data) => {
 				if (cancelled || !data?.metadata || typeof data.metadata !== "object") return
+				setMerchantMetadataRoot((prev) => ({ ...(prev ?? {}), ...data.metadata }))
 				const about = parseDiscoverAboutFromShare(
 					readDiscoverNestedObject(data.metadata, "shareTokenMetadata"),
 				)
@@ -2791,6 +2869,18 @@ function DiscoverMerchantDetailFullScreen({
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
 	const heroRechargeBonusPill = discoverFeaturedRechargeBonusSidePill(item)
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
+	const resolvedActivePromotions = useMemo(
+		() =>
+			collectActiveDiscoverMerchantPromotions({
+				metadataRoot: merchantMetadataRoot,
+				currency: displayCurrency,
+				couponSeries: merchantCoupons?.map((row) => ({
+					title: row.coupon.title,
+					metadata: row.seriesRow.metadata ?? null,
+				})),
+			}),
+		[merchantMetadataRoot, displayCurrency, merchantCoupons],
+	)
 	const conetEvangelistLink = useMemo(() => {
 		const ref = (profile?.keyID ?? '').trim()
 		return ref
@@ -3401,6 +3491,37 @@ function DiscoverMerchantDetailFullScreen({
 	}, [profile?.keyID, item.cardAddress])
 
 	useEffect(() => {
+		if (!item.cardAddress) {
+			setUserSocialPoints13(null)
+			setUserSocialPointsLoading(false)
+			return
+		}
+		const userEOA = resolveUserEoa()
+		if (!userEOA) {
+			setUserSocialPoints13(null)
+			setUserSocialPointsLoading(false)
+			return
+		}
+		let cancelled = false
+		setUserSocialPointsLoading(true)
+		void readUserSocialPoints13BalanceOnCard(item.cardAddress, userEOA)
+			.then((bal) => {
+				if (cancelled || bal == null) return
+				const n = Number(bal)
+				if (Number.isFinite(n) && n >= 0) setUserSocialPoints13(Math.trunc(n))
+			})
+			.catch(() => {
+				/* untrusted — keep last trusted */
+			})
+			.finally(() => {
+				if (!cancelled) setUserSocialPointsLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
+
+	useEffect(() => {
 		if (!merchantCoupons?.length) {
 			setCouponClaimEligibilityById({})
 			return
@@ -3477,6 +3598,9 @@ function DiscoverMerchantDetailFullScreen({
 					}
 				}
 				const rec = lookupByAddress(cardAddress)
+				if (rec?.metadataRoot && typeof rec.metadataRoot === 'object') {
+					setMerchantMetadataRoot(rec.metadataRoot)
+				}
 				const freshAbout = parseDiscoverAboutFromShare(
 					readDiscoverNestedObject(rec?.metadataRoot ?? null, "shareTokenMetadata"),
 				)
@@ -3761,6 +3885,16 @@ function DiscoverMerchantDetailFullScreen({
 							</div>
 						) : null}
 					</div>
+
+					<DiscoverMerchantSocialPointsCard
+						points={userSocialPoints13}
+						loading={userSocialPointsLoading}
+					/>
+
+					<DiscoverMerchantActivePromotionsCard
+						promotions={merchantMetadataRoot || merchantCoupons != null ? resolvedActivePromotions : null}
+						loading={merchantOffersLoading && merchantMetadataRoot == null && merchantCoupons == null}
+					/>
 
 					{curatedOffersPanel ? (
 						<DiscoverMerchantCuratedOffersStack

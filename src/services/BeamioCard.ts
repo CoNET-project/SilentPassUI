@@ -666,7 +666,8 @@ export type CouponOpenClaimEligibility =
 	| 'insufficient_social_points'
 	| 'unknown'
 
-async function readUserRewardVoucher13BalanceOnCard(
+/** User AA #13 social points balance on a merchant program card (CoNET RPC). */
+export async function readUserSocialPoints13BalanceOnCard(
 	cardNorm: string,
 	userNorm: string,
 ): Promise<bigint | null> {
@@ -724,7 +725,7 @@ export async function resolveCouponOpenClaimEligibility(
 		if (maxSupply > 0n && mintedCount >= maxSupply) return 'already_claimed'
 		const socialExchange = readSocialExchangeFromMetadata(row.metadata ?? null)
 		if (socialExchange) {
-			const pointsBal = await readUserRewardVoucher13BalanceOnCard(row.cardAddress, userNorm)
+			const pointsBal = await readUserSocialPoints13BalanceOnCard(row.cardAddress, userNorm)
 			if (pointsBal == null) return 'unknown'
 			if (pointsBal < BigInt(socialExchange.pointsCost)) return 'insufficient_social_points'
 		}

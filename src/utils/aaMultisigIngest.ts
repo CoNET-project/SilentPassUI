@@ -5,6 +5,7 @@ import {
 } from '@/utils/aaMultisigProtocol'
 import {
 	getAaMultisigTask,
+	getAaMultisigTaskAny,
 	ingestAaMultisigTaskLocal,
 } from '@/utils/aaMultisigLocalStore'
 import { ingestAaMultisigFromExport } from '@/utils/aaMultisigOfflineSync'
@@ -26,7 +27,9 @@ export function ingestAaMultisigFromChat(params: {
 	const aaAccount = inner.aaAccount
 	if (!aaAccount) return null
 
-	const existing = getAaMultisigTask(params.walletEoa, aaAccount, inner.taskId)
+	const existing =
+		getAaMultisigTask(params.walletEoa, aaAccount, inner.taskId) ??
+		getAaMultisigTaskAny(params.walletEoa, inner.taskId)
 	const merged = mergeInboundMultisigInner(existing, inner, params.fromEoa)
 	if (!merged) return null
 

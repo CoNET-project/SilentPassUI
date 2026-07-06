@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback } from "react"
 import { flushSync } from "react-dom"
+import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat' 
@@ -44,6 +45,17 @@ import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/b
 import { fiatPrefix } from '@/services/currency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
+import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
+import { parseAaMultisigChatPreview } from '@/utils/aaMultisigChatPreview'
+import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
+import { getAaMultisigTaskAny } from '@/utils/aaMultisigLocalStore'
+import {
+	formatMultisigSignatureProgress,
+	multisigHistorySummary,
+	multisigPendingSecondaryMessage,
+	viewerNeedsToSignMultisigTask,
+} from '@/utils/aaMultisigTaskUi'
+import type { AaMultisigChatPreview } from '@/utils/aaMultisigChatPreview'
 import { tu } from '@/locale/beamioLocale'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
@@ -68,6 +80,38 @@ function clamp(n: number, min: number, max: number) {
 
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
+
+function enrichMultisigChatPreview(
+	preview: AaMultisigChatPreview,
+	stored: NonNullable<ReturnType<typeof getAaMultisigTaskAny>>,
+	viewerEoa: string
+): AaMultisigChatPreview {
+	const progressLabel = formatMultisigSignatureProgress(stored)
+	const historySummary = multisigHistorySummary(stored)
+	const needsSign = viewerNeedsToSignMultisigTask(stored, viewerEoa)
+	const waitingLine = multisigPendingSecondaryMessage(stored, viewerEoa)
+
+	let ctaLabel = preview.ctaLabel
+	if (stored.status === 'completed' || stored.status === 'expired') ctaLabel = 'View in history'
+	else if (stored.status === 'ready') ctaLabel = 'Submit transfer'
+	else if (needsSign) ctaLabel = 'Review & sign'
+	else ctaLabel = 'View progress'
+
+	return {
+		...preview,
+		threshold: stored.threshold,
+		signatureCount: stored.signatures.length,
+		progressLabel,
+		statusLine:
+			historySummary ??
+			(stored.status === 'ready'
+				? 'All signatures collected — ready to submit'
+				: needsSign
+					? progressLabel
+					: waitingLine ?? progressLabel),
+		ctaLabel,
+	}
+}
 
 const unknowAcc = (address: string):searchResult => {
 	const ret: searchResult = {
@@ -297,6 +341,7 @@ type ChatListProps = {
 
 
 export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
+	const navigate = useNavigate()
 	const [text, setText] = useState("")
 	 
   	const {
@@ -320,6 +365,24 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
 	const toAddress = chatData.address
+	const walletEoa = (profiles[0]?.keyID ?? '').trim()
+
+	const openMultisigFromChat = useCallback(
+		(messageText: string, isMeMessage: boolean, taskId: string, aaAccount?: string) => {
+			const fromEoa = isMeMessage ? walletEoa : toAddress
+			if (walletEoa && fromEoa) {
+				try {
+					ingestAaMultisigFromChat({ displayText: messageText, fromEoa, walletEoa })
+				} catch {
+					/* multisig ingest must not break chat navigation */
+				}
+			}
+			const params = new URLSearchParams({ tab: 'pending', taskId })
+			if (aaAccount?.trim()) params.set('aaAccount', aaAccount.trim())
+			navigate(`/wallet/aa-multisig?${params.toString()}`)
+		},
+		[navigate, walletEoa, toAddress]
+	)
 	const pressTimerRef = useRef<number | null>(null)
 	const messagesRef = useRef<ChatMessage[]>(chatData.messages || [])
 	const skipNextReflashdataRef = useRef(false)
@@ -1352,6 +1415,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 									{sec.items.map(m => {
 										const isMe = m.from === "me"
+										const multisigPreview = parseAaMultisigChatPreview(m.text)
+										const hasMultisigCard = !!multisigPreview
 										const hasCard = !!m.paymentCard
 
 										return (
@@ -1364,7 +1429,32 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											className={["w-full flex mb-2", isMe ? "justify-end" : "justify-start"].join(" ")}
 										>
 											<div className="max-w-[78%] sm:max-w-[62%]">
-											{hasCard ? (
+											{hasMultisigCard && multisigPreview ? (
+												<AaMultisigChatRequestCard
+													preview={(() => {
+														const stored =
+															walletEoa && multisigPreview.taskId
+																? getAaMultisigTaskAny(walletEoa, multisigPreview.taskId)
+																: null
+														if (!stored || !walletEoa) return multisigPreview
+														return enrichMultisigChatPreview(
+															multisigPreview,
+															stored,
+															walletEoa
+														)
+													})()}
+													timeLabel={fmtTime(getMsgTs(m))}
+													isMe={isMe}
+													onOpen={() =>
+														openMultisigFromChat(
+															m.text,
+															isMe,
+															multisigPreview.taskId,
+															multisigPreview.aaAccount
+														)
+													}
+												/>
+											) : hasCard ? (
 												<div
 													className="relative"
 													onPointerDown={e => {

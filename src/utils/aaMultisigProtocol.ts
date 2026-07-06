@@ -27,6 +27,20 @@ export type AaMultisigTaskStatus =
 	| 'completed'
 	| 'rejected'
 	| 'failed'
+	| 'expired'
+
+/** Task no longer needs gossip / offline sync for co-signers. */
+export const AA_MULTISIG_TERMINAL_TASK_STATUSES: readonly AaMultisigTaskStatus[] = [
+	'submitted',
+	'completed',
+	'rejected',
+	'failed',
+	'expired',
+]
+
+export function isAaMultisigTaskTerminalStatus(status: AaMultisigTaskStatus): boolean {
+	return (AA_MULTISIG_TERMINAL_TASK_STATUSES as readonly string[]).includes(status)
+}
 
 export type AaMultisigSignatureEntry = {
 	signer: string
@@ -248,7 +262,12 @@ export function verifyUserOpSignature(signerEoa: string, userOpHash: string, sig
 }
 
 function recomputeStatus(task: AaMultisigTaskLocal): AaMultisigTaskStatus {
-	if (task.status === 'rejected' || task.status === 'completed' || task.status === 'failed') {
+	if (
+		task.status === 'rejected' ||
+		task.status === 'completed' ||
+		task.status === 'failed' ||
+		task.status === 'expired'
+	) {
 		return task.status
 	}
 	if (task.txHash) return 'completed'

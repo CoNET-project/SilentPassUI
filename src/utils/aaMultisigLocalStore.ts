@@ -1,6 +1,17 @@
+import { ethers } from 'ethers'
 import type { AaMultisigTaskLocal } from '@/utils/aaMultisigProtocol'
+import { viewerNeedsToSignMultisigTask } from '@/utils/aaMultisigTaskUi'
 
 export const AA_MULTISIG_TASKS_CHANGED_EVENT = 'beamio-aa-multisig-tasks-changed'
+
+type AaMultisigOutboundPruneFn = (walletEoa: string, task: AaMultisigTaskLocal) => void
+
+let aaMultisigOutboundPruneFn: AaMultisigOutboundPruneFn | null = null
+
+/** Registered by aaMultisigOfflineSync on load — clears outbound queue when task reaches terminal status. */
+export function setAaMultisigOutboundPruneFn(fn: AaMultisigOutboundPruneFn | null): void {
+	aaMultisigOutboundPruneFn = fn
+}
 
 const STORAGE_PREFIX = 'beamio_aa_multisig_tasks_v1:'
 
@@ -33,6 +44,66 @@ export function loadAaMultisigTasks(walletEoa: string, aaAccount: string): AaMul
 	}
 }
 
+/** Every Smart Wallet (AA) address with a local multisig task partition for this viewer EOA. */
+export function listAaMultisigStorageAaAccounts(walletEoa: string): string[] {
+	const w = (walletEoa ?? '').trim().toLowerCase()
+	if (!w.startsWith('0x') || w.length !== 42) return []
+	const prefix = `${STORAGE_PREFIX}${w}:`
+	const out: string[] = []
+	const seen = new Set<string>()
+	try {
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i)
+			if (!key?.startsWith(prefix)) continue
+			const aaRaw = key.slice(prefix.length)
+			if (!aaRaw.startsWith('0x') || aaRaw.length !== 42) continue
+			const keyLower = aaRaw.toLowerCase()
+			if (seen.has(keyLower)) continue
+			seen.add(keyLower)
+			try {
+				out.push(ethers.getAddress(aaRaw))
+			} catch {
+				/* skip malformed */
+			}
+		}
+	} catch {
+		return []
+	}
+	return out
+}
+
+/** All multisig tasks for this wallet EOA across every Smart Wallet (AA) partition. */
+export function loadAllAaMultisigTasksForWallet(walletEoa: string): AaMultisigTaskLocal[] {
+	const w = (walletEoa ?? '').trim().toLowerCase()
+	if (!w.startsWith('0x') || w.length !== 42) return []
+	const prefix = `${STORAGE_PREFIX}${w}:`
+	const byId = new Map<string, AaMultisigTaskLocal>()
+	try {
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i)
+			if (!key?.startsWith(prefix)) continue
+			const raw = localStorage.getItem(key)
+			if (!raw) continue
+			const parsed = JSON.parse(raw) as AaMultisigTaskLocal[]
+			if (!Array.isArray(parsed)) continue
+			for (const task of parsed) {
+				if (!task?.taskId) continue
+				const existing = byId.get(task.taskId)
+				if (!existing || task.updatedAt > existing.updatedAt) {
+					byId.set(task.taskId, task)
+				}
+			}
+		}
+	} catch {
+		return []
+	}
+	return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+export function getAaMultisigTaskAny(walletEoa: string, taskId: string): AaMultisigTaskLocal | null {
+	return loadAllAaMultisigTasksForWallet(walletEoa).find((t) => t.taskId === taskId) ?? null
+}
+
 export function saveAaMultisigTasks(
 	walletEoa: string,
 	aaAccount: string,
@@ -59,6 +130,12 @@ export function upsertAaMultisigTask(
 	else list.unshift(task)
 	list.sort((a, b) => b.updatedAt - a.updatedAt)
 	saveAaMultisigTasks(walletEoa, aaAccount, list)
+	aaMultisigOutboundPruneFn?.(walletEoa, task)
+}
+
+/** Upsert using `task.aaAccount` (shared Smart Wallet), not the viewer's default AA. */
+export function upsertAaMultisigTaskRecord(walletEoa: string, task: AaMultisigTaskLocal): void {
+	upsertAaMultisigTask(walletEoa, task.aaAccount, task)
 }
 
 export function getAaMultisigTask(
@@ -67,6 +144,25 @@ export function getAaMultisigTask(
 	taskId: string
 ): AaMultisigTaskLocal | null {
 	return loadAaMultisigTasks(walletEoa, aaAccount).find((t) => t.taskId === taskId) ?? null
+}
+
+function filterPendingForSigner(
+	tasks: AaMultisigTaskLocal[],
+	signerEoa: string
+): AaMultisigTaskLocal[] {
+	return tasks.filter((t) => viewerNeedsToSignMultisigTask(t, signerEoa))
+}
+
+function filterReadyTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
+	return tasks.filter((t) => t.status === 'ready')
+}
+
+function filterHistoryTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
+	return tasks.filter((t) =>
+		(['completed', 'rejected', 'failed', 'submitted', 'expired'] as AaMultisigTaskLocal['status'][]).includes(
+			t.status
+		)
+	)
 }
 
 export function ingestAaMultisigTaskLocal(
@@ -82,28 +178,50 @@ export function listPendingAaMultisigForSigner(
 	aaAccount: string,
 	signerEoa: string
 ): AaMultisigTaskLocal[] {
-	const signer = signerEoa.toLowerCase()
-	return loadAaMultisigTasks(walletEoa, aaAccount).filter((t) => {
-		if (t.status === 'rejected' || t.status === 'completed' || t.status === 'failed') return false
-		if (!t.managers.some((m) => m.toLowerCase() === signer)) return false
-		if (t.rejects.some((r) => r.signer.toLowerCase() === signer)) return false
-		if (t.signatures.some((s) => s.signer.toLowerCase() === signer)) return false
-		return t.status === 'pending' || t.status === 'ready'
-	})
+	return filterPendingForSigner(loadAaMultisigTasks(walletEoa, aaAccount), signerEoa)
+}
+
+/** Pending tasks for signer across all Smart Wallet partitions (co-signer on shared AA). */
+export function listPendingAaMultisigForSignerWallet(
+	walletEoa: string,
+	signerEoa: string
+): AaMultisigTaskLocal[] {
+	return filterPendingForSigner(loadAllAaMultisigTasksForWallet(walletEoa), signerEoa)
 }
 
 export function listReadyAaMultisigTasks(
 	walletEoa: string,
 	aaAccount: string
 ): AaMultisigTaskLocal[] {
-	return loadAaMultisigTasks(walletEoa, aaAccount).filter((t) => t.status === 'ready')
+	return filterReadyTasks(loadAaMultisigTasks(walletEoa, aaAccount))
+}
+
+export function listReadyAaMultisigTasksForWallet(walletEoa: string): AaMultisigTaskLocal[] {
+	return filterReadyTasks(loadAllAaMultisigTasksForWallet(walletEoa))
 }
 
 export function listAaMultisigHistory(
 	walletEoa: string,
 	aaAccount: string
 ): AaMultisigTaskLocal[] {
-	return loadAaMultisigTasks(walletEoa, aaAccount).filter((t) =>
-		['completed', 'rejected', 'failed', 'submitted'].includes(t.status)
-	)
+	return filterHistoryTasks(loadAaMultisigTasks(walletEoa, aaAccount))
+}
+
+export function listAaMultisigHistoryForWallet(walletEoa: string): AaMultisigTaskLocal[] {
+	return filterHistoryTasks(loadAllAaMultisigTasksForWallet(walletEoa))
+}
+
+export function filterPendingAaMultisigTasksForSigner(
+	tasks: AaMultisigTaskLocal[],
+	signerEoa: string
+): AaMultisigTaskLocal[] {
+	return filterPendingForSigner(tasks, signerEoa)
+}
+
+export function filterReadyAaMultisigTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
+	return filterReadyTasks(tasks)
+}
+
+export function filterAaMultisigHistoryTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
+	return filterHistoryTasks(tasks)
 }

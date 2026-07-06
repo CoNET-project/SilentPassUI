@@ -229,10 +229,12 @@ export async function buildUnsignedAaMultisigUserOp(
 	provider: ethers.Provider,
 	aaAccount: string,
 	callData: string,
-	factoryAddress: string = CONET_AA_FACTORY
+	factoryAddress: string = CONET_AA_FACTORY,
+	opts?: { nonce?: bigint }
 ): Promise<{ packedUserOp: AaMultisigPackedUserOp; userOpHash: string }> {
 	const entryPoint = new ethers.Contract(ENTRY_POINT_ADDRESS, ENTRY_POINT_ABI, provider)
-	const nonce = await entryPoint.getNonce(aaAccount, 0)
+	const nonce =
+		opts?.nonce ?? ((await entryPoint.getNonce(aaAccount, 0)) as bigint)
 
 	const paymasterVerificationGasLimit = 350_000n
 	const paymasterPostOpGasLimit = 60_000n

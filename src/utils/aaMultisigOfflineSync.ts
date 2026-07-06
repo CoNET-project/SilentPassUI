@@ -3,6 +3,7 @@ import {
 	resolveFromEoaForMultisigInner,
 	serializeAaMultisigInnerForExport,
 	mergeInboundMultisigInner,
+	isAaMultisigTaskTerminalStatus,
 	type AaMultisigInner,
 	type AaMultisigSignInner,
 	type AaMultisigProposeInner,
@@ -11,6 +12,8 @@ import {
 import {
 	AA_MULTISIG_TASKS_CHANGED_EVENT,
 	getAaMultisigTask,
+	getAaMultisigTaskAny,
+	setAaMultisigOutboundPruneFn,
 	upsertAaMultisigTask,
 } from '@/utils/aaMultisigLocalStore'
 import { broadcastAaMultisigInner, buildSignInner, buildProposeInner } from '@/services/aaMultisigGossip'
@@ -21,6 +24,12 @@ import {
 import { formatTransferTaskSummary } from '@/utils/aaMultisigConetTransferAssets'
 
 export const AA_MULTISIG_OUTBOUND_CHANGED_EVENT = 'beamio-aa-multisig-outbound-changed'
+
+/** Background flush interval (setTimeout chain on Multisig page). */
+export const AA_MULTISIG_OUTBOUND_FLUSH_INTERVAL_MS = 15_000
+
+/** Drop queued gossip after this many failed flush rounds (~4 min at 15s). */
+export const AA_MULTISIG_OUTBOUND_MAX_FLUSH_ATTEMPTS = 16
 
 const OUTBOUND_PREFIX = 'beamio_aa_multisig_outbound_v1:'
 
@@ -89,6 +98,7 @@ export function enqueueAaMultisigOutbound(params: {
 	recipients: string[]
 	inner: AaMultisigInner
 }): void {
+	if (shouldSkipOutboundEnqueue(params.walletEoa, params.inner)) return
 	const list = loadAaMultisigOutboundQueue(params.walletEoa)
 	const dedupe = outboundDedupeKey({ inner: params.inner })
 	if (list.some((row) => outboundDedupeKey(row) === dedupe)) return
@@ -103,12 +113,121 @@ export function enqueueAaMultisigOutbound(params: {
 	saveAaMultisigOutboundQueue(params.walletEoa, list)
 }
 
+function shouldSkipOutboundEnqueue(walletEoa: string, inner: AaMultisigInner): boolean {
+	const taskId = inner.taskId?.trim()
+	if (!taskId) return false
+	const task = getAaMultisigTaskAny(walletEoa, taskId)
+	if (!task) return false
+	return isAaMultisigOutboundItemRedundant(walletEoa, {
+		id: '',
+		walletEoa,
+		recipients: [],
+		inner,
+		createdAt: 0,
+		attempts: 0,
+	})
+}
+
 export function removeAaMultisigOutboundByDedupe(walletEoa: string, inner: AaMultisigInner): void {
 	const dedupe = outboundDedupeKey({ inner })
 	const next = loadAaMultisigOutboundQueue(walletEoa).filter(
 		(row) => outboundDedupeKey(row) !== dedupe
 	)
 	saveAaMultisigOutboundQueue(walletEoa, next)
+}
+
+/** Remove all outbound packets for a task when it reaches terminal status. */
+export function pruneAaMultisigOutboundForTaskIfTerminal(
+	walletEoa: string,
+	task: Pick<AaMultisigTaskLocal, 'taskId' | 'status'>
+): number {
+	if (!isAaMultisigTaskTerminalStatus(task.status)) return 0
+	const taskId = task.taskId.trim()
+	if (!taskId) return 0
+	const queue = loadAaMultisigOutboundQueue(walletEoa)
+	const next = queue.filter((row) => row.inner.taskId?.trim() !== taskId)
+	if (next.length === queue.length) return 0
+	saveAaMultisigOutboundQueue(walletEoa, next)
+	return queue.length - next.length
+}
+
+function normEoa(a: string): string {
+	return (a ?? '').trim().toLowerCase()
+}
+
+function isActiveMultisigTaskStatus(status: AaMultisigTaskLocal['status']): boolean {
+	return status === 'pending' || status === 'ready'
+}
+
+/** Outbound row no longer needs UI or retry (local task already reflects this packet). */
+function isAaMultisigOutboundItemRedundant(walletEoa: string, row: AaMultisigOutboundItem): boolean {
+	const inner = row.inner
+	const taskId = inner.taskId?.trim()
+	if (!taskId) return false
+	const task = getAaMultisigTaskAny(walletEoa, taskId)
+	if (!task) return false
+	const viewer = normEoa(walletEoa)
+
+	if (inner.action === 'propose') {
+		// Creator already has an active local task — use task row / export, not a stuck Propose row.
+		if (normEoa(task.creatorEoa) === viewer && isActiveMultisigTaskStatus(task.status)) {
+			return true
+		}
+	}
+
+	if (inner.action === 'sign' && inner.signerEoa) {
+		const signer = normEoa(inner.signerEoa)
+		if (signer === viewer && task.signatures.some((s) => normEoa(s.signer) === signer)) {
+			return true
+		}
+	}
+
+	if (inner.action === 'reject' && inner.signerEoa) {
+		const signer = normEoa(inner.signerEoa)
+		if (task.rejects.some((r) => normEoa(r.signer) === signer)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+function isAaMultisigOutboundItemFlushExhausted(row: AaMultisigOutboundItem): boolean {
+	return row.attempts >= AA_MULTISIG_OUTBOUND_MAX_FLUSH_ATTEMPTS
+}
+
+/** Terminal tasks, redundant rows, and exhausted retries — unified queue reconcile. */
+export function reconcileAaMultisigOutboundQueue(walletEoa: string): number {
+	const queue = loadAaMultisigOutboundQueue(walletEoa)
+	if (queue.length === 0) return 0
+	const next = queue.filter((row) => {
+		if (isAaMultisigOutboundItemFlushExhausted(row)) return false
+		if (isAaMultisigOutboundItemRedundant(walletEoa, row)) return false
+		const taskId = row.inner.taskId?.trim()
+		if (!taskId) return true
+		const task = getAaMultisigTaskAny(walletEoa, taskId)
+		if (!task) return true
+		return !isAaMultisigTaskTerminalStatus(task.status)
+	})
+	if (next.length === queue.length) return 0
+	saveAaMultisigOutboundQueue(walletEoa, next)
+	return queue.length - next.length
+}
+
+/** @deprecated Prefer reconcileAaMultisigOutboundQueue */
+export function pruneAaMultisigOutboundForTerminalTasks(walletEoa: string): number {
+	return reconcileAaMultisigOutboundQueue(walletEoa)
+}
+
+/** User dismissed a queued packet (gossip still pending). */
+export function dismissAaMultisigOutboundItem(walletEoa: string, itemId: string): boolean {
+	const id = itemId.trim().toLowerCase()
+	if (!id) return false
+	const queue = loadAaMultisigOutboundQueue(walletEoa)
+	const next = queue.filter((row) => row.id.toLowerCase() !== id)
+	if (next.length === queue.length) return false
+	saveAaMultisigOutboundQueue(walletEoa, next)
+	return true
 }
 
 export function isAaMultisigOutboundPending(
@@ -146,6 +265,7 @@ function shortTaskId(taskId: string): string {
 
 /** Human-readable rows for Offline sync queue UI (oldest first). */
 export function listAaMultisigOutboundForDisplay(walletEoa: string): AaMultisigOutboundListItem[] {
+	reconcileAaMultisigOutboundQueue(walletEoa)
 	return loadAaMultisigOutboundQueue(walletEoa)
 		.slice()
 		.sort((a, b) => a.createdAt - b.createdAt)
@@ -254,7 +374,12 @@ export async function publishAaMultisigInnerWithOfflineFallback(params: {
 
 	if (sent > 0) {
 		removeAaMultisigOutboundByDedupe(params.walletEoa, params.inner)
+		reconcileAaMultisigOutboundQueue(params.walletEoa)
 		return { mode: 'broadcast', sent, failed }
+	}
+
+	if (shouldSkipOutboundEnqueue(params.walletEoa, params.inner)) {
+		return { mode: 'broadcast', sent: 0, failed: params.recipients.length }
 	}
 
 	enqueueAaMultisigOutbound({
@@ -265,17 +390,35 @@ export async function publishAaMultisigInnerWithOfflineFallback(params: {
 	return { mode: 'queued', sent: 0, failed }
 }
 
-let flushInFlight: Promise<{ sent: number; failed: number; remaining: number }> | null = null
+let flushInFlight: Promise<{ sent: number; failed: number; remaining: number; pruned: number }> | null =
+	null
+
+/** Reconcile queue, then retry gossip for remaining rows. */
+export async function autoProcessAaMultisigOutboundQueue(params: {
+	walletEoa: string
+	privateKeyArmor: string
+	allNodes: nodeInfo[]
+}): Promise<{ sent: number; failed: number; remaining: number; pruned: number }> {
+	const pruned = reconcileAaMultisigOutboundQueue(params.walletEoa)
+	const flush = await flushAaMultisigOutboundQueue(params)
+	return { ...flush, pruned: pruned + flush.pruned }
+}
 
 /** Retry queued gossip when CoNET chat nodes are available. */
 export async function flushAaMultisigOutboundQueue(params: {
 	walletEoa: string
 	privateKeyArmor: string
 	allNodes: nodeInfo[]
-}): Promise<{ sent: number; failed: number; remaining: number }> {
+}): Promise<{ sent: number; failed: number; remaining: number; pruned: number }> {
 	if (flushInFlight) return flushInFlight
+	const prunedBefore = reconcileAaMultisigOutboundQueue(params.walletEoa)
 	if (!params.allNodes?.length || !params.privateKeyArmor) {
-		return { sent: 0, failed: 0, remaining: countAaMultisigOutboundPending(params.walletEoa) }
+		return {
+			sent: 0,
+			failed: 0,
+			remaining: countAaMultisigOutboundPending(params.walletEoa),
+			pruned: prunedBefore,
+		}
 	}
 
 	flushInFlight = (async () => {
@@ -285,6 +428,9 @@ export async function flushAaMultisigOutboundQueue(params: {
 		const remaining: AaMultisigOutboundItem[] = []
 
 		for (const row of queue) {
+			if (isAaMultisigOutboundItemRedundant(params.walletEoa, row)) continue
+			if (isAaMultisigOutboundItemFlushExhausted(row)) continue
+
 			if (isPaidOfflineSignInner(row.inner)) {
 				const apiGate = await ensureOfflineSignSubmittedViaApi(row.inner, params.walletEoa)
 				if (!apiGate.ok) {
@@ -315,10 +461,16 @@ export async function flushAaMultisigOutboundQueue(params: {
 		}
 
 		saveAaMultisigOutboundQueue(params.walletEoa, remaining)
+		const prunedAfter = reconcileAaMultisigOutboundQueue(params.walletEoa)
 		if (sent > 0) {
 			window.dispatchEvent(new CustomEvent(AA_MULTISIG_TASKS_CHANGED_EVENT))
 		}
-		return { sent, failed, remaining: remaining.length }
+		return {
+			sent,
+			failed,
+			remaining: countAaMultisigOutboundPending(params.walletEoa),
+			pruned: prunedBefore + prunedAfter,
+		}
 	})()
 
 	try {
@@ -414,3 +566,7 @@ export function ingestAaMultisigFromExport(params: {
 	upsertAaMultisigTask(params.walletEoa, aaAccount, merged)
 	return { ok: true, task: merged }
 }
+
+setAaMultisigOutboundPruneFn((_walletEoa, _task) => {
+	reconcileAaMultisigOutboundQueue(_walletEoa)
+})

@@ -13806,16 +13806,19 @@ const merchantPanelAboutPreviewRows = useMemo(
   () =>
     [
       {
+        id: 'hours' as const,
         label: tu('programs_merchant_about_opening_hours'),
         value: cardIssuanceDiscoverAboutOpeningHours.trim(),
         Icon: Clock,
       },
       {
+        id: 'contact' as const,
         label: tu('programs_merchant_about_contact'),
         value: cardIssuanceDiscoverAboutContact.trim(),
         Icon: Phone,
       },
       {
+        id: 'location' as const,
         label: tu('programs_merchant_about_location'),
         value: cardIssuanceDiscoverAboutLocation.trim(),
         Icon: MapPin,
@@ -33121,29 +33124,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  ) : null}
                                </div>
                                <div className="relative z-[1] flex items-end justify-between gap-3">
-                                 <div className="min-w-0 flex-1">
-                                   <ProgramLivePreviewInlineField
-                                     hideLabel
-                                     label={tu('programs_config_store_display_name')}
-                                     value={
-                                       cardIssuanceStoreDisplayName.trim() || cardIssuanceProgramName
-                                     }
-                                     onChange={(v) => {
-                                       if (cardIssuanceStoreDisplayName.trim()) {
-                                         setCardIssuanceStoreDisplayName(
-                                           v.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
-                                         );
-                                       } else {
-                                         setCardIssuanceProgramName(v);
-                                       }
-                                     }}
-                                     maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
-                                     displayValue={programsOverviewDisplayName}
-                                     displayClassName="font-manrope text-2xl font-extrabold leading-tight tracking-tight sm:text-[1.65rem] text-inherit"
-                                     className="rounded-none px-0 py-0 hover:bg-white/10"
-                                     disabled={cardIssuanceMerchantTextSaving}
-                                     focusRingClass={bizFocusRingClass}
-                                   />
+                                 <div className="min-w-0">
+                                   <p className="font-manrope text-2xl font-extrabold leading-tight tracking-tight sm:text-[1.65rem]">
+                                     {programsOverviewDisplayName}
+                                   </p>
                                  </div>
                                  <div className="shrink-0 text-right">
                                    <p
@@ -33174,101 +33158,319 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </section>
                      </div>
 
-                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
-                       <div
-                         className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
-                         aria-hidden
-                       />
-                       <header className="mb-3 flex items-center justify-between gap-2">
-                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_overview_title')}</h3>
-                         <Info className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
-                       </header>
-                       <div className="space-y-3 sm:space-y-4">
-                         <div className="rounded-lg px-1 py-0.5">
-                           <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                             {tu('programs_overview_loyalty_rule_type')}
-                           </span>
-                           <p className="font-manrope text-sm font-bold leading-snug text-[#2c2f31] sm:text-base">
-                             {programsOverviewTierRuleOption?.title ?? '—'}
-                           </p>
-                           <p className="mt-0.5 text-[10px] leading-relaxed text-[#595c5e] sm:text-xs">
-                             {programsOverviewTierRuleOption?.desktopDesc ??
-                               programsOverviewTierRuleOption?.mobileDesc ??
-                               ''}
+                     <input
+                       ref={cardIssuanceMerchantImageIssuedPanelFileRef}
+                       type="file"
+                       accept="image/*"
+                       className="hidden"
+                       onChange={handleCardIssuanceMerchantImagePick}
+                     />
+                     <input
+                       ref={cardIssuanceMerchantIconIssuedPanelFileRef}
+                       type="file"
+                       accept="image/*"
+                       className="hidden"
+                       onChange={handleCardIssuanceIconPick}
+                     />
+
+                     <div
+                       className="w-full min-w-0 overflow-hidden rounded-[30px] border border-[#e8ecf0] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]"
+                       aria-label={tu('programs_overview_discover_preview_aria')}
+                     >
+                       <div className="relative">
+                         <IpfsImg
+                           src={merchantPanelDiscoverHeroSrc}
+                           alt=""
+                           className="aspect-[16/9] w-full object-cover"
+                           draggable={false}
+                         />
+                         <div className="absolute right-3 top-3 flex items-center gap-1.5">
+                           <button
+                             type="button"
+                             aria-label={tu('programs_overview_replace_banner')}
+                             disabled={cardIssuanceMerchantImageUploading}
+                             onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
+                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                           >
+                             {cardIssuanceMerchantImageUploading ? (
+                               <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                             ) : (
+                               <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                             )}
+                           </button>
+                           {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
+                             <button
+                               type="button"
+                               aria-label={tu('programs_overview_remove_banner')}
+                               disabled={cardIssuanceMerchantImageUploading}
+                               onClick={() => void removeIssuedProgramMerchantImage()}
+                               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                             >
+                               <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                             </button>
+                           ) : null}
+                         </div>
+                         <div className="absolute -bottom-8 left-6">
+                           <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
+                             {programsOverviewShareImage ? (
+                               <IpfsImg
+                                 key={programsOverviewShareImage}
+                                 src={programsOverviewShareImage}
+                                 alt=""
+                                 className="h-11 w-11 rounded-xl object-cover"
+                               />
+                             ) : (
+                               <span className="text-[20px] font-semibold leading-none text-[#94afff]">
+                                 {(programsOverviewDisplayName || 'P').charAt(0).toUpperCase()}
+                               </span>
+                             )}
+                             <button
+                               type="button"
+                               aria-label={tu('programs_overview_replace_icon')}
+                               disabled={cardIssuanceShareImageUploading}
+                               onClick={() => cardIssuanceMerchantIconIssuedPanelFileRef.current?.click()}
+                               className="absolute -right-1 -top-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                             >
+                               {cardIssuanceShareImageUploading ? (
+                                 <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden />
+                               ) : (
+                                 <Pencil className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                               )}
+                             </button>
+                             {programsOverviewShareImage ? (
+                               <button
+                                 type="button"
+                                 aria-label={tu('programs_overview_remove_icon')}
+                                 disabled={cardIssuanceShareImageUploading}
+                                 onClick={() => void removeIssuedProgramMerchantIcon()}
+                                 className="absolute -bottom-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
+                               >
+                                 <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                               </button>
+                             ) : null}
+                           </div>
+                         </div>
+                       </div>
+                       <div className="px-6 pb-6 pt-11">
+                         <div className="mb-1 flex items-start justify-between gap-3">
+                           <ProgramLivePreviewInlineField
+                             hideLabel
+                             label={tu('programs_config_store_display_name')}
+                             value={
+                               cardIssuanceStoreDisplayName.trim() || cardIssuanceProgramName
+                             }
+                             onChange={(v) => {
+                               if (cardIssuanceStoreDisplayName.trim()) {
+                                 setCardIssuanceStoreDisplayName(
+                                   v.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
+                                 );
+                               } else {
+                                 setCardIssuanceProgramName(v);
+                               }
+                             }}
+                             maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
+                             displayValue={programsOverviewDisplayName}
+                             displayClassName="line-clamp-1 text-[19px] font-bold leading-none tracking-tight text-[#1f2328]"
+                             className="min-w-0 flex-1 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
+                             disabled={cardIssuanceMerchantTextSaving}
+                             focusRingClass={bizFocusRingClass}
+                           />
+                           <p className="whitespace-nowrap pt-1 text-[10px] font-semibold uppercase tracking-wide text-[#2f5fcf]">
+                             {tu('programs_config_your_assets')}
                            </p>
                          </div>
                          <ProgramLivePreviewInlineField
+                           hideLabel
+                           label={tu('programs_overview_description')}
+                           value={cardIssuanceDescription}
+                           onChange={(v) =>
+                             setCardIssuanceDescription(
+                               v.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
+                             )
+                           }
+                           multiline
+                           rows={2}
+                           maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                           placeholder={tu('programs_config_program_description_ph')}
+                           displayValue={merchantPanelDiscoverSubtitle}
+                           displayClassName="line-clamp-2 text-[15px] font-medium leading-tight text-[#4b5361]"
+                           className="mb-3 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
+                           disabled={cardIssuanceMerchantTextSaving}
+                           focusRingClass={bizFocusRingClass}
+                         />
+                         <ProgramLivePreviewInlineField
+                           hideLabel
                            label={tu('programs_config_unit_name')}
                            value={cardIssuanceProgramName}
                            onChange={setCardIssuanceProgramName}
                            placeholder={tu('programs_config_unit_name_ph')}
+                           displayClassName="text-[12px] font-semibold text-[#595c5e]"
+                           className="mb-4 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
                            disabled={cardIssuanceMerchantTextSaving}
                            focusRingClass={bizFocusRingClass}
                          />
-                         <ProgramLivePreviewInlineField
-                           label={tu('programs_config_store_display_name')}
-                           value={cardIssuanceStoreDisplayName}
-                           onChange={(v) =>
-                             setCardIssuanceStoreDisplayName(v.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX))
-                           }
-                           maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
-                           placeholder={tu('programs_config_store_display_name_ph')}
-                           hint={tu('programs_config_store_display_max', {
-                             max: String(CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
-                           })}
-                           disabled={cardIssuanceMerchantTextSaving}
-                           focusRingClass={bizFocusRingClass}
-                         />
-                         <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:grid-rows-2 sm:gap-x-6 sm:gap-y-2">
-                           <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-1 sm:row-start-1">
-                             {tu('programs_overview_symbol')}
+                         <div className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#f0f2f4] px-4 py-3">
+                           <Gift className="h-5 w-5 shrink-0 text-[#2f5fcf]" strokeWidth={2} aria-hidden />
+                           <span className="line-clamp-2 text-left text-[14px] font-semibold leading-tight text-[#232a34]">
+                             {merchantPanelDiscoverAssetLabel}
                            </span>
-                           <div className="flex min-w-0 items-center sm:col-start-1 sm:row-start-2">
-                             <p className="font-manrope font-bold text-[#1562f0]">{programsOverviewSymbolDisplay}</p>
-                           </div>
-                           <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-2 sm:row-start-1">
-                             {tu('programs_overview_status')}
-                           </span>
-                           <div className="flex min-w-0 items-center sm:col-start-2 sm:row-start-2">
-                             <span className="inline-flex rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0] sm:px-3 sm:py-1 sm:text-[10px]">
-                               {tu('programs_overview_live_badge')}
-                             </span>
-                           </div>
-                           <span className="min-w-0 text-[9px] font-bold uppercase tracking-widest text-[#595c5e] sm:col-start-3 sm:row-start-1">
-                             {tu('programs_overview_contract')}
-                           </span>
-                           <div className="flex min-w-0 items-center sm:col-start-3 sm:row-start-2">
-                             <AddressCapsule
-                               address={cardIssuanceExistingCard.cardAddress}
-                               explorerUrl={beamioConetBlockscoutAddressUrl(cardIssuanceExistingCard.cardAddress)}
-                               className="bg-[#eef1f3] border-[#abadaf]/30 text-[#2c2f31]"
-                             />
-                           </div>
                          </div>
-                         <ProgramLivePreviewInlineField
-                           label={tu('programs_overview_description')}
-                           value={cardIssuanceDescription}
-                           onChange={(v) =>
-                             setCardIssuanceDescription(v.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS))
-                           }
-                           multiline
-                           rows={3}
-                           maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
-                           placeholder={tu('programs_config_program_description_ph')}
-                           displayValue={
-                             cardIssuanceDescription.trim()
-                               ? cardIssuanceDescription.trim()
-                               : tu('programs_overview_no_description_team')
-                           }
-                           hint={tu('programs_config_chars_count', {
-                             current: String(cardIssuanceDescription.length),
-                             max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
-                           })}
-                           disabled={cardIssuanceMerchantTextSaving}
-                           focusRingClass={bizFocusRingClass}
+                       </div>
+                     </div>
+
+                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 pt-1">
+                       <div className="min-w-0">
+                         <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_overview_loyalty_rule_type')}
+                         </span>
+                         <p className="font-manrope text-xs font-bold text-[#2c2f31]">
+                           {programsOverviewTierRuleOption?.title ?? '—'}
+                         </p>
+                       </div>
+                       <div>
+                         <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_overview_symbol')}
+                         </span>
+                         <p className="font-manrope text-xs font-bold text-[#1562f0]">{programsOverviewSymbolDisplay}</p>
+                       </div>
+                       <div>
+                         <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_overview_status')}
+                         </span>
+                         <span className="mt-0.5 inline-flex rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1562f0]">
+                           {tu('programs_overview_live_badge')}
+                         </span>
+                       </div>
+                       <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+                         <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_overview_contract')}
+                         </span>
+                         <AddressCapsule
+                           address={cardIssuanceExistingCard.cardAddress}
+                           explorerUrl={beamioConetBlockscoutAddressUrl(cardIssuanceExistingCard.cardAddress)}
+                           className="mt-0.5 bg-[#eef1f3] border-[#abadaf]/30 text-[#2c2f31]"
                          />
                        </div>
                      </div>
+
+                     <div className="rounded-[22px] bg-[#eef1f4] p-4">
+                       <h3 className="text-[16px] font-bold text-[#1f2328]">{merchantPanelAboutPreviewTitle}</h3>
+                       <ProgramLivePreviewInlineField
+                         hideLabel
+                         label={tu('programs_merchant_about_detail_label', {
+                           max: String(CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX),
+                         })}
+                         value={cardIssuanceDiscoverAboutDetail}
+                         onChange={(v) =>
+                           setCardIssuanceDiscoverAboutDetail(
+                             v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX)
+                           )
+                         }
+                         multiline
+                         rows={3}
+                         maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX}
+                         placeholder={tu('programs_merchant_about_detail_ph')}
+                         displayValue={
+                           cardIssuanceDiscoverAboutDetail.trim()
+                             ? discoverAboutDetailForDisplay(cardIssuanceDiscoverAboutDetail)
+                             : tu('programs_merchant_about_detail_ph')
+                         }
+                         displayClassName="mt-2 whitespace-pre-line text-[14px] font-medium leading-relaxed text-slate-600"
+                         className="mt-2 rounded-none px-0 py-0 hover:bg-white/60"
+                         disabled={cardIssuanceMerchantTextSaving}
+                         focusRingClass={bizFocusRingClass}
+                       />
+                       <div className="mt-5 space-y-4">
+                         {merchantPanelAboutPreviewRows.map(({ id, label, value, Icon }) => (
+                           <div key={id} className="flex gap-3">
+                             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0]">
+                               <Icon className="h-5 w-5" strokeWidth={2} aria-hidden />
+                             </span>
+                             <div className="min-w-0 flex-1">
+                               <p className="text-[14px] font-bold text-[#1f2328]">{label}</p>
+                               <ProgramLivePreviewInlineField
+                                 hideLabel
+                                 label={label}
+                                 value={
+                                   id === 'hours'
+                                     ? cardIssuanceDiscoverAboutOpeningHours
+                                     : id === 'contact'
+                                       ? cardIssuanceDiscoverAboutContact
+                                       : cardIssuanceDiscoverAboutLocation
+                                 }
+                                 onChange={(v) => {
+                                   if (id === 'hours') {
+                                     setCardIssuanceDiscoverAboutOpeningHours(
+                                       v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX)
+                                     );
+                                   } else if (id === 'contact') {
+                                     setCardIssuanceDiscoverAboutContact(
+                                       v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX)
+                                     );
+                                   } else {
+                                     setCardIssuanceDiscoverAboutLocation(
+                                       v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX)
+                                     );
+                                   }
+                                 }}
+                                 multiline={id !== 'contact'}
+                                 rows={2}
+                                 maxLength={
+                                   id === 'hours'
+                                     ? CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX
+                                     : id === 'contact'
+                                       ? CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX
+                                       : CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX
+                                 }
+                                 placeholder={
+                                   id === 'hours'
+                                     ? tu('programs_merchant_about_opening_hours_ph')
+                                     : id === 'contact'
+                                       ? tu('programs_merchant_about_contact_ph')
+                                       : tu('programs_merchant_about_location_ph')
+                                 }
+                                 displayValue={value || undefined}
+                                 displayClassName="mt-0.5 whitespace-pre-line text-[14px] font-medium leading-snug text-slate-600"
+                                 className="rounded-none px-0 py-0 hover:bg-white/60"
+                                 disabled={cardIssuanceMerchantTextSaving}
+                                 focusRingClass={bizFocusRingClass}
+                               />
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+
+                     {cardIssuanceRechargeLimitError && programBasicReloadDirty ? (
+                       <p className="text-xs font-medium text-rose-600">{cardIssuanceRechargeLimitError}</p>
+                     ) : null}
+                     <div className="flex flex-col gap-2 border-t border-[#1562f0]/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                       <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
+                         {tu('programs_overview_merchant_text_save_hint')}
+                       </p>
+                       <button
+                         type="button"
+                         onClick={() => void handleSaveMerchantImagePanelMetadata()}
+                         disabled={
+                           cardIssuanceMerchantTextSaving ||
+                           !programBasicPanelDirty ||
+                           !cardIssuanceProgramName.trim()
+                         }
+                         className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                       >
+                         {cardIssuanceMerchantTextSaving ? (
+                           <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
+                         ) : (
+                           <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                         )}
+                         {tu('programs_overview_merchant_text_save')}
+                       </button>
+                     </div>
+                     {!cardIssuanceEffectiveMerchantImage.trim() ? (
+                       <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
+                         {tu('programs_overview_merchant_placeholder_hint')}
+                       </p>
+                     ) : null}
                   </div>
                   ) : null}
 
@@ -33596,301 +33798,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                      </div>
                      ) : null}
-
-                     {cardIssuanceProgramSection === 'basic' ? (
-                    <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
-                      <div
-                        className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
-                        aria-hidden
-                      />
-                      <header className="mb-2 flex items-center justify-between gap-2">
-                        <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_overview_merchant_image')}</h3>
-                        <ImagePlus className="h-4 w-4 shrink-0 text-[#1562f0]/40 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
-                      </header>
-                      <input
-                        ref={cardIssuanceMerchantImageIssuedPanelFileRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleCardIssuanceMerchantImagePick}
-                      />
-                      <input
-                        ref={cardIssuanceMerchantIconIssuedPanelFileRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleCardIssuanceIconPick}
-                      />
-
-                      <div
-                        className="w-full min-w-0 overflow-hidden rounded-[30px] border border-[#e8ecf0] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]"
-                        aria-label={tu('programs_overview_discover_preview_aria')}
-                      >
-                        <div className="relative">
-                          <IpfsImg
-                            src={merchantPanelDiscoverHeroSrc}
-                            alt=""
-                            className="aspect-[16/9] w-full object-cover"
-                            draggable={false}
-                          />
-                          <div className="absolute right-3 top-3 flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                aria-label={tu('programs_overview_replace_banner')}
-                                disabled={cardIssuanceMerchantImageUploading}
-                                onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {cardIssuanceMerchantImageUploading ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
-                                ) : (
-                                  <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-                                )}
-                              </button>
-                              {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
-                                <button
-                                  type="button"
-                                  aria-label={tu('programs_overview_remove_banner')}
-                                  disabled={cardIssuanceMerchantImageUploading}
-                                  onClick={() => void removeIssuedProgramMerchantImage()}
-                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                                </button>
-                              ) : null}
-                          </div>
-                          <div className="absolute -bottom-8 left-6">
-                            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
-                              {programsOverviewShareImage ? (
-                                <IpfsImg
-                                  key={programsOverviewShareImage}
-                                  src={programsOverviewShareImage}
-                                  alt=""
-                                  className="h-11 w-11 rounded-xl object-cover"
-                                />
-                              ) : (
-                                <span className="text-[20px] font-semibold leading-none text-[#94afff]">
-                                  {(programsOverviewDisplayName || 'P').charAt(0).toUpperCase()}
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                aria-label={tu('programs_overview_replace_icon')}
-                                disabled={cardIssuanceShareImageUploading}
-                                onClick={() => cardIssuanceMerchantIconIssuedPanelFileRef.current?.click()}
-                                className="absolute -top-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {cardIssuanceShareImageUploading ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden />
-                                ) : (
-                                  <Pencil className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
-                                )}
-                              </button>
-                              {programsOverviewShareImage ? (
-                                <button
-                                  type="button"
-                                  aria-label={tu('programs_overview_remove_icon')}
-                                  disabled={cardIssuanceShareImageUploading}
-                                  onClick={() => void removeIssuedProgramMerchantIcon()}
-                                  className="absolute -bottom-1 -right-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-sm ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="px-6 pb-6 pt-11">
-                          <div className="mb-1 flex items-start justify-between gap-3">
-                            <ProgramLivePreviewInlineField
-                              hideLabel
-                              label={tu('programs_config_store_display_name')}
-                              value={
-                                cardIssuanceStoreDisplayName.trim() || cardIssuanceProgramName
-                              }
-                              onChange={(v) => {
-                                if (cardIssuanceStoreDisplayName.trim()) {
-                                  setCardIssuanceStoreDisplayName(
-                                    v.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
-                                  );
-                                } else {
-                                  setCardIssuanceProgramName(v);
-                                }
-                              }}
-                              maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
-                              displayValue={programsOverviewDisplayName}
-                              displayClassName="line-clamp-1 text-[19px] font-bold leading-none tracking-tight text-[#1f2328]"
-                              className="min-w-0 flex-1 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
-                              disabled={cardIssuanceMerchantTextSaving}
-                              focusRingClass={bizFocusRingClass}
-                            />
-                            <p className="whitespace-nowrap pt-1 text-[10px] font-semibold uppercase tracking-wide text-[#2f5fcf]">
-                              {tu('programs_config_your_assets')}
-                            </p>
-                          </div>
-                          <ProgramLivePreviewInlineField
-                            hideLabel
-                            label={tu('programs_overview_description')}
-                            value={cardIssuanceDescription}
-                            onChange={(v) =>
-                              setCardIssuanceDescription(
-                                v.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS)
-                              )
-                            }
-                            multiline
-                            rows={2}
-                            maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
-                            placeholder={tu('programs_config_program_description_ph')}
-                            displayValue={merchantPanelDiscoverSubtitle}
-                            displayClassName="line-clamp-2 text-[15px] font-medium leading-tight text-[#4b5361]"
-                            className="mb-4 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
-                            disabled={cardIssuanceMerchantTextSaving}
-                            focusRingClass={bizFocusRingClass}
-                          />
-                          <div className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#f0f2f4] px-4 py-3">
-                            <Gift className="h-5 w-5 shrink-0 text-[#2f5fcf]" strokeWidth={2} aria-hidden />
-                            <span className="line-clamp-2 text-left text-[14px] font-semibold leading-tight text-[#232a34]">
-                              {merchantPanelDiscoverAssetLabel}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                            {tu('programs_merchant_about_section')}
-                          </p>
-                          <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#747779]">
-                            {tu('programs_merchant_about_section_hint')}
-                          </p>
-                        </div>
-                        {(cardIssuanceDiscoverAboutDetail.trim() ||
-                          merchantPanelAboutPreviewRows.some((row) => row.value)) && (
-                          <div className="rounded-[22px] bg-[#eef1f4] p-4">
-                            <h3 className="text-[16px] font-bold text-[#1f2328]">
-                              {merchantPanelAboutPreviewTitle}
-                            </h3>
-                            {cardIssuanceDiscoverAboutDetail.trim() ? (
-                              <p className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-slate-600">
-                                {discoverAboutDetailForDisplay(cardIssuanceDiscoverAboutDetail)}
-                              </p>
-                            ) : null}
-                            {merchantPanelAboutPreviewRows.some((row) => row.value) ? (
-                              <div className="mt-5 space-y-4">
-                                {merchantPanelAboutPreviewRows
-                                  .filter((row) => row.value)
-                                  .map(({ label, value, Icon }) => (
-                                    <div key={label} className="flex gap-3">
-                                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0]">
-                                        <Icon className="h-5 w-5" strokeWidth={2} aria-hidden />
-                                      </span>
-                                      <div className="min-w-0 flex-1">
-                                        <p className="text-[14px] font-bold text-[#1f2328]">{label}</p>
-                                        <p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-slate-600">
-                                          {value}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                        <ProgramLivePreviewInlineField
-                          label={tu('programs_merchant_about_detail_label', {
-                            max: String(CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX),
-                          })}
-                          value={cardIssuanceDiscoverAboutDetail}
-                          onChange={(v) =>
-                            setCardIssuanceDiscoverAboutDetail(
-                              v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX)
-                            )
-                          }
-                          multiline
-                          rows={4}
-                          maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX}
-                          placeholder={tu('programs_merchant_about_detail_ph')}
-                          disabled={cardIssuanceMerchantTextSaving}
-                          focusRingClass={bizFocusRingClass}
-                        />
-                        <ProgramLivePreviewInlineField
-                          label={tu('programs_merchant_about_opening_hours')}
-                          value={cardIssuanceDiscoverAboutOpeningHours}
-                          onChange={(v) =>
-                            setCardIssuanceDiscoverAboutOpeningHours(
-                              v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX)
-                            )
-                          }
-                          multiline
-                          rows={2}
-                          maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX}
-                          placeholder={tu('programs_merchant_about_opening_hours_ph')}
-                          disabled={cardIssuanceMerchantTextSaving}
-                          focusRingClass={bizFocusRingClass}
-                        />
-                        <ProgramLivePreviewInlineField
-                          label={tu('programs_merchant_about_contact')}
-                          value={cardIssuanceDiscoverAboutContact}
-                          onChange={(v) =>
-                            setCardIssuanceDiscoverAboutContact(
-                              v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX)
-                            )
-                          }
-                          maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX}
-                          placeholder={tu('programs_merchant_about_contact_ph')}
-                          disabled={cardIssuanceMerchantTextSaving}
-                          focusRingClass={bizFocusRingClass}
-                        />
-                        <ProgramLivePreviewInlineField
-                          label={tu('programs_merchant_about_location')}
-                          value={cardIssuanceDiscoverAboutLocation}
-                          onChange={(v) =>
-                            setCardIssuanceDiscoverAboutLocation(
-                              v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX)
-                            )
-                          }
-                          multiline
-                          rows={2}
-                          maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX}
-                          placeholder={tu('programs_merchant_about_location_ph')}
-                          disabled={cardIssuanceMerchantTextSaving}
-                          focusRingClass={bizFocusRingClass}
-                        />
-                        {cardIssuanceRechargeLimitError && programBasicReloadDirty ? (
-                          <p className="text-xs font-medium text-rose-600">{cardIssuanceRechargeLimitError}</p>
-                        ) : null}
-                        <div className="flex flex-col gap-2 border-t border-[#1562f0]/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="text-[11px] font-medium leading-relaxed text-[#747779]">
-                            {tu('programs_overview_merchant_text_save_hint')}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => void handleSaveMerchantImagePanelMetadata()}
-                            disabled={
-                              cardIssuanceMerchantTextSaving ||
-                              !programBasicPanelDirty ||
-                              !cardIssuanceProgramName.trim()
-                            }
-                            className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                          >
-                            {cardIssuanceMerchantTextSaving ? (
-                              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
-                            ) : (
-                              <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                            )}
-                            {tu('programs_overview_merchant_text_save')}
-                          </button>
-                        </div>
-                      </div>
-
-                      {!cardIssuanceEffectiveMerchantImage.trim() ? (
-                        <p className="mt-3 text-[11px] font-medium leading-relaxed text-[#747779]">
-                          {tu('programs_overview_merchant_placeholder_hint')}
-                        </p>
-                      ) : null}
-                    </div>
-                    ) : null}
 
                     {cardIssuanceProgramSection === 'promotion' ? (
                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">

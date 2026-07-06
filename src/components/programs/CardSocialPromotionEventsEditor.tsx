@@ -68,7 +68,7 @@ function SocialPromotionEventRoleFields({
 	tu: ReturnType<typeof useTu>['tu']
 }) {
 	return (
-		<>
+		<div className="grid grid-cols-2 gap-2 sm:gap-3">
 			{(['user', 'ref'] as const).map((role) => {
 				const roleDraft = eventDraft[role]
 				const roleLabel =
@@ -76,8 +76,8 @@ function SocialPromotionEventRoleFields({
 						? tu('programs_social_promotion_user_label')
 						: tu('programs_social_promotion_ref_label')
 				return (
-					<div key={role} className="mb-2 last:mb-0">
-						<label className="mb-2 flex cursor-pointer items-center gap-2">
+					<div key={role} className="flex min-w-0 items-center gap-2">
+						<label className="flex shrink-0 cursor-pointer items-center gap-1.5">
 							<input
 								type="checkbox"
 								checked={roleDraft.enabled}
@@ -99,7 +99,7 @@ function SocialPromotionEventRoleFields({
 								}
 								className="h-4 w-4 rounded border-[#0051d1]/30"
 							/>
-							<span className="text-xs font-bold uppercase tracking-wide text-[#595c5e]">
+							<span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-[#595c5e] sm:text-xs">
 								{roleLabel}
 							</span>
 						</label>
@@ -130,12 +130,12 @@ function SocialPromotionEventRoleFields({
 								}))
 							}
 							aria-label={`${cardSocialPromotionEventLabel(eventKey)} ${roleLabel}`}
-							className={`block w-full rounded-xl border-none bg-white/80 px-4 py-3 text-sm font-bold text-[#2c2f31] disabled:opacity-50 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+							className={`min-w-0 flex-1 rounded-xl border-none bg-white/80 px-3 py-2.5 text-sm font-bold text-[#2c2f31] disabled:opacity-50 sm:px-4 sm:py-3 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
 						/>
 					</div>
 				)
 			})}
-		</>
+		</div>
 	)
 }
 

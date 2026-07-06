@@ -17583,7 +17583,7 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
     setCardIssuanceSocialPromotionEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: 'Social promotion saved. #13 rewards will airdrop on the selected event — no pre-funded budget required.',
+      text: 'Social promotion saved. Social rewards will airdrop on the selected event — no pre-funded budget required.',
     });
   } catch {
     setCardIssuanceSocialPromotionEditorServerError('Could not save social promotion. Please try again.');
@@ -17670,7 +17670,7 @@ const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
     setCardIssuanceCouponSocialPromotionEditorOpenId(null);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: 'Coupon social promotion saved. #13 rewards will airdrop on the selected event — no pre-funded budget required.',
+      text: 'Coupon social promotion saved. Social rewards will airdrop on the selected event — no pre-funded budget required.',
     });
   } catch {
     setCardIssuanceCouponSocialPromotionEditorServerError(

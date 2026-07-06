@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Award,
   Briefcase,
+  ChevronDown,
+  ChevronRight,
   Info,
   Megaphone,
   Ticket,
@@ -119,7 +121,7 @@ const PROGRAM_SUB_ITEMS: ProgramSubItem[] = [
   { tab: PROGRAM_TAB_BUSINESS, labelKey: 'program_menu_business', icon: Briefcase },
 ];
 
-type NavProgramFlyoutProps = {
+type NavProgramMenuProps = {
   activeTab: string;
   collapsed: boolean;
   tu: (key: string, options?: Record<string, unknown>) => string;
@@ -127,52 +129,33 @@ type NavProgramFlyoutProps = {
   focusRingClass: string;
 };
 
-export function NavProgramFlyout({
+/** Inline Programs nav: sub-items expand below Programs in the same sidebar (no flyout popup). */
+export function NavProgramMenu({
   activeTab,
   collapsed,
   tu,
   onSelect,
   focusRingClass,
-}: NavProgramFlyoutProps) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
+}: NavProgramMenuProps) {
   const activeProgramTab = normalizeProgramTab(activeTab);
   const programAreaActive = activeProgramTab != null;
-
-  const closeFlyout = useCallback(() => setOpen(false), []);
+  const [expanded, setExpanded] = useState(programAreaActive);
 
   useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent | TouchEvent) => {
-      const root = rootRef.current;
-      if (!root || !(event.target instanceof Node)) return;
-      if (!root.contains(event.target)) closeFlyout();
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
-    };
-  }, [open, closeFlyout]);
+    if (programAreaActive) setExpanded(true);
+  }, [programAreaActive]);
+
+  const toggleExpanded = useCallback(() => {
+    setExpanded((prev) => !prev);
+  }, []);
 
   return (
-    <div
-      ref={rootRef}
-      className="relative mx-2"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <div className="mx-2 flex min-w-0 flex-col gap-0.5">
       <button
         type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onFocus={() => setOpen(true)}
-        onBlur={(event) => {
-          if (!rootRef.current?.contains(event.relatedTarget as Node | null)) {
-            closeFlyout();
-          }
-        }}
+        aria-expanded={expanded}
+        aria-controls="biz-program-submenu"
+        onClick={toggleExpanded}
         className={`flex min-w-0 items-center rounded-full py-2.5 text-sm transition-all duration-300 ${
           collapsed ? 'w-[calc(100%-1rem)] justify-center px-0' : 'w-[calc(100%-1rem)] gap-2.5 px-4'
         } ${
@@ -188,17 +171,23 @@ export function NavProgramFlyout({
           className={`shrink-0 ${programAreaActive ? 'text-[#0051d1]' : 'text-slate-600'}`}
         />
         {!collapsed ? (
-          <span className="min-w-0 flex-1 truncate text-left">{tu('programs')}</span>
+          <>
+            <span className="min-w-0 flex-1 truncate text-left">{tu('programs')}</span>
+            {expanded ? (
+              <ChevronDown size={16} className="shrink-0 text-slate-400" aria-hidden />
+            ) : (
+              <ChevronRight size={16} className="shrink-0 text-slate-400" aria-hidden />
+            )}
+          </>
         ) : null}
       </button>
 
-      {open ? (
+      {expanded ? (
         <div
-          role="menu"
+          id="biz-program-submenu"
+          role="group"
           aria-label={tu('programs')}
-          className={`absolute z-50 min-w-[13.5rem] rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-[0_12px_40px_rgba(15,23,42,0.12)] ${
-            collapsed ? 'left-full top-0 ml-2' : 'left-2 right-2 top-full mt-1'
-          }`}
+          className={`flex flex-col gap-0.5 ${collapsed ? 'items-center' : 'ml-3 border-l border-slate-200/90 pl-2'}`}
         >
           {PROGRAM_SUB_ITEMS.map(({ tab, labelKey, icon: Icon }) => {
             const isActive = activeProgramTab === tab;
@@ -206,23 +195,24 @@ export function NavProgramFlyout({
               <button
                 key={tab}
                 type="button"
-                role="menuitem"
-                onClick={() => {
-                  onSelect(tab);
-                  closeFlyout();
-                }}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
+                onClick={() => onSelect(tab)}
+                title={collapsed ? tu(labelKey) : undefined}
+                className={`flex min-w-0 items-center rounded-full text-sm transition-all duration-300 ${
+                  collapsed
+                    ? 'h-9 w-9 justify-center'
+                    : 'w-[calc(100%-0.25rem)] gap-2.5 px-3 py-2'
+                } ${
                   isActive
                     ? 'bg-[#0051d1]/10 font-bold text-[#0051d1]'
-                    : 'font-medium text-slate-700 hover:bg-slate-100'
+                    : 'font-medium text-slate-600 hover:bg-slate-200/50'
                 } ${focusRingClass}`}
               >
                 <Icon
-                  size={18}
+                  size={collapsed ? 18 : 17}
                   strokeWidth={isActive ? 2.25 : 2}
                   className={`shrink-0 ${isActive ? 'text-[#0051d1]' : 'text-slate-500'}`}
                 />
-                <span className="min-w-0 truncate">{tu(labelKey)}</span>
+                {!collapsed ? <span className="min-w-0 truncate text-left">{tu(labelKey)}</span> : null}
               </button>
             );
           })}
@@ -231,3 +221,6 @@ export function NavProgramFlyout({
     </div>
   );
 }
+
+/** @deprecated Use NavProgramMenu — kept as alias for imports during transition. */
+export const NavProgramFlyout = NavProgramMenu;

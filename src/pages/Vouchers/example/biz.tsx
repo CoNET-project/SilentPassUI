@@ -243,7 +243,7 @@ import {
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
 import {
-  NavProgramFlyout,
+  NavProgramMenu,
   PROGRAM_TAB_BASIC,
   PROGRAM_TAB_BUSINESS,
   isProgramAreaTab,
@@ -26381,7 +26381,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            {tu('assets')}
          </NavSectionLabel>
-         <NavProgramFlyout
+         <NavProgramMenu
            activeTab={navChromeTab}
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
            tu={tu}

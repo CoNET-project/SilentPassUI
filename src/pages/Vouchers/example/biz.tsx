@@ -244,6 +244,18 @@ import {
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
+import {
+  NavProgramFlyout,
+  PROGRAM_TAB_BASIC,
+  PROGRAM_TAB_BUSINESS,
+  isProgramAreaTab,
+  normalizeProgramTab,
+  programMenuTitleKey,
+  programPathFromTab,
+  programSectionFromTab,
+  programTabFromPath,
+  type ProgramTabId,
+} from './programMenuNav';
 import { ValidatorDepositRedeemManagementPanel } from './validatorDepositRedeemManagementPanel';
 import {
   ProgramsIssuedItemClaimWalletsSection,
@@ -11280,7 +11292,9 @@ export default function MerchantOS() {
  const isTerminalsMarketRoute =
    location.pathname === '/Terminals' || location.pathname.endsWith('/Terminals');
  const isBusinessRoute =
-   location.pathname === '/Business' || location.pathname.endsWith('/Business');
+   location.pathname === '/Business' ||
+   location.pathname.endsWith('/Business') ||
+   location.pathname.endsWith('/Program/Business');
  const {
    beamio,
    setBeamio,
@@ -12056,8 +12070,7 @@ useEffect(() => {
  }, [ketNoCardProgramsEligible]);
 
  const cardIssuanceProgramsOrBusinessActive =
-   activeTab === 'Card Issuance Setup' ||
-   activeTab === 'Business' ||
+   isProgramAreaTab(activeTab) ||
    (activeTab === 'Overview' && ketNoCardProgramsEligible);
 
 const cardIssuanceRedeemCouponIdsKey = useMemo(
@@ -12214,9 +12227,8 @@ useEffect(() => {
 
 useEffect(() => {
   const programsVisible =
-    activeTab === 'Card Issuance Setup' ||
+    isProgramAreaTab(activeTab) ||
     (activeTab === 'Overview' && ketNoCardProgramsEligible) ||
-    activeTab === 'Business' ||
     cardIssuanceProductionsPanelOpen;
   if (!programsVisible || cardIssuanceCouponRedeemStatusQueryItems.length === 0) return;
 
@@ -12370,17 +12382,29 @@ useEffect(() => {
  ]);
  /** Sidebar / header: while Overview+Ket handoff, show Programs as active to match main panel */
  const navChromeTab =
-   activeTab === 'Overview' && ketNoCardProgramsEligible ? 'Card Issuance Setup' : activeTab;
+   activeTab === 'Overview' && ketNoCardProgramsEligible ? PROGRAM_TAB_BASIC : activeTab;
+
+ const cardIssuanceProgramSection = useMemo(
+   () => programSectionFromTab(activeTab),
+   [activeTab]
+ );
 
  useEffect(() => {
-   if (activeTab !== 'Card Issuance Setup' && !ketNoCardProgramsEligible && activeTab !== 'Business') {
+   const tabFromPath = programTabFromPath(location.pathname);
+   if (!tabFromPath) return;
+   setActiveTab(tabFromPath);
+   setCardIssuanceProductionsPanelOpen(tabFromPath === PROGRAM_TAB_BUSINESS);
+ }, [location.pathname]);
+
+ useEffect(() => {
+   if (!isProgramAreaTab(activeTab) && !ketNoCardProgramsEligible) {
      setCardIssuanceActiveProgramView('overview');
    }
  }, [activeTab, ketNoCardProgramsEligible]);
 
  useEffect(() => {
    if (!isBusinessRoute) return;
-   setActiveTab('Business');
+   setActiveTab(PROGRAM_TAB_BUSINESS);
    setCardIssuanceProductionsPanelOpen(true);
  }, [isBusinessRoute]);
 
@@ -14851,9 +14875,9 @@ const discardDraftCardIssuanceServiceCategory = useCallback((categoryId: string)
 }, []);
 
 const closeCardIssuanceProductionsCatalog = useCallback(() => {
-  if (activeTab === 'Business' || isBusinessRoute) {
-    navigate('/native-pos');
-    setActiveTab('Overview');
+  if (normalizeProgramTab(activeTab) === PROGRAM_TAB_BUSINESS || isBusinessRoute) {
+    navigate('/Program/Basic');
+    setActiveTab(PROGRAM_TAB_BASIC);
   }
   setCardIssuanceProductionsPanelOpen(false);
   setCardIssuanceProductionEditorOpen(false);
@@ -19461,29 +19485,38 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    prevEoaRef.current = currentEoa;
 }, [currentEoa, fixedCardAdminsCacheKey, linkedMerchantAdminsCacheKey, staffProgramBeamioCardAddress, linkedTerminalsCacheKey]);
 
+ const handleProgramTabChange = useCallback(
+   (tab: ProgramTabId) => {
+     if (isTerminalsMarketRoute) {
+       navigate('/native-pos');
+     }
+     navigate(programPathFromTab(tab));
+     setActiveTab(tab);
+     setCardIssuanceProductionsPanelOpen(tab === PROGRAM_TAB_BUSINESS);
+     setIsMobileMenuOpen(false);
+   },
+   [isTerminalsMarketRoute, navigate]
+ );
+
  const handleTabChange = useCallback((tab: string, opts?: { transactionsSidebar?: 'transactions' | 'insights' }) => {
   if (isTerminalsMarketRoute && tab !== 'Staff') {
     navigate('/native-pos');
   }
-   if (tab === 'Business') {
-     navigate('/Business');
-     setActiveTab('Business');
-     setCardIssuanceProductionsPanelOpen(true);
-     setIsMobileMenuOpen(false);
+   const programTab = normalizeProgramTab(tab);
+   if (programTab) {
+     handleProgramTabChange(programTab);
      return;
    }
-   if (isBusinessRoute) {
+   if (isBusinessRoute || normalizeProgramTab(activeTab) === PROGRAM_TAB_BUSINESS) {
      navigate('/native-pos');
    }
    setActiveTab(tab);
    setIsMobileMenuOpen(false);
-   if (tab !== 'Business') {
-     setCardIssuanceProductionsPanelOpen(false);
-   }
+   setCardIssuanceProductionsPanelOpen(false);
    if (tab === 'Transactions') {
      setTransactionsSidebarAccent(opts?.transactionsSidebar ?? 'transactions');
    }
-}, [isTerminalsMarketRoute, isBusinessRoute, navigate]);
+}, [isTerminalsMarketRoute, isBusinessRoute, activeTab, navigate, handleProgramTabChange]);
 
  const mobileHeaderBeamioTag = useMemo(() => {
    const raw =
@@ -19547,7 +19580,7 @@ const setMobileScrollContainerNode = useCallback((node: HTMLDivElement | null) =
    closeOverlay();
    setCardIssuanceMobileStep(1);
    if (ketNoCardProgramsEligibleRef.current) {
-     handleTabChange('Card Issuance Setup');
+     handleTabChange(PROGRAM_TAB_BASIC);
    } else {
      handleTabChange('Overview');
    }
@@ -23614,12 +23647,14 @@ useEffect(() => {
  */
 const isCardConfiguratorMobileShell = useMemo(
   () =>
-    activeTab === 'Card Issuance Setup' &&
+    isProgramAreaTab(activeTab) &&
+    cardIssuanceProgramSection === 'basic' &&
     isCardConfiguratorMobileViewport &&
     (!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') &&
     cardIssuanceOnchainFetch !== 'loading',
   [
     activeTab,
+    cardIssuanceProgramSection,
     isCardConfiguratorMobileViewport,
     cardIssuanceExistingCard,
     cardIssuanceActiveProgramView,
@@ -23631,7 +23666,7 @@ const isCardConfiguratorMobileShell = useMemo(
 const mediumMenuPageUsesGlobalOnly = isMediumMerchantViewport && activeTab !== 'Overview';
 /** On tablet (701–1023px, below `lg`), `mediumMenuPageUsesGlobalOnly` hides Programs chrome but previously left the global floating bar visible; Card Configurator / Ket welcome already provide a fixed top bar — hide the duplicate global menu+search+tag strip. */
 const programsMobileTopNavVisible =
-  (activeTab === 'Card Issuance Setup' || ketNoCardProgramsEligible) &&
+  (isProgramAreaTab(activeTab) || ketNoCardProgramsEligible) &&
   isCardConfiguratorMobileViewport &&
   (!mediumMenuPageUsesGlobalOnly ||
     isCardConfiguratorMobileShell ||
@@ -23649,14 +23684,15 @@ const programsMobileTopNavVisible =
    setCardIssuanceActiveProgramView('overview');
  }, [showCardIssuanceKetWelcomeCover]);
 
- /** After verification / landing on Dashboard (Overview): Ket #0 + no factory-issued card → open Programs (Card Issuance Setup) so “Your network is ready” can show. */
+ /** After verification / landing on Dashboard (Overview): Ket #0 + no factory-issued card → open Programs Basic so “Your network is ready” can show. */
  useLayoutEffect(() => {
    if (activeTab !== 'Overview') return;
    if (!ketNoCardProgramsEligible) return;
-   setActiveTab('Card Issuance Setup');
+   handleProgramTabChange(PROGRAM_TAB_BASIC);
  }, [
    activeTab,
    ketNoCardProgramsEligible,
+   handleProgramTabChange,
  ]);
 
  const liteChainMigrationTriedRef = useRef(false);
@@ -23712,8 +23748,8 @@ const programsMobileTopNavVisible =
    isTerminalsMarketRoute || (isCardConfiguratorMobileViewport && activeTab === 'Staff');
  const hideMobileFloatingBar =
  !showMobileMerchantFloatingBar ||
- activeTab === 'Business' ||
- (showBizFirstMembershipOnboarding && activeTab !== 'Card Issuance Setup') ||
+ normalizeProgramTab(activeTab) === PROGRAM_TAB_BUSINESS ||
+ (showBizFirstMembershipOnboarding && !isProgramAreaTab(activeTab)) ||
  settingsSecurityBackupOpen ||
  (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff');
  /** The mobile/tablet global search floating bar (menu + search + @tag, rendered below `lg`) is showing. When it is, the desktop sticky header must not also appear in the medium (md) range, otherwise the header stacks directly under the global search control. */
@@ -24075,7 +24111,7 @@ const membersRewardTierLevelsByCardLower = useMemo(() => {
  }, [addressProfileByLower, membersLoyaltyTopupRows]);
 
  useEffect(() => {
-   if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
+   if ((activeTab !== 'MembersLoyalty' && !isProgramAreaTab(activeTab)) || !walletStoragePartitionLower) return;
    const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
    if (!viewer) return;
    const viewerLower = viewer.toLowerCase();
@@ -24270,7 +24306,7 @@ useEffect(() => {
 ]);
 
  useEffect(() => {
-   if ((activeTab !== 'MembersLoyalty' && activeTab !== 'Card Issuance Setup') || !walletStoragePartitionLower) return;
+   if ((activeTab !== 'MembersLoyalty' && !isProgramAreaTab(activeTab)) || !walletStoragePartitionLower) return;
    const viewer = membersBizViewerResolvedForCache(profiles?.[0]?.keyID, myAddress, fixedCardMetadata?.cardOwner);
    if (!viewer || membersLoyaltyTopupRows.length === 0) return;
    const cacheKey = memberDirectoryUserTypeCacheKey(walletStoragePartitionLower, viewer.toLowerCase());
@@ -25693,8 +25729,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            {tu('assets')}
          </NavSectionLabel>
-         <NavItem icon={Award} label={tu('programs')} isActive={navChromeTab === 'Card Issuance Setup'} onClick={() => handleTabChange('Card Issuance Setup')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
-         <NavItem icon={Briefcase} label={tu('business')} isActive={activeTab === 'Business'} onClick={() => handleTabChange('Business')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavProgramFlyout
+           activeTab={navChromeTab}
+           collapsed={isSidebarCollapsed && !isMobileMenuOpen}
+           tu={tu}
+           onSelect={handleProgramTabChange}
+           focusRingClass={bizFocusRingClass}
+         />
          <NavItem icon={ShoppingBag} label={tu('market')} isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          {isValidatorDepositRedeemAdminFetched && isValidatorDepositRedeemAdmin ? (
            <NavItem icon={Shield} label={tu('validator_management')} isActive={activeTab === 'Validator Management'} onClick={() => handleTabChange('Validator Management')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
@@ -25854,8 +25895,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       activeTab === 'Validator Management' ||
                       navChromeTab === 'Transactions' ||
                       navChromeTab === 'Settings' ||
-                      navChromeTab === 'Card Issuance Setup' ||
-                      activeTab === 'Business'
+                      isProgramAreaTab(navChromeTab)
                     ? 'font-extrabold tracking-tight text-[#0051d1] normal-case'
                     : 'font-extrabold tracking-tighter text-slate-900 normal-case'
             }`}
@@ -25864,10 +25904,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              ? tu('overview_business_os')
               : navChromeTab === 'Overview'
                ? tu('overview_beamio_merchant')
-                  : navChromeTab === 'Card Issuance Setup'
-                  ? tu('programs')
-                : activeTab === 'Business'
-                  ? tu('business')
+                  : isProgramAreaTab(navChromeTab)
+                  ? tu(programMenuTitleKey(navChromeTab))
                 : activeTab === 'Validator Management'
                   ? tu('validator_management')
                 : activeTab === 'Wallets'
@@ -26171,7 +26209,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <div className="flex w-full shrink-0 flex-col items-stretch gap-3 sm:flex-row md:w-auto">
                       <button
                         type="button"
-                        onClick={() => handleTabChange('Card Issuance Setup')}
+                        onClick={() => handleTabChange(PROGRAM_TAB_BASIC)}
                         className={`flex-1 rounded-xl bg-[#1562f0] px-6 py-3 text-xs font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass}`}
                       >
                         {tu('overview_setup_first_program_cta')}
@@ -28342,7 +28380,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
                    }}
                    onGoToPrograms={() => {
-                     handleTabChange('Card Issuance Setup');
+                     handleTabChange(PROGRAM_TAB_BASIC);
                    }}
                  />
                )}
@@ -28515,7 +28553,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <span className="text-[10px] font-bold uppercase text-slate-400">Digital Only</span>
                        <button
                          type="button"
-                         onClick={() => handleTabChange('Card Issuance Setup')}
+                         onClick={() => handleTabChange(PROGRAM_TAB_BASIC)}
                          className={`group flex items-center gap-1 text-sm font-bold text-[#0051d1] ${bizFocusRingClass}`}
                        >
                          Add <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
@@ -29037,7 +29075,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <div className="hidden lg:block">
                    <MembersLoyaltyNoAaEditorial
                      onSetUpFirstProgram={() => {
-                       handleTabChange('Card Issuance Setup');
+                       handleTabChange(PROGRAM_TAB_BASIC);
                      }}
                    />
                  </div>
@@ -29982,7 +30020,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            )
          )}
 
-         {(activeTab === 'Card Issuance Setup' || ketNoCardProgramsEligible) && (
+         {(isProgramAreaTab(activeTab) || ketNoCardProgramsEligible) && (
            showBizFirstMembershipOnboarding ? (
              <div className="mx-auto w-full max-w-5xl animate-in fade-in duration-300 bg-[#f5f7f9] px-4 pb-20 pt-4 font-sans antialiased text-slate-800 sm:px-6 lg:px-0 md:pt-6">
                <header className="mb-8 mt-2 space-y-4 md:mt-6 md:space-y-5">
@@ -32937,9 +32975,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 ) : null}
               </AnimatePresence>
              </div>
-             ) : cardIssuanceExistingCard ? (
+             ) : cardIssuanceExistingCard && cardIssuanceProgramSection !== 'business' ? (
                <div className="max-w-7xl space-y-5 pb-5">
                 <section className="flex flex-col gap-5">
+                  {cardIssuanceProgramSection === 'basic' ? (
                   <div className="space-y-4">
                      <header className="min-w-0 space-y-0.5">
                        <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
@@ -33131,6 +33170,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                : tu('programs_overview_no_description_team')}
                            </p>
                          </div>
+                       </div>
+                     </div>
+                  </div>
+                  ) : null}
+
+                     {cardIssuanceProgramSection === 'promotion' ? (
+                     <div className="space-y-4">
+                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
+                       <div className="space-y-3 sm:space-y-4">
                          <div className="rounded-xl border border-[#e8ecf0] bg-[#f8fafc] p-3 sm:p-4">
                            <div className="mb-3 flex items-center justify-between gap-2">
                              <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
@@ -33449,7 +33497,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                        </div>
                      </div>
+                     </div>
+                     ) : null}
 
+                     {cardIssuanceProgramSection === 'basic' ? (
                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
                       <div
                         className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
@@ -33813,7 +33864,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </p>
                       ) : null}
                     </div>
+                    ) : null}
 
+                    {cardIssuanceProgramSection === 'promotion' ? (
                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
                       <div
                         className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
@@ -33953,7 +34006,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         )}
                       </div>
                     </div>
+                    ) : null}
 
+                    {cardIssuanceProgramSection === 'vouchers' ? (
                     <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
                       <div
                         className="pointer-events-none absolute -right-16 -top-16 h-28 w-28 rounded-full bg-[#1562f0]/5 blur-3xl"
@@ -34355,7 +34410,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         )}
                        </div>
                      </div>
+                    ) : null}
 
+                     {cardIssuanceProgramSection === 'promotion' ? (
                      <div className="rounded-xl bg-[#eef1f3] p-4 sm:rounded-2xl sm:p-5">
                        <header className="mb-3 flex items-center justify-between gap-2">
                          <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_loyalty_logic')}</h3>
@@ -34501,8 +34558,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          )}
                        </div>
                      </div>
-                   </div>
+                     ) : null}
 
+                   {cardIssuanceProgramSection === 'basic' ? (
+                   <>
                    <div className="flex flex-col gap-4 rounded-xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-4 sm:rounded-2xl sm:gap-5 sm:p-5 lg:p-6">
                      <div>
                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
@@ -34612,6 +34671,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </p>
                      </div>
                    </div>
+                   </>
+                   ) : null}
                  </section>
                </div>
              ) : null}
@@ -36193,7 +36254,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="pt-4">
                  <button
                    type="button"
-                   onClick={() => handleTabChange('Card Issuance Setup')}
+                   onClick={() => handleTabChange(PROGRAM_TAB_BASIC)}
                    className="group relative w-full overflow-hidden rounded-full bg-[#0051d1] py-5 font-manrope text-lg font-bold text-white shadow-[0_20px_40px_rgba(21,98,240,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98]"
                  >
                    <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
@@ -39208,7 +39269,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
     ) : null}
 
     <ProgramsProductionsPanel
-      catalogOpen={activeTab === 'Business' || cardIssuanceProductionsPanelOpen}
+      catalogOpen={normalizeProgramTab(activeTab) === PROGRAM_TAB_BUSINESS || cardIssuanceProductionsPanelOpen}
       sectionKicker="Business"
       onCloseCatalog={closeCardIssuanceProductionsCatalog}
       editorOpen={cardIssuanceProductionEditorOpen}

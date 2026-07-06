@@ -1,6 +1,6 @@
 // App.tsx
 import { useEffect, useRef, useState, useLayoutEffect } from "react"
-import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import RequireUnlockedWallet from "@/components/RequireUnlockedWallet"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
@@ -1080,7 +1080,12 @@ function AppShell() {
 					<Route path="/transfertion" element={<BeamioTransactions />} />
 					<Route path="/native-pos" element={<MerchantOS />} />
 					<Route path="/Terminals" element={<MerchantOS />} />
-					<Route path="/Business" element={<MerchantOS />} />
+					<Route path="/Program" element={<Navigate to="/Program/Basic" replace />} />
+					<Route path="/Program/Basic" element={<MerchantOS />} />
+					<Route path="/Program/Promotion" element={<MerchantOS />} />
+					<Route path="/Program/Vouchers" element={<MerchantOS />} />
+					<Route path="/Program/Business" element={<MerchantOS />} />
+					<Route path="/Business" element={<Navigate to="/Program/Business" replace />} />
 					<Route path="/cardManager" element={<CardManager />} />
 				</Route>
 				</Routes>

@@ -1316,15 +1316,44 @@ export type ShareTokenMetadataTopupPromotion = {
 	rewardValue: number
 }
 
-/** Social referral promotion — one active event at a time; syncs to configureEventRewardRule slots. */
+/** Per-role #13 reward for a social promotion event. */
+export type ShareTokenMetadataSocialPromotionReward = {
+	enabled?: boolean
+	/** Whole #13 voucher units minted per qualifying event. */
+	points13: number
+}
+
+/** User + referrer rewards for one social event. */
+export type ShareTokenMetadataSocialPromotionEvent = {
+	user?: ShareTokenMetadataSocialPromotionReward
+	ref?: ShareTokenMetadataSocialPromotionReward
+}
+
+export type CardSocialPromotionEventKey = 'linkClick' | 'like' | 'topup'
+
+/** Card-level social promotion — parallel events (v4) with user + referrer rewards each. */
 export type ShareTokenMetadataSocialPromotion = {
 	enabled?: boolean
-	/** refClick → share link click; refTopup → referred customer top-up. */
-	eventKind: 'refClick' | 'refTopup'
-	/** #13 reward voucher units minted to referrer per event (social points). */
-	refRewardPoints13: number
-	/** On-chain rule slot (1 = click, 2 = top-up); optional mirror for clients. */
-	ruleId?: number
+	version: 4
+	events: {
+		linkClick?: ShareTokenMetadataSocialPromotionEvent
+		like?: ShareTokenMetadataSocialPromotionEvent
+		topup?: ShareTokenMetadataSocialPromotionEvent
+	}
+}
+
+/** Per issued coupon — parallel social events (v2) with user + referrer rewards each. */
+export type ShareTokenMetadataCouponSocialPromotion = {
+	enabled?: boolean
+	version: 2
+	events: {
+		linkClick?: ShareTokenMetadataSocialPromotionEvent
+		like?: ShareTokenMetadataSocialPromotionEvent
+		claim?: ShareTokenMetadataSocialPromotionEvent
+		burn?: ShareTokenMetadataSocialPromotionEvent
+	}
+	/** Issued series token id (linkClick rule slot base). */
+	ruleId?: string | number
 }
 
 /** Social points (#13) exchange activity on issued coupon series metadata. */
@@ -1370,6 +1399,8 @@ export type ShareTokenMetadataCoupon = {
 	issuedTokenId?: string | number
 	/** When set, claim burns #13 social points (coupon or USDC reward). */
 	socialExchange?: ShareTokenMetadataSocialExchange
+	/** #13 rewards on link click / like / claim / burn for this coupon series. */
+	socialPromotion?: ShareTokenMetadataCouponSocialPromotion
 }
 
 export type ShareTokenMetadataServiceCategoryEntry = {
@@ -1426,7 +1457,7 @@ export type ShareTokenMetadata = {
 	maximumTopup?: number
 	/** Global top-up promotion (single); preferred over legacy bonusRules. */
 	topupPromotion?: ShareTokenMetadataTopupPromotion
-	/** Social referral #13 reward — one active event kind at a time. */
+	/** Social #13 rewards — link click / like / top-up (user + referrer). */
 	socialPromotion?: ShareTokenMetadataSocialPromotion
 	/** @deprecated Legacy single rule — derived from topupPromotion on publish; read compat only. */
 	bonusRule?: ShareTokenMetadataBonusRule

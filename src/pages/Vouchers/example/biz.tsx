@@ -106,6 +106,7 @@ import {
   type ShareTokenMetadataDiscoverAbout,
   type ShareTokenMetadataTopupPromotion,
   type ShareTokenMetadataSocialPromotion,
+  type ShareTokenMetadataCouponSocialPromotion,
   type ShareTokenMetadataSocialExchange,
   postCardFundSocialExchangeUsdcEscrow,
 } from '@/services/BeamioCard';
@@ -322,13 +323,23 @@ import {
   validateTopupPromotionDraft,
   type TopupPromotionDraft,
 } from '@/utils/programTopupPromotion';
+import { CouponSocialPromotionEventsEditor } from '@/components/programs/CouponSocialPromotionEventsEditor';
+import { CardSocialPromotionEventsEditor } from '@/components/programs/CardSocialPromotionEventsEditor';
 import {
+  EMPTY_COUPON_SOCIAL_PROMOTION_DRAFT,
   EMPTY_SOCIAL_PROMOTION_DRAFT,
+  couponSocialPromotionDraftFromMetadata,
+  couponSocialPromotionDraftToPayload,
+  formatCouponSocialPromotionDisplay,
   formatSocialPromotionDisplay,
+  parseCouponSocialPromotionFromMetadata,
   parseSocialPromotionFromMetadata,
   socialPromotionDraftFromMetadata,
   socialPromotionDraftToPayload,
+  socialPromotionDraftHasAnyReward,
+  validateCouponSocialPromotionDraft,
   validateSocialPromotionDraft,
+  type CouponSocialPromotionDraft,
   type SocialPromotionDraft,
 } from '@/utils/programSocialPromotion';
 import {
@@ -340,7 +351,7 @@ import {
   validateSocialExchangeDraft,
   type SocialExchangeDraft,
 } from '@/utils/programSocialExchange';
-import { applySocialPromotionOnChainRules } from '@/utils/beamioCardSocialPromotionRules';
+import { applyCouponSocialPromotionOnChainRules, applySocialPromotionOnChainRules } from '@/utils/beamioCardSocialPromotionRules';
 import {
   registerPOSApi,
   signRegisterPOS,
@@ -9620,6 +9631,8 @@ type CardIssuanceCouponRow = {
   issuedNftMintedCount?: string;
   /** Social points (#13) exchange — burn on claim for coupon or USDC. */
   socialExchange?: ShareTokenMetadataSocialExchange;
+  /** #13 rewards on link click / like / claim / burn for issued coupon series. */
+  socialPromotion?: ShareTokenMetadataCouponSocialPromotion;
 };
 
 function makeCardIssuanceCouponRow(
@@ -9638,7 +9651,8 @@ function makeCardIssuanceCouponRow(
   couponId?: string,
   issueLeft?: string,
   issuedNftMintedCount?: string,
-  socialExchange?: ShareTokenMetadataSocialExchange
+  socialExchange?: ShareTokenMetadataSocialExchange,
+  socialPromotion?: ShareTokenMetadataCouponSocialPromotion
 ): CardIssuanceCouponRow {
   return {
     id: couponId?.trim() || `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -9657,6 +9671,7 @@ function makeCardIssuanceCouponRow(
     ...(issueLeft != null && String(issueLeft).trim() ? { issueLeft: String(issueLeft).trim() } : {}),
     ...(issuedNftMintedCount?.trim() ? { issuedNftMintedCount: issuedNftMintedCount.trim() } : {}),
     ...(socialExchange ? { socialExchange } : {}),
+    ...(socialPromotion ? { socialPromotion } : {}),
   };
 }
 
@@ -9680,6 +9695,7 @@ type CardIssuanceCouponMetadataPayload = {
   /** On-chain ERC-1155 issued NFT series id */
   issuedTokenId?: string;
   socialExchange?: ShareTokenMetadataSocialExchange;
+  socialPromotion?: ShareTokenMetadataCouponSocialPromotion;
 };
 
 function buildCardIssuanceCouponMetadataPayload(
@@ -9735,6 +9751,7 @@ function buildCardIssuanceCouponMetadataPayload(
       const it = row.issuedTokenId?.trim();
       if (it) payload.issuedTokenId = it;
       if (row.socialExchange) payload.socialExchange = row.socialExchange;
+      if (row.socialPromotion) payload.socialPromotion = row.socialPromotion;
       return payload;
     })
     .filter((row): row is CardIssuanceCouponMetadataPayload => row != null);
@@ -11376,6 +11393,9 @@ const [cardIssuanceTopupPromotion, setCardIssuanceTopupPromotion] = useState<Top
  /** Issued card: POST /api/updateCardShareMetadata while top-up promotion editor is open. */
  const [cardIssuanceTopupPromotionEditorPublishing, setCardIssuanceTopupPromotionEditorPublishing] =
    useState(false);
+ /** Top-up promotion delete in flight — spinner on trash / Clear Promotion (prevents double-click). */
+ const [cardIssuanceTopupPromotionDeleting, setCardIssuanceTopupPromotionDeleting] = useState(false);
+ const cardIssuanceTopupPromotionClearInFlightRef = useRef(false);
  const [cardIssuanceTopupPromotionEditorServerError, setCardIssuanceTopupPromotionEditorServerError] =
    useState('');
 const [cardIssuanceSocialPromotion, setCardIssuanceSocialPromotion] = useState<SocialPromotionDraft>(
@@ -11386,7 +11406,27 @@ const [cardIssuanceSocialPromotionEditorPublishing, setCardIssuanceSocialPromoti
   useState(false);
 const [cardIssuanceSocialPromotionEditorServerError, setCardIssuanceSocialPromotionEditorServerError] =
   useState('');
+const [cardIssuanceCouponSocialPromotionEditorOpenId, setCardIssuanceCouponSocialPromotionEditorOpenId] =
+  useState<string | null>(null);
+const [cardIssuanceCouponSocialPromotionEditorPublishing, setCardIssuanceCouponSocialPromotionEditorPublishing] =
+  useState(false);
+const [cardIssuanceCouponSocialPromotionEditorServerError, setCardIssuanceCouponSocialPromotionEditorServerError] =
+  useState('');
+const [cardIssuanceCouponSocialPromotionDraft, setCardIssuanceCouponSocialPromotionDraft] =
+  useState<CouponSocialPromotionDraft>(EMPTY_COUPON_SOCIAL_PROMOTION_DRAFT);
+const cardIssuanceCouponSocialPromotionEditorValidationError = useMemo(
+  () =>
+    cardIssuanceCouponSocialPromotionDraft.enabled
+      ? validateCouponSocialPromotionDraft(cardIssuanceCouponSocialPromotionDraft)
+      : '',
+  [cardIssuanceCouponSocialPromotionDraft]
+);
 const [cardIssuanceCoupons, setCardIssuanceCoupons] = useState<CardIssuanceCouponRow[]>([]);
+const cardIssuanceCouponSocialPromotionEditorRow = useMemo(
+  () =>
+    cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponSocialPromotionEditorOpenId) ?? null,
+  [cardIssuanceCoupons, cardIssuanceCouponSocialPromotionEditorOpenId]
+);
 const [cardIssuanceSocialExchangeEditorOpen, setCardIssuanceSocialExchangeEditorOpen] = useState(false);
 const [cardIssuanceSocialExchangeDraft, setCardIssuanceSocialExchangeDraft] =
   useState<SocialExchangeDraft>(EMPTY_SOCIAL_EXCHANGE_DRAFT);
@@ -11651,7 +11691,6 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const cardIssuanceReloadMaxTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionMinWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionRewardWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
- const cardIssuanceSocialPromotionPointsWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceCouponIssueTotalWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const [cardIssuanceTierRule, setCardIssuanceTierRule] = useState<CardIssuanceTierRule>('single');
@@ -12800,7 +12839,8 @@ useEffect(() => {
       stableCouponId,
       undefined,
       undefined,
-      parseSocialExchangeFromMetadata(coupon as Record<string, unknown>) ?? undefined
+      parseSocialExchangeFromMetadata(coupon as Record<string, unknown>) ?? undefined,
+      parseCouponSocialPromotionFromMetadata(coupon as Record<string, unknown>) ?? undefined
     );
   });
   void (async () => {
@@ -12881,7 +12921,8 @@ useEffect(() => {
             idRaw || undefined,
             issueLeftFromChain || undefined,
             mintedFromChain || undefined,
-            parseSocialExchangeFromMetadata({ ...rootMeta, ...beamioCoupon }) ?? undefined
+            parseSocialExchangeFromMetadata({ ...rootMeta, ...beamioCoupon }) ?? undefined,
+            parseCouponSocialPromotionFromMetadata({ ...rootMeta, ...beamioCoupon }) ?? undefined
           );
         });
       }
@@ -13666,7 +13707,7 @@ const cardIssuanceSocialPromotionPayload = useMemo(
 );
 
 const cardIssuanceSocialPromotionEditorValidationError = useMemo(
-  () => (cardIssuanceSocialPromotion.enabled ? validateSocialPromotionDraft(cardIssuanceSocialPromotion) : ''),
+  () => validateSocialPromotionDraft(cardIssuanceSocialPromotion),
   [cardIssuanceSocialPromotion]
 );
 
@@ -13840,13 +13881,27 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
 }, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuanceTopupPromotionPayload]);
 
 useEffect(() => {
-  if (!cardIssuanceTopupPromotionEditorOpen && !cardIssuanceTierEditorOpen && !cardIssuanceSocialPromotionEditorOpen && !cardIssuanceSocialExchangeEditorOpen) return;
+  if (
+    !cardIssuanceTopupPromotionEditorOpen &&
+    !cardIssuanceTierEditorOpen &&
+    !cardIssuanceSocialPromotionEditorOpen &&
+    !cardIssuanceCouponSocialPromotionEditorOpenId &&
+    !cardIssuanceSocialExchangeEditorOpen
+  ) {
+    return;
+  }
   const prevOverflow = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
   return () => {
     document.body.style.overflow = prevOverflow;
   };
-}, [cardIssuanceTopupPromotionEditorOpen, cardIssuanceTierEditorOpen, cardIssuanceSocialPromotionEditorOpen, cardIssuanceSocialExchangeEditorOpen]);
+}, [
+  cardIssuanceTopupPromotionEditorOpen,
+  cardIssuanceTierEditorOpen,
+  cardIssuanceSocialPromotionEditorOpen,
+  cardIssuanceCouponSocialPromotionEditorOpenId,
+  cardIssuanceSocialExchangeEditorOpen,
+]);
 
 const cardIssuanceTierEditorThresholdInt = useMemo(() => {
   const raw = cardIssuanceTierEditorThreshold.replace(/,/g, '').trim();
@@ -13997,12 +14052,14 @@ const closeCardIssuanceCouponEditor = useCallback(() => {
   setCardIssuanceCouponEditorOpen(false);
   setCardIssuanceEditingCouponId(null);
   setCardIssuanceCouponSocialExchangeDraft(null);
+  setCardIssuanceCouponSocialPromotionDraft(EMPTY_COUPON_SOCIAL_PROMOTION_DRAFT);
 }, []);
 
 const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponEditorError('');
   setCardIssuanceEditingCouponId(null);
   setCardIssuanceCouponSocialExchangeDraft(null);
+  setCardIssuanceCouponSocialPromotionDraft(EMPTY_COUPON_SOCIAL_PROMOTION_DRAFT);
   setCardIssuanceCouponName(cardIssuanceCouponNameDefault());
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage('');
@@ -14023,6 +14080,9 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   setCardIssuanceEditingCouponId(couponId);
   setCardIssuanceCouponSocialExchangeDraft(
     row.socialExchange ? socialExchangeDraftFromMetadata(row.socialExchange) : null
+  );
+  setCardIssuanceCouponSocialPromotionDraft(
+    couponSocialPromotionDraftFromMetadata(row.socialPromotion ?? null)
   );
   setCardIssuanceCouponName(row.name);
   setCardIssuanceCouponIssueTotal(row.issueTotal || String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
@@ -14333,6 +14393,27 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     isSocialExchangeEdit && !lockIssuedOnChainFields
       ? socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft!)
       : editingCouponExistingRow?.socialExchange ?? undefined;
+  const issuedTokenIdForPromo = editingCouponExistingRow?.issuedTokenId?.trim() ?? '';
+  if (
+    lockIssuedOnChainFields &&
+    !isSocialExchangeEdit &&
+    cardIssuanceCouponSocialPromotionDraft.enabled
+  ) {
+    const socialErr = validateCouponSocialPromotionDraft(cardIssuanceCouponSocialPromotionDraft);
+    if (socialErr) {
+      setCardIssuanceCouponEditorError(socialErr);
+      return;
+    }
+  }
+  const couponSocialPayloadForSave =
+    lockIssuedOnChainFields && !isSocialExchangeEdit && issuedTokenIdForPromo
+      ? cardIssuanceCouponSocialPromotionDraft.enabled
+        ? couponSocialPromotionDraftToPayload(
+            cardIssuanceCouponSocialPromotionDraft,
+            issuedTokenIdForPromo
+          ) ?? undefined
+        : undefined
+      : undefined;
   setCardIssuanceCouponEditorError('');
 
   /** Edit draft only (no new on-chain series). */
@@ -14365,6 +14446,9 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
                     socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft!) ??
                     undefined,
                 }
+              : {}),
+            ...(lockIssuedOnChainFields && !isSocialExchangeEdit
+              ? { socialPromotion: couponSocialPayloadForSave }
               : {}),
           }
         : item
@@ -14411,6 +14495,43 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             }
           }
           // issued coupon on-chain fields are immutable; metadata endpoint already handled allowed edits
+          const socialPromoChanged =
+            JSON.stringify(prevRow?.socialPromotion ?? null) !==
+            JSON.stringify(couponSocialPayloadForSave ?? null);
+          if (socialPromoChanged) {
+            const publishOk = await handlePublishCardIssuanceRef.current({
+              couponsOverride: nextCoupons,
+              loadingScope: 'bonusEditor',
+              metadataOnly: true,
+            });
+            if (!publishOk) {
+              saveOk = false;
+              setCardIssuanceCouponEditorError(
+                (prev) =>
+                  prev ||
+                  'Could not save coupon social promotion metadata. Fix validation errors and try again.'
+              );
+            } else {
+              const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+              if (pk) {
+                const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+                const ruleRes = await applyCouponSocialPromotionOnChainRules({
+                  cardAddress: cardIssuanceExistingCard.cardAddress,
+                  ownerEoa: signerAddr,
+                  ownerPrivateKey: pk,
+                  issuedTokenId,
+                  socialPromotion: couponSocialPayloadForSave ?? null,
+                });
+                if (!ruleRes.success) {
+                  saveOk = false;
+                  setCardIssuanceCouponEditorError(
+                    ruleRes.error ??
+                      'Metadata saved, but on-chain coupon reward rule update failed. Try again.'
+                  );
+                }
+              }
+            }
+          }
         } else if (prevRow?.issued && !issuedTokenId) {
           saveOk = false;
           setCardIssuanceCouponEditorError(
@@ -14447,6 +14568,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     setCardIssuanceCouponEditorOpen(false);
     setCardIssuanceEditingCouponId(null);
     setCardIssuanceCouponSocialExchangeDraft(null);
+    setCardIssuanceCouponSocialPromotionDraft(EMPTY_COUPON_SOCIAL_PROMOTION_DRAFT);
     return;
   }
 
@@ -16097,6 +16219,19 @@ const openCardIssuanceSocialPromotionEditor = useCallback(() => {
   setCardIssuanceSocialPromotionEditorOpen(true);
 }, []);
 
+const openCardIssuanceCouponSocialPromotionEditor = useCallback(
+  (couponId: string) => {
+    const row = cardIssuanceCoupons.find((item) => item.id === couponId);
+    if (!row?.issued || row.socialExchange) return;
+    setCardIssuanceCouponSocialPromotionEditorServerError('');
+    setCardIssuanceCouponSocialPromotionEditorOpenId(couponId);
+    setCardIssuanceCouponSocialPromotionDraft(
+      couponSocialPromotionDraftFromMetadata(row.socialPromotion ?? null)
+    );
+  },
+  [cardIssuanceCoupons]
+);
+
 const disableCardIssuanceTopupPromotion = useCallback(() => {
   setCardIssuanceTopupPromotion({ ...EMPTY_TOPUP_PROMOTION_DRAFT });
   setCardIssuanceTopupPromotionEditorOpen(false);
@@ -17340,12 +17475,14 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
 ]);
 
 const clearCardIssuanceTopupPromotion = useCallback(async () => {
+  if (cardIssuanceTopupPromotionClearInFlightRef.current) return;
   const cleared = { ...EMPTY_TOPUP_PROMOTION_DRAFT };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuanceTopupPromotion(cleared);
     return;
   }
-  setCardIssuanceTopupPromotionEditorPublishing(true);
+  cardIssuanceTopupPromotionClearInFlightRef.current = true;
+  setCardIssuanceTopupPromotionDeleting(true);
   try {
     const ok = await handlePublishCardIssuance({
       topupPromotionOverride: cleared,
@@ -17353,13 +17490,17 @@ const clearCardIssuanceTopupPromotion = useCallback(async () => {
     });
     if (ok) setCardIssuanceTopupPromotion(cleared);
   } finally {
-    setCardIssuanceTopupPromotionEditorPublishing(false);
+    cardIssuanceTopupPromotionClearInFlightRef.current = false;
+    setCardIssuanceTopupPromotionDeleting(false);
   }
 }, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance]);
 
 const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
   if (cardIssuanceSocialPromotionEditorValidationError) return;
-  const nextPromotion = { ...cardIssuanceSocialPromotion, enabled: true };
+  const nextPromotion = {
+    ...cardIssuanceSocialPromotion,
+    enabled: socialPromotionDraftHasAnyReward(cardIssuanceSocialPromotion),
+  };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuanceSocialPromotion(nextPromotion);
     setCardIssuanceSocialPromotionEditorOpen(false);
@@ -17408,7 +17549,7 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
     setCardIssuanceSocialPromotionEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: 'Social promotion saved. Fund #13 reward budget on-chain before vouchers can mint to referrers.',
+      text: 'Social promotion saved. #13 rewards will airdrop on the selected event — no pre-funded budget required.',
     });
   } catch {
     setCardIssuanceSocialPromotionEditorServerError('Could not save social promotion. Please try again.');
@@ -17418,6 +17559,97 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
 }, [
   cardIssuanceSocialPromotion,
   cardIssuanceSocialPromotionEditorValidationError,
+  cardIssuanceExistingCard?.cardAddress,
+  handlePublishCardIssuance,
+  profiles,
+]);
+
+const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
+  const couponId = cardIssuanceCouponSocialPromotionEditorOpenId;
+  if (!couponId) return;
+  const prevRow = cardIssuanceCoupons.find((item) => item.id === couponId);
+  if (!prevRow?.issued || prevRow.socialExchange) return;
+  if (cardIssuanceCouponSocialPromotionDraft.enabled && cardIssuanceCouponSocialPromotionEditorValidationError) {
+    return;
+  }
+  const issuedTokenId = prevRow.issuedTokenId?.trim() ?? '';
+  if (!issuedTokenId) {
+    setCardIssuanceCouponSocialPromotionEditorServerError(
+      'This coupon is issued but its series id is not loaded yet. Wait for program data to finish loading, then try again.'
+    );
+    return;
+  }
+  const couponSocialPayloadForSave = cardIssuanceCouponSocialPromotionDraft.enabled
+    ? couponSocialPromotionDraftToPayload(cardIssuanceCouponSocialPromotionDraft, issuedTokenId) ??
+      undefined
+    : undefined;
+  const nextCoupons = cardIssuanceCoupons.map((item) =>
+    item.id === couponId ? { ...item, socialPromotion: couponSocialPayloadForSave } : item
+  );
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceCoupons(nextCoupons);
+    setCardIssuanceCouponSocialPromotionEditorOpenId(null);
+    return;
+  }
+  setCardIssuanceCouponSocialPromotionEditorServerError('');
+  setCardIssuanceCreateError('');
+  setCardIssuanceCouponSocialPromotionEditorPublishing(true);
+  try {
+    const socialPromoChanged =
+      JSON.stringify(prevRow.socialPromotion ?? null) !== JSON.stringify(couponSocialPayloadForSave ?? null);
+    if (socialPromoChanged) {
+      const publishOk = await handlePublishCardIssuance({
+        couponsOverride: nextCoupons,
+        loadingScope: 'bonusEditor',
+        metadataOnly: true,
+      });
+      if (!publishOk) {
+        setCardIssuanceCouponSocialPromotionEditorServerError(
+          'Could not save coupon social promotion metadata. Fix validation errors and try again.'
+        );
+        return;
+      }
+      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+      if (pk) {
+        const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+        const ruleRes = await applyCouponSocialPromotionOnChainRules({
+          cardAddress: cardIssuanceExistingCard.cardAddress,
+          ownerEoa: signerAddr,
+          ownerPrivateKey: pk,
+          issuedTokenId,
+          socialPromotion: couponSocialPayloadForSave ?? null,
+        });
+        if (!ruleRes.success) {
+          setCardIssuanceCouponSocialPromotionEditorServerError(
+            ruleRes.error ?? 'Metadata saved, but on-chain coupon reward rule update failed. Try again.'
+          );
+          return;
+        }
+      } else {
+        setCardIssuanceOwnerAdminNotice({
+          kind: 'warn',
+          text: 'Metadata saved, but wallet key was unavailable — on-chain reward rules were not updated. Unlock wallet and save again.',
+        });
+      }
+    }
+    setCardIssuanceCoupons(nextCoupons);
+    setCardIssuanceCouponSocialPromotionEditorOpenId(null);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Coupon social promotion saved. #13 rewards will airdrop on the selected event — no pre-funded budget required.',
+    });
+  } catch {
+    setCardIssuanceCouponSocialPromotionEditorServerError(
+      'Could not save coupon social promotion. Please try again.'
+    );
+  } finally {
+    setCardIssuanceCouponSocialPromotionEditorPublishing(false);
+  }
+}, [
+  cardIssuanceCouponSocialPromotionEditorOpenId,
+  cardIssuanceCoupons,
+  cardIssuanceCouponSocialPromotionDraft,
+  cardIssuanceCouponSocialPromotionEditorValidationError,
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
   profiles,
@@ -33976,6 +34208,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     {socialExchangeSummaryLabel(coupon.socialExchange)}
                                   </p>
                                 ) : null}
+                                {coupon.issued && coupon.socialPromotion ? (
+                                  <p className="mt-0.5 text-[10px] font-medium text-[#8d3a8b]">
+                                    {formatCouponSocialPromotionDisplay(coupon.socialPromotion)}
+                                  </p>
+                                ) : null}
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
                                   {tu('programs_coupon_total_issuance_left')}{' '}
                                   {(() => {
@@ -34042,6 +34279,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     title={tu('programs_coupon_show_claim_qr')}
                                   >
                                     <QrCode className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                  </button>
+                                ) : null}
+                                {coupon.issued && !coupon.socialExchange ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openCardIssuanceCouponSocialPromotionEditor(coupon.id)}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#8d3a8b] transition-colors hover:bg-[#8d3a8b]/10 ${bizFocusRingClass}`}
+                                    aria-label={tu('programs_social_promotion_coupon_edit_aria', {
+                                      name: coupon.name,
+                                    })}
+                                    title={tu('programs_social_promotion_coupon_title')}
+                                  >
+                                    <Megaphone className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                                   </button>
                                 ) : null}
                                 <button
@@ -34363,15 +34613,27 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <button
                                  type="button"
                                  onClick={() => void clearCardIssuanceTopupPromotion()}
-                                 disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:opacity-50 ${bizFocusRingClass}`}
+                                 disabled={
+                                   cardIssuanceTopupPromotionDeleting ||
+                                   cardIssuanceTopupPromotionEditorPublishing
+                                 }
+                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
                                  aria-label="Clear top-up promotion"
+                                 aria-busy={cardIssuanceTopupPromotionDeleting}
                                >
-                                 <Trash2
-                                   className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                   strokeWidth={2}
-                                   aria-hidden
-                                 />
+                                 {cardIssuanceTopupPromotionDeleting ? (
+                                   <Loader2
+                                     className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
+                                     strokeWidth={2}
+                                     aria-hidden
+                                   />
+                                 ) : (
+                                   <Trash2
+                                     className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                     strokeWidth={2}
+                                     aria-hidden
+                                   />
+                                 )}
                                </button>
                              ) : null}
                              <span
@@ -34905,6 +35167,48 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </>
                       )}
                     </div>
+                    {cardIssuanceCouponEditingIssued && !cardIssuanceCouponEditorIsSocialExchange ? (
+                      <div className="rounded-2xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-4">
+                        <div className="mb-3">
+                          <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                            {tu('programs_social_promotion_coupon_title')}
+                          </p>
+                          <p className="mt-1 text-[11px] leading-relaxed text-[#595c5e]">
+                            {tu('programs_social_promotion_coupon_desc')}
+                          </p>
+                        </div>
+                        <label className="mb-2 flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={cardIssuanceCouponSocialPromotionDraft.enabled}
+                            onChange={(e) =>
+                              setCardIssuanceCouponSocialPromotionDraft((p) => ({
+                                ...p,
+                                enabled: e.target.checked,
+                              }))
+                            }
+                            className="h-4 w-4 rounded border-[#1562f0]/30"
+                          />
+                          <span className="text-sm font-semibold text-[#2c2f31]">Enable coupon social promotion</span>
+                        </label>
+                        {cardIssuanceCouponSocialPromotionDraft.enabled ? (
+                          <div className="mt-4">
+                            <CouponSocialPromotionEventsEditor
+                              draft={cardIssuanceCouponSocialPromotionDraft}
+                              onChange={setCardIssuanceCouponSocialPromotionDraft}
+                              validationError={
+                                cardIssuanceCouponSocialPromotionEditorValidationError || undefined
+                              }
+                              variant="blue"
+                            />
+                          </div>
+                        ) : cardIssuanceEditingCouponRow?.socialPromotion ? (
+                          <p className="mt-2 text-[11px] text-[#595c5e]">
+                            {formatCouponSocialPromotionDisplay(cardIssuanceEditingCouponRow.socialPromotion)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div>
                       <label
                         className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
@@ -35623,7 +35927,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            onClick={() => void submitCardIssuanceTopupPromotionEditor()}
                            disabled={
                              Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
-                             cardIssuanceTopupPromotionEditorPublishing
+                             cardIssuanceTopupPromotionEditorPublishing ||
+                             cardIssuanceTopupPromotionDeleting
                            }
                            className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                          >
@@ -35638,10 +35943,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <button
                              type="button"
                              onClick={() => void clearCardIssuanceTopupPromotion()}
-                             disabled={cardIssuanceTopupPromotionEditorPublishing}
-                             className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] ${bizFocusRingClass}`}
+                             disabled={
+                               cardIssuanceTopupPromotionDeleting ||
+                               cardIssuanceTopupPromotionEditorPublishing
+                             }
+                             className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                             aria-busy={cardIssuanceTopupPromotionDeleting}
                            >
-                             Clear Promotion
+                             {cardIssuanceTopupPromotionDeleting ? (
+                               <>
+                                 <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                                 <span>Clearing...</span>
+                               </>
+                             ) : (
+                               <span>Clear Promotion</span>
+                             )}
                            </button>
                          ) : null}
                        </div>
@@ -35692,92 +36008,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
 
                      <div className="space-y-6">
-                       <div className="space-y-3">
-                         <p className="ml-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-                           {tu('programs_social_promotion_event_label')}
-                         </p>
-                         <div className="flex flex-col gap-2 sm:flex-row">
-                           <button
-                             type="button"
-                             onClick={() =>
-                               setCardIssuanceSocialPromotion((p) => ({ ...p, eventKind: 'refClick', enabled: true }))
-                             }
-                             className={`flex-1 rounded-2xl border px-4 py-4 text-left transition-colors ${bizFocusRingClass} ${
-                               cardIssuanceSocialPromotion.eventKind === 'refClick'
-                                 ? 'border-[#0051d1] bg-[#0051d1]/5'
-                                 : 'border-[#e5e9eb] bg-[#eef1f3]'
-                             }`}
-                           >
-                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                               {tu('programs_social_promotion_event_click')}
-                             </p>
-                             <p className="mt-1 text-[11px] leading-snug text-[#595c5e]">
-                               {tu('programs_social_promotion_event_click_hint')}
-                             </p>
-                           </button>
-                           <button
-                             type="button"
-                             onClick={() =>
-                               setCardIssuanceSocialPromotion((p) => ({ ...p, eventKind: 'refTopup', enabled: true }))
-                             }
-                             className={`flex-1 rounded-2xl border px-4 py-4 text-left transition-colors ${bizFocusRingClass} ${
-                               cardIssuanceSocialPromotion.eventKind === 'refTopup'
-                                 ? 'border-[#0051d1] bg-[#0051d1]/5'
-                                 : 'border-[#e5e9eb] bg-[#eef1f3]'
-                             }`}
-                           >
-                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                               {tu('programs_social_promotion_event_topup')}
-                             </p>
-                             <p className="mt-1 text-[11px] leading-snug text-[#595c5e]">
-                               {tu('programs_social_promotion_event_topup_hint')}
-                             </p>
-                           </button>
-                         </div>
-                         <p className="ml-2 text-[11px] leading-relaxed text-[#747779]">
-                           {tu('programs_social_promotion_exclusive_hint')}
-                         </p>
-                       </div>
+                       <CardSocialPromotionEventsEditor
+                         draft={cardIssuanceSocialPromotion}
+                         onChange={setCardIssuanceSocialPromotion}
+                         validationError={
+                           cardIssuanceSocialPromotionEditorValidationError || undefined
+                         }
+                       />
 
-                       <div className="space-y-2">
-                         <label
-                           className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                           htmlFor="card-social-promo-points"
-                         >
-                           {tu('programs_social_promotion_points_label')}
-                         </label>
-                         <input
-                           id="card-social-promo-points"
-                           ref={cardIssuanceSocialPromotionPointsWheelRef}
-                           type="number"
-                           inputMode="numeric"
-                           autoComplete="off"
-                           enterKeyHint="done"
-                           min={1}
-                           step={1}
-                           placeholder="1"
-                           value={cardIssuanceSocialPromotion.refRewardPoints13}
-                           onKeyDown={preventNumericInputStepKeys}
-                           onWheel={preventNumericInputWheelStep}
-                           onChange={(e) =>
-                             setCardIssuanceSocialPromotion((p) => ({
-                               ...p,
-                               refRewardPoints13: e.target.value.replace(/[^\d]/g, ''),
-                               enabled: true,
-                             }))
-                           }
-                           className={`w-full rounded-full border-none bg-[#eef1f3] px-6 py-5 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                         />
-                         <p className="ml-2 text-[11px] leading-relaxed text-[#747779]">
-                           {tu('programs_social_promotion_points_hint')}
-                         </p>
-                       </div>
-
-                       {cardIssuanceSocialPromotionEditorValidationError ? (
-                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                           <p>{cardIssuanceSocialPromotionEditorValidationError}</p>
-                         </div>
-                       ) : null}
                        {(cardIssuanceCreateError || cardIssuanceSocialPromotionEditorServerError) &&
                        !cardIssuanceSocialPromotionEditorPublishing ? (
                          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
@@ -35817,6 +36055,118 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </button>
                          ) : null}
                        </div>
+                     </div>
+                   </motion.div>
+                 </>
+               ) : null}
+               {cardIssuanceCouponSocialPromotionEditorOpenId ? (
+                 <>
+                   <motion.button
+                     type="button"
+                     aria-label={tu('programs_common_close')}
+                     className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                     exit={{ opacity: 0 }}
+                     onClick={() => setCardIssuanceCouponSocialPromotionEditorOpenId(null)}
+                   />
+                   <motion.div
+                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                     initial={{ y: '100%' }}
+                     animate={{ y: 0 }}
+                     exit={{ y: '100%' }}
+                     transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                   >
+                     <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                     <div className="mb-6 flex items-start justify-between gap-4">
+                       <div className="min-w-0">
+                         <span className="rounded-full bg-[#8d3a8b]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#8d3a8b]">
+                           Promotion
+                         </span>
+                         <h3 className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl">
+                           {tu('programs_social_promotion_coupon_title')}
+                         </h3>
+                         {cardIssuanceCouponSocialPromotionEditorRow ? (
+                           <p className="mt-2 truncate text-sm font-semibold text-[#595c5e]">
+                             {cardIssuanceCouponSocialPromotionEditorRow.name}
+                           </p>
+                         ) : null}
+                         <p className="mt-2 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                           {tu('programs_social_promotion_coupon_desc')}
+                         </p>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => setCardIssuanceCouponSocialPromotionEditorOpenId(null)}
+                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                         aria-label={tu('programs_common_close')}
+                       >
+                         <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                       </button>
+                     </div>
+
+                     <div className="max-h-[min(60vh,32rem)] space-y-4 overflow-y-auto pr-1">
+                       <label className="flex cursor-pointer items-center gap-2">
+                         <input
+                           type="checkbox"
+                           checked={cardIssuanceCouponSocialPromotionDraft.enabled}
+                           onChange={(e) =>
+                             setCardIssuanceCouponSocialPromotionDraft((p) => ({
+                               ...p,
+                               enabled: e.target.checked,
+                             }))
+                           }
+                           className="h-4 w-4 rounded border-[#8d3a8b]/30"
+                         />
+                         <span className="text-sm font-semibold text-[#2c2f31]">
+                           Enable coupon social promotion
+                         </span>
+                       </label>
+                       {cardIssuanceCouponSocialPromotionDraft.enabled ? (
+                         <CouponSocialPromotionEventsEditor
+                           draft={cardIssuanceCouponSocialPromotionDraft}
+                           onChange={setCardIssuanceCouponSocialPromotionDraft}
+                           validationError={
+                             cardIssuanceCouponSocialPromotionEditorValidationError || undefined
+                           }
+                           variant="purple"
+                         />
+                       ) : cardIssuanceCouponSocialPromotionEditorRow?.socialPromotion ? (
+                         <p className="text-[11px] text-[#595c5e]">
+                           {formatCouponSocialPromotionDisplay(
+                             cardIssuanceCouponSocialPromotionEditorRow.socialPromotion
+                           )}
+                         </p>
+                       ) : null}
+                       {cardIssuanceCouponSocialPromotionEditorServerError &&
+                       !cardIssuanceCouponSocialPromotionEditorPublishing ? (
+                         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                           <p>{cardIssuanceCouponSocialPromotionEditorServerError}</p>
+                         </div>
+                       ) : null}
+                     </div>
+
+                     <div className="mt-6 space-y-3">
+                       <button
+                         type="button"
+                         onClick={() => void submitCardIssuanceCouponSocialPromotionEditor()}
+                         disabled={
+                           Boolean(cardIssuanceCouponSocialPromotionEditorValidationError) ||
+                           cardIssuanceCouponSocialPromotionEditorPublishing
+                         }
+                         className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#8d3a8b] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#8d3a8b]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
+                       >
+                         {cardIssuanceCouponSocialPromotionEditorPublishing ? (
+                           <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                         ) : (
+                           <Megaphone className="h-5 w-5" strokeWidth={2} aria-hidden />
+                         )}
+                         <span>
+                           {cardIssuanceCouponSocialPromotionEditorPublishing
+                             ? tu('programs_social_promotion_saving')
+                             : tu('programs_social_promotion_save')}
+                         </span>
+                       </button>
                      </div>
                    </motion.div>
                  </>

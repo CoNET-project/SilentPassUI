@@ -414,7 +414,7 @@ async function ensureDefaultMerchantShareClickRewardRuleSilentInner(params: {
  * 3) configure default Discover USER_CLICK reward rule (ruleId 1) when none exists
  *
  * Does not mutate card bytecode; only owner executeForOwner writes.
- * Share-click dispatch still requires rewardMintBudget13 funding (merchant Programs → Top-up reward budget).
+ * Share-click #13 rewards mint on active promotion rules (no pre-funded rewardMintBudget13 required).
  */
 export async function ensureCardMerchantV2SilentBootstrap(params: {
 	cardAddress: string

@@ -1,29 +1,141 @@
-import type { ShareTokenMetadataSocialPromotion } from '@/services/BeamioCard'
+import type {
+	ShareTokenMetadataCouponSocialPromotion,
+	ShareTokenMetadataSocialPromotion,
+	ShareTokenMetadataSocialPromotionEvent,
+	ShareTokenMetadataSocialPromotionReward,
+} from '@/services/BeamioCard'
 
-/** One active social referral reward at a time (metadata + on-chain rule slots). */
-export type SocialPromotionEventKind = 'refClick' | 'refTopup'
+export type CardSocialPromotionEventKey = 'linkClick' | 'like' | 'topup'
+export type CouponSocialPromotionEventKey = 'linkClick' | 'like' | 'claim' | 'burn'
 
+export type SocialPromotionRewardDraft = {
+	enabled: boolean
+	points13: string
+}
+
+export type SocialPromotionEventDraft = {
+	user: SocialPromotionRewardDraft
+	ref: SocialPromotionRewardDraft
+}
+
+/** Card-level social promotion — parallel events (v4) with user + referrer rewards each. */
 export type SocialPromotionDraft = {
 	enabled: boolean
-	eventKind: SocialPromotionEventKind
-	/** #13 reward voucher count minted to referrer per qualifying event. */
-	refRewardPoints13: string
+	events: Record<CardSocialPromotionEventKey, SocialPromotionEventDraft>
 }
+
+/** Per issued coupon — parallel social events (v2) with user + referrer rewards each. */
+export type CouponSocialPromotionDraft = {
+	enabled: boolean
+	events: Record<CouponSocialPromotionEventKey, SocialPromotionEventDraft>
+}
+
+export const SOCIAL_PROMOTION_LINK_CLICK_RULE_ID = 1
+export const SOCIAL_PROMOTION_TOPUP_RULE_ID = 2
+export const SOCIAL_PROMOTION_LIKE_RULE_ID = 3
+
+export const CARD_SOCIAL_PROMOTION_EVENT_KEYS: CardSocialPromotionEventKey[] = [
+	'linkClick',
+	'like',
+	'topup',
+]
+
+export const COUPON_SOCIAL_PROMOTION_EVENT_KEYS: CouponSocialPromotionEventKey[] = [
+	'linkClick',
+	'like',
+	'claim',
+	'burn',
+]
+
+/** On-chain rule slot per coupon event (linkClick keeps ruleId = issuedTokenId). */
+export const COUPON_SOCIAL_PROMOTION_EVENT_RULE_SLOTS: Record<CouponSocialPromotionEventKey, number> = {
+	linkClick: 0,
+	like: 1,
+	claim: 2,
+	burn: 3,
+}
+
+function emptyCardSocialPromotionEvents(): Record<CardSocialPromotionEventKey, SocialPromotionEventDraft> {
+	return {
+		linkClick: { user: { ...EMPTY_REWARD }, ref: { ...EMPTY_REWARD } },
+		like: { user: { ...EMPTY_REWARD }, ref: { ...EMPTY_REWARD } },
+		topup: { user: { ...EMPTY_REWARD }, ref: { ...EMPTY_REWARD } },
+	}
+}
+
+function emptyCouponSocialPromotionEvents(): Record<CouponSocialPromotionEventKey, SocialPromotionEventDraft> {
+	return {
+		linkClick: { user: { ...EMPTY_REWARD }, ref: { ...EMPTY_REWARD } },
+		like: { user: { ...EMPTY_REWARD }, ref: { ...EMPTY_REWARD } },
+		claim: { user: { ...EMPTY_REWARD }, ref: { ...EMPTY_REWARD } },
+		burn: { user: { ...EMPTY_REWARD }, ref: { ...EMPTY_REWARD } },
+	}
+}
+
+const EMPTY_REWARD: SocialPromotionRewardDraft = { enabled: false, points13: '1' }
 
 export const EMPTY_SOCIAL_PROMOTION_DRAFT: SocialPromotionDraft = {
 	enabled: false,
-	eventKind: 'refClick',
-	refRewardPoints13: '1',
+	events: emptyCardSocialPromotionEvents(),
 }
 
-export const SOCIAL_PROMOTION_REF_CLICK_RULE_ID = 1
-export const SOCIAL_PROMOTION_REF_TOPUP_RULE_ID = 2
+export const EMPTY_COUPON_SOCIAL_PROMOTION_DRAFT: CouponSocialPromotionDraft = {
+	enabled: false,
+	events: emptyCouponSocialPromotionEvents(),
+}
 
 function parsePositiveInt(raw: unknown): number | null {
 	if (raw == null || raw === '') return null
 	const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw).trim(), 10)
 	if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null
 	return n
+}
+
+function rewardDraftFromPayload(
+	raw: ShareTokenMetadataSocialPromotionReward | undefined,
+): SocialPromotionRewardDraft {
+	if (!raw || raw.enabled === false) return { enabled: false, points13: '1' }
+	const points = parsePositiveInt(raw.points13)
+	return {
+		enabled: true,
+		points13: String(points ?? 1),
+	}
+}
+
+function eventDraftFromPayload(
+	raw: ShareTokenMetadataSocialPromotionEvent | undefined,
+): SocialPromotionEventDraft {
+	return {
+		user: rewardDraftFromPayload(raw?.user),
+		ref: rewardDraftFromPayload(raw?.ref),
+	}
+}
+
+function eventHasReward(ev: SocialPromotionEventDraft | undefined): boolean {
+	if (!ev) return false
+	return ev.user.enabled || ev.ref.enabled
+}
+
+function eventsPayloadFromRaw(
+	eventsRaw: Record<string, unknown> | undefined,
+): NonNullable<ShareTokenMetadataSocialPromotion['events']> {
+	const events: NonNullable<ShareTokenMetadataSocialPromotion['events']> = {}
+	if (!eventsRaw || typeof eventsRaw !== 'object') return events
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = eventsRaw[key]
+		if (ev && typeof ev === 'object') {
+			const normalized = eventPayloadFromDraft(eventDraftFromPayload(ev as ShareTokenMetadataSocialPromotionEvent))
+			if (normalized) events[key] = normalized
+		}
+	}
+	return events
+}
+
+export function socialPromotionDraftEmpty(): SocialPromotionDraft {
+	return {
+		enabled: false,
+		events: emptyCardSocialPromotionEvents(),
+	}
 }
 
 export function parseSocialPromotionFromMetadata(
@@ -44,74 +156,292 @@ export function parseSocialPromotionFromMetadata(
 	return null
 }
 
+export function parseCouponSocialPromotionFromMetadata(
+	meta: Record<string, unknown> | null | undefined,
+): ShareTokenMetadataCouponSocialPromotion | null {
+	if (!meta || typeof meta !== 'object') return null
+	const raw = meta.socialPromotion
+	if (!raw || typeof raw !== 'object') return null
+	return normalizeCouponSocialPromotionPayload(raw as Record<string, unknown>)
+}
+
+function rewardPayloadFromDraft(
+	draft: SocialPromotionRewardDraft,
+): ShareTokenMetadataSocialPromotionReward | undefined {
+	if (!draft.enabled) return undefined
+	const points = parsePositiveInt(draft.points13)
+	if (points == null) return undefined
+	return { enabled: true, points13: points }
+}
+
+function eventPayloadFromDraft(
+	draft: SocialPromotionEventDraft,
+): ShareTokenMetadataSocialPromotionEvent | undefined {
+	const user = rewardPayloadFromDraft(draft.user)
+	const ref = rewardPayloadFromDraft(draft.ref)
+	if (!user && !ref) return undefined
+	return {
+		...(user ? { user } : {}),
+		...(ref ? { ref } : {}),
+	}
+}
+
+export function socialPromotionDraftHasAnyReward(draft: SocialPromotionDraft): boolean {
+	return CARD_SOCIAL_PROMOTION_EVENT_KEYS.some((key) => eventHasReward(draft.events[key]))
+}
+
+export function couponSocialPromotionDraftHasAnyReward(draft: CouponSocialPromotionDraft): boolean {
+	if (!draft.enabled) return false
+	return COUPON_SOCIAL_PROMOTION_EVENT_KEYS.some((key) => eventHasReward(draft.events[key]))
+}
+
 export function normalizeSocialPromotionPayload(
 	raw: Record<string, unknown>,
 ): ShareTokenMetadataSocialPromotion | null {
-	const points = parsePositiveInt(raw.refRewardPoints13 ?? raw.ref_reward_points13 ?? raw.points13)
-	if (points == null) return null
-	const kindRaw = String(raw.eventKind ?? raw.event_kind ?? 'refClick').trim()
-	const eventKind: SocialPromotionEventKind = kindRaw === 'refTopup' ? 'refTopup' : 'refClick'
-	const enabled = raw.enabled === false ? false : true
+	if (!raw.events || typeof raw.events !== 'object') return null
+	const events = eventsPayloadFromRaw(raw.events as Record<string, unknown>)
+	if (Object.keys(events).length === 0) return null
 	return {
-		enabled,
-		eventKind,
-		refRewardPoints13: points,
-		...(raw.ruleId != null ? { ruleId: parsePositiveInt(raw.ruleId) ?? undefined } : {}),
+		version: 4,
+		enabled: raw.enabled !== false,
+		events,
+	}
+}
+
+export function normalizeCouponSocialPromotionPayload(
+	raw: Record<string, unknown>,
+): ShareTokenMetadataCouponSocialPromotion | null {
+	if (!raw.events || typeof raw.events !== 'object') return null
+	const events: NonNullable<ShareTokenMetadataCouponSocialPromotion['events']> = {}
+	for (const key of COUPON_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = (raw.events as Record<string, unknown>)[key]
+		if (ev && typeof ev === 'object') {
+			const normalized = eventPayloadFromDraft(eventDraftFromPayload(ev as ShareTokenMetadataSocialPromotionEvent))
+			if (normalized) events[key] = normalized
+		}
+	}
+	if (Object.keys(events).length === 0) return null
+	const ruleIdRaw = raw.ruleId ?? raw.rule_id
+	const ruleId =
+		ruleIdRaw != null && String(ruleIdRaw).trim() ? String(ruleIdRaw).trim() : undefined
+	return {
+		version: 2,
+		enabled: raw.enabled !== false,
+		events,
+		...(ruleId ? { ruleId } : {}),
 	}
 }
 
 export function socialPromotionDraftFromMetadata(
 	promo: ShareTokenMetadataSocialPromotion | null | undefined,
 ): SocialPromotionDraft {
-	if (!promo) return { ...EMPTY_SOCIAL_PROMOTION_DRAFT }
-	return {
-		enabled: promo.enabled !== false,
-		eventKind: promo.eventKind === 'refTopup' ? 'refTopup' : 'refClick',
-		refRewardPoints13: String(promo.refRewardPoints13 ?? 1),
+	const draft = socialPromotionDraftEmpty()
+	if (!promo?.events) return draft
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = promo.events[key]
+		if (ev) draft.events[key] = eventDraftFromPayload(ev)
 	}
+	draft.enabled = promo.enabled !== false && socialPromotionDraftHasAnyReward(draft)
+	return draft
+}
+
+export function couponSocialPromotionDraftFromMetadata(
+	promo: ShareTokenMetadataCouponSocialPromotion | null | undefined,
+): CouponSocialPromotionDraft {
+	const draft: CouponSocialPromotionDraft = {
+		enabled: false,
+		events: emptyCouponSocialPromotionEvents(),
+	}
+	if (!promo?.events) return draft
+	for (const key of COUPON_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = promo.events[key]
+		if (ev) draft.events[key] = eventDraftFromPayload(ev)
+	}
+	draft.enabled = promo.enabled !== false && couponSocialPromotionDraftHasAnyReward({ ...draft, enabled: true })
+	return draft
+}
+
+function validateRewardDraft(draft: SocialPromotionRewardDraft, label: string): string {
+	if (!draft.enabled) return ''
+	const points = parsePositiveInt(draft.points13)
+	if (points == null) return `${label} must be a whole number of social points (≥ 1).`
+	if (points > 1_000_000) return `${label} is too large.`
+	return ''
 }
 
 export function validateSocialPromotionDraft(draft: SocialPromotionDraft): string {
-	if (!draft.enabled) return ''
-	const points = parsePositiveInt(draft.refRewardPoints13)
-	if (points == null) return 'Referrer reward must be a whole number of social points (≥ 1).'
-	if (points > 1_000_000) return 'Referrer reward is too large.'
-	if (draft.eventKind !== 'refClick' && draft.eventKind !== 'refTopup') {
-		return 'Choose a social event for this promotion.'
+	if (!draft.enabled && !socialPromotionDraftHasAnyReward(draft)) return ''
+	let anyEvent = false
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = draft.events[key]
+		if (!eventHasReward(ev)) continue
+		anyEvent = true
+		const eventLabel = cardSocialPromotionEventLabel(key)
+		const userErr = validateRewardDraft(ev.user, `${eventLabel} — user reward`)
+		if (userErr) return userErr
+		const refErr = validateRewardDraft(ev.ref, `${eventLabel} — referrer reward`)
+		if (refErr) return refErr
 	}
+	if (!anyEvent) return 'Enable at least one user or referrer reward on at least one event.'
+	return ''
+}
+
+export function validateCouponSocialPromotionDraft(draft: CouponSocialPromotionDraft): string {
+	if (!draft.enabled) return ''
+	let anyEvent = false
+	for (const key of COUPON_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = draft.events[key]
+		if (!eventHasReward(ev)) continue
+		anyEvent = true
+		const eventLabel = couponSocialPromotionEventLabel(key)
+		const userErr = validateRewardDraft(ev.user, `${eventLabel} — user reward`)
+		if (userErr) return userErr
+		const refErr = validateRewardDraft(ev.ref, `${eventLabel} — referrer reward`)
+		if (refErr) return refErr
+	}
+	if (!anyEvent) return 'Enable at least one user or referrer reward on at least one event.'
 	return ''
 }
 
 export function socialPromotionDraftToPayload(
 	draft: SocialPromotionDraft,
 ): ShareTokenMetadataSocialPromotion | null {
-	if (!draft.enabled) return null
-	const err = validateSocialPromotionDraft(draft)
+	if (!socialPromotionDraftHasAnyReward(draft)) return null
+	const err = validateSocialPromotionDraft({ ...draft, enabled: true })
 	if (err) return null
-	const points = parsePositiveInt(draft.refRewardPoints13)!
-	const ruleId =
-		draft.eventKind === 'refTopup' ? SOCIAL_PROMOTION_REF_TOPUP_RULE_ID : SOCIAL_PROMOTION_REF_CLICK_RULE_ID
-	return {
-		enabled: true,
-		eventKind: draft.eventKind,
-		refRewardPoints13: points,
-		ruleId,
+	const events: NonNullable<ShareTokenMetadataSocialPromotion['events']> = {}
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const normalized = eventPayloadFromDraft(draft.events[key])
+		if (normalized) events[key] = normalized
 	}
+	if (Object.keys(events).length === 0) return null
+	return {
+		version: 4,
+		enabled: true,
+		events,
+	}
+}
+
+export function couponSocialPromotionDraftToPayload(
+	draft: CouponSocialPromotionDraft,
+	issuedTokenId: string,
+): ShareTokenMetadataCouponSocialPromotion | null {
+	if (!couponSocialPromotionDraftHasAnyReward(draft)) return null
+	const err = validateCouponSocialPromotionDraft(draft)
+	if (err) return null
+	const events: NonNullable<ShareTokenMetadataCouponSocialPromotion['events']> = {}
+	for (const key of COUPON_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const normalized = eventPayloadFromDraft(draft.events[key])
+		if (normalized) events[key] = normalized
+	}
+	if (Object.keys(events).length === 0) return null
+	const tokenId = issuedTokenId.trim()
+	return {
+		version: 2,
+		enabled: true,
+		events,
+		...(tokenId ? { ruleId: tokenId } : {}),
+	}
+}
+
+export function cardSocialPromotionEventLabel(key: CardSocialPromotionEventKey): string {
+	switch (key) {
+		case 'linkClick':
+			return 'Link click'
+		case 'like':
+			return 'Like'
+		case 'topup':
+			return 'Top-up'
+		default:
+			return key
+	}
+}
+
+export function couponSocialPromotionEventLabel(key: CouponSocialPromotionEventKey): string {
+	switch (key) {
+		case 'linkClick':
+			return 'Link click'
+		case 'like':
+			return 'Like'
+		case 'claim':
+			return 'Claim'
+		case 'burn':
+			return 'Burn'
+		default:
+			return key
+	}
+}
+
+function formatRewardLine(role: 'User' | 'Referrer', reward: ShareTokenMetadataSocialPromotionReward | undefined): string | null {
+	if (!reward || reward.enabled === false) return null
+	const points = parsePositiveInt(reward.points13)
+	if (points == null) return null
+	return `${role}: ${points.toFixed(0)} pt${points === 1 ? '' : 's'}`
 }
 
 export function formatSocialPromotionDisplay(
 	promo: ShareTokenMetadataSocialPromotion | null | undefined,
 ): string {
-	if (!promo || promo.enabled === false) return 'No social promotion configured.'
-	const points = parsePositiveInt(promo.refRewardPoints13)
-	if (points == null) return 'Incomplete promotion — open editor to fix reward amount.'
-	const eventLabel =
-		promo.eventKind === 'refTopup'
-			? 'when a referred customer tops up'
-			: 'when a shared link is clicked'
-	return `${points.toFixed(0)} social point${points === 1 ? '' : 's'} (#13) to referrer ${eventLabel}.`
+	if (!promo || promo.enabled === false || !promo.events) return 'No social promotion configured.'
+	const lines: string[] = []
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = promo.events[key]
+		if (!ev) continue
+		const parts = [
+			formatRewardLine('User', ev.user),
+			formatRewardLine('Referrer', ev.ref),
+		].filter(Boolean)
+		if (parts.length > 0) {
+			lines.push(`${cardSocialPromotionEventLabel(key)} — ${parts.join('; ')}`)
+		}
+	}
+	if (lines.length === 0) return 'Incomplete promotion — open editor to fix reward amounts.'
+	return lines.join(' · ')
 }
 
-export function socialPromotionRuleIdForEventKind(eventKind: SocialPromotionEventKind): number {
-	return eventKind === 'refTopup' ? SOCIAL_PROMOTION_REF_TOPUP_RULE_ID : SOCIAL_PROMOTION_REF_CLICK_RULE_ID
+export function formatCouponSocialPromotionDisplay(
+	promo: ShareTokenMetadataCouponSocialPromotion | null | undefined,
+): string {
+	if (!promo || promo.enabled === false || !promo.events) return 'No coupon social promotion.'
+	const lines: string[] = []
+	for (const key of COUPON_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ev = promo.events[key]
+		if (!ev) continue
+		const parts = [
+			formatRewardLine('User', ev.user),
+			formatRewardLine('Referrer', ev.ref),
+		].filter(Boolean)
+		if (parts.length > 0) {
+			lines.push(`${couponSocialPromotionEventLabel(key)} — ${parts.join('; ')}`)
+		}
+	}
+	if (lines.length === 0) return 'Incomplete coupon promotion — open editor to fix.'
+	return lines.join(' · ')
+}
+
+export function cardSocialPromotionRuleIdForEventKey(key: CardSocialPromotionEventKey): number {
+	switch (key) {
+		case 'linkClick':
+			return SOCIAL_PROMOTION_LINK_CLICK_RULE_ID
+		case 'topup':
+			return SOCIAL_PROMOTION_TOPUP_RULE_ID
+		case 'like':
+			return SOCIAL_PROMOTION_LIKE_RULE_ID
+		default:
+			return SOCIAL_PROMOTION_LINK_CLICK_RULE_ID
+	}
+}
+
+export function couponSocialPromotionRuleId(issuedTokenId: string): bigint {
+	return couponSocialPromotionRuleIdForEvent(issuedTokenId, 'linkClick')
+}
+
+export function couponSocialPromotionRuleIdForEvent(
+	issuedTokenId: string,
+	eventKey: CouponSocialPromotionEventKey,
+): bigint {
+	const base = BigInt(String(issuedTokenId).trim())
+	const slot = COUPON_SOCIAL_PROMOTION_EVENT_RULE_SLOTS[eventKey]
+	if (slot === 0) return base
+	return base * 100n + BigInt(slot)
 }

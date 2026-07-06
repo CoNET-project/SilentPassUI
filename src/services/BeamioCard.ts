@@ -1303,6 +1303,18 @@ export type ShareTokenMetadataBonusRule = {
 	bonusProportional?: boolean
 }
 
+/** Global top-up promotion (single optional rule); canonical for POS recharge bonus. */
+export type ShareTokenMetadataTopupPromotion = {
+	enabled?: boolean
+	/** Inclusive start date YYYY-MM-DD (local calendar). */
+	validFrom?: string
+	/** Inclusive end date YYYY-MM-DD (local calendar). */
+	validTo?: string
+	minimumTopupAmount: number
+	rewardType: 'percent' | 'fixed'
+	rewardValue: number
+}
+
 export type ShareTokenMetadataPointSystem = {
 	enabled: boolean
 	/** E6 ratio: 1_000_000 means 1 reward point per 1 card-currency unit spent. */
@@ -1388,9 +1400,11 @@ export type ShareTokenMetadata = {
 	minimumTopup?: number
 	/** Whole currency units; optional */
 	maximumTopup?: number
-	/** Single recharge bonus rule previewed in configurator; optional */
+	/** Global top-up promotion (single); preferred over legacy bonusRules. */
+	topupPromotion?: ShareTokenMetadataTopupPromotion
+	/** @deprecated Legacy single rule — derived from topupPromotion on publish; read compat only. */
 	bonusRule?: ShareTokenMetadataBonusRule
-	/** Multiple recharge bonus rules previewed in configurator; optional */
+	/** @deprecated Legacy rules array — POS reads topupPromotion first; read compat only. */
 	bonusRules?: ShareTokenMetadataBonusRule[]
 	/** Client-facing switch for displaying charge reward points (ERC-1155 token #2). */
 	pointSystem?: ShareTokenMetadataPointSystem
@@ -3120,6 +3134,7 @@ export type CardMetadataFromUri = {
 	tiers?: CardTierMetadata[]
 	cardOwner?: string
 	categories?: string[]
+	topupPromotion?: ShareTokenMetadataTopupPromotion
 	bonusRule?: ShareTokenMetadataBonusRule
 	bonusRules?: ShareTokenMetadataBonusRule[]
 	pointSystem?: ShareTokenMetadataPointSystem
@@ -3357,6 +3372,39 @@ function shareTokenBonusProportionalFromUnknown(obj: Record<string, unknown>): b
 		obj.bonusProportional ?? obj.bonusIsProportional ?? obj.percentBased ?? obj.proportionalBonus
 	if (v === true || v === 'true' || v === 1 || v === '1') return true
 	return false
+}
+
+function shareTokenTopupPromotionFromUnknown(
+	share: Record<string, unknown> | undefined | null
+): ShareTokenMetadataTopupPromotion | undefined {
+	if (!share || typeof share !== 'object') return undefined
+	const raw = share.topupPromotion
+	if (!raw || typeof raw !== 'object') return undefined
+	const obj = raw as Record<string, unknown>
+	const minimumTopupAmount = shareTokenBonusRuleNumber(
+		obj.minimumTopupAmount ?? obj.minimum_topup_amount
+	)
+	const rewardValue = shareTokenBonusRuleNumber(obj.rewardValue ?? obj.reward_value)
+	if (minimumTopupAmount == null || rewardValue == null) return undefined
+	const rewardTypeRaw = String(obj.rewardType ?? obj.reward_type ?? '').trim().toLowerCase()
+	const rewardType: 'percent' | 'fixed' =
+		rewardTypeRaw === 'fixed' ? 'fixed' : rewardTypeRaw === 'percent' ? 'percent' : 'percent'
+	const validFrom =
+		typeof obj.validFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.validFrom.trim())
+			? obj.validFrom.trim()
+			: undefined
+	const validTo =
+		typeof obj.validTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.validTo.trim())
+			? obj.validTo.trim()
+			: undefined
+	return {
+		enabled: obj.enabled === false ? false : true,
+		...(validFrom ? { validFrom } : {}),
+		...(validTo ? { validTo } : {}),
+		minimumTopupAmount,
+		rewardType,
+		rewardValue,
+	}
 }
 
 function shareTokenBonusRuleFromUnknown(
@@ -3619,6 +3667,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const discoverAbout = shareTokenDiscoverAboutFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const topupPromotion = shareTokenTopupPromotionFromUnknown(share)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -3636,6 +3685,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(topupPromotion && { topupPromotion }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
 			...(productions && { productions }),
@@ -3674,6 +3724,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const discoverAbout = shareTokenDiscoverAboutFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
+		const topupPromotion = shareTokenTopupPromotionFromUnknown(share)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -3694,6 +3745,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(topupPromotion && { topupPromotion }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
 			...(productions && { productions }),
@@ -3821,6 +3873,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const discoverAbout = shareTokenDiscoverAboutFromUnknown(shareObj)
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
+		const topupPromotion = shareTokenTopupPromotionFromUnknown(shareObj)
 		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
 		const coupons = shareTokenCouponsFromUnknown(shareObj)
 		const productions = shareTokenProductionsFromUnknown(shareObj)
@@ -3838,6 +3891,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(merchantImage && { merchantImage }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
+			...(topupPromotion && { topupPromotion }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
 			...(productions && { productions }),

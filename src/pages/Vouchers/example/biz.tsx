@@ -114,6 +114,7 @@ import {
   type CardRedeemBatch,
   type CardRedeemItem,
   type ShareTokenMetadataDiscoverAbout,
+  type ShareTokenMetadataTopupPromotion,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint } from '@/utils/constants';
@@ -317,11 +318,21 @@ import {
   preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys';
 import {
-  generateRegisterPOSNonce,
+  EMPTY_TOPUP_PROMOTION_DRAFT,
+  formatTopupPromotionDisplay,
+  parseTopupPromotionFromMetadata,
+  topupPromotionDraftFromMetadata,
+  topupPromotionDraftToPayload,
+  topupPromotionToLegacyBonusRule,
+  validateTopupPromotionDraft,
+  type TopupPromotionDraft,
+} from '@/utils/programTopupPromotion';
+import {
   registerPOSApi,
   signRegisterPOS,
   signRemovePOS,
   removePOSApi,
+  generateRegisterPOSNonce,
 } from '@/services/merchantPOS';
 import {
  LayoutDashboard,
@@ -11338,18 +11349,15 @@ export default function MerchantOS() {
    deriveCardIssuanceShortNameFromUnitName(CARD_ISSUANCE_DEFAULT_UNIT_NAME)
  );
  const [cardIssuanceStoreDisplayName, setCardIssuanceStoreDisplayName] = useState('');
-const [cardIssuanceBonusRules, setCardIssuanceBonusRules] = useState<CardIssuanceBonusRuleRow[]>([]);
- const [cardIssuanceBonusRulePaymentAmount, setCardIssuanceBonusRulePaymentAmount] = useState(
-   String(CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT)
- );
- const [cardIssuanceBonusRuleBonusValue, setCardIssuanceBonusRuleBonusValue] = useState(
-   String(CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT)
- );
- const [cardIssuanceBonusRuleEditorOpen, setCardIssuanceBonusRuleEditorOpen] = useState(false);
- /** Issued card: POST /api/updateCardShareMetadata while bonus editor is open (separate from tier Publish loading). */
- const [cardIssuanceBonusRuleEditorPublishing, setCardIssuanceBonusRuleEditorPublishing] = useState(false);
- const [cardIssuanceBonusRuleEditorServerError, setCardIssuanceBonusRuleEditorServerError] = useState('');
-const [cardIssuanceEditingBonusRuleId, setCardIssuanceEditingBonusRuleId] = useState<string | null>(null);
+const [cardIssuanceTopupPromotion, setCardIssuanceTopupPromotion] = useState<TopupPromotionDraft>(
+  EMPTY_TOPUP_PROMOTION_DRAFT
+);
+ const [cardIssuanceTopupPromotionEditorOpen, setCardIssuanceTopupPromotionEditorOpen] = useState(false);
+ /** Issued card: POST /api/updateCardShareMetadata while top-up promotion editor is open. */
+ const [cardIssuanceTopupPromotionEditorPublishing, setCardIssuanceTopupPromotionEditorPublishing] =
+   useState(false);
+ const [cardIssuanceTopupPromotionEditorServerError, setCardIssuanceTopupPromotionEditorServerError] =
+   useState('');
 const [cardIssuanceCoupons, setCardIssuanceCoupons] = useState<CardIssuanceCouponRow[]>([]);
 const catalogCouponsTrustedPersistArmedRef = useRef(false);
 const [cardIssuanceCouponEditorOpen, setCardIssuanceCouponEditorOpen] = useState(false);
@@ -11547,12 +11555,6 @@ const cardIssuanceEditingCouponRow = useMemo(
   [cardIssuanceCoupons, cardIssuanceEditingCouponId]
 );
 const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.issued);
- /** Programs overview: confirm before removing a recharge bonus rule from draft state. */
- const [cardIssuanceBonusRuleDeleteConfirmId, setCardIssuanceBonusRuleDeleteConfirmId] = useState<string | null>(
-   null
- );
- /** When true, Payment Amount + Bonus Value define a ratio for variable top-ups (stored as shareTokenMetadata.bonusProportional). */
- const [cardIssuanceBonusRuleBonusProportional, setCardIssuanceBonusRuleBonusProportional] = useState(false);
  const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(true);
  const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('1');
  const [cardIssuancePointSystemSaving, setCardIssuancePointSystemSaving] = useState(false);
@@ -11565,10 +11567,9 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const cardIssuanceReloadMinTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceReloadMaxTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuancePointRatioWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
- const cardIssuanceBonusRulePaymentWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
- const cardIssuanceBonusRuleBonusWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceTopupPromotionMinWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceTopupPromotionRewardWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
- const cardIssuanceTierEditorDiscountWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceCouponIssueTotalWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const [cardIssuanceTierRule, setCardIssuanceTierRule] = useState<CardIssuanceTierRule>('single');
  const cardIssuanceTierRuleRef = useRef<CardIssuanceTierRule>('single');
@@ -11613,13 +11614,12 @@ const [cardIssuanceTierEditorOpen, setCardIssuanceTierEditorOpen] = useState(fal
 const [cardIssuanceEditingTierId, setCardIssuanceEditingTierId] = useState<string | null>(null);
 const [cardIssuanceTierEditorName, setCardIssuanceTierEditorName] = useState('');
 const [cardIssuanceTierEditorThreshold, setCardIssuanceTierEditorThreshold] = useState('');
-const [cardIssuanceTierEditorDiscountPercent, setCardIssuanceTierEditorDiscountPercent] = useState('');
 const [cardIssuanceTierEditorBackgroundColor, setCardIssuanceTierEditorBackgroundColor] = useState('#6366f1');
 const [cardIssuanceTierEditorDescription, setCardIssuanceTierEditorDescription] = useState('');
 const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState<CardIssuanceTierPreset>('custom');
 const handlePublishCardIssuanceRef = useRef<
   (opts?: {
-    bonusRulesOverride?: CardIssuanceBonusRuleRow[];
+    topupPromotionOverride?: TopupPromotionDraft;
     couponsOverride?: CardIssuanceCouponRow[];
     productionsOverride?: CardIssuanceProductionRow[];
     itemCategoryOverride?: ProductionServiceCategoryOption[];
@@ -12695,30 +12695,22 @@ useEffect(() => {
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
-  const rules =
-    cardIssuanceExistingCard.meta.bonusRules?.length
-      ? cardIssuanceExistingCard.meta.bonusRules
-      : cardIssuanceExistingCard.meta.bonusRule
-        ? [cardIssuanceExistingCard.meta.bonusRule]
-        : [];
-  setCardIssuanceBonusRules(
-    rules.map((rule) =>
-      makeCardIssuanceBonusRuleRow(
-        rule.paymentAmount ?? CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT,
-        rule.bonusValue ?? CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT,
-        rule.bonusProportional === true
-      )
-    )
-  );
-  const first = rules[0];
-  setCardIssuanceBonusRulePaymentAmount(String(first?.paymentAmount ?? CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
-  setCardIssuanceBonusRuleBonusValue(String(first?.bonusValue ?? CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT));
-  setCardIssuanceBonusRuleBonusProportional(first?.bonusProportional === true);
-  setCardIssuanceEditingBonusRuleId(null);
+  const shareRecord = cardIssuanceExistingCard.meta as Record<string, unknown>;
+  const promo =
+    shareRecord.topupPromotion != null && typeof shareRecord.topupPromotion === 'object'
+      ? topupPromotionDraftFromMetadata(shareRecord.topupPromotion as ShareTokenMetadataTopupPromotion)
+      : topupPromotionDraftFromMetadata(
+          parseTopupPromotionFromMetadata({
+            bonusRules: cardIssuanceExistingCard.meta.bonusRules,
+            bonusRule: cardIssuanceExistingCard.meta.bonusRule,
+          })
+        );
+  setCardIssuanceTopupPromotion(promo);
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
   cardIssuanceExistingCard?.meta?.bonusRule,
+  cardIssuanceExistingCard?.meta,
 ]);
 
 useEffect(() => {
@@ -13580,141 +13572,50 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceTiers,
  ]);
 
-const cardIssuanceBonusRulePaymentAmountN = useMemo(
-  () => parseCardIssuanceBonusRuleAmount(cardIssuanceBonusRulePaymentAmount),
-  [cardIssuanceBonusRulePaymentAmount]
+const cardIssuanceTopupPromotionPayload = useMemo(
+  () => topupPromotionDraftToPayload(cardIssuanceTopupPromotion),
+  [cardIssuanceTopupPromotion]
 );
 
-const cardIssuanceBonusRuleBonusValueN = useMemo(
-  () => parseCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleBonusValue),
-  [cardIssuanceBonusRuleBonusValue]
+const cardIssuanceTopupPromotionLegacyBonus = useMemo(() => {
+  if (!cardIssuanceTopupPromotionPayload) return undefined;
+  return topupPromotionToLegacyBonusRule(cardIssuanceTopupPromotionPayload) ?? undefined;
+}, [cardIssuanceTopupPromotionPayload]);
+
+const cardIssuanceTopupPromotionEditorValidationError = useMemo(
+  () => (cardIssuanceTopupPromotion.enabled ? validateTopupPromotionDraft(cardIssuanceTopupPromotion) : ''),
+  [cardIssuanceTopupPromotion]
 );
 
-const cardIssuanceBonusRulesPayload = useMemo(
-  () =>
-    cardIssuanceBonusRules
-      .map((row) => cardIssuanceBonusRuleRowToPayload(row))
-      .filter(
-        (row): row is { paymentAmount: number; bonusValue: number; bonusProportional: boolean } => Boolean(row)
-      ),
-  [cardIssuanceBonusRules]
-);
+const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
+  const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT;
+}, [cardIssuanceTopupPromotion.minimumTopupAmount]);
 
-const cardIssuanceBonusRuleEditorPayload = useMemo(() => {
-  if (cardIssuanceBonusRulePaymentAmountN == null || cardIssuanceBonusRuleBonusValueN == null) return undefined;
-  return {
-    paymentAmount: cardIssuanceBonusRulePaymentAmountN,
-    bonusValue: cardIssuanceBonusRuleBonusValueN,
-  };
-}, [cardIssuanceBonusRuleBonusValueN, cardIssuanceBonusRulePaymentAmountN]);
-
-const cardIssuanceBonusRuleEditorPreviewPay =
-  cardIssuanceBonusRulePaymentAmountN ?? CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT;
-const cardIssuanceBonusRuleEditorPreviewBonus =
-  cardIssuanceBonusRuleBonusValueN ?? CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT;
-const cardIssuanceBonusRuleEditorPreviewReceive = Number(
-  (cardIssuanceBonusRuleEditorPreviewPay + cardIssuanceBonusRuleEditorPreviewBonus).toFixed(2)
-);
-
-const cardIssuanceBonusRuleEditorExampleBonus = useMemo(() => {
-  if (
-    !cardIssuanceBonusRuleBonusProportional ||
-    cardIssuanceBonusRulePaymentAmountN == null ||
-    cardIssuanceBonusRuleBonusValueN == null
-  ) {
-    return null;
+const cardIssuanceTopupPromotionEditorPreviewBonus = useMemo(() => {
+  const raw = cardIssuanceTopupPromotion.rewardValue.replace(/,/g, '').trim();
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n) || n <= 0) return CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT;
+  if (cardIssuanceTopupPromotion.rewardType === 'percent') {
+    return Number(((cardIssuanceTopupPromotionEditorPreviewPay * n) / 100).toFixed(2));
   }
-  if (cardIssuanceBonusRulePaymentAmountN <= 0) return null;
-  return Number(
-    (
-      (CARD_ISSUANCE_BONUS_RULE_EXAMPLE_TOPUP / cardIssuanceBonusRulePaymentAmountN) *
-      cardIssuanceBonusRuleBonusValueN
-    ).toFixed(2)
-  );
+  return n;
 }, [
-  cardIssuanceBonusRuleBonusProportional,
-  cardIssuanceBonusRulePaymentAmountN,
-  cardIssuanceBonusRuleBonusValueN,
+  cardIssuanceTopupPromotion.rewardType,
+  cardIssuanceTopupPromotion.rewardValue,
+  cardIssuanceTopupPromotionEditorPreviewPay,
 ]);
 
-const cardIssuanceBonusRuleEditorValidationError = useMemo(() => {
-  const rawPay = cardIssuanceBonusRulePaymentAmount.replace(/,/g, '').trim();
-  const rawBonus = cardIssuanceBonusRuleBonusValue.replace(/,/g, '').trim();
-  if (rawPay !== '') {
-    const payN = Number.parseFloat(rawPay);
-    const payCents = Number.isFinite(payN) ? Math.round(payN * 100) / 100 : NaN;
-    if (!Number.isFinite(payN) || payN <= 0 || payCents <= 0) {
-      return 'Payment Amount must be greater than zero.';
-    }
-  }
-  if (rawBonus !== '') {
-    const bonusN = Number.parseFloat(rawBonus);
-    const bonusCents = Number.isFinite(bonusN) ? Math.round(bonusN * 100) / 100 : NaN;
-    if (!Number.isFinite(bonusN) || bonusN <= 0 || bonusCents <= 0) {
-      return 'Bonus Value must be greater than zero.';
-    }
-  }
-
-  if (!cardIssuanceBonusRuleEditorPayload) return '';
-  const otherRules = cardIssuanceBonusRules
-    .filter((row) => row.id !== cardIssuanceEditingBonusRuleId)
-    .map((row) => cardIssuanceBonusRuleRowToPayload(row))
-    .filter(
-      (row): row is { paymentAmount: number; bonusValue: number; bonusProportional: boolean } => row != null
-    );
-
-  if (otherRules.some((row) => row.paymentAmount === cardIssuanceBonusRuleEditorPayload.paymentAmount)) {
-    return 'Another rule already uses this Payment Amount.';
-  }
-
-  if (
-    !cardIssuanceBonusRuleBonusProportional &&
-    otherRules.some((row) => !row.bonusProportional && row.bonusValue === cardIssuanceBonusRuleEditorPayload.bonusValue)
-  ) {
-    return 'Another rule already uses this Bonus Value.';
-  }
-
-  const editingFirstRule = cardIssuanceEditingBonusRuleId != null && cardIssuanceBonusRules[0]?.id === cardIssuanceEditingBonusRuleId;
-  const baselineRate = editingFirstRule
-    ? getCardIssuanceBonusRuleRate(cardIssuanceBonusRuleEditorPayload)
-    : (() => {
-        const firstRule = cardIssuanceBonusRules[0];
-        const firstPayload = firstRule ? cardIssuanceBonusRuleRowToPayload(firstRule) : null;
-        return firstPayload ? getCardIssuanceBonusRuleRate(firstPayload) : null;
-      })();
-
-  if (baselineRate == null) return '';
-
-  if (editingFirstRule) {
-    if (otherRules.some((row) => getCardIssuanceBonusRuleRate(row) + 1e-9 < baselineRate)) {
-      return 'The first rule sets the minimum bonus rate. Later rules cannot be lower than it.';
-    }
-    return '';
-  }
-
-  if (getCardIssuanceBonusRuleRate(cardIssuanceBonusRuleEditorPayload) + 1e-9 < baselineRate) {
-    return 'This rule bonus rate cannot be lower than the first rule.';
-  }
-
-  return '';
-}, [
-  cardIssuanceBonusRuleBonusProportional,
-  cardIssuanceBonusRuleBonusValue,
-  cardIssuanceBonusRuleEditorPayload,
-  cardIssuanceBonusRulePaymentAmount,
-  cardIssuanceBonusRules,
-  cardIssuanceEditingBonusRuleId,
-]);
-
-const cardIssuancePrimaryBonusRule = cardIssuanceBonusRulesPayload[0];
-
-const cardIssuanceRechargeBonusPreviewPay =
-  cardIssuancePrimaryBonusRule?.paymentAmount ?? CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT;
-const cardIssuanceRechargeBonusPreviewBonus =
-  cardIssuancePrimaryBonusRule?.bonusValue ?? CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT;
-const cardIssuanceRechargeBonusPreviewReceive = Number(
-  (cardIssuanceRechargeBonusPreviewPay + cardIssuanceRechargeBonusPreviewBonus).toFixed(2)
+const cardIssuanceTopupPromotionEditorPreviewReceive = Number(
+  (cardIssuanceTopupPromotionEditorPreviewPay + cardIssuanceTopupPromotionEditorPreviewBonus).toFixed(2)
 );
+
+const cardIssuancePrimaryBonusRule = cardIssuanceTopupPromotionLegacyBonus;
+
+const cardIssuanceRechargeBonusPreviewPay = cardIssuanceTopupPromotionEditorPreviewPay;
+const cardIssuanceRechargeBonusPreviewBonus = cardIssuanceTopupPromotionEditorPreviewBonus;
+const cardIssuanceRechargeBonusPreviewReceive = cardIssuanceTopupPromotionEditorPreviewReceive;
 
 /** Same fallback as SilentPassUI `Market.tsx` Discover hero when `merchantImage` is absent. */
 const MERCHANT_PANEL_DISCOVER_HERO_FALLBACK =
@@ -13849,20 +13750,20 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
     if (name) return name;
     if (minDisplay) return minDisplay;
   }
-  if (cardIssuancePrimaryBonusRule) {
-    return formatBonusRuleDisplayString(cardIssuancePrimaryBonusRule, cardIssuanceDisplayMoneyPrefix);
+  if (cardIssuanceTopupPromotionPayload) {
+    return formatTopupPromotionDisplay(cardIssuanceTopupPromotionPayload, cardIssuanceDisplayMoneyPrefix);
   }
   return tu('member_benefits');
-}, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuancePrimaryBonusRule]);
+}, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuanceTopupPromotionPayload]);
 
 useEffect(() => {
-  if (!cardIssuanceBonusRuleEditorOpen && !cardIssuanceTierEditorOpen) return;
+  if (!cardIssuanceTopupPromotionEditorOpen && !cardIssuanceTierEditorOpen) return;
   const prevOverflow = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
   return () => {
     document.body.style.overflow = prevOverflow;
   };
-}, [cardIssuanceBonusRuleEditorOpen, cardIssuanceTierEditorOpen]);
+}, [cardIssuanceTopupPromotionEditorOpen, cardIssuanceTierEditorOpen]);
 
 const cardIssuanceTierEditorThresholdInt = useMemo(() => {
   const raw = cardIssuanceTierEditorThreshold.replace(/,/g, '').trim();
@@ -13870,21 +13771,11 @@ const cardIssuanceTierEditorThresholdInt = useMemo(() => {
   return Number.isFinite(n) ? n : null;
 }, [cardIssuanceTierEditorThreshold]);
 
-const cardIssuanceTierEditorDiscountNumber = useMemo(() => {
-  const raw = cardIssuanceTierEditorDiscountPercent.replace(/,/g, '').trim();
-  if (!raw) return null;
-  const n = Number.parseFloat(raw);
-  return Number.isFinite(n) ? n : null;
-}, [cardIssuanceTierEditorDiscountPercent]);
-
 const cardIssuanceTierEditorValidationError = useMemo(() => {
   const name = cardIssuanceTierEditorName.trim();
   if (!name) return 'Tier name is required.';
   if (cardIssuanceTierEditorThresholdInt == null || cardIssuanceTierEditorThresholdInt <= 0) {
     return 'Enter a valid minimum spending amount.';
-  }
-  if (cardIssuanceTierEditorDiscountNumber == null || cardIssuanceTierEditorDiscountNumber < 0) {
-    return 'Enter a valid discount benefit.';
   }
   const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
   const editingBaseTier = cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID;
@@ -13906,7 +13797,6 @@ const cardIssuanceTierEditorValidationError = useMemo(() => {
   cardIssuanceMinTopup,
   cardIssuanceMinTopupCurrencyFloor,
   cardIssuanceMinTopupFloorLabel,
-  cardIssuanceTierEditorDiscountNumber,
   cardIssuanceTierEditorName,
   cardIssuanceTierEditorThresholdInt,
   cardIssuanceTiers,
@@ -13917,7 +13807,6 @@ const openCardIssuanceTierCreate = useCallback(() => {
   setCardIssuanceEditingTierId(null);
   setCardIssuanceTierEditorName(template.name);
   setCardIssuanceTierEditorThreshold(template.threshold);
-  setCardIssuanceTierEditorDiscountPercent(template.discountPercent);
   setCardIssuanceTierEditorBackgroundColor(template.backgroundColor);
   setCardIssuanceTierEditorDescription(template.tierDescription);
   setCardIssuanceTierEditorPreset(template.preset);
@@ -13930,7 +13819,6 @@ const openCardIssuanceTierEdit = useCallback((tierId: string) => {
   setCardIssuanceEditingTierId(tierId);
   setCardIssuanceTierEditorName(row.name);
   setCardIssuanceTierEditorThreshold(row.threshold);
-  setCardIssuanceTierEditorDiscountPercent(row.discountPercent);
   setCardIssuanceTierEditorBackgroundColor(
     tierBackgroundColorForPayload(row.backgroundColor) ??
       (row.backgroundColor.trim().startsWith('#') ? row.backgroundColor.trim().slice(0, 7) : '#6366f1')
@@ -13957,10 +13845,7 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
     name: cardIssuanceTierEditorName.trim(),
     preset: cardIssuanceTierEditorPreset,
     threshold: String(cardIssuanceTierEditorThresholdInt ?? ''),
-    discountPercent:
-      cardIssuanceTierEditorDiscountNumber == null
-        ? '0'
-        : String(Number(cardIssuanceTierEditorDiscountNumber.toFixed(2))),
+    discountPercent: '0',
     tierDescription:
       cardIssuanceEditingTierId === CARD_ISSUANCE_SINGLE_TIER_ID
         ? ''
@@ -13994,7 +13879,6 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
   cardIssuanceTiers,
   cardIssuanceTierEditorBackgroundColor,
   cardIssuanceTierEditorDescription,
-  cardIssuanceTierEditorDiscountNumber,
   cardIssuanceTierEditorName,
   cardIssuanceTierEditorPreset,
   cardIssuanceTierEditorThresholdInt,
@@ -16061,68 +15945,15 @@ const registerCardIssuanceProductionRedeemCodes = useCallback(
   ]
 );
 
-const openCardIssuanceBonusRuleCreate = useCallback(() => {
-  setCardIssuanceBonusRuleEditorServerError('');
-  setCardIssuanceEditingBonusRuleId(null);
-  setCardIssuanceBonusRulePaymentAmount(String(CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
-  setCardIssuanceBonusRuleBonusValue(String(CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT));
-  setCardIssuanceBonusRuleBonusProportional(false);
-  setCardIssuanceBonusRuleEditorOpen(true);
+const openCardIssuanceTopupPromotionEditor = useCallback(() => {
+  setCardIssuanceTopupPromotionEditorServerError('');
+  setCardIssuanceTopupPromotionEditorOpen(true);
 }, []);
 
-const openCardIssuanceBonusRuleEdit = useCallback((ruleId: string) => {
-  const row = cardIssuanceBonusRules.find((item) => item.id === ruleId);
-  if (!row) return;
-  setCardIssuanceBonusRuleEditorServerError('');
-  setCardIssuanceEditingBonusRuleId(ruleId);
-  setCardIssuanceBonusRulePaymentAmount(row.paymentAmount);
-  setCardIssuanceBonusRuleBonusValue(row.bonusValue);
-  setCardIssuanceBonusRuleBonusProportional(row.bonusProportional === true);
-  setCardIssuanceBonusRuleEditorOpen(true);
-}, [cardIssuanceBonusRules]);
-
-const applyCardIssuanceBonusRuleEditor = useCallback(() => {
-  if (!cardIssuanceBonusRuleEditorPayload) return;
-  if (cardIssuanceBonusRuleEditorValidationError) return;
-  if (cardIssuanceEditingBonusRuleId) {
-    setCardIssuanceBonusRules((prev) =>
-      prev.map((row) =>
-        row.id === cardIssuanceEditingBonusRuleId
-          ? {
-              ...row,
-              paymentAmount: String(cardIssuanceBonusRuleEditorPayload.paymentAmount),
-              bonusValue: String(cardIssuanceBonusRuleEditorPayload.bonusValue),
-              bonusProportional: cardIssuanceBonusRuleBonusProportional,
-            }
-          : row
-      )
-    );
-  } else {
-    setCardIssuanceBonusRules((prev) => [
-      ...prev,
-      makeCardIssuanceBonusRuleRow(
-        cardIssuanceBonusRuleEditorPayload.paymentAmount,
-        cardIssuanceBonusRuleEditorPayload.bonusValue,
-        cardIssuanceBonusRuleBonusProportional
-      ),
-    ]);
-  }
-  setCardIssuanceBonusRuleEditorOpen(false);
-  setCardIssuanceEditingBonusRuleId(null);
-}, [
-  cardIssuanceBonusRuleBonusProportional,
-  cardIssuanceBonusRuleEditorPayload,
-  cardIssuanceBonusRuleEditorValidationError,
-  cardIssuanceEditingBonusRuleId,
-]);
-
-const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
-  setCardIssuanceBonusRules((prev) => prev.filter((row) => row.id !== ruleId));
-  if (cardIssuanceEditingBonusRuleId === ruleId) {
-    setCardIssuanceEditingBonusRuleId(null);
-    setCardIssuanceBonusRuleEditorOpen(false);
-  }
-}, [cardIssuanceEditingBonusRuleId]);
+const disableCardIssuanceTopupPromotion = useCallback(() => {
+  setCardIssuanceTopupPromotion({ ...EMPTY_TOPUP_PROMOTION_DRAFT });
+  setCardIssuanceTopupPromotionEditorOpen(false);
+}, []);
 
  const buildCardIssuanceTiersPayloadFromRows = useCallback((rows: CardIssuanceTierRow[]): TierMetadata[] | undefined => {
    if (rows.length === 0) return undefined;
@@ -16134,10 +15965,8 @@ const removeCardIssuanceBonusRule = useCallback((ruleId: string) => {
        const minFloat = parseFloat(raw);
        const minUnits =
          Number.isFinite(minInt) && Number.isFinite(minFloat) && minFloat === minInt ? minInt : idx + 1;
-       const discount = t.discountPercent.trim();
        const customDesc = t.tierDescription.trim();
-       const discountLine = discount ? `${discount}% discount` : undefined;
-       const description = customDesc || discountLine || undefined;
+       const description = customDesc || undefined;
        const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
        return {
          minUsdc6: Math.round(minUnits * 1e6),
@@ -16769,7 +16598,7 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
  const handlePublishCardIssuance = useCallback(
    async (
      opts?: {
-       bonusRulesOverride?: CardIssuanceBonusRuleRow[];
+       topupPromotionOverride?: TopupPromotionDraft;
       couponsOverride?: CardIssuanceCouponRow[];
       productionsOverride?: CardIssuanceProductionRow[];
       itemCategoryOverride?: ProductionServiceCategoryOption[];
@@ -16960,12 +16789,13 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
      setCardIssuanceCreateLoading(true);
    }
    try {
-     const bonusRowsForPublish = opts?.bonusRulesOverride ?? cardIssuanceBonusRules;
-     const bonusPayloadForPublish = bonusRowsForPublish
-       .map((row) => cardIssuanceBonusRuleRowToPayload(row))
-       .filter(
-         (row): row is { paymentAmount: number; bonusValue: number; bonusProportional: boolean } => Boolean(row)
-       );
+     const promotionDraftForPublish = opts?.topupPromotionOverride ?? cardIssuanceTopupPromotion;
+     const topupPromotionPayloadForPublish = topupPromotionDraftToPayload(promotionDraftForPublish);
+     const bonusPayloadForPublish = topupPromotionPayloadForPublish
+       ? (topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)
+           ? [topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)!]
+           : [])
+       : [];
     const couponsRowsForPublish = opts?.couponsOverride ?? cardIssuanceCoupons;
     const couponsPayloadForPublish = buildCardIssuanceCouponMetadataPayload(couponsRowsForPublish);
     const productionsRowsForPublish = opts?.productionsOverride ?? cardIssuanceProductions;
@@ -17006,8 +16836,9 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
              displayName: cardIssuanceStoreDisplayName.trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
            }
          : {}),
-       ...(bonusPayloadForPublish.length > 0
+       ...(topupPromotionPayloadForPublish
          ? {
+             topupPromotion: topupPromotionPayloadForPublish,
              bonusRule: bonusPayloadForPublish[0],
              bonusRules: bonusPayloadForPublish,
            }
@@ -17218,11 +17049,10 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
    cardIssuanceProgramName,
    cardIssuanceCurrencySymbol,
    cardIssuanceStoreDisplayName,
-   cardIssuanceBonusRules,
+  cardIssuanceTopupPromotion,
   cardIssuanceCoupons,
   cardIssuanceProductions,
   cardIssuanceServiceCategories,
-   cardIssuanceBonusRulesPayload,
    cardIssuancePointSystemEnabled,
    cardIssuancePointRatioInput,
    cardIssuanceTiers,
@@ -17256,6 +17086,60 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
 useEffect(() => {
   handlePublishCardIssuanceRef.current = handlePublishCardIssuance;
 }, [handlePublishCardIssuance]);
+
+const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
+  if (cardIssuanceTopupPromotionEditorValidationError) return;
+  const nextPromotion = { ...cardIssuanceTopupPromotion, enabled: true };
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceTopupPromotion(nextPromotion);
+    setCardIssuanceTopupPromotionEditorOpen(false);
+    return;
+  }
+  setCardIssuanceTopupPromotionEditorServerError('');
+  setCardIssuanceCreateError('');
+  setCardIssuanceTopupPromotionEditorPublishing(true);
+  try {
+    const ok = await handlePublishCardIssuance({
+      topupPromotionOverride: nextPromotion,
+      loadingScope: 'bonusEditor',
+    });
+    if (ok) {
+      setCardIssuanceTopupPromotion(nextPromotion);
+      setCardIssuanceTopupPromotionEditorOpen(false);
+    } else {
+      setCardIssuanceTopupPromotionEditorServerError(
+        'Could not save top-up promotion. Review the error below and try again.'
+      );
+    }
+  } catch {
+    setCardIssuanceTopupPromotionEditorServerError('Could not save top-up promotion. Please try again.');
+  } finally {
+    setCardIssuanceTopupPromotionEditorPublishing(false);
+  }
+}, [
+  cardIssuanceTopupPromotion,
+  cardIssuanceTopupPromotionEditorValidationError,
+  cardIssuanceExistingCard?.cardAddress,
+  handlePublishCardIssuance,
+]);
+
+const clearCardIssuanceTopupPromotion = useCallback(async () => {
+  const cleared = { ...EMPTY_TOPUP_PROMOTION_DRAFT };
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceTopupPromotion(cleared);
+    return;
+  }
+  setCardIssuanceTopupPromotionEditorPublishing(true);
+  try {
+    const ok = await handlePublishCardIssuance({
+      topupPromotionOverride: cleared,
+      loadingScope: 'bonusEditor',
+    });
+    if (ok) setCardIssuanceTopupPromotion(cleared);
+  } finally {
+    setCardIssuanceTopupPromotionEditorPublishing(false);
+  }
+}, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance]);
 
  const handleSaveCardIssuancePointSystem = useCallback(async () => {
    const cardAddress = cardIssuanceExistingCard?.cardAddress;
@@ -17446,64 +17330,6 @@ useEffect(() => {
    cardIssuanceMaxTopup,
  ]);
 
- const submitCardIssuanceBonusRuleEditor = useCallback(async () => {
-   if (!cardIssuanceBonusRuleEditorPayload || cardIssuanceBonusRuleEditorValidationError) return;
-   const nextBonusRules = cardIssuanceEditingBonusRuleId
-     ? cardIssuanceBonusRules.map((row) =>
-         row.id === cardIssuanceEditingBonusRuleId
-           ? {
-               ...row,
-               paymentAmount: String(cardIssuanceBonusRuleEditorPayload.paymentAmount),
-               bonusValue: String(cardIssuanceBonusRuleEditorPayload.bonusValue),
-               bonusProportional: cardIssuanceBonusRuleBonusProportional,
-             }
-           : row
-       )
-     : [
-         ...cardIssuanceBonusRules,
-         makeCardIssuanceBonusRuleRow(
-           cardIssuanceBonusRuleEditorPayload.paymentAmount,
-           cardIssuanceBonusRuleEditorPayload.bonusValue,
-           cardIssuanceBonusRuleBonusProportional
-         ),
-       ];
-   if (!cardIssuanceExistingCard?.cardAddress) {
-     applyCardIssuanceBonusRuleEditor();
-     return;
-   }
-   setCardIssuanceBonusRuleEditorServerError('');
-   setCardIssuanceCreateError('');
-   setCardIssuanceBonusRuleEditorPublishing(true);
-   try {
-     const ok = await handlePublishCardIssuance({
-       bonusRulesOverride: nextBonusRules,
-       loadingScope: 'bonusEditor',
-     });
-     if (ok) {
-       setCardIssuanceBonusRules(nextBonusRules);
-       setCardIssuanceBonusRuleEditorOpen(false);
-       setCardIssuanceEditingBonusRuleId(null);
-     } else {
-       setCardIssuanceBonusRuleEditorServerError(
-         'Could not save bonus rules. Review the error below and try again.'
-       );
-     }
-   } catch {
-     setCardIssuanceBonusRuleEditorServerError('Could not save bonus rules. Please try again.');
-   } finally {
-     setCardIssuanceBonusRuleEditorPublishing(false);
-   }
- }, [
-   applyCardIssuanceBonusRuleEditor,
-   cardIssuanceBonusRuleBonusProportional,
-   cardIssuanceBonusRuleEditorPayload,
-   cardIssuanceBonusRuleEditorValidationError,
-   cardIssuanceBonusRules,
-   cardIssuanceEditingBonusRuleId,
-   cardIssuanceExistingCard?.cardAddress,
-   handlePublishCardIssuance,
- ]);
-
  useEffect(() => {
    const shouldFetchIssuanceOnChain = cardIssuanceProgramsOrBusinessActive;
    if (!shouldFetchIssuanceOnChain) {
@@ -17649,22 +17475,37 @@ useEffect(() => {
      if (typeof draft.storeDisplayName === 'string') {
        setCardIssuanceStoreDisplayName(draft.storeDisplayName.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX));
      }
-     if (draft.bonusRules?.length) {
-       setCardIssuanceBonusRules(
-         draft.bonusRules.map((r) => ({
-           id: r.id,
-           paymentAmount: r.paymentAmount,
-           bonusValue: r.bonusValue,
-           bonusProportional: r.bonusProportional === true,
-         }))
-       );
+     if (draft.topupPromotion && typeof draft.topupPromotion === 'object') {
+       const tp = draft.topupPromotion as Record<string, unknown>;
+       setCardIssuanceTopupPromotion({
+         enabled: tp.enabled !== false,
+         validFrom: typeof tp.validFrom === 'string' ? tp.validFrom : '',
+         validTo: typeof tp.validTo === 'string' ? tp.validTo : '',
+         minimumTopupAmount:
+           typeof tp.minimumTopupAmount === 'string' ? tp.minimumTopupAmount : String(tp.minimumTopupAmount ?? ''),
+         rewardType: tp.rewardType === 'fixed' ? 'fixed' : 'percent',
+         rewardValue: typeof tp.rewardValue === 'string' ? tp.rewardValue : String(tp.rewardValue ?? ''),
+       });
+     } else if (draft.bonusRules?.length) {
+       const first = draft.bonusRules[0];
+       setCardIssuanceTopupPromotion({
+         enabled: true,
+         validFrom: '',
+         validTo: '',
+         minimumTopupAmount: first.paymentAmount,
+         rewardType: first.bonusProportional ? 'percent' : 'fixed',
+         rewardValue: first.bonusValue,
+       });
+     } else if (typeof draft.bonusRulePaymentAmount === 'string' && draft.bonusRulePaymentAmount.trim()) {
+       setCardIssuanceTopupPromotion({
+         enabled: true,
+         validFrom: '',
+         validTo: '',
+         minimumTopupAmount: draft.bonusRulePaymentAmount,
+         rewardType: 'fixed',
+         rewardValue: typeof draft.bonusRuleBonusValue === 'string' ? draft.bonusRuleBonusValue : '',
+       });
      }
-     if (typeof draft.bonusRulePaymentAmount === 'string' && draft.bonusRulePaymentAmount.trim()) {
-       setCardIssuanceBonusRulePaymentAmount(draft.bonusRulePaymentAmount);
-     }
-     if (typeof draft.bonusRuleBonusValue === 'string' && draft.bonusRuleBonusValue.trim()) {
-       setCardIssuanceBonusRuleBonusValue(draft.bonusRuleBonusValue);
-    }
     const draftMinTopupRaw =
       typeof draft.minTopup === 'string' && draft.minTopup.trim()
         ? draft.minTopup.trim()
@@ -17786,14 +17627,16 @@ useEffect(() => {
      programName: cardIssuanceProgramName,
      currencySymbol: cardIssuanceCurrencySymbol,
      storeDisplayName: cardIssuanceStoreDisplayName,
-     bonusRules: cardIssuanceBonusRules.map((r) => ({
-       id: r.id,
-       paymentAmount: r.paymentAmount,
-       bonusValue: r.bonusValue,
-       ...(r.bonusProportional ? { bonusProportional: true } : {}),
-     })),
-     bonusRulePaymentAmount: cardIssuanceBonusRulePaymentAmount,
-     bonusRuleBonusValue: cardIssuanceBonusRuleBonusValue,
+     topupPromotion: cardIssuanceTopupPromotion.enabled
+       ? {
+           enabled: true,
+           validFrom: cardIssuanceTopupPromotion.validFrom.trim() || undefined,
+           validTo: cardIssuanceTopupPromotion.validTo.trim() || undefined,
+           minimumTopupAmount: cardIssuanceTopupPromotion.minimumTopupAmount,
+           rewardType: cardIssuanceTopupPromotion.rewardType,
+           rewardValue: cardIssuanceTopupPromotion.rewardValue,
+         }
+       : undefined,
      minTopup: cardIssuanceMinTopup,
      maxTopup: cardIssuanceMaxTopup,
      tierRule: cardIssuanceTierRule,
@@ -17855,9 +17698,7 @@ useEffect(() => {
    cardIssuanceProgramName,
    cardIssuanceCurrencySymbol,
    cardIssuanceStoreDisplayName,
-   cardIssuanceBonusRules,
-   cardIssuanceBonusRulePaymentAmount,
-   cardIssuanceBonusRuleBonusValue,
+   cardIssuanceTopupPromotion,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
    cardIssuanceTierRule,
@@ -30967,13 +30808,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      {tu('programs_overview_starting_from_label')} {cardIssuanceDisplayMoneyPrefix}{' '}
                                      {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
                                    </p>
-                                   {cardIssuancePrimaryBonusRule ? (
+                                   {cardIssuanceTopupPromotionPayload ? (
                                      <p
                                        className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
                                        style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                                      >
-                                       {formatBonusRuleDisplayString(
-                                         cardIssuancePrimaryBonusRule,
+                                       {formatTopupPromotionDisplay(
+                                         cardIssuanceTopupPromotionPayload,
                                          cardIssuanceDisplayMoneyPrefix
                                        )}
                                      </p>
@@ -31074,14 +30915,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             const tierLabel = (row.name.trim() || (isBaseTier ? 'Base' : 'Tier')).toUpperCase();
                              const thresholdRaw = row.threshold.trim() || '0';
                              const thresholdInt = Number.parseInt(thresholdRaw.replace(/\D/g, ''), 10);
-                            const tierAmountLabel = Number.isFinite(thresholdInt)
+                             const tierAmountLabel = Number.isFinite(thresholdInt)
                                  ? `C$${thresholdInt.toLocaleString('en-CA')}`
                                  : `C$${thresholdRaw}`;
-                             const discountN = Number.parseFloat(row.discountPercent.trim() || '0');
-                             const benefitLabel =
-                               Number.isFinite(discountN) && discountN > 0
-                                 ? `${Math.round(discountN)}% Benefit`
-                                 : '0% Benefit';
                              return (
                                <div
                                  key={row.id}
@@ -31093,7 +30929,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  <p className="mt-2 font-manrope text-lg font-bold leading-none text-[#1a1a1a]">
                                    {tierAmountLabel}
                                  </p>
-                                 <p className="mt-2 font-manrope text-[11px] font-bold text-[#0051d1]">{benefitLabel}</p>
+                                 <p className="mt-2 font-manrope text-[11px] font-bold text-[#0051d1]">Tier threshold</p>
                                </div>
                              );
                            })}
@@ -31130,53 +30966,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              aria-label={tu('programs_config_edit_rewards_aria')}
                            >{tu('edit')}</button>
                          </div>
-                         {cardIssuanceBonusRulesPayload.length > 0 ? (
-                           <div className="space-y-2">
-                             {cardIssuanceBonusRulesPayload.map((rule, idx) => {
-                               const total = Number((rule.paymentAmount + rule.bonusValue).toFixed(2));
-                               const sourceRow = cardIssuanceBonusRules[idx];
-                               return (
-                                 <div
-                                   key={sourceRow?.id ?? `mobile-step3-bonus-${idx}`}
-                                   className="rounded-xl border border-[#e8ecf0] bg-[#eef1f3] px-3 py-3"
-                                 >
-                                   <div className="flex items-center justify-between gap-2">
-                                     <div className="min-w-0">
-                                       {rule.bonusProportional ? (
-                                         <>
-                                           <p className="font-manrope text-[10px] font-semibold uppercase tracking-wide text-[#8c8c8c]">
-                                             Start C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                           </p>
-                                           <p className="mt-1 font-manrope text-base font-bold leading-tight text-[#1a1a1a]">
-                                             Get{' '}
-                                             {formatCardIssuanceBonusRuleAmount(
-                                               (rule.bonusValue / rule.paymentAmount) * 100
-                                             )}
-                                             %
-                                           </p>
-                                         </>
-                                       ) : (
-                                         <>
-                                           <p className="font-manrope text-[10px] font-semibold uppercase tracking-wide text-[#8c8c8c]">
-                                             Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                           </p>
-                                           <p className="mt-1 font-manrope text-base font-bold leading-tight text-[#1a1a1a]">
-                                             Get C${formatCardIssuanceBonusRuleAmount(total)}
-                                           </p>
-                                         </>
-                                       )}
-                                     </div>
-                                     <span className="shrink-0 rounded-full bg-[#f797ef]/20 px-2.5 py-1 text-center font-manrope text-[10px] font-bold leading-tight text-[#8d3a8b]">
-                                       {cardIssuanceBonusRuleSidePillText(rule, cardIssuanceDisplayMoneyPrefix)}
-                                     </span>
-                                   </div>
-                                 </div>
-                               );
-                             })}
-                           </div>
+                         {cardIssuanceTopupPromotionPayload ? (
+                           <p className="font-manrope text-sm leading-relaxed text-[#595c5e]">
+                             {formatTopupPromotionDisplay(
+                               cardIssuanceTopupPromotionPayload,
+                               cardIssuanceDisplayMoneyPrefix
+                             )}
+                           </p>
                          ) : (
                            <p className="font-manrope text-sm leading-relaxed text-[#595c5e]">
-                             No recharge bonuses configured. Tap Edit to add rules in Step 2.
+                             No top-up promotion configured. Tap Edit to configure in Step 2.
                            </p>
                          )}
                        </div>
@@ -31348,13 +31147,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
                                    {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
                                  </p>
-                                 {cardIssuancePrimaryBonusRule ? (
+                                 {cardIssuanceTopupPromotionPayload ? (
                                    <p
                                      className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
                                      style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                                    >
-                                     {formatBonusRuleDisplayString(
-                                       cardIssuancePrimaryBonusRule,
+                                     {formatTopupPromotionDisplay(
+                                       cardIssuanceTopupPromotionPayload,
                                        cardIssuanceDisplayMoneyPrefix
                                      )}
                                    </p>
@@ -31524,7 +31323,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           style={{ clipPath: 'inset(0 round 2.25rem)' }}
                         >
                           <div className="mb-3 rounded-[1.75rem] bg-white px-4 py-5 shadow-[0_14px_34px_rgba(0,0,0,0.05)] sm:px-5 sm:py-6">
-                            {cardIssuancePrimaryBonusRule?.bonusProportional ? (
+                            {cardIssuanceTopupPromotion.enabled && cardIssuanceTopupPromotion.rewardType === 'percent' ? (
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
                                   <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#0051d1]">
@@ -31543,15 +31342,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   </span>
                                   <h4 className="mt-2 font-manrope text-[1.65rem] font-bold leading-none tracking-tight text-[#0051d1] sm:text-[1.75rem]">
                                     {formatCardIssuanceBonusRuleAmount(
-                                      (cardIssuancePrimaryBonusRule.bonusValue /
-                                        cardIssuancePrimaryBonusRule.paymentAmount) *
-                                        100
+                                      Number.parseFloat(cardIssuanceTopupPromotion.rewardValue.replace(/,/g, '')) || 0
                                     )}
                                     %
                                   </h4>
                                 </div>
                               </div>
-                            ) : (
+                            ) : cardIssuanceTopupPromotion.enabled ? (
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
                                   <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-[#0051d1]">
@@ -31573,91 +31370,38 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   </h4>
                                 </div>
                               </div>
+                            ) : (
+                              <p className="text-center text-sm font-medium text-[#747779]">
+                                No top-up promotion configured
+                              </p>
                             )}
                           </div>
                           <div className="mt-4 space-y-2">
                             <p className="px-2 text-center text-[9px] font-black uppercase tracking-[0.22em] text-[#595c5e]">
                               Live Preview
                             </p>
-                            {cardIssuanceBonusRulesPayload.length > 0 ? (
-                              <div className="space-y-3">
-                                {cardIssuanceBonusRulesPayload.map((rule, idx) => {
-                                  const total = Number((rule.paymentAmount + rule.bonusValue).toFixed(2));
-                                  const sourceRow = cardIssuanceBonusRules[idx];
-                                  return (
-                                    <div key={sourceRow?.id ?? `bonus-rule-${idx}`} className="group relative">
-                                      <button
-                                        type="button"
-                                        onClick={() => sourceRow?.id && openCardIssuanceBonusRuleEdit(sourceRow.id)}
-                                        className={`relative flex w-full items-center gap-3 overflow-hidden rounded-[1.5rem] border border-[#7a9dff]/20 bg-white px-4 py-3.5 text-left shadow-[0_12px_28px_rgba(21,98,240,0.06)] transition-all hover:border-[#7a9dff]/35 hover:shadow-[0_16px_34px_rgba(21,98,240,0.1)] ${bizFocusRingClass}`}
-                                      >
-                                        <div
-                                          className="pointer-events-none absolute inset-0 opacity-70"
-                                          style={{
-                                            background:
-                                              'linear-gradient(90deg, rgba(122,157,255,0.16) 0%, rgba(255,255,255,0) 30%, rgba(247,151,239,0.12) 100%)',
-                                          }}
-                                          aria-hidden
-                                        />
-                                        <div className="relative z-[1] flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0051d1] shadow-[0_10px_24px_rgba(0,81,209,0.2)]">
-                                          <CreditCard className="h-6 w-6 text-white" strokeWidth={2} aria-hidden />
-                                        </div>
-                                        <div className="relative z-[1] min-w-0 flex-1 text-left">
-                                          {rule.bonusProportional ? (
-                                            <>
-                                              <p className="text-[9px] font-black uppercase tracking-[0.08em] text-[#0051d1]">
-                                                Start C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                              </p>
-                                              <h4 className="font-manrope text-[1.5rem] font-extrabold leading-none tracking-tight text-[#2c2f31] sm:text-[1.6rem]">
-                                                Get{' '}
-                                                {formatCardIssuanceBonusRuleAmount(
-                                                  (rule.bonusValue / rule.paymentAmount) * 100
-                                                )}
-                                                %
-                                              </h4>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <p className="text-[9px] font-black uppercase tracking-[0.08em] text-[#0051d1]">
-                                                Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                              </p>
-                                              <h4 className="font-manrope text-[1.5rem] font-extrabold leading-none tracking-tight text-[#2c2f31] sm:text-[1.6rem]">
-                                                Get C${formatCardIssuanceBonusRuleAmount(total)}
-                                              </h4>
-                                            </>
-                                          )}
-                                        </div>
-                                        <span className="relative z-[1] shrink-0 text-right font-manrope text-xs font-bold leading-none text-[#8d3a8b]">
-                                          {cardIssuanceBonusRuleSidePillText(rule, cardIssuanceDisplayMoneyPrefix)}
-                                        </span>
-                                      </button>
-                                      {sourceRow?.id ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => removeCardIssuanceBonusRule(sourceRow.id)}
-                                          className={`absolute right-3 top-3 z-[2] flex h-8 w-8 translate-x-4 -translate-y-4 items-center justify-center rounded-full border border-white/60 bg-white/30 text-[#595c5e] shadow-sm transition-colors hover:bg-white hover:text-[#b31b25] ${bizFocusRingClass}`}
-                                          aria-label={tu('programs_config_remove_bonus_aria')}
-                                        >
-                                          <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })}
+                            {cardIssuanceTopupPromotionPayload ? (
+                              <div className="rounded-[1.5rem] border border-[#7a9dff]/20 bg-white px-4 py-4 text-center shadow-[0_12px_28px_rgba(21,98,240,0.06)]">
+                                <p className="text-sm font-semibold text-[#2c2f31]">
+                                  {formatTopupPromotionDisplay(
+                                    cardIssuanceTopupPromotionPayload,
+                                    cardIssuanceDisplayMoneyPrefix
+                                  )}
+                                </p>
                               </div>
                             ) : (
                               <div className="rounded-[1.5rem] border border-dashed border-[#d7dce1] bg-white/40 px-4 py-4 text-center text-xs font-medium text-[#747779]">
-                                No bonus rules added.
+                                No top-up promotion configured.
                               </div>
                             )}
                           </div>
                           <button
                             type="button"
-                            onClick={openCardIssuanceBonusRuleCreate}
+                            onClick={openCardIssuanceTopupPromotionEditor}
                             className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-[#d7dce1] bg-white/35 py-4 text-sm font-semibold text-[#595c5e] transition-colors hover:bg-white/60 ${bizFocusRingClass}`}
                           >
-                            <Plus className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-                            Add Bonus Rule
+                            <Pencil className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+                            {cardIssuanceTopupPromotionPayload ? 'Edit Top-up Promotion' : 'Configure Top-up Promotion'}
                           </button>
                          </div>
                        </section>
@@ -31933,7 +31677,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             const tierName = row.name.trim() || (isBaseTier ? 'Base' : 'Tier');
                             const requirementAmount = row.threshold.trim() || '0';
                             const visual = getCardIssuanceTierCardVisual(row.preset);
-                            const discountValue = row.discountPercent.trim() || '0';
                             const tierGradient = cardIssuanceTierRowGradientCss(row.backgroundColor);
                             const tierTheme = cardIssuanceTierGradientTheme(row.backgroundColor);
                             const editHoverBg = tierTheme.isDarkStart ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.08)';
@@ -32048,17 +31791,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                             Min. C$ {requirementAmount}
                                           </p>
                                         </div>
-                                        <div className="text-right">
-                                          <p
-                                            className="mb-0.5 text-[9px] font-bold uppercase tracking-wider"
-                                            style={{ color: tierTheme.tertiary }}
-                                          >
-                                            Benefit
-                                          </p>
-                                          <p className="text-xs font-bold" style={{ color: tierTheme.accent }}>
-                                            {discountValue}% Discount
-                                          </p>
-                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -32082,10 +31814,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <table className="w-full min-w-0 table-fixed text-left border-separate border-spacing-0">
                        <colgroup>
                          <col style={{ width: '2.75rem' }} />
-                         <col style={{ width: '35%' }} />
-                         <col style={{ width: '12%' }} />
-                         <col style={{ width: '11%' }} />
-                         <col style={{ width: '26%' }} />
+                         <col style={{ width: '38%' }} />
+                         <col style={{ width: '14%' }} />
+                         <col style={{ width: '32%' }} />
                          <col style={{ width: '9%' }} />
                        </colgroup>
                        <thead>
@@ -32102,9 +31833,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </th>
                            <th className="px-1.5 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">
                              Min
-                           </th>
-                           <th className="px-1.5 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                             % OFF
                            </th>
                            <th className="px-1.5 pb-2 text-left text-[10px] font-black uppercase tracking-widest text-[#747779]">{tu('programs_config_tier_color')}</th>
                            <th
@@ -32207,22 +31935,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 className={`w-full max-w-[4rem] box-border bg-white border border-slate-200 rounded-md text-center text-xs sm:text-sm font-semibold text-slate-900 py-1 shadow-sm ${bizFocusRingClass}`}
                                 aria-label={`Threshold dollars for ${row.name || row.id}`}
                               />
-                             </td>
-                             <td className={`min-w-0 ${cellBg} px-2 py-4 align-top group-hover:bg-[#e5e9eb]`}>
-                               <div className="flex min-w-0 items-center justify-start gap-0.5">
-                                 <input
-                                   type="text"
-                                   inputMode="decimal"
-                                   autoComplete="off"
-                                   value={row.discountPercent}
-                                   onChange={(e) => {
-                                     const v = e.target.value;
-                                     setCardIssuanceTiers((tiers) => tiers.map((t) => (t.id === row.id ? { ...t, discountPercent: v } : t)));
-                                   }}
-                                   className={`w-full max-w-[2.75rem] box-border bg-white border border-slate-200 rounded-md text-center text-xs sm:text-sm font-semibold text-slate-900 py-1 shadow-sm ${bizFocusRingClass}`}
-                                 />
-                                 <span className="shrink-0 text-xs font-medium text-[#747779]">%</span>
-                               </div>
                              </td>
                              <td className={`min-w-0 ${cellBg} px-2 py-4 align-top group-hover:bg-[#e5e9eb]`}>
                                <div className="flex min-w-0 items-center gap-1">
@@ -32509,50 +32221,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </p>
                          </div>
 
-                        {cardIssuanceBonusRulesPayload.length > 0 ? (
+                        {cardIssuanceTopupPromotionPayload ? (
                           <div className="mt-6 shrink-0 space-y-3">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">{tu('programs_config_bonus_rules')}</p>
-                            <div className="space-y-3">
-                              {cardIssuanceBonusRulesPayload.map((rule, idx) => {
-                                const total = Number((rule.paymentAmount + rule.bonusValue).toFixed(2));
-                                return (
-                                  <div
-                                    key={`app-bonus-${idx}`}
-                                    className="rounded-2xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-4"
-                                  >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div>
-                                        {rule.bonusProportional ? (
-                                          <>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
-                                              Start C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                            </p>
-                                            <p className="mt-1 text-sm font-bold text-[#2c2f31]">
-                                              Get{' '}
-                                              {formatCardIssuanceBonusRuleAmount(
-                                                (rule.bonusValue / rule.paymentAmount) * 100
-                                              )}
-                                              %
-                                            </p>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">
-                                              Pay C${formatCardIssuanceBonusRuleAmount(rule.paymentAmount)}
-                                            </p>
-                                            <p className="mt-1 text-sm font-bold text-[#2c2f31]">
-                                              Get C${formatCardIssuanceBonusRuleAmount(total)}
-                                            </p>
-                                          </>
-                                        )}
-                                      </div>
-                                      <div className="rounded-full bg-[#f797ef]/20 px-3 py-1 text-[10px] font-bold text-[#8d3a8b]">
-                                        {cardIssuanceBonusRuleSidePillText(rule, cardIssuanceDisplayMoneyPrefix)}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">Top-up Promotion</p>
+                            <div className="rounded-2xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-4">
+                              <p className="text-sm font-bold text-[#2c2f31]">
+                                {formatTopupPromotionDisplay(
+                                  cardIssuanceTopupPromotionPayload,
+                                  cardIssuanceDisplayMoneyPrefix
+                                )}
+                              </p>
                             </div>
                           </div>
                         ) : null}
@@ -32561,7 +32239,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <h6 className="text-[10px] font-black uppercase tracking-widest text-[#747779]">{tu('programs_config_tier_benefits')}</h6>
                            <div className="space-y-2">
                              {cardIssuanceTiers.slice(0, 3).map((t, idx) => {
-                               const disc = parseFloat(t.discountPercent) || 0;
+                               const thresholdInt = cardIssuanceTierThresholdToInt(t.threshold);
+                               const thresholdLabel = Number.isFinite(thresholdInt)
+                                 ? `${cardIssuanceDisplayMoneyPrefix}${thresholdInt.toLocaleString('en-CA')}`
+                                 : '—';
                                const locked = idx === 2 && cardIssuanceTiers.length > 3;
                                return (
                                  <div
@@ -32575,22 +32256,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    }`}
                                  >
                                    <div className="flex min-w-0 items-center gap-3">
-                                     {disc > 0 ? (
-                                       <Percent className="h-5 w-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                                     ) : (
-                                       <Truck className="h-5 w-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                                     )}
+                                     <Award className="h-5 w-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
                                      <p className="truncate text-xs font-bold text-[#2c2f31]">
                                        {t.name.trim() || 'Tier'}
-                                       {disc > 0 ? ` · ${disc}% off` : ''}
                                      </p>
                                    </div>
                                    {locked ? (
                                      <Lock className="h-4 w-4 shrink-0 text-[#747779]" strokeWidth={2} aria-hidden />
-                                   ) : disc > 0 ? (
-                                     <span className="shrink-0 text-xs font-black text-[#1562f0]">{disc}% OFF</span>
                                    ) : (
-                                     <CheckCircle2 className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                                     <span className="shrink-0 text-xs font-black text-[#1562f0]">{thresholdLabel}</span>
                                    )}
                                  </div>
                                );
@@ -32675,13 +32349,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 #100
                               </p>
                             </div>
-                            {cardIssuancePrimaryBonusRule ? (
+                            {cardIssuanceTopupPromotionPayload ? (
                               <p
                                 className="mt-3 text-[9px] font-bold uppercase tracking-[0.16em]"
                                 style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
                               >
-                                {formatBonusRuleDisplayString(
-                                  cardIssuancePrimaryBonusRule,
+                                {formatTopupPromotionDisplay(
+                                  cardIssuanceTopupPromotionPayload,
                                   cardIssuanceDisplayMoneyPrefix
                                 )}
                               </p>
@@ -32881,33 +32555,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 }
                                 className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                               />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <label
-                              className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
-                              htmlFor="card-issuance-tier-discount"
-                            >
-                              Discount Benefit
-                            </label>
-                            <div className="relative">
-                              <input
-                                id="card-issuance-tier-discount"
-                                ref={cardIssuanceTierEditorDiscountWheelRef}
-                                type="number"
-                                inputMode="decimal"
-                                autoComplete="off"
-                                value={cardIssuanceTierEditorDiscountPercent}
-                                onKeyDown={preventNumericInputStepKeys}
-                                onKeyDownCapture={preventNumericInputStepKeys}
-                                onWheel={preventNumericInputWheelStep}
-                                onChange={(e) => setCardIssuanceTierEditorDiscountPercent(normalizeCardIssuanceBonusRuleInput(e.target.value))}
-                                placeholder="25"
-                                className={`w-full rounded-2xl border-none bg-[#eef1f3] px-6 py-4 pr-12 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                              />
-                              <span className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
-                                %
-                              </span>
                             </div>
                           </div>
                         </div>
@@ -33137,13 +32784,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      {tu('programs_overview_starting_from_label')} {cardIssuanceDisplayMoneyPrefix}{' '}
                                      {programsOverviewCardMinTopupDisplay}
                                    </p>
-                                   {cardIssuancePrimaryBonusRule ? (
+                                   {cardIssuanceTopupPromotionPayload ? (
                                      <p
                                        className="mt-0.5 font-manrope text-base font-bold leading-tight sm:text-lg"
                                        style={{ color: programsOverviewPassHeroTheme.tertiary }}
                                      >
-                                       {formatBonusRuleDisplayString(
-                                         cardIssuancePrimaryBonusRule,
+                                       {formatTopupPromotionDisplay(
+                                         cardIssuanceTopupPromotionPayload,
                                          cardIssuanceDisplayMoneyPrefix
                                        )}
                                      </p>
@@ -34382,118 +34029,66 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </span>
                            )}
                          </div>
-                         {cardIssuanceBonusRules.length > 0 ? (
-                           <>
-                             {cardIssuanceBonusRules.map((row, idx) => {
-                               const payload = cardIssuanceBonusRuleRowToPayload(row);
-                               const displayDesc = payload
-                                 ? formatBonusRuleDisplayString(
-                                     payload,
-                                     cardIssuanceDisplayMoneyPrefix
-                                   )
-                                 : 'Incomplete rule — open editor to fix amounts.';
-                               const showIndexSuffix = cardIssuanceBonusRules.length > 1;
-                               return (
-                                 <div
-                                   key={row.id}
-                                   className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4"
-                                 >
-                                   <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
-                                       <CreditCard
-                                         className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
-                                         strokeWidth={2}
-                                         aria-hidden
-                                       />
-                                     </div>
-                                     <div className="min-w-0">
-                                       <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                         {tu('programs_recharge_bonus_label')}{showIndexSuffix ? ` ${idx + 1}` : ''}
-                                       </p>
-                                       <p className="text-[10px] text-[#595c5e]">{displayDesc}</p>
-                                     </div>
-                                   </div>
-                                   <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                                     <button
-                                       type="button"
-                                       onClick={() => openCardIssuanceBonusRuleEdit(row.id)}
-                                       className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                                       aria-label={`Edit recharge bonus${showIndexSuffix ? ` ${idx + 1}` : ''}`}
-                                     >
-                                       <Pencil
-                                         className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                         strokeWidth={2}
-                                         aria-hidden
-                                       />
-                                     </button>
-                                     <button
-                                       type="button"
-                                       onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(row.id)}
-                                       className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] ${bizFocusRingClass}`}
-                                       aria-label={`Remove recharge bonus${showIndexSuffix ? ` ${idx + 1}` : ''}`}
-                                     >
-                                       <Trash2
-                                         className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                         strokeWidth={2}
-                                         aria-hidden
-                                       />
-                                     </button>
-                                     {payload ? (
-                                       <span className="shrink-0 rounded bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-white">
-                                         ACTIVE
-                                       </span>
-                                     ) : (
-                                       <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-amber-900">
-                                         FIX
-                                       </span>
-                                     )}
-                                   </div>
-                                 </div>
-                               );
-                             })}
+                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
+                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
+                               <CreditCard
+                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             </div>
+                             <div className="min-w-0">
+                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">Top-up Promotion</p>
+                               <p className="text-[10px] text-[#595c5e]">
+                                 {cardIssuanceTopupPromotionPayload
+                                   ? formatTopupPromotionDisplay(
+                                       cardIssuanceTopupPromotionPayload,
+                                       cardIssuanceDisplayMoneyPrefix
+                                     )
+                                   : tu('programs_bonus_none_configured')}
+                               </p>
+                             </div>
+                           </div>
+                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                              <button
                                type="button"
-                               onClick={() => openCardIssuanceBonusRuleCreate()}
-                               className={`flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#1562f0]/30 bg-white py-2.5 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/5 sm:rounded-xl ${bizFocusRingClass}`}
+                               onClick={openCardIssuanceTopupPromotionEditor}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                               aria-label="Edit top-up promotion"
                              >
-                               <PlusCircle className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                               Add recharge bonus
+                               <Pencil
+                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
                              </button>
-                           </>
-                         ) : (
-                           <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
-                             <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
-                                 <CreditCard
-                                   className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
-                                   strokeWidth={2}
-                                   aria-hidden
-                                 />
-                               </div>
-                               <div className="min-w-0">
-                                 <p className="font-manrope text-sm font-bold text-[#2c2f31]">{tu('programs_recharge_bonus_label')}</p>
-                                 <p className="text-[10px] text-[#595c5e]">{tu('programs_bonus_none_configured')}</p>
-                               </div>
-                             </div>
-                             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                             {cardIssuanceTopupPromotionPayload ? (
                                <button
                                  type="button"
-                                 onClick={() => openCardIssuanceBonusRuleCreate()}
-                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                                 aria-label={tu('programs_bonus_add_aria')}
+                                 onClick={() => void clearCardIssuanceTopupPromotion()}
+                                 disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:opacity-50 ${bizFocusRingClass}`}
+                                 aria-label="Clear top-up promotion"
                                >
-                                 <Pencil
+                                 <Trash2
                                    className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
                                    strokeWidth={2}
                                    aria-hidden
                                  />
                                </button>
-                               <span className="shrink-0 rounded bg-slate-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-slate-600">
-                                 OFF
-                               </span>
-                             </div>
+                             ) : null}
+                             <span
+                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
+                                 cardIssuanceTopupPromotionPayload
+                                   ? 'bg-[#1562f0] text-white'
+                                   : 'bg-slate-200 text-slate-600'
+                               }`}
+                             >
+                               {cardIssuanceTopupPromotionPayload ? 'ACTIVE' : 'OFF'}
+                             </span>
                            </div>
-                         )}
+                         </div>
                        </div>
                      </div>
                      ) : null}
@@ -34531,9 +34126,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 : currencyLabel.toUpperCase() === 'USD' || currencyLabel.toUpperCase() === 'USDC'
                                   ? '$'
                                   : `${currencyLabel} `;
-                            const discountPct = Number.parseFloat(row.discountPercent.trim() || '0');
-                             const medal = ['🥉', '🥈', '🥇'][Math.min(i, 2)] as string;
-                            const isTop = i === programsOverviewTierRowsSortedAscending.length - 1;
+                            const medal = ['🥉', '🥈', '🥇'][Math.min(i, 2)] as string;
+                             const isTop = i === programsOverviewTierRowsSortedAscending.length - 1;
                              return (
                                <div
                                 key={row.id}
@@ -34570,19 +34164,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    >
                                      <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
                                    </button>
-                                   <p
-                                     className={`font-manrope text-sm font-bold sm:text-base ${
-                                       discountPct > 0
-                                         ? isTop
-                                           ? 'text-[#1562f0]'
-                                           : 'text-[#2c2f31]'
-                                         : 'text-slate-400'
-                                     }`}
-                                   >
-                                     {discountPct > 0
-                                       ? tu('programs_overview_discount_pct', { pct: String(Math.round(discountPct)) })
-                                       : tu('programs_overview_member_pricing')}
-                                   </p>
                                  </div>
                                </div>
                              );
@@ -35277,29 +34858,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             />
                           </div>
                         </div>
-                        <div className="space-y-2">
-                          <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]" htmlFor="programs-overview-tier-discount">
-                            Discount Benefit
-                          </label>
-                          <div className="relative">
-                            <input
-                              id="programs-overview-tier-discount"
-                              type="number"
-                              inputMode="decimal"
-                              autoComplete="off"
-                              value={cardIssuanceTierEditorDiscountPercent}
-                              onKeyDown={preventNumericInputStepKeys}
-                              onKeyDownCapture={preventNumericInputStepKeys}
-                              onWheel={preventNumericInputWheelStep}
-                              onChange={(e) => setCardIssuanceTierEditorDiscountPercent(normalizeCardIssuanceBonusRuleInput(e.target.value))}
-                              placeholder="10"
-                              className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-3.5 pr-11 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                            />
-                            <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
-                              %
-                            </span>
-                          </div>
-                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -35390,19 +34948,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               ) : null}
             </AnimatePresence>
              <AnimatePresence>
-               {cardIssuanceBonusRuleEditorOpen ? (
+               {cardIssuanceTopupPromotionEditorOpen ? (
                  <>
                    <motion.button
                      type="button"
-                     aria-label={tu('programs_config_close_bonus_editor')}
+                     aria-label="Close top-up promotion editor"
                      className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
                      initial={{ opacity: 0 }}
                      animate={{ opacity: 1 }}
                      exit={{ opacity: 0 }}
-                     onClick={() => {
-                       setCardIssuanceBonusRuleEditorOpen(false);
-                       setCardIssuanceEditingBonusRuleId(null);
-                     }}
+                     onClick={() => setCardIssuanceTopupPromotionEditorOpen(false)}
                    />
                    <motion.div
                      className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
@@ -35415,54 +34970,80 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="mb-8 flex items-start justify-between gap-4">
                        <div>
                          <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                           {cardIssuanceEditingBonusRuleId ? 'Edit Strategy' : 'New Strategy'}
+                           Promotion
                          </span>
                          <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
-                           {cardIssuanceEditingBonusRuleId ? 'Edit Bonus Rule' : 'Add Bonus Rule'}
+                           Top-up Promotion
                          </h3>
                          <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                           Define a new reward tier for your customers. Incentivize higher top-ups with custom bonus
-                           values.
+                           Set one global top-up reward for your program. Optional date range and minimum top-up amount apply.
                          </p>
                        </div>
                        <button
                          type="button"
-                         onClick={() => {
-                           setCardIssuanceBonusRuleEditorOpen(false);
-                           setCardIssuanceEditingBonusRuleId(null);
-                         }}
+                         onClick={() => setCardIssuanceTopupPromotionEditorOpen(false)}
                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
                        >
                          <X className="h-5 w-5" strokeWidth={2} aria-hidden />
                        </button>
                      </div>
 
-                     <div className="space-y-8">
-                       <div className="space-y-3">
-                         <label
-                           className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                           htmlFor="card-issuance-bonus-rule-payment"
-                         >
-                           Payment Amount
+                     <div className="space-y-6">
+                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                         <div className="space-y-2">
+                           <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-valid-from">
+                             Valid from (optional)
+                           </label>
+                           <input
+                             id="card-topup-promo-valid-from"
+                             type="date"
+                             value={cardIssuanceTopupPromotion.validFrom}
+                             onChange={(e) =>
+                               setCardIssuanceTopupPromotion((p) => ({ ...p, validFrom: e.target.value, enabled: true }))
+                             }
+                             className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                           />
+                         </div>
+                         <div className="space-y-2">
+                           <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-valid-to">
+                             Valid to (optional)
+                           </label>
+                           <input
+                             id="card-topup-promo-valid-to"
+                             type="date"
+                             value={cardIssuanceTopupPromotion.validTo}
+                             onChange={(e) =>
+                               setCardIssuanceTopupPromotion((p) => ({ ...p, validTo: e.target.value, enabled: true }))
+                             }
+                             className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                           />
+                         </div>
+                       </div>
+
+                       <div className="space-y-2">
+                         <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-minimum">
+                           Minimum top-up amount
                          </label>
                          <div className="relative">
                            <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
-                             <span className="font-manrope text-lg font-extrabold text-[#0051d1]">C$</span>
+                             <span className="font-manrope text-lg font-extrabold text-[#0051d1]">{cardIssuanceDisplayMoneyPrefix}</span>
                            </div>
                            <input
-                             id="card-issuance-bonus-rule-payment"
-                             ref={cardIssuanceBonusRulePaymentWheelRef}
+                             id="card-topup-promo-minimum"
+                             ref={cardIssuanceTopupPromotionMinWheelRef}
                              type="number"
                              inputMode="decimal"
                              autoComplete="off"
-                             placeholder="100.00"
-                             value={cardIssuanceBonusRulePaymentAmount}
+                             placeholder="50.00"
+                             value={cardIssuanceTopupPromotion.minimumTopupAmount}
                              onKeyDown={preventNumericInputStepKeys}
                              onWheel={preventNumericInputWheelStep}
                              onChange={(e) =>
-                               setCardIssuanceBonusRulePaymentAmount(
-                                 normalizeCardIssuanceBonusRuleInput(e.target.value)
-                               )
+                               setCardIssuanceTopupPromotion((p) => ({
+                                 ...p,
+                                 minimumTopupAmount: normalizeCardIssuanceBonusRuleInput(e.target.value),
+                                 enabled: true,
+                               }))
                              }
                              className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                            />
@@ -35470,42 +35051,63 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
 
                        <div className="space-y-3">
-                         <div className="ml-2 flex flex-wrap items-center justify-between gap-3">
-                           <label
-                             className="block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                             htmlFor="card-issuance-bonus-rule-value"
+                         <p className="ml-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">Reward type</p>
+                         <div className="flex gap-2">
+                           <button
+                             type="button"
+                             onClick={() =>
+                               setCardIssuanceTopupPromotion((p) => ({ ...p, rewardType: 'percent', enabled: true }))
+                             }
+                             className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors ${bizFocusRingClass} ${
+                               cardIssuanceTopupPromotion.rewardType === 'percent'
+                                 ? 'bg-[#0051d1] text-white'
+                                 : 'bg-[#eef1f3] text-[#595c5e]'
+                             }`}
                            >
-                             Bonus Value
-                           </label>
-                           <label className="flex cursor-pointer items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0051d1]">
-                             <input
-                               type="checkbox"
-                               checked={cardIssuanceBonusRuleBonusProportional}
-                               onChange={(e) => setCardIssuanceBonusRuleBonusProportional(e.target.checked)}
-                               className={`h-4 w-4 shrink-0 rounded border-[#abadaf] text-[#0051d1] ${bizFocusRingClass}`}
-                               aria-label={tu('programs_bonus_percent_aria')}
-                             />
                              Percentage
-                           </label>
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() =>
+                               setCardIssuanceTopupPromotion((p) => ({ ...p, rewardType: 'fixed', enabled: true }))
+                             }
+                             className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors ${bizFocusRingClass} ${
+                               cardIssuanceTopupPromotion.rewardType === 'fixed'
+                                 ? 'bg-[#0051d1] text-white'
+                                 : 'bg-[#eef1f3] text-[#595c5e]'
+                             }`}
+                           >
+                             Fixed amount
+                           </button>
                          </div>
+                       </div>
+
+                       <div className="space-y-2">
+                         <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-reward">
+                           {cardIssuanceTopupPromotion.rewardType === 'percent' ? 'Reward percentage' : 'Fixed reward amount'}
+                         </label>
                          <div className="relative">
                            <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
-                             <span className="font-manrope text-lg font-extrabold text-[#8d3a8b]">+</span>
+                             <span className="font-manrope text-lg font-extrabold text-[#8d3a8b]">
+                               {cardIssuanceTopupPromotion.rewardType === 'percent' ? '%' : '+'}
+                             </span>
                            </div>
                            <input
-                             id="card-issuance-bonus-rule-value"
-                             ref={cardIssuanceBonusRuleBonusWheelRef}
+                             id="card-topup-promo-reward"
+                             ref={cardIssuanceTopupPromotionRewardWheelRef}
                              type="number"
                              inputMode="decimal"
                              autoComplete="off"
-                             placeholder="10.00"
-                             value={cardIssuanceBonusRuleBonusValue}
+                             placeholder={cardIssuanceTopupPromotion.rewardType === 'percent' ? '10' : '5.00'}
+                             value={cardIssuanceTopupPromotion.rewardValue}
                              onKeyDown={preventNumericInputStepKeys}
                              onWheel={preventNumericInputWheelStep}
                              onChange={(e) =>
-                               setCardIssuanceBonusRuleBonusValue(
-                                 normalizeCardIssuanceBonusRuleInput(e.target.value)
-                               )
+                               setCardIssuanceTopupPromotion((p) => ({
+                                 ...p,
+                                 rewardValue: normalizeCardIssuanceBonusRuleInput(e.target.value),
+                                 enabled: true,
+                               }))
                              }
                              className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                            />
@@ -35513,84 +35115,73 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[#0051d1]/5 bg-[#7a9dff]/10 p-4">
                            <Bot className="h-5 w-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                            <p className="text-sm text-[#595c5e]">
-                             {cardIssuanceBonusRuleBonusProportional &&
-                             cardIssuanceBonusRuleEditorPreviewPay > 0 ? (
+                             {cardIssuanceTopupPromotion.rewardType === 'percent' ? (
                                <>
-                                 Bonus rate is{' '}
+                                 Customer receives{' '}
                                  <span className="font-bold text-[#0051d1]">
-                                   {formatCardIssuanceBonusRuleAmount(
-                                     (cardIssuanceBonusRuleEditorPreviewBonus /
-                                       cardIssuanceBonusRuleEditorPreviewPay) *
-                                       100
-                                   )}
-                                   %
+                                   {cardIssuanceDisplayMoneyPrefix}
+                                   {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewReceive)}
                                  </span>{' '}
-                                 of the customer&apos;s top-up. At the reference payment, total credit is{' '}
-                                 <span className="font-bold text-[#0051d1]">
-                                   C${formatCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleEditorPreviewReceive)}
-                                 </span>
-                                 .
-                                 {cardIssuanceBonusRuleEditorExampleBonus != null ? (
-                                   <>
-                                     {' '}
-                                     Example: a C${formatCardIssuanceBonusRuleAmount(CARD_ISSUANCE_BONUS_RULE_EXAMPLE_TOPUP)}{' '}
-                                     top-up adds C$
-                                     {formatCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleEditorExampleBonus)} bonus.
-                                   </>
-                                 ) : null}
+                                 on a {cardIssuanceDisplayMoneyPrefix}
+                                 {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewPay)} top-up (
+                                 {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewBonus)} bonus).
                                </>
-                             ) : cardIssuanceBonusRuleBonusProportional ? (
-                               <>{tu('programs_bonus_percent_preview_hint')}</>
                              ) : (
                                <>
-                                 Customer receives total balance of{' '}
+                                 Customer receives{' '}
                                  <span className="font-bold text-[#0051d1]">
-                                   C${formatCardIssuanceBonusRuleAmount(cardIssuanceBonusRuleEditorPreviewReceive)}
+                                   {cardIssuanceDisplayMoneyPrefix}
+                                   {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewReceive)}
                                  </span>{' '}
-                                 at the reference payment; bonus stays fixed for other top-up amounts.
+                                 when topping up at least {cardIssuanceDisplayMoneyPrefix}
+                                 {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewPay)}.
                                </>
                              )}
                            </p>
                          </div>
-                         {cardIssuanceBonusRuleEditorValidationError ? (
-                           <div className="mt-3 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                             <p>{cardIssuanceBonusRuleEditorValidationError}</p>
-                           </div>
-                         ) : null}
-                         {(cardIssuanceCreateError || cardIssuanceBonusRuleEditorServerError) &&
-                         !cardIssuanceBonusRuleEditorPublishing ? (
-                           <div className="mt-3 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                             <p>{cardIssuanceCreateError || cardIssuanceBonusRuleEditorServerError}</p>
-                           </div>
-                         ) : null}
                        </div>
 
-                       <div className="pt-2">
+                       {cardIssuanceTopupPromotionEditorValidationError ? (
+                         <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                           <p>{cardIssuanceTopupPromotionEditorValidationError}</p>
+                         </div>
+                       ) : null}
+                       {(cardIssuanceCreateError || cardIssuanceTopupPromotionEditorServerError) &&
+                       !cardIssuanceTopupPromotionEditorPublishing ? (
+                         <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                           <p>{cardIssuanceCreateError || cardIssuanceTopupPromotionEditorServerError}</p>
+                         </div>
+                       ) : null}
+
+                       <div className="space-y-3 pt-2">
                          <button
                            type="button"
-                           onClick={() => void submitCardIssuanceBonusRuleEditor()}
+                           onClick={() => void submitCardIssuanceTopupPromotionEditor()}
                            disabled={
-                             !cardIssuanceBonusRuleEditorPayload ||
-                             Boolean(cardIssuanceBonusRuleEditorValidationError) ||
-                             cardIssuanceBonusRuleEditorPublishing
+                             Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
+                             cardIssuanceTopupPromotionEditorPublishing
                            }
                            className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                          >
-                           {cardIssuanceBonusRuleEditorPublishing ? (
+                           {cardIssuanceTopupPromotionEditorPublishing ? (
                              <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
                            ) : (
                              <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
                            )}
-                           <span>
-                             {cardIssuanceBonusRuleEditorPublishing
-                               ? 'Saving...'
-                               : cardIssuanceEditingBonusRuleId
-                                 ? 'Update Rule'
-                                 : 'Apply Rule'}
-                           </span>
+                           <span>{cardIssuanceTopupPromotionEditorPublishing ? 'Saving...' : 'Save Promotion'}</span>
                          </button>
+                         {cardIssuanceTopupPromotion.enabled || cardIssuanceTopupPromotionPayload ? (
+                           <button
+                             type="button"
+                             onClick={() => void clearCardIssuanceTopupPromotion()}
+                             disabled={cardIssuanceTopupPromotionEditorPublishing}
+                             className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] ${bizFocusRingClass}`}
+                           >
+                             Clear Promotion
+                           </button>
+                         ) : null}
                        </div>
                      </div>
                    </motion.div>
@@ -37111,99 +36702,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          </div>
        </div>
      )}
-
-     {/* --- REMOVE RECHARGE BONUS (programs overview draft) --- */}
-     {cardIssuanceBonusRuleDeleteConfirmId
-       ? (() => {
-           const confirmId = cardIssuanceBonusRuleDeleteConfirmId;
-           const pendingRow = cardIssuanceBonusRules.find((r) => r.id === confirmId);
-           const payload = pendingRow ? cardIssuanceBonusRuleRowToPayload(pendingRow) : null;
-           const summaryLine = payload
-             ? formatBonusRuleDisplayString(payload, cardIssuanceDisplayMoneyPrefix)
-             : pendingRow
-               ? 'Incomplete rule — amounts need to be fixed in the editor.'
-               : null;
-           const ruleIdx = pendingRow
-             ? cardIssuanceBonusRules.findIndex((r) => r.id === pendingRow.id)
-             : -1;
-           const titleSuffix =
-             cardIssuanceBonusRules.length > 1 && ruleIdx >= 0 ? ` ${ruleIdx + 1}` : '';
-
-           return (
-             <div
-               className="fixed inset-0 z-[100] flex items-center justify-center p-6"
-               role="dialog"
-               aria-modal="true"
-               aria-labelledby="card-issuance-bonus-rule-delete-title"
-             >
-               <button
-                 type="button"
-                 className="absolute inset-0 cursor-default bg-slate-900/40 backdrop-blur-sm"
-                 aria-label="Close dialog"
-                 onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
-               />
-               <div className="relative w-full max-w-md animate-in zoom-in-95 rounded-[40px] bg-white p-8 shadow-2xl duration-200">
-                 <div className="mb-6 flex items-center justify-between">
-                   <div className="flex items-center gap-3">
-                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
-                       <Trash2 size={24} aria-hidden />
-                     </div>
-                     <h2
-                       id="card-issuance-bonus-rule-delete-title"
-                       className="text-xl font-bold tracking-tight text-black"
-                     >
-                       Remove recharge bonus{titleSuffix}
-                     </h2>
-                   </div>
-                   <button
-                     type="button"
-                     onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
-                     className="rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:text-black"
-                     aria-label={tu('programs_common_close')}
-                   >
-                     <X size={20} aria-hidden />
-                   </button>
-                 </div>
-                 {pendingRow ? (
-                   <>
-                     <p className="mb-4 text-[15px] text-slate-600">
-                       Are you sure you want to remove this recharge bonus rule? It will be removed from your program
-                       draft until you publish changes.
-                     </p>
-                     {summaryLine ? (
-                       <div className="mb-6 rounded-2xl border border-slate-100 bg-slate-50/90 px-4 py-3 text-[14px] font-semibold text-slate-800">
-                         {summaryLine}
-                       </div>
-                     ) : null}
-                   </>
-                 ) : (
-                   <p className="mb-6 text-[15px] text-slate-600">
-                     This rule is no longer in your list. You can close this dialog.
-                   </p>
-                 )}
-                 <div className="flex gap-3">
-                   <button
-                     type="button"
-                     onClick={() => setCardIssuanceBonusRuleDeleteConfirmId(null)}
-                     className="flex-1 rounded-2xl border border-slate-200 py-3.5 text-[15px] font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-                   >{tu('cancel')}</button>
-                   <button
-                     type="button"
-                     onClick={() => {
-                       if (confirmId) removeCardIssuanceBonusRule(confirmId);
-                       setCardIssuanceBonusRuleDeleteConfirmId(null);
-                     }}
-                     disabled={!pendingRow}
-                     className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-rose-500 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                   >
-                     Remove rule
-                   </button>
-                 </div>
-               </div>
-             </div>
-           );
-         })()
-       : null}
 
      {/* --- TERMINAL SETTLEMENT CLEAR (indexer TX_Terminal_RESET only; not mint limit) --- */}
      {settlementClearModal && (

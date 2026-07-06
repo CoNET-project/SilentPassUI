@@ -32,14 +32,26 @@ export type CardConfiguratorDraftTierV1 = {
 
 export type CardConfiguratorDraftRewardsPresetV1 = 'default' | 'custom' | 'salesManagement'
 
+export type CardConfiguratorDraftTopupPromotionV1 = {
+  enabled?: boolean
+  validFrom?: string
+  validTo?: string
+  minimumTopupAmount: string
+  rewardType: 'percent' | 'fixed'
+  rewardValue: string
+}
+
 export type CardConfiguratorDraftV1 = {
   version: 1
   programName?: string
   currencySymbol?: string
   storeDisplayName?: string
+  /** @deprecated Legacy recharge bonus rules — read compat only. */
   bonusRules?: CardConfiguratorDraftBonusRuleV1[]
   bonusRulePaymentAmount?: string
   bonusRuleBonusValue?: string
+  /** Global top-up promotion (single). */
+  topupPromotion?: CardConfiguratorDraftTopupPromotionV1
   minTopup?: string
   maxTopup?: string
    tierRule?: CardConfiguratorDraftTierRuleV1
@@ -82,6 +94,30 @@ function normalizeTierPreset(raw: unknown): CardConfiguratorDraftTierPresetV1 {
   return typeof raw === 'string' && (TIER_PRESETS as string[]).includes(raw)
     ? (raw as CardConfiguratorDraftTierPresetV1)
     : 'custom'
+}
+
+function normalizeTopupPromotion(raw: unknown): CardConfiguratorDraftTopupPromotionV1 | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const minimumTopupAmount =
+    typeof r.minimumTopupAmount === 'string'
+      ? r.minimumTopupAmount
+      : r.minimumTopupAmount != null
+        ? String(r.minimumTopupAmount)
+        : ''
+  const rewardValue =
+    typeof r.rewardValue === 'string' ? r.rewardValue : r.rewardValue != null ? String(r.rewardValue) : ''
+  const rewardTypeRaw = String(r.rewardType ?? '').trim().toLowerCase()
+  const rewardType: 'percent' | 'fixed' = rewardTypeRaw === 'fixed' ? 'fixed' : 'percent'
+  if (!minimumTopupAmount.trim() && !rewardValue.trim() && r.enabled !== true) return undefined
+  return {
+    enabled: r.enabled === false ? false : r.enabled === true ? true : undefined,
+    validFrom: typeof r.validFrom === 'string' ? r.validFrom : undefined,
+    validTo: typeof r.validTo === 'string' ? r.validTo : undefined,
+    minimumTopupAmount,
+    rewardType,
+    rewardValue,
+  }
 }
 
 function normalizeBonusRules(raw: unknown): CardConfiguratorDraftBonusRuleV1[] | undefined {
@@ -175,6 +211,7 @@ export function loadCardConfiguratorDraftForEoa(eoaLower: string): CardConfigura
       bonusRules: normalizeBonusRules(p.bonusRules),
       bonusRulePaymentAmount: typeof p.bonusRulePaymentAmount === 'string' ? p.bonusRulePaymentAmount : undefined,
       bonusRuleBonusValue: typeof p.bonusRuleBonusValue === 'string' ? p.bonusRuleBonusValue : undefined,
+      topupPromotion: normalizeTopupPromotion(p.topupPromotion),
       minTopup: typeof p.minTopup === 'string' ? p.minTopup : undefined,
       maxTopup: typeof p.maxTopup === 'string' ? p.maxTopup : undefined,
       tierRule: normalizeTierRule(p.tierRule),

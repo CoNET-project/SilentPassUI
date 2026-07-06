@@ -28,6 +28,7 @@ import { cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
 import { tu } from '@/locale/beamioLocale'
+import { readSocialExchangeFromMetadata, REWARD_VOUCHER_TOKEN_ID } from '@/utils/socialExchangeMetadata'
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
@@ -658,7 +659,33 @@ function openClaimCardReadContract(cardAddress: string): ethers.Contract {
  * Does not require AA — Master `ensureAAForEOAOnCard` creates AA during claim if missing.
  * `false` = hide row; `true` = show; `null` = RPC uncertain — keep row (do not treat failure as non-claimable).
  */
-export type CouponOpenClaimEligibility = 'claimable' | 'already_claimed' | 'not_open_claim' | 'unknown'
+export type CouponOpenClaimEligibility =
+	| 'claimable'
+	| 'already_claimed'
+	| 'not_open_claim'
+	| 'insufficient_social_points'
+	| 'unknown'
+
+async function readUserRewardVoucher13BalanceOnCard(
+	cardNorm: string,
+	userNorm: string,
+): Promise<bigint | null> {
+	try {
+		const { provider } = await providerForBeamioUserCard(cardNorm)
+		const gateway = await getCardFactoryGatewayForEip712(cardNorm)
+		const fac = new ethers.Contract(gateway, ['function beamioAccountOf(address) view returns (address)'], provider)
+		const aa = (await fac.beamioAccountOf(userNorm)) as string
+		if (!aa || aa === ethers.ZeroAddress) return 0n
+		const card = new ethers.Contract(
+			cardNorm,
+			['function balanceOf(address account, uint256 id) view returns (uint256)'],
+			provider,
+		)
+		return (await card.balanceOf(aa, REWARD_VOUCHER_TOKEN_ID)) as bigint
+	} catch {
+		return null
+	}
+}
 
 /**
  * Discover / coupon list UI: whether the current wallet may use open-claim for this series row.
@@ -695,6 +722,12 @@ export async function resolveCouponOpenClaimEligibility(
 		if (alreadyClaimed) return 'already_claimed'
 		if (priceInCurrency6 !== 0n) return 'not_open_claim'
 		if (maxSupply > 0n && mintedCount >= maxSupply) return 'already_claimed'
+		const socialExchange = readSocialExchangeFromMetadata(row.metadata ?? null)
+		if (socialExchange) {
+			const pointsBal = await readUserRewardVoucher13BalanceOnCard(row.cardAddress, userNorm)
+			if (pointsBal == null) return 'unknown'
+			if (pointsBal < BigInt(socialExchange.pointsCost)) return 'insufficient_social_points'
+		}
 		return 'claimable'
 	} catch {
 		return 'unknown'
@@ -753,6 +786,12 @@ const mapCouponOpenClaimApiError = (raw: string | undefined): string => {
 	}
 	if (/inactive|expired|InvalidTimeWindow/i.test(msg)) {
 		return 'This coupon is inactive or expired.'
+	}
+	if (/Insufficient social points|UC_InsufficientBalance/i.test(msg)) {
+		return 'Not enough social points (#13) for this exchange.'
+	}
+	if (/Insufficient USDC escrow|UC_RewardBudgetInsufficient/i.test(msg)) {
+		return 'This exchange is temporarily unavailable. The merchant USDC pool needs funding.'
 	}
 	return msg
 }
@@ -1443,37 +1482,53 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			(await resolveOpenClaimTokenIdByCouponId(cardNorm, couponId))
 		if (!tokenId) return { success: false, error: 'Coupon not found or inactive on this card.' }
 
+		let socialExchange = null as ReturnType<typeof readSocialExchangeFromMetadata>
+		const seriesRows = await getCardActiveIssuedCouponSeries(cardNorm, 50)
+		for (const seriesRow of seriesRows) {
+			if (String(seriesRow.tokenId) === tokenId || readCouponIdFromMetadata(seriesRow.metadata ?? null) === couponId) {
+				socialExchange = readSocialExchangeFromMetadata(seriesRow.metadata ?? null)
+				break
+			}
+		}
+
 		const verifyingContract = await getCardFactoryGatewayForEip712(cardNorm)
 		const chainId = await eip712ChainIdForBeamioUserCard(cardNorm)
 		const deadline = Math.floor(Date.now() / 1000) + 15 * 60
 		const nonce = ethers.hexlify(ethers.randomBytes(32))
-		const userSignature = await signer.signTypedData(
-			{
-				name: 'BeamioUserCardFactory',
-				version: '1',
-				chainId,
-				verifyingContract,
-			},
-			{
-				ClaimIssuedNft: [
-					{ name: 'cardAddress', type: 'address' },
-					{ name: 'tokenId', type: 'uint256' },
-					{ name: 'deadline', type: 'uint256' },
-					{ name: 'nonce', type: 'bytes32' },
-				],
-			},
-			{
-				cardAddress: cardNorm,
-				tokenId: BigInt(tokenId),
-				deadline: BigInt(deadline),
-				nonce,
-			}
-		)
 
-		const res = await fetch(cardCouponOpenClaimEndpoint, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
+		let userSignature: string
+		let requestBody: Record<string, unknown>
+
+		if (socialExchange) {
+			const pointsCost = BigInt(socialExchange.pointsCost)
+			const usdcReward6 = socialExchange.kind === 'usdc' ? socialExchange.usdcReward6 : 0n
+			userSignature = await signer.signTypedData(
+				{
+					name: 'BeamioUserCardFactory',
+					version: '1',
+					chainId,
+					verifyingContract,
+				},
+				{
+					ClaimSocialExchange: [
+						{ name: 'cardAddress', type: 'address' },
+						{ name: 'tokenId', type: 'uint256' },
+						{ name: 'pointsCost', type: 'uint256' },
+						{ name: 'usdcReward6', type: 'uint256' },
+						{ name: 'deadline', type: 'uint256' },
+						{ name: 'nonce', type: 'bytes32' },
+					],
+				},
+				{
+					cardAddress: cardNorm,
+					tokenId: BigInt(tokenId),
+					pointsCost,
+					usdcReward6,
+					deadline: BigInt(deadline),
+					nonce,
+				},
+			)
+			requestBody = {
 				cardAddress: cardNorm,
 				couponId,
 				userEOA,
@@ -1481,7 +1536,47 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 				deadline,
 				nonce,
 				userSignature,
-			}),
+				pointsCost: String(pointsCost),
+				usdcReward6: String(usdcReward6),
+			}
+		} else {
+			userSignature = await signer.signTypedData(
+				{
+					name: 'BeamioUserCardFactory',
+					version: '1',
+					chainId,
+					verifyingContract,
+				},
+				{
+					ClaimIssuedNft: [
+						{ name: 'cardAddress', type: 'address' },
+						{ name: 'tokenId', type: 'uint256' },
+						{ name: 'deadline', type: 'uint256' },
+						{ name: 'nonce', type: 'bytes32' },
+					],
+				},
+				{
+					cardAddress: cardNorm,
+					tokenId: BigInt(tokenId),
+					deadline: BigInt(deadline),
+					nonce,
+				},
+			)
+			requestBody = {
+				cardAddress: cardNorm,
+				couponId,
+				userEOA,
+				tokenId,
+				deadline,
+				nonce,
+				userSignature,
+			}
+		}
+
+		const res = await fetch(cardCouponOpenClaimEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(requestBody),
 		})
 		const data = (await res.json().catch(() => ({}))) as { success?: boolean; tx?: string; error?: string; tokenId?: string }
 		if (!res.ok || data.success === false) {

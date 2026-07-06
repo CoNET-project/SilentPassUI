@@ -1170,9 +1170,10 @@ function DiscoverMerchantCouponOfferRow({
 }) {
 	const showClaimButton = claimEligibility != null && claimEligibility !== 'not_open_claim'
 	const isAlreadyClaimed = claimEligibility === 'already_claimed'
+	const insufficientSocialPoints = claimEligibility === 'insufficient_social_points'
 	const canClaim =
 		claimEligibility === 'claimable' || claimEligibility === 'unknown'
-	const claimDisabled = isAlreadyClaimed || !canClaim || claimStatus !== 'idle'
+	const claimDisabled = isAlreadyClaimed || insufficientSocialPoints || !canClaim || claimStatus !== 'idle'
 	const ticketActionStatus: DiscoverCouponClaimButtonStatus =
 		claimStatus !== 'idle'
 			? claimStatus
@@ -1198,9 +1199,16 @@ function DiscoverMerchantCouponOfferRow({
 				aria-label={
 					isAlreadyClaimed
 						? `Coupon ${row.coupon.title} already claimed`
-						: `Claim coupon ${row.coupon.title}`
+						: insufficientSocialPoints
+							? `Coupon ${row.coupon.title} requires more social points`
+							: `Claim coupon ${row.coupon.title}`
 				}
 			/>
+			{insufficientSocialPoints ? (
+				<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+					Not enough social points (#13) for this exchange.
+				</p>
+			) : null}
 			{row.supplySummary ? (
 				<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
 					{row.supplySummary}

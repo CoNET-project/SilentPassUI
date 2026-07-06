@@ -103,6 +103,7 @@ import {
   type UserCardInfo,
   type CardRedeemBatch,
   type CardRedeemItem,
+  type ShareTokenMetadata,
   type ShareTokenMetadataDiscoverAbout,
   type ShareTokenMetadataTopupPromotion,
   type ShareTokenMetadataSocialPromotion,
@@ -17139,8 +17140,12 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    try {
      const promotionDraftForPublish = opts?.topupPromotionOverride ?? cardIssuanceTopupPromotion;
      const topupPromotionPayloadForPublish = topupPromotionDraftToPayload(promotionDraftForPublish);
+     const topupPromotionClearRequested =
+       opts?.topupPromotionOverride != null && !topupPromotionPayloadForPublish;
      const socialDraftForPublish = opts?.socialPromotionOverride ?? cardIssuanceSocialPromotion;
      const socialPromotionPayloadForPublish = socialPromotionDraftToPayload(socialDraftForPublish);
+     const socialPromotionClearRequested =
+       opts?.socialPromotionOverride != null && !socialPromotionPayloadForPublish;
      const bonusPayloadForPublish = topupPromotionPayloadForPublish
        ? (topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)
            ? [topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)!]
@@ -17177,7 +17182,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        contact: cardIssuanceDiscoverAboutContact,
        location: cardIssuanceDiscoverAboutLocation,
      });
-     const shareTokenMetadataForPublish = {
+     const shareTokenMetadataForPublish: Record<string, unknown> = {
        name: metaName,
        minimumTopup: minTopupN,
        maximumTopup: maxTopupN,
@@ -17192,8 +17197,14 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
              bonusRule: bonusPayloadForPublish[0],
              bonusRules: bonusPayloadForPublish,
            }
-         : {}),
-       ...(socialPromotionPayloadForPublish ? { socialPromotion: socialPromotionPayloadForPublish } : {}),
+         : topupPromotionClearRequested
+           ? { topupPromotion: null, bonusRule: null, bonusRules: null }
+           : {}),
+       ...(socialPromotionPayloadForPublish
+         ? { socialPromotion: socialPromotionPayloadForPublish }
+         : socialPromotionClearRequested
+           ? { socialPromotion: null }
+           : {}),
        pointSystem: pointSystemForPublish,
       coupons: couponsPayloadForPublish ?? [],
       productions: productionsPayloadForPublish ?? [],
@@ -17243,14 +17254,14 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            deadline,
            nonce,
            ownerSignature,
-           shareTokenMetadata: shareTokenMetadataForPublish,
+           shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
            tiers: tiersPayload,
            ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
          });
        } else {
          res = await updateBeamioCardShareMetadata({
              cardAddress: cardIssuanceExistingCard.cardAddress,
-             shareTokenMetadata: shareTokenMetadataForPublish,
+             shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
              ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
            });
        }
@@ -17260,7 +17271,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            currency: CARD_ISSUANCE_BEAMIO_CURRENCY,
            unitPriceHuman: '1',
            ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
-           shareTokenMetadata: shareTokenMetadataForPublish,
+           shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
            ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
          });
      }
@@ -17483,12 +17494,35 @@ const clearCardIssuanceTopupPromotion = useCallback(async () => {
   }
   cardIssuanceTopupPromotionClearInFlightRef.current = true;
   setCardIssuanceTopupPromotionDeleting(true);
+  setCardIssuanceTopupPromotionEditorServerError('');
+  setCardIssuanceCreateError('');
   try {
     const ok = await handlePublishCardIssuance({
       topupPromotionOverride: cleared,
       loadingScope: 'bonusEditor',
+      skipOnChainRefresh: true,
     });
-    if (ok) setCardIssuanceTopupPromotion(cleared);
+    if (!ok) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Could not clear top-up promotion. Please try again.',
+      });
+      return;
+    }
+    setCardIssuanceTopupPromotion(cleared);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      const nextMeta = { ...prev.meta };
+      delete nextMeta.topupPromotion;
+      delete nextMeta.bonusRule;
+      delete nextMeta.bonusRules;
+      return { ...prev, meta: nextMeta };
+    });
+    invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Top-up promotion cleared.',
+    });
   } finally {
     cardIssuanceTopupPromotionClearInFlightRef.current = false;
     setCardIssuanceTopupPromotionDeleting(false);
@@ -17666,8 +17700,14 @@ const clearCardIssuanceSocialPromotion = useCallback(async () => {
     const ok = await handlePublishCardIssuance({
       socialPromotionOverride: cleared,
       loadingScope: 'bonusEditor',
+      skipOnChainRefresh: true,
     });
-    if (!ok) return;
+    if (!ok) {
+      setCardIssuanceSocialPromotionEditorServerError(
+        'Could not clear social promotion. Please try again.'
+      );
+      return;
+    }
     const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
     if (pk) {
       const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
@@ -17680,6 +17720,13 @@ const clearCardIssuanceSocialPromotion = useCallback(async () => {
       }).catch(() => undefined);
     }
     setCardIssuanceSocialPromotion(cleared);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      const nextMeta = { ...prev.meta };
+      delete nextMeta.socialPromotion;
+      return { ...prev, meta: nextMeta };
+    });
+    invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
   } finally {
     setCardIssuanceSocialPromotionEditorPublishing(false);
   }

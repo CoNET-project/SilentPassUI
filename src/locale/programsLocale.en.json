@@ -121,6 +121,7 @@
   "programs_social_promotion_event_label": "Events",
   "programs_social_promotion_parallel_hint": "Enable rewards per event below. Multiple events can run at the same time.",
   "programs_social_promotion_event_active": "Rewards configured for this event",
+  "programs_social_promotion_event_not_set": "Not configured — enable User or Referrer reward below.",
   "programs_social_promotion_event_click": "Link click",
   "programs_social_promotion_event_click_hint": "When someone opens a merchant or coupon share link.",
   "programs_social_promotion_event_like": "Like",

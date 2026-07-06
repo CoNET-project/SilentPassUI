@@ -121,6 +121,7 @@
   "programs_social_promotion_event_label": "事件",
   "programs_social_promotion_parallel_hint": "在下方为每个事件分别启用奖励，多个事件可同时生效。",
   "programs_social_promotion_event_active": "已为此事件配置奖励",
+  "programs_social_promotion_event_not_set": "尚未配置 — 请在下方启用用户或推荐人奖励。",
   "programs_social_promotion_event_click": "链接点击",
   "programs_social_promotion_event_click_hint": "有人打开商户或优惠券分享链接时。",
   "programs_social_promotion_event_like": "点赞",

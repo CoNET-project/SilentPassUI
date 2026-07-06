@@ -1,14 +1,23 @@
+import { useState } from 'react'
 import {
 	CARD_SOCIAL_PROMOTION_EVENT_KEYS,
 	cardSocialPromotionEventLabel,
 	type CardSocialPromotionEventKey,
 	type SocialPromotionDraft,
+	type SocialPromotionEventDraft,
 } from '@/utils/programSocialPromotion'
 import {
 	preventNumericInputStepKeys,
 	preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys'
 import { useTu } from '@/locale/beamioLocale'
+import {
+	socialPromotionEventIcon,
+	socialPromotionEventIconClassName,
+	socialPromotionEventIsConfigured,
+	socialPromotionEventPanelClassName,
+	socialPromotionEventTabClassName,
+} from './socialPromotionEventChrome'
 
 const bizFocusRingClass =
 	'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/30 focus-visible:ring-offset-2'
@@ -47,106 +56,185 @@ function cardEventLabelKey(eventKey: CardSocialPromotionEventKey): string {
 	}
 }
 
+function SocialPromotionEventRoleFields({
+	eventKey,
+	eventDraft,
+	onChange,
+	tu,
+}: {
+	eventKey: CardSocialPromotionEventKey
+	eventDraft: SocialPromotionEventDraft
+	onChange: Props['onChange']
+	tu: ReturnType<typeof useTu>['tu']
+}) {
+	return (
+		<>
+			{(['user', 'ref'] as const).map((role) => {
+				const roleDraft = eventDraft[role]
+				const roleLabel =
+					role === 'user'
+						? tu('programs_social_promotion_user_label')
+						: tu('programs_social_promotion_ref_label')
+				return (
+					<div key={role} className="mb-2 last:mb-0">
+						<label className="mb-2 flex cursor-pointer items-center gap-2">
+							<input
+								type="checkbox"
+								checked={roleDraft.enabled}
+								onChange={(e) =>
+									onChange((p) => ({
+										...p,
+										enabled: true,
+										events: {
+											...p.events,
+											[eventKey]: {
+												...p.events[eventKey],
+												[role]: {
+													...p.events[eventKey][role],
+													enabled: e.target.checked,
+												},
+											},
+										},
+									}))
+								}
+								className="h-4 w-4 rounded border-[#0051d1]/30"
+							/>
+							<span className="text-xs font-bold uppercase tracking-wide text-[#595c5e]">
+								{roleLabel}
+							</span>
+						</label>
+						<input
+							type="number"
+							inputMode="numeric"
+							autoComplete="off"
+							min={1}
+							step={1}
+							disabled={!roleDraft.enabled}
+							value={roleDraft.points13}
+							onKeyDown={preventNumericInputStepKeys}
+							onWheel={preventNumericInputWheelStep}
+							onChange={(e) =>
+								onChange((p) => ({
+									...p,
+									enabled: true,
+									events: {
+										...p.events,
+										[eventKey]: {
+											...p.events[eventKey],
+											[role]: {
+												...p.events[eventKey][role],
+												points13: e.target.value.replace(/[^\d]/g, ''),
+											},
+										},
+									},
+								}))
+							}
+							aria-label={`${cardSocialPromotionEventLabel(eventKey)} ${roleLabel}`}
+							className={`block w-full rounded-xl border-none bg-white/80 px-4 py-3 text-sm font-bold text-[#2c2f31] disabled:opacity-50 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+						/>
+					</div>
+				)
+			})}
+		</>
+	)
+}
+
 export function CardSocialPromotionEventsEditor({ draft, onChange, validationError }: Props) {
 	const { tu } = useTu()
+	const [activeEventKey, setActiveEventKey] = useState<CardSocialPromotionEventKey>('linkClick')
+
+	const activeEventDraft = draft.events[activeEventKey]
+	const activeConfigured = socialPromotionEventIsConfigured(
+		activeEventDraft.user.enabled,
+		activeEventDraft.ref.enabled,
+	)
+	const ActiveIcon = socialPromotionEventIcon(activeEventKey)
 
 	return (
 		<div className="space-y-4">
 			<p className="text-[11px] leading-relaxed text-[#747779]">
 				{tu('programs_social_promotion_parallel_hint')}
 			</p>
-			{CARD_SOCIAL_PROMOTION_EVENT_KEYS.map((eventKey) => {
-				const eventDraft = draft.events[eventKey]
-				const eventActive = eventDraft.user.enabled || eventDraft.ref.enabled
-				return (
+
+			<div
+				className="flex gap-1.5 sm:gap-2"
+				role="tablist"
+				aria-label={tu('programs_social_promotion_title')}
+			>
+				{CARD_SOCIAL_PROMOTION_EVENT_KEYS.map((eventKey) => {
+					const eventDraft = draft.events[eventKey]
+					const configured = socialPromotionEventIsConfigured(
+						eventDraft.user.enabled,
+						eventDraft.ref.enabled,
+					)
+					const isActive = activeEventKey === eventKey
+					const Icon = socialPromotionEventIcon(eventKey)
+					return (
+						<button
+							key={eventKey}
+							type="button"
+							role="tab"
+							id={`card-social-promo-tab-${eventKey}`}
+							aria-selected={isActive}
+							aria-controls={`card-social-promo-panel-${eventKey}`}
+							onClick={() => setActiveEventKey(eventKey)}
+							className={`${socialPromotionEventTabClassName(eventKey, configured, isActive)} ${bizFocusRingClass}`}
+						>
+							<Icon
+								className={`h-4 w-4 shrink-0 sm:h-[1.05rem] sm:w-[1.05rem] ${socialPromotionEventIconClassName(eventKey, configured)}`}
+								strokeWidth={isActive ? 2.25 : 2}
+								aria-hidden
+								{...(eventKey === 'like' && configured ? { fill: 'currentColor' } : {})}
+							/>
+							<span className="min-w-0 truncate">{tu(cardEventLabelKey(eventKey))}</span>
+						</button>
+					)
+				})}
+			</div>
+
+			<div
+				id={`card-social-promo-panel-${activeEventKey}`}
+				role="tabpanel"
+				aria-labelledby={`card-social-promo-tab-${activeEventKey}`}
+				className={`rounded-2xl border p-3 sm:p-4 ${socialPromotionEventPanelClassName(activeEventKey, activeConfigured)}`}
+			>
+				<div className="mb-3 flex items-start gap-2.5">
 					<div
-						key={eventKey}
-						className={`rounded-2xl border p-3 ${
-							eventActive
-								? 'border-[#1562f0]/10 bg-white shadow-sm'
-								: 'border-[#e5e9eb] bg-[#eef1f3]/60'
-						}`}
+						className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/70 ${socialPromotionEventIconClassName(activeEventKey, activeConfigured)}`}
 					>
-						<div className="mb-3">
-							<p className="text-sm font-bold text-[#2c2f31]">{tu(cardEventLabelKey(eventKey))}</p>
-							<p className="mt-1 text-[10px] leading-snug text-[#595c5e]">
-								{tu(cardEventHintKey(eventKey))}
-							</p>
-						</div>
-						{(['user', 'ref'] as const).map((role) => {
-							const roleDraft = eventDraft[role]
-							const roleLabel =
-								role === 'user'
-									? tu('programs_social_promotion_user_label')
-									: tu('programs_social_promotion_ref_label')
-							return (
-								<div key={role} className="mb-2 last:mb-0">
-									<label className="mb-2 flex cursor-pointer items-center gap-2">
-										<input
-											type="checkbox"
-											checked={roleDraft.enabled}
-											onChange={(e) =>
-												onChange((p) => ({
-													...p,
-													enabled: true,
-													events: {
-														...p.events,
-														[eventKey]: {
-															...p.events[eventKey],
-															[role]: {
-																...p.events[eventKey][role],
-																enabled: e.target.checked,
-															},
-														},
-													},
-												}))
-											}
-											className="h-4 w-4 rounded border-[#0051d1]/30"
-										/>
-										<span className="text-xs font-bold uppercase tracking-wide text-[#595c5e]">
-											{roleLabel}
-										</span>
-									</label>
-									<input
-										type="number"
-										inputMode="numeric"
-										autoComplete="off"
-										min={1}
-										step={1}
-										disabled={!roleDraft.enabled}
-										value={roleDraft.points13}
-										onKeyDown={preventNumericInputStepKeys}
-										onWheel={preventNumericInputWheelStep}
-										onChange={(e) =>
-											onChange((p) => ({
-												...p,
-												enabled: true,
-												events: {
-													...p.events,
-													[eventKey]: {
-														...p.events[eventKey],
-														[role]: {
-															...p.events[eventKey][role],
-															points13: e.target.value.replace(/[^\d]/g, ''),
-														},
-													},
-												},
-											}))
-										}
-										aria-label={`${cardSocialPromotionEventLabel(eventKey)} ${roleLabel}`}
-										className={`block w-full rounded-xl border-none bg-[#eef1f3] px-4 py-3 text-sm font-bold text-[#2c2f31] disabled:opacity-50 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-									/>
-								</div>
-							)
-						})}
-						{eventActive ? (
-							<p className="mt-2 text-[10px] font-semibold text-[#0051d1]">
-								{tu('programs_social_promotion_event_active')}
-							</p>
-						) : null}
+						<ActiveIcon
+							className="h-4 w-4"
+							strokeWidth={2.25}
+							aria-hidden
+							{...(activeEventKey === 'like' && activeConfigured ? { fill: 'currentColor' } : {})}
+						/>
 					</div>
-				)
-			})}
+					<div className="min-w-0">
+						<p className="text-sm font-bold text-[#2c2f31]">{tu(cardEventLabelKey(activeEventKey))}</p>
+						<p className="mt-1 text-[10px] leading-snug text-[#595c5e]">
+							{tu(cardEventHintKey(activeEventKey))}
+						</p>
+					</div>
+				</div>
+
+				<SocialPromotionEventRoleFields
+					eventKey={activeEventKey}
+					eventDraft={activeEventDraft}
+					onChange={onChange}
+					tu={tu}
+				/>
+
+				{activeConfigured ? (
+					<p className="mt-2 text-[10px] font-semibold text-[#0051d1]">
+						{tu('programs_social_promotion_event_active')}
+					</p>
+				) : (
+					<p className="mt-2 text-[10px] font-medium text-[#747779]">
+						{tu('programs_social_promotion_event_not_set')}
+					</p>
+				)}
+			</div>
+
 			<p className="ml-2 text-[11px] leading-relaxed text-[#747779]">
 				{tu('programs_social_promotion_points_hint')}
 			</p>

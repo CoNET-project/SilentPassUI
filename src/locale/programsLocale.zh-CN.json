@@ -318,6 +318,7 @@
   "programs_overview_merchant_placeholder_hint": "上方主图为占位图，上传您自己的宽横幅后将替换。",
   "programs_overview_merchant_text_save": "Save",
   "programs_overview_merchant_text_save_hint": "Saving updates card metadata for Discover and consumer apps.",
+  "programs_live_preview_empty": "Empty",
   "programs_merchant_about_section": "About (Discover detail)",
   "programs_merchant_about_section_hint": "Shown on the consumer Discover merchant detail page. Fill all fields for the full About card.",
   "programs_merchant_about_detail_label": "Detail (max {{max}} chars)",

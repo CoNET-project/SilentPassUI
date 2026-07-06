@@ -17,6 +17,8 @@ type ProgramLivePreviewInlineFieldProps = {
   className?: string;
   hideLabel?: boolean;
   displayClassName?: string;
+  /** View-mode label when value is blank (never shows input placeholder publicly). */
+  emptyDisplay?: string;
 };
 
 export function ProgramLivePreviewInlineField({
@@ -35,6 +37,7 @@ export function ProgramLivePreviewInlineField({
   className = '',
   hideLabel = false,
   displayClassName = '',
+  emptyDisplay = 'Empty',
 }: ProgramLivePreviewInlineFieldProps) {
   const fieldId = useId();
   const [editing, setEditing] = useState(false);
@@ -47,7 +50,9 @@ export function ProgramLivePreviewInlineField({
     else inputRef.current?.focus();
   }, [editing, multiline]);
 
-  const shown = (displayValue ?? value).trim() || placeholder || '—';
+  const rawDisplay = (displayValue ?? value).trim();
+  const hasContent = rawDisplay.length > 0;
+  const shown = hasContent ? rawDisplay : emptyDisplay;
   const inputClass = `w-full rounded-lg border border-[#1562f0]/30 bg-white px-3 py-2 text-sm font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClass} ${
     multiline ? 'resize-y font-medium leading-relaxed' : ''
   }`;
@@ -113,7 +118,7 @@ export function ProgramLivePreviewInlineField({
         <span
           className={`min-w-0 flex-1 font-manrope text-sm font-bold leading-snug text-[#2c2f31] sm:text-base ${
             multiline ? 'whitespace-pre-line font-medium leading-relaxed text-xs sm:text-sm text-[#595c5e]' : 'text-lg sm:text-xl'
-          } ${!value.trim() && placeholder ? 'text-[#747779]' : ''} ${displayClassName}`}
+          } ${!hasContent ? 'font-normal italic text-[#747779]' : ''} ${displayClassName}`}
         >
           {shown}
         </span>

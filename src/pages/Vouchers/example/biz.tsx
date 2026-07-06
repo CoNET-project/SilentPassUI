@@ -13727,10 +13727,10 @@ const merchantPanelDiscoverHeroSrc = useMemo(() => {
 }, [cardIssuanceEffectiveMerchantImage]);
 
 const merchantPanelDiscoverSubtitle = useMemo(() => {
-  const d = cardIssuanceDescription.trim();
-  if (d) return d;
-  return tu('programs_overview_no_description');
-}, [cardIssuanceDescription, tu]);
+  return cardIssuanceDescription.trim();
+}, [cardIssuanceDescription]);
+
+const programsLivePreviewEmptyLabel = tu('programs_live_preview_empty');
 
 const merchantPanelTextDirty = useMemo(() => {
   const meta = cardIssuanceExistingCard?.meta;
@@ -33274,6 +33274,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              className="min-w-0 flex-1 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
                              disabled={cardIssuanceMerchantTextSaving}
                              focusRingClass={bizFocusRingClass}
+                             emptyDisplay={programsLivePreviewEmptyLabel}
                            />
                            <p className="whitespace-nowrap pt-1 text-[10px] font-semibold uppercase tracking-wide text-[#2f5fcf]">
                              {tu('programs_config_your_assets')}
@@ -33297,6 +33298,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            className="mb-3 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
                            disabled={cardIssuanceMerchantTextSaving}
                            focusRingClass={bizFocusRingClass}
+                           emptyDisplay={programsLivePreviewEmptyLabel}
                          />
                          <ProgramLivePreviewInlineField
                            hideLabel
@@ -33308,6 +33310,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            className="mb-4 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
                            disabled={cardIssuanceMerchantTextSaving}
                            focusRingClass={bizFocusRingClass}
+                           emptyDisplay={programsLivePreviewEmptyLabel}
                          />
                          <div className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#f0f2f4] px-4 py-3">
                            <Gift className="h-5 w-5 shrink-0 text-[#2f5fcf]" strokeWidth={2} aria-hidden />
@@ -33373,8 +33376,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          displayValue={
                            cardIssuanceDiscoverAboutDetail.trim()
                              ? discoverAboutDetailForDisplay(cardIssuanceDiscoverAboutDetail)
-                             : tu('programs_merchant_about_detail_ph')
+                             : undefined
                          }
+                         emptyDisplay={programsLivePreviewEmptyLabel}
                          displayClassName="mt-2 whitespace-pre-line text-[14px] font-medium leading-relaxed text-slate-600"
                          className="mt-2 rounded-none px-0 py-0 hover:bg-white/60"
                          disabled={cardIssuanceMerchantTextSaving}
@@ -33430,6 +33434,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                        : tu('programs_merchant_about_location_ph')
                                  }
                                  displayValue={value || undefined}
+                                 emptyDisplay={programsLivePreviewEmptyLabel}
                                  displayClassName="mt-0.5 whitespace-pre-line text-[14px] font-medium leading-snug text-slate-600"
                                  className="rounded-none px-0 py-0 hover:bg-white/60"
                                  disabled={cardIssuanceMerchantTextSaving}

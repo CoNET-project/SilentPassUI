@@ -45,3 +45,14 @@ export function BeamioCircularBackButton({
 
 /** Reserve vertical space for a top-leading floating back control (36px + breathing room). */
 export const BEAMIO_CIRCULAR_BACK_ROW_CLASS = 'relative mb-4 min-h-9'
+
+/**
+ * Hero / gradient header overlay — Discover merchant detail + contact profile (single source).
+ * @see beamio-circular-back-button.mdc § Hero overlay placement
+ */
+export const BEAMIO_HERO_FLOATING_BACK_ROW_CLASS =
+	'absolute left-0 right-0 z-20 flex items-start justify-between px-4'
+
+export const beamioHeroFloatingBackTopStyle = {
+	top: 'max(0.75rem, env(safe-area-inset-top))',
+} as const

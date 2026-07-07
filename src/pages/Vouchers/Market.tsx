@@ -106,7 +106,11 @@ import {
 	parseDiscoverPrimaryCategoryId,
 	type DiscoverCategoryTab,
 } from "@/utils/discoverMerchantCategory"
-import { BeamioCircularBackButton } from "@/components/BeamioCircularBackButton"
+import {
+	BeamioCircularBackButton,
+	BEAMIO_HERO_FLOATING_BACK_ROW_CLASS,
+	beamioHeroFloatingBackTopStyle,
+} from "@/components/BeamioCircularBackButton"
 import {
 	BASE_MAINNET_CHAIN_ID,
 } from "@/config/chainAddresses"
@@ -3790,10 +3794,7 @@ function DiscoverMerchantDetailFullScreen({
 							className="absolute bottom-4 right-4 z-[15]"
 						/>
 					) : null}
-					<div
-						className="absolute left-0 right-0 z-20 flex items-start justify-between px-4"
-						style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
-					>
+					<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>
 						<BeamioCircularBackButton onClick={onClose} />
 						<div className="flex items-center gap-2">
 							{item.cardAddress ? (

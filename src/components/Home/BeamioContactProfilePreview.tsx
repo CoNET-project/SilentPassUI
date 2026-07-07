@@ -1,6 +1,11 @@
 import { IpfsImg } from '@/components/IpfsImg';
-import React, {useEffect, useState} from "react"
-import { X, Copy, Check, XCircle } from "lucide-react"
+import React, { useCallback, useEffect, useState } from "react"
+import { Copy, Check } from "lucide-react"
+import {
+	BeamioCircularBackButton,
+	BEAMIO_HERO_FLOATING_BACK_ROW_CLASS,
+	beamioHeroFloatingBackTopStyle,
+} from '@/components/BeamioCircularBackButton'
 import { getFollowStatus, removeFollowing as removeFollowingProcess, addFollowing, AuthorizationSign} from '@/services/beamio'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { AppButton } from "../button/AppButton"
@@ -407,6 +412,24 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 		})
 	}
 
+	const handleProfileBack = useCallback(() => {
+		if (showPayConfirm) {
+			setShowPayConfirm(false)
+			return
+		}
+		if (showChatSendAmount) {
+			setShowChatSendAmount(false)
+			setSendError('')
+			setComformError('')
+			return
+		}
+		if (successHash) {
+			setSuccessHash('')
+			return
+		}
+		close('')
+	}, [close, showChatSendAmount, showPayConfirm, successHash])
+
 	return (
 		<>
 			{ openChat ? 
@@ -419,34 +442,15 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 						{/* 顶部蓝色区域：头像 + 名字 */}
 						<div 
 							className="
-								relative z-10
+								relative z-10 overflow-hidden
 								bg-gradient-to-r from-sky-500 to-blue-600 text-white
 								px-5 pt-3 pb-10
 								rounded-b-[28px]
 								shadow-[0_8px_24px_rgba(15,23,42,0.35)]
 							">
-
-							{/* 导航 */}
-							{/* {
-								!showChatSendAmount &&
-								(
-									<div className="flex items-center justify-between mb-4">
-										<div className="text-[11px] font-medium tracking-[0.18em] uppercase text-white/80">
-											Contact
-										</div>
-
-										<button 
-											className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center"
-											onClick={() => {
-												close('')
-											}}
-										>
-											<X className="w-4 h-4 text-white/90" strokeWidth={2} />
-										</button>
-									</div>
-								)
-							} */}
-								
+							<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>
+								<BeamioCircularBackButton onClick={handleProfileBack} />
+							</div>
 
 							{/* 头像 + 名字 + username + Add friend */}
 							<div className="flex flex-col items-center text-center mt-10">

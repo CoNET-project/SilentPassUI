@@ -11567,6 +11567,9 @@ const [cardIssuanceSocialPromotionEditorBaseline, setCardIssuanceSocialPromotion
   useState<SocialPromotionDraft | null>(null);
 const [cardIssuanceSocialPromotionEditorPublishing, setCardIssuanceSocialPromotionEditorPublishing] =
   useState(false);
+/** Social promotion delete in flight — spinner on trash (prevents double-click). */
+const [cardIssuanceSocialPromotionDeleting, setCardIssuanceSocialPromotionDeleting] = useState(false);
+const cardIssuanceSocialPromotionClearInFlightRef = useRef(false);
 const [cardIssuanceSocialPromotionEditorServerError, setCardIssuanceSocialPromotionEditorServerError] =
   useState('');
 /** On-chain getRewardRule(1/2/3) — UI display source of truth; undefined = not loaded yet. */
@@ -18082,12 +18085,16 @@ const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
 ]);
 
 const clearCardIssuanceSocialPromotion = useCallback(async () => {
+  if (cardIssuanceSocialPromotionClearInFlightRef.current) return;
   const cleared = { ...EMPTY_SOCIAL_PROMOTION_DRAFT };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuanceSocialPromotion(cleared);
     return;
   }
-  setCardIssuanceSocialPromotionEditorPublishing(true);
+  cardIssuanceSocialPromotionClearInFlightRef.current = true;
+  setCardIssuanceSocialPromotionDeleting(true);
+  setCardIssuanceSocialPromotionEditorServerError('');
+  setCardIssuanceCreateError('');
   try {
     const ok = await handlePublishCardIssuance({
       socialPromotionOverride: cleared,
@@ -18126,8 +18133,13 @@ const clearCardIssuanceSocialPromotion = useCallback(async () => {
       return { ...prev, meta: nextMeta };
     });
     invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Social promotion cleared.',
+    });
   } finally {
-    setCardIssuanceSocialPromotionEditorPublishing(false);
+    cardIssuanceSocialPromotionClearInFlightRef.current = false;
+    setCardIssuanceSocialPromotionDeleting(false);
   }
 }, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance, profiles, refreshCardIssuanceSocialPromotionFromChain]);
 
@@ -35379,21 +35391,33 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  aria-hidden
                                />
                              </button>
-                             {cardIssuanceSocialPromotionHasActive ? (
-                               <button
-                                 type="button"
-                                 onClick={() => void clearCardIssuanceSocialPromotion()}
-                                 disabled={cardIssuanceSocialPromotionEditorPublishing}
-                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:opacity-50 ${bizFocusRingClass}`}
-                                 aria-label={tu('programs_social_promotion_clear_aria')}
-                               >
-                                 <Trash2
-                                   className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                   strokeWidth={2}
-                                   aria-hidden
-                                 />
-                               </button>
-                             ) : null}
+                            {cardIssuanceSocialPromotionHasActive ? (
+                              <button
+                                type="button"
+                                onClick={() => void clearCardIssuanceSocialPromotion()}
+                                disabled={
+                                  cardIssuanceSocialPromotionDeleting ||
+                                  cardIssuanceSocialPromotionEditorPublishing
+                                }
+                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                                aria-label={tu('programs_social_promotion_clear_aria')}
+                                aria-busy={cardIssuanceSocialPromotionDeleting}
+                              >
+                                {cardIssuanceSocialPromotionDeleting ? (
+                                  <Loader2
+                                    className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
+                                    strokeWidth={2}
+                                    aria-hidden
+                                  />
+                                ) : (
+                                  <Trash2
+                                    className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                    strokeWidth={2}
+                                    aria-hidden
+                                  />
+                                )}
+                              </button>
+                            ) : null}
                              <span
                                className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
                                  cardIssuanceSocialPromotionHasActive
@@ -36768,7 +36792,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                        ) : null}
                        {(cardIssuanceCreateError || cardIssuanceSocialPromotionEditorServerError) &&
-                       !cardIssuanceSocialPromotionEditorPublishing ? (
+                       !cardIssuanceSocialPromotionEditorPublishing &&
+                       !cardIssuanceSocialPromotionDeleting ? (
                          <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
                            <p>{cardIssuanceCreateError || cardIssuanceSocialPromotionEditorServerError}</p>
@@ -36783,7 +36808,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                onClick={() => void submitCardIssuanceSocialPromotionEditor()}
                                disabled={
                                  Boolean(cardIssuanceSocialPromotionEditorValidationError) ||
-                                 cardIssuanceSocialPromotionEditorPublishing
+                                 cardIssuanceSocialPromotionEditorPublishing ||
+                                 cardIssuanceSocialPromotionDeleting
                                }
                                className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                              >
@@ -36798,10 +36824,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    : tu('programs_social_promotion_save')}
                                </span>
                              </button>
-                             {cardIssuanceSocialPromotionEditorDirty && !cardIssuanceSocialPromotionEditorPublishing ? (
+                             {cardIssuanceSocialPromotionEditorDirty &&
+                             !cardIssuanceSocialPromotionEditorPublishing &&
+                             !cardIssuanceSocialPromotionDeleting ? (
                                <button
                                  type="button"
                                  onClick={discardCardIssuanceSocialPromotionEditorChanges}
+                                 disabled={cardIssuanceSocialPromotionDeleting}
                                  className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                                >
                                  Discard changes

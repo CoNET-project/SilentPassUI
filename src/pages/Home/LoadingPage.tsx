@@ -615,6 +615,9 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		if (eoa && ethers.isAddress(eoa)) {
 			setEoaAddress(eoa)
 			setMyAddress(eoa)
+			void ensureConetAaForProfileAndPersist(profiles[0], setProfiles).catch(() => {
+				/* 不可信失败：保留 EOA，AppShell / onboarding 会重试 */
+			})
 		}
 		SetLoading(false)
 		setIsInitialEntry(false)

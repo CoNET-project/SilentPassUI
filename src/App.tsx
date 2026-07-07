@@ -156,20 +156,23 @@ function AppShell() {
 
   const navigate = useNavigate()
   const location = useLocation()
-  const conetAaEnsureKeyRef = useRef<string>('')
 
-  /** 进入 Home（/）时：CoNET 无 AA 则静默经 API 创建，不再展示 Action Required 面板。 */
+  /** 钱包解锁后静默 ensure CoNET AA（任意路由；深链 /discover 不再仅限 Home `/`）。 */
   useEffect(() => {
     if (isInitialLoading) return
-    if (location.pathname !== '/') return
     const profile = profiles?.[0]
     const eoa = profile?.keyID?.trim()
     if (!eoa || !ethers.isAddress(eoa)) return
-    const key = eoa.toLowerCase()
-    if (conetAaEnsureKeyRef.current === key) return
-    conetAaEnsureKeyRef.current = key
+    const persistedAa = profile.aaAccount?.trim()
+    if (
+      persistedAa &&
+      ethers.isAddress(persistedAa) &&
+      persistedAa.toLowerCase() !== eoa.toLowerCase()
+    ) {
+      return
+    }
     void ensureConetAaForProfileAndPersist(profile, setProfiles)
-  }, [isInitialLoading, location.pathname, profiles?.[0]?.keyID, setProfiles])
+  }, [isInitialLoading, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, setProfiles])
   // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时先打开确认页
   useEffect(() => {
     if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
@@ -766,7 +769,10 @@ function AppShell() {
 		setCoNET_Data(temp)
 		await storeSystemData()
 		const eoa = profiles[0]?.keyID?.trim()
-		if (eoa && ethers.isAddress(eoa)) setMyAddress(eoa)
+		if (eoa && ethers.isAddress(eoa)) {
+			setMyAddress(eoa)
+			void ensureConetAaForProfileAndPersist(profiles[0], setProfiles).catch(() => {})
+		}
 		setIsInitialLoading(false)
 
   	}

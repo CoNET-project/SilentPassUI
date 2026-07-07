@@ -1,6 +1,7 @@
 import { IpfsImg } from '@/components/IpfsImg';
 import { useObjectImgSrc } from '@/components/card/useObjectImgSrc';
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
 import {
   ChevronRight,
   Server,
@@ -57,7 +58,8 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
-import { checkStorage } from "@/services/beamio"
+import { checkStorage, searchUsername } from "@/services/beamio"
+import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
@@ -838,7 +840,15 @@ function DiscoverMerchantCardAddressCapsule({ address }: { address: string }) {
 }
 
 /** Issuer @beamioTag on Discover merchant detail hero (glass pill on dark gradient). */
-function DiscoverMerchantOwnerBeamioTagCapsule({ ownerEoa }: { ownerEoa: string }) {
+function DiscoverMerchantOwnerBeamioTagCapsule({
+	ownerEoa,
+	onOpenProfile,
+	profileOpening,
+}: {
+	ownerEoa: string
+	onOpenProfile?: () => void
+	profileOpening?: boolean
+}) {
 	const { lookupByAddress, resolveTag, avatarImgUrl, ensureProfilesForAddresses } = useBeamioTagDatabase()
 
 	useEffect(() => {
@@ -852,16 +862,43 @@ function DiscoverMerchantOwnerBeamioTagCapsule({ ownerEoa }: { ownerEoa: string 
 	const tagRaw = resolveTag(ownerEoa)
 	const tagLine = formatBeamioTagDisplayLine(tagRaw)
 	const avatarSrc = avatarImgUrl(record?.accountName ?? tagRaw, ownerEoa)
+	const interactive = Boolean(onOpenProfile)
 
-	return (
-		<div
-			className="inline-flex max-w-[min(100%,14rem)] min-w-0 shrink-0 items-center gap-1.5 rounded-full border border-white/25 bg-white/15 py-1 pl-1 pr-2.5 text-white shadow-sm backdrop-blur-sm"
-			aria-label={`Merchant issuer ${tagLine}`}
-		>
+	const shellClass = [
+		"inline-flex max-w-[min(100%,14rem)] min-w-0 shrink-0 items-center gap-1.5 rounded-full border border-white/25 bg-white/15 py-1 pl-1 pr-2.5 text-white shadow-sm backdrop-blur-sm",
+		interactive ? "cursor-pointer transition hover:bg-white/20 active:scale-[0.98] disabled:cursor-wait disabled:opacity-80" : "",
+	].join(" ")
+
+	const inner = (
+		<>
 			<div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-white/30">
-				<IpfsImg src={avatarSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+				{profileOpening ? (
+					<Loader2 className="h-4 w-4 animate-spin text-white/90" strokeWidth={2} aria-hidden />
+				) : (
+					<IpfsImg src={avatarSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+				)}
 			</div>
 			<span className="truncate text-[13px] font-bold leading-none">{tagLine}</span>
+		</>
+	)
+
+	if (interactive) {
+		return (
+			<button
+				type="button"
+				className={shellClass}
+				aria-label={`View merchant issuer profile ${tagLine}`}
+				disabled={profileOpening}
+				onClick={onOpenProfile}
+			>
+				{inner}
+			</button>
+		)
+	}
+
+	return (
+		<div className={shellClass} aria-label={`Merchant issuer ${tagLine}`}>
+			{inner}
 		</div>
 	)
 }
@@ -2740,6 +2777,13 @@ function DiscoverMerchantDetailFullScreen({
 	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta } = useDaemonContext()
 	const { registerCardAddresses, resolveDisplayName, lookupByAddress, ensureCardMetadataForAddresses } =
 		useMerchantCardDatabase()
+	const {
+		lookupByAddress: lookupProfileByAddress,
+		resolvePeerSearchResult,
+		resolveTag,
+		searchRemoteAndIngest,
+		ingestSearchResponse,
+	} = useBeamioTagDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
 	const [resolvedDiscoverAbout, setResolvedDiscoverAbout] = useState<ShareTokenMetadataDiscoverAbout | null>(
 		item.discoverAbout,
@@ -2757,6 +2801,8 @@ function DiscoverMerchantDetailFullScreen({
 	const [userSocialPointsLoading, setUserSocialPointsLoading] = useState(false)
 	const [merchantMetadataRoot, setMerchantMetadataRoot] = useState<Record<string, unknown> | null>(null)
 	const [issuerOwnerEoa, setIssuerOwnerEoa] = useState<string | null>(item.cardOwner ?? null)
+	const [issuerProfileItem, setIssuerProfileItem] = useState<searchResult | null>(null)
+	const [issuerProfileOpening, setIssuerProfileOpening] = useState(false)
 	/** Card social missions from getRewardRule(1/2/3); undefined = loading, null = none active on-chain. */
 	const [chainCardSocialPromotion, setChainCardSocialPromotion] = useState<
 		Awaited<ReturnType<typeof readCardSocialPromotionFromChain>> | undefined
@@ -2787,6 +2833,61 @@ function DiscoverMerchantDetailFullScreen({
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const ccy = (item.currency || "CAD").toUpperCase()
 	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
+
+	const openIssuerProfile = useCallback(async () => {
+		const ownerEoa = issuerOwnerEoa
+		if (!ownerEoa || !ethers.isAddress(ownerEoa) || issuerProfileOpening) return
+		setIssuerProfileOpening(true)
+		try {
+			let itemResult = resolvePeerSearchResult(ownerEoa)
+			if (!itemResult) {
+				const record = lookupProfileByAddress(ownerEoa)
+				const tag = (record?.accountName ?? record?.username ?? '').replace(/^@+/, '')
+				if (tag) {
+					await searchRemoteAndIngest(tag)
+					itemResult = resolvePeerSearchResult(ownerEoa)
+				}
+			}
+			if (!itemResult) {
+				const res = await searchUsername(ownerEoa).catch(() => null)
+				if (res) {
+					ingestSearchResponse(res, ownerEoa)
+					itemResult = resolvePeerSearchResult(ownerEoa)
+					if (!itemResult) {
+						const rows = (res as { results?: searchResult[] })?.results ?? []
+						const match =
+							rows.find((r) => (r.address || '').toLowerCase() === ownerEoa.toLowerCase()) ?? rows[0]
+						if (match) itemResult = match
+					}
+				}
+			}
+			if (!itemResult) {
+				const rec = lookupProfileByAddress(ownerEoa)
+				const tagPlain = resolveTag(ownerEoa)?.replace(/^@+/, '') ?? ''
+				itemResult = {
+					address: ethers.getAddress(ownerEoa),
+					created_at: 0,
+					first_name: rec?.first_name ?? rec?.firstName ?? '',
+					last_name: rec?.last_name ?? rec?.lastName ?? '',
+					follow_count: '',
+					follower_count: '',
+					username: tagPlain,
+					image: rec?.image ?? '',
+				}
+			}
+			setIssuerProfileItem(itemResult)
+		} finally {
+			setIssuerProfileOpening(false)
+		}
+	}, [
+		issuerOwnerEoa,
+		issuerProfileOpening,
+		resolvePeerSearchResult,
+		lookupProfileByAddress,
+		searchRemoteAndIngest,
+		ingestSearchResponse,
+		resolveTag,
+	])
 
 	useEffect(() => {
 		setIssuerOwnerEoa(item.cardOwner ?? null)
@@ -3673,6 +3774,7 @@ function DiscoverMerchantDetailFullScreen({
 	}, [onClose])
 
 	return (
+		<>
 		<div className="flex h-full min-h-0 flex-col bg-[#f5f7f9] dark:bg-slate-950 text-[#1f2328] dark:text-slate-100">
 			<div className="relative shrink-0">
 				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
@@ -3730,7 +3832,13 @@ function DiscoverMerchantDetailFullScreen({
 						</div>
 						<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
 							<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
-							{issuerOwnerEoa ? <DiscoverMerchantOwnerBeamioTagCapsule ownerEoa={issuerOwnerEoa} /> : null}
+							{issuerOwnerEoa ? (
+								<DiscoverMerchantOwnerBeamioTagCapsule
+									ownerEoa={issuerOwnerEoa}
+									onOpenProfile={() => void openIssuerProfile()}
+									profileOpening={issuerProfileOpening}
+								/>
+							) : null}
 						</div>
 						<p className="mt-1 block w-full text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
 						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
@@ -4071,6 +4179,36 @@ function DiscoverMerchantDetailFullScreen({
 				</div>
 			</div>
 		</div>
+
+		{issuerProfileItem &&
+			createPortal(
+				<AnimatePresence>
+					<motion.div
+						key="discover-issuer-profile"
+						className="fixed inset-0 z-[101] flex flex-col bg-white dark:bg-slate-900"
+						initial={{ x: '100%' }}
+						animate={{ x: 0 }}
+						exit={{ x: '100%' }}
+						transition={{ duration: 0.2, ease: 'easeOut' }}
+						onTouchMove={(e) => e.stopPropagation()}
+					>
+						<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+							<BeamioContactProfilePreview
+								item={issuerProfileItem}
+								close={(path) => {
+									if (typeof path === 'string') {
+										setIssuerProfileItem(null)
+										return
+									}
+									setIssuerProfileItem(null)
+								}}
+							/>
+						</div>
+					</motion.div>
+				</AnimatePresence>,
+				document.body,
+			)}
+		</>
 	)
 }
 

@@ -126,15 +126,16 @@ import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
 import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPromo.png"
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
+import { DiscoverMerchantActivePromotionsPanel } from '@/components/discover/DiscoverMerchantActivePromotionsPanel'
+import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import {
-	collectActiveDiscoverMerchantPromotions,
+	buildDiscoverActivePromotionsPanelModel,
 	formatSocialPoints13Display,
-	type DiscoverMerchantPromotionRow,
 } from '@/utils/discoverMerchantPromotions'
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
@@ -605,28 +606,6 @@ const DISCOVER_MERCHANT_CURATED_OFFERS: Record<string, DiscoverMerchantCuratedOf
 	},
 }
 
-function DiscoverCuratedTopUpBonusCard({
-	title,
-	description,
-}: {
-	title: string
-	description: string
-}) {
-	return (
-		<div className="overflow-hidden rounded-[20px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-			<div className="flex items-start gap-3.5 bg-gradient-to-r from-orange-50 via-orange-50/40 to-white p-4 dark:from-orange-950/30 dark:via-slate-900 dark:to-slate-900 sm:p-5">
-				<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-500 dark:bg-orange-950/50 dark:text-orange-400">
-					<Star className="h-5 w-5" strokeWidth={2.25} fill="currentColor" aria-hidden />
-				</span>
-				<div className="min-w-0 flex-1">
-					<h3 className="text-[17px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">{title}</h3>
-					<p className="mt-1.5 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">{description}</p>
-				</div>
-			</div>
-		</div>
-	)
-}
-
 function DiscoverCuratedBeamioPointsCard({
 	config,
 	onPointsMallClick,
@@ -699,14 +678,21 @@ function DiscoverMerchantCuratedOffersStack({
 	config,
 	onCollectOffer,
 	onPointsMallClick,
+	showTopUpBonus = true,
 }: {
 	config: DiscoverMerchantCuratedOffersPanel
 	onCollectOffer?: (offerId: string) => void
 	onPointsMallClick?: () => void
+	showTopUpBonus?: boolean
 }) {
 	return (
 		<div className="space-y-3">
-			<DiscoverCuratedTopUpBonusCard title={config.topUpBonus.title} description={config.topUpBonus.description} />
+			{showTopUpBonus ? (
+				<DiscoverTopupPromotionCapsule
+					title={config.topUpBonus.title}
+					description={config.topUpBonus.description}
+				/>
+			) : null}
 			<DiscoverCuratedBeamioPointsCard config={config.beamioPoints} onPointsMallClick={onPointsMallClick} />
 			{config.collectOffers.map((offer) => (
 				<DiscoverCuratedCollectOfferRow
@@ -1321,51 +1307,6 @@ function DiscoverMerchantSocialPointsCard({ points, loading }: { points: number 
 					{display}
 				</p>
 			</div>
-		</div>
-	)
-}
-
-function DiscoverMerchantActivePromotionsCard({
-	promotions,
-	loading,
-}: {
-	promotions: DiscoverMerchantPromotionRow[] | null
-	loading: boolean
-}) {
-	return (
-		<div className="rounded-[22px] bg-white px-5 py-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-6">
-			<header className="mb-3 flex items-center justify-between gap-2">
-				<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Active promotions</h3>
-				{promotions != null ? (
-					<span className="rounded-full border border-[#1562f0]/15 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0]">
-						{promotions.length.toLocaleString()} active
-					</span>
-				) : null}
-			</header>
-			{loading && promotions == null ? (
-				<div className="flex items-center justify-center gap-2 py-5 text-slate-500 dark:text-slate-400">
-					<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-					<span className="text-[14px] font-medium">Loading promotions…</span>
-				</div>
-			) : promotions != null && promotions.length > 0 ? (
-				<ul className="space-y-3">
-					{promotions.map((row) => (
-						<li
-							key={row.id}
-							className="rounded-xl border border-slate-100 bg-slate-50/80 px-3.5 py-3 dark:border-slate-800 dark:bg-slate-800/50"
-						>
-							<p className="text-[13px] font-bold text-[#1f2328] dark:text-slate-100">{row.title}</p>
-							<p className="mt-1 text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
-								{row.description}
-							</p>
-						</li>
-					))}
-				</ul>
-			) : (
-				<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4 text-center text-[13px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
-					No active promotions right now.
-				</p>
-			)}
 		</div>
 	)
 }
@@ -2869,9 +2810,9 @@ function DiscoverMerchantDetailFullScreen({
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
 	const heroRechargeBonusPill = discoverFeaturedRechargeBonusSidePill(item)
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
-	const resolvedActivePromotions = useMemo(
+	const activePromotionsPanel = useMemo(
 		() =>
-			collectActiveDiscoverMerchantPromotions({
+			buildDiscoverActivePromotionsPanelModel({
 				metadataRoot: merchantMetadataRoot,
 				currency: displayCurrency,
 				couponSeries: merchantCoupons?.map((row) => ({
@@ -3891,16 +3832,28 @@ function DiscoverMerchantDetailFullScreen({
 						loading={userSocialPointsLoading}
 					/>
 
-					<DiscoverMerchantActivePromotionsCard
-						promotions={merchantMetadataRoot || merchantCoupons != null ? resolvedActivePromotions : null}
-						loading={merchantOffersLoading && merchantMetadataRoot == null && merchantCoupons == null}
-					/>
+					{(() => {
+						const promotionsLoaded =
+							merchantMetadataRoot != null || merchantCoupons != null
+						const showActivePromotionsPanel =
+							(promotionsLoaded && activePromotionsPanel != null) ||
+							(merchantOffersLoading && !promotionsLoaded)
+						if (!showActivePromotionsPanel) return null
+						return (
+							<DiscoverMerchantActivePromotionsPanel
+								model={promotionsLoaded ? activePromotionsPanel : null}
+								loading={merchantOffersLoading && !promotionsLoaded}
+								onViewAllMissions={scrollToCouponsSection}
+							/>
+						)
+					})()}
 
 					{curatedOffersPanel ? (
 						<DiscoverMerchantCuratedOffersStack
 							config={curatedOffersPanel}
 							onPointsMallClick={scrollToCouponsSection}
 							onCollectOffer={scrollToCouponsSection}
+							showTopUpBonus={activePromotionsPanel?.topup == null}
 						/>
 					) : null}
 

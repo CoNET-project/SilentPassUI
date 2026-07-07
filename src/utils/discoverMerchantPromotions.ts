@@ -1,6 +1,7 @@
 import { fiatPrefix } from '@/services/currency'
 import {
 	formatDiscoverRechargeBonusDisplayString,
+	formatDiscoverRechargeBonusSidePillText,
 	parseDiscoverRechargeBonusRules,
 	pickPrimaryDiscoverRechargeBonusRule,
 	type DiscoverRechargeBonusRule,
@@ -324,20 +325,171 @@ function formatRechargeBonusCapsuleCopy(
 	}
 }
 
+/** Single source of truth: metadata top-up promotion (hero / capsule / Active promotions panel). */
+export type DiscoverUnifiedTopupPromotion = {
+	source: 'topupPromotion' | 'bonusRules'
+	topupPromo?: ShareTokenMetadataTopupPromotion
+	bonusRule?: DiscoverRechargeBonusRule
+	active: boolean
+}
+
+function metadataHasTopupPromotionBlock(meta: Record<string, unknown> | null | undefined): boolean {
+	const share = shareMetadataRoot(meta)
+	const raw = share?.topupPromotion
+	return raw != null && typeof raw === 'object'
+}
+
+/** Prefer `shareTokenMetadata.topupPromotion` when present; legacy `bonusRules` only when no top-up block. */
+export function resolveDiscoverUnifiedTopupPromotion(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+}): DiscoverUnifiedTopupPromotion | null {
+	const meta = params.metadataRoot ?? null
+	if (metadataHasTopupPromotionBlock(meta)) {
+		const topupPromo = parseTopupPromotionFromMetadata(meta)
+		if (!topupPromo) return null
+		return {
+			source: 'topupPromotion',
+			topupPromo,
+			active: isTopupPromotionActive(topupPromo),
+		}
+	}
+	const primaryBonus = pickPrimaryDiscoverRechargeBonusRule(parseDiscoverRechargeBonusRules(meta ?? {}))
+	if (!primaryBonus) return null
+	return {
+		source: 'bonusRules',
+		bonusRule: primaryBonus,
+		active: true,
+	}
+}
+
+function formatTopupPromotionHeroSidePill(
+	promo: ShareTokenMetadataTopupPromotion,
+	currencyCode: string,
+): string {
+	if (promo.rewardType === 'percent') {
+		return `${formatBonusRuleAmount(promo.rewardValue)}% of top-up`
+	}
+	return formatDiscoverRechargeBonusSidePillText(
+		{
+			paymentAmount: promo.minimumTopupAmount,
+			bonusValue: promo.rewardValue,
+			bonusProportional: false,
+		},
+		currencyCode,
+	)
+}
+
+function buildTopupPromotionPanelRowFromUnified(
+	unified: DiscoverUnifiedTopupPromotion,
+	currency: string,
+	detailText: string,
+): DiscoverActivePromotionsTopupRow | null {
+	if (!unified.active) return null
+	const moneyPrefix = moneyPrefixForCurrency(currency)
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		const promo = unified.topupPromo
+		const bonusLabel =
+			promo.rewardType === 'percent'
+				? `${formatBonusRuleAmount(promo.rewardValue)}% bonus`
+				: `${moneyPrefix}${formatBonusRuleAmount(promo.rewardValue)} bonus`
+		return {
+			minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(promo.minimumTopupAmount)}`,
+			bonusLabel,
+			detailText,
+		}
+	}
+	if (unified.bonusRule) {
+		const rule = unified.bonusRule
+		if (rule.bonusProportional) {
+			const pct = (rule.bonusValue / rule.paymentAmount) * 100
+			return {
+				minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(rule.paymentAmount)}`,
+				bonusLabel: `${formatBonusRuleAmount(pct)}% bonus`,
+				detailText,
+			}
+		}
+		return {
+			minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(rule.paymentAmount)}`,
+			bonusLabel: `${moneyPrefix}${formatBonusRuleAmount(rule.bonusValue)} bonus`,
+			detailText,
+		}
+	}
+	return null
+}
+
+/** Hero image bottom-right chip — same active gate as Active promotions panel. */
+export function resolveDiscoverTopupPromotionHeroSidePill(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+}): string | null {
+	const unified = resolveDiscoverUnifiedTopupPromotion(params)
+	if (!unified?.active) return null
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		return formatTopupPromotionHeroSidePill(unified.topupPromo, params.currency)
+	}
+	if (unified.bonusRule) {
+		return formatDiscoverRechargeBonusSidePillText(unified.bonusRule, params.currency)
+	}
+	return null
+}
+
+/** Long-form top-up copy (list cards / detail subcopy). */
+export function resolveDiscoverTopupPromotionDisplayString(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+}): string | null {
+	const unified = resolveDiscoverUnifiedTopupPromotion(params)
+	if (!unified?.active) return null
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		return formatTopupPromotionDisplay(unified.topupPromo, params.currency)
+	}
+	if (unified.bonusRule) {
+		return formatDiscoverRechargeBonusDisplayString(unified.bonusRule, params.currency)
+	}
+	return null
+}
+
+export type DiscoverTopupPromotionPresentation = {
+	heroSidePill: string | null
+	displayString: string | null
+	capsuleCopy: DiscoverTopupPromotionCapsuleCopy | null
+	primaryRechargeBonus: DiscoverRechargeBonusRule | null
+}
+
+/** All Discover top-up surfaces (hero chip, capsule, panel) from one metadata read. */
+export function resolveDiscoverTopupPromotionPresentation(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+}): DiscoverTopupPromotionPresentation {
+	const empty: DiscoverTopupPromotionPresentation = {
+		heroSidePill: null,
+		displayString: null,
+		capsuleCopy: null,
+		primaryRechargeBonus: null,
+	}
+	const unified = resolveDiscoverUnifiedTopupPromotion(params)
+	if (!unified?.active) return empty
+	const capsuleCopy = resolveDiscoverTopupPromotionCapsuleCopy(params)
+	return {
+		heroSidePill: resolveDiscoverTopupPromotionHeroSidePill(params),
+		displayString: resolveDiscoverTopupPromotionDisplayString(params),
+		capsuleCopy,
+		primaryRechargeBonus: unified.bonusRule ?? null,
+	}
+}
+
 /** Headline + body for merchant detail top-up promotion capsule (metadata-driven). */
 export function resolveDiscoverTopupPromotionCapsuleCopy(params: {
 	metadataRoot: Record<string, unknown> | null | undefined
 	currency: string
 }): DiscoverTopupPromotionCapsuleCopy | null {
-	const meta = params.metadataRoot ?? null
-	const topupPromo = parseTopupPromotionFromMetadata(meta)
-	if (topupPromo && isTopupPromotionActive(topupPromo)) {
-		return formatTopupPromotionCapsuleCopy(topupPromo, params.currency)
+	const unified = resolveDiscoverUnifiedTopupPromotion(params)
+	if (!unified?.active) return null
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		return formatTopupPromotionCapsuleCopy(unified.topupPromo, params.currency)
 	}
-	const bonusRules = parseDiscoverRechargeBonusRules(meta ?? {})
-	const primaryBonus = pickPrimaryDiscoverRechargeBonusRule(bonusRules)
-	if (primaryBonus) {
-		return formatRechargeBonusCapsuleCopy(primaryBonus, params.currency)
+	if (unified.bonusRule) {
+		return formatRechargeBonusCapsuleCopy(unified.bonusRule, params.currency)
 	}
 	return null
 }
@@ -397,26 +549,20 @@ export function collectActiveDiscoverMerchantPromotions(params: {
 	const rows: DiscoverMerchantPromotionRow[] = []
 	const currency = params.currency || 'CAD'
 	const meta = params.metadataRoot ?? null
-
-	const topupPromo = parseTopupPromotionFromMetadata(meta)
-	if (topupPromo && isTopupPromotionActive(topupPromo)) {
+	const unified = resolveDiscoverUnifiedTopupPromotion({ metadataRoot: meta })
+	if (unified?.active) {
+		const description =
+			unified.source === 'topupPromotion' && unified.topupPromo
+				? formatTopupPromotionDisplay(unified.topupPromo, currency)
+				: unified.bonusRule
+					? formatDiscoverRechargeBonusDisplayString(unified.bonusRule, currency)
+					: ''
 		rows.push({
-			id: 'topup-promotion',
-			kind: 'topup',
-			title: 'Top-up promotion',
-			description: formatTopupPromotionDisplay(topupPromo, currency),
+			id: unified.source === 'topupPromotion' ? 'topup-promotion' : 'recharge-bonus',
+			kind: unified.source === 'topupPromotion' ? 'topup' : 'rechargeBonus',
+			title: unified.source === 'topupPromotion' ? 'Top-up promotion' : 'Recharge bonus',
+			description,
 		})
-	} else {
-		const bonusRules = parseDiscoverRechargeBonusRules(meta)
-		const primaryBonus = pickPrimaryDiscoverRechargeBonusRule(bonusRules)
-		if (primaryBonus) {
-			rows.push({
-				id: 'recharge-bonus',
-				kind: 'rechargeBonus',
-				title: 'Recharge bonus',
-				description: formatDiscoverRechargeBonusDisplayString(primaryBonus, currency),
-			})
-		}
 	}
 
 	const cardSocial = parseSocialPromotionFromMetadata(meta)
@@ -499,39 +645,14 @@ function buildTopupPromotionPanelRow(
 	metadataRoot: Record<string, unknown> | null | undefined,
 	currency: string,
 ): DiscoverActivePromotionsTopupRow | null {
-	const meta = metadataRoot ?? null
-	const capsule = resolveDiscoverTopupPromotionCapsuleCopy({ metadataRoot: meta, currency })
-	const topupPromo = parseTopupPromotionFromMetadata(meta)
-	if (topupPromo && isTopupPromotionActive(topupPromo)) {
-		const moneyPrefix = moneyPrefixForCurrency(currency)
-		const min = topupPromo.minimumTopupAmount
-		const reward = topupPromo.rewardValue
-		const bonusLabel =
-			topupPromo.rewardType === 'percent'
-				? `${formatBonusRuleAmount(reward)}% bonus`
-				: `${moneyPrefix}${formatBonusRuleAmount(reward)} bonus`
-		return {
-			minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(min)}`,
-			bonusLabel,
-			detailText: capsule?.description ?? formatTopupPromotionDisplay(topupPromo, currency),
-		}
-	}
-	const primaryBonus = pickPrimaryDiscoverRechargeBonusRule(parseDiscoverRechargeBonusRules(meta ?? {}))
-	if (!primaryBonus) return null
-	const moneyPrefix = moneyPrefixForCurrency(currency)
-	if (primaryBonus.bonusProportional) {
-		const pct = (primaryBonus.bonusValue / primaryBonus.paymentAmount) * 100
-		return {
-			minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(primaryBonus.paymentAmount)}`,
-			bonusLabel: `${formatBonusRuleAmount(pct)}% bonus`,
-			detailText: capsule?.description ?? formatDiscoverRechargeBonusDisplayString(primaryBonus, currency),
-		}
-	}
-	return {
-		minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(primaryBonus.paymentAmount)}`,
-		bonusLabel: `${moneyPrefix}${formatBonusRuleAmount(primaryBonus.bonusValue)} bonus`,
-		detailText: capsule?.description ?? formatDiscoverRechargeBonusDisplayString(primaryBonus, currency),
-	}
+	const unified = resolveDiscoverUnifiedTopupPromotion({ metadataRoot })
+	if (!unified?.active) return null
+	const capsule = resolveDiscoverTopupPromotionCapsuleCopy({ metadataRoot, currency })
+	const detailText =
+		capsule?.description ??
+		resolveDiscoverTopupPromotionDisplayString({ metadataRoot, currency }) ??
+		''
+	return buildTopupPromotionPanelRowFromUnified(unified, currency, detailText)
 }
 
 function buildCardSocialMissionMetrics(cardSocial: ShareTokenMetadataSocialPromotion | null): {

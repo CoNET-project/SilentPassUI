@@ -136,7 +136,10 @@ import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import {
 	buildDiscoverActivePromotionsPanelModel,
 	formatSocialPoints13Display,
+	resolveDiscoverTopupPromotionPresentation,
+	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
+import { normalizeCardAddressKey } from '@/utils/merchantCardDatabase'
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
 /** Card address for USDC Top Up panel (CashTrees card, from chainAddresses). */
@@ -284,11 +287,29 @@ const DISCOVER_RECHARGE_BONUS_FALLBACKS: Record<string, DiscoverRechargeBonusRul
 
 function resolveDiscoverPrimaryRechargeBonus(
 	cardAddress: string,
-	meta: Record<string, unknown> | null
+	meta: Record<string, unknown> | null,
 ): DiscoverRechargeBonusRule | null {
 	const fromMeta = pickPrimaryDiscoverRechargeBonusRule(parseDiscoverRechargeBonusRules(meta))
 	if (fromMeta) return fromMeta
 	return DISCOVER_RECHARGE_BONUS_FALLBACKS[resolveDiscoverCardPanelKey(cardAddress)] ?? null
+}
+
+/** Featured list + detail: one resolver for hero chip / capsule / Active promotions. */
+function resolveDiscoverFeaturedTopupPresentation(
+	cardAddress: string,
+	meta: Record<string, unknown> | null | undefined,
+	currency: string,
+): DiscoverTopupPromotionPresentation {
+	const fromMeta = resolveDiscoverTopupPromotionPresentation({ metadataRoot: meta, currency })
+	if (fromMeta.heroSidePill || fromMeta.capsuleCopy) return fromMeta
+	const fallback = DISCOVER_RECHARGE_BONUS_FALLBACKS[resolveDiscoverCardPanelKey(cardAddress)]
+	if (!fallback) return fromMeta
+	return {
+		heroSidePill: formatDiscoverRechargeBonusSidePillText(fallback, currency),
+		displayString: formatDiscoverRechargeBonusDisplayString(fallback, currency),
+		capsuleCopy: null,
+		primaryRechargeBonus: fallback,
+	}
 }
 
 const DISCOVER_RECHARGE_BONUS_HERO_CHIP_CLASS =
@@ -302,14 +323,6 @@ function DiscoverRechargeBonusHeroChip({
 	className?: string
 }) {
 	return <span className={`${DISCOVER_RECHARGE_BONUS_HERO_CHIP_CLASS} ${className}`.trim()}>{label}</span>
-}
-
-function discoverFeaturedRechargeBonusSidePill(item: Pick<DiscoverFeaturedCard, "rechargeBonusSidePill" | "primaryRechargeBonus" | "currency">): string | null {
-	if (item.rechargeBonusSidePill) return item.rechargeBonusSidePill
-	if (item.primaryRechargeBonus) {
-		return formatDiscoverRechargeBonusSidePillText(item.primaryRechargeBonus, item.currency)
-	}
-	return null
 }
 
 /** Featured Brands subtitle override by card address (lowercased). */
@@ -865,14 +878,8 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 		fallbackIndex: 0,
 	})
 	const metaRecord = meta as Record<string, unknown> | null
-	const primaryBonus = resolveDiscoverPrimaryRechargeBonus(cardAddress, metaRecord)
 	const currency = 'CAD'
-	const rechargeBonusSidePill = primaryBonus
-		? formatDiscoverRechargeBonusSidePillText(primaryBonus, currency)
-		: null
-	const rechargeBonusDisplay = primaryBonus
-		? formatDiscoverRechargeBonusDisplayString(primaryBonus, currency)
-		: null
+	const topupPresentation = resolveDiscoverFeaturedTopupPresentation(cardAddress, metaRecord, currency)
 	return {
 		id: cardAddress,
 		cardAddress,
@@ -889,9 +896,9 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 			meta?.image?.trim() ??
 			(dbImage || null),
 		currency,
-		primaryRechargeBonus: primaryBonus,
-		rechargeBonusSidePill,
-		rechargeBonusDisplay,
+		primaryRechargeBonus: topupPresentation.primaryRechargeBonus,
+		rechargeBonusSidePill: topupPresentation.heroSidePill,
+		rechargeBonusDisplay: topupPresentation.displayString,
 		discoverAbout: parseDiscoverAboutFromShare(
 			readDiscoverNestedObject(metadataRoot ?? null, "shareTokenMetadata") ??
 				readDiscoverNestedObject(metaRecord, "shareTokenMetadata"),
@@ -2693,7 +2700,7 @@ function DiscoverMerchantDetailFullScreen({
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta } = useDaemonContext()
-	const { fetchCardMetadata, registerCardAddresses, resolveDisplayName, lookupByAddress } =
+	const { registerCardAddresses, resolveDisplayName, lookupByAddress, ensureCardMetadataForAddresses } =
 		useMerchantCardDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
 	const [resolvedDiscoverAbout, setResolvedDiscoverAbout] = useState<ShareTokenMetadataDiscoverAbout | null>(
@@ -2744,13 +2751,14 @@ function DiscoverMerchantDetailFullScreen({
 
 	useEffect(() => {
 		if (!item.cardAddress) return
+		setMerchantMetadataRoot(null)
 		let cancelled = false
 		const cardAddress = item.cardAddress
 		void fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardAddress)}`)
 			.then(async (res) => (res.ok ? ((await res.json()) as { metadata?: Record<string, unknown> | null }) : null))
 			.then((data) => {
 				if (cancelled || !data?.metadata || typeof data.metadata !== "object") return
-				setMerchantMetadataRoot((prev) => ({ ...(prev ?? {}), ...data.metadata }))
+				setMerchantMetadataRoot(data.metadata)
 				const about = parseDiscoverAboutFromShare(
 					readDiscoverNestedObject(data.metadata, "shareTokenMetadata"),
 				)
@@ -2808,7 +2816,15 @@ function DiscoverMerchantDetailFullScreen({
 		? null
 		: Number(merchantAssets?.points ?? 0)
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
-	const heroRechargeBonusPill = discoverFeaturedRechargeBonusSidePill(item)
+	const topupPromotionPresentation = useMemo(
+		() =>
+			resolveDiscoverTopupPromotionPresentation({
+				metadataRoot: merchantMetadataRoot,
+				currency: displayCurrency,
+			}),
+		[merchantMetadataRoot, displayCurrency],
+	)
+	const heroRechargeBonusPill = topupPromotionPresentation.heroSidePill
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
 	const activePromotionsPanel = useMemo(
 		() =>
@@ -2822,6 +2838,7 @@ function DiscoverMerchantDetailFullScreen({
 			}),
 		[merchantMetadataRoot, displayCurrency, merchantCoupons],
 	)
+	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
 	const conetEvangelistLink = useMemo(() => {
 		const ref = (profile?.keyID ?? '').trim()
 		return ref
@@ -3505,9 +3522,9 @@ function DiscoverMerchantDetailFullScreen({
 		registerCardAddresses([cardAddress])
 		Promise.all([
 			fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, 50),
-			fetchCardMetadata(cardAddress),
+			ensureCardMetadataForAddresses([cardAddress], { maxPerTick: 1 }),
 		])
-			.then(([couponRows, meta]) => {
+			.then(([couponRows, ensuredMap]) => {
 				if (cancelled) return
 				if (couponRows != null) {
 					const mapped = couponRows
@@ -3527,10 +3544,14 @@ function DiscoverMerchantDetailFullScreen({
 						.filter((x): x is DiscoverMerchantCouponOffer => x != null)
 					setMerchantCoupons(mapped)
 				}
-				if (meta != null) {
+				const key = normalizeCardAddressKey(cardAddress)
+				const rec = (key ? ensuredMap[key] : undefined) ?? lookupByAddress(cardAddress)
+				const metadataRoot =
+					rec?.metadataRoot && typeof rec.metadataRoot === 'object' ? rec.metadataRoot : null
+				if (metadataRoot) {
 					const tiersFromApi = parseDiscoverRewardTiersFromMeta(
-						{ tiers: meta.tiers ?? [] } as Record<string, unknown>,
-						ccy
+						{ tiers: metadataRoot.tiers ?? [] } as Record<string, unknown>,
+						ccy,
 					)
 					if (tiersFromApi.length > 0) {
 						setMerchantOfferTiers(tiersFromApi)
@@ -3538,12 +3559,8 @@ function DiscoverMerchantDetailFullScreen({
 						setMerchantOfferTiers([])
 					}
 				}
-				const rec = lookupByAddress(cardAddress)
-				if (rec?.metadataRoot && typeof rec.metadataRoot === 'object') {
-					setMerchantMetadataRoot(rec.metadataRoot)
-				}
 				const freshAbout = parseDiscoverAboutFromShare(
-					readDiscoverNestedObject(rec?.metadataRoot ?? null, "shareTokenMetadata"),
+					readDiscoverNestedObject(metadataRoot, 'shareTokenMetadata'),
 				)
 				if (freshAbout) setResolvedDiscoverAbout(freshAbout)
 			})
@@ -3556,7 +3573,7 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, ccy, fetchCardMetadata, lookupByAddress, registerCardAddresses])
+	}, [item.cardAddress, ccy, ensureCardMetadataForAddresses, lookupByAddress, registerCardAddresses])
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -3832,6 +3849,13 @@ function DiscoverMerchantDetailFullScreen({
 						loading={userSocialPointsLoading}
 					/>
 
+					{topupPromotionCapsule ? (
+						<DiscoverTopupPromotionCapsule
+							title={topupPromotionCapsule.title}
+							description={topupPromotionCapsule.description}
+						/>
+					) : null}
+
 					{(() => {
 						const promotionsLoaded =
 							merchantMetadataRoot != null || merchantCoupons != null
@@ -3853,7 +3877,7 @@ function DiscoverMerchantDetailFullScreen({
 							config={curatedOffersPanel}
 							onPointsMallClick={scrollToCouponsSection}
 							onCollectOffer={scrollToCouponsSection}
-							showTopUpBonus={activePromotionsPanel?.topup == null}
+							showTopUpBonus={activePromotionsPanel?.topup == null && !topupPromotionCapsule}
 						/>
 					) : null}
 
@@ -4197,15 +4221,11 @@ export default function Market() {
 			})
 			const subtitleOverride =
 				DISCOVER_CARD_SUBTITLE_OVERRIDES[resolveDiscoverCardPanelKey(card.cardAddress)]
-			const primaryBonus =
-				card.primaryRechargeBonus ??
-				resolveDiscoverPrimaryRechargeBonus(card.cardAddress, null)
-			const rechargeBonusSidePill = primaryBonus
-				? formatDiscoverRechargeBonusSidePillText(primaryBonus, card.currency)
-				: null
-			const rechargeBonusDisplay = primaryBonus
-				? formatDiscoverRechargeBonusDisplayString(primaryBonus, card.currency)
-				: null
+			const topupPresentation = resolveDiscoverFeaturedTopupPresentation(
+				card.cardAddress,
+				null,
+				card.currency,
+			)
 			return {
 				id: card.cardAddress,
 				cardAddress: card.cardAddress,
@@ -4224,9 +4244,9 @@ export default function Market() {
 				image: hero,
 				logo: card.programIconUrl ?? card.logoUrl ?? (dbImage || null),
 				currency: card.currency,
-				primaryRechargeBonus: primaryBonus,
-				rechargeBonusSidePill,
-				rechargeBonusDisplay,
+				primaryRechargeBonus: topupPresentation.primaryRechargeBonus,
+				rechargeBonusSidePill: topupPresentation.heroSidePill,
+				rechargeBonusDisplay: topupPresentation.displayString,
 				discoverAbout: card.discoverAbout,
 			}
 		})

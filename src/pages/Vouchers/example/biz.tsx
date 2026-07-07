@@ -35800,36 +35800,46 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      exit={{ opacity: 0 }}
                      onClick={() => setCardIssuanceTopupPromotionEditorOpen(false)}
                    />
-                   <motion.div
-                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
-                     initial={{ y: '100%' }}
-                     animate={{ y: 0 }}
-                     exit={{ y: '100%' }}
-                     transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-                   >
-                     <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
-                     <div className="mb-8 flex items-start justify-between gap-4">
-                       <div>
-                         <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                           Promotion
-                         </span>
-                         <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
-                           Top-up Promotion
-                         </h3>
-                         <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                           Set one global top-up reward for your program. Optional date range and minimum top-up amount apply.
-                         </p>
-                       </div>
-                       <button
-                         type="button"
-                         onClick={() => setCardIssuanceTopupPromotionEditorOpen(false)}
-                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
-                       >
-                         <X className="h-5 w-5" strokeWidth={2} aria-hidden />
-                       </button>
-                     </div>
+                  <motion.div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="card-topup-promo-editor-title"
+                    className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                  >
+                    <div className="shrink-0 px-6 pt-6">
+                      <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                      <div className="mb-4 flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                            Promotion
+                          </span>
+                          <h3
+                            id="card-topup-promo-editor-title"
+                            className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
+                          >
+                            Top-up Promotion
+                          </h3>
+                          <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                            Set one global top-up reward for your program. Optional date range and minimum top-up amount apply.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCardIssuanceTopupPromotionEditorOpen(false)}
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                          aria-label="Close top-up promotion editor"
+                        >
+                          <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                        </button>
+                      </div>
+                    </div>
 
-                     <div className="space-y-6">
+                    <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+                    <div className="space-y-6">
                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                          <div className="space-y-2">
                            <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-valid-from">
@@ -36034,13 +36044,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <span>Clear Promotion</span>
                              )}
                            </button>
-                         ) : null}
-                       </div>
-                     </div>
-                   </motion.div>
-                 </>
-               ) : null}
-             </AnimatePresence>
+                        ) : null}
+                      </div>
+                    </div>
+                    </div>
+                  </motion.div>
+                </>
+              ) : null}
+            </AnimatePresence>
              <AnimatePresence>
                {cardIssuanceSocialPromotionEditorOpen ? (
                  <>

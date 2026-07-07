@@ -379,45 +379,7 @@ function formatTopupPromotionHeroSidePill(
 	)
 }
 
-function buildTopupPromotionPanelRowFromUnified(
-	unified: DiscoverUnifiedTopupPromotion,
-	currency: string,
-	detailText: string,
-): DiscoverActivePromotionsTopupRow | null {
-	if (!unified.active) return null
-	const moneyPrefix = moneyPrefixForCurrency(currency)
-	if (unified.source === 'topupPromotion' && unified.topupPromo) {
-		const promo = unified.topupPromo
-		const bonusLabel =
-			promo.rewardType === 'percent'
-				? `${formatBonusRuleAmount(promo.rewardValue)}% bonus`
-				: `${moneyPrefix}${formatBonusRuleAmount(promo.rewardValue)} bonus`
-		return {
-			minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(promo.minimumTopupAmount)}`,
-			bonusLabel,
-			detailText,
-		}
-	}
-	if (unified.bonusRule) {
-		const rule = unified.bonusRule
-		if (rule.bonusProportional) {
-			const pct = (rule.bonusValue / rule.paymentAmount) * 100
-			return {
-				minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(rule.paymentAmount)}`,
-				bonusLabel: `${formatBonusRuleAmount(pct)}% bonus`,
-				detailText,
-			}
-		}
-		return {
-			minLabel: `Min ${moneyPrefix}${formatBonusRuleAmount(rule.paymentAmount)}`,
-			bonusLabel: `${moneyPrefix}${formatBonusRuleAmount(rule.bonusValue)} bonus`,
-			detailText,
-		}
-	}
-	return null
-}
-
-/** Hero image bottom-right chip — same active gate as Active promotions panel. */
+/** Hero image bottom-right chip — same active gate as top-up capsule. */
 export function resolveDiscoverTopupPromotionHeroSidePill(params: {
 	metadataRoot: Record<string, unknown> | null | undefined
 	currency: string
@@ -615,17 +577,13 @@ export function formatSocialPoints13Display(value: number | null | undefined): s
 	return n.toLocaleString('en-US')
 }
 
-/** Per-event #13 points for Social Missions metric pills (linkClick / like / topup). */
+/** Per-event #13 points for Social Missions metric pills (linkClick / like / topup / claim / burn). */
 export type DiscoverSocialMissionMetrics = {
 	linkClick: number | null
 	like: number | null
 	topup: number | null
-}
-
-export type DiscoverActivePromotionsTopupRow = {
-	minLabel: string
-	bonusLabel: string
-	detailText: string
+	claim: number | null
+	burn: number | null
 }
 
 export type DiscoverActivePromotionsSocialMissions = {
@@ -634,25 +592,62 @@ export type DiscoverActivePromotionsSocialMissions = {
 	userDetailText: string
 }
 
-export type DiscoverActivePromotionsPanelModel = {
-	activeCount: number
-	topup: DiscoverActivePromotionsTopupRow | null
-	socialMissions: DiscoverActivePromotionsSocialMissions | null
-	extraRows: DiscoverMerchantPromotionRow[]
+export type DiscoverCouponSocialMissionBlock = {
+	id: string
+	title: string
+	tokenId: string
+	user: DiscoverSocialMissionMetrics | null
+	referrer: DiscoverSocialMissionMetrics | null
+	userDetailText: string
 }
 
-function buildTopupPromotionPanelRow(
-	metadataRoot: Record<string, unknown> | null | undefined,
-	currency: string,
-): DiscoverActivePromotionsTopupRow | null {
-	const unified = resolveDiscoverUnifiedTopupPromotion({ metadataRoot })
-	if (!unified?.active) return null
-	const capsule = resolveDiscoverTopupPromotionCapsuleCopy({ metadataRoot, currency })
-	const detailText =
-		capsule?.description ??
-		resolveDiscoverTopupPromotionDisplayString({ metadataRoot, currency }) ??
-		''
-	return buildTopupPromotionPanelRowFromUnified(unified, currency, detailText)
+export const DISCOVER_COUPON_SOCIAL_MISSIONS_INITIAL = 3
+export const DISCOVER_COUPON_SOCIAL_MISSIONS_PAGE_SIZE = 10
+
+export type DiscoverActivePromotionsPanelModel = {
+	activeCount: number
+	socialMissions: DiscoverActivePromotionsSocialMissions | null
+	couponSocialMissions: DiscoverCouponSocialMissionBlock[]
+}
+
+function emptySocialMissionMetrics(): DiscoverSocialMissionMetrics {
+	return { linkClick: null, like: null, topup: null, claim: null, burn: null }
+}
+
+function socialMissionMetricsHasValues(metrics: DiscoverSocialMissionMetrics): boolean {
+	return (
+		metrics.linkClick != null ||
+		metrics.like != null ||
+		metrics.topup != null ||
+		metrics.claim != null ||
+		metrics.burn != null
+	)
+}
+
+function applySocialEventMetrics(
+	metrics: DiscoverSocialMissionMetrics,
+	key: (typeof CARD_SOCIAL_EVENT_KEYS)[number] | (typeof COUPON_SOCIAL_EVENT_KEYS)[number],
+	points13: number,
+): void {
+	switch (key) {
+		case 'linkClick':
+			metrics.linkClick = points13
+			break
+		case 'like':
+			metrics.like = points13
+			break
+		case 'topup':
+			metrics.topup = points13
+			break
+		case 'claim':
+			metrics.claim = points13
+			break
+		case 'burn':
+			metrics.burn = points13
+			break
+		default:
+			break
+	}
 }
 
 function buildCardSocialMissionMetrics(cardSocial: ShareTokenMetadataSocialPromotion | null): {
@@ -660,8 +655,8 @@ function buildCardSocialMissionMetrics(cardSocial: ShareTokenMetadataSocialPromo
 	referrer: DiscoverSocialMissionMetrics | null
 	userDetailText: string
 } {
-	const user: DiscoverSocialMissionMetrics = { linkClick: null, like: null, topup: null }
-	const referrer: DiscoverSocialMissionMetrics = { linkClick: null, like: null, topup: null }
+	const user = emptySocialMissionMetrics()
+	const referrer = emptySocialMissionMetrics()
 	const userDetailLines: string[] = []
 	if (!cardSocial?.events) {
 		return { user: null, referrer: null, userDetailText: '' }
@@ -672,34 +667,113 @@ function buildCardSocialMissionMetrics(cardSocial: ShareTokenMetadataSocialPromo
 		const userReward = rewardFromPayload(ev.user)
 		const refReward = rewardFromPayload(ev.ref)
 		if (userReward) {
-			user[key] = userReward.points13
+			applySocialEventMetrics(user, key, userReward.points13)
 			userDetailLines.push(
 				`${cardSocialPromotionEventLabel(key)}: earn ${userReward.points13} social reward point${userReward.points13 === 1 ? '' : 's'}.`,
 			)
 		}
 		if (refReward) {
-			referrer[key] = refReward.points13
+			applySocialEventMetrics(referrer, key, refReward.points13)
 		}
 	}
-	const hasUser = user.linkClick != null || user.like != null || user.topup != null
-	const hasRef = referrer.linkClick != null || referrer.like != null || referrer.topup != null
 	return {
-		user: hasUser ? user : null,
-		referrer: hasRef ? referrer : null,
+		user: socialMissionMetricsHasValues(user) ? user : null,
+		referrer: socialMissionMetricsHasValues(referrer) ? referrer : null,
 		userDetailText: userDetailLines.join(' '),
 	}
 }
 
-/** Structured Active promotions panel (top-up row + Social Missions metrics + coupon extras). */
+function buildCouponSocialMissionMetrics(couponSocial: ShareTokenMetadataCouponSocialPromotion | null): {
+	user: DiscoverSocialMissionMetrics | null
+	referrer: DiscoverSocialMissionMetrics | null
+	userDetailText: string
+} {
+	const user = emptySocialMissionMetrics()
+	const referrer = emptySocialMissionMetrics()
+	const userDetailLines: string[] = []
+	if (!couponSocial?.events) {
+		return { user: null, referrer: null, userDetailText: '' }
+	}
+	for (const key of COUPON_SOCIAL_EVENT_KEYS) {
+		const ev = couponSocial.events[key]
+		if (!ev || !eventHasReward(ev)) continue
+		const userReward = rewardFromPayload(ev.user)
+		const refReward = rewardFromPayload(ev.ref)
+		if (userReward) {
+			applySocialEventMetrics(user, key, userReward.points13)
+			userDetailLines.push(
+				`${couponSocialPromotionEventLabel(key)}: earn ${userReward.points13} social reward point${userReward.points13 === 1 ? '' : 's'}.`,
+			)
+		}
+		if (refReward) {
+			applySocialEventMetrics(referrer, key, refReward.points13)
+		}
+	}
+	return {
+		user: socialMissionMetricsHasValues(user) ? user : null,
+		referrer: socialMissionMetricsHasValues(referrer) ? referrer : null,
+		userDetailText: userDetailLines.join(' '),
+	}
+}
+
+function compareCouponSocialMissionBlocksNewestFirst(
+	a: DiscoverCouponSocialMissionBlock,
+	b: DiscoverCouponSocialMissionBlock,
+): number {
+	try {
+		const diff = BigInt(b.tokenId) - BigInt(a.tokenId)
+		if (diff > 0n) return 1
+		if (diff < 0n) return -1
+		return 0
+	} catch {
+		return b.tokenId.localeCompare(a.tokenId)
+	}
+}
+
+function buildCouponSocialMissionBlocks(
+	couponSeries: Array<{ title?: string; metadata?: Record<string, unknown> | null; tokenId?: string }> | undefined,
+): DiscoverCouponSocialMissionBlock[] {
+	const blocks: DiscoverCouponSocialMissionBlock[] = []
+	for (const series of couponSeries ?? []) {
+		const tokenId = String(series.tokenId ?? '').trim()
+		if (!tokenId) continue
+		const couponMeta = series.metadata ?? null
+		const couponSocial = parseCouponSocialPromotionFromMetadata(couponMeta)
+		if (!couponSocial || couponSocial.enabled === false) continue
+		const { user, referrer, userDetailText } = buildCouponSocialMissionMetrics(couponSocial)
+		if (!user && !referrer) continue
+		const title = series.title?.trim() || readMetadataTitle(couponMeta)
+		blocks.push({
+			id: `coupon-social-${tokenId}`,
+			title,
+			tokenId,
+			user,
+			referrer,
+			userDetailText,
+		})
+	}
+	return blocks.sort(compareCouponSocialMissionBlocksNewestFirst)
+}
+
+function countActivePromotionSurfaces(model: {
+	socialMissions: DiscoverActivePromotionsSocialMissions | null
+	couponSocialMissions: DiscoverCouponSocialMissionBlock[]
+}): number {
+	let count = 0
+	if (model.socialMissions?.user) count += 1
+	if (model.socialMissions?.referrer) count += 1
+	for (const block of model.couponSocialMissions) {
+		if (block.user) count += 1
+		if (block.referrer) count += 1
+	}
+	return count
+}
+
+/** Structured Active promotions panel (Social Missions + paginated coupon missions). */
 export function buildDiscoverActivePromotionsPanelModel(params: {
 	metadataRoot: Record<string, unknown> | null | undefined
-	currency: string
-	couponSeries?: Array<{ title: string; metadata: Record<string, unknown> | null | undefined }>
+	couponSeries?: Array<{ title?: string; metadata?: Record<string, unknown> | null; tokenId?: string }>
 }): DiscoverActivePromotionsPanelModel | null {
-	const allRows = collectActiveDiscoverMerchantPromotions(params)
-	if (allRows.length === 0) return null
-
-	const topup = buildTopupPromotionPanelRow(params.metadataRoot, params.currency)
 	const cardSocial = parseSocialPromotionFromMetadata(params.metadataRoot ?? null)
 	const { user, referrer, userDetailText } = buildCardSocialMissionMetrics(cardSocial)
 	const socialMissions =
@@ -710,15 +784,15 @@ export function buildDiscoverActivePromotionsPanelModel(params: {
 					userDetailText,
 				}
 			: null
+	const couponSocialMissions = buildCouponSocialMissionBlocks(params.couponSeries)
 
-	const extraRows = allRows.filter(
-		(row) => row.kind === 'couponSocial' || row.kind === 'couponExchange',
-	)
+	if (!socialMissions && couponSocialMissions.length === 0) return null
 
-	return {
-		activeCount: allRows.length,
-		topup,
+	const model = {
+		activeCount: 0,
 		socialMissions,
-		extraRows,
+		couponSocialMissions,
 	}
+	model.activeCount = countActivePromotionSurfaces(model)
+	return model
 }

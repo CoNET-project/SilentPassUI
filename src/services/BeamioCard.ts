@@ -767,6 +767,13 @@ async function passesOpenClaimListFiltersForUser(
 	}
 }
 
+const stripHash13UserCopy = (text: string): string =>
+	text
+		.replace(/\s*\(#13\)/gi, '')
+		.replace(/#13/gi, '')
+		.replace(/\s{2,}/g, ' ')
+		.trim()
+
 const mapCouponOpenClaimApiError = (raw: string | undefined): string => {
 	const msg = (raw ?? '').trim()
 	if (!msg) return 'Coupon claim failed'
@@ -789,12 +796,12 @@ const mapCouponOpenClaimApiError = (raw: string | undefined): string => {
 		return 'This coupon is inactive or expired.'
 	}
 	if (/Insufficient social points|UC_InsufficientBalance/i.test(msg)) {
-		return 'Not enough social points (#13) for this exchange.'
+		return 'Not enough social points for this exchange.'
 	}
 	if (/Insufficient USDC escrow|UC_RewardBudgetInsufficient/i.test(msg)) {
 		return 'This exchange is temporarily unavailable. The merchant USDC pool needs funding.'
 	}
-	return msg
+	return stripHash13UserCopy(msg) || 'Coupon claim failed'
 }
 
 async function filterCouponSeriesForOpenClaim(

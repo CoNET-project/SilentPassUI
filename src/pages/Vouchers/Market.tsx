@@ -1204,7 +1204,7 @@ function DiscoverMerchantCouponOfferRow({
 			/>
 			{insufficientSocialPoints ? (
 				<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-					Not enough social points (#13) for this exchange.
+					Not enough social points for this exchange.
 				</p>
 			) : null}
 			{row.supplySummary ? (
@@ -1307,7 +1307,7 @@ function DiscoverMerchantSocialPointsCard({ points, loading }: { points: number 
 						Your social points
 					</h3>
 					<p className="mt-1 text-[13px] font-medium text-slate-500 dark:text-slate-400">
-						#13 reward vouchers on this merchant card
+						Reward vouchers on this merchant card
 					</p>
 				</div>
 				<p className="shrink-0 text-[28px] font-extrabold leading-none tracking-tight text-[#8d3a8b]">
@@ -2830,13 +2830,13 @@ function DiscoverMerchantDetailFullScreen({
 		() =>
 			buildDiscoverActivePromotionsPanelModel({
 				metadataRoot: merchantMetadataRoot,
-				currency: displayCurrency,
 				couponSeries: merchantCoupons?.map((row) => ({
 					title: row.coupon.title,
 					metadata: row.seriesRow.metadata ?? null,
+					tokenId: row.seriesRow.tokenId,
 				})),
 			}),
-		[merchantMetadataRoot, displayCurrency, merchantCoupons],
+		[merchantMetadataRoot, merchantCoupons],
 	)
 	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
 	const conetEvangelistLink = useMemo(() => {
@@ -3867,7 +3867,6 @@ function DiscoverMerchantDetailFullScreen({
 							<DiscoverMerchantActivePromotionsPanel
 								model={promotionsLoaded ? activePromotionsPanel : null}
 								loading={merchantOffersLoading && !promotionsLoaded}
-								onViewAllMissions={scrollToCouponsSection}
 							/>
 						)
 					})()}
@@ -3877,7 +3876,7 @@ function DiscoverMerchantDetailFullScreen({
 							config={curatedOffersPanel}
 							onPointsMallClick={scrollToCouponsSection}
 							onCollectOffer={scrollToCouponsSection}
-							showTopUpBonus={activePromotionsPanel?.topup == null && !topupPromotionCapsule}
+							showTopUpBonus={!topupPromotionCapsule}
 						/>
 					) : null}
 

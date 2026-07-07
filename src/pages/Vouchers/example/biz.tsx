@@ -13002,13 +13002,37 @@ useEffect(() => {
           })
         );
   setCardIssuanceTopupPromotion(promo);
-  const socialPromo = parseSocialPromotionFromMetadata(shareRecord);
-  setCardIssuanceSocialPromotion(socialPromotionDraftFromMetadata(socialPromo));
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
   cardIssuanceExistingCard?.meta?.bonusRule,
   cardIssuanceExistingCard?.meta,
+]);
+
+/** Social promotion draft: chain getRewardRule(1/2/3) first, then metadata fallback. */
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceSocialPromotion(EMPTY_SOCIAL_PROMOTION_DRAFT);
+    return;
+  }
+  if (cardIssuanceSocialPromotionEditorOpen) return;
+  if (cardIssuanceSocialPromotionChainPromo === undefined) return;
+
+  if (cardIssuanceSocialPromotionChainPromo) {
+    setCardIssuanceSocialPromotion(
+      socialPromotionDraftFromMetadata(cardIssuanceSocialPromotionChainPromo),
+    );
+    return;
+  }
+
+  const shareRecord = cardIssuanceExistingCard.meta as Record<string, unknown> | undefined;
+  const socialPromo = shareRecord ? parseSocialPromotionFromMetadata(shareRecord) : null;
+  setCardIssuanceSocialPromotion(socialPromotionDraftFromMetadata(socialPromo));
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta,
+  cardIssuanceSocialPromotionChainPromo,
+  cardIssuanceSocialPromotionEditorOpen,
 ]);
 
 useEffect(() => {
@@ -13966,6 +13990,17 @@ const cardIssuanceSocialPromotionPayload = useMemo(
   () => socialPromotionDraftToPayload(cardIssuanceSocialPromotion),
   [cardIssuanceSocialPromotion]
 );
+
+/** ACTIVE badge + delete: chain rules or metadata draft (not metadata payload alone). */
+const cardIssuanceSocialPromotionHasActive = useMemo(() => {
+  if (socialPromotionDraftHasAnyReward(cardIssuanceSocialPromotion)) return true;
+  if (cardIssuanceSocialPromotionChainPromo) {
+    return socialPromotionDraftHasAnyReward(
+      socialPromotionDraftFromMetadata(cardIssuanceSocialPromotionChainPromo),
+    );
+  }
+  return false;
+}, [cardIssuanceSocialPromotion, cardIssuanceSocialPromotionChainPromo]);
 
 const cardIssuanceSocialPromotionEditorValidationError = useMemo(
   () => validateSocialPromotionDraft(cardIssuanceSocialPromotion),
@@ -35344,7 +35379,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  aria-hidden
                                />
                              </button>
-                             {cardIssuanceSocialPromotionPayload ? (
+                             {cardIssuanceSocialPromotionHasActive ? (
                                <button
                                  type="button"
                                  onClick={() => void clearCardIssuanceSocialPromotion()}
@@ -35361,12 +35396,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              ) : null}
                              <span
                                className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
-                                 cardIssuanceSocialPromotionPayload
+                                 cardIssuanceSocialPromotionHasActive
                                    ? 'bg-[#1562f0] text-white'
                                    : 'bg-slate-200 text-slate-600'
                                }`}
                              >
-                               {cardIssuanceSocialPromotionPayload ? 'ACTIVE' : 'OFF'}
+                               {cardIssuanceSocialPromotionHasActive ? 'ACTIVE' : 'OFF'}
                              </span>
                            </div>
                          </div>

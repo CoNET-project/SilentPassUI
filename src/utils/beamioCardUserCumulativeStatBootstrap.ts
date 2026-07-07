@@ -9,33 +9,17 @@ import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain'
 
 const CARD_INIT_ENDPOINT = `${beamioApi}/api/cardInitializeUserCumulativeStat`
 const CARD_BOOTSTRAP_ISSUED_ENDPOINT = `${beamioApi}/api/cardBootstrapIssuedNftV2Stat`
-const CARD_CONFIGURE_REWARD_ENDPOINT = `${beamioApi}/api/cardConfigureEventRewardRule`
 
 const LS_INIT_PREFIX = 'beamio:biz:cumulative-stat-init:v1:'
 const LS_ISSUED_BOOTSTRAP_PREFIX = 'beamio:biz:v2-issued-stat-bootstrap:v1:'
-const LS_REWARD_RULES_PREFIX = 'beamio:biz:v2-reward-rules:v1:'
 
 const READ_CACHE_TTL_MS = 30_000
 const FAIL_RETRY_MS = 60_000
 const ISSUED_NFT_START_ID = 100_000_000_000n
 
-/** UserCumulativeStatLib / x402sdk UC_METRIC (subset). */
-const UC_METRIC_USER_CLICK = 3
-/** UserCumulativeStatLib.TARGET_MERCHANT_CARD_COUPON */
-const UC_TARGET_MERCHANT_CARD = 1
-
-/** Default Discover share-click rule slot (homepage scans ruleId 1..12). */
-const DEFAULT_MERCHANT_SHARE_CLICK_RULE_ID = 1
-/** Minimal #13 mint per event so dispatchEventReward13 records cumulative stats (needs budget at runtime). */
-const DEFAULT_SHARE_CLICK_MINT13 = 1n
-
 const USER_CUMULATIVE_STAT_READ_ABI = [
 	'function owner() view returns (address)',
 	'function cardUserCumulativeStatTokensInitialized() view returns (bool)',
-] as const
-
-const REWARD_RULE_READ_ABI = [
-	'function getRewardRule(uint256 ruleId) view returns (bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
 ] as const
 
 const INIT_IFACE = new ethers.Interface([
@@ -44,10 +28,6 @@ const INIT_IFACE = new ethers.Interface([
 
 const BOOTSTRAP_ISSUED_IFACE = new ethers.Interface([
 	'function bootstrapIssuedNftV2StatTokens(uint256 parentTokenId)',
-])
-
-const CONFIGURE_REWARD_IFACE = new ethers.Interface([
-	'function configureEventRewardRule(uint256 ruleId, bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
 ])
 
 type ReadCacheEntry = { initialized: boolean; owner: string; fetchedAt: number }
@@ -66,10 +46,6 @@ function trustedInitLsKey(eoaLower: string, cardLower: string): string {
 
 function trustedIssuedBootstrapLsKey(eoaLower: string, cardLower: string, parentId: string): string {
 	return `${LS_ISSUED_BOOTSTRAP_PREFIX}${eoaLower}:${cardLower}:${parentId}`
-}
-
-function trustedRewardRulesLsKey(eoaLower: string, cardLower: string): string {
-	return `${LS_REWARD_RULES_PREFIX}${eoaLower}:${cardLower}`
 }
 
 function markInitializedTrusted(eoa: string, cardAddress: string): void {
@@ -114,29 +90,6 @@ function isIssuedBootstrapTrusted(eoa: string, cardAddress: string, parentTokenI
 	const eoaLower = ethers.getAddress(eoa).toLowerCase()
 	try {
 		return localStorage.getItem(trustedIssuedBootstrapLsKey(eoaLower, cardLower, parentTokenId.toString())) === '1'
-	} catch {
-		return false
-	}
-}
-
-function markRewardRulesTrusted(eoa: string, cardAddress: string): void {
-	try {
-		localStorage.setItem(
-			trustedRewardRulesLsKey(ethers.getAddress(eoa).toLowerCase(), cardKey(cardAddress)),
-			'1',
-		)
-	} catch {
-		/* ignore */
-	}
-}
-
-function isRewardRulesTrusted(eoa: string, cardAddress: string): boolean {
-	try {
-		return (
-			localStorage.getItem(
-				trustedRewardRulesLsKey(ethers.getAddress(eoa).toLowerCase(), cardKey(cardAddress)),
-			) === '1'
-		)
 	} catch {
 		return false
 	}
@@ -253,36 +206,6 @@ async function fetchIssuedSeriesParentIds(cardAddress: string): Promise<{ parent
 	return { parentIds: [...parentIds].map((s) => BigInt(s)), trusted: true }
 }
 
-/** Trusted chain read: active merchant-card USER_CLICK rule with mint budget semantics. */
-async function readActiveMerchantShareClickRuleId(cardAddress: string): Promise<number | null> {
-	try {
-		const { provider } = await providerForBeamioUserCard(cardAddress)
-		const reader = new ethers.Contract(cardAddress, REWARD_RULE_READ_ABI, provider)
-		for (let ruleId = 1; ruleId <= 12; ruleId++) {
-			const row = (await reader.getRewardRule(ruleId)) as [
-				boolean,
-				number,
-				number,
-				bigint,
-				bigint,
-				bigint,
-			]
-			const [active, eventKind, targetKind, , actorMint13, refMint13] = row
-			if (
-				active &&
-				Number(eventKind) === UC_METRIC_USER_CLICK &&
-				Number(targetKind) === UC_TARGET_MERCHANT_CARD &&
-				(actorMint13 > 0n || refMint13 > 0n)
-			) {
-				return ruleId
-			}
-		}
-		return null
-	} catch {
-		return null
-	}
-}
-
 async function ensureCardUserCumulativeStatInitializedSilentInner(params: {
 	cardAddress: string
 	ownerEoa: string
@@ -355,66 +278,12 @@ async function ensureIssuedSeriesV2StatBootstrappedSilentInner(params: {
 	}
 }
 
-async function ensureDefaultMerchantShareClickRewardRuleSilentInner(params: {
-	cardAddress: string
-	ownerEoa: string
-	ownerPrivateKey: string
-}): Promise<void> {
-	const card = ethers.getAddress(params.cardAddress)
-	const ownerEoa = ethers.getAddress(params.ownerEoa)
-
-	if (isRewardRulesTrusted(ownerEoa, card)) {
-		const stillActive = await readActiveMerchantShareClickRuleId(card)
-		if (stillActive != null) return
-		try {
-			localStorage.removeItem(trustedRewardRulesLsKey(ownerEoa.toLowerCase(), cardKey(card)))
-		} catch {
-			/* ignore */
-		}
-	}
-
-	const existingRuleId = await readActiveMerchantShareClickRuleId(card)
-	if (existingRuleId != null) {
-		markRewardRulesTrusted(ownerEoa, card)
-		return
-	}
-
-	const data = CONFIGURE_REWARD_IFACE.encodeFunctionData('configureEventRewardRule', [
-		BigInt(DEFAULT_MERCHANT_SHARE_CLICK_RULE_ID),
-		true,
-		UC_METRIC_USER_CLICK,
-		UC_TARGET_MERCHANT_CARD,
-		0n,
-		DEFAULT_SHARE_CLICK_MINT13,
-		DEFAULT_SHARE_CLICK_MINT13,
-	])
-	const signed = await signOwnerExecuteForOwner(params.ownerPrivateKey, card, data)
-	const result = await postOwnerExecuteForOwner(CARD_CONFIGURE_REWARD_ENDPOINT, {
-		cardAddress: card,
-		...signed,
-		extra: {
-			ruleId: DEFAULT_MERCHANT_SHARE_CLICK_RULE_ID,
-			active: 1,
-			eventKind: UC_METRIC_USER_CLICK,
-			targetKind: UC_TARGET_MERCHANT_CARD,
-			issuedParentId: '0',
-			actorMint13: DEFAULT_SHARE_CLICK_MINT13.toString(),
-			refMint13: DEFAULT_SHARE_CLICK_MINT13.toString(),
-		},
-	})
-	if (result.success) {
-		markRewardRulesTrusted(ownerEoa, card)
-	}
-}
-
 /**
  * Full CoNET merchant-card V2 silent bootstrap for an already-issued card (additive only):
  * 1) initializeCardUserCumulativeStatTokens
  * 2) bootstrapIssuedNftV2StatTokens for each active issued coupon/catalog parent
- * 3) configure default Discover USER_CLICK reward rule (ruleId 1) when none exists
  *
- * Does not mutate card bytecode; only owner executeForOwner writes.
- * Share-click #13 rewards mint on active promotion rules (no pre-funded rewardMintBudget13 required).
+ * Does not configure social promotion reward rules — merchants opt in via Programs → Social Promotion.
  */
 export async function ensureCardMerchantV2SilentBootstrap(params: {
 	cardAddress: string
@@ -442,7 +311,6 @@ export async function ensureCardMerchantV2SilentBootstrap(params: {
 		}
 
 		await ensureIssuedSeriesV2StatBootstrappedSilentInner(params)
-		await ensureDefaultMerchantShareClickRewardRuleSilentInner(params)
 
 		lastFailedAttemptMs.delete(key)
 	})().finally(() => {

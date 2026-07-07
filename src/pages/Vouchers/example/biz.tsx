@@ -17297,10 +17297,12 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
 
        if (metadataOnlyPublish) {
          setCardIssuanceMerchantImageClearPending(false);
-         setCardIssuanceOwnerAdminNotice({
-           kind: 'ok',
-           text: 'Program metadata published. Recharge bonus and related settings will be used by POS and apps after a short cache refresh.',
-         });
+         if (loadingScope !== 'bonusEditor') {
+           setCardIssuanceOwnerAdminNotice({
+             kind: 'ok',
+             text: 'Program metadata published. Recharge bonus and related settings will be used by POS and apps after a short cache refresh.',
+           });
+         }
        } else {
          setCardIssuanceCreateResult({ cardAddress: resolvedPublishCardAddr, hash: txHashFromRes });
          if (shouldClearCardConfiguratorDraft && cardConfiguratorDraftEoaKey) {
@@ -17547,6 +17549,8 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
     const ok = await handlePublishCardIssuance({
       socialPromotionOverride: nextPromotion,
       loadingScope: 'bonusEditor',
+      metadataOnly: true,
+      skipOnChainRefresh: true,
     });
     if (!ok) {
       setCardIssuanceSocialPromotionEditorServerError(
@@ -17556,6 +17560,18 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
     }
     const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
     const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const payload = socialPromotionDraftToPayload(nextPromotion);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      const nextMeta = { ...prev.meta };
+      if (payload) {
+        nextMeta.socialPromotion = payload;
+      } else {
+        delete nextMeta.socialPromotion;
+      }
+      return { ...prev, meta: nextMeta };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
     if (!pk) {
       setCardIssuanceSocialPromotion(nextPromotion);
       setCardIssuanceSocialPromotionEditorOpen(false);
@@ -17566,7 +17582,6 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
       return;
     }
     const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
-    const payload = socialPromotionDraftToPayload(nextPromotion);
     const ruleRes = await applySocialPromotionOnChainRules({
       cardAddress: cardAddr,
       ownerEoa: signerAddr,
@@ -17636,6 +17651,7 @@ const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
         couponsOverride: nextCoupons,
         loadingScope: 'bonusEditor',
         metadataOnly: true,
+        skipOnChainRefresh: true,
       });
       if (!publishOk) {
         setCardIssuanceCouponSocialPromotionEditorServerError(
@@ -17643,6 +17659,18 @@ const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
         );
         return;
       }
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev?.meta) return prev;
+        const couponsMeta = buildCardIssuanceCouponMetadataPayload(nextCoupons);
+        return {
+          ...prev,
+          meta: {
+            ...prev.meta,
+            coupons: couponsMeta ?? [],
+          },
+        };
+      });
+      invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
       const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
       if (pk) {
         const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);

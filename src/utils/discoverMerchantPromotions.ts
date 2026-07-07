@@ -10,6 +10,7 @@ import {
 	readSocialExchangeFromMetadata,
 	socialExchangeSummaryLabel,
 } from '@/utils/socialExchangeMetadata'
+import type { ChainCardSocialPromotion } from '@/utils/discoverMerchantSocialPromotionChain'
 
 type FiatCurrencyCode = Parameters<typeof fiatPrefix>[0]
 
@@ -507,6 +508,8 @@ export function collectActiveDiscoverMerchantPromotions(params: {
 	metadataRoot: Record<string, unknown> | null | undefined
 	currency: string
 	couponSeries?: Array<{ title?: string; metadata?: Record<string, unknown> | null }>
+	/** When set (including null = loaded empty), overrides metadata for card-level social rows. */
+	chainCardSocialPromotion?: ChainCardSocialPromotion | null
 }): DiscoverMerchantPromotionRow[] {
 	const rows: DiscoverMerchantPromotionRow[] = []
 	const currency = params.currency || 'CAD'
@@ -527,7 +530,10 @@ export function collectActiveDiscoverMerchantPromotions(params: {
 		})
 	}
 
-	const cardSocial = parseSocialPromotionFromMetadata(meta)
+	const chainLoaded = params.chainCardSocialPromotion !== undefined
+	const cardSocial: ShareTokenMetadataSocialPromotion | null = chainLoaded
+		? (params.chainCardSocialPromotion as ShareTokenMetadataSocialPromotion | null)
+		: null
 	if (cardSocial?.enabled !== false && cardSocial?.events) {
 		for (const key of CARD_SOCIAL_EVENT_KEYS) {
 			const ev = cardSocial.events[key]

@@ -4,6 +4,8 @@ export type TopupPromotionRewardType = 'percent' | 'fixed'
 
 export type TopupPromotionDraft = {
 	enabled: boolean
+	/** When false, validFrom/validTo are ignored and hidden in the editor. */
+	validityPeriodEnabled: boolean
 	validFrom: string
 	validTo: string
 	minimumTopupAmount: string
@@ -13,6 +15,7 @@ export type TopupPromotionDraft = {
 
 export const EMPTY_TOPUP_PROMOTION_DRAFT: TopupPromotionDraft = {
 	enabled: false,
+	validityPeriodEnabled: false,
 	validFrom: '',
 	validTo: '',
 	minimumTopupAmount: '',
@@ -143,10 +146,13 @@ export function topupPromotionDraftFromMetadata(
 	promo: ShareTokenMetadataTopupPromotion | null | undefined,
 ): TopupPromotionDraft {
 	if (!promo) return { ...EMPTY_TOPUP_PROMOTION_DRAFT }
+	const validFrom = promo.validFrom ?? ''
+	const validTo = promo.validTo ?? ''
 	return {
 		enabled: promo.enabled !== false,
-		validFrom: promo.validFrom ?? '',
-		validTo: promo.validTo ?? '',
+		validityPeriodEnabled: Boolean(validFrom.trim() || validTo.trim()),
+		validFrom,
+		validTo,
 		minimumTopupAmount:
 			promo.minimumTopupAmount != null && Number.isFinite(Number(promo.minimumTopupAmount))
 				? String(promo.minimumTopupAmount)
@@ -159,10 +165,12 @@ export function topupPromotionDraftFromMetadata(
 
 /** Normalize draft fields for open-vs-current dirty comparison in the promotion editor. */
 export function normalizeTopupPromotionDraftForCompare(draft: TopupPromotionDraft): TopupPromotionDraft {
+	const validityPeriodEnabled = draft.validityPeriodEnabled
 	return {
 		enabled: draft.enabled,
-		validFrom: draft.validFrom.trim(),
-		validTo: draft.validTo.trim(),
+		validityPeriodEnabled,
+		validFrom: validityPeriodEnabled ? draft.validFrom.trim() : '',
+		validTo: validityPeriodEnabled ? draft.validTo.trim() : '',
 		minimumTopupAmount: draft.minimumTopupAmount.replace(/,/g, '').trim(),
 		rewardType: draft.rewardType,
 		rewardValue: draft.rewardValue.replace(/,/g, '').trim(),
@@ -174,6 +182,7 @@ export function topupPromotionDraftsEqual(a: TopupPromotionDraft, b: TopupPromot
 	const nb = normalizeTopupPromotionDraftForCompare(b)
 	return (
 		na.enabled === nb.enabled &&
+		na.validityPeriodEnabled === nb.validityPeriodEnabled &&
 		na.validFrom === nb.validFrom &&
 		na.validTo === nb.validTo &&
 		na.minimumTopupAmount === nb.minimumTopupAmount &&
@@ -189,11 +198,13 @@ export function validateTopupPromotionDraft(draft: TopupPromotionDraft): string 
 	if (min == null) return 'Minimum top-up amount must be greater than zero.'
 	if (reward == null) return 'Reward value must be greater than zero.'
 	if (draft.rewardType === 'percent' && reward > 100) return 'Percentage reward cannot exceed 100%.'
-	const from = parseYmd(draft.validFrom)
-	const to = parseYmd(draft.validTo)
-	if (draft.validFrom.trim() && !from) return 'Valid from must be YYYY-MM-DD.'
-	if (draft.validTo.trim() && !to) return 'Valid to must be YYYY-MM-DD.'
-	if (from && to && from > to) return 'Valid from cannot be after valid to.'
+	if (draft.validityPeriodEnabled) {
+		const from = parseYmd(draft.validFrom)
+		const to = parseYmd(draft.validTo)
+		if (draft.validFrom.trim() && !from) return 'Valid from must be YYYY-MM-DD.'
+		if (draft.validTo.trim() && !to) return 'Valid to must be YYYY-MM-DD.'
+		if (from && to && from > to) return 'Valid from cannot be after valid to.'
+	}
 	return ''
 }
 
@@ -205,8 +216,10 @@ export function topupPromotionDraftToPayload(draft: TopupPromotionDraft): ShareT
 	const reward = parseAmount(draft.rewardValue)!
 	return {
 		enabled: true,
-		...(parseYmd(draft.validFrom) ? { validFrom: parseYmd(draft.validFrom) } : {}),
-		...(parseYmd(draft.validTo) ? { validTo: parseYmd(draft.validTo) } : {}),
+		...(draft.validityPeriodEnabled && parseYmd(draft.validFrom)
+			? { validFrom: parseYmd(draft.validFrom) }
+			: {}),
+		...(draft.validityPeriodEnabled && parseYmd(draft.validTo) ? { validTo: parseYmd(draft.validTo) } : {}),
 		minimumTopupAmount: min,
 		rewardType: draft.rewardType,
 		rewardValue: reward,

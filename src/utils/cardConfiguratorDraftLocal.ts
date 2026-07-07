@@ -34,6 +34,7 @@ export type CardConfiguratorDraftRewardsPresetV1 = 'default' | 'custom' | 'sales
 
 export type CardConfiguratorDraftTopupPromotionV1 = {
   enabled?: boolean
+  validityPeriodEnabled?: boolean
   validFrom?: string
   validTo?: string
   minimumTopupAmount: string
@@ -112,6 +113,15 @@ function normalizeTopupPromotion(raw: unknown): CardConfiguratorDraftTopupPromot
   if (!minimumTopupAmount.trim() && !rewardValue.trim() && r.enabled !== true) return undefined
   return {
     enabled: r.enabled === false ? false : r.enabled === true ? true : undefined,
+    validityPeriodEnabled:
+      typeof r.validityPeriodEnabled === 'boolean'
+        ? r.validityPeriodEnabled
+        : Boolean(
+            (typeof r.validFrom === 'string' && r.validFrom.trim()) ||
+              (typeof r.validTo === 'string' && r.validTo.trim())
+          )
+        ? true
+        : undefined,
     validFrom: typeof r.validFrom === 'string' ? r.validFrom : undefined,
     validTo: typeof r.validTo === 'string' ? r.validTo : undefined,
     minimumTopupAmount,

@@ -18316,6 +18316,13 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        const tp = draft.topupPromotion as Record<string, unknown>;
        setCardIssuanceTopupPromotion({
          enabled: tp.enabled !== false,
+         validityPeriodEnabled:
+           typeof tp.validityPeriodEnabled === 'boolean'
+             ? tp.validityPeriodEnabled
+             : Boolean(
+                 (typeof tp.validFrom === 'string' && tp.validFrom.trim()) ||
+                   (typeof tp.validTo === 'string' && tp.validTo.trim())
+               ),
          validFrom: typeof tp.validFrom === 'string' ? tp.validFrom : '',
          validTo: typeof tp.validTo === 'string' ? tp.validTo : '',
          minimumTopupAmount:
@@ -18327,6 +18334,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        const first = draft.bonusRules[0];
        setCardIssuanceTopupPromotion({
          enabled: true,
+         validityPeriodEnabled: false,
          validFrom: '',
          validTo: '',
          minimumTopupAmount: first.paymentAmount,
@@ -18336,6 +18344,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
      } else if (typeof draft.bonusRulePaymentAmount === 'string' && draft.bonusRulePaymentAmount.trim()) {
        setCardIssuanceTopupPromotion({
          enabled: true,
+         validityPeriodEnabled: false,
          validFrom: '',
          validTo: '',
          minimumTopupAmount: draft.bonusRulePaymentAmount,
@@ -18467,8 +18476,13 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
      topupPromotion: cardIssuanceTopupPromotion.enabled
        ? {
            enabled: true,
-           validFrom: cardIssuanceTopupPromotion.validFrom.trim() || undefined,
-           validTo: cardIssuanceTopupPromotion.validTo.trim() || undefined,
+           validityPeriodEnabled: cardIssuanceTopupPromotion.validityPeriodEnabled,
+           ...(cardIssuanceTopupPromotion.validityPeriodEnabled
+             ? {
+                 validFrom: cardIssuanceTopupPromotion.validFrom.trim() || undefined,
+                 validTo: cardIssuanceTopupPromotion.validTo.trim() || undefined,
+               }
+             : {}),
            minimumTopupAmount: cardIssuanceTopupPromotion.minimumTopupAmount,
            rewardType: cardIssuanceTopupPromotion.rewardType,
            rewardValue: cardIssuanceTopupPromotion.rewardValue,
@@ -35893,6 +35907,37 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
                     <div className="space-y-6">
+                       <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef1f3] px-4 py-4">
+                         <div className="min-w-0">
+                           <p className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">Validity period</p>
+                           <p className="mt-1 text-sm text-[#595c5e]">Limit when this promotion is active.</p>
+                         </div>
+                         <button
+                           type="button"
+                           role="switch"
+                           aria-checked={cardIssuanceTopupPromotion.validityPeriodEnabled}
+                           aria-label="Validity period"
+                           onClick={() =>
+                             setCardIssuanceTopupPromotion((p) => ({
+                               ...p,
+                               validityPeriodEnabled: !p.validityPeriodEnabled,
+                               ...(p.validityPeriodEnabled ? { validFrom: '', validTo: '' } : {}),
+                               enabled: true,
+                             }))
+                           }
+                           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${bizFocusRingClass} ${
+                             cardIssuanceTopupPromotion.validityPeriodEnabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
+                           }`}
+                         >
+                           <span
+                             className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                               cardIssuanceTopupPromotion.validityPeriodEnabled ? 'translate-x-6' : 'translate-x-1'
+                             }`}
+                           />
+                         </button>
+                       </div>
+
+                       {cardIssuanceTopupPromotion.validityPeriodEnabled ? (
                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                          <div className="space-y-2">
                            <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-valid-from">
@@ -35923,6 +35968,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            />
                          </div>
                        </div>
+                       ) : null}
 
                        <div className="space-y-2">
                          <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-minimum">

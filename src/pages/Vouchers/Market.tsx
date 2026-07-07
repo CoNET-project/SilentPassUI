@@ -127,6 +127,8 @@ import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPro
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
 import { DiscoverMerchantActivePromotionsPanel } from '@/components/discover/DiscoverMerchantActivePromotionsPanel'
+import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
+import { formatBeamioTagDisplayLine } from '@/utils/aaMultisigTaskUi'
 import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
@@ -835,9 +837,40 @@ function DiscoverMerchantCardAddressCapsule({ address }: { address: string }) {
 	)
 }
 
+/** Issuer @beamioTag on Discover merchant detail hero (glass pill on dark gradient). */
+function DiscoverMerchantOwnerBeamioTagCapsule({ ownerEoa }: { ownerEoa: string }) {
+	const { lookupByAddress, resolveTag, avatarImgUrl, ensureProfilesForAddresses } = useBeamioTagDatabase()
+
+	useEffect(() => {
+		if (!ownerEoa || !ethers.isAddress(ownerEoa)) return
+		void ensureProfilesForAddresses([ownerEoa])
+	}, [ownerEoa, ensureProfilesForAddresses])
+
+	if (!ownerEoa || !ethers.isAddress(ownerEoa)) return null
+
+	const record = lookupByAddress(ownerEoa)
+	const tagRaw = resolveTag(ownerEoa)
+	const tagLine = formatBeamioTagDisplayLine(tagRaw)
+	const avatarSrc = avatarImgUrl(record?.accountName ?? tagRaw, ownerEoa)
+
+	return (
+		<div
+			className="inline-flex max-w-[min(100%,14rem)] min-w-0 shrink-0 items-center gap-1.5 rounded-full border border-white/25 bg-white/15 py-1 pl-1 pr-2.5 text-white shadow-sm backdrop-blur-sm"
+			aria-label={`Merchant issuer ${tagLine}`}
+		>
+			<div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-white/30">
+				<IpfsImg src={avatarSrc} alt="" className="h-full w-full object-cover" draggable={false} />
+			</div>
+			<span className="truncate text-[13px] font-bold leading-none">{tagLine}</span>
+		</div>
+	)
+}
+
 type DiscoverFeaturedCard = {
 	id: string
 	cardAddress: string | null
+	/** Card issuer EOA from `/api/latestCards` or cardMetadata (for @beamioTag capsule). */
+	cardOwner: string | null
 	category: DiscoverCategoryTab
 	title: string
 	/** Program name from card metadata (`shareTokenMetadata.name`). */
@@ -884,6 +917,7 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 	return {
 		id: cardAddress,
 		cardAddress,
+		cardOwner: null,
 		category,
 		title: programName,
 		programName,
@@ -2722,6 +2756,7 @@ function DiscoverMerchantDetailFullScreen({
 	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(null)
 	const [userSocialPointsLoading, setUserSocialPointsLoading] = useState(false)
 	const [merchantMetadataRoot, setMerchantMetadataRoot] = useState<Record<string, unknown> | null>(null)
+	const [issuerOwnerEoa, setIssuerOwnerEoa] = useState<string | null>(item.cardOwner ?? null)
 	/** Card social missions from getRewardRule(1/2/3); undefined = loading, null = none active on-chain. */
 	const [chainCardSocialPromotion, setChainCardSocialPromotion] = useState<
 		Awaited<ReturnType<typeof readCardSocialPromotionFromChain>> | undefined
@@ -2754,6 +2789,10 @@ function DiscoverMerchantDetailFullScreen({
 	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
 
 	useEffect(() => {
+		setIssuerOwnerEoa(item.cardOwner ?? null)
+	}, [item.cardAddress, item.cardOwner])
+
+	useEffect(() => {
 		setResolvedDiscoverAbout(item.discoverAbout)
 	}, [item.cardAddress, item.discoverAbout])
 
@@ -2763,9 +2802,17 @@ function DiscoverMerchantDetailFullScreen({
 		let cancelled = false
 		const cardAddress = item.cardAddress
 		void fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardAddress)}`)
-			.then(async (res) => (res.ok ? ((await res.json()) as { metadata?: Record<string, unknown> | null }) : null))
+			.then(async (res) => (res.ok ? ((await res.json()) as { metadata?: Record<string, unknown> | null; cardOwner?: string }) : null))
 			.then((data) => {
-				if (cancelled || !data?.metadata || typeof data.metadata !== "object") return
+				if (cancelled || !data) return
+				if (data.cardOwner && ethers.isAddress(data.cardOwner)) {
+					try {
+						setIssuerOwnerEoa(ethers.getAddress(data.cardOwner))
+					} catch {
+						/* ignore invalid owner */
+					}
+				}
+				if (!data?.metadata || typeof data.metadata !== "object") return
 				setMerchantMetadataRoot(data.metadata)
 				const about = parseDiscoverAboutFromShare(
 					readDiscoverNestedObject(data.metadata, "shareTokenMetadata"),
@@ -2779,6 +2826,22 @@ function DiscoverMerchantDetailFullScreen({
 			cancelled = true
 		}
 	}, [item.cardAddress])
+
+	useEffect(() => {
+		if (!item.cardAddress || issuerOwnerEoa) return
+		let cancelled = false
+		void getCardOwner(item.cardAddress)
+			.then((owner) => {
+				if (cancelled || !owner || owner === ethers.ZeroAddress) return
+				setIssuerOwnerEoa(ethers.getAddress(owner))
+			})
+			.catch(() => {
+				/* untrusted — keep previous issuer if any */
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress, issuerOwnerEoa])
 
 	useEffect(() => {
 		if (!item.cardAddress) {
@@ -3665,7 +3728,10 @@ function DiscoverMerchantDetailFullScreen({
 								<MerchantCategoryIcon className="h-5 w-5" strokeWidth={2} aria-hidden />
 							</span>
 						</div>
-						<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
+						<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+							<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
+							{issuerOwnerEoa ? <DiscoverMerchantOwnerBeamioTagCapsule ownerEoa={issuerOwnerEoa} /> : null}
+						</div>
 						<p className="mt-1 block w-full text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
 						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
 						{item.cardAddress ? <DiscoverMerchantCardAddressCapsule address={item.cardAddress} /> : null}
@@ -4255,6 +4321,7 @@ export default function Market() {
 			return {
 				id: card.cardAddress,
 				cardAddress: card.cardAddress,
+				cardOwner: card.cardOwner,
 				category,
 				title: card.businessName ?? dbDisplayName ?? card.name,
 				programName: card.name,

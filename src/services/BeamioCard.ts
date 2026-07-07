@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND } from "@/config/chainAddresses";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND, CONET_AA_FACTORY } from "@/config/chainAddresses";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	eip712ChainIdForBeamioUserCard,
@@ -4115,8 +4115,40 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 	if (!eoa || !ethers.isAddress(eoa)) return null
 	const conetProvider = new ethers.JsonRpcProvider(CONET_RPC_URL)
 	try {
-		const account = await resolveBeamioAaOnConet(conetProvider, eoa)
-		if (!account) return null
+		const eoaAddr = ethers.getAddress(eoa)
+		const f = new ethers.Contract(CONET_AA_FACTORY, [
+			'function beamioAccountOf(address) view returns (address)',
+			'function primaryAccountOf(address) view returns (address)'
+		], conetProvider)
+
+		let account = await f.beamioAccountOf(eoaAddr).catch((err: any) => {
+			const msg = String(err?.message ?? '').toLowerCase()
+			if (msg.includes('network') || msg.includes('timeout') || msg.includes('abort') || msg.includes('fetch') || msg.includes('quota') || msg.includes('rate limit')) {
+				throw err
+			}
+			return ethers.ZeroAddress
+		})
+
+		if (!account || account === ethers.ZeroAddress) {
+			account = await f.primaryAccountOf(eoaAddr).catch((err: any) => {
+				const msg = String(err?.message ?? '').toLowerCase()
+				if (msg.includes('network') || msg.includes('timeout') || msg.includes('abort') || msg.includes('fetch') || msg.includes('quota') || msg.includes('rate limit')) {
+					throw err
+				}
+				return ethers.ZeroAddress
+			})
+		}
+
+		if (!account || account === ethers.ZeroAddress) {
+			return null
+		}
+
+		const code = await conetProvider.getCode(account)
+		const hasCode = code && code !== '0x' && code.length > 2
+		if (!hasCode) {
+			return null
+		}
+
 		try {
 			const aa = new ethers.Contract(account, ['function factory() view returns (address)'], conetProvider)
 			await aa.factory()
@@ -4126,7 +4158,7 @@ export const getAAAccount = async (profile: profile): Promise<string | null> => 
 		return account
 	} catch (error: any) {
 		console.warn(`[getAAAccount] CoNET RPC failed: ${error.message}`)
-		return null
+		throw error
 	}
 }
 

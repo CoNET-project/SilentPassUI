@@ -10,18 +10,46 @@ const aaFactoryAbi = [
 	'function primaryAccountOf(address) view returns (address)',
 ] as const
 
+const isNetworkOrRpcError = (err: any): boolean => {
+	const msg = String(err?.message ?? '').toLowerCase()
+	return (
+		msg.includes('network') ||
+		msg.includes('timeout') ||
+		msg.includes('abort') ||
+		msg.includes('fetch') ||
+		msg.includes('quota') ||
+		msg.includes('rate limit') ||
+		msg.includes('bad response') ||
+		msg.includes('server error') ||
+		msg.includes('socket') ||
+		msg.includes('econn')
+	)
+}
+
 async function aaFromFactory(provider: ethers.Provider, eoa: string, factoryAddr: string): Promise<string | null> {
 	try {
 		const eoaAddr = ethers.getAddress(eoa)
 		const f = new ethers.Contract(factoryAddr, aaFactoryAbi, provider)
-		let a = await f.beamioAccountOf(eoaAddr).catch(() => ethers.ZeroAddress)
+		let a = await f.beamioAccountOf(eoaAddr).catch((err: any) => {
+			if (isNetworkOrRpcError(err)) throw err
+			return ethers.ZeroAddress
+		})
 		if (!a || a === ethers.ZeroAddress) {
-			a = await f.primaryAccountOf(eoaAddr).catch(() => ethers.ZeroAddress)
+			a = await f.primaryAccountOf(eoaAddr).catch((err: any) => {
+				if (isNetworkOrRpcError(err)) throw err
+				return ethers.ZeroAddress
+			})
 		}
 		if (!a || a === ethers.ZeroAddress) return null
-		const code = await provider.getCode(a)
+		const code = await provider.getCode(a).catch((err: any) => {
+			if (isNetworkOrRpcError(err)) throw err
+			return '0x'
+		})
 		return code && code !== '0x' && code.length > 2 ? ethers.getAddress(a) : null
-	} catch {
+	} catch (err: any) {
+		if (isNetworkOrRpcError(err)) {
+			throw err
+		}
 		return null
 	}
 }

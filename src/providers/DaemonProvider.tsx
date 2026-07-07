@@ -1634,30 +1634,8 @@ export function DaemonProvider({ children }: DaemonProps) {
         }
         effectiveAa =
           chainAa && ethers.isAddress(chainAa) ? ethers.getAddress(chainAa) : undefined
-      } catch {
-        if (effectiveAa) {
-          try {
-            const code = await conetProviderRef.current!.getCode(effectiveAa)
-            const isEOA =
-              profile.keyID && effectiveAa.toLowerCase() === profile.keyID.toLowerCase()
-            if (!code || code === '0x' || code.length <= 2 || isEOA) {
-              const cur = profilesRef.current
-              const temp = CoNET_Data
-              if (cur && temp) {
-                const nextProfiles = cur.map((p: profile, i: number) =>
-                  i === 0 ? { ...p, aaAccount: undefined } : p
-                )
-                setProfiles(nextProfiles)
-                if (temp.profiles) temp.profiles = nextProfiles
-                setCoNET_Data(temp)
-                await storeSystemData()
-              }
-              effectiveAa = undefined
-            }
-          } catch {
-            /* 保持 effectiveAa */
-          }
-        }
+      } catch (e: any) {
+        console.warn(`[runNoAaWalletFeedTick] getAAAccount failed (retaining existing aaAccount): ${e?.message ?? e}`)
       }
 
       const eoaAddr = ethers.getAddress(eoa)

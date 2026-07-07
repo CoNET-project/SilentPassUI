@@ -444,6 +444,52 @@ function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolea
 	)
 }
 
+const DISCOVER_GENERIC_PROGRAM_SUBTITLE = "Member benefits and offers"
+
+function resolveDiscoverWelcomePanelCopy(params: {
+	passTitle: string
+	subtitle: string
+	discoverAbout: ShareTokenMetadataDiscoverAbout | null | undefined
+	merchantInfoPanel: DiscoverMerchantInfoPanel | undefined
+}): { title: string; body: string } | null {
+	const { passTitle, subtitle, discoverAbout, merchantInfoPanel } = params
+	const title = merchantInfoPanel?.welcomeTitle?.trim() || `Welcome to ${passTitle}`
+	const subtitleTrim = subtitle.trim()
+	const body =
+		merchantInfoPanel?.welcomeText?.trim() ||
+		discoverAbout?.detail?.trim() ||
+		(subtitleTrim && subtitleTrim !== DISCOVER_GENERIC_PROGRAM_SUBTITLE ? subtitleTrim : "") ||
+		""
+	if (!body) return null
+	return { title, body }
+}
+
+/** About / hours block — omit aboutText when it duplicates the welcome panel body. */
+function discoverMerchantAboutPanelForDisplay(
+	panel: DiscoverMerchantInfoPanel,
+	welcomeBody: string,
+): DiscoverMerchantInfoPanel | null {
+	const welcomeNorm = welcomeBody.trim()
+	const aboutText = panel.aboutText?.trim()
+	const dedupedAbout = aboutText && aboutText !== welcomeNorm ? aboutText : undefined
+	const next: DiscoverMerchantInfoPanel = {
+		...panel,
+		welcomeTitle: panel.welcomeTitle,
+		welcomeText: panel.welcomeText,
+		aboutText: dedupedAbout,
+	}
+	return hasDiscoverMerchantAboutPanel(next) ? next : null
+}
+
+function DiscoverMerchantWelcomePanel({ title, body }: { title: string; body: string }) {
+	return (
+		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+			<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">{title}</h2>
+			<DiscoverAboutDetailBody text={body} className=" mt-2" />
+		</div>
+	)
+}
+
 /** Per-card About / hours / contact / location for Discover detail (when metadata lacks these fields). */
 const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> = {
 	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
@@ -2967,6 +3013,25 @@ function DiscoverMerchantDetailFullScreen({
 		item.cardAddress != null
 			? resolveDiscoverMerchantInfoPanel(item.cardAddress, resolvedDiscoverAbout, passTitle)
 			: undefined
+	const discoverWelcomePanel = useMemo(
+		() =>
+			resolveDiscoverWelcomePanelCopy({
+				passTitle,
+				subtitle: item.subtitle,
+				discoverAbout: resolvedDiscoverAbout,
+				merchantInfoPanel,
+			}),
+		[passTitle, item.subtitle, resolvedDiscoverAbout, merchantInfoPanel],
+	)
+	const discoverAboutPanel = useMemo(
+		() =>
+			merchantInfoPanel && discoverWelcomePanel
+				? discoverMerchantAboutPanelForDisplay(merchantInfoPanel, discoverWelcomePanel.body)
+				: merchantInfoPanel && hasDiscoverMerchantAboutPanel(merchantInfoPanel)
+					? merchantInfoPanel
+					: null,
+		[merchantInfoPanel, discoverWelcomePanel],
+	)
 	const displayCurrency = (merchantAssets?.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
 	const balancePrefix = fiatPrefix(displayCurrency)
 	const balanceAmount = formatAmount(Number(merchantAssets?.points ?? 0), displayCurrency)
@@ -3841,7 +3906,6 @@ function DiscoverMerchantDetailFullScreen({
 								/>
 							) : null}
 						</div>
-						<p className="mt-1 block w-full text-[15px] font-medium text-white/90 line-clamp-2">{item.subtitle}</p>
 						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
 						{item.cardAddress ? <DiscoverMerchantCardAddressCapsule address={item.cardAddress} /> : null}
 					</div>
@@ -3858,15 +3922,11 @@ function DiscoverMerchantDetailFullScreen({
 						/>
 					) : (
 					<>
-					{merchantInfoPanel ? (
-						<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-							<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
-								{merchantInfoPanel.welcomeTitle}
-							</h2>
-							<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
-								{merchantInfoPanel.welcomeText}
-							</p>
-						</div>
+					{discoverWelcomePanel ? (
+						<DiscoverMerchantWelcomePanel
+							title={discoverWelcomePanel.title}
+							body={discoverWelcomePanel.body}
+						/>
 					) : null}
 
 					<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
@@ -4171,8 +4231,8 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 					</div>
 
-					{merchantInfoPanel && hasDiscoverMerchantAboutPanel(merchantInfoPanel) ? (
-						<DiscoverMerchantInfoPanelCard panel={merchantInfoPanel} />
+					{discoverAboutPanel ? (
+						<DiscoverMerchantInfoPanelCard panel={discoverAboutPanel} />
 					) : null}
 					</>
 					)}

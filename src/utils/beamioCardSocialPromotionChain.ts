@@ -151,6 +151,13 @@ export function buildSocialPromotionRuleIntents(
 		return 0n
 	}
 
+	function mintFromReward(
+		reward: ShareTokenMetadataSocialPromotionEvent['user'] | undefined,
+	): bigint {
+		if (!reward || reward.enabled === false) return 0n
+		return parsePoints13(reward.points13)
+	}
+
 	if (!promo) {
 		return [
 			SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
@@ -178,9 +185,8 @@ export function buildSocialPromotionRuleIntents(
 	const intents: SocialPromotionRuleIntent[] = []
 	for (const eventKey of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
 		const ev = promo.events?.[eventKey]
-		const actorMint13 =
-			ev && ev.user?.enabled !== false ? parsePoints13(ev.user?.points13) : 0n
-		const refMint13 = ev && ev.ref?.enabled !== false ? parsePoints13(ev.ref?.points13) : 0n
+		const actorMint13 = mintFromReward(ev?.user)
+		const refMint13 = mintFromReward(ev?.ref)
 		const chainParams = expectedChainParamsForEventKey(eventKey)
 		const active = promo.enabled !== false && (actorMint13 > 0n || refMint13 > 0n)
 		intents.push({

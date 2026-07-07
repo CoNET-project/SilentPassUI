@@ -14820,13 +14820,8 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
                   'Could not save coupon social promotion metadata. Fix validation errors and try again.'
               );
             } else {
-              const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-              if (pk) {
-                const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
                 const ruleRes = await applyCouponSocialPromotionOnChainRules({
                   cardAddress: cardIssuanceExistingCard.cardAddress,
-                  ownerEoa: signerAddr,
-                  ownerPrivateKey: pk,
                   issuedTokenId,
                   socialPromotion: couponSocialPayloadForSave ?? null,
                 });
@@ -14837,7 +14832,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
                       'Metadata saved, but on-chain coupon reward rule update failed. Try again.'
                   );
                 }
-              }
             }
           }
         } else if (prevRow?.issued && !issuedTokenId) {
@@ -17916,7 +17910,7 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
     const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
     if (!pk) {
       setCardIssuanceSocialPromotionEditorServerError(
-        'Unlock your wallet before saving — social promotion rewards must be written on-chain (getRewardRule), not metadata alone.'
+        'Unlock your wallet before saving social promotion metadata.'
       );
       return;
     }
@@ -17934,11 +17928,8 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
       );
       return;
     }
-    const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
     const ruleRes = await applySocialPromotionOnChainRules({
       cardAddress: cardAddr,
-      ownerEoa: signerAddr,
-      ownerPrivateKey: pk,
       socialPromotion: payload,
     });
     if (!ruleRes.success) {
@@ -18038,27 +18029,16 @@ const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
         };
       });
       invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
-      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-      if (pk) {
-        const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
-        const ruleRes = await applyCouponSocialPromotionOnChainRules({
-          cardAddress: cardIssuanceExistingCard.cardAddress,
-          ownerEoa: signerAddr,
-          ownerPrivateKey: pk,
-          issuedTokenId,
-          socialPromotion: couponSocialPayloadForSave ?? null,
-        });
-        if (!ruleRes.success) {
-          setCardIssuanceCouponSocialPromotionEditorServerError(
-            ruleRes.error ?? 'Metadata saved, but on-chain coupon reward rule update failed. Try again.'
-          );
-          return;
-        }
-      } else {
-        setCardIssuanceOwnerAdminNotice({
-          kind: 'warn',
-          text: 'Metadata saved, but wallet key was unavailable — on-chain reward rules were not updated. Unlock wallet and save again.',
-        });
+      const ruleRes = await applyCouponSocialPromotionOnChainRules({
+        cardAddress: cardIssuanceExistingCard.cardAddress,
+        issuedTokenId,
+        socialPromotion: couponSocialPayloadForSave ?? null,
+      });
+      if (!ruleRes.success) {
+        setCardIssuanceCouponSocialPromotionEditorServerError(
+          ruleRes.error ?? 'Metadata saved, but on-chain coupon reward rule update failed. Try again.'
+        );
+        return;
       }
     }
     setCardIssuanceCoupons(nextCoupons);
@@ -18107,24 +18087,18 @@ const clearCardIssuanceSocialPromotion = useCallback(async () => {
       );
       return;
     }
-    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-    if (pk) {
-      const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-      const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
-      const ruleRes = await applySocialPromotionOnChainRules({
-        cardAddress: cardAddr,
-        ownerEoa: signerAddr,
-        ownerPrivateKey: pk,
-        socialPromotion: null,
-      });
-      if (!ruleRes.success) {
-        setCardIssuanceSocialPromotionEditorServerError(
-          ruleRes.error ?? 'Could not clear on-chain social promotion rules. Try again.'
-        );
-        return;
-      }
-      await refreshCardIssuanceSocialPromotionFromChain(cardAddr);
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const ruleRes = await applySocialPromotionOnChainRules({
+      cardAddress: cardAddr,
+      socialPromotion: null,
+    });
+    if (!ruleRes.success) {
+      setCardIssuanceSocialPromotionEditorServerError(
+        ruleRes.error ?? 'Could not clear on-chain social promotion rules. Try again.'
+      );
+      return;
     }
+    await refreshCardIssuanceSocialPromotionFromChain(cardAddr);
     setCardIssuanceSocialPromotion(cleared);
     setCardIssuanceExistingCard((prev) => {
       if (!prev?.meta) return prev;

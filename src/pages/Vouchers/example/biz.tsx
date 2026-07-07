@@ -339,6 +339,8 @@ import {
   socialPromotionDraftFromMetadata,
   socialPromotionDraftToPayload,
   socialPromotionDraftHasAnyReward,
+  socialPromotionDraftsEqual,
+  cloneSocialPromotionDraft,
   validateCouponSocialPromotionDraft,
   validateSocialPromotionDraft,
   type CouponSocialPromotionDraft,
@@ -11406,6 +11408,8 @@ const [cardIssuanceSocialPromotion, setCardIssuanceSocialPromotion] = useState<S
   EMPTY_SOCIAL_PROMOTION_DRAFT
 );
 const [cardIssuanceSocialPromotionEditorOpen, setCardIssuanceSocialPromotionEditorOpen] = useState(false);
+const [cardIssuanceSocialPromotionEditorBaseline, setCardIssuanceSocialPromotionEditorBaseline] =
+  useState<SocialPromotionDraft | null>(null);
 const [cardIssuanceSocialPromotionEditorPublishing, setCardIssuanceSocialPromotionEditorPublishing] =
   useState(false);
 const [cardIssuanceSocialPromotionEditorServerError, setCardIssuanceSocialPromotionEditorServerError] =
@@ -13723,6 +13727,15 @@ const cardIssuanceSocialPromotionEditorValidationError = useMemo(
   () => validateSocialPromotionDraft(cardIssuanceSocialPromotion),
   [cardIssuanceSocialPromotion]
 );
+
+const cardIssuanceSocialPromotionEditorDirty = useMemo(() => {
+  if (!cardIssuanceSocialPromotionEditorOpen || cardIssuanceSocialPromotionEditorBaseline == null) return false;
+  return !socialPromotionDraftsEqual(cardIssuanceSocialPromotion, cardIssuanceSocialPromotionEditorBaseline);
+}, [
+  cardIssuanceSocialPromotionEditorOpen,
+  cardIssuanceSocialPromotionEditorBaseline,
+  cardIssuanceSocialPromotion,
+]);
 
 const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
   const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
@@ -16236,8 +16249,15 @@ useEffect(() => {
 
 const openCardIssuanceSocialPromotionEditor = useCallback(() => {
   setCardIssuanceSocialPromotionEditorServerError('');
+  setCardIssuanceSocialPromotionEditorBaseline(cloneSocialPromotionDraft(cardIssuanceSocialPromotion));
   setCardIssuanceSocialPromotionEditorOpen(true);
-}, []);
+}, [cardIssuanceSocialPromotion]);
+
+useEffect(() => {
+  if (!cardIssuanceSocialPromotionEditorOpen) {
+    setCardIssuanceSocialPromotionEditorBaseline(null);
+  }
+}, [cardIssuanceSocialPromotionEditorOpen]);
 
 const openCardIssuanceCouponSocialPromotionEditor = useCallback(
   (couponId: string) => {
@@ -17505,6 +17525,20 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
 ]);
+
+const discardCardIssuanceTopupPromotionEditorChanges = useCallback(() => {
+  if (cardIssuanceTopupPromotionEditorBaseline == null) return;
+  setCardIssuanceTopupPromotion({ ...cardIssuanceTopupPromotionEditorBaseline });
+  setCardIssuanceTopupPromotionEditorServerError('');
+  setCardIssuanceCreateError('');
+}, [cardIssuanceTopupPromotionEditorBaseline]);
+
+const discardCardIssuanceSocialPromotionEditorChanges = useCallback(() => {
+  if (cardIssuanceSocialPromotionEditorBaseline == null) return;
+  setCardIssuanceSocialPromotion(cloneSocialPromotionDraft(cardIssuanceSocialPromotionEditorBaseline));
+  setCardIssuanceSocialPromotionEditorServerError('');
+  setCardIssuanceCreateError('');
+}, [cardIssuanceSocialPromotionEditorBaseline]);
 
 const clearCardIssuanceTopupPromotion = useCallback(async () => {
   if (cardIssuanceTopupPromotionClearInFlightRef.current) return;
@@ -36027,45 +36061,36 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                        <div className="space-y-3 pt-2">
                          {cardIssuanceTopupPromotionEditorDirty || cardIssuanceTopupPromotionEditorPublishing ? (
-                         <button
-                           type="button"
-                           onClick={() => void submitCardIssuanceTopupPromotionEditor()}
-                           disabled={
-                             Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
-                             cardIssuanceTopupPromotionEditorPublishing ||
-                             cardIssuanceTopupPromotionDeleting
-                           }
-                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
-                         >
-                           {cardIssuanceTopupPromotionEditorPublishing ? (
-                             <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-                           ) : (
-                             <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
-                           )}
-                           <span>{cardIssuanceTopupPromotionEditorPublishing ? 'Saving...' : 'Save Promotion'}</span>
-                         </button>
-                         ) : null}
-                         {cardIssuanceTopupPromotion.enabled || cardIssuanceTopupPromotionPayload ? (
-                           <button
-                             type="button"
-                             onClick={() => void clearCardIssuanceTopupPromotion()}
-                             disabled={
-                               cardIssuanceTopupPromotionDeleting ||
-                               cardIssuanceTopupPromotionEditorPublishing
-                             }
-                             className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                             aria-busy={cardIssuanceTopupPromotionDeleting}
-                           >
-                             {cardIssuanceTopupPromotionDeleting ? (
-                               <>
+                           <div className="flex items-stretch gap-3">
+                             <button
+                               type="button"
+                               onClick={() => void submitCardIssuanceTopupPromotionEditor()}
+                               disabled={
+                                 Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
+                                 cardIssuanceTopupPromotionEditorPublishing ||
+                                 cardIssuanceTopupPromotionDeleting
+                               }
+                               className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
+                             >
+                               {cardIssuanceTopupPromotionEditorPublishing ? (
                                  <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-                                 <span>Clearing...</span>
-                               </>
-                             ) : (
-                               <span>Clear Promotion</span>
-                             )}
-                           </button>
-                        ) : null}
+                               ) : (
+                                 <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                               )}
+                               <span>{cardIssuanceTopupPromotionEditorPublishing ? 'Saving...' : 'Save Promotion'}</span>
+                             </button>
+                             {cardIssuanceTopupPromotionEditorDirty && !cardIssuanceTopupPromotionEditorPublishing ? (
+                               <button
+                                 type="button"
+                                 onClick={discardCardIssuanceTopupPromotionEditorChanges}
+                                 disabled={cardIssuanceTopupPromotionDeleting}
+                                 className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               >
+                                 Discard changes
+                               </button>
+                             ) : null}
+                           </div>
+                         ) : null}
                       </div>
                     </div>
                     </div>
@@ -36086,34 +36111,44 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      onClick={() => setCardIssuanceSocialPromotionEditorOpen(false)}
                    />
                    <motion.div
-                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto w-full max-w-2xl rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="card-social-promo-editor-title"
+                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
                      initial={{ y: '100%' }}
                      animate={{ y: 0 }}
                      exit={{ y: '100%' }}
                      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
                    >
-                     <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
-                     <div className="mb-8 flex items-start justify-between gap-4">
-                       <div>
-                         <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                           Promotion
-                         </span>
-                         <h3 className="mt-3 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31]">
-                           {tu('programs_social_promotion_editor_title')}
-                         </h3>
-                         <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                           {tu('programs_social_promotion_editor_desc')}
-                         </p>
+                     <div className="shrink-0 px-6 pt-6">
+                       <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                       <div className="mb-4 flex items-start justify-between gap-4">
+                         <div className="min-w-0">
+                           <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                             Promotion
+                           </span>
+                           <h3
+                             id="card-social-promo-editor-title"
+                             className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
+                           >
+                             {tu('programs_social_promotion_editor_title')}
+                           </h3>
+                           <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                             {tu('programs_social_promotion_editor_desc')}
+                           </p>
+                         </div>
+                         <button
+                           type="button"
+                           onClick={() => setCardIssuanceSocialPromotionEditorOpen(false)}
+                           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                           aria-label="Close social promotion editor"
+                         >
+                           <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                         </button>
                        </div>
-                       <button
-                         type="button"
-                         onClick={() => setCardIssuanceSocialPromotionEditorOpen(false)}
-                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
-                       >
-                         <X className="h-5 w-5" strokeWidth={2} aria-hidden />
-                       </button>
                      </div>
 
+                     <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
                      <div className="space-y-6">
                        <CardSocialPromotionEventsEditor
                          draft={cardIssuanceSocialPromotion}
@@ -36123,45 +36158,56 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          }
                        />
 
+                       {cardIssuanceSocialPromotionEditorValidationError ? (
+                         <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                           <p>{cardIssuanceSocialPromotionEditorValidationError}</p>
+                         </div>
+                       ) : null}
                        {(cardIssuanceCreateError || cardIssuanceSocialPromotionEditorServerError) &&
                        !cardIssuanceSocialPromotionEditorPublishing ? (
-                         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                         <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
                            <p>{cardIssuanceCreateError || cardIssuanceSocialPromotionEditorServerError}</p>
                          </div>
                        ) : null}
 
                        <div className="space-y-3 pt-2">
-                         <button
-                           type="button"
-                           onClick={() => void submitCardIssuanceSocialPromotionEditor()}
-                           disabled={
-                             Boolean(cardIssuanceSocialPromotionEditorValidationError) ||
-                             cardIssuanceSocialPromotionEditorPublishing
-                           }
-                           className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
-                         >
-                           {cardIssuanceSocialPromotionEditorPublishing ? (
-                             <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-                           ) : (
-                             <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
-                           )}
-                           <span>
-                             {cardIssuanceSocialPromotionEditorPublishing
-                               ? tu('programs_social_promotion_saving')
-                               : tu('programs_social_promotion_save')}
-                           </span>
-                         </button>
-                         {cardIssuanceSocialPromotion.enabled || cardIssuanceSocialPromotionPayload ? (
-                           <button
-                             type="button"
-                             onClick={() => void clearCardIssuanceSocialPromotion()}
-                             disabled={cardIssuanceSocialPromotionEditorPublishing}
-                             className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 py-3.5 font-manrope text-sm font-bold text-[#b31b25] ${bizFocusRingClass}`}
-                           >
-                             {tu('programs_social_promotion_clear')}
-                           </button>
+                         {cardIssuanceSocialPromotionEditorDirty || cardIssuanceSocialPromotionEditorPublishing ? (
+                           <div className="flex items-stretch gap-3">
+                             <button
+                               type="button"
+                               onClick={() => void submitCardIssuanceSocialPromotionEditor()}
+                               disabled={
+                                 Boolean(cardIssuanceSocialPromotionEditorValidationError) ||
+                                 cardIssuanceSocialPromotionEditorPublishing
+                               }
+                               className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
+                             >
+                               {cardIssuanceSocialPromotionEditorPublishing ? (
+                                 <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                               ) : (
+                                 <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                               )}
+                               <span>
+                                 {cardIssuanceSocialPromotionEditorPublishing
+                                   ? tu('programs_social_promotion_saving')
+                                   : tu('programs_social_promotion_save')}
+                               </span>
+                             </button>
+                             {cardIssuanceSocialPromotionEditorDirty && !cardIssuanceSocialPromotionEditorPublishing ? (
+                               <button
+                                 type="button"
+                                 onClick={discardCardIssuanceSocialPromotionEditorChanges}
+                                 className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               >
+                                 Discard changes
+                               </button>
+                             ) : null}
+                           </div>
                          ) : null}
                        </div>
+                     </div>
                      </div>
                    </motion.div>
                  </>

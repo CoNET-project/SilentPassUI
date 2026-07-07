@@ -261,6 +261,58 @@ export function couponSocialPromotionDraftFromMetadata(
 	return draft
 }
 
+function normalizeRewardDraftForCompare(draft: SocialPromotionRewardDraft): SocialPromotionRewardDraft {
+	return {
+		enabled: draft.enabled,
+		points13: draft.points13.replace(/,/g, '').trim() || '1',
+	}
+}
+
+function normalizeEventDraftForCompare(draft: SocialPromotionEventDraft): SocialPromotionEventDraft {
+	return {
+		user: normalizeRewardDraftForCompare(draft.user),
+		ref: normalizeRewardDraftForCompare(draft.ref),
+	}
+}
+
+export function normalizeSocialPromotionDraftForCompare(draft: SocialPromotionDraft): SocialPromotionDraft {
+	const events = emptyCardSocialPromotionEvents()
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		events[key] = normalizeEventDraftForCompare(draft.events[key])
+	}
+	return { enabled: draft.enabled, events }
+}
+
+export function cloneSocialPromotionDraft(draft: SocialPromotionDraft): SocialPromotionDraft {
+	const events = emptyCardSocialPromotionEvents()
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		events[key] = {
+			user: { ...draft.events[key].user },
+			ref: { ...draft.events[key].ref },
+		}
+	}
+	return { enabled: draft.enabled, events }
+}
+
+export function socialPromotionDraftsEqual(a: SocialPromotionDraft, b: SocialPromotionDraft): boolean {
+	const na = normalizeSocialPromotionDraftForCompare(a)
+	const nb = normalizeSocialPromotionDraftForCompare(b)
+	if (na.enabled !== nb.enabled) return false
+	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const ea = na.events[key]
+		const eb = nb.events[key]
+		if (
+			ea.user.enabled !== eb.user.enabled ||
+			ea.user.points13 !== eb.user.points13 ||
+			ea.ref.enabled !== eb.ref.enabled ||
+			ea.ref.points13 !== eb.ref.points13
+		) {
+			return false
+		}
+	}
+	return true
+}
+
 function validateRewardDraft(draft: SocialPromotionRewardDraft, label: string): string {
 	if (!draft.enabled) return ''
 	const points = parsePositiveInt(draft.points13)

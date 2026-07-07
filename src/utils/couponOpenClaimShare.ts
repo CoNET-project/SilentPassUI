@@ -7,14 +7,19 @@ import { ethers } from 'ethers'
  */
 export function buildCouponOpenClaimDistributionShareUrl(
 	cardAddress: string,
-	couponId: string
+	couponId: string,
+	referrerEoa?: string | null,
 ): string {
 	const addr = cardAddress?.trim() ?? ''
 	const cid = couponId?.trim() ?? ''
 	if (!addr || !cid || !ethers.isAddress(addr)) return ''
-	const claimUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
-		ethers.getAddress(addr)
+	let claimUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+		ethers.getAddress(addr),
 	)}&couponId=${encodeURIComponent(cid)}&claim=open`
+	const refRaw = referrerEoa?.trim() ?? ''
+	if (refRaw && ethers.isAddress(refRaw)) {
+		claimUrl += `&ref=${encodeURIComponent(ethers.getAddress(refRaw))}`
+	}
 	return `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`
 }
 

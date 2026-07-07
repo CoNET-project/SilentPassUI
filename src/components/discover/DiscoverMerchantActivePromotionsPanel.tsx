@@ -24,29 +24,22 @@ import {
 const ACCENT = '#8d3a8b'
 const ACCENT_SURFACE = '#f5ecff'
 
-function PromotionHelpToastContent({ detailText }: { detailText: string }) {
+/** Plain string + pre-wrap for antd-mobile Toast; React inline-block caused top ascender clip. */
+function formatPromotionHelpText(detailText: string): string {
 	const trimmed = detailText.trim()
-	if (!trimmed) return null
+	if (!trimmed) return ''
 	const questionSplit = trimmed.match(/^(.+\?)\s+(.+)$/)
 	if (questionSplit) {
-		return (
-			<span className="inline-block min-w-[220px] max-w-[min(88vw,300px)] text-center text-[15px] leading-snug">
-				{questionSplit[1]}
-				<br />
-				{questionSplit[2]}
-			</span>
-		)
+		return `${questionSplit[1]}\n${questionSplit[2]}`
 	}
-	return (
-		<span className="inline-block min-w-[220px] max-w-[min(88vw,300px)] text-center text-[15px] leading-snug break-normal">
-			{trimmed}
-		</span>
-	)
+	if (!trimmed.includes('. ')) return trimmed
+	return trimmed.replace(/\.\s+/g, '.\n').replace(/\.\n$/, '.')
 }
 
 function PromotionHelpButton(props: { detailText: string; ariaLabel: string }) {
 	const { detailText, ariaLabel } = props
-	if (!detailText.trim()) return null
+	const helpText = formatPromotionHelpText(detailText)
+	if (!helpText) return null
 	return (
 		<button
 			type="button"
@@ -54,8 +47,10 @@ function PromotionHelpButton(props: { detailText: string; ariaLabel: string }) {
 			aria-label={ariaLabel}
 			onClick={() =>
 				Toast.show({
-					content: <PromotionHelpToastContent detailText={detailText} />,
+					content: helpText,
 					duration: 4000,
+					position: 'center',
+					maskClassName: 'beamio-promotion-help-toast',
 				})
 			}
 		>

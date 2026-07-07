@@ -772,10 +772,15 @@ function countActivePromotionSurfaces(model: {
 /** Structured Active promotions panel (Social Missions + paginated coupon missions). */
 export function buildDiscoverActivePromotionsPanelModel(params: {
 	metadataRoot: Record<string, unknown> | null | undefined
+	/** When set (including null = loaded empty), overrides metadata for card-level social missions. */
+	chainCardSocialPromotion?: ShareTokenMetadataSocialPromotion | null
 	couponSeries?: Array<{ title?: string; metadata?: Record<string, unknown> | null; tokenId?: string }>
 }): DiscoverActivePromotionsPanelModel | null {
-	const cardSocial = parseSocialPromotionFromMetadata(params.metadataRoot ?? null)
-	const { user, referrer, userDetailText } = buildCardSocialMissionMetrics(cardSocial)
+	const chainLoaded = params.chainCardSocialPromotion !== undefined
+	const cardSocial = chainLoaded
+		? params.chainCardSocialPromotion
+		: null
+	const { user, referrer, userDetailText } = buildCardSocialMissionMetrics(cardSocial ?? null)
 	const socialMissions =
 		user || referrer
 			? {

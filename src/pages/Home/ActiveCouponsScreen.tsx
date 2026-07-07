@@ -392,6 +392,7 @@ export function ActiveCouponTicketItem({
 	/** biz Coupon preview parity: banner ticket shows icon only; title/subtitle/expiry below. */
 	metadataBelowBackgroundImage = false,
 	showUserLike = false,
+	referrerEoa,
 	getPrivateKeyArmor,
 	onWalletUnlock,
 }: {
@@ -408,13 +409,26 @@ export function ActiveCouponTicketItem({
 	showOpenClaimShareButton?: boolean
 	metadataBelowBackgroundImage?: boolean
 	showUserLike?: boolean
+	/** Sharer EOA from deep link `ref=` (coupon like #13 ref mint). */
+	referrerEoa?: string | null
 	getPrivateKeyArmor?: () => string | undefined
 	onWalletUnlock?: () => void
 }) {
+	const shareReferrerEoa = React.useMemo(() => {
+		const pk = getPrivateKeyArmor?.()?.trim() ?? ''
+		if (!pk) return null
+		try {
+			return ethers.getAddress(new ethers.Wallet(pk).address)
+		} catch {
+			return null
+		}
+	}, [getPrivateKeyArmor])
+
 	const couponLike = useCouponUserLike({
 		cardAddress: row.cardAddress,
 		tokenId: row.tokenId,
 		enabled: showUserLike,
+		referrerEoa,
 		getPrivateKeyArmor,
 		onWalletUnlock,
 	})
@@ -478,6 +492,7 @@ export function ActiveCouponTicketItem({
 						cardAddress={row.cardAddress}
 						couponId={row.couponId}
 						couponTitle={row.title}
+						referrerEoa={shareReferrerEoa}
 						className="shrink-0"
 					/>
 				) : null}

@@ -29,6 +29,7 @@ import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
 import { tu } from '@/locale/beamioLocale'
 import { readSocialExchangeFromMetadata, REWARD_VOUCHER_TOKEN_ID } from '@/utils/socialExchangeMetadata'
+import { dispatchDiscoverLikeReward13IfNeeded } from '@/utils/discoverMerchantLikeReward'
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
@@ -666,23 +667,36 @@ export type CouponOpenClaimEligibility =
 	| 'insufficient_social_points'
 	| 'unknown'
 
-/** User AA #13 social points balance on a merchant program card (CoNET RPC). */
+/** User #13 social reward voucher balance on a merchant program card (CoNET RPC). */
 export async function readUserSocialPoints13BalanceOnCard(
 	cardNorm: string,
 	userNorm: string,
 ): Promise<bigint | null> {
 	try {
-		const { provider } = await providerForBeamioUserCard(cardNorm)
-		const gateway = await getCardFactoryGatewayForEip712(cardNorm)
-		const fac = new ethers.Contract(gateway, ['function beamioAccountOf(address) view returns (address)'], provider)
-		const aa = (await fac.beamioAccountOf(userNorm)) as string
-		if (!aa || aa === ethers.ZeroAddress) return 0n
-		const card = new ethers.Contract(
-			cardNorm,
+		const card = ethers.getAddress(cardNorm)
+		const user = ethers.getAddress(userNorm)
+		const { provider } = await providerForBeamioUserCard(card)
+		const cardContract = new ethers.Contract(
+			card,
 			['function balanceOf(address account, uint256 id) view returns (uint256)'],
 			provider,
 		)
-		return (await card.balanceOf(aa, REWARD_VOUCHER_TOKEN_ID)) as bigint
+		let total = 0n
+		try {
+			total += (await cardContract.balanceOf(user, REWARD_VOUCHER_TOKEN_ID)) as bigint
+		} catch {
+			return null
+		}
+		// Social promotion mints via dispatchEventReward13 land on EOA; AA is used for exchange burn.
+		const aa = await resolveBeamioAaOnConet(provider, user).catch(() => null)
+		if (aa) {
+			try {
+				total += (await cardContract.balanceOf(aa, REWARD_VOUCHER_TOKEN_ID)) as bigint
+			} catch {
+				/* keep EOA portion */
+			}
+		}
+		return total
 	} catch {
 		return null
 	}
@@ -1619,7 +1633,8 @@ export const postCardRecordUserLikeWithCurrentWallet = async (params: {
 	liked: boolean
 	targetKind?: number
 	issuedParentId?: string
-}): Promise<{ success: boolean; tx?: string; error?: string; status?: number }> => {
+	referrerEoa?: string | null
+}): Promise<{ success: boolean; tx?: string; error?: string; status?: number; rewardTxQueued?: boolean }> => {
 	const cardAddress = params.cardAddress?.trim() ?? ''
 	const privateKeyArmor = params.privateKeyArmor?.trim() ?? ''
 	const liked = Boolean(params.liked)
@@ -1692,7 +1707,21 @@ export const postCardRecordUserLikeWithCurrentWallet = async (params: {
 				status: res.status,
 			}
 		}
-		return { success: true, tx: data.tx }
+		let rewardTxQueued = false
+		if (liked) {
+			try {
+				rewardTxQueued = await dispatchDiscoverLikeReward13IfNeeded({
+					cardAddress: cardNorm,
+					actorEOA: userEOA,
+					referrerEoa: params.referrerEoa,
+					targetKind,
+					issuedParentId,
+				})
+			} catch {
+				/* optional reward — like already recorded */
+			}
+		}
+		return { success: true, tx: data.tx, rewardTxQueued }
 	} catch (e: any) {
 		return { success: false, error: e?.shortMessage ?? e?.message ?? String(e) }
 	}

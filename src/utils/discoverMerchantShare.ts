@@ -1,4 +1,5 @@
 import { ethers } from 'ethers'
+import { parseDiscoverReferrerFromParams } from '@/utils/beamioDeepLinkParams'
 
 /**
  * Discover merchant share URL — aligned with x402sdk `buildDiscoverMerchantAppDownloadUrl`.
@@ -19,12 +20,6 @@ export function buildDiscoverMerchantShareUrl(
 		discoverUrl += `&ref=${encodeURIComponent(ethers.getAddress(refRaw))}`
 	}
 	return `https://beamio.app/app-download?target=${encodeURIComponent(discoverUrl)}`
-}
-
-function parseDiscoverReferrerFromParams(sp: URLSearchParams): string | null {
-	const raw = (sp.get('ref') ?? sp.get('referrer') ?? '').trim()
-	if (!raw || !ethers.isAddress(raw)) return null
-	return ethers.getAddress(raw)
 }
 
 export async function shareDiscoverMerchantUrl(

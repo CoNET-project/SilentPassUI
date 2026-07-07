@@ -133,7 +133,11 @@ function AppShell() {
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [footerVisible, setFooterVisible] = useState(true)
   const [userPreviewItem, setUserPreviewItem] = useState<searchResult | null>()
-  const [couponClaimIntent, setCouponClaimIntent] = useState<{ cardAddress: string; couponId: string } | null>(null)
+  const [couponClaimIntent, setCouponClaimIntent] = useState<{
+    cardAddress: string
+    couponId: string
+    referrerEoa?: string | null
+  } | null>(null)
   const [couponClaimPreviewRow, setCouponClaimPreviewRow] = useState<ActiveCouponListItem | null>(null)
   const [couponClaimSubmitting, setCouponClaimSubmitting] = useState(false)
   const [redeemClaimIntent, setRedeemClaimIntent] = useState<{ cardAddress?: string; redeemCode: string } | null>(null)
@@ -198,7 +202,9 @@ function AppShell() {
     setRedeemClaimIntent(null)
     setCouponClaimIntent(parsed)
     setShowFooter(false)
-    navigate('/History')
+    navigate('/History', {
+      state: { discoverShareReferrerEoa: parsed.referrerEoa },
+    })
   }, [isInitialLoading, navigate, setShowFooter])
 
   // Discover merchant deep link (?beamiocard=…&discover=open) → open merchant detail on /discover
@@ -1211,7 +1217,9 @@ function AppShell() {
       setCouponClaimIntent(parsedCoupon)
       setRedeemClaimIntent(null)
       setShowFooter(false)
-      navigate("/History")
+      navigate("/History", {
+        state: { discoverShareReferrerEoa: parsedCoupon.referrerEoa },
+      })
       return
     }
 
@@ -1294,7 +1302,9 @@ function AppShell() {
           setRedeemClaimIntent(null)
           setCouponClaimIntent(parsed)
           setShowFooter(false)
-          navigate('/History')
+          navigate('/History', {
+            state: { discoverShareReferrerEoa: parsed.referrerEoa },
+          })
         } else {
           Toast.show({ content: tu('coupon_link_is_invalid_or_wallet_is_not_ready'), position: 'top' })
         }

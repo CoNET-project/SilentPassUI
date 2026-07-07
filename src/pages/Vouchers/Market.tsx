@@ -139,6 +139,7 @@ import {
 	resolveDiscoverTopupPromotionPresentation,
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
+import { readCardSocialPromotionFromChain } from '@/utils/discoverMerchantSocialPromotionChain'
 import { normalizeCardAddressKey } from '@/utils/merchantCardDatabase'
 
 const TOP_SAFE_FILL_STYLE = { height: "max(env(safe-area-inset-top, 0px), 16px)" }
@@ -1155,6 +1156,7 @@ function DiscoverMerchantCouponOfferRow({
 	claimStatus = 'idle',
 	claimError,
 	onClaim,
+	referrerEoa = null,
 	getPrivateKeyArmor,
 	onWalletUnlock,
 }: {
@@ -1163,6 +1165,7 @@ function DiscoverMerchantCouponOfferRow({
 	claimStatus?: DiscoverCouponClaimButtonStatus
 	claimError?: string
 	onClaim?: () => void
+	referrerEoa?: string | null
 	getPrivateKeyArmor?: () => string | undefined
 	onWalletUnlock?: () => void
 }) {
@@ -1186,6 +1189,7 @@ function DiscoverMerchantCouponOfferRow({
 				metadataBelowBackgroundImage
 				showOpenClaimShareButton
 				showUserLike
+				referrerEoa={referrerEoa}
 				getPrivateKeyArmor={getPrivateKeyArmor}
 				onWalletUnlock={onWalletUnlock}
 				showActionButton={showClaimButton}
@@ -2718,6 +2722,10 @@ function DiscoverMerchantDetailFullScreen({
 	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(null)
 	const [userSocialPointsLoading, setUserSocialPointsLoading] = useState(false)
 	const [merchantMetadataRoot, setMerchantMetadataRoot] = useState<Record<string, unknown> | null>(null)
+	/** Card social missions from getRewardRule(1/2/3); undefined = loading, null = none active on-chain. */
+	const [chainCardSocialPromotion, setChainCardSocialPromotion] = useState<
+		Awaited<ReturnType<typeof readCardSocialPromotionFromChain>> | undefined
+	>(undefined)
 	const [couponClaimEligibilityById, setCouponClaimEligibilityById] = useState<
 		Record<string, CouponOpenClaimEligibility>
 	>({})
@@ -2767,6 +2775,21 @@ function DiscoverMerchantDetailFullScreen({
 			.catch(() => {
 				/* untrusted — keep item.discoverAbout / cache */
 			})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress])
+
+	useEffect(() => {
+		if (!item.cardAddress) {
+			setChainCardSocialPromotion(undefined)
+			return
+		}
+		let cancelled = false
+		setChainCardSocialPromotion(undefined)
+		void readCardSocialPromotionFromChain(item.cardAddress).then((promo) => {
+			if (!cancelled) setChainCardSocialPromotion(promo)
+		})
 		return () => {
 			cancelled = true
 		}
@@ -2830,13 +2853,14 @@ function DiscoverMerchantDetailFullScreen({
 		() =>
 			buildDiscoverActivePromotionsPanelModel({
 				metadataRoot: merchantMetadataRoot,
+				chainCardSocialPromotion,
 				couponSeries: merchantCoupons?.map((row) => ({
 					title: row.coupon.title,
 					metadata: row.seriesRow.metadata ?? null,
 					tokenId: row.seriesRow.tokenId,
 				})),
 			}),
-		[merchantMetadataRoot, merchantCoupons],
+		[merchantMetadataRoot, chainCardSocialPromotion, merchantCoupons],
 	)
 	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
 	const conetEvangelistLink = useMemo(() => {
@@ -2959,6 +2983,7 @@ function DiscoverMerchantDetailFullScreen({
 				liked: true,
 				targetKind: DISCOVER_USER_LIKE_TARGET.MERCHANT_CARD,
 				issuedParentId: '0',
+				referrerEoa: shareReferrerFromUrl,
 			})
 			if (!ret.success) {
 				Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
@@ -2987,6 +3012,7 @@ function DiscoverMerchantDetailFullScreen({
 		resolveUserEoa,
 		registerDiscoverMerchantStatFeedCards,
 		applyDiscoverMerchantLikeCountDelta,
+		shareReferrerFromUrl,
 	])
 
 	const onMerchantLikeHeartClick = useCallback(() => {
@@ -3910,6 +3936,7 @@ function DiscoverMerchantDetailFullScreen({
 											claimStatus={couponClaimStatusById[row.coupon.id] ?? 'idle'}
 											claimError={couponClaimErrorById[row.coupon.id]}
 											onClaim={() => void handleDiscoverCouponClaim(row)}
+											referrerEoa={shareReferrerFromUrl}
 											getPrivateKeyArmor={getPrivateKeyArmorForLike}
 											onWalletUnlock={() => navigate('/settings')}
 										/>

@@ -11,15 +11,17 @@ export default function CouponOpenClaimShareButton({
 	cardAddress,
 	couponId,
 	couponTitle,
+	referrerEoa = null,
 	className = '',
 }: {
 	cardAddress: string
 	couponId: string
 	couponTitle?: string
+	referrerEoa?: string | null
 	className?: string
 }) {
 	const [shared, setShared] = useState(false)
-	const shareUrl = buildCouponOpenClaimDistributionShareUrl(cardAddress, couponId)
+	const shareUrl = buildCouponOpenClaimDistributionShareUrl(cardAddress, couponId, referrerEoa)
 
 	const handleShare = useCallback(
 		async (e: React.MouseEvent) => {

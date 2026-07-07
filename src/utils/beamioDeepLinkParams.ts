@@ -1,5 +1,32 @@
 import { ethers } from 'ethers'
 
+/** `ref` / `referrer` query param — sharer EOA for social promotion rewards. */
+export function parseDiscoverReferrerFromParams(sp: URLSearchParams): string | null {
+	const raw = (sp.get('ref') ?? sp.get('referrer') ?? '').trim()
+	if (!raw || !ethers.isAddress(raw)) return null
+	return ethers.getAddress(raw)
+}
+
+/** Resolve referrer from current href and optional router state (Discover / coupon open-claim). */
+export function resolveDiscoverShareReferrerEoa(opts?: {
+	href?: string
+	stateReferrer?: string | null
+}): string | null {
+	const stateRaw = opts?.stateReferrer?.trim() ?? ''
+	if (stateRaw && ethers.isAddress(stateRaw)) {
+		try {
+			return ethers.getAddress(stateRaw)
+		} catch {
+			/* fall through to URL */
+		}
+	}
+	const href =
+		opts?.href?.trim() ??
+		(typeof window !== 'undefined' ? window.location.href : '')
+	if (!href) return null
+	return parseDiscoverReferrerFromParams(collectDeepLinkSearchParams(href))
+}
+
 /** Merge query from URL search + hash (#/?...) for HashRouter deep links. */
 export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 	const merged = new URLSearchParams()
@@ -56,7 +83,7 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 
 export function parseCouponOpenClaimFromParams(
 	sp: URLSearchParams
-): { cardAddress: string; couponId: string } | null {
+): { cardAddress: string; couponId: string; referrerEoa: string | null } | null {
 	const redeemcode = (sp.get('redeemcode') ?? sp.get('Redeemcode') ?? '').trim()
 	if (redeemcode) return null
 	const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
@@ -65,7 +92,11 @@ export function parseCouponOpenClaimFromParams(
 	if (!cardAddress || !couponId) return null
 	if (claim && claim !== 'open' && claim !== '1' && claim !== 'true') return null
 	if (!ethers.isAddress(cardAddress)) return null
-	return { cardAddress: ethers.getAddress(cardAddress), couponId }
+	return {
+		cardAddress: ethers.getAddress(cardAddress),
+		couponId,
+		referrerEoa: parseDiscoverReferrerFromParams(sp),
+	}
 }
 
 export function parseRedeemClaimFromParams(

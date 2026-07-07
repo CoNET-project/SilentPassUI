@@ -83,3 +83,30 @@ code {
 input:focus {
   transform: translateZ(0);  /* 启用硬件加速 */
 }
+
+/* Active promotions Social Missions help toast — avoid 204px max-width + translateY clip */
+.beamio-promotion-help-toast .adm-toast-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.beamio-promotion-help-toast .adm-toast-main {
+  position: static !important;
+  top: auto !important;
+  transform: none !important;
+  max-width: min(88vw, 300px);
+  width: auto;
+  word-break: normal;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  text-align: center;
+  line-height: 1.5;
+}
+.beamio-promotion-help-toast .adm-toast-main-text {
+  padding: 14px 16px;
+}
+.beamio-promotion-help-toast .adm-auto-center,
+.beamio-promotion-help-toast .adm-auto-center-content {
+  width: 100%;
+  overflow: visible;
+}

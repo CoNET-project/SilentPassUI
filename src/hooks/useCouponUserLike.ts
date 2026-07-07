@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useLocation } from 'react-router-dom'
 import { ethers } from 'ethers'
 import { Toast } from 'antd-mobile'
 import { postCardRecordUserLikeWithCurrentWallet } from '@/services/BeamioCard'
 import { tu } from '@/locale/beamioLocale'
+import { resolveDiscoverShareReferrerEoa } from '@/utils/beamioDeepLinkParams'
 import {
 	DISCOVER_USER_LIKE_TARGET,
 	fetchCouponLikeCount,
@@ -17,6 +19,8 @@ export type UseCouponUserLikeOptions = {
 	cardAddress: string
 	tokenId: string
 	enabled?: boolean
+	/** Sharer EOA from share URL `ref=`; falls back to URL + router state when omitted. */
+	referrerEoa?: string | null
 	getPrivateKeyArmor?: () => string | undefined
 	onWalletUnlock?: () => void
 }
@@ -25,9 +29,18 @@ export function useCouponUserLike({
 	cardAddress,
 	tokenId,
 	enabled = true,
+	referrerEoa: referrerEoaProp,
 	getPrivateKeyArmor,
 	onWalletUnlock,
 }: UseCouponUserLikeOptions) {
+	const location = useLocation()
+	const referrerEoa = useMemo(() => {
+		if (referrerEoaProp !== undefined) return referrerEoaProp
+		const stateRef = (location.state as { discoverShareReferrerEoa?: string | null } | null)
+			?.discoverShareReferrerEoa
+		return resolveDiscoverShareReferrerEoa({ stateReferrer: stateRef ?? null })
+	}, [referrerEoaProp, location.state])
+
 	const [userLiked, setUserLiked] = useState<boolean | null>(null)
 	const [likeLoading, setLikeLoading] = useState(false)
 	const [likeCount, setLikeCount] = useState<number | null>(null)
@@ -105,6 +118,7 @@ export function useCouponUserLike({
 				liked: true,
 				targetKind: DISCOVER_USER_LIKE_TARGET.ISSUED_COUPON,
 				issuedParentId: tokenId,
+				referrerEoa,
 			})
 			if (!ret.success) {
 				Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
@@ -142,6 +156,7 @@ export function useCouponUserLike({
 		onWalletUnlock,
 		resolveUserEoa,
 		refreshLikeCount,
+		referrerEoa,
 	])
 
 	const onHeartClick = useCallback(

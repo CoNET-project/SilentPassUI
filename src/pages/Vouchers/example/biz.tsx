@@ -356,6 +356,7 @@ import {
   type SocialExchangeDraft,
 } from '@/utils/programSocialExchange';
 import { applyCouponSocialPromotionOnChainRules, applySocialPromotionOnChainRules } from '@/utils/beamioCardSocialPromotionRules';
+import { readCardSocialPromotionFromChain } from '@/utils/beamioCardSocialPromotionChain';
 import {
   registerPOSApi,
   signRegisterPOS,
@@ -8279,6 +8280,138 @@ async function fetchBeamioCardProgramSocialSummary(
   return res.json() as Promise<BeamioCardProgramSocialSummaryResponse>;
 }
 
+/** AA referrer registry (v28+：分页走 indexer，KPI 总数仍来自链上 count view via API summary)。 */
+type BeamioCardProgramReferrerSummaryResponse = {
+  mode: 'summary';
+  cardAddress: string;
+  chainReferrerTotalCount: number | null;
+  chainRegisteredRefereeTotalCount: number | null;
+  dbRegisteredRefereeTotal: number;
+  dbReferrerTotal: number;
+};
+
+type BeamioCardProgramReferrerListRow = {
+  referrerAa: string;
+  refereeCount: number;
+  chainRefereeCount: number | null;
+  referrerRewardBalance: string | null;
+};
+
+type BeamioCardProgramReferrerRefereeRow = {
+  refereeAa: string;
+  referrerAa: string | null;
+  registeredAt: string;
+  updatedAt: string;
+  txHash: string | null;
+  refereeChargePointsTotal6?: string | null;
+};
+
+type BeamioCardProgramReferrersReferrersResponse = {
+  mode: 'referrers';
+  cardAddress: string;
+  total: number;
+  limit: number;
+  offset: number;
+  referrers: BeamioCardProgramReferrerListRow[];
+};
+
+type BeamioCardProgramReferrersByReferrerResponse = {
+  mode: 'refereesByReferrer';
+  cardAddress: string;
+  referrerAA: string;
+  total: number;
+  limit: number;
+  offset: number;
+  referees: BeamioCardProgramReferrerRefereeRow[];
+};
+
+type BeamioCardProgramRegisteredRefereesResponse = {
+  mode: 'registeredReferees';
+  cardAddress: string;
+  total: number;
+  limit: number;
+  offset: number;
+  referees: BeamioCardProgramReferrerRefereeRow[];
+};
+
+async function fetchBeamioCardProgramReferrersBase(
+  cardAddress: string,
+  mode: string,
+  opts?: { referrerAA?: string; limit?: number; offset?: number },
+): Promise<Response> {
+  const params = new URLSearchParams({
+    cardAddress: ethers.getAddress(cardAddress),
+    mode,
+    limit: String(opts?.limit ?? 20),
+    offset: String(opts?.offset ?? 0),
+  });
+  if (opts?.referrerAA && ethers.isAddress(opts.referrerAA)) {
+    params.set('referrerAA', ethers.getAddress(opts.referrerAA));
+  }
+  return fetch(`${BEAMIO_APP_URL}/api/cardProgramReferrers?${params}`);
+}
+
+async function fetchBeamioCardProgramReferrerSummary(
+  cardAddress: string,
+): Promise<BeamioCardProgramReferrerSummaryResponse> {
+  const res = await fetchBeamioCardProgramReferrersBase(cardAddress, 'summary');
+  if (!res.ok) throw new Error(`cardProgramReferrers summary: HTTP ${res.status}`);
+  return res.json() as Promise<BeamioCardProgramReferrerSummaryResponse>;
+}
+
+async function fetchBeamioCardProgramReferrersPage(
+  cardAddress: string,
+  limit = 20,
+  offset = 0,
+): Promise<BeamioCardProgramReferrersReferrersResponse> {
+  const res = await fetchBeamioCardProgramReferrersBase(cardAddress, 'referrers', { limit, offset });
+  if (!res.ok) throw new Error(`cardProgramReferrers referrers: HTTP ${res.status}`);
+  return res.json() as Promise<BeamioCardProgramReferrersReferrersResponse>;
+}
+
+async function fetchBeamioCardProgramRefereesByReferrerPage(
+  cardAddress: string,
+  referrerAA: string,
+  limit = 20,
+  offset = 0,
+): Promise<BeamioCardProgramReferrersByReferrerResponse> {
+  const res = await fetchBeamioCardProgramReferrersBase(cardAddress, 'refereesByReferrer', {
+    referrerAA,
+    limit,
+    offset,
+  });
+  if (!res.ok) throw new Error(`cardProgramReferrers refereesByReferrer: HTTP ${res.status}`);
+  return res.json() as Promise<BeamioCardProgramReferrersByReferrerResponse>;
+}
+
+async function fetchBeamioCardProgramRegisteredRefereesPage(
+  cardAddress: string,
+  limit = 20,
+  offset = 0,
+): Promise<BeamioCardProgramRegisteredRefereesResponse> {
+  const res = await fetchBeamioCardProgramReferrersBase(cardAddress, 'registeredReferees', { limit, offset });
+  if (!res.ok) throw new Error(`cardProgramReferrers registeredReferees: HTTP ${res.status}`);
+  return res.json() as Promise<BeamioCardProgramRegisteredRefereesResponse>;
+}
+
+/** Paginate registered referees until all rows loaded (server max 2000/page). */
+async function fetchAllBeamioCardProgramRegisteredReferees(
+  cardAddress: string,
+): Promise<{ referees: BeamioCardProgramReferrerRefereeRow[]; total: number }> {
+  const pageLimit = 2000;
+  let offset = 0;
+  const acc: BeamioCardProgramReferrerRefereeRow[] = [];
+  let total = 0;
+  while (true) {
+    const page = await fetchBeamioCardProgramRegisteredRefereesPage(cardAddress, pageLimit, offset);
+    total = Number(page.total) || 0;
+    acc.push(...(page.referees ?? []));
+    if (acc.length >= total || (page.referees?.length ?? 0) < pageLimit) break;
+    offset += pageLimit;
+  }
+  return { referees: acc, total };
+}
+
 /** Paginate until all members for a card are loaded (server max limit 2000 per page). Uses mode=directory for NFC/App fields. */
 async function fetchAllBeamioCardMemberDirectoryHttp(
   cardAddress: string
@@ -8652,6 +8785,28 @@ function ProgramSocialOnChainTxLink({ txHash }: { txHash: string | null }) {
       {formatConetTxHashShort(txHash)}
       <ExternalLink className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
     </a>
+  );
+}
+
+function formatReferrerPoints6Display(raw: string | null | undefined): string {
+  if (raw == null || String(raw).trim() === '') return '—';
+  try {
+    const v = Number(raw) / 1_000_000;
+    if (!Number.isFinite(v)) return '—';
+    return v.toFixed(2);
+  } catch {
+    return '—';
+  }
+}
+
+function ProgramReferrerAaCapsule({ address }: { address: string }) {
+  return (
+    <AddressCapsule
+      address={address}
+      explorerUrl={beamioConetBlockscoutAddressUrl(address)}
+      className="max-w-full border-[#eadcf7] bg-[#f5ecff] text-[#424655]"
+      leadingIcon={<Hexagon className="h-3.5 w-3.5 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />}
+    />
   );
 }
 
@@ -11414,6 +11569,10 @@ const [cardIssuanceSocialPromotionEditorPublishing, setCardIssuanceSocialPromoti
   useState(false);
 const [cardIssuanceSocialPromotionEditorServerError, setCardIssuanceSocialPromotionEditorServerError] =
   useState('');
+/** On-chain getRewardRule(1/2/3) — UI display source of truth; undefined = not loaded yet. */
+const [cardIssuanceSocialPromotionChainPromo, setCardIssuanceSocialPromotionChainPromo] = useState<
+  ShareTokenMetadataSocialPromotion | null | undefined
+>(undefined);
 const [cardIssuanceCouponSocialPromotionEditorOpenId, setCardIssuanceCouponSocialPromotionEditorOpenId] =
   useState<string | null>(null);
 const [cardIssuanceCouponSocialPromotionEditorPublishing, setCardIssuanceCouponSocialPromotionEditorPublishing] =
@@ -11819,6 +11978,14 @@ const [programSocialLikes, setProgramSocialLikes] = useState<BeamioCardProgramSo
 const [programSocialShareClicks, setProgramSocialShareClicks] = useState<BeamioCardProgramSocialShareClickRow[]>([]);
 const [programSocialEngagementDrawer, setProgramSocialEngagementDrawer] = useState<'likes' | 'shareClicks' | null>(null);
 const [programSocialRefreshStatus, setProgramSocialRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+const [programReferrerTotalCount, setProgramReferrerTotalCount] = useState<number | null>(null);
+const [programRegisteredRefereeTotalCount, setProgramRegisteredRefereeTotalCount] = useState<number | null>(null);
+const [programReferrerList, setProgramReferrerList] = useState<BeamioCardProgramReferrerListRow[]>([]);
+const [programRegisteredRefereeList, setProgramRegisteredRefereeList] = useState<BeamioCardProgramReferrerRefereeRow[]>([]);
+const [programReferrerDrawer, setProgramReferrerDrawer] = useState<'referrers' | 'registeredReferees' | null>(null);
+const [programReferrerDetailAA, setProgramReferrerDetailAA] = useState<string | null>(null);
+const [programReferrerDetailList, setProgramReferrerDetailList] = useState<BeamioCardProgramReferrerRefereeRow[]>([]);
+const [programReferrerRefreshStatus, setProgramReferrerRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 const cardIssuanceCouponShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponShareOpenId]
@@ -11972,6 +12139,9 @@ useEffect(() => {
 
  useEffect(() => {
    setProgramSocialEngagementDrawer(null);
+   setProgramReferrerDrawer(null);
+   setProgramReferrerDetailAA(null);
+   setProgramReferrerDetailList([]);
  }, [cardIssuanceExistingCard?.cardAddress]);
 
  /**
@@ -12011,12 +12181,86 @@ useEffect(() => {
    }
  }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
 
+ const loadProgramReferrerOverview = useCallback(async (opts?: { silent?: boolean }) => {
+   const silent = opts?.silent === true;
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+   if (!addr || !ethers.isAddress(addr)) return;
+   if (!silent) setProgramReferrerRefreshStatus('loading');
+   try {
+     const json = await fetchBeamioCardProgramReferrerSummary(addr);
+     if (json.chainReferrerTotalCount != null) setProgramReferrerTotalCount(json.chainReferrerTotalCount);
+     if (json.chainRegisteredRefereeTotalCount != null) {
+       setProgramRegisteredRefereeTotalCount(json.chainRegisteredRefereeTotalCount);
+     }
+     if (!silent) {
+       setProgramReferrerRefreshStatus('success');
+       window.setTimeout(() => setProgramReferrerRefreshStatus('idle'), 3000);
+     }
+   } catch {
+     if (!silent) {
+       setProgramReferrerRefreshStatus('error');
+       window.setTimeout(() => setProgramReferrerRefreshStatus('idle'), 3000);
+     }
+   }
+ }, [cardIssuanceExistingCard?.cardAddress]);
+
+ const loadProgramReferrerList = useCallback(async () => {
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+   if (!addr || !ethers.isAddress(addr)) return;
+   try {
+     const page = await fetchBeamioCardProgramReferrersPage(addr, 50, 0);
+     if (Array.isArray(page.referrers)) setProgramReferrerList(page.referrers);
+   } catch {
+     /* trusted-fetch: keep prior list */
+   }
+ }, [cardIssuanceExistingCard?.cardAddress]);
+
+ const loadProgramRegisteredRefereeList = useCallback(async () => {
+   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+   if (!addr || !ethers.isAddress(addr)) return;
+   try {
+     const page = await fetchBeamioCardProgramRegisteredRefereesPage(addr, 50, 0);
+     if (Array.isArray(page.referees)) setProgramRegisteredRefereeList(page.referees);
+   } catch {
+     /* trusted-fetch: keep prior list */
+   }
+ }, [cardIssuanceExistingCard?.cardAddress]);
+
+ const loadProgramReferrerDetail = useCallback(
+   async (referrerAA: string) => {
+     const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+     if (!addr || !ethers.isAddress(addr) || !ethers.isAddress(referrerAA)) return;
+     try {
+       const page = await fetchBeamioCardProgramRefereesByReferrerPage(addr, referrerAA, 50, 0);
+       if (Array.isArray(page.referees)) {
+         setProgramReferrerDetailList(page.referees);
+         setProgramReferrerDetailAA(ethers.getAddress(referrerAA));
+       }
+     } catch {
+       /* keep prior detail list */
+     }
+   },
+   [cardIssuanceExistingCard?.cardAddress],
+ );
+
+ const openProgramReferrerDrawer = useCallback(
+   (mode: 'referrers' | 'registeredReferees') => {
+     setProgramReferrerDrawer(mode);
+     setProgramReferrerDetailAA(null);
+     setProgramReferrerDetailList([]);
+     if (mode === 'referrers') void loadProgramReferrerList();
+     else void loadProgramRegisteredRefereeList();
+   },
+   [loadProgramReferrerList, loadProgramRegisteredRefereeList],
+ );
+
  const loadProgramSocialOverviewRef = useRef(loadProgramSocialOverview);
  loadProgramSocialOverviewRef.current = loadProgramSocialOverview;
 
  useEffect(() => {
    void loadProgramSocialOverview();
- }, [loadProgramSocialOverview]);
+   void loadProgramReferrerOverview({ silent: true });
+ }, [loadProgramSocialOverview, loadProgramReferrerOverview]);
 
  const programOwnerEOA = useMemo(() => {
    const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
@@ -16259,6 +16503,38 @@ useEffect(() => {
   }
 }, [cardIssuanceSocialPromotionEditorOpen]);
 
+const refreshCardIssuanceSocialPromotionFromChain = useCallback(async (cardAddress: string) => {
+  try {
+    const promo = await readCardSocialPromotionFromChain(cardAddress);
+    setCardIssuanceSocialPromotionChainPromo(promo);
+    return promo;
+  } catch {
+    return null;
+  }
+}, []);
+
+useEffect(() => {
+  const cardAddress = cardIssuanceExistingCard?.cardAddress?.trim();
+  if (!cardAddress) {
+    setCardIssuanceSocialPromotionChainPromo(undefined);
+    return;
+  }
+  let cancelled = false;
+  void readCardSocialPromotionFromChain(cardAddress).then((promo) => {
+    if (!cancelled) setCardIssuanceSocialPromotionChainPromo(promo);
+  });
+  return () => {
+    cancelled = true;
+  };
+}, [cardIssuanceExistingCard?.cardAddress]);
+
+const cardIssuanceSocialPromotionDisplayPromo = useMemo(() => {
+  if (cardIssuanceSocialPromotionChainPromo !== undefined) {
+    return cardIssuanceSocialPromotionChainPromo;
+  }
+  return cardIssuanceSocialPromotionPayload;
+}, [cardIssuanceSocialPromotionChainPromo, cardIssuanceSocialPromotionPayload]);
+
 const openCardIssuanceCouponSocialPromotionEditor = useCallback(
   (couponId: string) => {
     const row = cardIssuanceCoupons.find((item) => item.id === couponId);
@@ -17599,6 +17875,15 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
   setCardIssuanceCreateError('');
   setCardIssuanceSocialPromotionEditorPublishing(true);
   try {
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setCardIssuanceSocialPromotionEditorServerError(
+        'Unlock your wallet before saving — social promotion rewards must be written on-chain (getRewardRule), not metadata alone.'
+      );
+      return;
+    }
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const payload = socialPromotionDraftToPayload(nextPromotion);
     const ok = await handlePublishCardIssuance({
       socialPromotionOverride: nextPromotion,
       loadingScope: 'bonusEditor',
@@ -17611,9 +17896,22 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
       );
       return;
     }
-    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-    const payload = socialPromotionDraftToPayload(nextPromotion);
+    const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+    const ruleRes = await applySocialPromotionOnChainRules({
+      cardAddress: cardAddr,
+      ownerEoa: signerAddr,
+      ownerPrivateKey: pk,
+      socialPromotion: payload,
+    });
+    if (!ruleRes.success) {
+      setCardIssuanceSocialPromotionEditorServerError(
+        ruleRes.error ??
+          `On-chain reward rule update failed (ruleId ${(ruleRes.failedRuleIds ?? []).join(', ') || 'unknown'}). Try again.`
+      );
+      return;
+    }
+    await refreshCardIssuanceSocialPromotionFromChain(cardAddr);
+    setCardIssuanceSocialPromotion(nextPromotion);
     setCardIssuanceExistingCard((prev) => {
       if (!prev?.meta) return prev;
       const nextMeta = { ...prev.meta };
@@ -17625,33 +17923,10 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
       return { ...prev, meta: nextMeta };
     });
     invalidateBeamioCardMetadataCache(cardAddr);
-    if (!pk) {
-      setCardIssuanceSocialPromotion(nextPromotion);
-      setCardIssuanceSocialPromotionEditorOpen(false);
-      setCardIssuanceOwnerAdminNotice({
-        kind: 'warn',
-        text: 'Metadata saved, but wallet key was unavailable — on-chain reward rules were not updated. Unlock wallet and save again.',
-      });
-      return;
-    }
-    const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
-    const ruleRes = await applySocialPromotionOnChainRules({
-      cardAddress: cardAddr,
-      ownerEoa: signerAddr,
-      ownerPrivateKey: pk,
-      socialPromotion: payload,
-    });
-    if (!ruleRes.success) {
-      setCardIssuanceSocialPromotionEditorServerError(
-        ruleRes.error ?? 'Metadata saved, but on-chain reward rule update failed. Try again.'
-      );
-      return;
-    }
-    setCardIssuanceSocialPromotion(nextPromotion);
     setCardIssuanceSocialPromotionEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: 'Social promotion saved. Social rewards will airdrop on the selected event — no pre-funded budget required.',
+      text: 'Social promotion saved on-chain. Rewards follow getRewardRule — no pre-funded budget required.',
     });
   } catch {
     setCardIssuanceSocialPromotionEditorServerError('Could not save social promotion. Please try again.');
@@ -17664,6 +17939,7 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
   profiles,
+  refreshCardIssuanceSocialPromotionFromChain,
 ]);
 
 const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
@@ -17793,12 +18069,19 @@ const clearCardIssuanceSocialPromotion = useCallback(async () => {
     if (pk) {
       const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
       const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
-      await applySocialPromotionOnChainRules({
+      const ruleRes = await applySocialPromotionOnChainRules({
         cardAddress: cardAddr,
         ownerEoa: signerAddr,
         ownerPrivateKey: pk,
         socialPromotion: null,
-      }).catch(() => undefined);
+      });
+      if (!ruleRes.success) {
+        setCardIssuanceSocialPromotionEditorServerError(
+          ruleRes.error ?? 'Could not clear on-chain social promotion rules. Try again.'
+        );
+        return;
+      }
+      await refreshCardIssuanceSocialPromotionFromChain(cardAddr);
     }
     setCardIssuanceSocialPromotion(cleared);
     setCardIssuanceExistingCard((prev) => {
@@ -17811,7 +18094,7 @@ const clearCardIssuanceSocialPromotion = useCallback(async () => {
   } finally {
     setCardIssuanceSocialPromotionEditorPublishing(false);
   }
-}, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance, profiles]);
+}, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance, profiles, refreshCardIssuanceSocialPromotionFromChain]);
 
 const openCardIssuanceSocialExchangeEditor = useCallback(() => {
   setCardIssuanceSocialExchangeEditorError('');
@@ -34180,6 +34463,245 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </>
                            ) : null}
                          </AnimatePresence>
+                         <div className="rounded-xl border border-[#e8ecf0] bg-[#f8fafc] p-3 sm:p-4">
+                           <div className="mb-3 flex items-center justify-between gap-2">
+                             <span className="text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               {tu('programs_overview_referrer_registry_title')}
+                             </span>
+                             <button
+                               type="button"
+                               disabled={programReferrerRefreshStatus !== 'idle'}
+                               onClick={() => {
+                                 void loadProgramReferrerOverview();
+                                 if (programReferrerDrawer === 'referrers') void loadProgramReferrerList();
+                                 if (programReferrerDrawer === 'registeredReferees') void loadProgramRegisteredRefereeList();
+                                 if (programReferrerDetailAA) void loadProgramReferrerDetail(programReferrerDetailAA);
+                               }}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#eadcf7] bg-white text-[#8d3a8b] shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               aria-label={tu('programs_overview_referrer_refresh')}
+                             >
+                               {programReferrerRefreshStatus === 'loading' ? (
+                                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                               ) : programReferrerRefreshStatus === 'success' ? (
+                                 <Check className="h-4 w-4 text-emerald-500" aria-hidden />
+                               ) : programReferrerRefreshStatus === 'error' ? (
+                                 <AlertTriangle className="h-4 w-4 text-amber-500" aria-hidden />
+                               ) : (
+                                 <RefreshCw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                               )}
+                             </button>
+                           </div>
+                           <div className="grid grid-cols-2 gap-3">
+                             <button
+                               type="button"
+                               onClick={() => openProgramReferrerDrawer('referrers')}
+                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                                 programReferrerDrawer === 'referrers'
+                                   ? 'border-[#8d3a8b]/40 ring-2 ring-[#8d3a8b]/20'
+                                   : 'border-[#eadcf7] hover:border-[#8d3a8b]/25'
+                               } ${bizFocusRingClass}`}
+                               aria-expanded={programReferrerDrawer === 'referrers'}
+                             >
+                               <div className="mb-1 flex items-center gap-1.5 text-[#8d3a8b]">
+                                 <UserRoundPlus className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                 <span className="text-[10px] font-bold uppercase tracking-wide">
+                                   {tu('programs_overview_total_referrers')}
+                                 </span>
+                               </div>
+                               <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                                 {formatProgramSocialStatCount(programReferrerTotalCount)}
+                               </p>
+                             </button>
+                             <button
+                               type="button"
+                               onClick={() => openProgramReferrerDrawer('registeredReferees')}
+                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                                 programReferrerDrawer === 'registeredReferees'
+                                   ? 'border-[#8d3a8b]/40 ring-2 ring-[#8d3a8b]/20'
+                                   : 'border-[#eadcf7] hover:border-[#8d3a8b]/25'
+                               } ${bizFocusRingClass}`}
+                               aria-expanded={programReferrerDrawer === 'registeredReferees'}
+                             >
+                               <div className="mb-1 flex items-center gap-1.5 text-[#8d3a8b]">
+                                 <Hexagon className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                 <span className="text-[10px] font-bold uppercase tracking-wide">
+                                   {tu('programs_overview_registered_referees')}
+                                 </span>
+                               </div>
+                               <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
+                                 {formatProgramSocialStatCount(programRegisteredRefereeTotalCount)}
+                               </p>
+                             </button>
+                           </div>
+                         </div>
+                         <AnimatePresence>
+                           {programReferrerDrawer ? (
+                             <>
+                               <motion.button
+                                 type="button"
+                                 aria-label={tu('programs_config_close_tier_editor_aria')}
+                                 className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                                 initial={{ opacity: 0 }}
+                                 animate={{ opacity: 1 }}
+                                 exit={{ opacity: 0 }}
+                                 onClick={() => {
+                                   setProgramReferrerDrawer(null);
+                                   setProgramReferrerDetailAA(null);
+                                   setProgramReferrerDetailList([]);
+                                 }}
+                               />
+                               <motion.div
+                                 role="dialog"
+                                 aria-modal="true"
+                                 aria-labelledby="program-referrer-drawer-title"
+                                 className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                                 initial={{ y: '100%' }}
+                                 animate={{ y: 0 }}
+                                 exit={{ y: '100%' }}
+                                 transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                               >
+                                 <div className="shrink-0 px-6 pt-6">
+                                   <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                                   <div className="mb-4 flex items-start justify-between gap-4">
+                                     <div className="min-w-0">
+                                       {programReferrerDetailAA ? (
+                                         <button
+                                           type="button"
+                                           onClick={() => {
+                                             setProgramReferrerDetailAA(null);
+                                             setProgramReferrerDetailList([]);
+                                           }}
+                                           className={`mb-2 inline-flex items-center gap-1 text-xs font-semibold text-[#8d3a8b] ${bizFocusRingClass}`}
+                                         >
+                                           <ChevronLeft className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                                           {tu('programs_overview_referrer_back')}
+                                         </button>
+                                       ) : null}
+                                       <h3
+                                         id="program-referrer-drawer-title"
+                                         className="font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl"
+                                       >
+                                         {programReferrerDetailAA
+                                           ? tu('programs_overview_referrer_referees_list')
+                                           : programReferrerDrawer === 'referrers'
+                                             ? tu('programs_overview_referrers_list')
+                                             : tu('programs_overview_registered_referees_list')}
+                                       </h3>
+                                       {programReferrerDetailAA ? (
+                                         <div className="mt-2">
+                                           <ProgramReferrerAaCapsule address={programReferrerDetailAA} />
+                                         </div>
+                                       ) : (
+                                         <p className="mt-1 text-xs text-[#595c5e]">
+                                           {programReferrerDrawer === 'referrers'
+                                             ? formatProgramSocialStatCount(programReferrerTotalCount)
+                                             : formatProgramSocialStatCount(programRegisteredRefereeTotalCount)}
+                                         </p>
+                                       )}
+                                     </div>
+                                     <button
+                                       type="button"
+                                       onClick={() => {
+                                         setProgramReferrerDrawer(null);
+                                         setProgramReferrerDetailAA(null);
+                                         setProgramReferrerDetailList([]);
+                                       }}
+                                       className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                                       aria-label={tu('programs_config_close_tier_editor_aria')}
+                                     >
+                                       <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                                     </button>
+                                   </div>
+                                 </div>
+                                 <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+                                   {programReferrerDetailAA ? (
+                                     programReferrerDetailList.length === 0 ? (
+                                       <p className="text-sm text-[#595c5e]">{tu('programs_overview_referrer_db_empty')}</p>
+                                     ) : (
+                                       <ul className="space-y-2">
+                                         {programReferrerDetailList.map((row) => (
+                                           <li
+                                             key={`${row.refereeAa}:${row.updatedAt}:${row.txHash ?? ''}`}
+                                             className="rounded-lg border border-[#e8ecf0] bg-[#f8fafc] px-2 py-1.5"
+                                           >
+                                             <ProgramReferrerAaCapsule address={row.refereeAa} />
+                                             <p className="mt-1 text-[10px] text-[#595c5e]">
+                                               {tu('programs_overview_referee_charge_points')}:{' '}
+                                               {formatReferrerPoints6Display(row.refereeChargePointsTotal6 ?? null)}
+                                             </p>
+                                             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                               <span>{tu('programs_overview_social_tx_label')}:</span>
+                                               <ProgramSocialOnChainTxLink txHash={row.txHash} />
+                                             </p>
+                                           </li>
+                                         ))}
+                                       </ul>
+                                     )
+                                   ) : programReferrerDrawer === 'referrers' ? (
+                                     programReferrerList.length === 0 ? (
+                                       <p className="text-sm text-[#595c5e]">{tu('programs_overview_referrer_db_empty')}</p>
+                                     ) : (
+                                       <ul className="space-y-2">
+                                         {programReferrerList.map((row) => (
+                                           <li
+                                             key={row.referrerAa}
+                                             className="rounded-lg border border-[#e8ecf0] bg-[#f8fafc] px-2 py-1.5"
+                                           >
+                                             <ProgramReferrerAaCapsule address={row.referrerAa} />
+                                             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[#595c5e]">
+                                               <span>
+                                                 {tu('programs_overview_referrer_referee_count')}: {row.refereeCount}
+                                                 {row.chainRefereeCount != null ? ` (${row.chainRefereeCount} on-chain)` : ''}
+                                               </span>
+                                               <span>
+                                                 {tu('programs_overview_referrer_reward_balance')}:{' '}
+                                                 {formatReferrerPoints6Display(row.referrerRewardBalance)}
+                                               </span>
+                                             </div>
+                                             <button
+                                               type="button"
+                                               onClick={() => void loadProgramReferrerDetail(row.referrerAa)}
+                                               className={`mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-[#8d3a8b] ${bizFocusRingClass}`}
+                                             >
+                                               {tu('programs_overview_referrer_view_referees')}
+                                               <ChevronLeft className="h-3.5 w-3.5 rotate-180" strokeWidth={2.25} aria-hidden />
+                                             </button>
+                                           </li>
+                                         ))}
+                                       </ul>
+                                     )
+                                   ) : programRegisteredRefereeList.length === 0 ? (
+                                     <p className="text-sm text-[#595c5e]">{tu('programs_overview_referrer_db_empty')}</p>
+                                   ) : (
+                                     <ul className="space-y-2">
+                                       {programRegisteredRefereeList.map((row) => (
+                                         <li
+                                           key={`${row.refereeAa}:${row.registeredAt}:${row.txHash ?? ''}`}
+                                           className="rounded-lg border border-[#e8ecf0] bg-[#f8fafc] px-2 py-1.5"
+                                         >
+                                           <ProgramReferrerAaCapsule address={row.refereeAa} />
+                                           {row.referrerAa ? (
+                                             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                               <span>{tu('programs_overview_referrer_uplink')}:</span>
+                                               <ProgramReferrerAaCapsule address={row.referrerAa} />
+                                             </p>
+                                           ) : null}
+                                           <p className="mt-1 text-[10px] text-[#595c5e]">
+                                             {new Date(row.registeredAt).toLocaleString()}
+                                           </p>
+                                           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                             <span>{tu('programs_overview_social_tx_label')}:</span>
+                                             <ProgramSocialOnChainTxLink txHash={row.txHash} />
+                                           </p>
+                                         </li>
+                                       ))}
+                                     </ul>
+                                   )}
+                                 </div>
+                               </motion.div>
+                             </>
+                           ) : null}
+                         </AnimatePresence>
                        </div>
                      </div>
                      </div>
@@ -34803,8 +35325,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  {tu('programs_social_promotion_title')}
                                </p>
                                <p className="text-[10px] text-[#595c5e]">
-                                 {cardIssuanceSocialPromotionPayload
-                                   ? formatSocialPromotionDisplay(cardIssuanceSocialPromotionPayload)
+                                 {cardIssuanceSocialPromotionDisplayPromo
+                                   ? formatSocialPromotionDisplay(cardIssuanceSocialPromotionDisplayPromo)
                                    : tu('programs_social_promotion_none')}
                                </p>
                              </div>

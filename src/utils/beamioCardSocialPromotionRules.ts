@@ -10,11 +10,15 @@ import {
 	postOwnerExecuteForOwner,
 } from '@/utils/beamioCardUserCumulativeStatBootstrap'
 import {
-	CARD_SOCIAL_PROMOTION_EVENT_KEYS,
+	buildSocialPromotionRuleIntents,
+	onChainRuleMatchesIntent,
+	readCardRewardRuleFromChain,
+	verifySocialPromotionRulesOnChain,
+	type SocialPromotionRuleIntent,
+} from '@/utils/beamioCardSocialPromotionChain'
+import {
 	COUPON_SOCIAL_PROMOTION_EVENT_KEYS,
-	cardSocialPromotionRuleIdForEventKey,
 	couponSocialPromotionRuleIdForEvent,
-	type CardSocialPromotionEventKey,
 	type CouponSocialPromotionEventKey,
 	SOCIAL_PROMOTION_LIKE_RULE_ID,
 	SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
@@ -37,44 +41,29 @@ const CONFIGURE_REWARD_IFACE = new ethers.Interface([
 	'function configureEventRewardRule(uint256 ruleId, bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
 ])
 
-const CARD_RULE_IDS = [
-	SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
-	SOCIAL_PROMOTION_TOPUP_RULE_ID,
-	SOCIAL_PROMOTION_LIKE_RULE_ID,
-]
-
-function parsePoints13(raw: number | undefined): bigint {
-	if (raw == null || !Number.isFinite(raw)) return 0n
-	const n = Math.max(0, Math.floor(Number(raw)))
-	return BigInt(n)
+function parsePoints13(raw: unknown): bigint {
+	if (raw == null) return 0n
+	if (typeof raw === 'string') {
+		const trimmed = raw.replace(/,/g, '').trim()
+		if (!trimmed) return 0n
+		const n = Number(trimmed)
+		if (!Number.isFinite(n)) return 0n
+		return BigInt(Math.max(0, Math.floor(n)))
+	}
+	if (typeof raw === 'number') {
+		if (!Number.isFinite(raw)) return 0n
+		return BigInt(Math.max(0, Math.floor(raw)))
+	}
+	return 0n
 }
 
-function cardRuleParams(eventKey: CardSocialPromotionEventKey): {
-	eventKindU8: number
-	targetKindU8: number
-	issuedParentId: bigint
-} {
-	switch (eventKey) {
-		case 'topup':
-			return {
-				eventKindU8: UC_METRIC_TOPUP,
-				targetKindU8: UC_TARGET_GLOBAL_ONLY,
-				issuedParentId: 0n,
-			}
-		case 'like':
-			return {
-				eventKindU8: UC_METRIC_USER_LIKE,
-				targetKindU8: UC_TARGET_MERCHANT_CARD,
-				issuedParentId: 0n,
-			}
-		case 'linkClick':
-		default:
-			return {
-				eventKindU8: UC_METRIC_USER_CLICK,
-				targetKindU8: UC_TARGET_MERCHANT_CARD,
-				issuedParentId: 0n,
-			}
-	}
+const RULE_CONFIGURE_MAX_ATTEMPTS = 3
+const RULE_CONFIGURE_RETRY_DELAY_MS = 1500
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms)
+	})
 }
 
 function couponRuleParams(
@@ -188,16 +177,50 @@ async function configureRuleSlot(params: {
 	)
 }
 
-function resolveCardEventPromotion(
-	promo: ShareTokenMetadataSocialPromotion | null | undefined,
-	eventKey: CardSocialPromotionEventKey,
-): { actorMint13: bigint; refMint13: bigint } {
-	if (!promo || promo.enabled === false) return { actorMint13: 0n, refMint13: 0n }
-	const ev = promo.events?.[eventKey]
-	if (!ev) return { actorMint13: 0n, refMint13: 0n }
-	const actorMint13 = ev.user?.enabled !== false ? parsePoints13(ev.user?.points13) : 0n
-	const refMint13 = ev.ref?.enabled !== false ? parsePoints13(ev.ref?.points13) : 0n
-	return { actorMint13, refMint13 }
+function intentToConfigureParams(
+	intent: SocialPromotionRuleIntent,
+	ownerPrivateKey: string,
+	cardAddress: string,
+) {
+	return {
+		ownerPrivateKey,
+		cardAddress,
+		ruleId: BigInt(intent.ruleId),
+		active: intent.active,
+		eventKind: intent.eventKind,
+		targetKind: intent.targetKind,
+		issuedParentId: intent.issuedParentId,
+		actorMint13: intent.actorMint13,
+		refMint13: intent.refMint13,
+	}
+}
+
+async function configureRuleIntentWithRetry(params: {
+	ownerPrivateKey: string
+	cardAddress: string
+	intent: SocialPromotionRuleIntent
+	maxAttempts?: number
+}): Promise<{ success: boolean; error?: string }> {
+	const maxAttempts = params.maxAttempts ?? RULE_CONFIGURE_MAX_ATTEMPTS
+	let lastError: string | undefined
+	const configureParams = intentToConfigureParams(params.intent, params.ownerPrivateKey, params.cardAddress)
+
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		const res = await configureRuleSlot(configureParams)
+		if (!res.success) {
+			lastError = res.error ?? `configureEventRewardRule failed for ruleId=${params.intent.ruleId}`
+		} else {
+			const row = await readCardRewardRuleFromChain(params.cardAddress, params.intent.ruleId)
+			if (onChainRuleMatchesIntent(row, params.intent)) return { success: true }
+			lastError = `On-chain getRewardRule(${params.intent.ruleId}) did not match intended config (attempt ${attempt}/${maxAttempts})`
+		}
+		if (attempt < maxAttempts) await sleep(RULE_CONFIGURE_RETRY_DELAY_MS)
+	}
+
+	return {
+		success: false,
+		error: lastError ?? `Failed to configure ruleId=${params.intent.ruleId}`,
+	}
 }
 
 /**
@@ -209,7 +232,7 @@ export async function applySocialPromotionOnChainRules(params: {
 	ownerEoa: string
 	ownerPrivateKey: string
 	socialPromotion: ShareTokenMetadataSocialPromotion | null
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; failedRuleIds?: number[] }> {
 	const card = ethers.getAddress(params.cardAddress)
 	const ownerEoa = ethers.getAddress(params.ownerEoa)
 
@@ -219,43 +242,46 @@ export async function applySocialPromotionOnChainRules(params: {
 		ownerPrivateKey: params.ownerPrivateKey,
 	}).catch(() => undefined)
 
-	const promo = params.socialPromotion
+	const intents = buildSocialPromotionRuleIntents(params.socialPromotion)
+	const failedRuleIds: number[] = []
 
-	for (const eventKey of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
-		const { actorMint13, refMint13 } = resolveCardEventPromotion(promo, eventKey)
-		const ruleId = BigInt(cardSocialPromotionRuleIdForEventKey(eventKey))
-		const chainParams = cardRuleParams(eventKey)
-		const active = Boolean(promo && promo.enabled !== false && (actorMint13 > 0n || refMint13 > 0n))
-		const res = await configureRuleSlot({
+	for (const intent of intents) {
+		const res = await configureRuleIntentWithRetry({
 			ownerPrivateKey: params.ownerPrivateKey,
 			cardAddress: card,
-			ruleId,
-			active,
-			eventKind: chainParams.eventKindU8,
-			targetKind: chainParams.targetKindU8,
-			issuedParentId: chainParams.issuedParentId,
-			actorMint13: active ? actorMint13 : 0n,
-			refMint13: active ? refMint13 : 0n,
+			intent,
 		})
-		if (!res.success) return res
+		if (!res.success) failedRuleIds.push(intent.ruleId)
 	}
 
-	if (!promo) {
-		for (const ruleId of CARD_RULE_IDS) {
-			const isTopup = ruleId === SOCIAL_PROMOTION_TOPUP_RULE_ID
-			const isLike = ruleId === SOCIAL_PROMOTION_LIKE_RULE_ID
-			const res = await configureRuleSlot({
+	if (failedRuleIds.length > 0) {
+		for (const ruleId of [...failedRuleIds]) {
+			const intent = intents.find((row) => row.ruleId === ruleId)
+			if (!intent) continue
+			const retry = await configureRuleIntentWithRetry({
 				ownerPrivateKey: params.ownerPrivateKey,
 				cardAddress: card,
-				ruleId: BigInt(ruleId),
-				active: false,
-				eventKind: isTopup ? UC_METRIC_TOPUP : isLike ? UC_METRIC_USER_LIKE : UC_METRIC_USER_CLICK,
-				targetKind: isTopup ? UC_TARGET_GLOBAL_ONLY : UC_TARGET_MERCHANT_CARD,
-				issuedParentId: 0n,
-				actorMint13: 0n,
-				refMint13: 0n,
+				intent,
+				maxAttempts: RULE_CONFIGURE_MAX_ATTEMPTS,
 			})
-			if (!res.success) return res
+			if (retry.success) {
+				const idx = failedRuleIds.indexOf(ruleId)
+				if (idx >= 0) failedRuleIds.splice(idx, 1)
+			}
+		}
+	}
+
+	const verify = await verifySocialPromotionRulesOnChain(card, intents)
+	const mergedFailed = [...new Set([...failedRuleIds, ...verify.failedRuleIds])]
+
+	if (mergedFailed.length > 0) {
+		const likeFailed = mergedFailed.includes(SOCIAL_PROMOTION_LIKE_RULE_ID)
+		return {
+			success: false,
+			failedRuleIds: mergedFailed,
+			error: likeFailed
+				? `On-chain reward rule update failed for Like (ruleId=${SOCIAL_PROMOTION_LIKE_RULE_ID}). Unlock wallet and save again — metadata alone does not activate rewards.`
+				: `On-chain reward rule update failed for ruleId(s): ${mergedFailed.join(', ')}. Try saving again.`,
 		}
 	}
 

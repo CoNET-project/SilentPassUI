@@ -320,6 +320,7 @@ import {
   parseTopupPromotionFromMetadata,
   topupPromotionDraftFromMetadata,
   topupPromotionDraftToPayload,
+  topupPromotionDraftsEqual,
   topupPromotionToLegacyBonusRule,
   validateTopupPromotionDraft,
   type TopupPromotionDraft,
@@ -11391,6 +11392,8 @@ const [cardIssuanceTopupPromotion, setCardIssuanceTopupPromotion] = useState<Top
   EMPTY_TOPUP_PROMOTION_DRAFT
 );
  const [cardIssuanceTopupPromotionEditorOpen, setCardIssuanceTopupPromotionEditorOpen] = useState(false);
+ const [cardIssuanceTopupPromotionEditorBaseline, setCardIssuanceTopupPromotionEditorBaseline] =
+   useState<TopupPromotionDraft | null>(null);
  /** Issued card: POST /api/updateCardShareMetadata while top-up promotion editor is open. */
  const [cardIssuanceTopupPromotionEditorPublishing, setCardIssuanceTopupPromotionEditorPublishing] =
    useState(false);
@@ -13701,6 +13704,15 @@ const cardIssuanceTopupPromotionEditorValidationError = useMemo(
   () => (cardIssuanceTopupPromotion.enabled ? validateTopupPromotionDraft(cardIssuanceTopupPromotion) : ''),
   [cardIssuanceTopupPromotion]
 );
+
+const cardIssuanceTopupPromotionEditorDirty = useMemo(() => {
+  if (!cardIssuanceTopupPromotionEditorOpen || cardIssuanceTopupPromotionEditorBaseline == null) return false;
+  return !topupPromotionDraftsEqual(cardIssuanceTopupPromotion, cardIssuanceTopupPromotionEditorBaseline);
+}, [
+  cardIssuanceTopupPromotionEditorOpen,
+  cardIssuanceTopupPromotionEditorBaseline,
+  cardIssuanceTopupPromotion,
+]);
 
 const cardIssuanceSocialPromotionPayload = useMemo(
   () => socialPromotionDraftToPayload(cardIssuanceSocialPromotion),
@@ -16212,8 +16224,15 @@ const registerCardIssuanceProductionRedeemCodes = useCallback(
 
 const openCardIssuanceTopupPromotionEditor = useCallback(() => {
   setCardIssuanceTopupPromotionEditorServerError('');
+  setCardIssuanceTopupPromotionEditorBaseline({ ...cardIssuanceTopupPromotion });
   setCardIssuanceTopupPromotionEditorOpen(true);
-}, []);
+}, [cardIssuanceTopupPromotion]);
+
+useEffect(() => {
+  if (!cardIssuanceTopupPromotionEditorOpen) {
+    setCardIssuanceTopupPromotionEditorBaseline(null);
+  }
+}, [cardIssuanceTopupPromotionEditorOpen]);
 
 const openCardIssuanceSocialPromotionEditor = useCallback(() => {
   setCardIssuanceSocialPromotionEditorServerError('');
@@ -36007,6 +36026,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        ) : null}
 
                        <div className="space-y-3 pt-2">
+                         {cardIssuanceTopupPromotionEditorDirty || cardIssuanceTopupPromotionEditorPublishing ? (
                          <button
                            type="button"
                            onClick={() => void submitCardIssuanceTopupPromotionEditor()}
@@ -36024,6 +36044,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            )}
                            <span>{cardIssuanceTopupPromotionEditorPublishing ? 'Saving...' : 'Save Promotion'}</span>
                          </button>
+                         ) : null}
                          {cardIssuanceTopupPromotion.enabled || cardIssuanceTopupPromotionPayload ? (
                            <button
                              type="button"

@@ -157,6 +157,31 @@ export function topupPromotionDraftFromMetadata(
 	}
 }
 
+/** Normalize draft fields for open-vs-current dirty comparison in the promotion editor. */
+export function normalizeTopupPromotionDraftForCompare(draft: TopupPromotionDraft): TopupPromotionDraft {
+	return {
+		enabled: draft.enabled,
+		validFrom: draft.validFrom.trim(),
+		validTo: draft.validTo.trim(),
+		minimumTopupAmount: draft.minimumTopupAmount.replace(/,/g, '').trim(),
+		rewardType: draft.rewardType,
+		rewardValue: draft.rewardValue.replace(/,/g, '').trim(),
+	}
+}
+
+export function topupPromotionDraftsEqual(a: TopupPromotionDraft, b: TopupPromotionDraft): boolean {
+	const na = normalizeTopupPromotionDraftForCompare(a)
+	const nb = normalizeTopupPromotionDraftForCompare(b)
+	return (
+		na.enabled === nb.enabled &&
+		na.validFrom === nb.validFrom &&
+		na.validTo === nb.validTo &&
+		na.minimumTopupAmount === nb.minimumTopupAmount &&
+		na.rewardType === nb.rewardType &&
+		na.rewardValue === nb.rewardValue
+	)
+}
+
 export function validateTopupPromotionDraft(draft: TopupPromotionDraft): string {
 	if (!draft.enabled) return ''
 	const min = parseAmount(draft.minimumTopupAmount)

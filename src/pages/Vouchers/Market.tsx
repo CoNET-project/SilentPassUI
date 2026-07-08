@@ -144,6 +144,8 @@ import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import {
 	buildDiscoverActivePromotionsPanelModel,
 	formatSocialPoints13Display,
+	consumptionPointSystemEnabledFromMetadata,
+	parseLoyaltyPointsDisplay,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverTopupPromotionPresentation,
 	type DiscoverTopupPromotionPresentation,
@@ -1431,25 +1433,62 @@ function DiscoverMerchantPromoRewardTierCard({
 	)
 }
 
-function DiscoverMerchantSocialPointsCard({ points, loading }: { points: number | null; loading: boolean }) {
-	const display = loading ? '—' : formatSocialPoints13Display(points)
+function DiscoverMerchantLoyaltyPointsCard({
+	consumptionEnabled,
+	consumptionPoints,
+	socialPoints,
+	consumptionLoading,
+	socialLoading,
+}: {
+	consumptionEnabled: boolean
+	consumptionPoints: number | null
+	socialPoints: number | null
+	consumptionLoading: boolean
+	socialLoading: boolean
+}) {
+	const consumptionDisplay = consumptionLoading ? null : consumptionPoints
+	const socialDisplay = socialLoading ? null : socialPoints
+	const consumptionVal = consumptionEnabled ? (consumptionDisplay ?? 0) : 0
+	const socialVal = socialDisplay ?? 0
+	const totalVal = consumptionEnabled ? consumptionVal + socialVal : socialVal
+	const totalLoading = consumptionEnabled ? consumptionLoading || socialLoading : socialLoading
+	const totalText = totalLoading ? '—' : formatSocialPoints13Display(totalVal)
+	const consumptionText = consumptionLoading ? '—' : formatSocialPoints13Display(consumptionDisplay)
+	const socialText = socialLoading ? '—' : formatSocialPoints13Display(socialDisplay)
+
 	return (
 		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
-			<div className="flex items-start gap-3">
-				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f5ecff] text-[#8d3a8b] dark:bg-purple-950/40">
-					<Star className="h-6 w-6" strokeWidth={2} aria-hidden />
-				</span>
-				<div className="min-w-0 flex-1">
-					<h3 className="text-[17px] font-bold leading-tight text-[#1f2328] dark:text-slate-100">
-						Your social points
-					</h3>
-					<p className="mt-1 text-[13px] font-medium text-slate-500 dark:text-slate-400">
-						Reward vouchers on this merchant card
+			<div className="flex items-start justify-between gap-3">
+				<div className="min-w-0">
+					<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+						Total Points
+					</p>
+					<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[34px]">
+						{totalText}
+						<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
 					</p>
 				</div>
-				<p className="shrink-0 text-[28px] font-extrabold leading-none tracking-tight text-[#8d3a8b]">
-					{display}
-				</p>
+				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#1562f0] text-white shadow-sm">
+					<Star className="h-6 w-6" strokeWidth={2} aria-hidden />
+				</span>
+			</div>
+			<div
+				className={`mt-4 grid gap-3 ${consumptionEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}
+			>
+				{consumptionEnabled ? (
+					<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
+						<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Consumption</p>
+						<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+							{consumptionText}
+						</p>
+					</div>
+				) : null}
+				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
+					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Social</p>
+					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+						{socialText}
+					</p>
+				</div>
 			</div>
 		</div>
 	)
@@ -3083,6 +3122,15 @@ function DiscoverMerchantDetailFullScreen({
 	const wellnessPointsValue = merchantAssetsLoading
 		? null
 		: Number(merchantAssets?.points ?? 0)
+	const consumptionPointSystemEnabled = useMemo(() => {
+		const fromMeta = consumptionPointSystemEnabledFromMetadata(merchantMetadataRoot)
+		if (fromMeta != null) return fromMeta
+		return false
+	}, [merchantMetadataRoot])
+	const userConsumptionPoints = useMemo(
+		() => parseLoyaltyPointsDisplay(merchantAssets?.chargeRewardPoints),
+		[merchantAssets?.chargeRewardPoints],
+	)
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
 	const topupPromotionPresentation = useMemo(
 		() =>
@@ -4117,9 +4165,12 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 					</div>
 
-					<DiscoverMerchantSocialPointsCard
-						points={userSocialPoints13}
-						loading={userSocialPointsLoading}
+					<DiscoverMerchantLoyaltyPointsCard
+						consumptionEnabled={consumptionPointSystemEnabled}
+						consumptionPoints={userConsumptionPoints}
+						socialPoints={userSocialPoints13}
+						consumptionLoading={merchantAssetsLoading}
+						socialLoading={userSocialPointsLoading}
 					/>
 
 					{topupPromotionCapsule ? (

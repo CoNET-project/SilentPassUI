@@ -583,6 +583,39 @@ export function formatSocialPoints13Display(value: number | null | undefined): s
 	return n.toLocaleString('en-US')
 }
 
+function metadataRecord(raw: unknown): Record<string, unknown> | null {
+	return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null
+}
+
+/** null = metadata not ready; boolean = consumption point system enabled flag from shareTokenMetadata.pointSystem. */
+export function consumptionPointSystemEnabledFromMetadata(
+	metadataRoot: Record<string, unknown> | null | undefined,
+): boolean | null {
+	const root = metadataRecord(metadataRoot)
+	if (!root) return null
+	const share = metadataRecord(root.shareTokenMetadata)
+	const ps = metadataRecord(share?.pointSystem) ?? metadataRecord(root.pointSystem)
+	if (!ps) return null
+	if (typeof ps.enabled === 'boolean') return ps.enabled
+	const ratio = ps.chargeRewardRatioE6 ?? ps.pointRewardRatioE6 ?? ps.consumptionRewardRatioE6
+	if (typeof ratio === 'string' && /^\d+$/.test(ratio)) {
+		try {
+			return BigInt(ratio) > 0n
+		} catch {
+			return null
+		}
+	}
+	if (typeof ratio === 'number' && Number.isFinite(ratio)) return ratio > 0
+	return null
+}
+
+export function parseLoyaltyPointsDisplay(raw: string | number | null | undefined): number | null {
+	if (raw == null || raw === '') return null
+	const n = typeof raw === 'number' ? raw : Number(raw)
+	if (!Number.isFinite(n) || n < 0) return null
+	return Math.floor(n)
+}
+
 /** Per-event #13 points for Social Missions metric pills (linkClick / like / topup / claim / burn). */
 export type DiscoverSocialMissionMetrics = {
 	linkClick: number | null

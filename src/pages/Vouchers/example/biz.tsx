@@ -17814,13 +17814,35 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   setCardIssuanceCreateError('');
   setCardIssuanceTopupPromotionEditorPublishing(true);
   try {
+    const payload = topupPromotionDraftToPayload(nextPromotion);
     const ok = await handlePublishCardIssuance({
       topupPromotionOverride: nextPromotion,
       loadingScope: 'bonusEditor',
+      skipOnChainRefresh: true,
     });
     if (ok) {
+      const legacyBonus = payload ? topupPromotionToLegacyBonusRule(payload) : null;
       setCardIssuanceTopupPromotion(nextPromotion);
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev?.meta) return prev;
+        const nextMeta = { ...prev.meta };
+        if (payload) {
+          nextMeta.topupPromotion = payload;
+          if (legacyBonus) {
+            nextMeta.bonusRule = legacyBonus;
+            nextMeta.bonusRules = [legacyBonus];
+          }
+        }
+        return { ...prev, meta: nextMeta };
+      });
+      if (cardIssuanceExistingCard?.cardAddress) {
+        invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
+      }
       setCardIssuanceTopupPromotionEditorOpen(false);
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'ok',
+        text: 'Top-up promotion saved. POS and apps will use it after a short cache refresh.',
+      });
     } else {
       setCardIssuanceTopupPromotionEditorServerError(
         'Could not save top-up promotion. Review the error below and try again.'

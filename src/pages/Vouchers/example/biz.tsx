@@ -8656,13 +8656,17 @@ async function fetchConetBUnitBalanceDisplay(
 ): Promise<number> {
   const normalized = ethers.getAddress(account);
   try {
-    const buint = new ethers.Contract(CONET_BUINT, ERC20_BALANCE_ABI, provider);
-    const raw = await buint.balanceOf(normalized);
-    return amountE6ToDisplayNumber(BigInt(raw.toString()));
-  } catch {
     const buintAirdrop = new ethers.Contract(CONET_BUNIT_AIRDROP_ADDRESS, BUNIT_AIRDROP_BALANCE_ABI, provider);
     const raw = await buintAirdrop.getBUnitBalance(normalized);
     return amountE6ToDisplayNumber(BigInt(raw.toString()));
+  } catch {
+    try {
+      const buint = new ethers.Contract(CONET_BUINT, ERC20_BALANCE_ABI, provider);
+      const raw = await buint.balanceOf(normalized);
+      return amountE6ToDisplayNumber(BigInt(raw.toString()));
+    } catch {
+      return 0;
+    }
   }
 }
 

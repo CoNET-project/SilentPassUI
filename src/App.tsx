@@ -21,6 +21,7 @@ import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
+import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
@@ -225,6 +226,20 @@ function AppShell() {
     })
   }, [isInitialLoading, navigate, setShowFooter])
 
+  const couponShareClickRecordedRef = useRef(false)
+  useEffect(() => {
+    if (isInitialLoading || couponShareClickRecordedRef.current || !couponClaimIntent) return
+    const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
+    if (!privateKeyArmor) return
+    couponShareClickRecordedRef.current = true
+    void recordDiscoverShareClickIfNeeded({
+      cardAddress: couponClaimIntent.cardAddress,
+      privateKeyArmor,
+      referrerEoa: couponClaimIntent.referrerEoa ?? null,
+      couponId: couponClaimIntent.couponId,
+    })
+  }, [isInitialLoading, couponClaimIntent, profiles?.[0]])
+
   const handleConfirmRedeemClaim = async () => {
     if (!redeemClaimIntent || redeemClaimSubmitting) return
     const cardAddress = redeemClaimIntent.cardAddress?.trim() ?? ''
@@ -292,6 +307,7 @@ function AppShell() {
         couponId: couponClaimIntent.couponId,
         tokenId: couponClaimPreviewRow?.tokenId,
         privateKeyArmor,
+        referrerEoa: couponClaimIntent.referrerEoa ?? null,
       })
       Toast.show({
         content: ret.success

@@ -589,7 +589,7 @@ export type CardActiveIssuedCouponSeriesItem = {
 	issuedNftValidBefore?: string
 }
 
-function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefined): string {
+export function readCouponIdFromMetadata(meta: Record<string, unknown> | null | undefined): string {
 	if (!meta || typeof meta !== 'object') return ''
 	const root = meta as Record<string, unknown>
 	const rootId = root.couponId
@@ -1487,6 +1487,8 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 	/** When known from list row, skip re-scanning card series by couponId. */
 	tokenId?: string
 	privateKeyArmor: string
+	/** Share referrer EOA from coupon deep link (`ref=`). */
+	referrerEoa?: string | null
 }): Promise<{ success: boolean; tx?: string; tokenId?: string; error?: string; status?: number }> => {
 	const cardAddress = params.cardAddress?.trim() ?? ''
 	const couponId = params.couponId?.trim() ?? ''
@@ -1503,6 +1505,12 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			tokenIdParam ||
 			(await resolveOpenClaimTokenIdByCouponId(cardNorm, couponId))
 		if (!tokenId) return { success: false, error: 'Coupon not found or inactive on this card.' }
+
+		const refRaw = params.referrerEoa?.trim() ?? ''
+		const refWallet =
+			refRaw && ethers.isAddress(refRaw) && ethers.getAddress(refRaw) !== userEOA
+				? ethers.getAddress(refRaw)
+				: undefined
 
 		let socialExchange = null as ReturnType<typeof readSocialExchangeFromMetadata>
 		const seriesRows = await getCardActiveIssuedCouponSeries(cardNorm, 50)
@@ -1560,6 +1568,7 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 				userSignature,
 				pointsCost: String(pointsCost),
 				usdcReward6: String(usdcReward6),
+				...(refWallet ? { refWallet } : {}),
 			}
 		} else {
 			userSignature = await signer.signTypedData(
@@ -1592,6 +1601,7 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 				deadline,
 				nonce,
 				userSignature,
+				...(refWallet ? { refWallet } : {}),
 			}
 		}
 

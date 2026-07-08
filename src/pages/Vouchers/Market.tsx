@@ -3711,6 +3711,7 @@ function DiscoverMerchantDetailFullScreen({
 					couponId,
 					tokenId,
 					privateKeyArmor,
+					referrerEoa: shareReferrerFromUrl,
 				})
 				if (ret.success) {
 					setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
@@ -3740,7 +3741,7 @@ function DiscoverMerchantDetailFullScreen({
 				Toast.show({ content: mapServerError(err), position: 'top' })
 			}
 		},
-		[couponClaimStatusById, profile, navigate, scheduleCouponClaimStatusReset, setProfiles],
+		[couponClaimStatusById, profile, navigate, scheduleCouponClaimStatusReset, setProfiles, shareReferrerFromUrl],
 	)
 
 	useEffect(() => {

@@ -133,7 +133,6 @@ import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPro
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
 import { DiscoverMerchantActivePromotionsPanel } from '@/components/discover/DiscoverMerchantActivePromotionsPanel'
-import { DiscoverCouponL2RuleIdsFootnote } from '@/components/discover/DiscoverOfferSocialMissionTrigger'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { formatBeamioTagDisplayLine } from '@/utils/aaMultisigTaskUi'
 import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
@@ -1325,7 +1324,6 @@ function DiscoverMerchantCouponOfferRow({
 				showUserLike
 				socialMissionUser={socialMissionBlock?.user ?? null}
 				socialMissionReferrer={socialMissionBlock?.referrer ?? null}
-				socialMissionL2RuleIds={socialMissionBlock?.l2RuleIds ?? null}
 				referrerEoa={referrerEoa}
 				getPrivateKeyArmor={getPrivateKeyArmor}
 				onWalletUnlock={onWalletUnlock}
@@ -1343,9 +1341,6 @@ function DiscoverMerchantCouponOfferRow({
 							: `Claim coupon ${row.coupon.title}`
 				}
 			/>
-			{socialMissionBlock?.l2RuleIds && Object.keys(socialMissionBlock.l2RuleIds).length > 0 ? (
-				<DiscoverCouponL2RuleIdsFootnote ruleIds={socialMissionBlock.l2RuleIds} />
-			) : null}
 			{insufficientSocialPoints ? (
 				<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
 					Not enough social points for this exchange.

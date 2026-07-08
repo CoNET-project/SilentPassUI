@@ -658,8 +658,6 @@ export type DiscoverCouponSocialMissionBlock = {
 	user: DiscoverSocialMissionMetrics | null
 	referrer: DiscoverSocialMissionMetrics | null
 	userDetailText: string
-	/** Per-event L2 on-chain rule IDs for this issued coupon (only configured events). */
-	l2RuleIds: Partial<Record<CouponSocialPromotionEventKey, string>>
 }
 
 export const DISCOVER_COUPON_SOCIAL_MISSIONS_INITIAL = 3
@@ -791,20 +789,6 @@ function compareCouponSocialMissionBlocksNewestFirst(
 	}
 }
 
-function buildCouponL2RuleIds(
-	tokenId: string,
-	couponSocial: ShareTokenMetadataCouponSocialPromotion | null,
-): Partial<Record<CouponSocialPromotionEventKey, string>> {
-	const out: Partial<Record<CouponSocialPromotionEventKey, string>> = {}
-	if (!couponSocial?.events) return out
-	for (const key of COUPON_SOCIAL_EVENT_KEYS) {
-		const ev = couponSocial.events[key]
-		if (!ev || !eventHasReward(ev)) continue
-		out[key] = couponSocialPromotionRuleIdForEvent(tokenId, key)
-	}
-	return out
-}
-
 function buildCouponSocialMissionBlocks(
 	couponSeries: Array<{ title?: string; metadata?: Record<string, unknown> | null; tokenId?: string }> | undefined,
 ): DiscoverCouponSocialMissionBlock[] {
@@ -825,7 +809,6 @@ function buildCouponSocialMissionBlocks(
 			user,
 			referrer,
 			userDetailText,
-			l2RuleIds: buildCouponL2RuleIds(tokenId, couponSocial),
 		})
 	}
 	return blocks.sort(compareCouponSocialMissionBlocksNewestFirst)

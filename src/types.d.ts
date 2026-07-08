@@ -787,6 +787,8 @@ type MyCardAssets = {
 	usdcBalance?: string
 	chargeRewardPoints?: string
 	chargeRewardPoints6?: string
+	socialRewardPoints?: string
+	socialRewardPoints6?: string
 	nfts: {
 		tokenId: string
 		attribute: string

@@ -9,17 +9,28 @@ export type { MyBrandsOwnedCatalogSnapshot }
 
 export type MyBrandCardFeedDetailsMap = MyBrandsFeedDetailsSnapshot
 
-/** My Brands 右栏金额副标题：NFT#2（charge-reward）point 余额 + `pts`（数据来自 Daemon feeder → getMyAssets）。 */
+/** Sum charge-reward (#2) + social-reward (#13) for wallet / My Brands point subtitles. */
+function rewardPointsTotal(
+	assets?: { chargeRewardPoints?: string; socialRewardPoints?: string } | null
+): number {
+	const charge = Number(assets?.chargeRewardPoints ?? 0)
+	const social = Number(assets?.socialRewardPoints ?? 0)
+	const c = Number.isFinite(charge) ? charge : 0
+	const s = Number.isFinite(social) ? social : 0
+	return c + s
+}
+
+/** My Brands 右栏金额副标题：charge-reward (#2) + social-reward (#13) 合计 pts。 */
 export function formatMyBrandNft2PointsSubtitle(
-	detail: { assets?: { chargeRewardPoints?: string } | null } | undefined
+	detail: {
+		assets?: { chargeRewardPoints?: string; socialRewardPoints?: string } | null
+	} | undefined
 ): string {
 	if (detail === undefined) return '…'
-	const raw = detail.assets?.chargeRewardPoints
 	if (detail.assets == null) return '—'
-	if (raw == null || String(raw).trim() === '') return '—'
-	const n = Number(raw)
-	if (!Number.isFinite(n)) return '—'
-	return `${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} pts`
+	const total = rewardPointsTotal(detail.assets)
+	if (total <= 0) return '—'
+	return `${total.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} pts`
 }
 
 export type MyBrandSecondarySubtitle = {
@@ -29,14 +40,16 @@ export type MyBrandSecondarySubtitle = {
 
 /** Home / My Brands 右栏第二行：优先绿色 +pts，否则灰色 pts / — */
 export function resolveMyBrandSecondarySubtitle(
-	detail: { assets?: { chargeRewardPoints?: string } | null } | undefined
+	detail: {
+		assets?: { chargeRewardPoints?: string; socialRewardPoints?: string } | null
+	} | undefined
 ): MyBrandSecondarySubtitle {
 	const base = formatMyBrandNft2PointsSubtitle(detail)
 	if (base === '…' || base === '—') {
 		return { text: base, tone: 'muted' }
 	}
-	const n = Number(detail?.assets?.chargeRewardPoints)
-	if (Number.isFinite(n) && n > 0) {
+	const n = rewardPointsTotal(detail?.assets)
+	if (n > 0) {
 		const formatted = n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })
 		return { text: `+${formatted} pts`, tone: 'reward' }
 	}
@@ -173,6 +186,8 @@ function detailRowDisplayKey(row: MyBrandCardFeedDetailsMap[string] | undefined)
 		p: row.assets?.points ?? null,
 		cp: row.assets?.chargeRewardPoints ?? null,
 		cp6: row.assets?.chargeRewardPoints6 ?? null,
+		srp: row.assets?.socialRewardPoints ?? null,
+		srp6: row.assets?.socialRewardPoints6 ?? null,
 		c: row.assets?.cardCurrency ?? null,
 		n: row.meta?.name ?? null,
 		i: row.meta?.icon ?? row.meta?.image ?? null,

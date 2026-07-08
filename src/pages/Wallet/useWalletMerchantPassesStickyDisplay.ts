@@ -75,6 +75,7 @@ function hasAnyMerchantNftHolding(nftsRaw: unknown): boolean {
 function myBrandRowHasMerchantHoldings(row: MyBrandCardFeedDetailsMap[string]): boolean {
 	if (hasPositivePoints(row.assets?.points)) return true
 	if (hasPositiveChargeRewardPoints(row.assets?.chargeRewardPoints)) return true
+	if (hasPositiveChargeRewardPoints(row.assets?.socialRewardPoints)) return true
 	if (hasAnyMerchantNftHolding(row.assets?.nfts)) return true
 	if ((row.claimableCoupons?.count ?? 0) > 0) return true
 	if ((row.ownedCatalogs?.count ?? 0) > 0) return true

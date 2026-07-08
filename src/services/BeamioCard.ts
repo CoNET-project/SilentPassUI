@@ -1859,6 +1859,8 @@ type WalletAssetsCardRow = {
 	points6?: string
 	chargeRewardPoints?: string
 	chargeRewardPoints6?: string
+	socialRewardPoints?: string
+	socialRewardPoints6?: string
 	nfts?: Array<{
 		tokenId?: string | number
 		attribute?: string | number
@@ -1887,19 +1889,23 @@ const DEFAULT_CARD_PRICE_E6 = 1_000_000
 function walletAssetsRowHasHoldings(row: WalletAssetsCardRow): boolean {
 	const pts = Number(row.points ?? 0)
 	const crp = Number(row.chargeRewardPoints ?? 0)
+	const srp = Number(row.socialRewardPoints ?? 0)
 	if (Number.isFinite(pts) && pts > 0) return true
 	if (Number.isFinite(crp) && crp > 0) return true
+	if (Number.isFinite(srp) && srp > 0) return true
 	const nfts = row.nfts ?? []
 	return nfts.some((n) => Number(n?.tokenId ?? 0) > 0)
 }
 
-/** 与 getWalletAssets holder 判定一致：点数 / charge-reward / 任意 tokenId>0 NFT。 */
+/** 与 getWalletAssets holder 判定一致：点数 / charge-reward / social-reward / 任意 tokenId>0 NFT。 */
 export function myCardAssetsHasHoldings(assets: MyCardAssets | null | undefined): boolean {
 	if (!assets) return false
 	const pts = Number(assets.points ?? 0)
 	const crp = Number(assets.chargeRewardPoints ?? 0)
+	const srp = Number(assets.socialRewardPoints ?? 0)
 	if (Number.isFinite(pts) && pts > 0) return true
 	if (Number.isFinite(crp) && crp > 0) return true
+	if (Number.isFinite(srp) && srp > 0) return true
 	return (assets.nfts ?? []).some((n) => Number(n?.tokenId ?? 0) > 0)
 }
 
@@ -1998,6 +2004,8 @@ function myCardAssetsFromWalletAssetsRow(
 		cardCurrency: currency,
 		chargeRewardPoints: row.chargeRewardPoints,
 		chargeRewardPoints6: row.chargeRewardPoints6,
+		socialRewardPoints: row.socialRewardPoints,
+		socialRewardPoints6: row.socialRewardPoints6,
 		nfts: (row.nfts ?? []).map((n) => ({
 			tokenId: String(n?.tokenId ?? '0'),
 			attribute: String(n?.attribute ?? '0'),

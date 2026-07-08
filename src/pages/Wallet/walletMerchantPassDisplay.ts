@@ -39,7 +39,10 @@ export function buildWalletMerchantPassStackDisplay(
 			? '…'
 			: '—'
 	const pointSystemOn = detail?.meta?.pointSystem?.enabled === true
-	const balanceSubtitle = pointSystemOn ? formatPointSubtitle(detail?.assets?.chargeRewardPoints) : ''
+	const rewardTotal =
+		(Number(detail?.assets?.chargeRewardPoints ?? 0) || 0) +
+		(Number(detail?.assets?.socialRewardPoints ?? 0) || 0)
+	const balanceSubtitle = pointSystemOn && rewardTotal > 0 ? formatPointSubtitle(rewardTotal) : ''
 	const balanceSig = Number.isFinite(ptsNum) ? ptsNum.toFixed(2) : balanceLine
 	const tierGradient = cardTierGradientCss(tierPres.accentColor)
 	const tierTheme = cardTierGradientTheme(tierPres.accentColor)

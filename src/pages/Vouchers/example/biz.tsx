@@ -84,6 +84,8 @@ import {
   updateIssuedCouponSocialPromotion,
   updateBeamioCardTiers,
   encodeSetTiers,
+  encodeSetChargeRewardRatio,
+  postExecuteForOwner,
   fetchCardsByCategory,
   getCardOwner,
   invalidateBeamioCardMetadataCache,
@@ -9760,6 +9762,96 @@ function formatPointRatioE6Display(raw: string | number | bigint | undefined | n
   return human.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+type CardIssuanceConsumptionPointEditorBaseline = {
+  enabled: boolean;
+  ratioInput: string;
+};
+
+function buildCardIssuancePointSystemMetadataFromDraft(
+  enabled: boolean,
+  ratioInput: string,
+  fallbackRatioE6?: string | null,
+): CardIssuancePointSystemMetadata {
+  const parsed = parsePointRatioHumanToE6(ratioInput);
+  const ratioE6 = enabled
+    ? (parsed?.toString() ?? fallbackRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6)
+    : '0';
+  return {
+    enabled,
+    chargeRewardRatioE6: ratioE6,
+    rewardTokenId: CARD_ISSUANCE_POINT_REWARD_TOKEN_ID,
+  };
+}
+
+function validateCardIssuanceConsumptionPointRatioInput(enabled: boolean, ratioInput: string): string {
+  if (!enabled) return '';
+  const e6 = parsePointRatioHumanToE6(ratioInput);
+  if (e6 == null || e6 <= 0n) return 'Enter a valid multiplier greater than zero.';
+  const human = Number(formatPointRatioE6ToHuman(e6));
+  if (!Number.isFinite(human) || human > CARD_ISSUANCE_POINT_RATIO_MAX) {
+    return `Multiplier must be at most ${CARD_ISSUANCE_POINT_RATIO_MAX.toLocaleString('en-US')}.`;
+  }
+  return '';
+}
+
+function formatConsumptionPointSystemDisplay(enabled: boolean, ratioInput: string): string {
+  if (!enabled) return 'Consumption points disabled.';
+  const e6 = parsePointRatioHumanToE6(ratioInput);
+  if (e6 == null || e6 <= 0n) return 'Set consumption point multiplier.';
+  return `${formatPointRatioE6Display(e6.toString())}× on qualifying charges`;
+}
+
+async function syncChargeRewardRatioOnChain(opts: {
+  cardAddress: string;
+  ownerPrivateKey: string;
+  targetRatioE6: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const cardAddrNorm = ethers.getAddress(opts.cardAddress);
+    const { provider } = await providerForBeamioUserCard(cardAddrNorm);
+    const card = new ethers.Contract(
+      cardAddrNorm,
+      ['function chargeRewardRatioE6() view returns (uint256)'],
+      provider,
+    );
+    const chainRaw = await card.chargeRewardRatioE6().catch(() => null);
+    const chainE6 = chainRaw != null ? BigInt(chainRaw.toString()).toString() : null;
+    if (chainE6 === opts.targetRatioE6) return { success: true };
+
+    const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address);
+    const chainOwner = await getCardOwner(cardAddrNorm);
+    if (ethers.getAddress(chainOwner) !== signerAddr) {
+      return {
+        success: false,
+        error:
+          'Consumption point ratio updates require the card owner wallet. Unlock owner wallet and retry.',
+      };
+    }
+    const data = encodeSetChargeRewardRatio(opts.targetRatioE6);
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const ownerSignature = await signExecuteForOwner(
+      opts.ownerPrivateKey,
+      cardAddrNorm,
+      data,
+      deadline,
+      nonce,
+    );
+    return postExecuteForOwner({
+      cardAddress: cardAddrNorm,
+      data,
+      deadline,
+      nonce,
+      ownerSignature,
+    });
+  } catch (e: unknown) {
+    return {
+      success: false,
+      error: (e as Error)?.message ?? 'Failed to update consumption point ratio on-chain.',
+    };
+  }
+}
+
 type CardIssuanceBonusRuleRow = {
   id: string;
   paymentAmount: string;
@@ -11577,6 +11669,15 @@ const [cardIssuanceSocialPromotionDeleting, setCardIssuanceSocialPromotionDeleti
 const cardIssuanceSocialPromotionClearInFlightRef = useRef(false);
 const [cardIssuanceSocialPromotionEditorServerError, setCardIssuanceSocialPromotionEditorServerError] =
   useState('');
+const [cardIssuanceConsumptionPointEditorOpen, setCardIssuanceConsumptionPointEditorOpen] = useState(false);
+const [cardIssuanceConsumptionPointEditorBaseline, setCardIssuanceConsumptionPointEditorBaseline] =
+  useState<CardIssuanceConsumptionPointEditorBaseline | null>(null);
+const [cardIssuanceConsumptionPointEditorPublishing, setCardIssuanceConsumptionPointEditorPublishing] =
+  useState(false);
+const [cardIssuanceConsumptionPointDeleting, setCardIssuanceConsumptionPointDeleting] = useState(false);
+const cardIssuanceConsumptionPointClearInFlightRef = useRef(false);
+const [cardIssuanceConsumptionPointEditorServerError, setCardIssuanceConsumptionPointEditorServerError] =
+  useState('');
 /** On-chain getRewardRule(1/2/3) — UI display source of truth; undefined = not loaded yet. */
 const [cardIssuanceSocialPromotionChainPromo, setCardIssuanceSocialPromotionChainPromo] = useState<
   ShareTokenMetadataSocialPromotion | null | undefined
@@ -13045,6 +13146,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress) return;
+  if (cardIssuanceConsumptionPointEditorOpen) return;
   const metaPointSystem = cardIssuanceExistingCard.meta?.pointSystem;
   const chainRatio = cardIssuanceExistingCard.chargeRewardRatioE6;
   const ratioE6 =
@@ -13072,6 +13174,7 @@ useEffect(() => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.pointSystem,
   cardIssuanceExistingCard?.chargeRewardRatioE6,
+  cardIssuanceConsumptionPointEditorOpen,
 ]);
 
 useEffect(() => {
@@ -14024,6 +14127,39 @@ const cardIssuanceSocialPromotionEditorDirty = useMemo(() => {
   cardIssuanceSocialPromotion,
 ]);
 
+const cardIssuanceConsumptionPointEditorValidationError = useMemo(
+  () =>
+    validateCardIssuanceConsumptionPointRatioInput(
+      cardIssuancePointSystemEnabled,
+      cardIssuancePointRatioInput,
+    ),
+  [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput],
+);
+
+const cardIssuanceConsumptionPointEditorDirty = useMemo(() => {
+  if (!cardIssuanceConsumptionPointEditorOpen || cardIssuanceConsumptionPointEditorBaseline == null) {
+    return false;
+  }
+  return (
+    cardIssuanceConsumptionPointEditorBaseline.enabled !== cardIssuancePointSystemEnabled ||
+    cardIssuanceConsumptionPointEditorBaseline.ratioInput !== cardIssuancePointRatioInput
+  );
+}, [
+  cardIssuanceConsumptionPointEditorOpen,
+  cardIssuanceConsumptionPointEditorBaseline,
+  cardIssuancePointSystemEnabled,
+  cardIssuancePointRatioInput,
+]);
+
+const cardIssuanceConsumptionPointDisplay = useMemo(() => {
+  if (!cardIssuancePointSystemEnabled) return tu('programs_consumption_points_none');
+  const e6 = parsePointRatioHumanToE6(cardIssuancePointRatioInput);
+  if (e6 == null || e6 <= 0n) return tu('programs_consumption_points_none');
+  return tu('programs_consumption_points_active', {
+    ratio: formatPointRatioE6Display(e6.toString()),
+  });
+}, [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput]);
+
 const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
   const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
   const n = Number.parseFloat(raw);
@@ -14198,6 +14334,7 @@ useEffect(() => {
     !cardIssuanceTopupPromotionEditorOpen &&
     !cardIssuanceTierEditorOpen &&
     !cardIssuanceSocialPromotionEditorOpen &&
+    !cardIssuanceConsumptionPointEditorOpen &&
     !cardIssuanceCouponSocialPromotionEditorOpenId &&
     !cardIssuanceSocialExchangeEditorOpen
   ) {
@@ -14212,6 +14349,7 @@ useEffect(() => {
   cardIssuanceTopupPromotionEditorOpen,
   cardIssuanceTierEditorOpen,
   cardIssuanceSocialPromotionEditorOpen,
+  cardIssuanceConsumptionPointEditorOpen,
   cardIssuanceCouponSocialPromotionEditorOpenId,
   cardIssuanceSocialExchangeEditorOpen,
 ]);
@@ -16563,6 +16701,21 @@ useEffect(() => {
   }
 }, [cardIssuanceSocialPromotionEditorOpen]);
 
+const openCardIssuanceConsumptionPointEditor = useCallback(() => {
+  setCardIssuanceConsumptionPointEditorServerError('');
+  setCardIssuanceConsumptionPointEditorBaseline({
+    enabled: cardIssuancePointSystemEnabled,
+    ratioInput: cardIssuancePointRatioInput,
+  });
+  setCardIssuanceConsumptionPointEditorOpen(true);
+}, [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput]);
+
+useEffect(() => {
+  if (!cardIssuanceConsumptionPointEditorOpen) {
+    setCardIssuanceConsumptionPointEditorBaseline(null);
+  }
+}, [cardIssuanceConsumptionPointEditorOpen]);
+
 const refreshCardIssuanceSocialPromotionFromChain = useCallback(async (cardAddress: string) => {
   try {
     const promo = await readCardSocialPromotionFromChain(cardAddress);
@@ -17543,14 +17696,12 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       opts?.itemCategoryOverride ?? cardIssuanceServiceCategories
     ).filter((row) => !isDraftServiceCategoryId(row.id));
     const pointSystemForPublish: CardIssuancePointSystemMetadata =
-      opts?.pointSystemOverride ?? {
-        enabled: cardIssuancePointSystemEnabled,
-        chargeRewardRatioE6:
-          parsePointRatioHumanToE6(cardIssuancePointRatioInput)?.toString() ??
-          cardIssuanceExistingCard?.chargeRewardRatioE6 ??
-          CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
-        rewardTokenId: CARD_ISSUANCE_POINT_REWARD_TOKEN_ID,
-      };
+      opts?.pointSystemOverride ??
+      buildCardIssuancePointSystemMetadataFromDraft(
+        cardIssuancePointSystemEnabled,
+        cardIssuancePointRatioInput,
+        cardIssuanceExistingCard?.chargeRewardRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
+      );
      const discoverAboutForPublish = buildDiscoverAboutMetadataPayload({
        detail: cardIssuanceDiscoverAboutDetail,
        openingHours: cardIssuanceDiscoverAboutOpeningHours,
@@ -17898,6 +18049,14 @@ const discardCardIssuanceSocialPromotionEditorChanges = useCallback(() => {
   setCardIssuanceCreateError('');
 }, [cardIssuanceSocialPromotionEditorBaseline]);
 
+const discardCardIssuanceConsumptionPointEditorChanges = useCallback(() => {
+  if (cardIssuanceConsumptionPointEditorBaseline == null) return;
+  setCardIssuancePointSystemEnabled(cardIssuanceConsumptionPointEditorBaseline.enabled);
+  setCardIssuancePointRatioInput(cardIssuanceConsumptionPointEditorBaseline.ratioInput);
+  setCardIssuanceConsumptionPointEditorServerError('');
+  setCardIssuanceCreateError('');
+}, [cardIssuanceConsumptionPointEditorBaseline]);
+
 const clearCardIssuanceTopupPromotion = useCallback(async () => {
   if (cardIssuanceTopupPromotionClearInFlightRef.current) return;
   const cleared = { ...EMPTY_TOPUP_PROMOTION_DRAFT };
@@ -18020,6 +18179,164 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
   handlePublishCardIssuance,
   profiles,
   refreshCardIssuanceSocialPromotionFromChain,
+]);
+
+const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
+  if (cardIssuanceConsumptionPointEditorValidationError) return;
+  const nextEnabled = cardIssuancePointSystemEnabled;
+  const nextRatioInput = cardIssuancePointRatioInput;
+  const pointSystemPayload = buildCardIssuancePointSystemMetadataFromDraft(
+    nextEnabled,
+    nextRatioInput,
+    cardIssuanceExistingCard?.chargeRewardRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
+  );
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuancePointSystemEnabled(nextEnabled);
+    setCardIssuancePointRatioInput(nextRatioInput);
+    setCardIssuanceConsumptionPointEditorOpen(false);
+    return;
+  }
+  setCardIssuanceConsumptionPointEditorServerError('');
+  setCardIssuanceCreateError('');
+  setCardIssuanceConsumptionPointEditorPublishing(true);
+  try {
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setCardIssuanceConsumptionPointEditorServerError(
+        'Unlock your wallet before saving consumption point settings.'
+      );
+      return;
+    }
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const ok = await handlePublishCardIssuance({
+      pointSystemOverride: pointSystemPayload,
+      loadingScope: 'bonusEditor',
+      metadataOnly: true,
+      skipOnChainRefresh: true,
+    });
+    if (!ok) {
+      setCardIssuanceConsumptionPointEditorServerError(
+        'Could not save consumption point metadata. Review the error below and try again.'
+      );
+      return;
+    }
+    const ratioRes = await syncChargeRewardRatioOnChain({
+      cardAddress: cardAddr,
+      ownerPrivateKey: pk,
+      targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
+    });
+    if (!ratioRes.success) {
+      setCardIssuanceConsumptionPointEditorServerError(
+        ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
+      );
+      return;
+    }
+    setCardIssuancePointSystemEnabled(nextEnabled);
+    setCardIssuancePointRatioInput(nextRatioInput);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev) return prev;
+      const nextMeta = prev.meta ? { ...prev.meta, pointSystem: pointSystemPayload } : prev.meta;
+      return {
+        ...prev,
+        meta: nextMeta,
+        chargeRewardRatioE6: pointSystemPayload.chargeRewardRatioE6,
+      };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
+    setCardIssuanceConsumptionPointEditorOpen(false);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: nextEnabled
+        ? 'Consumption points saved. Members earn reward points on qualifying charges.'
+        : 'Consumption points disabled. Members only earn social reward points on this card.',
+    });
+  } catch {
+    setCardIssuanceConsumptionPointEditorServerError(
+      'Could not save consumption points. Please try again.'
+    );
+  } finally {
+    setCardIssuanceConsumptionPointEditorPublishing(false);
+  }
+}, [
+  cardIssuanceConsumptionPointEditorValidationError,
+  cardIssuancePointSystemEnabled,
+  cardIssuancePointRatioInput,
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.chargeRewardRatioE6,
+  handlePublishCardIssuance,
+  profiles,
+]);
+
+const clearCardIssuanceConsumptionPoints = useCallback(async () => {
+  if (cardIssuanceConsumptionPointClearInFlightRef.current) return;
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuancePointSystemEnabled(false);
+    return;
+  }
+  cardIssuanceConsumptionPointClearInFlightRef.current = true;
+  setCardIssuanceConsumptionPointDeleting(true);
+  setCardIssuanceConsumptionPointEditorServerError('');
+  setCardIssuanceCreateError('');
+  try {
+    const pointSystemPayload = buildCardIssuancePointSystemMetadataFromDraft(
+      false,
+      cardIssuancePointRatioInput,
+      cardIssuanceExistingCard.chargeRewardRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
+    );
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setCardIssuanceConsumptionPointEditorServerError(
+        'Unlock your wallet before disabling consumption points.'
+      );
+      return;
+    }
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const ok = await handlePublishCardIssuance({
+      pointSystemOverride: pointSystemPayload,
+      loadingScope: 'bonusEditor',
+      metadataOnly: true,
+      skipOnChainRefresh: true,
+    });
+    if (!ok) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Could not disable consumption points. Please try again.',
+      });
+      return;
+    }
+    const ratioRes = await syncChargeRewardRatioOnChain({
+      cardAddress: cardAddr,
+      ownerPrivateKey: pk,
+      targetRatioE6: '0',
+    });
+    if (!ratioRes.success) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: ratioRes.error ?? 'Could not update consumption point ratio on-chain.',
+      });
+      return;
+    }
+    setCardIssuancePointSystemEnabled(false);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev) return prev;
+      const nextMeta = prev.meta ? { ...prev.meta, pointSystem: pointSystemPayload } : prev.meta;
+      return { ...prev, meta: nextMeta, chargeRewardRatioE6: '0' };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Consumption points disabled.',
+    });
+  } finally {
+    cardIssuanceConsumptionPointClearInFlightRef.current = false;
+    setCardIssuanceConsumptionPointDeleting(false);
+  }
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.chargeRewardRatioE6,
+  cardIssuancePointRatioInput,
+  handlePublishCardIssuance,
+  profiles,
 ]);
 
 const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
@@ -35470,6 +35787,73 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </span>
                            </div>
                          </div>
+                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
+                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
+                               <Coins
+                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             </div>
+                             <div className="min-w-0">
+                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                 {tu('programs_consumption_points_title')}
+                               </p>
+                               <p className="text-[10px] text-[#595c5e]">{cardIssuanceConsumptionPointDisplay}</p>
+                             </div>
+                           </div>
+                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                             <button
+                               type="button"
+                               onClick={openCardIssuanceConsumptionPointEditor}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
+                               aria-label={tu('programs_consumption_points_edit_aria')}
+                             >
+                               <Pencil
+                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             </button>
+                             {cardIssuancePointSystemEnabled ? (
+                               <button
+                                 type="button"
+                                 onClick={() => void clearCardIssuanceConsumptionPoints()}
+                                 disabled={
+                                   cardIssuanceConsumptionPointDeleting ||
+                                   cardIssuanceConsumptionPointEditorPublishing
+                                 }
+                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                                 aria-label={tu('programs_consumption_points_clear_aria')}
+                                 aria-busy={cardIssuanceConsumptionPointDeleting}
+                               >
+                                 {cardIssuanceConsumptionPointDeleting ? (
+                                   <Loader2
+                                     className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
+                                     strokeWidth={2}
+                                     aria-hidden
+                                   />
+                                 ) : (
+                                   <Trash2
+                                     className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                     strokeWidth={2}
+                                     aria-hidden
+                                   />
+                                 )}
+                               </button>
+                             ) : null}
+                             <span
+                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
+                                 cardIssuancePointSystemEnabled
+                                   ? 'bg-[#1562f0] text-white'
+                                   : 'bg-slate-200 text-slate-600'
+                               }`}
+                             >
+                               {cardIssuancePointSystemEnabled ? 'ACTIVE' : 'OFF'}
+                             </span>
+                           </div>
+                         </div>
                        </div>
                      </div>
                      ) : null}
@@ -36881,6 +37265,169 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          ) : null}
                        </div>
                      </div>
+                     </div>
+                   </motion.div>
+                 </>
+               ) : null}
+             </AnimatePresence>
+             <AnimatePresence>
+               {cardIssuanceConsumptionPointEditorOpen ? (
+                 <>
+                   <motion.button
+                     type="button"
+                     aria-label="Close consumption points editor"
+                     className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                     exit={{ opacity: 0 }}
+                     onClick={() => setCardIssuanceConsumptionPointEditorOpen(false)}
+                   />
+                   <motion.div
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="card-consumption-points-editor-title"
+                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                     initial={{ y: '100%' }}
+                     animate={{ y: 0 }}
+                     exit={{ y: '100%' }}
+                     transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                   >
+                     <div className="shrink-0 px-6 pt-6">
+                       <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
+                       <div className="mb-4 flex items-start justify-between gap-4">
+                         <div className="min-w-0">
+                           <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
+                             Promotion
+                           </span>
+                           <h3
+                             id="card-consumption-points-editor-title"
+                             className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
+                           >
+                             {tu('programs_consumption_points_editor_title')}
+                           </h3>
+                           <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                             {tu('programs_consumption_points_editor_desc')}
+                           </p>
+                         </div>
+                         <button
+                           type="button"
+                           onClick={() => setCardIssuanceConsumptionPointEditorOpen(false)}
+                           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                           aria-label="Close consumption points editor"
+                         >
+                           <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                         </button>
+                       </div>
+                     </div>
+
+                     <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+                       <div className="space-y-6">
+                         <label className="flex cursor-pointer items-start justify-between gap-4 rounded-2xl border border-[#dfe3e6] bg-[#f8f9fa] px-4 py-4">
+                           <div className="min-w-0">
+                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                               {tu('programs_consumption_points_enable_label')}
+                             </p>
+                             <p className="mt-1 text-xs leading-relaxed text-[#595c5e]">
+                               {tu('programs_consumption_points_enable_hint')}
+                             </p>
+                           </div>
+                           <input
+                             type="checkbox"
+                             checked={cardIssuancePointSystemEnabled}
+                             onChange={(e) => setCardIssuancePointSystemEnabled(e.target.checked)}
+                             className="mt-1 h-5 w-5 shrink-0 rounded border-[#c5c9cc] text-[#0051d1] focus:ring-[#0051d1]"
+                             aria-label={tu('programs_consumption_points_enable_label')}
+                           />
+                         </label>
+
+                         {cardIssuancePointSystemEnabled ? (
+                           <div>
+                             <label
+                               htmlFor="card-consumption-point-multiplier"
+                               className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
+                             >
+                               {tu('programs_consumption_points_multiplier_label')}
+                             </label>
+                             <input
+                               id="card-consumption-point-multiplier"
+                               type="number"
+                               inputMode="decimal"
+                               autoComplete="off"
+                               enterKeyHint="done"
+                               min={0}
+                               step="0.01"
+                               value={cardIssuancePointRatioInput}
+                               onChange={(e) => setCardIssuancePointRatioInput(e.target.value)}
+                               onKeyDown={preventNumericInputStepKeys}
+                               onWheel={preventNumericInputWheelStep}
+                               className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#0051d1] focus:ring-2 focus:ring-[#0051d1]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
+                               aria-describedby="card-consumption-point-multiplier-hint"
+                             />
+                             <p
+                               id="card-consumption-point-multiplier-hint"
+                               className="mt-2 text-xs leading-relaxed text-[#595c5e]"
+                             >
+                               {tu('programs_consumption_points_multiplier_hint')}
+                             </p>
+                           </div>
+                         ) : null}
+
+                         {cardIssuanceConsumptionPointEditorValidationError ? (
+                           <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                             <p>{cardIssuanceConsumptionPointEditorValidationError}</p>
+                           </div>
+                         ) : null}
+                         {(cardIssuanceCreateError || cardIssuanceConsumptionPointEditorServerError) &&
+                         !cardIssuanceConsumptionPointEditorPublishing &&
+                         !cardIssuanceConsumptionPointDeleting ? (
+                           <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                             <p>{cardIssuanceCreateError || cardIssuanceConsumptionPointEditorServerError}</p>
+                           </div>
+                         ) : null}
+
+                         <div className="space-y-3 pt-2">
+                           {cardIssuanceConsumptionPointEditorDirty ||
+                           cardIssuanceConsumptionPointEditorPublishing ? (
+                             <div className="flex items-stretch gap-3">
+                               <button
+                                 type="button"
+                                 onClick={() => void submitCardIssuanceConsumptionPointEditor()}
+                                 disabled={
+                                   Boolean(cardIssuanceConsumptionPointEditorValidationError) ||
+                                   cardIssuanceConsumptionPointEditorPublishing ||
+                                   cardIssuanceConsumptionPointDeleting
+                                 }
+                                 className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
+                               >
+                                 {cardIssuanceConsumptionPointEditorPublishing ? (
+                                   <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                                 ) : (
+                                   <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                                 )}
+                                 <span>
+                                   {cardIssuanceConsumptionPointEditorPublishing
+                                     ? tu('programs_consumption_points_saving')
+                                     : tu('programs_consumption_points_save')}
+                                 </span>
+                               </button>
+                               {cardIssuanceConsumptionPointEditorDirty &&
+                               !cardIssuanceConsumptionPointEditorPublishing &&
+                               !cardIssuanceConsumptionPointDeleting ? (
+                                 <button
+                                   type="button"
+                                   onClick={discardCardIssuanceConsumptionPointEditorChanges}
+                                   disabled={cardIssuanceConsumptionPointDeleting}
+                                   className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                                 >
+                                   Discard changes
+                                 </button>
+                               ) : null}
+                             </div>
+                           ) : null}
+                         </div>
+                       </div>
                      </div>
                    </motion.div>
                  </>

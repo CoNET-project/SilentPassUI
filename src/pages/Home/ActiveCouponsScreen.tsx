@@ -5,7 +5,9 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Calendar, Copy, Gif
 import { ethers } from 'ethers'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
+import { DiscoverOfferSocialMissionTrigger } from '@/components/discover/DiscoverOfferSocialMissionTrigger'
 import { CouponUserLikeCountPill, CouponUserLikeHeartButton } from '@/components/CouponUserLikeChrome'
+import type { DiscoverSocialMissionMetrics } from '@/utils/discoverMerchantPromotions'
 import { useCouponUserLike } from '@/hooks/useCouponUserLike'
 import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
@@ -392,6 +394,8 @@ export function ActiveCouponTicketItem({
 	/** biz Coupon preview parity: banner ticket shows icon only; title/subtitle/expiry below. */
 	metadataBelowBackgroundImage = false,
 	showUserLike = false,
+	socialMissionUser = null,
+	socialMissionReferrer = null,
 	referrerEoa,
 	getPrivateKeyArmor,
 	onWalletUnlock,
@@ -409,6 +413,8 @@ export function ActiveCouponTicketItem({
 	showOpenClaimShareButton?: boolean
 	metadataBelowBackgroundImage?: boolean
 	showUserLike?: boolean
+	socialMissionUser?: DiscoverSocialMissionMetrics | null
+	socialMissionReferrer?: DiscoverSocialMissionMetrics | null
 	/** Sharer EOA from deep link `ref=` (coupon like #13 ref mint). */
 	referrerEoa?: string | null
 	getPrivateKeyArmor?: () => string | undefined
@@ -453,8 +459,9 @@ export function ActiveCouponTicketItem({
 	const showBaseScanNftLink = beamioBaseScanNftUrl(row.cardAddress, row.tokenId) != null
 
 	const showShareButton = Boolean(showOpenClaimShareButton && row.couponId)
-	const showLikeCountPill = Boolean(showUserLike && couponLike.likeCount != null)
-	const showSocialStatRow = showLikeCountPill || showShareButton
+	const showLikeCountPill = Boolean(showUserLike)
+	const showSocialMission = Boolean(socialMissionUser || socialMissionReferrer)
+	const showSocialStatRow = showLikeCountPill || showShareButton || showSocialMission
 
 	/** Detail line only — never mix like/share capsules into this row. */
 	const renderDetailSubtitle = (subtitleClassName: string, marginTopClass = 'mt-0.5') => {
@@ -485,7 +492,14 @@ export function ActiveCouponTicketItem({
 		return (
 			<div className="mt-2 flex w-full flex-wrap items-center gap-2">
 				{showLikeCountPill ? (
-					<CouponUserLikeCountPill count={couponLike.likeCount} variant={likeVariant} />
+					<CouponUserLikeCountPill
+						count={couponLike.likeCount}
+						variant={likeVariant}
+						onClick={couponLike.onHeartClick}
+						disabled={couponLike.likeLoading || Boolean(couponLike.userLiked)}
+						loading={couponLike.likeLoading && couponLike.likeCount == null}
+						liked={Boolean(couponLike.userLiked)}
+					/>
 				) : null}
 				{showShareButton ? (
 					<CouponOpenClaimShareButton
@@ -495,6 +509,9 @@ export function ActiveCouponTicketItem({
 						referrerEoa={shareReferrerEoa}
 						className="shrink-0"
 					/>
+				) : null}
+				{showSocialMission ? (
+					<DiscoverOfferSocialMissionTrigger user={socialMissionUser} referrer={socialMissionReferrer} />
 				) : null}
 			</div>
 		)

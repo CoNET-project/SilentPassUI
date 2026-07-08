@@ -761,6 +761,14 @@ function buildCouponSocialMissionBlocks(
 	return blocks.sort(compareCouponSocialMissionBlocksNewestFirst)
 }
 
+/** Single coupon row in Discover detail Available Offers — social mission rewards if configured. */
+export function resolveCouponSocialMissionBlockForSeries(
+	series: { title?: string; metadata?: Record<string, unknown> | null; tokenId?: string },
+): DiscoverCouponSocialMissionBlock | null {
+	const blocks = buildCouponSocialMissionBlocks([series])
+	return blocks[0] ?? null
+}
+
 function countActivePromotionSurfaces(model: {
 	socialMissions: DiscoverActivePromotionsSocialMissions | null
 	couponSocialMissions: DiscoverCouponSocialMissionBlock[]

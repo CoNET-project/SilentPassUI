@@ -144,6 +144,7 @@ import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import {
 	buildDiscoverActivePromotionsPanelModel,
 	formatSocialPoints13Display,
+	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverTopupPromotionPresentation,
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
@@ -1302,6 +1303,15 @@ function DiscoverMerchantCouponOfferRow({
 			: isAlreadyClaimed
 				? 'success'
 				: 'idle'
+	const socialMissionBlock = useMemo(
+		() =>
+			resolveCouponSocialMissionBlockForSeries({
+				title: row.coupon.title,
+				metadata: row.seriesRow.metadata ?? null,
+				tokenId: row.seriesRow.tokenId,
+			}),
+		[row.coupon.title, row.seriesRow.metadata, row.seriesRow.tokenId],
+	)
 	return (
 		<div className="space-y-1.5">
 			<ActiveCouponTicketItem
@@ -1310,6 +1320,8 @@ function DiscoverMerchantCouponOfferRow({
 				metadataBelowBackgroundImage
 				showOpenClaimShareButton
 				showUserLike
+				socialMissionUser={socialMissionBlock?.user ?? null}
+				socialMissionReferrer={socialMissionBlock?.referrer ?? null}
 				referrerEoa={referrerEoa}
 				getPrivateKeyArmor={getPrivateKeyArmor}
 				onWalletUnlock={onWalletUnlock}

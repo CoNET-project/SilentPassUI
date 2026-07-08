@@ -3,7 +3,9 @@ import { useLocation } from 'react-router-dom'
 import { ethers } from 'ethers'
 import { Toast } from 'antd-mobile'
 import { postCardRecordUserLikeWithCurrentWallet } from '@/services/BeamioCard'
+import { checkStorage } from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
+import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { resolveDiscoverShareReferrerEoa } from '@/utils/beamioDeepLinkParams'
 import {
 	DISCOVER_USER_LIKE_TARGET,
@@ -100,7 +102,13 @@ export function useCouponUserLike({
 
 	const submitLike = useCallback(async () => {
 		if (!enabled || likeLoading || !cardAddress?.trim() || !tokenId?.trim()) return
-		const privateKeyArmor = getPrivateKeyArmor?.()?.trim() ?? ''
+		let privateKeyArmor = getPrivateKeyArmor?.()?.trim() ?? ''
+		if (!privateKeyArmor) {
+			const stored = await checkStorage()
+			if (stored?.profiles?.length) {
+				privateKeyArmor = resolveSigningPrivateKeyArmor(stored.profiles[0]) ?? ''
+			}
+		}
 		if (!privateKeyArmor) {
 			Toast.show({
 				content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),

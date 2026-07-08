@@ -47,22 +47,61 @@ export function CouponUserLikeHeartButton({
 export function CouponUserLikeCountPill({
 	count,
 	variant = 'light',
+	onClick,
+	disabled = false,
+	loading = false,
+	liked = false,
 }: {
 	count: number | null
 	variant?: 'light' | 'onDark'
+	onClick?: (e: React.MouseEvent) => void
+	disabled?: boolean
+	loading?: boolean
+	liked?: boolean
 }) {
-	if (count == null) return null
+	if (count == null && !onClick) return null
 	const style =
 		variant === 'onDark'
 			? 'bg-white/15 text-white ring-white/25'
-			: 'bg-rose-50 text-rose-500 ring-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50'
+			: liked
+				? 'bg-rose-500 text-white ring-rose-400/40'
+				: 'bg-rose-50 text-rose-500 ring-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50'
+	const label =
+		count != null
+			? `${formatDiscoverLikeCount(count)} likes`
+			: loading
+				? 'Loading likes'
+				: 'Like this coupon'
+	const inner = (
+		<>
+			{loading ? (
+				<Loader2 className="h-3 w-3 animate-spin" strokeWidth={2.25} aria-hidden />
+			) : (
+				<Heart className="h-3 w-3" strokeWidth={2.25} fill={liked ? 'currentColor' : 'none'} aria-hidden />
+			)}
+			{count != null ? formatDiscoverLikeCount(count) : '—'}
+		</>
+	)
+	if (onClick) {
+		return (
+			<button
+				type="button"
+				onClick={onClick}
+				disabled={disabled || loading || liked}
+				className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition active:scale-95 disabled:cursor-default disabled:opacity-80 ${style}`}
+				aria-label={liked ? 'Liked' : 'Like this coupon'}
+				aria-pressed={liked}
+			>
+				{inner}
+			</button>
+		)
+	}
 	return (
 		<span
 			className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${style}`}
-			aria-label={`${formatDiscoverLikeCount(count)} likes`}
+			aria-label={label}
 		>
-			<Heart className="h-3 w-3" strokeWidth={2.25} fill="currentColor" aria-hidden />
-			{formatDiscoverLikeCount(count)}
+			{inner}
 		</span>
 	)
 }

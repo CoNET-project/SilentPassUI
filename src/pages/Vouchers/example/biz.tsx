@@ -14825,10 +14825,18 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
                   'Could not save coupon social promotion metadata. Fix validation errors and try again.'
               );
             } else {
+                const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+                if (!pk) {
+                  saveOk = false;
+                  setCardIssuanceCouponEditorError(
+                    'Unlock your wallet before saving on-chain coupon social promotion rules.'
+                  );
+                } else {
                 const ruleRes = await applyCouponSocialPromotionOnChainRules({
                   cardAddress: cardIssuanceExistingCard.cardAddress,
                   issuedTokenId,
                   socialPromotion: couponSocialPayloadForSave ?? null,
+                  ownerPrivateKey: pk,
                 });
                 if (!ruleRes.success) {
                   saveOk = false;
@@ -14850,6 +14858,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
                         'On-chain rules updated, but issued coupon metadata sync failed. Try Save again.'
                     );
                   }
+                }
                 }
             }
           }
@@ -18071,10 +18080,18 @@ const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
         };
       });
       invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
+      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+      if (!pk) {
+        setCardIssuanceCouponSocialPromotionEditorServerError(
+          'Unlock your wallet before saving on-chain coupon social promotion rules.'
+        );
+        return;
+      }
       const ruleRes = await applyCouponSocialPromotionOnChainRules({
         cardAddress: cardIssuanceExistingCard.cardAddress,
         issuedTokenId,
         socialPromotion: couponSocialPayloadForSave ?? null,
+        ownerPrivateKey: pk,
       });
       if (!ruleRes.success) {
         setCardIssuanceCouponSocialPromotionEditorServerError(

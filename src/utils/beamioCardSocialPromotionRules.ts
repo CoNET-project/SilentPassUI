@@ -21,6 +21,8 @@ import {
 	couponSocialPromotionRuleIdForEvent,
 	type CouponSocialPromotionEventKey,
 	SOCIAL_PROMOTION_LIKE_RULE_ID,
+	SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
+	SOCIAL_PROMOTION_TOPUP_RULE_ID,
 } from '@/utils/programSocialPromotion'
 
 const CARD_CONFIGURE_REWARD_GATEWAY_ENDPOINT = `${beamioApi}/api/cardConfigureEventRewardRuleGateway`
@@ -386,8 +388,9 @@ async function configureRuleIntentWithRetry(params: {
 }
 
 /**
- * Sync card-level social promotion rules (slots 1 / 2 / 3 — link click, top-up, like).
- * Uses gateway relay (same path as link click reward dispatch) — no card owner/admin signature.
+ * Sync **merchant card-level** social promotion (global L1 slots: linkClick / like / top-up).
+ * RuleIds 1 / 2 / 3, targetKind merchant card or global — **not** per-issued-coupon.
+ * For per-coupon rules use {@link applyCouponSocialPromotionOnChainRules}.
  */
 export async function applySocialPromotionOnChainRules(params: {
 	cardAddress: string
@@ -505,14 +508,82 @@ function resolveCouponEventPromotion(
 	return { actorMint13, refMint13 }
 }
 
+function buildCouponSocialPromotionRuleIntents(
+	issuedTokenId: string,
+	promo: ShareTokenMetadataCouponSocialPromotion | null,
+): SocialPromotionRuleIntent[] {
+	const issuedParentId = BigInt(issuedTokenId)
+	const intents: SocialPromotionRuleIntent[] = []
+	for (const eventKey of COUPON_SOCIAL_PROMOTION_EVENT_KEYS) {
+		const { actorMint13, refMint13 } = resolveCouponEventPromotion(promo, eventKey)
+		const active = Boolean(promo && promo.enabled !== false && (actorMint13 > 0n || refMint13 > 0n))
+		const chainParams = couponRuleParams(eventKey, issuedParentId)
+		const ruleIdBig = couponSocialPromotionRuleIdForEvent(issuedTokenId, eventKey)
+		const ruleId = Number(ruleIdBig)
+		if (!Number.isSafeInteger(ruleId)) {
+			throw new Error(`Coupon ruleId ${ruleIdBig.toString()} exceeds safe integer range.`)
+		}
+		// L2 issued coupon: ruleId derived from this coupon's issuedTokenId only — never card slots 1/2/3.
+		intents.push({
+			ruleId,
+			active,
+			eventKind: chainParams.eventKindU8,
+			targetKind: chainParams.targetKindU8,
+			issuedParentId,
+			actorMint13: active ? actorMint13 : 0n,
+			refMint13: active ? refMint13 : 0n,
+		})
+	}
+	return intents
+}
+
+function assertCouponSocialPromotionIntents(
+	issuedTokenId: string,
+	intents: SocialPromotionRuleIntent[],
+): void {
+	const parent = BigInt(issuedTokenId)
+	for (const intent of intents) {
+		if (intent.targetKind !== UC_TARGET_ISSUED_COUPON) {
+			throw new Error('Coupon social promotion must use L2 issued-coupon targetKind, not merchant card.')
+		}
+		if (intent.issuedParentId !== parent) {
+			throw new Error('Coupon social promotion issuedParentId must match the coupon issuedTokenId.')
+		}
+		if (
+			intent.ruleId === SOCIAL_PROMOTION_LINK_CLICK_RULE_ID ||
+			intent.ruleId === SOCIAL_PROMOTION_TOPUP_RULE_ID ||
+			intent.ruleId === SOCIAL_PROMOTION_LIKE_RULE_ID
+		) {
+			throw new Error('Coupon social promotion must not use merchant card ruleIds 1/2/3.')
+		}
+	}
+}
+
+async function filterCouponIntentsRequiringChainWrite(
+	cardAddress: string,
+	intents: SocialPromotionRuleIntent[],
+): Promise<SocialPromotionRuleIntent[]> {
+	const out: SocialPromotionRuleIntent[] = []
+	for (const intent of intents) {
+		if (!(await ruleIntentSatisfiedOnChain(cardAddress, intent))) {
+			out.push(intent)
+		}
+	}
+	return out
+}
+
 /**
- * Sync per-coupon social promotion rules — one on-chain slot per event (parallel).
- * Gateway relay — no card owner/admin signature (aligned with link click dispatch).
+ * Sync **one issued coupon's** social promotion (L2 / targetKind=issued coupon).
+ * Each coupon has its own ruleIds (from issuedTokenId × event slot), events (linkClick / like / claim / burn),
+ * and metadata — independent of merchant card global social promotion and of other coupons.
+ * Owner executeForOwner when ownerPrivateKey is set; skips slots already matching getRewardRule for this coupon only.
  */
 export async function applyCouponSocialPromotionOnChainRules(params: {
 	cardAddress: string
 	issuedTokenId: string
 	socialPromotion: ShareTokenMetadataCouponSocialPromotion | null
+	/** CoNET 无 gatewayInvokeCard 时须卡主 owner 签名走 executeForOwner。 */
+	ownerPrivateKey?: string
 }): Promise<{ success: boolean; error?: string }> {
 	const card = ethers.getAddress(params.cardAddress)
 	const issuedTokenId = String(params.issuedTokenId).trim()
@@ -522,25 +593,35 @@ export async function applyCouponSocialPromotionOnChainRules(params: {
 
 	await ensureCardCumulativeStatReadyViaGateway(card)
 
-	const issuedParentId = BigInt(issuedTokenId)
-	const promo = params.socialPromotion
+	const intents = buildCouponSocialPromotionRuleIntents(issuedTokenId, params.socialPromotion)
+	assertCouponSocialPromotionIntents(issuedTokenId, intents)
+	const intentsToApply = await filterCouponIntentsRequiringChainWrite(card, intents)
+	if (intentsToApply.length === 0) {
+		return { success: true }
+	}
 
-	for (const eventKey of COUPON_SOCIAL_PROMOTION_EVENT_KEYS) {
-		const { actorMint13, refMint13 } = resolveCouponEventPromotion(promo, eventKey)
-		const active = Boolean(promo && promo.enabled !== false && (actorMint13 > 0n || refMint13 > 0n))
-		const chainParams = couponRuleParams(eventKey, issuedParentId)
-		const ruleId = couponSocialPromotionRuleIdForEvent(issuedTokenId, eventKey)
-		const res = await configureRuleSlot({
+	const ownerKey = params.ownerPrivateKey?.trim()
+	if (!ownerKey) {
+		return {
+			success: false,
+			error: 'Unlock your wallet before saving on-chain coupon social promotion rules.',
+		}
+	}
+
+	for (const intent of intentsToApply) {
+		const res = await configureRuleIntentWithRetry({
 			cardAddress: card,
-			ruleId,
-			active,
-			eventKind: chainParams.eventKindU8,
-			targetKind: chainParams.targetKindU8,
-			issuedParentId,
-			actorMint13: active ? actorMint13 : 0n,
-			refMint13: active ? refMint13 : 0n,
+			ownerPrivateKey: ownerKey,
+			intent,
 		})
-		if (!res.success) return res
+		if (!res.success) {
+			return {
+				success: false,
+				error:
+					res.error ??
+					`On-chain reward rule update failed for coupon ruleId=${intent.ruleId}. Try saving again.`,
+			}
+		}
 	}
 
 	return { success: true }

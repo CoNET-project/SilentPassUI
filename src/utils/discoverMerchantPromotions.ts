@@ -67,6 +67,26 @@ export type DiscoverTopupPromotionCapsuleCopy = {
 const CARD_SOCIAL_EVENT_KEYS = ['linkClick', 'like', 'topup'] as const
 const COUPON_SOCIAL_EVENT_KEYS = ['linkClick', 'like', 'claim', 'burn'] as const
 
+export type CouponSocialPromotionEventKey = (typeof COUPON_SOCIAL_EVENT_KEYS)[number]
+
+/** On-chain rule slot per coupon event (linkClick keeps ruleId = issuedTokenId). */
+export const COUPON_SOCIAL_PROMOTION_EVENT_RULE_SLOTS: Record<CouponSocialPromotionEventKey, number> = {
+	linkClick: 0,
+	like: 1,
+	claim: 2,
+	burn: 3,
+}
+
+export function couponSocialPromotionRuleIdForEvent(
+	issuedTokenId: string,
+	eventKey: CouponSocialPromotionEventKey,
+): string {
+	const base = BigInt(String(issuedTokenId).trim())
+	const slot = COUPON_SOCIAL_PROMOTION_EVENT_RULE_SLOTS[eventKey]
+	if (slot === 0) return base.toString()
+	return (base * 100n + BigInt(slot)).toString()
+}
+
 function parsePositiveInt(raw: unknown): number | null {
 	if (raw == null || raw === '') return null
 	const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw).trim(), 10)
@@ -638,6 +658,8 @@ export type DiscoverCouponSocialMissionBlock = {
 	user: DiscoverSocialMissionMetrics | null
 	referrer: DiscoverSocialMissionMetrics | null
 	userDetailText: string
+	/** Per-event L2 on-chain rule IDs for this issued coupon (only configured events). */
+	l2RuleIds: Partial<Record<CouponSocialPromotionEventKey, string>>
 }
 
 export const DISCOVER_COUPON_SOCIAL_MISSIONS_INITIAL = 3
@@ -769,6 +791,20 @@ function compareCouponSocialMissionBlocksNewestFirst(
 	}
 }
 
+function buildCouponL2RuleIds(
+	tokenId: string,
+	couponSocial: ShareTokenMetadataCouponSocialPromotion | null,
+): Partial<Record<CouponSocialPromotionEventKey, string>> {
+	const out: Partial<Record<CouponSocialPromotionEventKey, string>> = {}
+	if (!couponSocial?.events) return out
+	for (const key of COUPON_SOCIAL_EVENT_KEYS) {
+		const ev = couponSocial.events[key]
+		if (!ev || !eventHasReward(ev)) continue
+		out[key] = couponSocialPromotionRuleIdForEvent(tokenId, key)
+	}
+	return out
+}
+
 function buildCouponSocialMissionBlocks(
 	couponSeries: Array<{ title?: string; metadata?: Record<string, unknown> | null; tokenId?: string }> | undefined,
 ): DiscoverCouponSocialMissionBlock[] {
@@ -789,6 +825,7 @@ function buildCouponSocialMissionBlocks(
 			user,
 			referrer,
 			userDetailText,
+			l2RuleIds: buildCouponL2RuleIds(tokenId, couponSocial),
 		})
 	}
 	return blocks.sort(compareCouponSocialMissionBlocksNewestFirst)
@@ -804,23 +841,19 @@ export function resolveCouponSocialMissionBlockForSeries(
 
 function countActivePromotionSurfaces(model: {
 	socialMissions: DiscoverActivePromotionsSocialMissions | null
-	couponSocialMissions: DiscoverCouponSocialMissionBlock[]
 }): number {
 	let count = 0
 	if (model.socialMissions?.user) count += 1
 	if (model.socialMissions?.referrer) count += 1
-	for (const block of model.couponSocialMissions) {
-		if (block.user) count += 1
-		if (block.referrer) count += 1
-	}
 	return count
 }
 
-/** Structured Active promotions panel (Social Missions + paginated coupon missions). */
+/** Structured Active promotions panel (L1 program card Social Missions only; L2 coupon missions live on Available Offers rows). */
 export function buildDiscoverActivePromotionsPanelModel(params: {
 	metadataRoot: Record<string, unknown> | null | undefined
 	/** When set (including null = loaded empty), overrides metadata for card-level social missions. */
 	chainCardSocialPromotion?: ShareTokenMetadataSocialPromotion | null
+	/** @deprecated L2 coupon social missions are shown per Available Offers item, not in this panel. */
 	couponSeries?: Array<{ title?: string; metadata?: Record<string, unknown> | null; tokenId?: string }>
 }): DiscoverActivePromotionsPanelModel | null {
 	const chainLoaded = params.chainCardSocialPromotion !== undefined
@@ -836,14 +869,13 @@ export function buildDiscoverActivePromotionsPanelModel(params: {
 					userDetailText,
 				}
 			: null
-	const couponSocialMissions = buildCouponSocialMissionBlocks(params.couponSeries)
 
-	if (!socialMissions && couponSocialMissions.length === 0) return null
+	if (!socialMissions) return null
 
 	const model = {
 		activeCount: 0,
 		socialMissions,
-		couponSocialMissions,
+		couponSocialMissions: [] as DiscoverCouponSocialMissionBlock[],
 	}
 	model.activeCount = countActivePromotionSurfaces(model)
 	return model

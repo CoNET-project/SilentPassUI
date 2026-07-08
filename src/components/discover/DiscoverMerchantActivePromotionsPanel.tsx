@@ -1,23 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import {
-	ChevronDown,
-	HelpCircle,
-	CreditCard,
-	Flame,
-	Gift,
-	Heart,
-	Loader2,
-	MousePointerClick,
-	Share2,
-	Ticket,
-	UserRound,
-} from 'lucide-react'
+import { type ReactNode } from 'react'
+import { HelpCircle, CreditCard, Gift, Heart, Loader2, MousePointerClick, Share2, UserRound } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import {
-	DISCOVER_COUPON_SOCIAL_MISSIONS_INITIAL,
-	DISCOVER_COUPON_SOCIAL_MISSIONS_PAGE_SIZE,
 	type DiscoverActivePromotionsPanelModel,
-	type DiscoverCouponSocialMissionBlock,
 	type DiscoverSocialMissionMetrics,
 } from '../../utils/discoverMerchantPromotions'
 
@@ -65,8 +50,6 @@ function SocialMissionMetricsPill(props: { metrics: DiscoverSocialMissionMetrics
 	if (metrics.linkClick != null) items.push({ icon: MousePointerClick, value: metrics.linkClick })
 	if (metrics.like != null) items.push({ icon: Heart, value: metrics.like })
 	if (metrics.topup != null) items.push({ icon: CreditCard, value: metrics.topup })
-	if (metrics.claim != null) items.push({ icon: Ticket, value: metrics.claim })
-	if (metrics.burn != null) items.push({ icon: Flame, value: metrics.burn })
 	if (items.length === 0) return null
 	return (
 		<div className="flex min-w-0 flex-1 items-center gap-3 rounded-full bg-slate-100 px-3 py-1.5 dark:bg-slate-800">
@@ -117,63 +100,11 @@ function RoleIcon(props: { children: ReactNode }) {
 	)
 }
 
-function CouponSocialMissionBlock(props: { block: DiscoverCouponSocialMissionBlock }) {
-	const { block } = props
-	return (
-		<div className="space-y-2.5 border-t border-slate-100 pt-3 dark:border-slate-800">
-			<p className="truncate text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-				{block.title}
-			</p>
-			{block.user ? (
-				<SocialMissionRoleRow
-					icon={
-						<RoleIcon>
-							<UserRound className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-						</RoleIcon>
-					}
-					metrics={block.user}
-					detailText={block.userDetailText}
-					ariaLabel={`${block.title} user social mission details`}
-				/>
-			) : null}
-			{block.referrer ? (
-				<SocialMissionRoleRow
-					icon={
-						<RoleIcon>
-							<Gift className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-						</RoleIcon>
-					}
-					metrics={block.referrer}
-					detailText="Want more? Become a referrer."
-					ariaLabel={`${block.title} referrer reward details`}
-				/>
-			) : null}
-		</div>
-	)
-}
-
 export function DiscoverMerchantActivePromotionsPanel(props: {
 	model: DiscoverActivePromotionsPanelModel | null
 	loading?: boolean
 }) {
 	const { model, loading } = props
-	const couponSocialMissions = model?.couponSocialMissions ?? []
-	const couponListKey = useMemo(
-		() => couponSocialMissions.map((block) => block.id).join('|'),
-		[couponSocialMissions],
-	)
-	const [visibleCouponCount, setVisibleCouponCount] = useState(DISCOVER_COUPON_SOCIAL_MISSIONS_INITIAL)
-
-	useEffect(() => {
-		setVisibleCouponCount(DISCOVER_COUPON_SOCIAL_MISSIONS_INITIAL)
-	}, [couponListKey])
-
-	const visibleCouponBlocks = useMemo(
-		() => couponSocialMissions.slice(0, visibleCouponCount),
-		[couponSocialMissions, visibleCouponCount],
-	)
-	const remainingCouponCount = Math.max(0, couponSocialMissions.length - visibleCouponCount)
-	const nextCouponPageSize = Math.min(DISCOVER_COUPON_SOCIAL_MISSIONS_PAGE_SIZE, remainingCouponCount)
 
 	if (loading && !model) {
 		return (
@@ -186,11 +117,10 @@ export function DiscoverMerchantActivePromotionsPanel(props: {
 		)
 	}
 
-	if (!model) return null
+	if (!model?.socialMissions) return null
 
 	const { activeCount, socialMissions } = model
-	const showCardSocial = socialMissions != null && (socialMissions.user || socialMissions.referrer)
-	const showSocialBlock = showCardSocial || couponSocialMissions.length > 0
+	const showCardSocial = socialMissions.user || socialMissions.referrer
 
 	return (
 		<div className="rounded-[22px] bg-white px-5 py-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-6">
@@ -205,7 +135,7 @@ export function DiscoverMerchantActivePromotionsPanel(props: {
 			</header>
 
 			<div className="space-y-3">
-				{showSocialBlock ? (
+				{showCardSocial ? (
 					<div className="rounded-2xl border border-slate-100 px-4 py-3.5 dark:border-slate-800">
 						<div className="flex items-start gap-3">
 							<SectionIcon>
@@ -213,58 +143,33 @@ export function DiscoverMerchantActivePromotionsPanel(props: {
 							</SectionIcon>
 							<div className="min-w-0 flex-1 space-y-3">
 								<p className="text-sm font-semibold text-[#1f2328] dark:text-slate-100">Social Missions</p>
-
-								{showCardSocial ? (
-									<div className="space-y-3">
-										<p className="text-xs font-medium text-slate-500 dark:text-slate-400">Program card</p>
-										{socialMissions!.user ? (
-											<SocialMissionRoleRow
-												icon={
-													<RoleIcon>
-														<UserRound className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-													</RoleIcon>
-												}
-												metrics={socialMissions!.user}
-												detailText={socialMissions!.userDetailText}
-												ariaLabel="User social mission details"
-											/>
-										) : null}
-										{socialMissions!.referrer ? (
-											<SocialMissionRoleRow
-												icon={
-													<RoleIcon>
-														<Gift className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-													</RoleIcon>
-												}
-												metrics={socialMissions!.referrer}
-												detailText="Want more? Become a referrer."
-												ariaLabel="Referrer reward details"
-											/>
-										) : null}
-									</div>
-								) : null}
-
-								{visibleCouponBlocks.map((block) => (
-									<CouponSocialMissionBlock key={block.id} block={block} />
-								))}
-
-								{remainingCouponCount > 0 ? (
-									<button
-										type="button"
-										className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm font-semibold text-[#424655] transition hover:bg-slate-100 active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-800"
-										onClick={() =>
-											setVisibleCouponCount((count) =>
-												Math.min(count + DISCOVER_COUPON_SOCIAL_MISSIONS_PAGE_SIZE, couponSocialMissions.length),
-											)
-										}
-									>
-										<span>
-											Show {nextCouponPageSize.toLocaleString('en-US')} more coupon mission
-											{nextCouponPageSize === 1 ? '' : 's'}
-										</span>
-										<ChevronDown className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
-									</button>
-								) : null}
+								<div className="space-y-3">
+									<p className="text-xs font-medium text-slate-500 dark:text-slate-400">Program card</p>
+									{socialMissions.user ? (
+										<SocialMissionRoleRow
+											icon={
+												<RoleIcon>
+													<UserRound className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+												</RoleIcon>
+											}
+											metrics={socialMissions.user}
+											detailText={socialMissions.userDetailText}
+											ariaLabel="User social mission details"
+										/>
+									) : null}
+									{socialMissions.referrer ? (
+										<SocialMissionRoleRow
+											icon={
+												<RoleIcon>
+													<Gift className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+												</RoleIcon>
+											}
+											metrics={socialMissions.referrer}
+											detailText="Want more? Become a referrer."
+											ariaLabel="Referrer reward details"
+										/>
+									) : null}
+								</div>
 							</div>
 						</div>
 					</div>

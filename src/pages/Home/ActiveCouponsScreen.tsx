@@ -7,7 +7,10 @@ import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
 import { DiscoverOfferSocialMissionTrigger } from '@/components/discover/DiscoverOfferSocialMissionTrigger'
 import { CouponUserLikeCountPill, CouponUserLikeHeartButton } from '@/components/CouponUserLikeChrome'
-import type { DiscoverSocialMissionMetrics } from '@/utils/discoverMerchantPromotions'
+import type {
+	CouponSocialPromotionEventKey,
+	DiscoverSocialMissionMetrics,
+} from '@/utils/discoverMerchantPromotions'
 import { useCouponUserLike } from '@/hooks/useCouponUserLike'
 import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
@@ -396,6 +399,7 @@ export function ActiveCouponTicketItem({
 	showUserLike = false,
 	socialMissionUser = null,
 	socialMissionReferrer = null,
+	socialMissionL2RuleIds = null,
 	referrerEoa,
 	getPrivateKeyArmor,
 	onWalletUnlock,
@@ -415,6 +419,7 @@ export function ActiveCouponTicketItem({
 	showUserLike?: boolean
 	socialMissionUser?: DiscoverSocialMissionMetrics | null
 	socialMissionReferrer?: DiscoverSocialMissionMetrics | null
+	socialMissionL2RuleIds?: Partial<Record<CouponSocialPromotionEventKey, string>> | null
 	/** Sharer EOA from deep link `ref=` (coupon like #13 ref mint). */
 	referrerEoa?: string | null
 	getPrivateKeyArmor?: () => string | undefined
@@ -511,7 +516,11 @@ export function ActiveCouponTicketItem({
 					/>
 				) : null}
 				{showSocialMission ? (
-					<DiscoverOfferSocialMissionTrigger user={socialMissionUser} referrer={socialMissionReferrer} />
+					<DiscoverOfferSocialMissionTrigger
+						user={socialMissionUser}
+						referrer={socialMissionReferrer}
+						l2RuleIds={socialMissionL2RuleIds}
+					/>
 				) : null}
 			</div>
 		)

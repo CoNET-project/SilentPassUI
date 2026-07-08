@@ -9,10 +9,53 @@ import {
 	Ticket,
 	UserRound,
 } from 'lucide-react'
-import type { DiscoverSocialMissionMetrics } from '@/utils/discoverMerchantPromotions'
+import type {
+	CouponSocialPromotionEventKey,
+	DiscoverSocialMissionMetrics,
+} from '@/utils/discoverMerchantPromotions'
 
 const ACCENT = '#8d3a8b'
 const ACCENT_SURFACE = '#f5ecff'
+
+const L2_RULE_EVENT_LABEL: Record<CouponSocialPromotionEventKey, string> = {
+	linkClick: 'Link click',
+	like: 'Like',
+	claim: 'Claim',
+	burn: 'Burn',
+}
+
+function formatL2RuleIdDisplay(ruleId: string): string {
+	return ruleId.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+/** Compact L2 on-chain rule IDs for a single coupon offer row. */
+export function DiscoverCouponL2RuleIdsFootnote(props: {
+	ruleIds: Partial<Record<CouponSocialPromotionEventKey, string>>
+	className?: string
+}) {
+	const { ruleIds, className } = props
+	const entries = (Object.keys(L2_RULE_EVENT_LABEL) as CouponSocialPromotionEventKey[]).filter(
+		(key) => ruleIds[key],
+	)
+	if (entries.length === 0) return null
+	return (
+		<div
+			className={['px-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400', className]
+				.filter(Boolean)
+				.join(' ')}
+		>
+			<span className="font-semibold uppercase tracking-wide text-[#8d3a8b]">L2 rule IDs</span>
+			<span className="mx-1.5 text-slate-300 dark:text-slate-600">·</span>
+			{entries.map((key, idx) => (
+				<span key={key}>
+					{idx > 0 ? <span className="mx-1 text-slate-300 dark:text-slate-600">·</span> : null}
+					<span className="font-medium text-slate-600 dark:text-slate-300">{L2_RULE_EVENT_LABEL[key]}</span>{' '}
+					<span className="font-mono tabular-nums">{formatL2RuleIdDisplay(ruleIds[key]!)}</span>
+				</span>
+			))}
+		</div>
+	)
+}
 
 function SocialMissionMetricsPill(props: { metrics: DiscoverSocialMissionMetrics; compact?: boolean }) {
 	const { metrics, compact } = props
@@ -61,9 +104,10 @@ function RoleIcon(props: { children: ReactNode }) {
 export function DiscoverOfferSocialMissionTrigger(props: {
 	user: DiscoverSocialMissionMetrics | null
 	referrer: DiscoverSocialMissionMetrics | null
+	l2RuleIds?: Partial<Record<CouponSocialPromotionEventKey, string>> | null
 	className?: string
 }) {
-	const { user, referrer, className } = props
+	const { user, referrer, l2RuleIds, className } = props
 	const [open, setOpen] = useState(false)
 	const rootRef = useRef<HTMLDivElement>(null)
 
@@ -140,6 +184,26 @@ export function DiscoverOfferSocialMissionTrigger(props: {
 							</div>
 						) : null}
 					</div>
+					{l2RuleIds && Object.keys(l2RuleIds).length > 0 ? (
+						<div className="mt-3 border-t border-[#eadcf7] pt-2.5 dark:border-[#8d3a8b]/25">
+							<p className="text-[10px] font-bold uppercase tracking-wider text-[#8d3a8b]">L2 rule IDs</p>
+							<ul className="mt-1.5 space-y-1">
+								{(Object.keys(L2_RULE_EVENT_LABEL) as CouponSocialPromotionEventKey[])
+									.filter((key) => l2RuleIds[key])
+									.map((key) => (
+										<li
+											key={key}
+											className="flex items-baseline justify-between gap-2 text-[10px] text-slate-600 dark:text-slate-300"
+										>
+											<span className="font-medium">{L2_RULE_EVENT_LABEL[key]}</span>
+											<span className="font-mono tabular-nums text-slate-500 dark:text-slate-400">
+												{formatL2RuleIdDisplay(l2RuleIds[key]!)}
+											</span>
+										</li>
+									))}
+							</ul>
+						</div>
+					) : null}
 				</div>
 			) : null}
 		</div>

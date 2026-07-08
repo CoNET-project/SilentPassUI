@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, BEAMIO_INDEXER_DIAMOND, CONET_AA_FACTORY } from "@/config/chainAddresses";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, CONET_BUNIT_AIRDROP_ADDRESS, BEAMIO_INDEXER_DIAMOND, CONET_AA_FACTORY } from "@/config/chainAddresses";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	eip712ChainIdForBeamioUserCard,
@@ -4333,6 +4333,65 @@ const BUINT_BALANCE_OF_ALL_ABI = [
   "function balanceOfAll(address account) external view returns (uint256 total, uint256 free, uint256 paid)"
 ];
 
+const BUNIT_AIRDROP_BALANCE_ABI = [
+  "function getBUnitBalance(address account) view returns (uint256)"
+] as const;
+
+export type BUnitBalanceOnConet = {
+  total: number;
+  free: number;
+  paid: number;
+  legacyDeprecatedTotal?: number;
+};
+
+/**
+ * 直接从 CoNET RPC 查询 B-Unit（扣费可用 total + free/paid 明细）。6 位精度。
+ */
+export const getBUnitBalanceFromConetRpc = async (account: string): Promise<BUnitBalanceOnConet> => {
+  if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
+  const decimals = 6;
+  try {
+    const airdrop = new ethers.Contract(CONET_BUNIT_AIRDROP_ADDRESS, BUNIT_AIRDROP_BALANCE_ABI, conetDepinProvider);
+    const feeRaw = (await airdrop.getBUnitBalance(account)) as bigint;
+    const contract = new ethers.Contract(CONET_BUINT, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
+    const [totalAll, free, paid] = await contract.balanceOfAll(account);
+    const feeUsable = feeRaw > 0n ? feeRaw : totalAll;
+    return {
+      total: Number(feeUsable) / 10 ** decimals,
+      free: Number(free) / 10 ** decimals,
+      paid: Number(paid) / 10 ** decimals,
+    };
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceFromConetRpc] RPC failed:', e);
+    return { total: 0, free: 0, paid: 0 };
+  }
+};
+
+/**
+ * 查询 CoNET 主网 BUint 余额（扣费可用 total + free/paid）。6 位精度。
+ * 优先通过 beamio API（含 legacyDeprecatedTotal），失败时回退 RPC。
+ */
+export const getBUnitBalanceOnConet = async (account: string): Promise<BUnitBalanceOnConet> => {
+  if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
+  try {
+    const res = await fetch(`${beamioApi}/api/getBUnitBalance?address=${encodeURIComponent(account)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.total === 'number' && typeof data.free === 'number' && typeof data.paid === 'number') {
+        return {
+          total: data.feeUsable ?? data.total,
+          free: data.free,
+          paid: data.paid,
+          legacyDeprecatedTotal: typeof data.legacyDeprecatedTotal === 'number' ? data.legacyDeprecatedTotal : undefined,
+        };
+      }
+    }
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceOnConet] API fallback failed:', e);
+  }
+  return getBUnitBalanceFromConetRpc(account);
+};
+
 const INDEXER_GET_ACCOUNT_TX_ABI = [
   "function getAccountTransactionsPaged(address account, uint256 offset, uint256 limit) view returns ((bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, (uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, (uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists)[] page)"
 ];
@@ -4343,58 +4402,6 @@ const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes("buintUSDC"));
 const TX_REQUEST_ACCOUNTING = ethers.keccak256(ethers.toUtf8Bytes("requestAccounting"));
 const TX_SEND_USDC = ethers.keccak256(ethers.toUtf8Bytes("sendUSDC"));
 const TX_X402_SEND = ethers.keccak256(ethers.toUtf8Bytes("x402Send"));
-
-/**
- * 直接从 CoNET RPC 查询 BUint 余额（total, free, paid）。6 位精度。无需 API 服务器。
- */
-export const getBUnitBalanceFromConetRpc = async (account: string): Promise<{ total: number; free: number; paid: number }> => {
-  if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
-  try {
-    const contract = new ethers.Contract(CONET_BUINT, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
-    const [total, free, paid] = await contract.balanceOfAll(account);
-    const decimals = 6;
-    return {
-      total: Number(total) / 10 ** decimals,
-      free: Number(free) / 10 ** decimals,
-      paid: Number(paid) / 10 ** decimals
-    };
-  } catch (e) {
-    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceFromConetRpc] RPC failed:', e);
-    return { total: 0, free: 0, paid: 0 };
-  }
-};
-
-/**
- * 查询 CoNET 主网 BUint 余额（total, free, paid）。6 位精度。
- * 优先通过 beamio API 获取（避免浏览器 CORS），失败时回退到直接 RPC。
- */
-export const getBUnitBalanceOnConet = async (account: string): Promise<{ total: number; free: number; paid: number }> => {
-  if (!account || !ethers.isAddress(account)) return { total: 0, free: 0, paid: 0 };
-  try {
-    const res = await fetch(`${beamioApi}/api/getBUnitBalance?address=${encodeURIComponent(account)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data.total === 'number' && typeof data.free === 'number' && typeof data.paid === 'number') {
-        return { total: data.total, free: data.free, paid: data.paid };
-      }
-    }
-  } catch (e) {
-    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceOnConet] API fallback failed:', e);
-  }
-  try {
-    const contract = new ethers.Contract(CONET_BUINT, BUINT_BALANCE_OF_ALL_ABI, conetDepinProvider);
-    const [total, free, paid] = await contract.balanceOfAll(account);
-    const decimals = 6;
-    return {
-      total: Number(total) / 10 ** decimals,
-      free: Number(free) / 10 ** decimals,
-      paid: Number(paid) / 10 ** decimals
-    };
-  } catch (e) {
-    if (typeof console !== 'undefined' && console.error) console.error('[getBUnitBalanceOnConet] RPC failed:', e);
-    return { total: 0, free: 0, paid: 0 };
-  }
-};
 
 export type BUnitLedgerEntry = {
   id: string;

@@ -4,10 +4,14 @@ import type {
 	ShareTokenMetadataCouponSocialPromotion,
 	ShareTokenMetadataSocialPromotion,
 } from '@/services/BeamioCard'
+import { signExecuteForOwner } from '@/services/BeamioCard'
 import { readCardUserCumulativeStatInitialized } from '@/utils/beamioCardUserCumulativeStatBootstrap'
+import { postOwnerExecuteForOwner } from '@/utils/beamioCardUserCumulativeStatBootstrap'
 import {
 	buildSocialPromotionRuleIntents,
+	filterIntentsRequiringChainWrite,
 	onChainRuleMatchesIntent,
+	readCardLevelSocialPromotionRuleRows,
 	readCardRewardRuleFromChain,
 	verifySocialPromotionRulesOnChain,
 	type SocialPromotionRuleIntent,
@@ -20,6 +24,14 @@ import {
 } from '@/utils/programSocialPromotion'
 
 const CARD_CONFIGURE_REWARD_GATEWAY_ENDPOINT = `${beamioApi}/api/cardConfigureEventRewardRuleGateway`
+const CARD_CONFIGURE_REWARD_OWNER_ENDPOINT = `${beamioApi}/api/cardConfigureEventRewardRule`
+const CARD_CONFIGURE_REWARD_RULES_BATCH_OWNER_ENDPOINT = `${beamioApi}/api/cardConfigureEventRewardRulesBatch`
+const CARD_CONFIGURE_REWARD_RULES_BATCH_GATEWAY_ENDPOINT = `${beamioApi}/api/cardConfigureEventRewardRulesBatchGateway`
+
+const CONFIGURE_EVENT_REWARD_RULE_IFACE = new ethers.Interface([
+	'function configureEventRewardRule(uint256 ruleId, bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
+	'function configureEventRewardRulesBatch((uint256 ruleId,bool active,uint8 eventKind,uint8 targetKind,uint256 issuedParentId,uint256 actorMint13,uint256 refMint13)[] configs)',
+])
 const CARD_GATEWAY_INIT_ENDPOINT = `${beamioApi}/api/cardGatewayInitializeUserCumulativeStat`
 
 const UC_METRIC_TOPUP = 1
@@ -128,8 +140,123 @@ async function postConfigureRuleGateway(params: {
 	}
 }
 
-async function configureRuleSlot(params: {
+function encodeConfigureEventRewardRuleCalldata(params: {
+	ruleId: bigint
+	active: boolean
+	eventKind: number
+	targetKind: number
+	issuedParentId: bigint
+	actorMint13: bigint
+	refMint13: bigint
+}): string {
+	return CONFIGURE_EVENT_REWARD_RULE_IFACE.encodeFunctionData('configureEventRewardRule', [
+		params.ruleId,
+		params.active,
+		params.eventKind,
+		params.targetKind,
+		params.issuedParentId,
+		params.active ? params.actorMint13 : 0n,
+		params.active ? params.refMint13 : 0n,
+	])
+}
+
+function socialPromotionRuleIntentToApiRow(intent: SocialPromotionRuleIntent): Record<string, string | number | boolean> {
+	return {
+		ruleId: String(intent.ruleId),
+		active: intent.active,
+		eventKind: intent.eventKind,
+		targetKind: intent.targetKind,
+		issuedParentId: intent.issuedParentId.toString(),
+		actorMint13: intent.active ? intent.actorMint13.toString() : '0',
+		refMint13: intent.active ? intent.refMint13.toString() : '0',
+	}
+}
+
+function encodeConfigureEventRewardRulesBatchCalldata(intents: SocialPromotionRuleIntent[]): string {
+	const rows = intents.map((intent) => ({
+		ruleId: BigInt(intent.ruleId),
+		active: intent.active,
+		eventKind: intent.eventKind,
+		targetKind: intent.targetKind,
+		issuedParentId: intent.issuedParentId,
+		actorMint13: intent.active ? intent.actorMint13 : 0n,
+		refMint13: intent.active ? intent.refMint13 : 0n,
+	}))
+	return CONFIGURE_EVENT_REWARD_RULE_IFACE.encodeFunctionData('configureEventRewardRulesBatch', [rows])
+}
+
+async function postConfigureRulesBatchOwnerSigned(params: {
 	cardAddress: string
+	ownerPrivateKey: string
+	intents: SocialPromotionRuleIntent[]
+}): Promise<{ success: boolean; error?: string }> {
+	const card = ethers.getAddress(params.cardAddress)
+	const data = encodeConfigureEventRewardRulesBatchCalldata(params.intents)
+	const deadline = Math.floor(Date.now() / 1000) + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	let ownerSignature: string
+	try {
+		ownerSignature = await signExecuteForOwner(params.ownerPrivateKey, card, data, deadline, nonce)
+	} catch (e: unknown) {
+		const err = e as { message?: string }
+		return { success: false, error: err?.message ?? 'Failed to sign configureEventRewardRulesBatch.' }
+	}
+	try {
+		const res = await fetch(CARD_CONFIGURE_REWARD_RULES_BATCH_OWNER_ENDPOINT, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: card,
+				data,
+				deadline,
+				nonce,
+				ownerSignature,
+				rules: params.intents.map(socialPromotionRuleIntentToApiRow),
+			}),
+		})
+		const body = (await res.json()) as { success?: boolean; error?: string }
+		if (!res.ok || !body.success) {
+			return {
+				success: false,
+				error: typeof body.error === 'string' ? body.error : `${CARD_CONFIGURE_REWARD_RULES_BATCH_OWNER_ENDPOINT} failed`,
+			}
+		}
+		return { success: true }
+	} catch (e: unknown) {
+		const err = e as { message?: string }
+		return { success: false, error: err?.message ?? String(e) }
+	}
+}
+
+async function postConfigureRulesBatchGateway(params: {
+	cardAddress: string
+	intents: SocialPromotionRuleIntent[]
+}): Promise<{ success: boolean; error?: string }> {
+	try {
+		const res = await fetch(CARD_CONFIGURE_REWARD_RULES_BATCH_GATEWAY_ENDPOINT, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: ethers.getAddress(params.cardAddress),
+				rules: params.intents.map(socialPromotionRuleIntentToApiRow),
+			}),
+		})
+		const data = (await res.json()) as { success?: boolean; error?: string }
+		if (!res.ok || !data.success) {
+			return {
+				success: false,
+				error: typeof data.error === 'string' ? data.error : `${CARD_CONFIGURE_REWARD_RULES_BATCH_GATEWAY_ENDPOINT} failed`,
+			}
+		}
+		return { success: true }
+	} catch {
+		return { success: false, error: 'Network error while configuring on-chain reward rules (batch).' }
+	}
+}
+
+async function postConfigureRuleOwnerSigned(params: {
+	cardAddress: string
+	ownerPrivateKey: string
 	ruleId: bigint
 	active: boolean
 	eventKind: number
@@ -138,6 +265,67 @@ async function configureRuleSlot(params: {
 	actorMint13: bigint
 	refMint13: bigint
 }): Promise<{ success: boolean; error?: string }> {
+	const card = ethers.getAddress(params.cardAddress)
+	const data = encodeConfigureEventRewardRuleCalldata({
+		ruleId: params.ruleId,
+		active: params.active,
+		eventKind: params.eventKind,
+		targetKind: params.targetKind,
+		issuedParentId: params.issuedParentId,
+		actorMint13: params.actorMint13,
+		refMint13: params.refMint13,
+	})
+	const deadline = Math.floor(Date.now() / 1000) + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	let ownerSignature: string
+	try {
+		ownerSignature = await signExecuteForOwner(params.ownerPrivateKey, card, data, deadline, nonce)
+	} catch (e: unknown) {
+		const err = e as { message?: string }
+		return { success: false, error: err?.message ?? 'Failed to sign configureEventRewardRule.' }
+	}
+	return postOwnerExecuteForOwner(CARD_CONFIGURE_REWARD_OWNER_ENDPOINT, {
+		cardAddress: card,
+		data,
+		deadline,
+		nonce,
+		ownerSignature,
+		extra: {
+			ruleId: params.ruleId.toString(),
+			active: params.active ? 1 : 0,
+			eventKind: params.eventKind,
+			targetKind: params.targetKind,
+			issuedParentId: params.issuedParentId.toString(),
+			actorMint13: params.active ? params.actorMint13.toString() : '0',
+			refMint13: params.active ? params.refMint13.toString() : '0',
+		},
+	})
+}
+
+async function configureRuleSlot(params: {
+	cardAddress: string
+	ownerPrivateKey?: string
+	ruleId: bigint
+	active: boolean
+	eventKind: number
+	targetKind: number
+	issuedParentId: bigint
+	actorMint13: bigint
+	refMint13: bigint
+}): Promise<{ success: boolean; error?: string }> {
+	if (params.ownerPrivateKey?.trim()) {
+		return postConfigureRuleOwnerSigned({
+			cardAddress: params.cardAddress,
+			ownerPrivateKey: params.ownerPrivateKey.trim(),
+			ruleId: params.ruleId,
+			active: params.active,
+			eventKind: params.eventKind,
+			targetKind: params.targetKind,
+			issuedParentId: params.issuedParentId,
+			actorMint13: params.actorMint13,
+			refMint13: params.refMint13,
+		})
+	}
 	return postConfigureRuleGateway(params)
 }
 
@@ -151,6 +339,7 @@ async function ruleIntentSatisfiedOnChain(
 
 async function configureRuleIntentWithRetry(params: {
 	cardAddress: string
+	ownerPrivateKey?: string
 	intent: SocialPromotionRuleIntent
 	maxAttempts?: number
 }): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
@@ -164,6 +353,7 @@ async function configureRuleIntentWithRetry(params: {
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		const res = await configureRuleSlot({
 			cardAddress: params.cardAddress,
+			ownerPrivateKey: params.ownerPrivateKey,
 			ruleId: BigInt(params.intent.ruleId),
 			active: params.intent.active,
 			eventKind: params.intent.eventKind,
@@ -202,18 +392,56 @@ async function configureRuleIntentWithRetry(params: {
 export async function applySocialPromotionOnChainRules(params: {
 	cardAddress: string
 	socialPromotion: ShareTokenMetadataSocialPromotion | null
+	/** CoNET 无 gatewayInvokeCard 时须卡主 owner 签名走 executeForOwner。 */
+	ownerPrivateKey?: string
 }): Promise<{ success: boolean; error?: string; failedRuleIds?: number[] }> {
 	const card = ethers.getAddress(params.cardAddress)
 
 	await ensureCardCumulativeStatReadyViaGateway(card)
 
 	const intents = buildSocialPromotionRuleIntents(params.socialPromotion)
+	const onChainRules = await readCardLevelSocialPromotionRuleRows(card)
+	const intentsToApply = filterIntentsRequiringChainWrite(intents, onChainRules)
+
+	if (intentsToApply.length === 0) {
+		return { success: true }
+	}
+
 	const failedRuleIds: number[] = []
 	const configureErrors = new Map<number, string>()
 
-	for (const intent of intents) {
+	const verifyAllIntents = async (): Promise<{ ok: boolean; failedRuleIds: number[] }> => {
+		const fresh = await readCardLevelSocialPromotionRuleRows(card)
+		return verifySocialPromotionRulesOnChain(card, intents, fresh)
+	}
+
+	const ownerKey = params.ownerPrivateKey?.trim()
+	if (ownerKey) {
+		const batchRes = await postConfigureRulesBatchOwnerSigned({
+			cardAddress: card,
+			ownerPrivateKey: ownerKey,
+			intents: intentsToApply,
+		})
+		if (batchRes.success) {
+			const verify = await verifyAllIntents()
+			if (verify.ok) return { success: true }
+		} else if (batchRes.error) {
+			configureErrors.set(0, batchRes.error)
+		}
+	} else {
+		const batchRes = await postConfigureRulesBatchGateway({ cardAddress: card, intents: intentsToApply })
+		if (batchRes.success) {
+			const verify = await verifyAllIntents()
+			if (verify.ok) return { success: true }
+		} else if (batchRes.error) {
+			configureErrors.set(0, batchRes.error)
+		}
+	}
+
+	for (const intent of intentsToApply) {
 		const res = await configureRuleIntentWithRetry({
 			cardAddress: card,
+			ownerPrivateKey: params.ownerPrivateKey,
 			intent,
 		})
 		if (!res.success) {
@@ -224,10 +452,11 @@ export async function applySocialPromotionOnChainRules(params: {
 
 	if (failedRuleIds.length > 0) {
 		for (const ruleId of [...failedRuleIds]) {
-			const intent = intents.find((row) => row.ruleId === ruleId)
+			const intent = intentsToApply.find((row) => row.ruleId === ruleId)
 			if (!intent) continue
 			const retry = await configureRuleIntentWithRetry({
 				cardAddress: card,
+				ownerPrivateKey: params.ownerPrivateKey,
 				intent,
 				maxAttempts: RULE_CONFIGURE_MAX_ATTEMPTS,
 			})
@@ -241,7 +470,7 @@ export async function applySocialPromotionOnChainRules(params: {
 		}
 	}
 
-	const verify = await verifySocialPromotionRulesOnChain(card, intents)
+	const verify = await verifyAllIntents()
 	if (verify.ok) {
 		return { success: true }
 	}

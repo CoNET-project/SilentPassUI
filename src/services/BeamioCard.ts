@@ -387,6 +387,7 @@ const updateCardShareMetadataEndpoint = `${beamioApi}/api/updateCardShareMetadat
 const updateCardMerchantImageEndpoint = `${beamioApi}/api/updateCardMerchantImage`
 const updateCardProgramImageEndpoint = `${beamioApi}/api/updateCardProgramImage`
 const updateIssuedCouponMetadataEndpoint = `${beamioApi}/api/updateIssuedCouponMetadata`
+const updateIssuedCouponSocialPromotionEndpoint = `${beamioApi}/api/updateIssuedCouponSocialPromotion`
 const requestExplorerNftMetadataRefreshEndpoint = `${beamioApi}/api/requestExplorerNftMetadataRefresh`
 const cardUpdateTiersEndpoint = `${beamioApi}/api/cardUpdateTiers`
 const cardsByCategoryEndpoint = `${beamioApi}/api/cardsByCategory`
@@ -1755,6 +1756,57 @@ export const updateIssuedCouponMetadata = async (params: {
 	} catch (e: unknown) {
 		if (e instanceof DOMException && e.name === 'AbortError') {
 			return { success: false, error: 'Update issued coupon metadata timed out. Check your network and try again.' }
+		}
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg }
+	}
+}
+
+/** Mirror coupon socialPromotion into beamio_nft_series + nft_tier_metadata (after card publish / on-chain rules). */
+export const updateIssuedCouponSocialPromotion = async (params: {
+	cardAddress: string
+	couponId: string
+	issuedTokenId: string
+	socialPromotion: ShareTokenMetadataCouponSocialPromotion | null
+}): Promise<{
+	success: boolean
+	cardAddress?: string
+	issuedTokenId?: string
+	seriesUpdated?: boolean
+	tierUpdated?: boolean
+	error?: string
+}> => {
+	try {
+		const body = JSON.stringify({
+			cardAddress: params.cardAddress,
+			couponId: params.couponId,
+			issuedTokenId: params.issuedTokenId,
+			socialPromotion: params.socialPromotion,
+		})
+		const signal = createFetchTimeoutSignal(180_000)
+		const response = await fetch(updateIssuedCouponSocialPromotionEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body,
+			...(signal ? { signal } : {}),
+		})
+		const data = await response.json()
+		if (response.ok && data.success) {
+			return {
+				success: true,
+				cardAddress: data.cardAddress as string | undefined,
+				issuedTokenId: data.issuedTokenId as string | undefined,
+				seriesUpdated: data.seriesUpdated as boolean | undefined,
+				tierUpdated: data.tierUpdated as boolean | undefined,
+			}
+		}
+		return { success: false, error: data.error ?? 'Update issued coupon social promotion failed' }
+	} catch (e: unknown) {
+		if (e instanceof DOMException && e.name === 'AbortError') {
+			return {
+				success: false,
+				error: 'Update issued coupon social promotion timed out. Check your network and try again.',
+			}
 		}
 		const msg = e instanceof Error ? e.message : String(e)
 		return { success: false, error: msg }

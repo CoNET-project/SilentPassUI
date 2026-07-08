@@ -218,13 +218,47 @@ export function onChainRuleMatchesIntent(
 	)
 }
 
+const CARD_LEVEL_SOCIAL_PROMOTION_RULE_IDS = [
+	SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
+	SOCIAL_PROMOTION_TOPUP_RULE_ID,
+	SOCIAL_PROMOTION_LIKE_RULE_ID,
+] as const
+
+/** 并行读取卡级 Social Promotion 三个 rule slot（1/2/3）。 */
+export async function readCardLevelSocialPromotionRuleRows(
+	cardAddress: string,
+): Promise<Map<number, OnChainRewardRuleRow | null>> {
+	const rows = await Promise.all(
+		CARD_LEVEL_SOCIAL_PROMOTION_RULE_IDS.map((ruleId) => readCardRewardRuleFromChain(cardAddress, ruleId)),
+	)
+	const byRuleId = new Map<number, OnChainRewardRuleRow | null>()
+	for (let i = 0; i < CARD_LEVEL_SOCIAL_PROMOTION_RULE_IDS.length; i++) {
+		byRuleId.set(CARD_LEVEL_SOCIAL_PROMOTION_RULE_IDS[i]!, rows[i] ?? null)
+	}
+	return byRuleId
+}
+
+/** 仅保留链上状态与目标 intent 不一致、需要发交易的 rule。 */
+export function filterIntentsRequiringChainWrite(
+	intents: SocialPromotionRuleIntent[],
+	onChainByRuleId: Map<number, OnChainRewardRuleRow | null>,
+): SocialPromotionRuleIntent[] {
+	return intents.filter((intent) => {
+		const row = onChainByRuleId.get(intent.ruleId) ?? null
+		return !onChainRuleMatchesIntent(row, intent)
+	})
+}
+
 export async function verifySocialPromotionRulesOnChain(
 	cardAddress: string,
 	intents: SocialPromotionRuleIntent[],
+	onChainByRuleId?: Map<number, OnChainRewardRuleRow | null>,
 ): Promise<{ ok: boolean; failedRuleIds: number[] }> {
 	const failedRuleIds: number[] = []
 	for (const intent of intents) {
-		const row = await readCardRewardRuleFromChain(cardAddress, intent.ruleId)
+		const row =
+			onChainByRuleId?.get(intent.ruleId) ??
+			(await readCardRewardRuleFromChain(cardAddress, intent.ruleId))
 		if (!onChainRuleMatchesIntent(row, intent)) failedRuleIds.push(intent.ruleId)
 	}
 	return { ok: failedRuleIds.length === 0, failedRuleIds }

@@ -81,6 +81,7 @@ import {
   updateCardMerchantImage,
   persistCardProgramIconImage,
   updateIssuedCouponMetadata,
+  updateIssuedCouponSocialPromotion,
   updateBeamioCardTiers,
   encodeSetTiers,
   fetchCardsByCategory,
@@ -14835,6 +14836,20 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
                     ruleRes.error ??
                       'Metadata saved, but on-chain coupon reward rule update failed. Try again.'
                   );
+                } else {
+                  const socialSyncRes = await updateIssuedCouponSocialPromotion({
+                    cardAddress: cardIssuanceExistingCard.cardAddress,
+                    couponId: nextRow.id,
+                    issuedTokenId,
+                    socialPromotion: couponSocialPayloadForSave ?? null,
+                  });
+                  if (!socialSyncRes.success) {
+                    saveOk = false;
+                    setCardIssuanceCouponEditorError(
+                      socialSyncRes.error ??
+                        'On-chain rules updated, but issued coupon metadata sync failed. Try Save again.'
+                    );
+                  }
                 }
             }
           }
@@ -17957,6 +17972,7 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
     const ruleRes = await applySocialPromotionOnChainRules({
       cardAddress: cardAddr,
       socialPromotion: payload,
+      ownerPrivateKey: pk,
     });
     if (!ruleRes.success) {
       setCardIssuanceSocialPromotionEditorServerError(
@@ -18114,9 +18130,17 @@ const clearCardIssuanceSocialPromotion = useCallback(async () => {
       return;
     }
     const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setCardIssuanceSocialPromotionEditorServerError(
+        'Unlock your wallet before clearing on-chain social promotion rules.'
+      );
+      return;
+    }
     const ruleRes = await applySocialPromotionOnChainRules({
       cardAddress: cardAddr,
       socialPromotion: null,
+      ownerPrivateKey: pk,
     });
     if (!ruleRes.success) {
       setCardIssuanceSocialPromotionEditorServerError(

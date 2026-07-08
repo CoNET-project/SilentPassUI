@@ -4653,10 +4653,11 @@ const USER_CARD_ADMIN_READ_ABI = [
   'function getGlobalStatsFull(uint8 periodType, uint256 anchorTs, uint256 cumulativeStartTs) view returns (uint256 cumulativeMint, uint256 cumulativeBurn, uint256 cumulativeTransfer, uint256 cumulativeTransferAmount, uint256 cumulativeRedeemMint, uint256 cumulativeUSDCMint, uint256 cumulativeIssued, uint256 cumulativeUpgraded, uint256 periodMint, uint256 periodBurn, uint256 periodTransfer, uint256 periodTransferAmount, uint256 periodRedeemMint, uint256 periodUSDCMint, uint256 periodIssued, uint256 periodUpgraded, uint256 adminCount, uint256 cumulativeAdminToAdminTransfer, uint256 cumulativeAdminToAdminTransferAmount, uint256 periodAdminToAdminTransfer, uint256 periodAdminToAdminTransferAmount, uint256 lifetimeAdminToAdminTransferCount, uint256 lifetimeAdminToAdminTransferAmount)',
 ] as const
 
-/** BeamioUserCard: `tiers(uint256)` + global `currency` (BeamioCurrency.CurrencyType, uint8) */
+/** BeamioUserCard: `tiers(uint256)` (3 fields) + global `currency` + card-level `upgradeType` */
 const USER_CARD_TIERS_AND_CURRENCY_READ_ABI = [
-  'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+  'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds)',
   'function currency() view returns (uint8)',
+  'function upgradeType() view returns (uint8)',
 ] as const
 
 const USER_CARD_CURRENCY_READ_ABI = ['function currency() view returns (uint8)'] as const
@@ -4687,6 +4688,14 @@ async function fetchBeamioUserCardTiersAndCurrencyFromChain(
 ): Promise<{ tiers: BeamioUserCardChainTier[]; currencyType: number }> {
   const addr = ethers.getAddress(cardAddress)
   const c = new ethers.Contract(addr, USER_CARD_TIERS_AND_CURRENCY_READ_ABI, provider)
+  let upgradeType = 0
+  try {
+    upgradeType = Number(await c.upgradeType())
+  } catch {
+    upgradeType = 0
+  }
+  if (!Number.isFinite(upgradeType) || upgradeType < 0) upgradeType = 0
+  const upgradeByBalance = upgradeType === 1
   const rows: BeamioUserCardChainTier[] = []
   for (let i = 0; i < 64; i++) {
     try {
@@ -4696,7 +4705,7 @@ async function fetchBeamioUserCardTiersAndCurrencyFromChain(
         minUsdc6: BigInt(r[0].toString()),
         attr: BigInt(r[1].toString()),
         tierExpirySeconds: BigInt(r[2].toString()),
-        upgradeByBalance: Boolean(r[3]),
+        upgradeByBalance,
       })
     } catch {
       break
@@ -7500,7 +7509,7 @@ const BEAMIO_USER_CARD_OWNERSHIP_ABI = [
   'function getOwnership(address user) view returns (uint256 pt, tuple(uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
   'function getOwnershipByEOA(address userEOA) view returns (uint256 pt, tuple(uint256 tokenId, uint256 attribute, uint256 tierIndexOrMax, uint256 expiry, bool isExpired)[] nfts)',
   'function activeMembershipId(address user) view returns (uint256)',
-  'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds, bool upgradeByBalance)',
+  'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds)',
 ] as const
 
 function normalizeNftBackgroundHex(input: string | undefined | null): string | null {

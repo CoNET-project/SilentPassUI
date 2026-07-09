@@ -34,7 +34,15 @@ function mergeDetailsTrusted(
 	const next: MyBrandCardFeedDetailsMap = { ...prev }
 	for (const c of cardAddresses) {
 		const k = c.toLowerCase()
-		if (incoming[k] !== undefined) next[k] = incoming[k]!
+		const inc = incoming[k]
+		if (inc === undefined) continue
+		const prevRow = prev[k]
+		// 不可信/未就绪的 assets:null 不得覆盖上次可信持仓，避免叠卡被误隐藏。
+		if (prevRow?.assets != null && inc.assets == null) {
+			next[k] = { ...inc, assets: prevRow.assets }
+			continue
+		}
+		next[k] = inc
 	}
 	return next
 }
@@ -91,6 +99,7 @@ function isDisplayableMerchantPass(card: UserCardInfo, details: MyBrandCardFeedD
 	const row = details[card.cardAddress.toLowerCase()]
 	// Detail 未就绪时暂时保留，等可信资产详情回来后再决定是否展示。
 	if (row === undefined) return true
+	if (row.assets == null) return true
 	return myBrandRowHasMerchantHoldings(row)
 }
 

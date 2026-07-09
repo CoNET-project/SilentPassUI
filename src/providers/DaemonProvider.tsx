@@ -19,6 +19,7 @@ import {
 	getAAAccount,
 	rememberCardBasicMetadataTrusted,
 	resolveMyCardAssetsForFeedRow,
+	myCardAssetsHasHoldings,
 	enrichMyCardAssetsWithProgramStatHoldings,
 	type UserCardInfo,
 	type CardActiveIssuedCouponSeriesItem,
@@ -1053,6 +1054,26 @@ export function DaemonProvider({ children }: DaemonProps) {
       const next: MyBrandCardFeedDetailsMap = {}
       for (const k of allowed) {
         if (prevDetails[k]) next[k] = prevDetails[k]!
+      }
+      /** getWalletAssets 快照先写入持仓，避免 RPC getMyAssets 慢/失败时 assets:null 误隐藏 /wallet 叠卡。 */
+      if (walletAssetsByCardKey) {
+        for (const uc of displayCards) {
+          const key = uc.cardAddress.toLowerCase()
+          const wa = walletAssetsByCardKey[key]
+          if (!wa || !myCardAssetsHasHoldings(wa)) continue
+          const prevRow = next[key]
+          next[key] = {
+            meta: prevRow?.meta ?? null,
+            assets: resolveMyCardAssetsForFeedRow(null, wa, prevRow?.assets ?? null),
+            claimableCoupons: prevRow?.claimableCoupons ?? null,
+            ownedCatalogs: prevRow?.ownedCatalogs ?? null,
+          }
+        }
+        const walletSeeded = filterExcludedCardDetailKeys(next)
+        if (!areMyBrandDetailsMapsEqual(myBrandCardDetailsRef.current, walletSeeded)) {
+          setMyBrandCardDetails(walletSeeded)
+          myBrandCardDetailsRef.current = walletSeeded
+        }
       }
       const eoaNormForCoupons =
         eoaForCoupons && ethers.isAddress(eoaForCoupons) ? ethers.getAddress(eoaForCoupons) : null

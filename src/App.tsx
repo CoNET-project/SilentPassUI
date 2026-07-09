@@ -16,7 +16,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
-import { checkStorage, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
+import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
@@ -343,10 +343,8 @@ function AppShell() {
       return
     }
     bUnitClaimAttemptedRef.current = true
-    checkBUnitClaimEligibility(claimant).then(async (r) => {
-      if (!r.canClaim || r.nonce == null || r.deadline == null) return
-      const result = await signAndClaimBUnits(p0.privateKeyArmor!, claimant, r.nonce, r.deadline)
-      if (result.success) {
+    void runAutoBUnitFreeClaimIfEligible(p0.privateKeyArmor!, claimant).then((outcome) => {
+      if (outcome === 'claimed_success') {
         Toast.show({ content: tu('20_b_units_claimed'), position: 'top' })
       }
     }).catch(() => {})

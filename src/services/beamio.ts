@@ -153,8 +153,10 @@ const CONET_CHAIN_ID = CONET_MAINNET_CHAIN_ID
 /** CoNET BUnitAirdrop 合约地址（与 deployments/conet-addresses.json 一致） */
 const CONET_BUNIT_AIRDROP = CONET_BUNIT_AIRDROP_ADDRESS
 
-/** 检查是否可领取 BeamioBUnits */
-export const checkBUnitClaimEligibility = async (address: string): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; error?: string }> => {
+/** 检查是否可领取 BeamioBUnits（Cluster 读链） */
+export const checkBUnitClaimEligibility = async (
+	address: string,
+): Promise<{ canClaim: boolean; nonce?: string; deadline?: number; reason?: string | null; error?: string }> => {
 	try {
 		const res = await fetch(`${beamioApi}/api/checkBUnitClaimEligibility?address=${encodeURIComponent(address)}`)
 		const data = await res.json().catch(() => ({}))
@@ -163,19 +165,20 @@ export const checkBUnitClaimEligibility = async (address: string): Promise<{ can
 			canClaim: !!data.canClaim,
 			nonce: data.nonce,
 			deadline: data.deadline != null ? Number(data.deadline) : undefined,
+			reason: data.reason ?? null,
 		}
 	} catch (e) {
 		return { canClaim: false, error: (e as Error)?.message ?? tu('request_failed') }
 	}
 }
 
-/** 使用 EOA 私钥签写 ClaimAirdrop 并提交 claimBUnits 请求 */
+/** 使用 EOA 私钥签写 ClaimAirdrop 并提交 claimBUnits 请求（调用方须先 gateBUnitFreeClaimBeforeSubmit） */
 export const signAndClaimBUnits = async (
 	privateKey: string,
 	claimant: string,
 	nonce: string | number,
 	deadline: number
-): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+): Promise<{ success: boolean; txHash?: string; error?: string; code?: string }> => {
 	try {
 		const wallet = new ethers.Wallet(privateKey)
 		if (wallet.address.toLowerCase() !== ethers.getAddress(claimant).toLowerCase()) {
@@ -211,11 +214,61 @@ export const signAndClaimBUnits = async (
 			}),
 		})
 		const data = await res.json().catch(() => ({}))
-		if (!res.ok) return { success: false, error: data?.error ?? res.statusText }
+		if (!res.ok) {
+			return {
+				success: false,
+				error: data?.error ?? res.statusText,
+				code: typeof data?.code === 'string' ? data.code : undefined,
+			}
+		}
 		return { success: true, txHash: data.txHash }
 	} catch (e) {
 		return { success: false, error: (e as Error)?.message ?? 'Claim failed' }
 	}
+}
+
+export type BUnitAutoClaimOutcome = 'skipped_silent' | 'claimed_success' | 'noop'
+
+/** 自动领：IDB + 链上 gate → API eligibility → claim；已领静默，不换钱包可链上复检 */
+export async function runAutoBUnitFreeClaimIfEligible(
+	privateKey: string,
+	claimantRaw: string,
+): Promise<BUnitAutoClaimOutcome> {
+	const {
+		gateBUnitFreeClaimBeforeSubmit,
+		markBUnitFreeClaimSkippedInIdb,
+		isBUnitClaimAlreadyClaimedError,
+		readBUnitFreeClaimHasClaimedOnChain,
+	} = await import('@/utils/bunitFreeClaimGate')
+	const claimant = ethers.getAddress(claimantRaw)
+
+	if ((await gateBUnitFreeClaimBeforeSubmit(claimant)) === 'skip_silent') {
+		return 'skipped_silent'
+	}
+
+	const r = await checkBUnitClaimEligibility(claimant)
+	if (!r.canClaim || r.reason === 'already_claimed') {
+		await markBUnitFreeClaimSkippedInIdb(claimant, 'api')
+		return 'skipped_silent'
+	}
+	if (r.nonce == null || r.deadline == null) return 'noop'
+
+	const onChainBeforePost = await readBUnitFreeClaimHasClaimedOnChain(claimant)
+	if (onChainBeforePost === true) {
+		await markBUnitFreeClaimSkippedInIdb(claimant, 'chain')
+		return 'skipped_silent'
+	}
+
+	const result = await signAndClaimBUnits(privateKey, claimant, r.nonce, r.deadline)
+	if (result.success) {
+		await markBUnitFreeClaimSkippedInIdb(claimant, 'api')
+		return 'claimed_success'
+	}
+	if (isBUnitClaimAlreadyClaimedError(result.error, result.code)) {
+		await markBUnitFreeClaimSkippedInIdb(claimant, 'api')
+		return 'skipped_silent'
+	}
+	return 'noop'
 }
 
 /** 提交 Refuel B-Unit 请求到 API。Cluster 预检后转发 Master，Master 提交 BaseTreasury.purchaseBUnitWith3009Authorization。 */

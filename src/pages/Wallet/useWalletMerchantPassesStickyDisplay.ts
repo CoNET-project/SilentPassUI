@@ -1,8 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ethers } from 'ethers'
-import type { UserCardInfo } from '@/services/BeamioCard'
+import { filterDisplayUserCards, type UserCardInfo } from '@/services/BeamioCard'
 import type { MyBrandCardFeedDetailsMap } from '@/utils/myBrandsFeedState'
 import { loadMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
+import {
+	filterExcludedCardAddresses,
+	filterExcludedCardDetailKeys,
+	loadApiExcludedUserCards,
+} from '@/utils/apiExcludedUserCards'
 import {
 	loadWalletMerchantPassStackOrder,
 	mergeWalletMerchantPassStackOrder,
@@ -106,6 +111,15 @@ export function useWalletMerchantPassesStickyDisplay(
 	const [feedSettled, setFeedSettled] = useState(false)
 	const lastEoaRef = useRef('')
 
+	/** 黑名单加载后重滤 sticky / stackOrder（本地缓存可能在 exclude 就绪前 hydrate）。 */
+	useEffect(() => {
+		void loadApiExcludedUserCards().then(() => {
+			setStickyCards((prev) => filterDisplayUserCards(prev))
+			setStickyDetails((prev) => filterExcludedCardDetailKeys(prev))
+			setStackOrder((prev) => filterExcludedCardAddresses(prev))
+		})
+	}, [])
+
 	useLayoutEffect(() => {
 		if (!eoaLower || !ethers.isAddress(eoaLower)) {
 			lastEoaRef.current = ''
@@ -124,35 +138,57 @@ export function useWalletMerchantPassesStickyDisplay(
 			clearWalletMerchantPassStackDisplayCache()
 		}
 
-		const pinned = loadWalletMerchantPassStackOrder(eoaLower)
-		if (pinned?.length) setStackOrder(pinned)
+		let cancelled = false
+		void (async () => {
+			await loadApiExcludedUserCards()
+			if (cancelled) return
 
-		const brands = loadMyBrandsFeedLocalCache(eoaLower)
-		if (brands?.cards?.length) {
-			setHasEverHadCards(true)
-			setFeedSettled(true)
-			setStickyCards(brands.cards)
-			setStickyDetails(brands.details)
-			const order = pinned?.length
-				? mergeWalletMerchantPassStackOrder(pinned, brands.cards.map((c) => c.cardAddress.toLowerCase()))
-				: brands.cards.map((c) => c.cardAddress.toLowerCase())
-			setStackOrder(order)
-			if (!pinned?.length) saveWalletMerchantPassStackOrder(eoaLower, order)
+			const pinned = loadWalletMerchantPassStackOrder(eoaLower)
+			if (pinned?.length) setStackOrder(pinned)
+
+			const brands = loadMyBrandsFeedLocalCache(eoaLower)
+			if (brands?.cards?.length) {
+				const cards = filterDisplayUserCards(brands.cards)
+				const details = filterExcludedCardDetailKeys(brands.details)
+				setHasEverHadCards(true)
+				setFeedSettled(true)
+				setStickyCards(cards)
+				setStickyDetails(details)
+				const order = pinned?.length
+					? mergeWalletMerchantPassStackOrder(
+							pinned,
+							cards.map((c) => c.cardAddress.toLowerCase())
+						)
+					: cards.map((c) => c.cardAddress.toLowerCase())
+				setStackOrder(order)
+				if (!pinned?.length) saveWalletMerchantPassStackOrder(eoaLower, order)
+			}
+		})()
+
+		return () => {
+			cancelled = true
 		}
 	}, [eoaLower])
 
 	useEffect(() => {
 		if (!eoaLower || !ethers.isAddress(eoaLower)) return
 
-		if (liveCards.length > 0) {
+		const safeLiveCards = filterDisplayUserCards(liveCards)
+		const safeLiveDetails = filterExcludedCardDetailKeys(liveDetails)
+
+		if (safeLiveCards.length > 0) {
 			setHasEverHadCards(true)
 			setFeedSettled(true)
-			setStickyCards(liveCards)
-			setStickyDetails((prev) => mergeDetailsTrusted(prev, liveDetails, liveCards.map((c) => c.cardAddress)))
+			setStickyCards(safeLiveCards)
+			setStickyDetails((prev) =>
+				filterExcludedCardDetailKeys(
+					mergeDetailsTrusted(prev, safeLiveDetails, safeLiveCards.map((c) => c.cardAddress))
+				)
+			)
 			setStackOrder((prev) => {
 				const next = mergeWalletMerchantPassStackOrder(
 					prev,
-					liveCards.map((c) => c.cardAddress.toLowerCase())
+					safeLiveCards.map((c) => c.cardAddress.toLowerCase())
 				)
 				if (next.join('|') !== prev.join('|')) {
 					saveWalletMerchantPassStackOrder(eoaLower, next)
@@ -180,21 +216,25 @@ export function useWalletMerchantPassesStickyDisplay(
 	}, [feedLoading, eoaLower])
 
 	return useMemo(() => {
-		const displayableCards = stickyCards.filter((c) => isDisplayableMerchantPass(c, stickyDetails))
+		const safeStickyCards = filterDisplayUserCards(stickyCards)
+		const safeStickyDetails = filterExcludedCardDetailKeys(stickyDetails)
+		const displayableCards = safeStickyCards.filter((c) =>
+			isDisplayableMerchantPass(c, safeStickyDetails)
+		)
 		const stackCards = buildStackCards(displayableCards, stackOrder)
 		const allStickyDetailsKnown =
-			stickyCards.length > 0 &&
-			stickyCards.every((c) => stickyDetails[c.cardAddress.toLowerCase()] !== undefined)
+			safeStickyCards.length > 0 &&
+			safeStickyCards.every((c) => safeStickyDetails[c.cardAddress.toLowerCase()] !== undefined)
 		const detailsReady =
 			stackCards.length > 0 &&
-			stackCards.every((c) => stickyDetails[c.cardAddress.toLowerCase()] !== undefined)
+			stackCards.every((c) => safeStickyDetails[c.cardAddress.toLowerCase()] !== undefined)
 		/**
 		 * 若本地仍记得叠卡顺序，说明该 EOA 曾经有过 Merchant Pass。
 		 * 即便本轮 liveCards 瞬时为空，也不能显示 "No merchant passes yet."。
 		 */
 		const hasRememberedStack = stackOrder.length > 0
 		const knownNoPass =
-			stickyCards.length > 0 &&
+			safeStickyCards.length > 0 &&
 			displayableCards.length === 0 &&
 			allStickyDetailsKnown
 		const showEmpty =
@@ -206,12 +246,12 @@ export function useWalletMerchantPassesStickyDisplay(
 				!hasEverHadCards)
 		const showSkeleton =
 			(displayableCards.length > 0 && !detailsReady) ||
-			(displayableCards.length === 0 && hasRememberedStack && stickyCards.length === 0)
+			(displayableCards.length === 0 && hasRememberedStack && safeStickyCards.length === 0)
 		const showStack = detailsReady
 
 		return {
 			stackCards,
-			details: stickyDetails,
+			details: safeStickyDetails,
 			badgeCount: displayableCards.length,
 			showEmpty,
 			showSkeleton,

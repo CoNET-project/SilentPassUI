@@ -4,6 +4,7 @@
  */
 
 import { ethers } from 'ethers'
+import { filterExcludedCardAddresses } from '@/utils/apiExcludedUserCards'
 
 type StoredPayload = {
 	v: 1
@@ -25,7 +26,8 @@ export function loadWalletMerchantPassStackOrder(eoaLower: string): string[] | n
 		if (!raw) return null
 		const p = JSON.parse(raw) as StoredPayload
 		if (p?.v !== 1 || p.eoa?.toLowerCase() !== eoaLower || !Array.isArray(p.order)) return null
-		return p.order.map((a) => String(a).toLowerCase()).filter((a) => ethers.isAddress(a))
+		const order = p.order.map((a) => String(a).toLowerCase()).filter((a) => ethers.isAddress(a))
+		return filterExcludedCardAddresses(order)
 	} catch {
 		return null
 	}
@@ -40,6 +42,7 @@ export function saveWalletMerchantPassStackOrder(eoaLower: string, order: string
 			savedAt: Date.now(),
 			order: order.map((a) => a.toLowerCase()),
 		}
+		payload.order = filterExcludedCardAddresses(payload.order)
 		localStorage.setItem(key(eoaLower), JSON.stringify(payload))
 	} catch {
 		/* quota */
@@ -48,11 +51,11 @@ export function saveWalletMerchantPassStackOrder(eoaLower: string, order: string
 
 /** 合并新卡到末尾，移除已不存在的地址，不改变既有相对顺序 */
 export function mergeWalletMerchantPassStackOrder(prev: string[], cardAddresses: string[]): string[] {
-	const live = new Set(cardAddresses.map((a) => a.toLowerCase()))
-	const next = prev.filter((a) => live.has(a))
-	for (const a of cardAddresses) {
-		const lower = a.toLowerCase()
-		if (!next.includes(lower)) next.push(lower)
+	const allowed = filterExcludedCardAddresses(cardAddresses.map((a) => a.toLowerCase()))
+	const live = new Set(allowed)
+	const next = filterExcludedCardAddresses(prev).filter((a) => live.has(a))
+	for (const a of allowed) {
+		if (!next.includes(a)) next.push(a)
 	}
 	return next
 }

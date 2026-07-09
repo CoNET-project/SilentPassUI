@@ -8,10 +8,13 @@ import App from './App';
 import { BeamioLocaleRoot } from './locale/BeamioLocaleRoot';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'
+import { loadApiExcludedUserCards } from './utils/apiExcludedUserCards'
 import { MerchantCardDatabaseProvider } from './providers/MerchantCardDatabaseProvider'
 import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider'
 import { IpfsImageLibraryProvider } from './providers/IpfsImageLibraryProvider'
 import { HashRouter as Router } from 'react-router-dom'
+
+void loadApiExcludedUserCards()
 
 const root = ReactDOM.createRoot(
   	document.getElementById('root') as HTMLElement

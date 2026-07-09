@@ -845,8 +845,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [myBrandsFeedLastConetBlock, setMyBrandsFeedLastConetBlock] = useState(0)
   const myBrandsFeedInFlight = useRef(false)
 
-  /** EOA 切换或登出：从本地恢复 My Brands；无缓存则保持直至首轮拉取（不清空已有 state 除非无效 profile） */
-  useLayoutEffect(() => {
+  /** EOA 切换或登出：先拉 blacklist，再从本地恢复 My Brands（避免缓存先展示废弃卡）。 */
+  useEffect(() => {
     const raw = profileWalletKeyId?.trim() ?? ''
     const eoaLower = raw.toLowerCase()
     if (!eoaLower || !ethers.isAddress(eoaLower)) {
@@ -855,21 +855,29 @@ export function DaemonProvider({ children }: DaemonProps) {
       setMyBrandCardDetails({})
       return
     }
-    const hit = loadMyBrandsFeedLocalCache(eoaLower)
-    if (hit) {
-      const cards = filterDisplayUserCards(hit.cards)
-      const details = filterExcludedCardDetailKeys(hit.details)
-      myBrandHolderUnionCardsRef.current = filterDisplayUserCards(hit.holderUnionCards)
-      setMyBrandCards(cards)
-      setMyBrandCardDetails(details)
-      for (const c of cards) {
-        const row = details[c.cardAddress.toLowerCase()]
-        if (row?.meta) rememberCardBasicMetadataTrusted(c.cardAddress, row.meta)
+    let cancelled = false
+    void (async () => {
+      await loadApiExcludedUserCards()
+      if (cancelled) return
+      const hit = loadMyBrandsFeedLocalCache(eoaLower)
+      if (hit) {
+        const cards = filterDisplayUserCards(hit.cards)
+        const details = filterExcludedCardDetailKeys(hit.details)
+        myBrandHolderUnionCardsRef.current = filterDisplayUserCards(hit.holderUnionCards)
+        setMyBrandCards(cards)
+        setMyBrandCardDetails(details)
+        for (const c of cards) {
+          const row = details[c.cardAddress.toLowerCase()]
+          if (row?.meta) rememberCardBasicMetadataTrusted(c.cardAddress, row.meta)
+        }
+      } else {
+        myBrandHolderUnionCardsRef.current = []
+        setMyBrandCards([])
+        setMyBrandCardDetails({})
       }
-    } else {
-      myBrandHolderUnionCardsRef.current = []
-      setMyBrandCards([])
-      setMyBrandCardDetails({})
+    })()
+    return () => {
+      cancelled = true
     }
   }, [profileWalletKeyId])
 
@@ -886,6 +894,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     myBrandsFeedInFlight.current = true
     /** 空列表不进入 loading；仅有数据时后台刷新也不闪 loading（Stale-while-revalidate） */
     try {
+      await loadApiExcludedUserCards()
       const { ownerCards, holderCards, trusted, walletAssetsByCardKey, walletResolvedAaAddress } =
         await getCardsOfOwnerWithDetailsForProfile(profile)
       if (!trusted) {

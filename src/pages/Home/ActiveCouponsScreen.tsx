@@ -21,6 +21,7 @@ import {
 	fetchOngoingClaimableCouponSeries,
 	postCardCouponOpenClaimWithCurrentWallet,
 } from '@/services/BeamioCard'
+import { readCouponDisabledFromMetadata } from '@/utils/couponListedMetadata'
 
 /** Align `cardCouponOpenClaimPreCheck` / issued NFT series tokenId floor. */
 const ISSUED_NFT_START_ID_MEMBER = 100_000_000_000n
@@ -246,6 +247,7 @@ export const couponExpiryUsesUrgentVariant = (expiresLabel: string): boolean => 
 
 export function mapActiveCouponRow(cardAddress: string, row: CardActiveIssuedCouponSeriesItem): ActiveCouponListItem | null {
 	const meta = asRecord(row.metadata)
+	if (readCouponDisabledFromMetadata(meta)) return null
 	const couponId = readMetadataCouponId(meta)
 	if (!couponId) return null
 	const validBeforeNum = Number(row.issuedNftValidBefore ?? 0)

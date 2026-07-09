@@ -7,6 +7,7 @@ import {
 	providerForBeamioUserCard,
 } from '@/utils/beamioUserCardChain'
 import { getCardActiveIssuedCouponSeries, readCouponIdFromMetadata } from '@/services/BeamioCard'
+import { readCouponDisabledFromMetadata } from '@/utils/couponListedMetadata'
 
 const UC_USER_CLICK = 3
 const UC_TARGET_MERCHANT_CARD = 1
@@ -108,6 +109,7 @@ async function resolveIssuedTokenIdByCouponId(cardAddress: string, couponId: str
 		const rows = await getCardActiveIssuedCouponSeries(cardAddress, 80)
 		for (const row of rows) {
 			const tokenId = String(row.tokenId ?? '').trim()
+			if (readCouponDisabledFromMetadata(row.metadata ?? null)) continue
 			const seriesCouponId = readCouponIdFromMetadata(row.metadata ?? null) || tokenId
 			if (seriesCouponId === wanted || tokenId === wanted) return tokenId || null
 		}

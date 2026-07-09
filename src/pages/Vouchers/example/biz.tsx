@@ -569,6 +569,28 @@ const getImg = (avatarSeed: string | undefined) => getAvatarImgUrl(avatarSeed);
 const MOBILE_FLOATING_BAR_THRESHOLD = 40;
 const MOBILE_FLOATING_BAR_FADE_RANGE = 100;
 
+function cardIssuanceKetWelcomeDismissStorageKey(eoa: string): string {
+  return `beamio:biz:ket-welcome-dismissed:v1:${eoa.toLowerCase()}`;
+}
+
+function readCardIssuanceKetWelcomeDismissedForEoa(eoa: string | null | undefined): boolean {
+  if (!eoa || typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(cardIssuanceKetWelcomeDismissStorageKey(eoa)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistCardIssuanceKetWelcomeDismissedForEoa(eoa: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(cardIssuanceKetWelcomeDismissStorageKey(eoa), '1');
+  } catch {
+    // ignore
+  }
+}
+
 /** Cover after Ket #0 + no issued card — aligns with `marketExample.html`; then “Start Designing” → Card Configurator. */
 function CardIssuanceKetWelcomeCoverPanel(props: {
   protocolFuelReserveBalance: number | null
@@ -25069,7 +25091,7 @@ useEffect(() => {
      setCardIssuanceKetWelcomeCoverDismissed(false);
      return;
    }
-  setCardIssuanceKetWelcomeCoverDismissed(false);
+   setCardIssuanceKetWelcomeCoverDismissed(readCardIssuanceKetWelcomeDismissedForEoa(merchantEoaForLiteForm));
  }, [merchantEoaForLiteForm]);
 
  /** No issued card, holds Ket #0, has not started designing — show welcome cover before Card Configurator */
@@ -25118,9 +25140,12 @@ const programsMobileTopNavVisible =
   (isCardConfiguratorMobileShell || showCardIssuanceKetWelcomeCover);
 
  const handleCardIssuanceKetWelcomeStartDesigning = useCallback(() => {
+   if (merchantEoaForLiteForm) {
+     persistCardIssuanceKetWelcomeDismissedForEoa(merchantEoaForLiteForm);
+   }
    setCardIssuanceKetWelcomeCoverDismissed(true);
    setCardIssuanceActiveProgramView('configure');
-}, []);
+}, [merchantEoaForLiteForm]);
 
  /** Ket welcome is visible — keep program sub-view on overview until “Start Designing” (avoids Configurator flashing under loading gate). */
  useLayoutEffect(() => {

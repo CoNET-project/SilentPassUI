@@ -244,13 +244,41 @@ function parseCouponSocialPromotionFromMetadata(
 	return normalizeCouponSocialPromotionPayload(raw as Record<string, unknown>)
 }
 
+function approxEq(a: number, b: number): boolean {
+	return Math.abs(a - b) < 0.005
+}
+
+/**
+ * Heal legacy buggy encode: `rewardType: percent` + unscaled bonusValue === rewardValue
+ * (should have been paymentAmount * rewardValue / 100). Treat as **fixed**.
+ */
+function healTopupPromotionRewardType(
+	promo: ShareTokenMetadataTopupPromotion,
+	legacyBonus?: DiscoverRechargeBonusRule | null,
+): ShareTokenMetadataTopupPromotion {
+	if (promo.rewardType !== 'percent') return promo
+	const min = parseAmount(promo.minimumTopupAmount)
+	const reward = parseAmount(promo.rewardValue)
+	if (min == null || reward == null) return promo
+	const scaled = Math.round(min * reward) / 100
+	if (!legacyBonus) return promo
+	const bv = legacyBonus.bonusValue
+	if (!legacyBonus.bonusProportional && approxEq(bv, reward)) {
+		return { ...promo, rewardType: 'fixed' }
+	}
+	if (legacyBonus.bonusProportional && approxEq(bv, reward) && !approxEq(bv, scaled)) {
+		return { ...promo, rewardType: 'fixed' }
+	}
+	return promo
+}
+
 function normalizeTopupPromotionPayload(raw: Record<string, unknown>): ShareTokenMetadataTopupPromotion | null {
 	const min = parseAmount(raw.minimumTopupAmount ?? raw.minimum_topup_amount)
 	const reward = parseAmount(raw.rewardValue ?? raw.reward_value)
 	if (min == null || reward == null) return null
 	const rewardTypeRaw = String(raw.rewardType ?? raw.reward_type ?? '').trim().toLowerCase()
-	const rewardType: 'percent' | 'fixed' =
-		rewardTypeRaw === 'fixed' ? 'fixed' : rewardTypeRaw === 'percent' ? 'percent' : 'percent'
+	// Missing / unknown → fixed (not percent). Explicit "percent" still honored.
+	const rewardType: 'percent' | 'fixed' = rewardTypeRaw === 'percent' ? 'percent' : 'fixed'
 	if (raw.enabled === false) return null
 	return {
 		enabled: true,
@@ -267,9 +295,11 @@ function parseTopupPromotionFromMetadata(
 ): ShareTokenMetadataTopupPromotion | null {
 	if (!meta) return null
 	const share = shareMetadataRoot(meta) ?? meta
+	const legacyBonus = pickPrimaryDiscoverRechargeBonusRule(parseDiscoverRechargeBonusRules(meta ?? {}))
 	const direct = share.topupPromotion
 	if (direct && typeof direct === 'object') {
-		return normalizeTopupPromotionPayload(direct as Record<string, unknown>)
+		const normalized = normalizeTopupPromotionPayload(direct as Record<string, unknown>)
+		return normalized ? healTopupPromotionRewardType(normalized, legacyBonus) : null
 	}
 	return null
 }

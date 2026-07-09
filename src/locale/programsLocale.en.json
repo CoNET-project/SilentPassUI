@@ -425,6 +425,8 @@
   "programs_coupon_total_issuance_left": "Total issuance/Left:",
   "programs_coupon_issued_locked_delete": "Issued coupons cannot be deleted.",
   "programs_coupon_show_claim_qr": "Claim URL and QR",
+  "programs_coupon_delist": "Delist coupon (hide from app; POS burn still works for holders)",
+  "programs_coupon_relist": "Relist coupon for discovery and claim",
   "programs_coupon_redeem_no_codes_batch": "No redeem codes stored on this device yet. Enter a batch count (max {{max}} per on-chain batch) and press + to register more while issuance remains.",
   "programs_coupon_redeem_no_codes_local": "No redeem codes stored on this device. Codes are saved locally when this coupon is published with redeem registration.",
   "programs_table_copy_code": "Copy code",

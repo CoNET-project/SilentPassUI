@@ -467,7 +467,9 @@ import {
  Bot,
  BadgeCheck,
  FileText,
- Gavel,
+  Eye,
+  EyeOff,
+  Gavel,
  HelpCircle,
  Infinity,
  Truck,
@@ -9551,7 +9553,8 @@ type CardIssuanceCouponMetaHydrationShape = {
   endDate?: string;
   /** From published coupon metadata or nested `beamioCoupon` merged by indexer. */
   issuedTokenId?: number | string;
-  beamioCoupon?: { issuedTokenId?: number | string };
+  beamioCoupon?: { issuedTokenId?: number | string; disable?: boolean };
+  disable?: boolean;
 };
 
 function parseCouponIssueTotalFromHydration(meta: CardIssuanceCouponMetaHydrationShape): string {
@@ -9679,6 +9682,18 @@ function parseCouponRequiresRedeemFromHydration(meta: CardIssuanceCouponMetaHydr
       const t = v.trim().toLowerCase();
       if (t === '1' || t === 'true' || t === 'yes') return true;
     }
+  }
+  return false;
+}
+
+function parseCouponDisabledFromHydration(meta: CardIssuanceCouponMetaHydrationShape & Record<string, unknown>): boolean {
+  if (meta.disable === true) return true;
+  const bc = meta.beamioCoupon;
+  if (bc && typeof bc === 'object' && (bc as { disable?: boolean }).disable === true) return true;
+  const props = meta.properties;
+  if (props && typeof props === 'object' && !Array.isArray(props)) {
+    const nested = (props as { beamioCoupon?: { disable?: boolean } }).beamioCoupon;
+    if (nested && typeof nested === 'object' && nested.disable === true) return true;
   }
   return false;
 }
@@ -9921,6 +9936,8 @@ type CardIssuanceCouponRow = {
   socialExchange?: ShareTokenMetadataSocialExchange;
   /** #13 rewards on link click / like / claim / burn for issued coupon series. */
   socialPromotion?: ShareTokenMetadataCouponSocialPromotion;
+  /** Merchant delisted — hidden from client discover/claim. */
+  disabled?: boolean;
 };
 
 function makeCardIssuanceCouponRow(
@@ -9940,7 +9957,8 @@ function makeCardIssuanceCouponRow(
   issueLeft?: string,
   issuedNftMintedCount?: string,
   socialExchange?: ShareTokenMetadataSocialExchange,
-  socialPromotion?: ShareTokenMetadataCouponSocialPromotion
+  socialPromotion?: ShareTokenMetadataCouponSocialPromotion,
+  disabled?: boolean
 ): CardIssuanceCouponRow {
   return {
     id: couponId?.trim() || `coupon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -9960,6 +9978,7 @@ function makeCardIssuanceCouponRow(
     ...(issuedNftMintedCount?.trim() ? { issuedNftMintedCount: issuedNftMintedCount.trim() } : {}),
     ...(socialExchange ? { socialExchange } : {}),
     ...(socialPromotion ? { socialPromotion } : {}),
+    ...(disabled ? { disabled: true } : {}),
   };
 }
 
@@ -9984,6 +10003,7 @@ type CardIssuanceCouponMetadataPayload = {
   issuedTokenId?: string;
   socialExchange?: ShareTokenMetadataSocialExchange;
   socialPromotion?: ShareTokenMetadataCouponSocialPromotion;
+  disable?: boolean;
 };
 
 function buildCardIssuanceCouponMetadataPayload(
@@ -10040,6 +10060,7 @@ function buildCardIssuanceCouponMetadataPayload(
       if (it) payload.issuedTokenId = it;
       if (row.socialExchange) payload.socialExchange = row.socialExchange;
       if (row.socialPromotion) payload.socialPromotion = row.socialPromotion;
+      if (row.disabled) payload.disable = true;
       return payload;
     })
     .filter((row): row is CardIssuanceCouponMetadataPayload => row != null);
@@ -11861,6 +11882,7 @@ const [cardIssuanceCouponRedeemCopiedHash, setCardIssuanceCouponRedeemCopiedHash
 const [cardIssuanceCouponRedeemRegisteringId, setCardIssuanceCouponRedeemRegisteringId] = useState<string | null>(
   null
 );
+const [cardIssuanceCouponListingToggleId, setCardIssuanceCouponListingToggleId] = useState<string | null>(null);
 const [cardIssuanceCouponRedeemBatchQty, setCardIssuanceCouponRedeemBatchQty] = useState<Record<string, string>>({});
 const [cardIssuanceProductionRedeemBatchQty, setCardIssuanceProductionRedeemBatchQty] =
   useState<Record<string, string>>({});
@@ -13255,7 +13277,8 @@ useEffect(() => {
       undefined,
       undefined,
       parseSocialExchangeFromMetadata(coupon as Record<string, unknown>) ?? undefined,
-      parseCouponSocialPromotionFromMetadata(coupon as Record<string, unknown>) ?? undefined
+      parseCouponSocialPromotionFromMetadata(coupon as Record<string, unknown>) ?? undefined,
+      parseCouponDisabledFromHydration(coupon as Record<string, unknown>)
     );
   });
   void (async () => {
@@ -13337,7 +13360,8 @@ useEffect(() => {
             issueLeftFromChain || undefined,
             mintedFromChain || undefined,
             parseSocialExchangeFromMetadata({ ...rootMeta, ...beamioCoupon }) ?? undefined,
-            parseCouponSocialPromotionFromMetadata({ ...rootMeta, ...beamioCoupon }) ?? undefined
+            parseCouponSocialPromotionFromMetadata({ ...rootMeta, ...beamioCoupon }) ?? undefined,
+            parseCouponDisabledFromHydration({ ...rootMeta, ...beamioCoupon })
           );
         });
       }
@@ -13384,6 +13408,7 @@ useEffect(() => {
           /** Preserve issued flags/tokenId until metadata catches up. */
           issued: row.issued || old.issued,
           issuedTokenId: row.issuedTokenId ?? old.issuedTokenId,
+          disabled: row.disabled ?? old.disabled,
         });
       }
       const mergedIds = new Set(merged.map((item) => item.id));
@@ -16373,6 +16398,55 @@ const issueCardIssuanceCoupon = useCallback(async (couponId: string) => {
     });
   }
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceCoupons]);
+
+const toggleCardIssuanceCouponListed = useCallback(
+  async (couponId: string, listed: boolean) => {
+    const coupon = cardIssuanceCoupons.find((item) => item.id === couponId);
+    if (!coupon?.issued || !coupon.issuedTokenId?.trim()) return;
+    const cardAddrRaw = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+    if (!cardAddrRaw || !ethers.isAddress(cardAddrRaw)) return;
+
+    setCardIssuanceCouponListingToggleId(couponId);
+    try {
+      const bgColor =
+        effectiveTileBackgroundColorForMetadata({
+          photo: coupon.couponImage,
+          backgroundColor: coupon.backgroundColor,
+        }) ??
+        tierBackgroundColorForPayload(coupon.backgroundColor) ??
+        '#0051d1';
+      const res = await updateIssuedCouponMetadata({
+        cardAddress: cardAddrRaw,
+        couponId: coupon.id,
+        issuedTokenId: coupon.issuedTokenId,
+        icon: coupon.icon,
+        backgroundColor: bgColor,
+        description: coupon.description,
+        couponImage: coupon.couponImage ?? '',
+        disable: !listed,
+      });
+      if (!res.success) {
+        setCardIssuanceOwnerAdminNotice({
+          kind: 'warn',
+          text: res.error ?? 'Failed to update coupon listing status.',
+        });
+        return;
+      }
+      setCardIssuanceCoupons((prev) =>
+        prev.map((item) => (item.id === couponId ? { ...item, disabled: !listed } : item))
+      );
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'ok',
+        text: listed
+          ? 'Coupon is listed again for discovery and claim.'
+          : 'Coupon delisted. Existing holders can still redeem at POS.',
+      });
+    } finally {
+      setCardIssuanceCouponListingToggleId(null);
+    }
+  },
+  [cardIssuanceCoupons, cardIssuanceExistingCard?.cardAddress]
+);
 
 const registerCardIssuanceCouponRedeemCodes = useCallback(
   async (couponId: string, requestedCount?: number) => {
@@ -35350,6 +35424,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                         Issued
                                       </span>
                                     ) : null}
+                                    {coupon.issued && coupon.disabled ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
+                                        Delisted
+                                      </span>
+                                    ) : null}
                                     {couponNftExplorerLink ? (
                                       <a
                                         href={couponNftExplorerLink.url}
@@ -35376,7 +35455,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     Issue
                                   </button>
                                 ) : null}
-                                {coupon.issued && !coupon.requiresRedeemCode ? (
+                                {coupon.issued && !coupon.disabled && !coupon.requiresRedeemCode ? (
                                   <button
                                     type="button"
                                     onClick={() => openCardIssuanceCouponShare(coupon.id)}
@@ -35387,7 +35466,27 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     <QrCode className="h-4 w-4" strokeWidth={2.1} aria-hidden />
                                   </button>
                                 ) : null}
-                                {coupon.issued && !coupon.socialExchange ? (
+                                {coupon.issued ? (
+                                  <button
+                                    type="button"
+                                    disabled={cardIssuanceCouponListingToggleId === coupon.id}
+                                    onClick={() => void toggleCardIssuanceCouponListed(coupon.id, Boolean(coupon.disabled))}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:opacity-50 ${coupon.disabled ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-600 hover:bg-slate-100'} ${bizFocusRingClass}`}
+                                    aria-label={
+                                      coupon.disabled
+                                        ? `Relist coupon ${coupon.name}`
+                                        : `Delist coupon ${coupon.name}`
+                                    }
+                                    title={coupon.disabled ? tu('programs_coupon_relist') : tu('programs_coupon_delist')}
+                                  >
+                                    {coupon.disabled ? (
+                                      <Eye className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                    ) : (
+                                      <EyeOff className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                                    )}
+                                  </button>
+                                ) : null}
+                                {coupon.issued && !coupon.socialExchange && !coupon.disabled ? (
                                   <button
                                     type="button"
                                     onClick={() => openCardIssuanceCouponSocialPromotionEditor(coupon.id)}

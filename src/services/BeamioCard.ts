@@ -1403,6 +1403,8 @@ export type ShareTokenMetadataCoupon = {
 	socialExchange?: ShareTokenMetadataSocialExchange
 	/** #13 rewards on link click / like / claim / burn for this coupon series. */
 	socialPromotion?: ShareTokenMetadataCouponSocialPromotion
+	/** When true, hidden from client discover/claim; existing holders may still POS burn. */
+	disable?: boolean
 }
 
 export type ShareTokenMetadataServiceCategoryEntry = {
@@ -1731,6 +1733,8 @@ export const updateIssuedCouponMetadata = async (params: {
 	description: string
 	/** Wide coupon hero background (https); empty string clears. */
 	couponImage?: string
+	/** When true, delist from client discover/claim. */
+	disable?: boolean
 }): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
 	try {
 		const body = JSON.stringify({
@@ -1741,6 +1745,7 @@ export const updateIssuedCouponMetadata = async (params: {
 			backgroundColor: params.backgroundColor,
 			description: params.description,
 			couponImage: params.couponImage ?? '',
+			...(typeof params.disable === 'boolean' ? { disable: params.disable } : {}),
 		})
 		const signal = createFetchTimeoutSignal(180_000)
 		const response = await fetch(updateIssuedCouponMetadataEndpoint, {

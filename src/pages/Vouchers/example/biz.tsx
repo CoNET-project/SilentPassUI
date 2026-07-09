@@ -320,6 +320,7 @@ import {
 import {
   EMPTY_TOPUP_PROMOTION_DRAFT,
   formatTopupPromotionDisplay,
+  legacyBonusRuleToTopupPromotion,
   parseTopupPromotionFromMetadata,
   topupPromotionDraftFromMetadata,
   topupPromotionDraftToPayload,
@@ -13131,22 +13132,18 @@ useEffect(() => {
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
-  const shareRecord = cardIssuanceExistingCard.meta as Record<string, unknown>;
-  const promo =
-    shareRecord.topupPromotion != null && typeof shareRecord.topupPromotion === 'object'
-      ? topupPromotionDraftFromMetadata(shareRecord.topupPromotion as ShareTokenMetadataTopupPromotion)
-      : topupPromotionDraftFromMetadata(
-          parseTopupPromotionFromMetadata({
-            bonusRules: cardIssuanceExistingCard.meta.bonusRules,
-            bonusRule: cardIssuanceExistingCard.meta.bonusRule,
-          })
-        );
+  if (cardIssuanceTopupPromotionEditorOpen) return;
+  // Parse + heal legacy mismatch (fixed CA$N shown as percent). Editor keeps user draft incl. percent.
+  const promo = topupPromotionDraftFromMetadata(
+    parseTopupPromotionFromMetadata(cardIssuanceExistingCard.meta as Record<string, unknown>),
+  );
   setCardIssuanceTopupPromotion(promo);
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
   cardIssuanceExistingCard?.meta?.bonusRule,
   cardIssuanceExistingCard?.meta,
+  cardIssuanceTopupPromotionEditorOpen,
 ]);
 
 /** Social promotion draft: chain getRewardRule(1/2/3) first, then metadata fallback. */
@@ -19032,34 +19029,40 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        setCardIssuanceStoreDisplayName(draft.storeDisplayName.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX));
      }
      if (draft.topupPromotion && typeof draft.topupPromotion === 'object') {
-       const tp = draft.topupPromotion as Record<string, unknown>;
-       setCardIssuanceTopupPromotion({
-         enabled: tp.enabled !== false,
-         validityPeriodEnabled:
-           typeof tp.validityPeriodEnabled === 'boolean'
-             ? tp.validityPeriodEnabled
-             : Boolean(
-                 (typeof tp.validFrom === 'string' && tp.validFrom.trim()) ||
-                   (typeof tp.validTo === 'string' && tp.validTo.trim())
-               ),
-         validFrom: typeof tp.validFrom === 'string' ? tp.validFrom : '',
-         validTo: typeof tp.validTo === 'string' ? tp.validTo : '',
-         minimumTopupAmount:
-           typeof tp.minimumTopupAmount === 'string' ? tp.minimumTopupAmount : String(tp.minimumTopupAmount ?? ''),
-         rewardType: tp.rewardType === 'fixed' ? 'fixed' : 'percent',
-         rewardValue: typeof tp.rewardValue === 'string' ? tp.rewardValue : String(tp.rewardValue ?? ''),
+       const healed = parseTopupPromotionFromMetadata({
+         topupPromotion: draft.topupPromotion,
+         bonusRules: draft.bonusRules,
+         bonusRule: draft.bonusRules?.[0] ?? undefined,
        });
+       if (healed) {
+         setCardIssuanceTopupPromotion(topupPromotionDraftFromMetadata(healed));
+       } else {
+         const tp = draft.topupPromotion as Record<string, unknown>;
+         setCardIssuanceTopupPromotion({
+           enabled: tp.enabled !== false,
+           validityPeriodEnabled:
+             typeof tp.validityPeriodEnabled === 'boolean'
+               ? tp.validityPeriodEnabled
+               : Boolean(
+                   (typeof tp.validFrom === 'string' && tp.validFrom.trim()) ||
+                     (typeof tp.validTo === 'string' && tp.validTo.trim())
+                 ),
+           validFrom: typeof tp.validFrom === 'string' ? tp.validFrom : '',
+           validTo: typeof tp.validTo === 'string' ? tp.validTo : '',
+           minimumTopupAmount:
+             typeof tp.minimumTopupAmount === 'string' ? tp.minimumTopupAmount : String(tp.minimumTopupAmount ?? ''),
+           rewardType: tp.rewardType === 'percent' ? 'percent' : 'fixed',
+           rewardValue: typeof tp.rewardValue === 'string' ? tp.rewardValue : String(tp.rewardValue ?? ''),
+         });
+       }
      } else if (draft.bonusRules?.length) {
        const first = draft.bonusRules[0];
-       setCardIssuanceTopupPromotion({
-         enabled: true,
-         validityPeriodEnabled: false,
-         validFrom: '',
-         validTo: '',
-         minimumTopupAmount: first.paymentAmount,
-         rewardType: first.bonusProportional ? 'percent' : 'fixed',
-         rewardValue: first.bonusValue,
+       const fromLegacy = legacyBonusRuleToTopupPromotion({
+         paymentAmount: Number.parseFloat(String(first.paymentAmount).replace(/,/g, '')) || 0,
+         bonusValue: Number.parseFloat(String(first.bonusValue).replace(/,/g, '')) || 0,
+         bonusProportional: Boolean(first.bonusProportional),
        });
+       setCardIssuanceTopupPromotion(topupPromotionDraftFromMetadata(fromLegacy));
      } else if (typeof draft.bonusRulePaymentAmount === 'string' && draft.bonusRulePaymentAmount.trim()) {
        setCardIssuanceTopupPromotion({
          enabled: true,

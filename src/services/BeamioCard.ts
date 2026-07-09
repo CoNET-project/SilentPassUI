@@ -23,6 +23,7 @@ import {
 	type CardPreviewLogoDisplayTier,
 } from "@/utils/cardPreviewLogoDisplayTier";
 import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
+import { parseTopupPromotionFromMetadata } from "@/utils/programTopupPromotion";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	DEFAULT_MERCHANT_CARD_FACTORY,
@@ -3511,37 +3512,19 @@ function shareTokenBonusProportionalFromUnknown(obj: Record<string, unknown>): b
 	return false
 }
 
-function shareTokenTopupPromotionFromUnknown(
-	share: Record<string, unknown> | undefined | null
+function shareTokenTopupPromotionFromShare(
+	share: Record<string, unknown> | undefined | null,
+	bonusRule?: ShareTokenMetadataBonusRule,
+	bonusRules?: ShareTokenMetadataBonusRule[],
 ): ShareTokenMetadataTopupPromotion | undefined {
-	if (!share || typeof share !== 'object') return undefined
-	const raw = share.topupPromotion
-	if (!raw || typeof raw !== 'object') return undefined
-	const obj = raw as Record<string, unknown>
-	const minimumTopupAmount = shareTokenBonusRuleNumber(
-		obj.minimumTopupAmount ?? obj.minimum_topup_amount
+	return (
+		parseTopupPromotionFromMetadata({
+			topupPromotion: share?.topupPromotion,
+			bonusRule,
+			bonusRules,
+			shareTokenMetadata: share ?? undefined,
+		}) ?? undefined
 	)
-	const rewardValue = shareTokenBonusRuleNumber(obj.rewardValue ?? obj.reward_value)
-	if (minimumTopupAmount == null || rewardValue == null) return undefined
-	const rewardTypeRaw = String(obj.rewardType ?? obj.reward_type ?? '').trim().toLowerCase()
-	const rewardType: 'percent' | 'fixed' =
-		rewardTypeRaw === 'fixed' ? 'fixed' : rewardTypeRaw === 'percent' ? 'percent' : 'percent'
-	const validFrom =
-		typeof obj.validFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.validFrom.trim())
-			? obj.validFrom.trim()
-			: undefined
-	const validTo =
-		typeof obj.validTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.validTo.trim())
-			? obj.validTo.trim()
-			: undefined
-	return {
-		enabled: obj.enabled === false ? false : true,
-		...(validFrom ? { validFrom } : {}),
-		...(validTo ? { validTo } : {}),
-		minimumTopupAmount,
-		rewardType,
-		rewardValue,
-	}
 }
 
 function shareTokenBonusRuleFromUnknown(
@@ -3804,7 +3787,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const discoverAbout = shareTokenDiscoverAboutFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
-		const topupPromotion = shareTokenTopupPromotionFromUnknown(share)
+		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -3861,7 +3844,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const discoverAbout = shareTokenDiscoverAboutFromUnknown(share)
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
-		const topupPromotion = shareTokenTopupPromotionFromUnknown(share)
+		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -4010,7 +3993,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const discoverAbout = shareTokenDiscoverAboutFromUnknown(shareObj)
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
-		const topupPromotion = shareTokenTopupPromotionFromUnknown(shareObj)
+		const topupPromotion = shareTokenTopupPromotionFromShare(shareObj, bonusRule, bonusRules)
 		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
 		const coupons = shareTokenCouponsFromUnknown(shareObj)
 		const productions = shareTokenProductionsFromUnknown(shareObj)

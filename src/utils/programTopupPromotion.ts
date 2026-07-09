@@ -13,13 +13,14 @@ export type TopupPromotionDraft = {
 	rewardValue: string
 }
 
+/** Default to fixed currency bonus — matches POS mint semantics merchants expect for “+10”. */
 export const EMPTY_TOPUP_PROMOTION_DRAFT: TopupPromotionDraft = {
 	enabled: false,
 	validityPeriodEnabled: false,
 	validFrom: '',
 	validTo: '',
 	minimumTopupAmount: '',
-	rewardType: 'percent',
+	rewardType: 'fixed',
 	rewardValue: '',
 }
 
@@ -35,6 +36,66 @@ function parseYmd(raw: unknown): string | undefined {
 	const t = raw.trim()
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return undefined
 	return t
+}
+
+function approxEq(a: number, b: number): boolean {
+	return Math.abs(a - b) < 0.005
+}
+
+/**
+ * Legacy buggy encode wrote `rewardType: percent` + `bonusValue: rewardValue` (unscaled).
+ * Correct percent encode uses `bonusValue = paymentAmount * rewardValue / 100`.
+ * Heal unscaled rows to **fixed** so UI matches on-chain +CA$N bonus.
+ */
+export function healTopupPromotionRewardType(
+	promo: ShareTokenMetadataTopupPromotion,
+	legacyBonus?: ShareTokenMetadataBonusRule | null,
+): ShareTokenMetadataTopupPromotion {
+	if (promo.rewardType !== 'percent') return promo
+	const min = parseAmount(promo.minimumTopupAmount)
+	const reward = parseAmount(promo.rewardValue)
+	if (min == null || reward == null) return promo
+	const scaled = Math.round(min * reward) / 100
+	if (!legacyBonus) return promo
+	const bv = parseAmount(legacyBonus.bonusValue)
+	if (bv == null) return promo
+	// Legacy confirms correct percent encode — keep merchant percent setting.
+	if (legacyBonus.bonusProportional && approxEq(bv, scaled)) {
+		return promo.rewardType === 'percent' ? promo : { ...promo, rewardType: 'percent' }
+	}
+	// Legacy flat bonus with mismatched percent label → fixed.
+	if (!legacyBonus.bonusProportional && approxEq(bv, reward)) {
+		return { ...promo, rewardType: 'fixed' }
+	}
+	// Buggy percent encode: bonusValue left unscaled (== rewardValue) instead of min*% .
+	if (legacyBonus.bonusProportional && approxEq(bv, reward) && !approxEq(bv, scaled)) {
+		return { ...promo, rewardType: 'fixed' }
+	}
+	return promo
+}
+
+function inferTopupPromotionRewardType(
+	rewardTypeRaw: string,
+	min: number,
+	reward: number,
+	legacy?: ShareTokenMetadataBonusRule | null,
+): TopupPromotionRewardType {
+	if (rewardTypeRaw === 'percent') return 'percent'
+	if (rewardTypeRaw === 'fixed') return 'fixed'
+	if (legacy?.bonusProportional) {
+		const legacyMin = parseAmount(legacy.paymentAmount)
+		const bv = parseAmount(legacy.bonusValue)
+		if (legacyMin != null && bv != null && legacyMin > 0) {
+			const scaled = Math.round(legacyMin * reward) / 100
+			if (approxEq(bv, scaled)) return 'percent'
+			if (approxEq(bv, reward) && !approxEq(bv, scaled)) return 'fixed'
+		}
+	}
+	if (legacy && !legacy.bonusProportional) {
+		const bv = parseAmount(legacy.bonusValue)
+		if (bv != null && approxEq(bv, reward)) return 'fixed'
+	}
+	return 'fixed'
 }
 
 export function formatLocalYmd(d: Date = new Date()): string {
@@ -61,6 +122,12 @@ export function isTopupPromotionActive(
 	return true
 }
 
+/**
+ * Canonical → legacy bonusRule.
+ * - fixed: bonus = rewardValue, not proportional
+ * - percent: bonusValue = paymentAmount * (rewardValue/100), proportional
+ *   so POS `principal * bonusValue / paymentAmount` == `principal * rewardValue / 100`
+ */
 export function topupPromotionToLegacyBonusRule(
 	promo: ShareTokenMetadataTopupPromotion,
 ): ShareTokenMetadataBonusRule | null {
@@ -73,10 +140,19 @@ export function topupPromotionToLegacyBonusRule(
 	const reward = parseAmount(promo.rewardValue)
 	if (min == null || reward == null) return null
 	if (promo.enabled === false) return null
+	if (promo.rewardType === 'percent') {
+		const bonusValue = Math.round(min * reward) / 100
+		if (bonusValue <= 0) return null
+		return {
+			paymentAmount: min,
+			bonusValue,
+			bonusProportional: true,
+		}
+	}
 	return {
 		paymentAmount: min,
 		bonusValue: reward,
-		bonusProportional: promo.rewardType === 'percent',
+		bonusProportional: false,
 	}
 }
 
@@ -85,52 +161,66 @@ export function legacyBonusRuleToTopupPromotion(
 ): ShareTokenMetadataTopupPromotion | null {
 	if (!rule) return null
 	const min = parseAmount(rule.paymentAmount)
-	const reward = parseAmount(rule.bonusValue)
-	if (min == null || reward == null) return null
+	const bonus = parseAmount(rule.bonusValue)
+	if (min == null || bonus == null) return null
+	if (rule.bonusProportional) {
+		const pct = Math.round((bonus / min) * 10000) / 100
+		if (pct <= 0) return null
+		return {
+			enabled: true,
+			minimumTopupAmount: min,
+			rewardType: 'percent',
+			rewardValue: pct,
+		}
+	}
 	return {
 		enabled: true,
 		minimumTopupAmount: min,
-		rewardType: rule.bonusProportional ? 'percent' : 'fixed',
-		rewardValue: reward,
+		rewardType: 'fixed',
+		rewardValue: bonus,
 	}
+}
+
+function firstLegacyBonusRule(meta: Record<string, unknown>): ShareTokenMetadataBonusRule | null {
+	const rules = meta.bonusRules ?? meta.bonusRule
+	const first = Array.isArray(rules) ? rules[0] : rules
+	if (first && typeof first === 'object') return first as ShareTokenMetadataBonusRule
+	return null
 }
 
 export function parseTopupPromotionFromMetadata(meta: Record<string, unknown> | null | undefined): ShareTokenMetadataTopupPromotion | null {
 	if (!meta) return null
+	const legacyRoot = firstLegacyBonusRule(meta)
+	const stm = meta.shareTokenMetadata
+	const legacyStm =
+		stm && typeof stm === 'object' ? firstLegacyBonusRule(stm as Record<string, unknown>) : null
+	const legacy = legacyRoot ?? legacyStm
+
 	const direct = meta.topupPromotion
 	if (direct && typeof direct === 'object') {
-		return normalizeTopupPromotionPayload(direct as Record<string, unknown>)
+		const normalized = normalizeTopupPromotionPayload(direct as Record<string, unknown>, legacy)
+		return normalized ? healTopupPromotionRewardType(normalized, legacy) : null
 	}
-	const stm = meta.shareTokenMetadata
 	if (stm && typeof stm === 'object') {
 		const nested = (stm as Record<string, unknown>).topupPromotion
 		if (nested && typeof nested === 'object') {
-			return normalizeTopupPromotionPayload(nested as Record<string, unknown>)
+			const normalized = normalizeTopupPromotionPayload(nested as Record<string, unknown>, legacy)
+			return normalized ? healTopupPromotionRewardType(normalized, legacy) : null
 		}
 	}
-	const rules = meta.bonusRules ?? meta.bonusRule
-	const first = Array.isArray(rules) ? rules[0] : rules
-	if (first && typeof first === 'object') {
-		return legacyBonusRuleToTopupPromotion(first as ShareTokenMetadataBonusRule)
-	}
-	if (stm && typeof stm === 'object') {
-		const stmRec = stm as Record<string, unknown>
-		const stmRules = stmRec.bonusRules ?? stmRec.bonusRule
-		const stmFirst = Array.isArray(stmRules) ? stmRules[0] : stmRules
-		if (stmFirst && typeof stmFirst === 'object') {
-			return legacyBonusRuleToTopupPromotion(stmFirst as ShareTokenMetadataBonusRule)
-		}
-	}
+	if (legacy) return legacyBonusRuleToTopupPromotion(legacy)
 	return null
 }
 
-export function normalizeTopupPromotionPayload(raw: Record<string, unknown>): ShareTokenMetadataTopupPromotion | null {
+export function normalizeTopupPromotionPayload(
+	raw: Record<string, unknown>,
+	legacyBonus?: ShareTokenMetadataBonusRule | null,
+): ShareTokenMetadataTopupPromotion | null {
 	const min = parseAmount(raw.minimumTopupAmount ?? raw.minimum_topup_amount)
 	const reward = parseAmount(raw.rewardValue ?? raw.reward_value)
 	if (min == null || reward == null) return null
 	const rewardTypeRaw = String(raw.rewardType ?? raw.reward_type ?? '').trim().toLowerCase()
-	const rewardType: TopupPromotionRewardType =
-		rewardTypeRaw === 'fixed' ? 'fixed' : rewardTypeRaw === 'percent' ? 'percent' : 'percent'
+	const rewardType = inferTopupPromotionRewardType(rewardTypeRaw, min, reward, legacyBonus)
 	const enabled = raw.enabled === false ? false : true
 	return {
 		enabled,
@@ -157,7 +247,7 @@ export function topupPromotionDraftFromMetadata(
 			promo.minimumTopupAmount != null && Number.isFinite(Number(promo.minimumTopupAmount))
 				? String(promo.minimumTopupAmount)
 				: '',
-		rewardType: promo.rewardType === 'fixed' ? 'fixed' : 'percent',
+		rewardType: promo.rewardType === 'percent' ? 'percent' : 'fixed',
 		rewardValue:
 			promo.rewardValue != null && Number.isFinite(Number(promo.rewardValue)) ? String(promo.rewardValue) : '',
 	}

@@ -12,7 +12,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
-import { checkStorage, searchUsername, storeSystemData, checkBUnitClaimEligibility, signAndClaimBUnits } from "@/services/beamio"
+import { checkStorage, searchUsername, storeSystemData, runAutoBUnitFreeClaimIfEligible } from "@/services/beamio"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
 import { isRpcDegraded } from "@/utils/rpcStatus"
@@ -168,10 +168,8 @@ function AppShell() {
       return
     }
     bUnitClaimAttemptedRef.current = true
-    checkBUnitClaimEligibility(claimant).then(async (r) => {
-      if (!r.canClaim || r.nonce == null || r.deadline == null) return
-      const result = await signAndClaimBUnits(p0.privateKeyArmor!, claimant, r.nonce, r.deadline)
-      if (result.success) {
+    void runAutoBUnitFreeClaimIfEligible(p0.privateKeyArmor!, claimant).then((outcome) => {
+      if (outcome === 'claimed_success') {
         Toast.show({ content: '20 B-Units claimed!', position: 'top' })
       }
     }).catch(() => {})

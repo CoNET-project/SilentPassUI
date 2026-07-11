@@ -624,20 +624,7 @@ const DISCOVER_MERCHANT_CURATED_OFFERS: Record<string, DiscoverMerchantCuratedOf
 			pointsMallLabel: "Points Mall",
 			redeemFootnote: "Redeemable for Store Credit or USDC",
 		},
-		collectOffers: [
-			{
-				id: "free-soy-milk",
-				title: "Free Soy Milk",
-				subtitle: "With any dim sum order",
-				accent: "blue",
-			},
-			{
-				id: "cash-voucher-5",
-				title: "$5 Cash Voucher",
-				subtitle: "Min spend $30",
-				accent: "orange",
-			},
-		],
+		collectOffers: [],
 		socialMissions: {
 			title: "Social Missions",
 			missions: [

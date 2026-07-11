@@ -1,10 +1,8 @@
 import { type ReactNode } from 'react'
-import { HelpCircle, CreditCard, Gift, Heart, Loader2, MousePointerClick, Share2, UserRound } from 'lucide-react'
+import { HelpCircle, Loader2, Share2 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
-import {
-	type DiscoverActivePromotionsPanelModel,
-	type DiscoverSocialMissionMetrics,
-} from '../../utils/discoverMerchantPromotions'
+import { type DiscoverActivePromotionsPanelModel } from '../../utils/discoverMerchantPromotions'
+import { DiscoverSocialMissionEarnColumns } from './DiscoverSocialMissionEarnColumns'
 
 const ACCENT = '#8d3a8b'
 const ACCENT_SURFACE = '#f5ecff'
@@ -44,55 +42,10 @@ function PromotionHelpButton(props: { detailText: string; ariaLabel: string }) {
 	)
 }
 
-function SocialMissionMetricsPill(props: { metrics: DiscoverSocialMissionMetrics }) {
-	const { metrics } = props
-	const items: Array<{ icon: typeof MousePointerClick; value: number }> = []
-	if (metrics.linkClick != null) items.push({ icon: MousePointerClick, value: metrics.linkClick })
-	if (metrics.like != null) items.push({ icon: Heart, value: metrics.like })
-	if (metrics.topup != null) items.push({ icon: CreditCard, value: metrics.topup })
-	if (items.length === 0) return null
-	return (
-		<div className="flex min-w-0 flex-1 items-center gap-3 rounded-full bg-slate-100 px-3 py-1.5 dark:bg-slate-800">
-			{items.map(({ icon: Icon, value }, idx) => (
-				<span key={idx} className="inline-flex items-center gap-1 text-sm font-semibold text-[#1f2328] dark:text-slate-100">
-					<Icon className="h-3.5 w-3.5 shrink-0" style={{ color: ACCENT }} strokeWidth={2.25} aria-hidden />
-					{value.toLocaleString('en-US')}
-				</span>
-			))}
-		</div>
-	)
-}
-
-function SocialMissionRoleRow(props: {
-	icon: ReactNode
-	metrics: DiscoverSocialMissionMetrics
-	detailText: string
-	ariaLabel: string
-}) {
-	return (
-		<div className="flex items-center gap-2.5">
-			{props.icon}
-			<SocialMissionMetricsPill metrics={props.metrics} />
-			<PromotionHelpButton detailText={props.detailText} ariaLabel={props.ariaLabel} />
-		</div>
-	)
-}
-
 function SectionIcon(props: { children: ReactNode }) {
 	return (
 		<div
 			className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-			style={{ backgroundColor: ACCENT_SURFACE, color: ACCENT }}
-		>
-			{props.children}
-		</div>
-	)
-}
-
-function RoleIcon(props: { children: ReactNode }) {
-	return (
-		<div
-			className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
 			style={{ backgroundColor: ACCENT_SURFACE, color: ACCENT }}
 		>
 			{props.children}
@@ -121,6 +74,10 @@ export function DiscoverMerchantActivePromotionsPanel(props: {
 
 	const { activeCount, socialMissions } = model
 	const showCardSocial = socialMissions.user || socialMissions.referrer
+	const helpText = [socialMissions.userDetailText, socialMissions.referrer ? 'Want more? Become a referrer.' : '']
+		.map((s) => s.trim())
+		.filter(Boolean)
+		.join(' ')
 
 	return (
 		<div className="rounded-[22px] bg-white px-5 py-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-6">
@@ -141,35 +98,17 @@ export function DiscoverMerchantActivePromotionsPanel(props: {
 							<SectionIcon>
 								<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 							</SectionIcon>
-							<div className="min-w-0 flex-1 space-y-3">
-								<p className="text-sm font-semibold text-[#1f2328] dark:text-slate-100">Social Missions</p>
-								<div className="space-y-3">
-									<p className="text-xs font-medium text-slate-500 dark:text-slate-400">Program card</p>
-									{socialMissions.user ? (
-										<SocialMissionRoleRow
-											icon={
-												<RoleIcon>
-													<UserRound className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-												</RoleIcon>
-											}
-											metrics={socialMissions.user}
-											detailText={socialMissions.userDetailText}
-											ariaLabel="User social mission details"
-										/>
-									) : null}
-									{socialMissions.referrer ? (
-										<SocialMissionRoleRow
-											icon={
-												<RoleIcon>
-													<Gift className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-												</RoleIcon>
-											}
-											metrics={socialMissions.referrer}
-											detailText="Want more? Become a referrer."
-											ariaLabel="Referrer reward details"
-										/>
+							<div className="min-w-0 flex-1">
+								<div className="mb-3 flex items-center justify-between gap-2">
+									<p className="text-sm font-semibold text-[#1f2328] dark:text-slate-100">Social Missions</p>
+									{helpText ? (
+										<PromotionHelpButton detailText={helpText} ariaLabel="Social mission details" />
 									) : null}
 								</div>
+								<DiscoverSocialMissionEarnColumns
+									user={socialMissions.user}
+									referrer={socialMissions.referrer}
+								/>
 							</div>
 						</div>
 					</div>

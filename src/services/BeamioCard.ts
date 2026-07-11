@@ -628,6 +628,36 @@ const OPEN_CLAIM_ONCHAIN_READ_ABI = [
 	'function issuedNftMintedCount(uint256 tokenId) view returns (uint256)',
 ] as const
 
+/** True if EOA or linked AA still holds this issued coupon NFT (owned, not yet burned). */
+async function userHoldsIssuedCouponNft(
+	cardAddress: string,
+	userNorm: string,
+	tokenIdN: bigint,
+): Promise<boolean | null> {
+	try {
+		const card = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(card)
+		const cardContract = new ethers.Contract(
+			card,
+			['function balanceOf(address account, uint256 id) view returns (uint256)'],
+			provider,
+		)
+		let total = 0n
+		total += (await cardContract.balanceOf(userNorm, tokenIdN)) as bigint
+		const aa = await resolveBeamioAaOnConet(provider, userNorm).catch(() => null)
+		if (aa) {
+			try {
+				total += (await cardContract.balanceOf(aa, tokenIdN)) as bigint
+			} catch {
+				/* keep EOA portion */
+			}
+		}
+		return total > 0n
+	} catch {
+		return null
+	}
+}
+
 /** Same semantics as x402sdk `readCouponRequiresRedeemCode`. */
 export function readCouponRequiresRedeemCode(meta: Record<string, unknown> | null | undefined): boolean {
 	if (!meta || typeof meta !== 'object') return false
@@ -730,13 +760,15 @@ export async function resolveCouponOpenClaimEligibility(
 	try {
 		const cardRead = openClaimCardReadContract(row.cardAddress)
 		const userNorm = ethers.getAddress(userEOA)
-		const [priceInCurrency6, alreadyClaimed, maxSupply, mintedCount] = await Promise.all([
+		const [priceInCurrency6, alreadyClaimed, maxSupply, mintedCount, holdsNft] = await Promise.all([
 			cardRead.issuedNftPriceInCurrency6(tokenIdN) as Promise<bigint>,
 			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
 			cardRead.issuedNftMaxSupply(tokenIdN) as Promise<bigint>,
 			cardRead.issuedNftMintedCount(tokenIdN) as Promise<bigint>,
+			userHoldsIssuedCouponNft(row.cardAddress, userNorm, tokenIdN),
 		])
-		if (alreadyClaimed) return 'already_claimed'
+		// Already claimed/redeemed, or still holding the NFT — no Claim CTA on Discover.
+		if (alreadyClaimed || holdsNft === true) return 'already_claimed'
 		if (priceInCurrency6 !== 0n) return 'not_open_claim'
 		if (maxSupply > 0n && mintedCount >= maxSupply) return 'already_claimed'
 		const socialExchange = readSocialExchangeFromMetadata(row.metadata ?? null)

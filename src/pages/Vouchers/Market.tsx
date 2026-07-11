@@ -1283,12 +1283,16 @@ function DiscoverMerchantCouponOfferRow({
 	getPrivateKeyArmor?: () => string | undefined
 	onWalletUnlock?: () => void
 }) {
-	const showClaimButton = claimEligibility != null && claimEligibility !== 'not_open_claim'
 	const isAlreadyClaimed = claimEligibility === 'already_claimed'
 	const insufficientSocialPoints = claimEligibility === 'insufficient_social_points'
+	// Show Claim CTA, or a green check when already owned / claimed / redeemed.
+	const showClaimButton =
+		claimEligibility != null && claimEligibility !== 'not_open_claim'
 	const canClaim =
-		claimEligibility === 'claimable' || claimEligibility === 'unknown'
-	const claimDisabled = isAlreadyClaimed || insufficientSocialPoints || !canClaim || claimStatus !== 'idle'
+		!isAlreadyClaimed &&
+		(claimEligibility === 'claimable' || claimEligibility === 'unknown')
+	const claimDisabled =
+		isAlreadyClaimed || insufficientSocialPoints || !canClaim || claimStatus !== 'idle'
 	const ticketActionStatus: DiscoverCouponClaimButtonStatus =
 		claimStatus !== 'idle'
 			? claimStatus
@@ -1324,11 +1328,11 @@ function DiscoverMerchantCouponOfferRow({
 					getPrivateKeyArmor={getPrivateKeyArmor}
 					onWalletUnlock={onWalletUnlock}
 					showActionButton={showClaimButton}
-					actionLabel={tu('claim')}
+					actionLabel={isAlreadyClaimed ? tu('owned') : tu('claim')}
 					actionStatus={ticketActionStatus}
 					actionError={claimError}
 					disabled={claimDisabled}
-					onAction={canClaim && !isAlreadyClaimed ? onClaim : undefined}
+					onAction={canClaim ? onClaim : undefined}
 					aria-label={
 						isAlreadyClaimed
 							? `Coupon ${row.coupon.title} already claimed`

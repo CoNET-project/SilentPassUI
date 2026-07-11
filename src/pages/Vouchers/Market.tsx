@@ -133,6 +133,7 @@ import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPro
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
 import { DiscoverMerchantActivePromotionsPanel } from '@/components/discover/DiscoverMerchantActivePromotionsPanel'
+import { DiscoverCouponSharePromotionCard } from '@/components/discover/DiscoverCouponSharePromotionCard'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { formatBeamioTagDisplayLine } from '@/utils/aaMultisigTaskUi'
 import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
@@ -1303,42 +1304,61 @@ function DiscoverMerchantCouponOfferRow({
 			}),
 		[row.coupon.title, row.seriesRow.metadata, row.seriesRow.tokenId],
 	)
+	const showCouponSharePromotion = Boolean(
+		socialMissionBlock && (socialMissionBlock.user || socialMissionBlock.referrer),
+	)
 	return (
-		<div className="space-y-1.5">
-			<ActiveCouponTicketItem
-				row={row.coupon}
-				punchBgClassName="bg-white dark:bg-slate-900"
-				metadataBelowBackgroundImage
-				showOpenClaimShareButton
-				showUserLike
-				socialMissionUser={socialMissionBlock?.user ?? null}
-				socialMissionReferrer={socialMissionBlock?.referrer ?? null}
-				referrerEoa={referrerEoa}
-				getPrivateKeyArmor={getPrivateKeyArmor}
-				onWalletUnlock={onWalletUnlock}
-				showActionButton={showClaimButton}
-				actionLabel={tu('claim')}
-				actionStatus={ticketActionStatus}
-				actionError={claimError}
-				disabled={claimDisabled}
-				onAction={canClaim && !isAlreadyClaimed ? onClaim : undefined}
-				aria-label={
-					isAlreadyClaimed
-						? `Coupon ${row.coupon.title} already claimed`
-						: insufficientSocialPoints
-							? `Coupon ${row.coupon.title} requires more social points`
-							: `Claim coupon ${row.coupon.title}`
-				}
-			/>
-			{insufficientSocialPoints ? (
-				<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-					Not enough social points for this exchange.
-				</p>
-			) : null}
-			{row.supplySummary ? (
-				<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-					{row.supplySummary}
-				</p>
+		<div className="space-y-3">
+			<div className="space-y-1.5">
+				<ActiveCouponTicketItem
+					row={row.coupon}
+					punchBgClassName="bg-white dark:bg-slate-900"
+					metadataBelowBackgroundImage
+					showOpenClaimShareButton
+					showUserLike
+					socialMissionUser={showCouponSharePromotion ? null : socialMissionBlock?.user ?? null}
+					socialMissionReferrer={
+						showCouponSharePromotion ? null : socialMissionBlock?.referrer ?? null
+					}
+					referrerEoa={referrerEoa}
+					getPrivateKeyArmor={getPrivateKeyArmor}
+					onWalletUnlock={onWalletUnlock}
+					showActionButton={showClaimButton}
+					actionLabel={tu('claim')}
+					actionStatus={ticketActionStatus}
+					actionError={claimError}
+					disabled={claimDisabled}
+					onAction={canClaim && !isAlreadyClaimed ? onClaim : undefined}
+					aria-label={
+						isAlreadyClaimed
+							? `Coupon ${row.coupon.title} already claimed`
+							: insufficientSocialPoints
+								? `Coupon ${row.coupon.title} requires more social points`
+								: `Claim coupon ${row.coupon.title}`
+					}
+				/>
+				{insufficientSocialPoints ? (
+					<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+						Not enough social points for this exchange.
+					</p>
+				) : null}
+				{row.supplySummary ? (
+					<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+						{row.supplySummary}
+					</p>
+				) : null}
+			</div>
+			{showCouponSharePromotion && row.coupon.couponId ? (
+				<DiscoverCouponSharePromotionCard
+					cardAddress={row.coupon.cardAddress}
+					couponId={row.coupon.couponId}
+					couponTitle={row.coupon.title}
+					couponSubtitle={row.coupon.subtitle}
+					metadata={(row.seriesRow.metadata as Record<string, unknown> | null) ?? null}
+					sharerMetrics={socialMissionBlock?.referrer ?? null}
+					fallbackYouMetrics={socialMissionBlock?.user ?? null}
+					getPrivateKeyArmor={getPrivateKeyArmor}
+				/>
 			) : null}
 		</div>
 	)
@@ -4175,6 +4195,9 @@ function DiscoverMerchantDetailFullScreen({
 							<DiscoverMerchantActivePromotionsPanel
 								model={promotionsLoaded ? activePromotionsPanel : null}
 								loading={merchantOffersLoading && !promotionsLoaded}
+								merchantName={item.title}
+								cardAddress={item.cardAddress}
+								getPrivateKeyArmor={getPrivateKeyArmorForLike}
 							/>
 						)
 					})()}

@@ -4196,7 +4196,7 @@ function DiscoverMerchantDetailFullScreen({
 								model={promotionsLoaded ? activePromotionsPanel : null}
 								loading={merchantOffersLoading && !promotionsLoaded}
 								merchantName={item.title}
-								cardAddress={item.cardAddress}
+								cardAddress={item.cardAddress ?? ''}
 								getPrivateKeyArmor={getPrivateKeyArmorForLike}
 							/>
 						)

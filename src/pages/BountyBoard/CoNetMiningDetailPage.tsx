@@ -12,6 +12,9 @@ import {
 	Loader2,
 	ArrowRight,
 	CheckCircle2,
+	Check,
+	Copy,
+	ExternalLink,
 	Lock,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -116,6 +119,51 @@ function beneficiaryHasNodes(profile: ValidatorWalletNodeProfile | null): boolea
 function shortAddress(addr: string): string {
 	if (addr.length < 12) return addr
 	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
+function NodeWalletAddressCapsule({ address }: { address: string }) {
+	const [copied, setCopied] = useState(false)
+	const normalized = address.trim()
+	if (!normalized) return null
+
+	const copyAddress = async (event: React.MouseEvent<HTMLButtonElement>) => {
+		event.preventDefault()
+		event.stopPropagation()
+		try {
+			await navigator.clipboard.writeText(normalized)
+			setCopied(true)
+			window.setTimeout(() => setCopied(false), 2000)
+		} catch {
+			// Clipboard access can be unavailable in non-secure browser contexts.
+		}
+	}
+
+	return (
+		<div className="inline-flex max-w-full items-center overflow-hidden rounded-full border border-[#dce2f7] bg-[#e9edff] text-[#424655]">
+			<a
+				href={`https://mainnet.conet.network/address/${encodeURIComponent(normalized)}`}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-2.5 text-xs font-medium transition hover:bg-[#dfe5ff]"
+				aria-label={`Open node wallet ${normalized} on CoNET Explorer`}
+			>
+				<span className="truncate font-mono">{shortAddress(normalized)}</span>
+				<ExternalLink className="h-3.5 w-3.5 shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
+			</a>
+			<button
+				type="button"
+				onClick={copyAddress}
+				className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#0051d1] transition hover:bg-[#dfe5ff]"
+				aria-label={copied ? 'Node wallet address copied' : 'Copy node wallet address'}
+			>
+				{copied ? (
+					<Check className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.5} aria-hidden />
+				) : (
+					<Copy className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+				)}
+			</button>
+		</div>
+	)
 }
 
 function shortValidatorPubkey(pubkey: string | undefined): string {
@@ -533,9 +581,7 @@ export default function CoNetMiningDetailPage() {
 													>
 														<td className="py-3 pr-3 align-top">
 															<div className="flex items-center gap-2">
-																<span className="font-mono text-xs text-slate-800 dark:text-slate-100">
-																	{shortAddress(row.nodeWallet)}
-																</span>
+																<NodeWalletAddressCapsule address={row.nodeWallet} />
 																<span
 																	className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
 																	title="DePIN node: online"

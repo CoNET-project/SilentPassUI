@@ -166,6 +166,53 @@ function NodeWalletAddressCapsule({ address }: { address: string }) {
 	)
 }
 
+function ValidatorPubkeyCapsule({ pubkey }: { pubkey: string | undefined }) {
+	const [copied, setCopied] = useState(false)
+	const normalized = pubkey?.trim() ?? ''
+	if (!normalized) {
+		return <span className="font-mono text-xs text-slate-400">Pending</span>
+	}
+
+	const copyPubkey = async (event: React.MouseEvent<HTMLButtonElement>) => {
+		event.preventDefault()
+		event.stopPropagation()
+		try {
+			await navigator.clipboard.writeText(normalized)
+			setCopied(true)
+			window.setTimeout(() => setCopied(false), 2000)
+		} catch {
+			// Clipboard access can be unavailable in non-secure browser contexts.
+		}
+	}
+
+	return (
+		<div className="inline-flex max-w-full items-center overflow-hidden rounded-full border border-[#dce2f7] bg-[#e9edff] text-[#424655]">
+			<a
+				href={`https://mainnet.conet.network/search-results?q=${encodeURIComponent(normalized)}`}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-2.5 text-xs font-medium transition hover:bg-[#dfe5ff]"
+				aria-label={`Open validator ${normalized} on CoNET Explorer`}
+			>
+				<span className="truncate font-mono">{shortValidatorPubkey(normalized)}</span>
+				<ExternalLink className="h-3.5 w-3.5 shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
+			</a>
+			<button
+				type="button"
+				onClick={copyPubkey}
+				className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#0051d1] transition hover:bg-[#dfe5ff]"
+				aria-label={copied ? 'Validator pubkey copied' : 'Copy validator pubkey'}
+			>
+				{copied ? (
+					<Check className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.5} aria-hidden />
+				) : (
+					<Copy className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+				)}
+			</button>
+		</div>
+	)
+}
+
 function shortValidatorPubkey(pubkey: string | undefined): string {
 	if (!pubkey) return 'Pending'
 	const hex = pubkey.startsWith('0x') ? pubkey.slice(2) : pubkey
@@ -634,12 +681,7 @@ export default function CoNetMiningDetailPage() {
 														className="border-b border-slate-50 last:border-0 dark:border-slate-800"
 													>
 														<td className="py-3 pr-3 align-top">
-															<span
-																className="font-mono text-xs text-slate-800 dark:text-slate-100"
-																title={row.validatorPubkey ?? 'Validator not registered yet'}
-															>
-																{shortValidatorPubkey(row.validatorPubkey)}
-															</span>
+															<ValidatorPubkeyCapsule pubkey={row.validatorPubkey} />
 														</td>
 														<td className="py-3 pr-3 align-top">
 															<span

@@ -440,7 +440,6 @@ import {
  Code,
  UserPlus,
  BadgeInfo,
- Ban,
  Fingerprint,
  Layers,
  Medal,
@@ -1284,11 +1283,12 @@ type MarketFuelPackage = {
   badge?: string
 }
 
+/** SaaS B-Unit packs for Market → Unit Provisioning / Refill Packages (CAD label; checkout USDC). */
 const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
   {
     id: 'genesis_starter',
-    name: 'Genesis Starter',
-    desc: 'Extreme ice-breaker for new stores and early makers. Zero-friction setup to go live.',
+    name: 'Novice Genesis Pack',
+    desc: 'Ultimate ice-breaker for new stores and early makers. Zero-friction setup to go live.',
     priceCad: 19,
     bUnits: 2000,
     usdcAmount: '20',
@@ -1296,7 +1296,7 @@ const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
   {
     id: 'trial',
     name: 'Trial Pack',
-    desc: 'Single-point validation.',
+    desc: 'Basic single-point validation.',
     priceCad: 49,
     bUnits: 3430,
     usdcAmount: '34.3',
@@ -2160,8 +2160,8 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   onBusinessDraftUpdated?: () => void;
   onBack: () => void;
   onLiteBusinessSavedToChain: () => void;
-  /** Cover page kit CTA → full-screen checkout (Programs kit Stripe / USDC flow). */
-  onOpenKitCheckout: (plan: MerchantKitCheckoutPlanId) => void;
+  /** Cover pack CTA → custom fuel USDC checkout (`MARKET_FUEL_PACKAGES.usdcAmount`). */
+  onSelectFuelPack: (usdcAmount: string) => void;
   /** Opens the full-screen Understanding B-Units explainer (same as Programs “Learn about B-Units”). */
   onOpenUnderstandingBUnits?: () => void;
   redeemAdminInProgress?: boolean;
@@ -2173,14 +2173,13 @@ function MobileNoAaLiteMemberSelectionPage(props: {
     onBusinessDraftUpdated,
     onBack,
     onLiteBusinessSavedToChain,
-    onOpenKitCheckout,
+    onSelectFuelPack,
     onOpenUnderstandingBUnits,
     redeemAdminInProgress,
   } = props;
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
   const [showCover, setShowCover] = useState(true);
-  const [selectedPlan, setSelectedPlan] = useState<'lite' | 'standard' | 'custom' | 'enterprise'>('lite');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [storeName, setStoreName] = useState('');
   const [category, setCategory] = useState('');
@@ -2210,7 +2209,6 @@ function MobileNoAaLiteMemberSelectionPage(props: {
 
   useEffect(() => {
     setShowCover(true);
-    setSelectedPlan('lite');
   }, [merchantEoa]);
 
   const persist = useCallback(
@@ -2271,21 +2269,6 @@ function MobileNoAaLiteMemberSelectionPage(props: {
     }
   };
 
-  const selectedPlanLabel =
-    selectedPlan === 'lite'
-      ? 'Lite Kit'
-      : selectedPlan === 'standard'
-        ? 'Standard Kit'
-        : selectedPlan === 'custom'
-          ? 'Custom Kit'
-          : 'Enterprise Kit';
-
-  const openCoverKitCheckout = (plan: 'lite' | 'standard' | 'custom') => {
-    if (plan === 'lite') onOpenKitCheckout('lite_kit');
-    else if (plan === 'standard') onOpenKitCheckout('standard_kit');
-    else onOpenKitCheckout('custom_kit');
-  };
-
   if (showCover) {
     return (
       <div className="relative min-h-[max(884px,100dvh)] bg-[#f5f7f9] text-[#2c2f31] antialiased">
@@ -2305,9 +2288,9 @@ function MobileNoAaLiteMemberSelectionPage(props: {
           </div>
           <button
             type="button"
-            onClick={() => openCoverKitCheckout('lite')}
+            onClick={() => onOpenUnderstandingBUnits?.()}
             className={`flex shrink-0 items-center justify-center rounded-full p-1 text-slate-500 transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
-            aria-label="Open Lite kit checkout"
+            aria-label="Learn about B-Units"
           >
             <HelpCircle className="size-5" strokeWidth={2} aria-hidden />
           </button>
@@ -2316,153 +2299,52 @@ function MobileNoAaLiteMemberSelectionPage(props: {
         <main className="min-h-screen px-6 pb-32 pt-24">
           <section className="mb-12">
             <span className="mb-3 block text-[10px] font-semibold uppercase tracking-[0.15em] text-[#0051d1]">
-              Membership Selection
+              Fuel Packages
             </span>
             <h2 className="mb-4 font-manrope text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">
-              Set up your first program
+              Choose a B-Unit pack
             </h2>
             <p className="max-w-[90%] text-base leading-relaxed text-[#595c5e]">
-              Choose your merchant starter kit to launch your digital and physical tap-to-pay network.
+              Select a SaaS fuel package to power digital transactions on your merchant network.
             </p>
           </section>
 
-          <div className="flex flex-col gap-8">
-            <div className="rounded-[2rem] border border-white bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)]">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-manrope text-xl font-bold">Lite Kit</h3>
-                  <p className="mt-1 text-xs font-medium text-[#0051d1]">Best for pure digital testing</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-2xl font-extrabold text-[#2c2f31]">C$19</span>
-                </div>
-              </div>
-              <ul className="mb-8 space-y-4">
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">500 B-Units included</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <Ban className="size-4 shrink-0 text-[#abadaf]" strokeWidth={2} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]/60">No NFC Cards</span>
-                </li>
-              </ul>
-              <button
-                type="button"
-                onClick={() => openCoverKitCheckout('lite')}
-                className={`w-full rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.2)] transition-all active:scale-95 hover:bg-[#0047b8] ${bizFocusRingClass}`}
+          <div className="flex flex-col gap-6">
+            {MARKET_FUEL_PACKAGES.map((pkg) => (
+              <div
+                key={pkg.id}
+                className={
+                  pkg.highlighted
+                    ? 'relative overflow-hidden rounded-[2rem] border-2 border-[#0051d1]/10 bg-white p-8 shadow-[0_30px_60px_rgba(21,98,240,0.12)]'
+                    : 'rounded-[2rem] border border-white bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)]'
+                }
               >
-                Select Lite
-              </button>
-            </div>
-
-            <div className="rounded-[2rem] border border-white bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)]">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-manrope text-xl font-bold">Standard Kit</h3>
-                  <p className="mt-1 text-xs font-medium text-[#0051d1]">Best for quick launch</p>
+                {pkg.badge ? (
+                  <div className="absolute right-0 top-0">
+                    <div className="rounded-bl-2xl bg-[#0051d1] px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-sm">
+                      {pkg.badge}
+                    </div>
+                  </div>
+                ) : null}
+                <div className={`mb-6 flex items-start justify-between gap-4 ${pkg.badge ? 'pt-2' : ''}`}>
+                  <div>
+                    <h3 className="font-manrope text-xl font-bold">{pkg.name}</h3>
+                    <p className="mt-1 text-xs font-medium text-[#0051d1]">{pkg.desc}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="text-2xl font-extrabold text-[#2c2f31]">{formatMarketFuelPriceCad(pkg)}</span>
+                    <p className="mt-1 text-[11px] font-bold text-[#0051d1]">{formatMarketFuelBUnits(pkg)}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-2xl font-extrabold text-[#2c2f31]">C$69</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelectFuelPack(pkg.usdcAmount)}
+                  className={`w-full rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.2)] transition-all active:scale-95 hover:bg-[#0047b8] ${bizFocusRingClass}`}
+                >
+                  Select {pkg.name}
+                </button>
               </div>
-              <ul className="mb-8 space-y-4">
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">2,000 B-Units included</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">10 Generic NFC Cards</span>
-                </li>
-              </ul>
-              <button
-                type="button"
-                onClick={() => openCoverKitCheckout('standard')}
-                className={`w-full rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.2)] transition-all active:scale-95 hover:bg-[#0047b8] ${bizFocusRingClass}`}
-              >
-                Select Standard
-              </button>
-            </div>
-
-            <div className="relative overflow-hidden rounded-[2rem] border-2 border-[#0051d1]/10 bg-white p-8 shadow-[0_30px_60px_rgba(21,98,240,0.12)]">
-              <div className="absolute right-0 top-0">
-                <div className="rounded-bl-2xl bg-[#0051d1] px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-sm">
-                  Recommended
-                </div>
-              </div>
-              <div className="mb-6 flex items-start justify-between gap-4 pt-2">
-                <div>
-                  <h3 className="font-manrope text-xl font-bold">Custom Kit</h3>
-                  <p className="mt-1 text-xs font-medium text-[#0051d1]">Best for growing brands</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-2xl font-extrabold text-[#2c2f31]">C$139</span>
-                </div>
-              </div>
-              <ul className="mb-8 space-y-4">
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-bold text-[#2c2f31]">5,000 B-Units included</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">20 Generic NFC Cards</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">Custom Design Service</span>
-                </li>
-              </ul>
-              <button
-                type="button"
-                onClick={() => openCoverKitCheckout('custom')}
-                className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-[0_15px_30px_rgba(0,81,209,0.3)] transition-all active:scale-95 hover:bg-[#0047b8] ${bizFocusRingClass}`}
-              >
-                <span>Get Custom Kit</span>
-                <ArrowRight className="size-4" strokeWidth={2.3} aria-hidden />
-              </button>
-              <div className="absolute -bottom-12 -right-12 h-32 w-32 rounded-full bg-[#0051d1]/5 blur-3xl" aria-hidden />
-            </div>
-
-            <div className="rounded-[2rem] border border-[#abadaf]/10 bg-[#eef1f3] p-8 shadow-[0_10px_30px_rgba(0,0,0,0.01)]">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-manrope text-xl font-bold text-[#2c2f31]">Enterprise Kit</h3>
-                  <p className="mt-1 text-xs font-medium text-[#595c5e]">For large scale networks</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-lg font-bold text-[#0051d1]">Contact</span>
-                </div>
-              </div>
-              <ul className="mb-8 space-y-4">
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#515c70]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">Dedicated nodes</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#515c70]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">Unlimited B-Units</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="size-4 shrink-0 text-[#515c70]" strokeWidth={2.5} aria-hidden />
-                  <span className="text-sm font-medium text-[#595c5e]">Priority support 24/7</span>
-                </li>
-              </ul>
-              <button
-                type="button"
-                onClick={() => {
-                  window.open(
-                    'mailto:support@beamio.app?subject=Beamio%20Business%20Enterprise%20Kit%20inquiry',
-                    '_blank',
-                    'noopener,noreferrer'
-                  );
-                }}
-                className={`w-full rounded-full bg-[#d9dde0] py-4 text-sm font-bold text-[#2c2f31] transition-all active:scale-95 hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
-              >
-                Inquire for Enterprise
-              </button>
-            </div>
+            ))}
           </div>
 
           <section className="mt-16 rounded-[2rem] border border-white/20 bg-white/50 p-8">
@@ -2489,10 +2371,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
           <div className="mt-10 pb-8 text-center">
             <button
               type="button"
-              onClick={() => {
-                setSelectedPlan('lite');
-                setShowCover(false);
-              }}
+              onClick={() => setShowCover(false)}
               className={`text-sm font-semibold text-[#0051d1] underline-offset-4 hover:underline ${bizFocusRingClass}`}
             >
               Already purchased? Complete business setup
@@ -2525,7 +2404,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
           <div className="min-w-0">
             <span className="block truncate font-manrope text-lg font-black tracking-tight text-[#1562f0]">Beamio Business Lite</span>
             <span className="block truncate text-[11px] font-semibold uppercase tracking-[0.15em] text-[#595c5e]">
-              {selectedPlanLabel}
+              Business setup
             </span>
           </div>
         </div>
@@ -27790,7 +27669,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
                       setLiteChainAckRevision((n) => n + 1);
                     }}
-                    onOpenKitCheckout={openMerchantKitCheckout}
+                    onSelectFuelPack={(usdcAmount) => {
+                      setCustomFuelAmount(usdcAmount);
+                      setSelectedProduct('custom_fuel');
+                    }}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
                   />
@@ -30151,81 +30033,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                </section>
 
-               <section className="space-y-6">
-                 <h2 className="text-2xl font-bold tracking-tight text-[#2c2f31]">Expansion Programs</h2>
-                 <div className="grid grid-cols-1 gap-6">
-                   <div className="flex flex-col justify-between rounded-lg bg-white p-6 shadow-sm transition-transform duration-300 hover:-translate-y-1">
-                     <div>
-                       <div className="mb-4 flex items-start justify-between">
-                         <MonitorSmartphone className="size-6 text-[#595c5e]" strokeWidth={2} aria-hidden />
-                         <span className="text-sm font-bold text-slate-400">C$19</span>
-                       </div>
-                       <h3 className="text-lg font-bold text-[#2c2f31]">Lite Kit</h3>
-                       <p className="mt-2 text-xs leading-relaxed text-[#595c5e]">
-                         Infrastructure-free deployment. Includes 500 B-Units for immediate digital issuance.
-                       </p>
-                     </div>
-                     <div className="mt-8 flex items-center justify-between border-t border-[#eef1f3] pt-4">
-                       <span className="text-[10px] font-bold uppercase text-slate-400">Digital Only</span>
-                       <button
-                         type="button"
-                         onClick={() => handleTabChange(PROGRAM_TAB_BASIC)}
-                         className={`group flex items-center gap-1 text-sm font-bold text-[#0051d1] ${bizFocusRingClass}`}
-                       >
-                         Add <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" strokeWidth={2} aria-hidden />
-                       </button>
-                     </div>
-                   </div>
-
-                   <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-[#0051d1] to-[#0047b8] p-8 text-white shadow-2xl shadow-[#0051d1]/20">
-                     <div className="relative z-10 space-y-4">
-                       <span className="inline-block rounded-full bg-[#7a9dff]/35 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
-                         Recommended
-                       </span>
-                       <h3 className="text-3xl font-extrabold">Custom Kit</h3>
-                       <p className="max-w-sm text-sm text-white/90">
-                         Full brand immersion. 20x Custom NFC Cards, 5,000 B-Units, and Priority Support.
-                       </p>
-                       <div className="flex flex-wrap items-center gap-4">
-                         <span className="text-4xl font-black">C$139</span>
-                         <button
-                           type="button"
-                           onClick={() => setSelectedProduct('custom_kit')}
-                           className={`rounded-full bg-white px-8 py-3 text-sm font-bold text-[#0051d1] transition-all hover:scale-105 active:scale-95 ${bizFocusRingClass}`}
-                         >
-                           Get Started
-                         </button>
-                       </div>
-                     </div>
-                   </div>
-
-                   <div className="flex flex-col gap-8 rounded-lg border border-[#eef1f3] bg-white p-6">
-                     <div className="flex flex-1 items-center gap-6">
-                       <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-[#eef1f3]">
-                         <Package className="size-8 text-[#515c70]" strokeWidth={2} aria-hidden />
-                       </div>
-                       <div className="min-w-0">
-                         <h3 className="text-xl font-bold text-[#2c2f31]">Standard Kit</h3>
-                        <p className="text-sm text-[#595c5e]">2,000 B-Units + 10x Beamio NFC Cards (White Edition)</p>
-                       </div>
-                     </div>
-                     <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                       <div className="text-left sm:text-right">
-                         <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Price</span>
-                         <span className="text-2xl font-bold text-[#2c2f31]">C$69</span>
-                       </div>
-                       <button
-                         type="button"
-                         onClick={() => setSelectedProduct('standard_kit')}
-                         className={`w-full rounded-full border-2 border-[#0051d1] px-10 py-3 text-sm font-bold text-[#0051d1] transition-all hover:bg-[#0051d1] hover:text-white sm:w-auto ${bizFocusRingClass}`}
-                       >
-                         Pre-order
-                       </button>
-                     </div>
-                   </div>
-                 </div>
-               </section>
-
                <section className="rounded-xl border-2 border-dashed border-[#abadaf]/30 bg-[#e5e9eb] p-8 text-center">
                  <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Have a Voucher?</h4>
                  <p className="mx-auto mb-6 max-w-sm text-sm text-[#595c5e]">
@@ -30249,7 +30056,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      onClick={() => void submitMerchantKitBuintRedeem()}
                      className="rounded-full bg-[#2c2f31] px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
                    >
-                     {merchantKitBuintRedeemBusy ? '…' : '兑换'}
+                     {merchantKitBuintRedeemBusy ? '…' : 'Activate'}
                    </button>
                  </div>
                  {merchantKitRedeemFeedback ? (
@@ -30324,101 +30131,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                </section>
 
                {showBizFirstMembershipOnboarding ? (
-                 <>
-                   {/* Activation narrative — aligned with newOnloading.html */}
-                   <section className="mx-auto mb-10 max-w-2xl text-center">
-                     <h2 className="mb-4 font-sans text-4xl font-extrabold tracking-tight text-[#2c2f31] md:text-5xl">
-                       Activate your business infrastructure
-                     </h2>
-                     <p className="text-lg font-medium leading-relaxed text-slate-600">
-                       B-Units are the{' '}
-                       <span className="font-semibold text-[#2c2f31]">microscopic fuel</span> that powers card issuance, top-ups, and secure
-                       commerce interactions in your network.
-                     </p>
-                   </section>
+                 <section className="mx-auto mb-10 max-w-2xl text-center">
+                   <h2 className="mb-4 font-sans text-4xl font-extrabold tracking-tight text-[#2c2f31] md:text-5xl">
+                     Activate your business infrastructure
+                   </h2>
+                   <p className="text-lg font-medium leading-relaxed text-slate-600">
+                     B-Units are the{' '}
+                     <span className="font-semibold text-[#2c2f31]">microscopic fuel</span> that powers card issuance, top-ups, and secure
+                     commerce interactions in your network.
+                   </p>
+                 </section>
+               ) : null}
 
-                   {/* Starter kits — newOnloading.html Option 01 / 02 */}
-                   <section className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-2">
-                     <div className="group flex h-full flex-col rounded-lg border-none bg-slate-50 p-7 shadow-[0_20px_40px_rgba(0,0,0,0.02)] transition-all duration-500 hover:shadow-[0_40px_80px_rgba(21,98,240,0.05)]">
-                       <div className="mb-5">
-                         <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600">Option 01</span>
-                         <h3 className="mt-2 font-sans text-3xl font-extrabold text-[#2c2f31]">Standard Kit</h3>
-                       </div>
-                       <div className="mb-5 flex items-baseline gap-2">
-                         <span className="text-sm font-bold text-slate-600">C$</span>
-                         <span className="font-sans text-5xl font-black text-[#2c2f31]">69</span>
-                       </div>
-                       <div className="mb-8 flex-1 space-y-3">
-                         <div className="flex items-center gap-3">
-                           <Zap className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                           <span className="text-slate-600">
-                             Includes <strong className="text-[#2c2f31]">2,000 B-Units</strong>
-                           </span>
-                         </div>
-                         <div className="flex items-center gap-3">
-                           <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                           <span className="text-slate-600">Core Issuance Features</span>
-                         </div>
-                         <div className="flex items-center gap-3">
-                           <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                           <span className="text-slate-600">Standard API Access</span>
-                         </div>
-                       </div>
-                       <button
-                         type="button"
-                         onClick={() => setSelectedProduct('standard_kit')}
-                         className={`w-full rounded-full bg-slate-200 py-5 text-base font-bold text-[#2c2f31] transition-all duration-300 hover:bg-[#1562f0] hover:text-white ${bizFocusRingClass}`}
-                       >
-                         Select Standard
-                       </button>
-                     </div>
-
-                     <div className="group relative">
-                       <div className="absolute inset-0 -z-10 rounded-lg bg-[#1562f0]/5 blur-3xl" aria-hidden />
-                       <div className="relative flex h-full flex-col overflow-hidden rounded-lg border-none bg-white p-7 shadow-[0_40px_80px_rgba(21,98,240,0.12)]">
-                         <div className="absolute right-0 top-0 rounded-bl-2xl bg-[#1562f0] px-6 py-2 text-xs font-bold uppercase tracking-widest text-white">
-                           Recommended
-                         </div>
-                         <div className="mb-5">
-                           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">Option 02</span>
-                           <h3 className="mt-2 font-sans text-3xl font-extrabold text-[#2c2f31]">Custom Kit</h3>
-                         </div>
-                         <div className="mb-5 flex items-baseline gap-2">
-                           <span className="text-sm font-bold text-slate-600">C$</span>
-                           <span className="font-sans text-5xl font-black text-[#2c2f31]">139</span>
-                         </div>
-                         <div className="mb-8 flex-1 space-y-3">
-                           <div className="flex items-center gap-3">
-                             <Star className="size-5 shrink-0 fill-[#1562f0] text-[#1562f0]" strokeWidth={2} aria-hidden />
-                             <span className="text-[#2c2f31]">
-                               Includes <strong className="text-lg text-[#1562f0]">5,000 B-Units</strong>
-                             </span>
-                           </div>
-                           <div className="flex items-center gap-3">
-                             <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                             <span className="text-slate-600">Priority Transaction Processing</span>
-                           </div>
-                           <div className="flex items-center gap-3">
-                             <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                             <span className="text-slate-600">Premium Developer Sandbox</span>
-                           </div>
-                           <div className="flex items-center gap-3">
-                             <CheckCircle2 className="size-5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                             <span className="text-slate-600">24/7 Priority Ecosystem Support</span>
-                           </div>
-                         </div>
-                         <button
-                           type="button"
-                           onClick={() => setSelectedProduct('custom_kit')}
-                           className={`w-full rounded-full bg-[#1562f0] py-5 text-base font-bold text-white shadow-[0_20px_40px_rgba(21,98,240,0.3)] transition-all duration-300 hover:scale-[1.02] ${bizFocusRingClass}`}
-                         >
-                           Select Recommended
-                         </button>
-                       </div>
-                     </div>
-                   </section>
-                 </>
-               ) : (
                <section id="market-fuel-marketplace" className="mb-8">
                  <div className="mb-5 flex flex-col justify-between gap-3 md:flex-row md:items-end">
                    <div>
@@ -30498,9 +30222,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                    ))}
                  </div>
-
                </section>
-               )}
 
                <section className="max-w-2xl">
                  <div className="rounded-xl border border-white/40 bg-[#eef1f3] p-6">
@@ -30666,7 +30388,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
                       setLiteChainAckRevision((n) => n + 1);
                     }}
-                    onOpenKitCheckout={openMerchantKitCheckout}
+                    onSelectFuelPack={(usdcAmount) => {
+                      setCustomFuelAmount(usdcAmount);
+                      setSelectedProduct('custom_fuel');
+                    }}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
                   />
@@ -31640,101 +31365,67 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    {tu('programs_onboarding_subtitle')}
                  </p>
                </header>
-               <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2">
-                 <div className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.06)] transition-colors hover:border-slate-300">
-                   <div>
-                     <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                       <div className="min-w-0 pr-2">
-                         <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">{tu('programs_kit_standard_title')}</h2>
-                         <p className="mt-1.5 text-sm font-normal leading-snug text-slate-600">
-                           {tu('programs_kit_standard_desc')}
-                         </p>
-                       </div>
-                       <div className="flex shrink-0 flex-col items-start gap-0.5 sm:items-end sm:text-right">
-                         <span className="text-2xl font-bold tabular-nums text-slate-900">C$69</span>
-                         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{tu('programs_kit_one_time')}</span>
-                       </div>
-                     </div>
-                     <div className="mb-8 rounded-2xl bg-[#f3f4f6] px-4 py-4">
-                       <div className="mb-1.5 flex items-center gap-3">
-                         <Coins className="size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                         <span className="text-sm font-bold text-slate-900">{tu('programs_kit_bunits_2000')}</span>
-                       </div>
-                       <p className="ml-8 pl-0 text-xs font-normal leading-snug text-slate-600 sm:ml-9">{tu('programs_kit_covers_1000')}</p>
-                     </div>
-                     <ul className="mb-10 space-y-3.5">
-                       <li className="flex items-start gap-3">
-                         <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                         <span className="text-sm font-normal leading-snug text-slate-700">{tu('programs_kit_feat_activation')}</span>
-                       </li>
-                       <li className="flex items-start gap-3">
-                         <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                        <span className="text-sm font-normal leading-snug text-slate-700">{tu('programs_kit_feat_nfc_10')}</span>
-                       </li>
-                       <li className="flex items-start gap-3">
-                         <CheckCircle2 className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                         <span className="text-sm font-normal leading-snug text-slate-700">{tu('programs_kit_feat_order_generic')}</span>
-                       </li>
-                     </ul>
-                   </div>
-                   <button
-                     type="button"
-                     onClick={() => openMerchantKitCheckout('standard_kit')}
-                     className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-[#e5e8eb] active:scale-[0.99] ${bizFocusRingClass}`}
+               <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                 {MARKET_FUEL_PACKAGES.map((pkg) => (
+                   <div
+                     key={pkg.id}
+                     className={
+                       pkg.highlighted
+                         ? 'relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 border-[#0051d1] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.08)]'
+                         : 'group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.06)] transition-colors hover:border-slate-300'
+                     }
                    >
-                     {tu('programs_kit_activate_standard')}
-                   </button>
-                 </div>
-                 <div className="relative overflow-hidden rounded-2xl border-2 border-[#0051d1] bg-white shadow-[0_20px_40px_rgba(21,98,240,0.08)]">
-                   <div className="pointer-events-none absolute inset-0 rounded-[14px] bg-gradient-to-br from-[#0051d1]/[0.04] to-transparent" aria-hidden />
-                   <div className="relative flex h-full flex-col justify-between p-6">
-                     <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-[#0051d1]/5 blur-3xl" aria-hidden />
-                     <div className="relative z-10">
-                       <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                     {pkg.badge ? (
+                       <div className="mb-3 inline-block self-start rounded-full bg-[#0051d1] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+                         {pkg.badge}
+                       </div>
+                     ) : null}
+                     <div>
+                       <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                          <div className="min-w-0 pr-2">
-                           <div className="mb-2 inline-block rounded-full bg-[#0051d1] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
-                             {tu('programs_kit_recommended')}
-                           </div>
-                           <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">{tu('programs_kit_custom_title')}</h2>
-                           <p className="mt-1.5 text-sm font-normal leading-snug text-slate-600">
-                             {tu('programs_kit_custom_desc')}
-                           </p>
+                           <h2
+                             className={
+                               pkg.highlighted
+                                 ? 'text-xl font-bold tracking-tight text-[#0051d1] sm:text-2xl'
+                                 : 'text-xl font-bold tracking-tight text-slate-800 sm:text-2xl'
+                             }
+                           >
+                             {pkg.name}
+                           </h2>
+                           <p className="mt-1.5 text-sm font-normal leading-snug text-slate-600">{pkg.desc}</p>
                          </div>
                          <div className="flex shrink-0 flex-col items-start gap-0.5 sm:items-end sm:text-right">
-                           <span className="text-2xl font-bold tabular-nums text-[#0051d1]">C$139</span>
-                           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{tu('programs_kit_one_time')}</span>
+                           <span
+                             className={
+                               pkg.highlighted
+                                 ? 'text-2xl font-bold tabular-nums text-[#0051d1]'
+                                 : 'text-2xl font-bold tabular-nums text-slate-900'
+                             }
+                           >
+                             {formatMarketFuelPriceCad(pkg)}
+                           </span>
+                           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                             {formatMarketFuelBUnits(pkg)}
+                           </span>
                          </div>
                        </div>
-                       <div className="mb-8 rounded-2xl border border-[#c7d7f5] bg-[#e8f0fe] px-4 py-4">
-                         <div className="mb-1.5 flex items-center gap-3">
-                           <Coins className="size-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                           <span className="text-sm font-bold text-slate-900">{tu('programs_kit_bunits_5000')}</span>
-                         </div>
-                         <p className="ml-8 pl-0 text-xs font-normal leading-snug text-slate-600 sm:ml-9">{tu('programs_kit_covers_2500')}</p>
-                       </div>
-                       <ul className="mb-10 space-y-3.5">
-                         {[
-                           tu('programs_kit_feat_activation'),
-                           tu('programs_kit_feat_nfc_20'),
-                           tu('programs_kit_feat_custom_design'),
-                           tu('programs_kit_feat_order_custom'),
-                         ].map((line) => (
-                           <li key={line} className="flex items-start gap-3">
-                             <BadgeCheck className="mt-0.5 size-[1.125rem] shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-                             <span className="text-sm font-normal leading-snug text-slate-700">{line}</span>
-                           </li>
-                         ))}
-                       </ul>
                      </div>
                      <button
                        type="button"
-                       onClick={() => openMerchantKitCheckout('custom_kit')}
-                       className={`relative z-10 w-full rounded-full bg-gradient-to-br from-[#0051d1] to-[#7a9dff] py-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,81,209,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] ${bizFocusRingClass}`}
+                       onClick={() => {
+                         setCustomFuelAmount(pkg.usdcAmount);
+                         setSelectedProduct('custom_fuel');
+                       }}
+                       className={
+                         pkg.highlighted
+                           ? `mt-6 w-full rounded-full bg-gradient-to-br from-[#0051d1] to-[#7a9dff] py-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,81,209,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] ${bizFocusRingClass}`
+                           : `mt-6 w-full rounded-full bg-[#eef1f3] py-4 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-[#e5e8eb] active:scale-[0.99] ${bizFocusRingClass}`
+                       }
                      >
-                       {tu('programs_kit_activate_custom')}
+                       Select {pkg.name}
                      </button>
                    </div>
-                 </div>
+                 ))}
                </section>
                <section className="mb-12 grid grid-cols-1 items-center gap-8 rounded-xl bg-[#eef1f3] p-6 md:grid-cols-12 lg:p-8">
                  <div className="relative h-56 md:col-span-5">
@@ -40554,14 +40245,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-xl bg-[#0051d1] text-white shadow-lg">
                    <Coins className="size-9" strokeWidth={2} aria-hidden />
                  </div>
-                 <span className="text-lg font-black tracking-tighter text-[#0051d1]">5,000 B</span>
+                 <span className="text-lg font-black tracking-tighter text-[#0051d1]">~15k B</span>
                </div>
                <div className="flex-1 text-center md:text-left">
-                 <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">What does 5,000 B-Units mean for you?</h4>
+                 <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">What does a Growth Pack mean for you?</h4>
                  <p className="text-sm leading-relaxed text-[#595c5e]">
-                   The <span className="font-bold text-[#2c2f31]">C$139 Custom Kit</span> includes 5,000 B-Units. This is enough fuel to automatically
-                   process over <span className="font-bold text-[#0051d1]">2,500 customer transactions</span>, or secure your first{' '}
-                   <span className="font-bold text-[#0051d1]">$3,500 in customer top-ups</span>—completely free of traditional POS fees!
+                   The <span className="font-bold text-[#2c2f31]">C$199 Growth Pack</span> includes about 15,380 B-Units. This is enough fuel to
+                   automatically process over <span className="font-bold text-[#0051d1]">7,500 customer transactions</span>, or secure substantial
+                   customer top-ups—without traditional POS fees.
                  </p>
                </div>
              </section>

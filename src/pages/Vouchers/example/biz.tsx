@@ -1270,6 +1270,82 @@ const BEAMIO_APP_URL = 'https://beamio.app'
 const DASHBOARD_POINTS_TOKEN_ID = 0n
 const ACTIVE_CARDS_LOOKBACK_DAYS = 90
 
+/** Market → Refill / Unit Provisioning packages (CAD label + USDC checkout at 100 B-Units per 1 USDC). */
+type MarketFuelPackage = {
+  id: string
+  name: string
+  desc: string
+  priceCad: number
+  bUnits: number
+  bUnitsApproximate?: boolean
+  /** USDC amount passed to custom fuel checkout (`bUnits / 100`). */
+  usdcAmount: string
+  highlighted?: boolean
+  badge?: string
+}
+
+const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
+  {
+    id: 'genesis_starter',
+    name: 'Genesis Starter',
+    desc: 'Extreme ice-breaker for new stores and early makers. Zero-friction setup to go live.',
+    priceCad: 19,
+    bUnits: 2000,
+    usdcAmount: '20',
+  },
+  {
+    id: 'trial',
+    name: 'Trial Pack',
+    desc: 'Single-point validation.',
+    priceCad: 49,
+    bUnits: 3430,
+    usdcAmount: '34.3',
+  },
+  {
+    id: 'growth',
+    name: 'Growth Pack',
+    desc: 'For high-frequency active stores and mature IPs.',
+    priceCad: 199,
+    bUnits: 15380,
+    bUnitsApproximate: true,
+    usdcAmount: '153.8',
+    highlighted: true,
+    badge: 'Best Value',
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise Pack',
+    desc: 'Large chains and top direct-sales teams.',
+    priceCad: 999,
+    bUnits: 80410,
+    bUnitsApproximate: true,
+    usdcAmount: '804.1',
+  },
+  {
+    id: 'institutional',
+    name: 'Institutional Pack',
+    desc: 'Super-node exclusive.',
+    priceCad: 4999,
+    bUnits: 419910,
+    bUnitsApproximate: true,
+    usdcAmount: '4199.1',
+  },
+]
+
+function formatMarketFuelBUnits(pkg: MarketFuelPackage): string {
+  const n = pkg.bUnits.toLocaleString('en-US')
+  return `${pkg.bUnitsApproximate ? '~' : ''}${n} B-Units`
+}
+
+function formatMarketFuelPriceCad(pkg: MarketFuelPackage): string {
+  return `C$${pkg.priceCad.toLocaleString('en-US')}`
+}
+
+function formatMarketFuelOrdersHint(pkg: MarketFuelPackage): string {
+  const orders = Math.floor(pkg.bUnits / 2)
+  return `Supports ~${orders.toLocaleString('en-US')} orders`
+}
+
 /** Programs → Checkout Center (see `marketExample.html`); Stripe uses `${BEAMIO_APP_URL}/api/merchantKitStripe/*`. */
 type MerchantKitCheckoutPlanId = 'lite_kit' | 'standard_kit' | 'custom_kit'
 
@@ -30012,72 +30088,66 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </span>
                  </div>
                  <div className="grid grid-cols-1 gap-6">
-                   <div className="group rounded-lg border border-transparent bg-white p-6 transition-all hover:border-[#0051d1]/10">
-                     <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-[#eef1f3] transition-colors group-hover:bg-[#0051d1]/10">
-                       <Zap className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                     </div>
-                     <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">Starter</h3>
-                     <p className="mb-6 text-sm text-[#595c5e]">Perfect for small testing batches.</p>
-                     <div className="mb-6">
-                       <span className="text-3xl font-extrabold text-[#2c2f31]">C$10</span>
-                       <span className="text-sm font-medium text-slate-400"> / 700 units</span>
-                     </div>
-                     <button
-                       type="button"
-                       onClick={() => {
-                         setCustomFuelAmount('7');
-                         setSelectedProduct('custom_fuel');
-                       }}
-                       className={`w-full rounded-full bg-[#eef1f3] py-3 text-sm font-bold text-[#2c2f31] transition-all hover:bg-[#0051d1] hover:text-white ${bizFocusRingClass}`}
+                   {MARKET_FUEL_PACKAGES.map((pkg) => (
+                     <div
+                       key={pkg.id}
+                       className={
+                         pkg.highlighted
+                           ? 'relative overflow-hidden rounded-lg border-2 border-[#0051d1]/20 bg-white p-6 shadow-xl shadow-[#0051d1]/5'
+                           : 'group rounded-lg border border-transparent bg-white p-6 transition-all hover:border-[#0051d1]/10'
+                       }
                      >
-                       Select Plan
-                     </button>
-                   </div>
-                   <div className="relative overflow-hidden rounded-lg border-2 border-[#0051d1]/20 bg-white p-6 shadow-xl shadow-[#0051d1]/5">
-                     <div className="absolute right-0 top-0 rounded-bl-xl bg-[#0051d1] px-4 py-1 text-[10px] font-black uppercase tracking-tighter text-white">
-                       Best Value
+                       {pkg.badge ? (
+                         <div className="absolute right-0 top-0 rounded-bl-xl bg-[#0051d1] px-4 py-1 text-[10px] font-black uppercase tracking-tighter text-white">
+                           {pkg.badge}
+                         </div>
+                       ) : null}
+                       <div
+                         className={
+                           pkg.highlighted
+                             ? 'mb-6 flex size-12 items-center justify-center rounded-2xl bg-[#0051d1]/10'
+                             : 'mb-6 flex size-12 items-center justify-center rounded-2xl bg-[#eef1f3] transition-colors group-hover:bg-[#0051d1]/10'
+                         }
+                       >
+                         {pkg.id === 'genesis_starter' ? (
+                           <Zap className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         ) : pkg.id === 'growth' ? (
+                           <Rocket className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         ) : pkg.id === 'institutional' ? (
+                           <Gem className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         ) : (
+                           <Package className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                         )}
+                       </div>
+                       <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">{pkg.name}</h3>
+                       <p className="mb-6 text-sm text-[#595c5e]">{pkg.desc}</p>
+                       <div className="mb-6">
+                         <span
+                           className={`text-3xl font-extrabold ${pkg.highlighted ? 'text-[#0051d1]' : 'text-[#2c2f31]'}`}
+                         >
+                           {formatMarketFuelPriceCad(pkg)}
+                         </span>
+                         <span className="text-sm font-medium text-slate-400">
+                           {' '}
+                           / {formatMarketFuelBUnits(pkg).replace(' B-Units', ' units')}
+                         </span>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={() => {
+                           setCustomFuelAmount(pkg.usdcAmount);
+                           setSelectedProduct('custom_fuel');
+                         }}
+                         className={
+                           pkg.highlighted
+                             ? `w-full rounded-full bg-[#0051d1] py-3 text-sm font-bold text-white transition-all hover:opacity-90 ${bizFocusRingClass}`
+                             : `w-full rounded-full bg-[#eef1f3] py-3 text-sm font-bold text-[#2c2f31] transition-all hover:bg-[#0051d1] hover:text-white ${bizFocusRingClass}`
+                         }
+                       >
+                         Select Plan
+                       </button>
                      </div>
-                     <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-[#0051d1]/10">
-                       <Rocket className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                     </div>
-                     <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">标准</h3>
-                     <p className="mb-6 text-sm text-[#595c5e]">Ideal for growing businesses.</p>
-                     <div className="mb-6">
-                       <span className="text-3xl font-extrabold text-[#0051d1]">C$50</span>
-                       <span className="text-sm font-medium text-slate-400"> / 3,850 units</span>
-                     </div>
-                     <button
-                       type="button"
-                       onClick={() => {
-                         setCustomFuelAmount('38.5');
-                         setSelectedProduct('custom_fuel');
-                       }}
-                       className={`w-full rounded-full bg-[#0051d1] py-3 text-sm font-bold text-white transition-all hover:opacity-90 ${bizFocusRingClass}`}
-                     >
-                       Select Plan
-                     </button>
-                   </div>
-                   <div className="group rounded-lg border border-transparent bg-white p-6 transition-all hover:border-[#0051d1]/10">
-                     <div className="mb-6 flex size-12 items-center justify-center rounded-2xl bg-[#eef1f3] transition-colors group-hover:bg-[#0051d1]/10">
-                       <Gem className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                     </div>
-                     <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">Pro</h3>
-                     <p className="mb-6 text-sm text-[#595c5e]">Enterprise-grade scale ready.</p>
-                     <div className="mb-6">
-                       <span className="text-3xl font-extrabold text-[#2c2f31]">C$100</span>
-                       <span className="text-sm font-medium text-slate-400"> / 8,400 units</span>
-                     </div>
-                     <button
-                       type="button"
-                       onClick={() => {
-                         setCustomFuelAmount('84');
-                         setSelectedProduct('custom_fuel');
-                       }}
-                       className={`w-full rounded-full bg-[#eef1f3] py-3 text-sm font-bold text-[#2c2f31] transition-all hover:bg-[#0051d1] hover:text-white ${bizFocusRingClass}`}
-                     >
-                       Select Plan
-                     </button>
-                   </div>
+                   ))}
                  </div>
                </section>
 
@@ -30360,90 +30430,73 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </div>
                  </div>
 
-                 <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-3">
-                   <div className="flex flex-col gap-4 rounded-lg border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
-                     <div className="flex items-start justify-between">
-                       <div>
-                         <h4 className="font-sans text-xl font-extrabold text-[#2c2f31]">Starter Pack</h4>
-                         <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~350 orders</p>
-                       </div>
-                       <div className="text-right">
-                         <div className="font-sans text-2xl font-extrabold text-[#2c2f31]">C$ 10.00</div>
-                         <div className="text-[12px] font-bold text-[#0051d1]">700 B-Units</div>
-                       </div>
-                     </div>
-                     <div className="flex-1" />
-                     <button
-                       type="button"
-                       onClick={() => {
-                         setCustomFuelAmount('7');
-                         setSelectedProduct('custom_fuel');
-                       }}
-                       className={`w-full rounded-full bg-[#eef1f3] py-4 text-sm font-bold text-[#2c2f31] transition-colors hover:bg-[#e5e9eb] active:scale-[0.98] ${bizFocusRingClass}`}
+                 <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">
+                   {MARKET_FUEL_PACKAGES.map((pkg) => (
+                     <div
+                       key={pkg.id}
+                       className={
+                         pkg.highlighted
+                           ? 'relative z-10 flex flex-col gap-4 overflow-hidden rounded-lg border-2 border-[#0051d1]/20 bg-white p-6 shadow-[0_30px_60px_rgba(21,98,240,0.12)]'
+                           : 'flex flex-col gap-4 rounded-lg border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md active:scale-[0.98]'
+                       }
                      >
-                       Buy Starter
-                     </button>
-                   </div>
-
-                   <div className="relative z-10 flex scale-100 flex-col gap-4 overflow-hidden rounded-lg border-2 border-[#0051d1]/20 bg-white p-6 shadow-[0_30px_60px_rgba(21,98,240,0.12)] md:scale-[1.05]">
-                     <div className="absolute right-0 top-0 rounded-bl-xl bg-[#0051d1] px-5 py-1.5">
-                       <span className="text-[11px] font-black uppercase tracking-wider text-white">+10% Bonus</span>
-                     </div>
-                     <div className="flex items-start justify-between pt-2">
-                       <div>
-                         <h4 className="font-sans text-2xl font-extrabold text-[#0051d1]">标准</h4>
-                         <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~1,925 orders</p>
-                       </div>
-                       <div className="text-right">
-                         <div className="flex flex-col items-end">
-                           <span className="text-xs text-[#747779] line-through opacity-60">C$ 55.00</span>
-                           <span className="font-sans text-3xl font-extrabold tracking-tighter text-[#2c2f31]">C$ 50.00</span>
+                       {pkg.badge ? (
+                         <div className="absolute right-0 top-0 rounded-bl-xl bg-[#0051d1] px-5 py-1.5">
+                           <span className="text-[11px] font-black uppercase tracking-wider text-white">{pkg.badge}</span>
                          </div>
-                         <div className="mt-1 text-[14px] font-bold text-[#0051d1]">3,850 B-Units</div>
-                       </div>
-                     </div>
-                     <div className="flex-1" />
-                     <button
-                       type="button"
-                       onClick={() => {
-                         setCustomFuelAmount('38.5');
-                         setSelectedProduct('custom_fuel');
-                       }}
-                       className={`w-full rounded-full bg-[#0051d1] py-4 text-base font-bold text-white shadow-lg shadow-[#0051d1]/30 transition-transform active:scale-95 ${bizFocusRingClass}`}
-                     >
-                       Buy Standard
-                     </button>
-                   </div>
-
-                   <div className="flex flex-col gap-4 rounded-lg border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md active:scale-[0.98]">
-                     <div className="flex items-start justify-between">
-                       <div>
-                         <div className="mb-2 inline-block rounded bg-[#f797ef] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#610e62]">
-                           +20% Bonus
+                       ) : null}
+                       <div className={`flex items-start justify-between ${pkg.badge ? 'pt-2' : ''}`}>
+                         <div>
+                           <h4
+                             className={
+                               pkg.highlighted
+                                 ? 'font-sans text-2xl font-extrabold text-[#0051d1]'
+                                 : 'font-sans text-xl font-extrabold text-[#2c2f31]'
+                             }
+                           >
+                             {pkg.name}
+                           </h4>
+                           <p className="mt-1 text-[12px] text-[#595c5e]">{pkg.desc}</p>
+                           <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelOrdersHint(pkg)}</p>
                          </div>
-                         <h4 className="font-sans text-xl font-extrabold text-[#2c2f31]">Pro Volume</h4>
-                         <p className="mt-1 text-[12px] text-[#595c5e]">Supports ~4,200 orders</p>
-                       </div>
-                       <div className="text-right">
-                         <div className="flex flex-col items-end">
-                           <span className="text-xs text-[#747779] line-through opacity-60">C$ 120.00</span>
-                           <span className="font-sans text-2xl font-extrabold text-[#2c2f31]">C$ 100.00</span>
+                         <div className="shrink-0 text-right">
+                           <div
+                             className={
+                               pkg.highlighted
+                                 ? 'font-sans text-3xl font-extrabold tracking-tighter text-[#2c2f31]'
+                                 : 'font-sans text-2xl font-extrabold text-[#2c2f31]'
+                             }
+                           >
+                             {formatMarketFuelPriceCad(pkg)}
+                           </div>
+                           <div
+                             className={
+                               pkg.highlighted
+                                 ? 'mt-1 text-[14px] font-bold text-[#0051d1]'
+                                 : 'text-[12px] font-bold text-[#0051d1]'
+                             }
+                           >
+                             {formatMarketFuelBUnits(pkg)}
+                           </div>
                          </div>
-                         <div className="mt-1 text-[12px] font-bold text-[#0051d1]">8,400 B-Units</div>
                        </div>
+                       <div className="flex-1" />
+                       <button
+                         type="button"
+                         onClick={() => {
+                           setCustomFuelAmount(pkg.usdcAmount);
+                           setSelectedProduct('custom_fuel');
+                         }}
+                         className={
+                           pkg.highlighted
+                             ? `w-full rounded-full bg-[#0051d1] py-4 text-base font-bold text-white shadow-lg shadow-[#0051d1]/30 transition-transform active:scale-95 ${bizFocusRingClass}`
+                             : `w-full rounded-full bg-[#eef1f3] py-4 text-sm font-bold text-[#2c2f31] transition-colors hover:bg-[#e5e9eb] active:scale-[0.98] ${bizFocusRingClass}`
+                         }
+                       >
+                         Buy {pkg.name}
+                       </button>
                      </div>
-                     <div className="flex-1" />
-                     <button
-                       type="button"
-                       onClick={() => {
-                         setCustomFuelAmount('84');
-                         setSelectedProduct('custom_fuel');
-                       }}
-                       className={`w-full rounded-full border-2 border-[#abadaf]/30 py-4 text-sm font-bold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] active:scale-[0.98] ${bizFocusRingClass}`}
-                     >
-                       Buy Pro
-                     </button>
-                   </div>
+                   ))}
                  </div>
 
                </section>
@@ -30486,7 +30539,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="flex items-center gap-3">
                        <Info className="size-[18px] shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                        <p className="text-xs font-medium leading-tight text-[#595c5e]">
-                         Packages compare at ~70 B-Units per C$1. Each Charge uses 2 B-Units. Settlement is USDC on Base at checkout.
+                         Packages compare at ~70 B-Units per C$1. Each Charge uses 5 B-Units. Settlement is USDC on Base at checkout.
                        </p>
                      </div>
                    </div>
@@ -40432,24 +40485,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <CreditCard className="size-6" strokeWidth={2} aria-hidden />
                  </div>
                  <h3 className="mb-2 text-lg font-bold text-[#2c2f31]">Customer Payment</h3>
-                <p className="mb-4 text-sm text-[#595c5e]">Flat rate for every successful sale transaction via the Beamio terminal.</p>
+                <p className="mb-4 text-sm text-[#595c5e]">Flat rate for every successful NFC/QR charge via the Beamio terminal.</p>
                  <div className="flex items-baseline gap-2">
-                   <span className="text-2xl font-extrabold tabular-nums text-[#2c2f31]">2 B-Units</span>
+                   <span className="text-2xl font-extrabold tabular-nums text-[#2c2f31]">5 B-Units</span>
                    <span className="text-xs font-medium text-[#595c5e]">/trans</span>
                  </div>
-                 <div className="mt-2 text-xs font-bold text-[#0051d1]">≈ C$0.03</div>
+                 <div className="mt-2 text-xs font-bold text-[#0051d1]">≈ C$0.07</div>
                </div>
                <div className="rounded-lg bg-[#eef1f3] p-6 transition-transform duration-300 hover:-translate-y-1">
                  <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-[#0051d1]/10 text-[#0051d1]">
                    <Wallet className="size-6" strokeWidth={2} aria-hidden />
                  </div>
                  <h3 className="mb-2 text-lg font-bold text-[#2c2f31]">Customer Top-up</h3>
-                 <p className="mb-4 text-sm text-[#595c5e]">Variable fuel based on the value loaded onto customer digital wallets.</p>
+                 <p className="mb-4 text-sm text-[#595c5e]">Flat rate for every successful NFC/QR top-up onto customer wallets.</p>
                  <div className="flex items-baseline gap-2">
-                   <span className="text-2xl font-extrabold tabular-nums text-[#2c2f31]">2%</span>
-                   <span className="text-xs font-medium text-[#595c5e]">of amount</span>
+                   <span className="text-2xl font-extrabold tabular-nums text-[#2c2f31]">20 B-Units</span>
+                   <span className="text-xs font-medium text-[#595c5e]">/top-up</span>
                  </div>
-                 <div className="mt-2 text-xs font-bold text-[#0051d1]">1 CAD = 70 B-Units (2% reload fee)</div>
+                 <div className="mt-2 text-xs font-bold text-[#0051d1]">Fixed fee · social events 0.1 B-Units each</div>
                </div>
                <div className="rounded-lg bg-[#eef1f3] p-6 transition-transform duration-300 hover:-translate-y-1">
                  <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-[#7a9dff]/20 text-[#0051d1]">

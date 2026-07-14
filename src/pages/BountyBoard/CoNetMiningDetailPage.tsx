@@ -188,7 +188,7 @@ function ValidatorPubkeyCapsule({ pubkey }: { pubkey: string | undefined }) {
 	return (
 		<div className="inline-flex max-w-full items-center overflow-hidden rounded-full border border-[#dce2f7] bg-[#e9edff] text-[#424655]">
 			<a
-				href={`https://mainnet.conet.network/search-results?q=${encodeURIComponent(normalized)}`}
+				href={`https://mainnet.conet.network/validator/${encodeURIComponent(normalized)}`}
 				target="_blank"
 				rel="noopener noreferrer"
 				className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-2.5 text-xs font-medium transition hover:bg-[#dfe5ff]"

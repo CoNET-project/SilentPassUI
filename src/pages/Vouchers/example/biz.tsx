@@ -19335,6 +19335,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    setProfileOwnsIssuedBeamioCardFetched(false);
    void (async () => {
      try {
+       const { loadApiExcludedUserCards } = await import('@/utils/apiExcludedUserCards');
+       await loadApiExcludedUserCards();
        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
        if (cancelled) return;
        /** Still pick primary when `trusted === false` (RPC/API degraded but profile or cache returned cards); otherwise Overview `staffProgram` stays null and Total Members hint never runs. */
@@ -25103,20 +25105,25 @@ useEffect(() => {
  }, [merchantEoaForLiteForm, liteBusinessFormRevision, liteChainAckRevision]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
- /** First-time merchant shell: no self-issued BeamioUserCard and no BusinessStartKet Ket #0 on CoNET. While issuer/Ket reads are in flight, keep legacy `!hasAaAccount` to avoid dashboard flash. */
+ /** No eligible merchant program card (factory cardsOfOwner, API-exclude filtered) and no Ket #0 — show Start Kit / first-setup shell. AA presence is not used. */
+ const lacksMerchantProgramCardAndKet = useMemo(
+   () =>
+     profileOwnsIssuedBeamioCardFetched &&
+     ownsBusinessStartKetToken0Fetched &&
+     !profileOwnsIssuedBeamioCard &&
+     !ownsBusinessStartKetToken0,
+   [
+     profileOwnsIssuedBeamioCardFetched,
+     ownsBusinessStartKetToken0Fetched,
+     profileOwnsIssuedBeamioCard,
+     ownsBusinessStartKetToken0,
+   ]
+ );
+ /** First-time merchant shell on `/home`: gate on merchant card (+ Ket), not AA. While issuer/Ket reads are in flight, hide onboarding to avoid false Start Kit redirect. */
  const showBizFirstMembershipOnboarding = useMemo(() => {
    if (verraLiteGateReleased) return false;
-   const bothFetched = profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
-   if (bothFetched) return !profileOwnsIssuedBeamioCard && !ownsBusinessStartKetToken0;
-   return !hasAaAccount;
- }, [
-   profileOwnsIssuedBeamioCardFetched,
-   ownsBusinessStartKetToken0Fetched,
-   profileOwnsIssuedBeamioCard,
-   ownsBusinessStartKetToken0,
-   hasAaAccount,
-   verraLiteGateReleased,
- ]);
+   return lacksMerchantProgramCardAndKet;
+ }, [verraLiteGateReleased, lacksMerchantProgramCardAndKet]);
 
  useLayoutEffect(() => {
    if (!merchantEoaForLiteForm) {
@@ -26213,7 +26220,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
        setIsAddTerminalOpen(true);
        return;
      }
-    if (!hasAaAccount) {
+    if (lacksMerchantProgramCardAndKet) {
       setActiveTab('Market');
       setSelectedProduct('starter');
       return;
@@ -31115,7 +31122,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    setIsAddTerminalOpen(true);
                    return;
                  }
-                if (!hasAaAccount) {
+                if (lacksMerchantProgramCardAndKet) {
                   setActiveTab('Market');
                   setSelectedProduct('starter');
                   return;

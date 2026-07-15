@@ -7234,7 +7234,11 @@ function mergeTopupRechargeBonusRowsIntoTopups(rows: TxDisplayRow[]): TxDisplayR
         : Math.abs(Number.isFinite(primary.total) ? primary.total : primary.ctreeAmount)
     const totalFiat = actualFiat + bonusFiat
     const usdcAmount = group.reduce((sum, row) => sum + (Number.isFinite(row.usdcAmount) ? Math.abs(row.usdcAmount) : 0), 0)
-    const bUnits = group.reduce((sum, row) => sum + (Number.isFinite(row.bUnits) ? row.bUnits : 0), 0)
+    /** B-Unit is once per top-up session — do not sum fees duplicated across cash/card/bonus legs. */
+    const bUnits = group.reduce((max, row) => {
+      const v = Number.isFinite(row.bUnits) ? row.bUnits : 0
+      return v > max ? v : max
+    }, 0)
     const latest = [...group].sort((a, b) => txDisplayRowTimestampSec(b) - txDisplayRowTimestampSec(a))[0] ?? primary
     replacement.set(primary.indexerTxId.toLowerCase(), {
       ...primary,
@@ -7325,24 +7329,43 @@ function mergeBuintFeeRowsIntoParents(
       (r.type === 'B-Unit Fee' || isBuintServiceFeeMergeIntoParentCategory((r.raw as { txCategory?: unknown }).txCategory)) &&
       feeCategorySet.has(txDisplayRowBuintServiceCategoryHex(r))
   )
+  /** Prefer non-bonus In-Store Top-Up (cash/card) so one fee is not applied to every split leg. */
+  const parentsOrdered = [...parents].sort((a, b) => {
+    const legA = parseTopupDisplayJsonForMerge(a.raw as Record<string, unknown>).topupPaymentLeg
+    const legB = parseTopupDisplayJsonForMerge(b.raw as Record<string, unknown>).topupPaymentLeg
+    const score = (leg: string) => (leg === 'bonus' ? 2 : leg === '' ? 1 : 0)
+    return score(legA) - score(legB)
+  })
   const absorbedFeeIds = new Set<string>()
-  const mergedParents: TxDisplayRow[] = []
+  const bumpByParentId = new Map<string, { bUnits: number; usdc: number }>()
 
-  for (const p of parents) {
-    const matching = fees.filter((f) => buintFeeRowMatchesParent(f, p))
-    if (matching.length === 0) {
-      mergedParents.push(p)
-      continue
-    }
+  for (const p of parentsOrdered) {
+    const matching = fees.filter(
+      (f) => !absorbedFeeIds.has(f.indexerTxId.toLowerCase()) && buintFeeRowMatchesParent(f, p)
+    )
+    if (matching.length === 0) continue
     for (const f of matching) absorbedFeeIds.add(f.indexerTxId.toLowerCase())
     const addedBUnits = matching.reduce((s, f) => s + (Number.isFinite(f.bUnits) ? f.bUnits : 0), 0)
     const addedUsdc = matching.reduce((s, f) => s + (Number.isFinite(f.usdcAmount) ? f.usdcAmount : 0), 0)
-    mergedParents.push({
-      ...p,
-      bUnits: (Number.isFinite(p.bUnits) ? p.bUnits : 0) + addedBUnits,
-      usdcAmount: Number.isFinite(p.usdcAmount) ? p.usdcAmount : addedUsdc > 0 ? addedUsdc : p.usdcAmount,
+    const id = p.indexerTxId.toLowerCase()
+    bumpByParentId.set(id, {
+      bUnits: (bumpByParentId.get(id)?.bUnits ?? 0) + addedBUnits,
+      usdc: (bumpByParentId.get(id)?.usdc ?? 0) + addedUsdc,
     })
   }
+
+  const mergedParents: TxDisplayRow[] = parents.map((p) => {
+    const bump = bumpByParentId.get(p.indexerTxId.toLowerCase())
+    if (!bump) return p
+    const baseBu = Number.isFinite(p.bUnits) ? p.bUnits : 0
+    /** Do not sum embedded main-row fees with the standalone `*:bunitService` (same 20 counted twice). */
+    const nextBu = Math.max(baseBu, bump.bUnits)
+    return {
+      ...p,
+      bUnits: nextBu,
+      usdcAmount: Number.isFinite(p.usdcAmount) ? p.usdcAmount : bump.usdc > 0 ? bump.usdc : p.usdcAmount,
+    }
+  })
 
   const orphanFees = fees.filter((f) => !absorbedFeeIds.has(f.indexerTxId.toLowerCase()))
   const rest = rows.filter((r) => {

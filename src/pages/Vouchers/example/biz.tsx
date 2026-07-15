@@ -1410,6 +1410,90 @@ function MarketHaveAVoucherPanel(props: {
   )
 }
 
+/** Published B-Unit protocol fees (display-only; 1 B-Unit = 0.01 USDC). */
+const MARKET_BUNIT_FEE_SCHEDULE_ROWS: ReadonlyArray<{ label: string; usdc: string; bUnits: string }> = [
+  {
+    label: 'USDC direct settlement',
+    usdc: '0.25 USDC',
+    bUnits: '25 B-Units / tx',
+  },
+  {
+    label: 'Stored-value / membership top-up',
+    usdc: '0.20 USDC',
+    bUnits: '20 B-Units / tx',
+  },
+  {
+    label: 'Charge / points redeem / coupon claim & burn',
+    usdc: '0.05 USDC',
+    bUnits: '5 B-Units / tx',
+  },
+  {
+    label: 'Coupon issuance',
+    usdc: '1.00 USDC',
+    bUnits: '100 B-Units / coupon',
+  },
+  {
+    label: 'Coupon redeem-code issuance',
+    usdc: '0.10 USDC',
+    bUnits: '10 B-Units / batch (up to 100 codes)',
+  },
+  {
+    label: 'Social action',
+    usdc: '0.001 USDC',
+    bUnits: '0.1 B-Units / action',
+  },
+]
+
+/**
+ * Start Kit Fuel Packages first row + Market above Unit Provisioning — B-Unit fee schedule.
+ * `stacked` matches Start Kit list cards; `market` sits above Unit Provisioning / Refill Packages.
+ */
+function MarketBUnitFeeSchedulePanel(props: { variant?: 'market' | 'stacked' }) {
+  const stacked = (props.variant ?? 'market') === 'stacked'
+  return (
+    <section
+      className={
+        stacked
+          ? 'rounded-[2rem] border border-white bg-white p-6 shadow-[0_10px_30px_rgba(0,0,0,0.02)] sm:p-8'
+          : 'rounded-lg border border-slate-100 bg-white p-5 shadow-sm sm:p-6'
+      }
+      aria-label="B-Unit fee schedule"
+    >
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.15em] text-[#0051d1]">
+            Protocol fuel
+          </span>
+          <h4 className={`font-bold text-[#2c2f31] ${stacked ? 'font-manrope text-xl' : 'text-lg'}`}>
+            B-Unit fee schedule
+          </h4>
+          <p className="mt-1 text-xs font-medium leading-relaxed text-[#595c5e] sm:text-sm">
+            Network fees paid in B-Units (1 B-Unit = 0.01 USDC). Keep a reserve before you go live.
+          </p>
+        </div>
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#0051d1]/10 text-[#0051d1]">
+          <Coins className="size-5" strokeWidth={2.2} aria-hidden />
+        </div>
+      </div>
+      <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-[#f5f7f9]/80">
+        {MARKET_BUNIT_FEE_SCHEDULE_ROWS.map((row) => (
+          <li
+            key={row.label}
+            className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+          >
+            <span className="text-sm font-semibold text-[#2c2f31]">{row.label}</span>
+            <span className="shrink-0 text-left text-xs font-medium text-[#595c5e] sm:text-right">
+              <span className="font-bold text-[#0051d1]">{row.usdc}</span>
+              <span className="text-[#abadaf]"> · </span>
+              {row.bUnits}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 /** Programs → Checkout Center (see `marketExample.html`); Stripe uses `${BEAMIO_APP_URL}/api/merchantKitStripe/*`. */
 type MerchantKitCheckoutPlanId = 'lite_kit' | 'standard_kit' | 'custom_kit'
 
@@ -2385,6 +2469,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
           </section>
 
           <div className="flex flex-col gap-6">
+            <MarketBUnitFeeSchedulePanel variant="stacked" />
             <MarketHaveAVoucherPanel
               variant="stacked"
               redeemInput={voucherRedeemInput}
@@ -30073,6 +30158,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                </section>
 
+               <MarketBUnitFeeSchedulePanel />
+
                <section className="space-y-6" id="market-fuel-mobile">
                  <div className="flex items-center justify-between gap-3">
                    <h2 className="text-2xl font-bold tracking-tight text-[#2c2f31]">Unit Provisioning</h2>
@@ -30227,6 +30314,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </p>
                  </section>
                ) : null}
+
+               <div className="mb-8">
+                 <MarketBUnitFeeSchedulePanel />
+               </div>
 
                <section id="market-fuel-marketplace" className="mb-8">
                  <div className="mb-5 flex flex-col justify-between gap-3 md:flex-row md:items-end">

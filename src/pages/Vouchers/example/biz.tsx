@@ -25096,13 +25096,6 @@ useEffect(() => {
    if (!raw || !ethers.isAddress(raw)) return '';
    return ethers.getAddress(raw);
  }, [profiles?.[0]?.keyID, myAddress]);
- /** Local draft complete AND on-chain recover acknowledged (restore / create / Continue push). */
- const verraLiteGateReleased = useMemo(() => {
-   if (!merchantEoaForLiteForm) return false;
-   const draft = loadBusinessProfileDraftForEoa(merchantEoaForLiteForm);
-   if (!hasVerraLiteBusinessRequiredFields(draft)) return false;
-   return hasLiteBusinessChainAck(merchantEoaForLiteForm);
- }, [merchantEoaForLiteForm, liteBusinessFormRevision, liteChainAckRevision]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** No eligible merchant program card (factory cardsOfOwner, API-exclude filtered) and no Ket #0 — show Start Kit / first-setup shell. AA presence is not used. */
@@ -25119,11 +25112,8 @@ useEffect(() => {
      ownsBusinessStartKetToken0,
    ]
  );
- /** First-time merchant shell on `/home`: gate on merchant card (+ Ket), not AA. While issuer/Ket reads are in flight, hide onboarding to avoid false Start Kit redirect. */
- const showBizFirstMembershipOnboarding = useMemo(() => {
-   if (verraLiteGateReleased) return false;
-   return lacksMerchantProgramCardAndKet;
- }, [verraLiteGateReleased, lacksMerchantProgramCardAndKet]);
+ /** First-time merchant shell on `/home`: no eligible merchant card (+ no Ket) wins over local Lite draft / chain ack. */
+ const showBizFirstMembershipOnboarding = lacksMerchantProgramCardAndKet;
 
  useLayoutEffect(() => {
    if (!merchantEoaForLiteForm) {

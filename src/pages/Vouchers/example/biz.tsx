@@ -20416,10 +20416,24 @@ const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useS
  const [marketRefuelProcessing, setMarketRefuelProcessing] = useState(false);
  const [marketRefuelSuccess, setMarketRefuelSuccess] = useState<string | null>(null);
  const [marketRefuelError, setMarketRefuelError] = useState<string | null>(null);
- const marketCustomFuelUsdc = useMemo(() => {
+const selectedCustomFuelPackage = useMemo(
+  () => MARKET_FUEL_PACKAGES.find((pkg) => pkg.usdcAmount === customFuelAmount) ?? null,
+  [customFuelAmount]
+);
+const customFuelVolumeBUnits = useMemo(() => {
+  if (selectedCustomFuelPackage) return selectedCustomFuelPackage.bUnits;
    const v = Number(String(customFuelAmount).replace(/,/g, '.'));
-   return Number.isFinite(v) ? v : NaN;
- }, [customFuelAmount]);
+  return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : 0;
+}, [customFuelAmount, selectedCustomFuelPackage]);
+/** Custom Fuel Refill is priced in the selected pack's CAD amount, converted by the live CoNET oracle. */
+const marketCustomFuelUsdc = useMemo(() => {
+  if (!selectedCustomFuelPackage) {
+    const v = Number(String(customFuelAmount).replace(/,/g, '.'));
+    return Number.isFinite(v) ? v : NaN;
+  }
+  if (!Number.isFinite(oracleCadUsdc ?? NaN) || (oracleCadUsdc ?? 0) <= 0) return NaN;
+  return selectedCustomFuelPackage.priceCad * Number(oracleCadUsdc);
+}, [customFuelAmount, oracleCadUsdc, selectedCustomFuelPackage]);
  /** Merchant Program kits (Standard / Custom) — Stripe Checkout from Programs marketing cards */
  const isMerchantKitStripeProduct = selectedProduct === 'standard_kit' || selectedProduct === 'custom_kit';
  const [merchantKitStripeUi, setMerchantKitStripeUi] = useState<'idle' | 'creating' | 'polling' | 'succeeded' | 'failed'>('idle');
@@ -21110,14 +21124,20 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
 
  /** Oracle CAD/USDC from CoNET BeamioOracle — fetch on mount and every 10 min */
  useEffect(() => {
-   const fetchOracle = () => {
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleFetch = () => {
      getOracleCadUsdcFromConet().then((rate) => {
-       if (rate != null) setOracleCadUsdc(rate);
+      if (!cancelled && rate != null) setOracleCadUsdc(rate);
+    }).finally(() => {
+      if (!cancelled) timer = setTimeout(scheduleFetch, 10 * 60 * 1000);
      });
    };
-   fetchOracle();
-   const interval = setInterval(fetchOracle, 10 * 60 * 1000);
-   return () => clearInterval(interval);
+  scheduleFetch();
+  return () => {
+    cancelled = true;
+    if (timer !== undefined) clearTimeout(timer);
+  };
  }, []);
 
  const refreshOracleCadUsdcNow = useCallback(() => {
@@ -22397,8 +22417,16 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
        setMarketRefuelError('Wallet not ready. Please unlock or sign in.');
        return;
      }
-     const amountHuman =
-       selectedProduct === 'starter' ? '1' : String(customFuelAmount).replace(/,/g, '.').trim();
+    const amountHuman =
+      selectedProduct === 'starter'
+        ? '1'
+        : Number.isFinite(marketCustomFuelUsdc)
+          ? marketCustomFuelUsdc.toFixed(6)
+          : '';
+    if (!amountHuman) {
+      setMarketRefuelError('Live CAD/USDC oracle rate is unavailable. Please refresh and try again.');
+      return;
+    }
      let need6: bigint;
      try {
        need6 = ethers.parseUnits(amountHuman, 6);
@@ -22466,7 +22494,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
      return null;
    });
    setActiveTab('Wallets');
- }, [selectedProduct, profiles, myAddress, customFuelAmount]);
+}, [marketCustomFuelUsdc, selectedProduct, profiles, myAddress, customFuelAmount]);
 
  const runMerchantKitStripeCheckout = useCallback(
    async (packageType: MerchantKitCheckoutPlanId) => {
@@ -40904,7 +40932,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <div>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{selectedProduct === 'fuel' ? 'Volume' : selectedProduct === 'starter' || selectedProduct === 'custom_fuel' ? 'Volume' : selectedProduct === 'standard_kit' || selectedProduct === 'custom_kit' ? 'B-Units' : '安全'}</p>
                     <p className="text-[16px] font-bold text-white leading-tight">
-                      {selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : selectedProduct === 'custom_fuel' ? `${(Number(customFuelAmount) || 0) * 100} B-Units` : selectedProduct === 'standard_kit' ? '2,000 B-Units' : selectedProduct === 'custom_kit' ? '5,000 B-Units' : 'ATECC608 Vault'}
+                      {selectedProduct === 'fuel' ? '100k B-Units' : selectedProduct === 'starter' ? '100 B-Units' : selectedProduct === 'custom_fuel' ? `${customFuelVolumeBUnits.toLocaleString('en-US')} B-Units` : selectedProduct === 'standard_kit' ? '2,000 B-Units' : selectedProduct === 'custom_kit' ? '5,000 B-Units' : 'ATECC608 Vault'}
                     </p>
                   </div>
                 </div>
@@ -40952,7 +40980,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ) : selectedProduct === 'custom_fuel' ? (
                     <div className="flex gap-4">
                       <Zap size={20} className="text-emerald-500 shrink-0 mt-0.5" />
-                      <div><h4 className="text-[15px] font-bold text-white mb-1">{(Number(customFuelAmount) || 0) * 100} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">System value of ${customFuelAmount || 0} USDC. Instant clearing fuel to process your daily retail volume.</p></div>
+                      <div><h4 className="text-[15px] font-bold text-white mb-1">{customFuelVolumeBUnits.toLocaleString('en-US')} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">Current oracle settlement: {Number.isFinite(marketCustomFuelUsdc) ? `${marketCustomFuelUsdc.toFixed(2)} USDC` : 'unavailable'}. Instant clearing fuel to process your daily retail volume.</p></div>
                     </div>
                   ) : (
                     <div className="flex gap-4">
@@ -40984,7 +41012,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <div>
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
                     <div className="flex items-baseline gap-1.5">
-                      <p className="text-[32px] font-bold text-white leading-none">{customFuelAmount || '0'}</p>
+                      <p className="text-[32px] font-bold text-white leading-none">{Number.isFinite(marketCustomFuelUsdc) ? marketCustomFuelUsdc.toFixed(2) : '—'}</p>
                       <span className="text-[14px] font-medium text-slate-500">USDC</span>
                     </div>
                   </div>

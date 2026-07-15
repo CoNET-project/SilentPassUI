@@ -1346,6 +1346,70 @@ function formatMarketFuelOrdersHint(pkg: MarketFuelPackage): string {
   return `Supports ~${orders.toLocaleString('en-US')} orders`
 }
 
+/** Market / Start Kit shared voucher redeem panel (BusinessStartKet redeem codes). */
+function MarketHaveAVoucherPanel(props: {
+  redeemInput: string
+  onRedeemInputChange: (value: string) => void
+  onActivate: () => void
+  busy: boolean
+  feedback: { type: 'success' | 'error'; message: string } | null
+  /** `stacked` = full-width Start Kit fuel list item; `market` = dashed Market band. */
+  variant?: 'market' | 'stacked'
+}) {
+  const { redeemInput, onRedeemInputChange, onActivate, busy, feedback, variant = 'market' } = props
+  const stacked = variant === 'stacked'
+  return (
+    <section
+      className={
+        stacked
+          ? 'rounded-[2rem] border-2 border-dashed border-[#abadaf]/40 bg-[#e5e9eb] p-8 text-center shadow-[0_10px_30px_rgba(0,0,0,0.02)]'
+          : 'rounded-xl border-2 border-dashed border-[#abadaf]/30 bg-[#e5e9eb] p-8 text-center'
+      }
+    >
+      <h4 className={`mb-2 font-bold text-[#2c2f31] ${stacked ? 'font-manrope text-xl' : 'text-lg'}`}>
+        Have a Voucher?
+      </h4>
+      <p className={`mx-auto mb-6 max-w-sm text-[#595c5e] ${stacked ? 'text-sm leading-relaxed' : 'text-sm'}`}>
+        Enter your expansion code below to instantly credit your business account.
+      </p>
+      <div className="mx-auto flex max-w-md flex-col gap-2 sm:flex-row">
+        <input
+          className="flex-1 rounded-full border-none bg-white px-6 py-3 text-center font-mono text-sm tracking-widest text-[#2c2f31] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20"
+          placeholder="ENTER YOUR CODE"
+          type="text"
+          value={redeemInput}
+          onChange={(e) => onRedeemInputChange(e.target.value)}
+          autoComplete="off"
+          enterKeyHint="done"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && redeemInput.trim() && !busy) {
+              e.preventDefault()
+              onActivate()
+            }
+          }}
+        />
+        <button
+          type="button"
+          disabled={busy || !redeemInput.trim()}
+          onClick={onActivate}
+          className="rounded-full bg-[#2c2f31] px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? '…' : 'Activate'}
+        </button>
+      </div>
+      {feedback ? (
+        <p
+          className={`mt-4 text-xs font-medium ${
+            feedback.type === 'success' ? 'text-emerald-700' : 'text-amber-700'
+          }`}
+        >
+          {feedback.message}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
 /** Programs → Checkout Center (see `marketExample.html`); Stripe uses `${BEAMIO_APP_URL}/api/merchantKitStripe/*`. */
 type MerchantKitCheckoutPlanId = 'lite_kit' | 'standard_kit' | 'custom_kit'
 
@@ -2165,6 +2229,12 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   /** Opens the full-screen Understanding B-Units explainer (same as Programs “Learn about B-Units”). */
   onOpenUnderstandingBUnits?: () => void;
   redeemAdminInProgress?: boolean;
+  /** Start Kit Fuel Packages first row — same redeem path as Market “Have a Voucher?”. */
+  voucherRedeemInput: string;
+  onVoucherRedeemInputChange: (value: string) => void;
+  onVoucherRedeemActivate: () => void;
+  voucherRedeemBusy: boolean;
+  voucherRedeemFeedback: { type: 'success' | 'error'; message: string } | null;
 }) {
   const {
     merchantEoa,
@@ -2176,6 +2246,11 @@ function MobileNoAaLiteMemberSelectionPage(props: {
     onSelectFuelPack,
     onOpenUnderstandingBUnits,
     redeemAdminInProgress,
+    voucherRedeemInput,
+    onVoucherRedeemInputChange,
+    onVoucherRedeemActivate,
+    voucherRedeemBusy,
+    voucherRedeemFeedback,
   } = props;
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
@@ -2310,6 +2385,14 @@ function MobileNoAaLiteMemberSelectionPage(props: {
           </section>
 
           <div className="flex flex-col gap-6">
+            <MarketHaveAVoucherPanel
+              variant="stacked"
+              redeemInput={voucherRedeemInput}
+              onRedeemInputChange={onVoucherRedeemInputChange}
+              onActivate={onVoucherRedeemActivate}
+              busy={voucherRedeemBusy}
+              feedback={voucherRedeemFeedback}
+            />
             {MARKET_FUEL_PACKAGES.map((pkg) => (
               <div
                 key={pkg.id}
@@ -27672,6 +27755,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     }}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
+                    voucherRedeemInput={merchantKitRedeemInput}
+                    onVoucherRedeemInputChange={(value) => {
+                      setMerchantKitRedeemInput(value);
+                      if (merchantKitRedeemFeedback) setMerchantKitRedeemFeedback(null);
+                    }}
+                    onVoucherRedeemActivate={() => void submitMerchantKitBuintRedeem()}
+                    voucherRedeemBusy={merchantKitBuintRedeemBusy}
+                    voucherRedeemFeedback={merchantKitRedeemFeedback}
                   />
                 </div>
                 {/* No AA — `newOnloading.html` Business OS onboarding dashboard (tablet / desktop, or mobile once Lite fields are complete) */}
@@ -30030,42 +30121,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                </section>
 
-               <section className="rounded-xl border-2 border-dashed border-[#abadaf]/30 bg-[#e5e9eb] p-8 text-center">
-                 <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Have a Voucher?</h4>
-                 <p className="mx-auto mb-6 max-w-sm text-sm text-[#595c5e]">
-                   Enter your expansion code below to instantly credit your business account.
-                 </p>
-                 <div className="mx-auto flex max-w-md flex-col gap-2 sm:flex-row">
-                   <input
-                     className="flex-1 rounded-full border-none bg-white px-6 py-3 text-center font-mono text-sm tracking-widest text-[#2c2f31] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20"
-                     placeholder="ENTER YOUR CODE"
-                     type="text"
-                     value={merchantKitRedeemInput}
-                     onChange={(e) => {
-                       setMerchantKitRedeemInput(e.target.value);
-                       if (merchantKitRedeemFeedback) setMerchantKitRedeemFeedback(null);
-                     }}
-                     autoComplete="off"
-                   />
-                   <button
-                     type="button"
-                     disabled={merchantKitBuintRedeemBusy || !merchantKitRedeemInput.trim()}
-                     onClick={() => void submitMerchantKitBuintRedeem()}
-                     className="rounded-full bg-[#2c2f31] px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
-                   >
-                     {merchantKitBuintRedeemBusy ? '…' : 'Activate'}
-                   </button>
-                 </div>
-                 {merchantKitRedeemFeedback ? (
-                   <p
-                     className={`mt-4 text-xs font-medium ${
-                       merchantKitRedeemFeedback.type === 'success' ? 'text-emerald-700' : 'text-amber-700'
-                     }`}
-                   >
-                     {merchantKitRedeemFeedback.message}
-                   </p>
-                 ) : null}
-               </section>
+               <MarketHaveAVoucherPanel
+                 redeemInput={merchantKitRedeemInput}
+                 onRedeemInputChange={(value) => {
+                   setMerchantKitRedeemInput(value);
+                   if (merchantKitRedeemFeedback) setMerchantKitRedeemFeedback(null);
+                 }}
+                 onActivate={() => void submitMerchantKitBuintRedeem()}
+                 busy={merchantKitBuintRedeemBusy}
+                 feedback={merchantKitRedeemFeedback}
+               />
 
                <p className="text-center text-[11px] font-semibold text-slate-500">
                  Priority processing add-ons?{' '}
@@ -30391,6 +30456,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     }}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
+                    voucherRedeemInput={merchantKitRedeemInput}
+                    onVoucherRedeemInputChange={(value) => {
+                      setMerchantKitRedeemInput(value);
+                      if (merchantKitRedeemFeedback) setMerchantKitRedeemFeedback(null);
+                    }}
+                    onVoucherRedeemActivate={() => void submitMerchantKitBuintRedeem()}
+                    voucherRedeemBusy={merchantKitBuintRedeemBusy}
+                    voucherRedeemFeedback={merchantKitRedeemFeedback}
                   />
                 </div>
                  <div className="hidden lg:block">

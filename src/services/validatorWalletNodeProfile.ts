@@ -967,27 +967,60 @@ function mergeClRewardPaidIntoCnetBeneficiary(stats: UnifiedIncomeStats, clPaidW
  *
  * 返回 Map<guardianId, wei>；读取失败返回空 Map（不覆盖 UI 上次可信值，见 beamio-trusted-vs-untrusted-fetch.mdc）。
  */
+const guardianClRewardPaidCache = new Map<string, Map<number, bigint>>()
+const guardianClRewardPaidInFlight = new Map<string, Promise<void>>()
+
+/**
+ * Load the per-guardian breakdown without blocking the aggregate income panel.
+ *
+ * The historical event query can be slow for beneficiaries owning many nodes.
+ * `clRewardPaid(beneficiary)` is the authoritative aggregate and is read
+ * synchronously by the caller; this detail query is deliberately single-flight
+ * and cached so it cannot turn a multi-node dashboard refresh into a 40+ second
+ * request or start overlapping full-history scans every daemon tick.
+ */
 async function readClRewardPaidByGuardian(
 	redeem: ethers.Contract,
 	beneficiary: string | null,
 ): Promise<Map<number, bigint>> {
-	const out = new Map<number, bigint>()
-	if (!beneficiary) return out
-	try {
-		const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
-		const logs = await redeem.queryFilter(filter, 0, 'latest')
-		for (const log of logs) {
-			const args = (log as ethers.EventLog).args
-			if (!args) continue
-			const guardianId = Number(args.guardianId ?? args[0])
-			const amount = BigInt(String(args.amount ?? args[2] ?? 0))
-			if (!Number.isFinite(guardianId) || amount <= 0n) continue
-			out.set(guardianId, (out.get(guardianId) ?? 0n) + amount)
-		}
-	} catch {
-		return new Map()
+	if (!beneficiary) return new Map()
+	const key = beneficiary.toLowerCase()
+	const cached = guardianClRewardPaidCache.get(key)
+	if (!guardianClRewardPaidInFlight.has(key)) {
+		const task = (async () => {
+			try {
+				const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
+				const logs = await redeem.queryFilter(filter, 0, 'latest')
+				const out = new Map<number, bigint>()
+				for (const log of logs) {
+					let args = (log as ethers.EventLog).args
+					if (!args) {
+						try {
+							const parsed = redeem.interface.parseLog({
+								topics: log.topics,
+								data: log.data,
+							})
+							if (parsed?.name === 'NodeRewardSettled') args = parsed.args
+						} catch {
+							/* Ignore malformed or provider-specific log records. */
+						}
+					}
+					if (!args) continue
+					const guardianId = Number(args.guardianId ?? args[0])
+					const amount = BigInt(String(args.amount ?? args[2] ?? 0))
+					if (!Number.isFinite(guardianId) || amount <= 0n) continue
+					out.set(guardianId, (out.get(guardianId) ?? 0n) + amount)
+				}
+				guardianClRewardPaidCache.set(key, out)
+			} catch {
+				// Preserve the last trusted per-node cache on an untrusted read.
+			} finally {
+				guardianClRewardPaidInFlight.delete(key)
+			}
+		})()
+		guardianClRewardPaidInFlight.set(key, task)
 	}
-	return out
+	return cached ?? new Map()
 }
 
 /**
@@ -1217,11 +1250,11 @@ export async function fetchUnifiedIncomeStats(
 		const incomeBeneficiary =
 			stats.beneficiary ?? parsedBundle?.beneficiary ?? (isAddr ? maybeWallet : null)
 		if (incomeBeneficiary) {
-			const [clPaid, guardianClPaid] = await Promise.all([
-				readClRewardPaidWei(redeem, incomeBeneficiary),
-				readClRewardPaidByGuardian(redeem, incomeBeneficiary),
-			])
+			// Merge the authoritative aggregate first. Do not wait for the
+			// potentially slow historical per-guardian event scan.
+			const clPaid = await readClRewardPaidWei(redeem, incomeBeneficiary)
 			mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
+			const guardianClPaid = await readClRewardPaidByGuardian(redeem, incomeBeneficiary)
 			mergeClRewardPaidIntoNodes(stats, guardianClPaid)
 		}
 		// airdrop（vesting）账本按 redeem **beneficiary** 查询（非 node operator 钱包）。
